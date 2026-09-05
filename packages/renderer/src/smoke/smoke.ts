@@ -151,19 +151,28 @@ export async function runSmokeIfEnabled(): Promise<void> {
     const hasThemeCmd = items.some((el) => el.textContent?.includes('切换亮/暗主题'));
     check('面板过滤命令', hasThemeCmd, `items=${items.length}`);
     await capture('04-palette');
+    const themeBefore = useThemeStore.getState().resolved;
     // Enter 执行第一条过滤结果（切换主题）
     input?.dispatchEvent(
       new KeyboardEvent('keydown', { key: 'Enter', bubbles: true, cancelable: true }),
     );
     await sleep(300);
-    const darkOn = document.documentElement.classList.contains('dark');
-    check('面板 Enter 执行命令（主题已切换）', darkOn, `html.dark=${darkOn}`);
+    const themeAfter = useThemeStore.getState().resolved;
+    const themeToggled = themeAfter !== themeBefore;
+    check(
+      '面板 Enter 执行命令（主题已切换）',
+      themeToggled,
+      `resolved=${themeBefore}->${themeAfter}`,
+    );
     check('命令面板执行后关闭', !document.querySelector('[data-testid="command-palette"]'));
     // 运行自定义注册命令
     commandRegistry.get('smoke.custom')?.run();
     check('外部模块可注册新命令并执行', customCommandRan);
 
     // ── 7. 亮/暗主题 ─────────────────────────────────────────
+    useThemeStore.getState().setPreference('dark');
+    await sleep(300);
+    const darkOn = document.documentElement.classList.contains('dark');
     check('暗色主题生效（CSS 变量切换）', darkOn && useThemeStore.getState().resolved === 'dark');
     await capture('05-dark');
     useThemeStore.getState().setPreference('light');
