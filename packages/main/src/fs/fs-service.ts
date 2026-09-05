@@ -35,6 +35,12 @@ export class VaultFsService {
     return root;
   }
 
+  private assertNotVaultRoot(relPath: string): void {
+    if (relPath.trim().length === 0 || relPath.trim() === '.') {
+      throw new FsError('不允许对 vault 根目录执行此操作', 'VAULT_ROOT_OPERATION');
+    }
+  }
+
   /** 解析相对路径为绝对路径并做沙箱校验。 */
   async resolve(relPath: string): Promise<{ root: string; abs: string }> {
     const root = await this.requireRoot();
@@ -149,6 +155,7 @@ export class VaultFsService {
 
   /** 直接删除（回收站逻辑由 IPC handler 层经 shell.trashItem 处理）。 */
   async delete(relPath: string): Promise<void> {
+    this.assertNotVaultRoot(relPath);
     const { abs } = await this.resolve(relPath);
     try {
       await fsp.rm(abs, { recursive: true, force: true });

@@ -104,6 +104,12 @@ describe('读写与目录操作', () => {
     expect(await service.exists('renamed-dir')).toBe(false);
   });
 
+  it('拒绝删除 vault 根目录', async () => {
+    await expect(service.delete('')).rejects.toMatchObject({ code: 'VAULT_ROOT_OPERATION' });
+    await expect(service.delete('.')).rejects.toMatchObject({ code: 'VAULT_ROOT_OPERATION' });
+    expect(await service.exists('')).toBe(true);
+  });
+
   it('listDir 不存在的目录报 READ_DIR_FAILED', async () => {
     await expect(service.listDir('nope')).rejects.toMatchObject({ code: 'READ_DIR_FAILED' });
     await expect(service.readTextFile('nope.md')).rejects.toBeInstanceOf(FsError);
