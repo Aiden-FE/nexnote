@@ -1,5 +1,5 @@
 {
-  "finishedAt": "2026-09-05T11:05:17.196Z",
+  "finishedAt": "2026-09-05T11:25:02.599Z",
   "checks": [
     {
       "name": "首启动向导可见（新建/打开/克隆三选一）",
@@ -12,7 +12,7 @@
     {
       "name": "vault:create 成功",
       "passed": true,
-      "detail": "/var/folders/np/sd6hrwgj7gs9m5chdfpcycv00000gn/T/nexnote-smoke-vault-fINrZK/smoke-vault"
+      "detail": "/var/folders/np/sd6hrwgj7gs9m5chdfpcycv00000gn/T/nexnote-smoke-vault-bwChZy/smoke-vault"
     },
     {
       "name": "工作区出现（vault:changed 驱动）",
