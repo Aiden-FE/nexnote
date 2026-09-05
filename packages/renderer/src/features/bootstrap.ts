@@ -8,3 +8,4 @@ import './dock';
 import './statusbar';
 import './commands/builtin';
 import './settings';
+import './ai';

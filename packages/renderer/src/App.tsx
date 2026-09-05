@@ -6,6 +6,7 @@ import { VaultContext } from './shell/vault-context';
 import { WorkspaceView } from './shell/WorkspaceView';
 import { OnboardingWizard } from './onboarding/OnboardingWizard';
 import { CommandPalette, useCommandPaletteHotkey } from './palette/CommandPalette';
+import { AiGlobalLayer } from './features/ai';
 
 type StartupState =
   | { phase: 'loading' }
@@ -51,6 +52,7 @@ function App() {
         )}
         {state.phase === 'ready' && <WorkspaceView vault={state.vault} />}
         <CommandPalette />
+        <AiGlobalLayer />
       </VaultContext.Provider>
     </ThemeProvider>
   );
