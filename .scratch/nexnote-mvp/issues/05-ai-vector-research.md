@@ -1,7 +1,7 @@
 # 05 · AI 集成与本地向量检索研究
 
 Type: research
-Status: claimed
+Status: resolved
 
 ## Question
 
@@ -14,3 +14,18 @@ Status: claimed
 5. 渐进式召回（粗筛 → 图扩展 → 向量重排）的参考实现先例（RAG 管道、GraphRAG 类方案）。
 
 产出选型建议与风险。
+
+## Answer
+
+- OpenAI-compatible 只作传输兼容；以 `capabilities` + 自有流事件协议隔离 SSE、tools、usage、embeddings 差异。
+- 密钥与网络请求留在主进程/本地 sidecar，Renderer 仅经 IPC 收脱敏事件；禁止默认浏览器直连。
+- SDK：Provider Adapter 为领域边界；官方 `openai` SDK 用于 OpenAI/Responses，Vercel AI SDK 仅作可选 UI/编排实现。
+- MVP 向量库选 `sqlite-vec`，与 SQLite FTS/Link Index 共库；封装 pre-v1 依赖并保留全量重建路径。
+- embedding 是独立能力：支持 remote 与 local profile；模型/维度/metric 改变必须新 generation 后重建，禁止混检。
+- 召回采用“粗筛（FTS/metadata）→ Link Index 1–2 跳扩展 → 向量重排 → token packing”，而非立即引入完整 GraphRAG。
+- LanceDB 是数据量、ANN 或多模态明确成为瓶颈后的备选；GraphRAG/社区摘要为可选 Retrieval Skill。
+- 主要风险：兼容语义漂移、流内错误、工具 delta 早执行、密钥泄露、embedding 混用、sqlite-vec 演进与上下文超预算。
+
+报告：[docs/research/ai-vector.md](../../../docs/research/ai-vector.md)
+
+**明确建议：** 首版实施自有 Provider Adapter + 主进程持钥 + `sqlite-vec` 派生索引 + 原生三阶段渐进式召回。**备选：** 当实际 benchmark 证明 SQLite 向量检索不足或需多模态/ANN 时替换为 LanceDB；仅在全 Vault 全局主题问答有真实需求时再做 GraphRAG 类离线索引。

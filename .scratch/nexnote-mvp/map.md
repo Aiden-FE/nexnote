@@ -23,7 +23,12 @@ Label: wayfinder:map
 
 ## Decisions so far
 
-（尚无已关闭票据；研究票 01–06 解析中，Answer 落在各票内）
+- [01 · 桌面壳与前端框架选型研究](issues/01-desktop-shell-research.md): 建议 Electron + React + TypeScript（三端渲染一致性与块编辑器生态最稳）；备选 Tauri 2 / Vue 3；最大风险 = Tauri 的 Linux IME 与 WKWebView 拖拽。报告 docs/research/desktop-shell.md。
+- [03 · Git 集成与文档历史研究](issues/03-git-integration-research.md): 主路线 simple-git（spawn 系统 git）+ 探测/捆绑 dugite-native 回退；回滚 MVP = 文件级 + hunk 级；置信度走全量历史索引 + 增量。报告 docs/research/git-integration.md。
+- [04 · 竞品块模型与存储格式研究](issues/04-competitor-arch-research.md): 无损边界 = CommonMark+GFM+LaTeX；块 ID 采用 Obsidian `^id` 锚点语法；嵌套容器/合并单元格必降级、块样式必丢弃；Link Index 做可从 vault 全量重建的派生缓存。报告 docs/research/competitor-arch.md。
+- [05 · AI 集成与本地向量检索研究](issues/05-ai-vector-research.md): 自有 Provider Adapter + 主进程持钥 + sqlite-vec 派生索引 + 三阶段渐进召回（非 GraphRAG）；LanceDB / GraphRAG 为后续备选。报告 docs/research/ai-vector.md。
+- [06 · 插件系统机制研究](issues/06-plugin-system-research.md): sandbox iframe UI + capability RPC + 宿主预注册 plugin_block；V1 增 QuickJS/WASM logic worker；Node 子进程仅限 desktop-privileged。报告 docs/research/plugin-system.md。
+- （02 · 块编辑器内核选型：首次子代理未完成，重试中；待收口）
 
 ## Not yet specified
 
