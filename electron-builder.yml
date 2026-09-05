@@ -1,0 +1,36 @@
+appId: dev.nexnote.desktop
+productName: NexNote
+directories:
+  output: release
+  buildResources: build
+files:
+  - out/**
+  - package.json
+# 生产依赖（electron-updater）由 electron-builder 自动收进 asar
+asar: true
+icon: build/icon.png
+mac:
+  target:
+    - target: dmg
+      arch:
+        - arm64
+        - x64
+  category: public.app-category.productivity
+  # 未签名构建（正式签名/公证位预留：设置 CSC_NAME 环境变量 + afterSign 钩子，
+  # 见 DEV-018 打包发布票；notarize 需要 APPLE_ID / APPLE_APP_SPECIFIC_PASSWORD）
+  identity: null
+  # afterSign: scripts/notarize.js
+win:
+  target: nsis
+linux:
+  target:
+    - AppImage
+    - deb
+  category: Office
+# 自动更新发布源占位（DEV-018 接入真实更新服务；generic provider 可指向任意静态服务器）
+publish:
+  - provider: generic
+    url: https://updates.nexnote.example/stable/
+nsis:
+  oneClick: false
+  allowToChangeInstallationDirectory: true

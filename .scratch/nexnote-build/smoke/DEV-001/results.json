@@ -1,0 +1,127 @@
+{
+  "finishedAt": "2026-09-05T11:25:02.599Z",
+  "checks": [
+    {
+      "name": "首启动向导可见（新建/打开/克隆三选一）",
+      "passed": true
+    },
+    {
+      "name": "向导包含三选一入口",
+      "passed": true
+    },
+    {
+      "name": "vault:create 成功",
+      "passed": true,
+      "detail": "/var/folders/np/sd6hrwgj7gs9m5chdfpcycv00000gn/T/nexnote-smoke-vault-bwChZy/smoke-vault"
+    },
+    {
+      "name": "工作区出现（vault:changed 驱动）",
+      "passed": true
+    },
+    {
+      "name": "三面板布局（侧栏+主区+右侧 dock）",
+      "passed": true,
+      "detail": "sb=true main=true dock=true"
+    },
+    {
+      "name": "底部状态栏",
+      "passed": true
+    },
+    {
+      "name": "侧栏三个占位面板已注册",
+      "passed": true
+    },
+    {
+      "name": "Dock AI 占位面板已注册",
+      "passed": true
+    },
+    {
+      "name": "默认欢迎 Tab 激活",
+      "passed": true
+    },
+    {
+      "name": "Tab 可打开（左右 pane 各一）",
+      "passed": true,
+      "detail": "count=3"
+    },
+    {
+      "name": "右 pane 含新 Tab 内容",
+      "passed": true
+    },
+    {
+      "name": "Tab 可关闭",
+      "passed": true,
+      "detail": "count=2"
+    },
+    {
+      "name": "分屏比例可调（拖拽目标值生效）",
+      "passed": true,
+      "detail": "ratio=0.620"
+    },
+    {
+      "name": "分屏分隔线存在",
+      "passed": true
+    },
+    {
+      "name": "⌘K 唤起命令面板",
+      "passed": true
+    },
+    {
+      "name": "面板过滤命令",
+      "passed": true,
+      "detail": "items=1"
+    },
+    {
+      "name": "面板 Enter 执行命令（主题已切换）",
+      "passed": true,
+      "detail": "resolved=dark->light"
+    },
+    {
+      "name": "命令面板执行后关闭",
+      "passed": true
+    },
+    {
+      "name": "外部模块可注册新命令并执行",
+      "passed": true
+    },
+    {
+      "name": "暗色主题生效（CSS 变量切换）",
+      "passed": true
+    },
+    {
+      "name": "切回亮色主题",
+      "passed": true
+    },
+    {
+      "name": "侧栏可折叠",
+      "passed": true
+    },
+    {
+      "name": "fs:listDir 经 IPC 返回 vault 内容",
+      "passed": true,
+      "detail": ".nexnotedirectory"
+    },
+    {
+      "name": "editor:* 命名空间通道可用（占位）",
+      "passed": true
+    },
+    {
+      "name": "vault:close 后回到向导",
+      "passed": true
+    },
+    {
+      "name": "最近打开列表持久化并显示",
+      "passed": true
+    }
+  ],
+  "captures": [
+    "/Users/aiden/dev/aiden/nexnote-wt/DEV-001/.scratch/nexnote-build/smoke/DEV-001/01-onboarding.png",
+    "/Users/aiden/dev/aiden/nexnote-wt/DEV-001/.scratch/nexnote-build/smoke/DEV-001/02-workspace.png",
+    "/Users/aiden/dev/aiden/nexnote-wt/DEV-001/.scratch/nexnote-build/smoke/DEV-001/03-split.png",
+    "/Users/aiden/dev/aiden/nexnote-wt/DEV-001/.scratch/nexnote-build/smoke/DEV-001/04-palette.png",
+    "/Users/aiden/dev/aiden/nexnote-wt/DEV-001/.scratch/nexnote-build/smoke/DEV-001/05-dark.png",
+    "/Users/aiden/dev/aiden/nexnote-wt/DEV-001/.scratch/nexnote-build/smoke/DEV-001/06-light.png",
+    "/Users/aiden/dev/aiden/nexnote-wt/DEV-001/.scratch/nexnote-build/smoke/DEV-001/07-sidebar-collapsed.png",
+    "/Users/aiden/dev/aiden/nexnote-wt/DEV-001/.scratch/nexnote-build/smoke/DEV-001/08-recent-list.png"
+  ]
+}
