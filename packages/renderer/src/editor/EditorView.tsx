@@ -31,7 +31,7 @@ type SaveState = 'saved' | 'saving' | 'error';
  * - 默认文件名 ↔ 首 H1 绑定：文件名初始补 H1，H1 修改后原子 rename
  */
 export function EditorView({ paneId, tab }: EditorViewProps) {
-  const path = tab.path ?? `${sanitizePageTitle(tab.title)}.md`;
+  const path = tab.pagePath ?? `${sanitizePageTitle(tab.title)}.md`;
   const [load, setLoad] = useState<LoadState>({ phase: 'loading' });
   const [saveState, setSaveState] = useState<SaveState>('saved');
   const [saveError, setSaveError] = useState<string | null>(null);
@@ -103,13 +103,13 @@ export function EditorView({ paneId, tab }: EditorViewProps) {
           if (desiredPath !== currentPath) {
             const collision = await invoke('fs:exists', { path: desiredPath });
             if (collision) throw new Error(`无法重命名：${desiredPath} 已存在`);
-            await invoke('fs:rename', { from: currentPath, to: desiredPath });
+            await invoke('fs:renameLinked', { from: currentPath, to: desiredPath });
             currentPath = desiredPath;
             pathRef.current = desiredPath;
             setDisplayPath(desiredPath);
             useTabStore.getState().updateTab(paneId, tab.id, {
               title: desiredTitle,
-              path: desiredPath,
+              pagePath: desiredPath,
             });
           }
         }
@@ -155,7 +155,7 @@ export function EditorView({ paneId, tab }: EditorViewProps) {
         useTabStore.getState().openTab(paneId, {
           kind: 'page',
           title: titleFromPath(nextPath),
-          path: nextPath,
+          pagePath: nextPath,
         });
       },
     });

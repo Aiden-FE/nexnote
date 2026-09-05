@@ -1,6 +1,8 @@
-import { ok, type Result } from '@nexnote/shared';
-import type { DirEntry, FileInfo } from '@nexnote/shared';
+import { err, ok, type Result } from '@nexnote/shared';
+import type { DirEntry, FileInfo, RenameLinkedResult, TagStat } from '@nexnote/shared';
+import * as pathLib from 'node:path';
 import type { IpcRegistrar } from './registrar';
+import { createNote, renameWithLinks, scanTags } from '../fs/page-ops';
 
 /**
  * fs:* — vault 沙箱文件能力。
@@ -45,12 +47,61 @@ export function registerFsHandlers(registrar: IpcRegistrar): void {
   );
 
   registrar.register('fs:delete', async ({ path, toTrash }, services): Promise<Result<void>> => {
+    if (path.trim().length === 0 || path.trim() === '.') {
+      return err('不允许删除 vault 根目录', 'VAULT_ROOT_OPERATION');
+    }
     if (toTrash) {
       const { abs } = await services.fs.resolve(path);
-      await services.trash(abs);
+      try {
+        await services.trash(abs);
+      } catch {
+        // 系统回收站不可用（如部分 Linux 环境）：回退移入 vault 内 .trash/ 目录
+        const name = pathLib.basename(abs);
+        const ts = Date.now();
+        const ext = pathLib.extname(name);
+        const stem = ext.length > 0 ? name.slice(0, -ext.length) : name;
+        let target = `.trash/${name}`;
+        if (await services.fs.exists(target)) target = `.trash/${stem}-${ts}${ext}`;
+        await services.fs.mkdir('.trash', true);
+        await services.fs.rename(path, target);
+      }
       return ok(undefined);
     }
     await services.fs.delete(path);
     return ok(undefined);
+  });
+
+  registrar.register(
+    'fs:createNote',
+    async ({ parentDir, name, content }, services): Promise<Result<FileInfo>> => {
+      return ok(await createNote(services.fs, parentDir, name, content));
+    },
+  );
+
+  registrar.register(
+    'fs:listTree',
+    async ({ showAllFiles }, services): Promise<Result<DirEntry[]>> => {
+      return ok(await services.fs.listTree(showAllFiles ?? false));
+    },
+  );
+
+  registrar.register(
+    'fs:renameLinked',
+    async ({ from, to }, services): Promise<Result<RenameLinkedResult>> => {
+      return ok(await renameWithLinks(services.fs, from, to));
+    },
+  );
+
+  registrar.register(
+    'fs:revealInFinder',
+    async ({ path }, services): Promise<Result<void>> => {
+      const { abs } = await services.fs.resolve(path);
+      await services.revealItem(abs);
+      return ok(undefined);
+    },
+  );
+
+  registrar.register('fs:scanTags', async (_payload, services): Promise<Result<TagStat[]>> => {
+    return ok(await scanTags(services.fs));
   });
 }

@@ -43,6 +43,21 @@ export class SmokeController {
         return { ok: false, error: e instanceof Error ? e.message : String(e) };
       }
     });
+    // 模拟「外部进程」直接写磁盘（不经 fs IPC），验证 chokidar 实时同步
+    ipcMain.handle(
+      'smoke:writeFile',
+      async (_event, payload: unknown) => {
+        try {
+          const { root, rel, content } = payload as { root: string; rel: string; content: string };
+          const abs = path.join(root, rel);
+          await mkdir(path.dirname(abs), { recursive: true });
+          await writeFile(abs, content, 'utf8');
+          return { ok: true, path: abs };
+        } catch (e) {
+          return { ok: false, error: e instanceof Error ? e.message : String(e) };
+        }
+      },
+    );
     ipcMain.handle('smoke:capture', async (_event, name: unknown) => {
       try {
         const file = await this.capture(String(name));

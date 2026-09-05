@@ -1,0 +1,202 @@
+{
+  "finishedAt": "2026-09-05T14:50:49.803Z",
+  "checks": [
+    {
+      "name": "首启动向导可见（新建/打开/克隆三选一）",
+      "passed": true
+    },
+    {
+      "name": "向导包含三选一入口",
+      "passed": true
+    },
+    {
+      "name": "vault:create 成功",
+      "passed": true,
+      "detail": "/var/folders/np/sd6hrwgj7gs9m5chdfpcycv00000gn/T/nexnote-smoke-vault-qr4bYf/smoke-vault"
+    },
+    {
+      "name": "工作区出现（vault:changed 驱动）",
+      "passed": true
+    },
+    {
+      "name": "三面板布局（侧栏+主区+右侧 dock）",
+      "passed": true,
+      "detail": "sb=true main=true dock=true"
+    },
+    {
+      "name": "底部状态栏",
+      "passed": true
+    },
+    {
+      "name": "侧栏三个占位面板已注册",
+      "passed": true
+    },
+    {
+      "name": "Dock AI 占位面板已注册",
+      "passed": true
+    },
+    {
+      "name": "默认欢迎 Tab 激活",
+      "passed": true
+    },
+    {
+      "name": "Tab 可打开（左右 pane 各一）",
+      "passed": true,
+      "detail": "count=3"
+    },
+    {
+      "name": "右 pane 含新 Tab 内容",
+      "passed": true
+    },
+    {
+      "name": "Tab 可关闭",
+      "passed": true,
+      "detail": "count=2"
+    },
+    {
+      "name": "分屏比例可调（拖拽目标值生效）",
+      "passed": true,
+      "detail": "ratio=0.620"
+    },
+    {
+      "name": "分屏分隔线存在",
+      "passed": true
+    },
+    {
+      "name": "⌘K 唤起命令面板",
+      "passed": true
+    },
+    {
+      "name": "面板过滤命令",
+      "passed": true,
+      "detail": "items=1"
+    },
+    {
+      "name": "面板 Enter 执行命令（主题已切换）",
+      "passed": true,
+      "detail": "resolved=dark->light"
+    },
+    {
+      "name": "命令面板执行后关闭",
+      "passed": true
+    },
+    {
+      "name": "外部模块可注册新命令并执行",
+      "passed": true
+    },
+    {
+      "name": "暗色主题生效（CSS 变量切换）",
+      "passed": true
+    },
+    {
+      "name": "切回亮色主题",
+      "passed": true
+    },
+    {
+      "name": "侧栏可折叠",
+      "passed": true
+    },
+    {
+      "name": "fs:listDir 经 IPC 返回 vault 内容",
+      "passed": true,
+      "detail": ".nexnotedirectory"
+    },
+    {
+      "name": "新建笔记：树实时出现（fs:changed 驱动）",
+      "passed": true
+    },
+    {
+      "name": "新建笔记：打开 tab，frontmatter 含 created/id",
+      "passed": true
+    },
+    {
+      "name": "面包屑含 vault 根与页面名",
+      "passed": true
+    },
+    {
+      "name": "外部写入成功",
+      "passed": true
+    },
+    {
+      "name": "外部创建文件实时反映到树（含目录自动创建）",
+      "passed": true
+    },
+    {
+      "name": "搜索实时过滤：仅命中页面与祖先目录可见",
+      "passed": true,
+      "detail": "fileRows=1 total=2"
+    },
+    {
+      "name": "标签面板聚合 frontmatter + 内联标签（计数=2）",
+      "passed": true
+    },
+    {
+      "name": "点击标签过滤页面树（仅含标签页面 + 过滤 chip）",
+      "passed": true,
+      "detail": "rows=2"
+    },
+    {
+      "name": "重命名：树实时更新，wikilink 已替换",
+      "passed": true,
+      "detail": "updated=链接源.md"
+    },
+    {
+      "name": "重命名：已打开 tab 的路径与标题联动",
+      "passed": true
+    },
+    {
+      "name": "移动：树刷新到新位置",
+      "passed": true
+    },
+    {
+      "name": "删除：树移除 + 指向它的 tab 关闭",
+      "passed": true
+    },
+    {
+      "name": "外部 mkdir 也实时同步",
+      "passed": true
+    },
+    {
+      "name": "折叠状态持久化到 vault 配置（treeCollapsedDirs）",
+      "passed": true
+    },
+    {
+      "name": "侧栏宽度可调",
+      "passed": true,
+      "detail": "260 -> 300"
+    },
+    {
+      "name": "tab 右键菜单弹出",
+      "passed": true
+    },
+    {
+      "name": "菜单含 关闭其他/关闭右侧/复制路径",
+      "passed": true
+    },
+    {
+      "name": "editor:* 命名空间通道可用（占位）",
+      "passed": true
+    },
+    {
+      "name": "vault:close 后回到向导",
+      "passed": true
+    },
+    {
+      "name": "最近打开列表持久化并显示",
+      "passed": true
+    }
+  ],
+  "captures": [
+    "/Users/aiden/dev/aiden/nexnote-wt/DEV-003/.scratch/nexnote-build/smoke/DEV-003/01-onboarding.png",
+    "/Users/aiden/dev/aiden/nexnote-wt/DEV-003/.scratch/nexnote-build/smoke/DEV-003/02-workspace.png",
+    "/Users/aiden/dev/aiden/nexnote-wt/DEV-003/.scratch/nexnote-build/smoke/DEV-003/03-split.png",
+    "/Users/aiden/dev/aiden/nexnote-wt/DEV-003/.scratch/nexnote-build/smoke/DEV-003/04-palette.png",
+    "/Users/aiden/dev/aiden/nexnote-wt/DEV-003/.scratch/nexnote-build/smoke/DEV-003/05-dark.png",
+    "/Users/aiden/dev/aiden/nexnote-wt/DEV-003/.scratch/nexnote-build/smoke/DEV-003/06-light.png",
+    "/Users/aiden/dev/aiden/nexnote-wt/DEV-003/.scratch/nexnote-build/smoke/DEV-003/07-sidebar-collapsed.png",
+    "/Users/aiden/dev/aiden/nexnote-wt/DEV-003/.scratch/nexnote-build/smoke/DEV-003/09-page-tree.png",
+    "/Users/aiden/dev/aiden/nexnote-wt/DEV-003/.scratch/nexnote-build/smoke/DEV-003/10-tags.png",
+    "/Users/aiden/dev/aiden/nexnote-wt/DEV-003/.scratch/nexnote-build/smoke/DEV-003/11-tree-final.png",
+    "/Users/aiden/dev/aiden/nexnote-wt/DEV-003/.scratch/nexnote-build/smoke/DEV-003/08-recent-list.png"
+  ]
+}

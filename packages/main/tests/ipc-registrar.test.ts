@@ -7,6 +7,7 @@ import { createIpcRegistrar, type IpcMainLike } from '../src/ipc/registrar';
 import { AppStore } from '../src/vault/app-store';
 import { VaultSession } from '../src/vault/vault-session';
 import { VaultFsService } from '../src/fs/fs-service';
+import { VaultWatchService } from '../src/fs/watch-service';
 import { IPC_CHANNELS } from '@nexnote/shared';
 import type { IpcServices } from '../src/ipc/services';
 
@@ -60,6 +61,8 @@ function makeServices(): { services: IpcServices; session: VaultSession; store: 
     fs,
     dialogs: { pickDirectory: async () => null },
     trash: async () => {},
+    revealItem: async () => {},
+    watch: new VaultWatchService({ getRoot: () => null, emit: () => undefined }),
     appInfo: () => ({
       version: '0.1.0',
       platform: 'test',

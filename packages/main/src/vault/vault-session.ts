@@ -14,6 +14,8 @@ export class VaultSession {
     private readonly deps: {
       appStore: AppStore;
       windows: WindowManager;
+      /** vault 变化回调（DEV-003 文件监视等外部联动；可选，不影响既有行为） */
+      onChanged?: (vault: VaultInfo | null) => void;
     },
   ) {}
 
@@ -51,5 +53,6 @@ export class VaultSession {
 
   private broadcast(): void {
     this.deps.windows.sendToMainWindow('vault:changed', { vault: this.currentVault });
+    this.deps.onChanged?.(this.currentVault);
   }
 }

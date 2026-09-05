@@ -1,5 +1,5 @@
 import { invoke } from '../../lib/ipc';
-import { openTabInActivePane } from '../../stores/tab-store';
+import { openPageInActivePane } from '../../stores/tab-store';
 import { sanitizePageTitle, titleFromPath } from '../../editor/title-sync';
 
 /** 新建 Markdown 页面（空 vault 可直接从命令面板创建并进入编辑器）。 */
@@ -17,5 +17,5 @@ export async function createPage(title = '未命名页面') {
     content: `# ${actualTitle}\n\n`,
     createParentDirs: true,
   });
-  return openTabInActivePane('page', actualTitle, path);
+  return openPageInActivePane(path, actualTitle);
 }

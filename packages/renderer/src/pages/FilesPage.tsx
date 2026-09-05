@@ -3,7 +3,7 @@ import { FileText, Folder, Plus, RefreshCw } from 'lucide-react';
 import { invoke } from '../lib/ipc';
 import type { DirEntry } from '@nexnote/shared';
 import { createPage } from '../features/editor/create-page';
-import { openTabInActivePane } from '../stores/tab-store';
+import { openPageInActivePane } from '../stores/tab-store';
 import { titleFromPath } from '../editor/title-sync';
 
 /**
@@ -71,7 +71,7 @@ export function FilesPage() {
                 data-testid="files-entry"
                 onDoubleClick={() => {
                   if (entry.kind === 'file' && entry.name.toLowerCase().endsWith('.md')) {
-                    openTabInActivePane('page', titleFromPath(entry.path), entry.path);
+                    openPageInActivePane(entry.path, titleFromPath(entry.path));
                   }
                 }}
                 className="flex cursor-default items-center gap-2 border-b px-3 py-2 text-sm last:border-b-0 hover:bg-accent/40"
