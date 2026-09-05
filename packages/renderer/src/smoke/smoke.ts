@@ -1,6 +1,7 @@
 import { invoke } from '../lib/ipc';
 import { commandRegistry } from '../registries';
 import { useTabStore } from '../stores/tab-store';
+import { createPage } from '../features/editor/create-page';
 import { useUiStore } from '../stores/ui-store';
 import { useThemeStore } from '../theme/theme-store';
 
@@ -95,8 +96,13 @@ export async function runSmokeIfEnabled(): Promise<void> {
     // ── 4. 多 Tab 打开/关闭 ───────────────────────────────────
     const tabCount = () => document.querySelectorAll('[data-testid="tab"]').length;
     const before = tabCount();
-    useTabStore.getState().openTab('left', { kind: 'page', title: '冒烟页面 A' });
-    useTabStore.getState().openTab('right', { kind: 'page', title: '冒烟页面 B' });
+    await createPage('冒烟页面 A');
+    // createPage 落在当前激活 pane（默认 left）
+    useTabStore.getState().openTab('right', {
+      kind: 'page',
+      title: '冒烟页面 B',
+      path: '冒烟页面 B.md',
+    });
     await waitFor(() => tabCount() >= before + 2);
     check('Tab 可打开（左右 pane 各一）', tabCount() === before + 2, `count=${tabCount()}`);
     const tabAText = document.querySelector('[data-testid="pane-right"]')?.textContent ?? '';
@@ -106,6 +112,68 @@ export async function runSmokeIfEnabled(): Promise<void> {
     if (rightPane?.activeTabId) useTabStore.getState().closeTab('right', rightPane.activeTabId);
     await waitFor(() => tabCount() === before + 1);
     check('Tab 可关闭', tabCount() === before + 1, `count=${tabCount()}`);
+
+    // ── 4b. 编辑器：新页创建 / 编辑保存 / 重开一致 / H1→文件名 / undo-redo ──
+    check(
+      'page Tab 挂载真实 TipTap EditorView',
+      await waitFor(() => !!document.querySelector('[data-testid="editor-view"] .ProseMirror')),
+    );
+    const leftPageTab = useTabStore.getState().panes.left.tabs.find((t) => t.title === '冒烟页面 A');
+    const editorRoot = document.querySelector<HTMLElement>(
+      '[data-testid="pane-left"] [data-testid="editor-view"] .ProseMirror',
+    );
+    if (editorRoot && leftPageTab) {
+      editorRoot.focus();
+      // 首块已由文件名绑定为 H1；先在文档末尾插入正文，验证真实 TipTap 事务与防抖保存。
+      document.execCommand('selectAll');
+      document.execCommand('insertText', false, '冒烟页面 A\n第一块\n第二块');
+      await sleep(900); // 500ms kernel debounce + IPC 写盘
+      const originalSaved = await invoke('fs:readTextFile', { path: '冒烟页面 A.md' });
+      check('空 vault 新页编辑后防抖保存', originalSaved.includes('第一块'));
+
+      // 再把首 H1 文本改为新标题：选中 H1 文本并 insertText，触发 H1 → 文件名绑定。
+      const h1 = editorRoot.querySelector('h1');
+      if (h1?.firstChild) {
+        const range = document.createRange();
+        range.selectNodeContents(h1);
+        const selection = window.getSelection();
+        selection?.removeAllRanges();
+        selection?.addRange(range);
+        document.execCommand('insertText', false, '冒烟重命名页');
+      }
+      await sleep(900);
+      const renamedExists = await invoke('fs:exists', { path: '冒烟重命名页.md' });
+      const renamedContent = renamedExists
+        ? await invoke('fs:readTextFile', { path: '冒烟重命名页.md' })
+        : '';
+      check('编辑防抖保存并由 H1 重命名文件', renamedExists && renamedContent.includes('第一块'));
+      const updatedTab = useTabStore.getState().panes.left.tabs.find((t) => t.id === leftPageTab.id);
+      check(
+        'H1 → 文件名/Tab 标题双向联动',
+        updatedTab?.path === '冒烟重命名页.md' && updatedTab.title === '冒烟重命名页',
+      );
+      // 关闭后重开同一文件，验证保存内容可恢复
+      useTabStore.getState().closeTab('left', leftPageTab.id);
+      useTabStore.getState().openTab('left', {
+        kind: 'page',
+        title: '冒烟重命名页',
+        path: '冒烟重命名页.md',
+      });
+      await waitFor(
+        () =>
+          document.querySelector('[data-testid="pane-left"] [data-testid="editor-view"] .ProseMirror')
+            ?.textContent?.includes('第一块') ?? false,
+      );
+      check(
+        '关闭并重新打开 Markdown 页面内容一致',
+        document
+          .querySelector('[data-testid="pane-left"] [data-testid="editor-view"] .ProseMirror')
+          ?.textContent?.includes('第二块') ?? false,
+      );
+    } else {
+      check('编辑器 DOM 就绪', false, `editor=${!!editorRoot} tab=${!!leftPageTab}`);
+    }
+    await capture('02b-editor');
 
     // ── 5. 分屏分隔线拖拽（程序化设置比例后测量 DOM 宽度）────
     useTabStore.getState().setSplitRatio(0.62);

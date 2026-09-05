@@ -139,3 +139,219 @@
 .nexnote-editor-scope a {
   color: var(--editor-link);
 }
+
+/* ── TipTap / ProseMirror 编辑器（仅消费 --editor-* 桥接令牌） ──────── */
+.nexnote-editor-relative {
+  min-height: 100%;
+}
+
+.nexnote-editor-host .ProseMirror {
+  min-height: calc(100vh - 9rem);
+  outline: none;
+  color: var(--foreground);
+  font-family: var(--editor-font-family);
+  font-size: var(--editor-font-size);
+  line-height: var(--editor-line-height);
+  caret-color: var(--foreground);
+}
+
+.nexnote-editor-host .ProseMirror::selection,
+.nexnote-editor-host .ProseMirror *::selection {
+  background: var(--editor-selection);
+}
+
+.nexnote-editor-host .ProseMirror > * + * {
+  margin-top: 0.7em;
+}
+
+.nexnote-editor-host .ProseMirror h1,
+.nexnote-editor-host .ProseMirror h2,
+.nexnote-editor-host .ProseMirror h3,
+.nexnote-editor-host .ProseMirror h4,
+.nexnote-editor-host .ProseMirror h5,
+.nexnote-editor-host .ProseMirror h6 {
+  margin-top: 1.35em;
+  color: var(--foreground);
+  font-weight: 700;
+  line-height: 1.25;
+  letter-spacing: -0.02em;
+}
+.nexnote-editor-host .ProseMirror h1:first-child { margin-top: 0; }
+.nexnote-editor-host .ProseMirror h1 { font-size: 2rem; }
+.nexnote-editor-host .ProseMirror h2 { font-size: 1.5rem; }
+.nexnote-editor-host .ProseMirror h3 { font-size: 1.22rem; }
+
+.nexnote-editor-host .ProseMirror ul,
+.nexnote-editor-host .ProseMirror ol {
+  padding-left: 1.5rem;
+}
+.nexnote-editor-host .ProseMirror ul { list-style: disc; }
+.nexnote-editor-host .ProseMirror ol { list-style: decimal; }
+.nexnote-editor-host .ProseMirror li > p { margin: 0; }
+
+.nexnote-editor-host .ProseMirror ul[data-type='taskList'] {
+  list-style: none;
+  padding-left: 0;
+}
+.nexnote-editor-host .ProseMirror ul[data-type='taskList'] li {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.55rem;
+}
+.nexnote-editor-host .ProseMirror ul[data-type='taskList'] label {
+  margin-top: 0.2em;
+  user-select: none;
+}
+.nexnote-editor-host .ProseMirror ul[data-type='taskList'] li > div { flex: 1; }
+
+.nexnote-editor-host .ProseMirror blockquote {
+  border-left: 3px solid var(--border);
+  color: var(--editor-muted-foreground);
+  padding-left: 1rem;
+}
+
+.nexnote-editor-host .ProseMirror pre:not([data-frontmatter]) {
+  overflow-x: auto;
+  border: 1px solid var(--border);
+  border-radius: 0.55rem;
+  background: var(--editor-code-background);
+  padding: 0.9rem 1rem;
+  font-family: var(--font-mono);
+  font-size: 0.88em;
+  line-height: 1.55;
+}
+.nexnote-editor-host .ProseMirror code {
+  border-radius: 0.28rem;
+  background: var(--editor-code-background);
+  padding: 0.08em 0.3em;
+  font-family: var(--font-mono);
+  font-size: 0.88em;
+}
+.nexnote-editor-host .ProseMirror pre code { background: transparent; padding: 0; }
+
+.nexnote-editor-host .ProseMirror .tableWrapper { overflow-x: auto; }
+.nexnote-editor-host .ProseMirror table {
+  width: 100%;
+  border-collapse: collapse;
+  table-layout: fixed;
+  margin: 1rem 0;
+}
+.nexnote-editor-host .ProseMirror th,
+.nexnote-editor-host .ProseMirror td {
+  min-width: 5rem;
+  border: 1px solid var(--border);
+  padding: 0.45rem 0.65rem;
+  vertical-align: top;
+}
+.nexnote-editor-host .ProseMirror th { background: var(--muted); font-weight: 600; }
+.nexnote-editor-host .ProseMirror .selectedCell::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background: var(--editor-selection);
+}
+
+.nexnote-editor-host .ProseMirror img {
+  max-width: 100%;
+  height: auto;
+  border-radius: 0.5rem;
+}
+.nexnote-editor-host .ProseMirror hr { margin: 1.6rem 0; border-color: var(--border); }
+.nexnote-editor-host .ProseMirror a,
+.nexnote-wikilink,
+.nexnote-hashtag { color: var(--editor-link); }
+.nexnote-wikilink { cursor: pointer; border-bottom: 1px dashed currentColor; }
+.nexnote-hashtag { border-radius: 0.25rem; background: color-mix(in oklch, var(--editor-link) 10%, transparent); padding: 0 0.15em; }
+
+.nexnote-callout {
+  --callout-color: var(--editor-link);
+  position: relative;
+  border: 1px solid color-mix(in oklch, var(--callout-color) 35%, var(--border));
+  border-left: 4px solid var(--callout-color);
+  border-radius: 0.55rem;
+  background: color-mix(in oklch, var(--callout-color) 8%, var(--background));
+  padding: 2.2rem 1rem 0.8rem;
+}
+.nexnote-callout::before {
+  content: attr(data-callout-title);
+  position: absolute;
+  top: 0.7rem;
+  left: 1rem;
+  color: var(--callout-color);
+  font-weight: 650;
+}
+.nexnote-callout[data-callout-title='']::before { content: attr(data-callout-type); text-transform: capitalize; }
+
+.nexnote-frontmatter {
+  white-space: pre-wrap;
+  border: 1px dashed var(--border);
+  border-radius: 0.5rem;
+  background: var(--editor-code-background);
+  color: var(--editor-muted-foreground);
+  padding: 0.8rem 1rem;
+  font-family: var(--font-mono);
+  font-size: 0.78rem;
+  line-height: 1.5;
+}
+.nexnote-frontmatter::before {
+  content: 'FRONTMATTER';
+  display: block;
+  margin-bottom: 0.35rem;
+  font-family: var(--editor-font-family);
+  font-size: 0.65rem;
+  font-weight: 650;
+  letter-spacing: 0.08em;
+}
+
+.nexnote-drag-handle {
+  display: flex;
+  width: 1.6rem;
+  height: 1.6rem;
+  transform: translateX(-1.9rem);
+  align-items: center;
+  justify-content: center;
+  border-radius: 0.3rem;
+  color: var(--editor-muted-foreground);
+  cursor: grab;
+  opacity: 0;
+  transition: opacity 120ms, background-color 120ms;
+}
+.nexnote-editor-relative:hover .nexnote-drag-handle { opacity: 1; }
+.nexnote-drag-handle:hover { background: var(--accent); color: var(--foreground); }
+.nexnote-drag-handle:active { cursor: grabbing; }
+.nexnote-drag-handle__icon { font-size: 1.15rem; line-height: 1; }
+
+.nexnote-slash-menu {
+  min-width: 14rem;
+  overflow: hidden;
+  border: 1px solid var(--border);
+  border-radius: 0.55rem;
+  background: var(--popover);
+  color: var(--popover-foreground);
+  padding: 0.3rem;
+  box-shadow: 0 12px 32px rgb(0 0 0 / 15%);
+}
+.nexnote-slash-menu__item {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  border-radius: 0.35rem;
+  padding: 0.45rem 0.55rem;
+  font-size: 0.78rem;
+  cursor: pointer;
+}
+.nexnote-slash-menu__item[data-active='true'],
+.nexnote-slash-menu__item:hover { background: var(--accent); }
+.nexnote-slash-menu__title { flex: 1; }
+.nexnote-slash-menu__hint { color: var(--muted-foreground); font-size: 0.65rem; }
+
+/* lowlight token 基础色；主题均由当前 foreground / link 派生 */
+.hljs-keyword,
+.hljs-selector-tag,
+.hljs-literal { color: var(--editor-link); }
+.hljs-string,
+.hljs-title,
+.hljs-section { color: color-mix(in oklch, var(--editor-link) 72%, var(--foreground)); }
+.hljs-comment,
+.hljs-quote { color: var(--editor-muted-foreground); font-style: italic; }

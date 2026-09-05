@@ -4,6 +4,7 @@ import { useUiStore } from '../../stores/ui-store';
 import { useThemeStore } from '../../theme/theme-store';
 import { usePaletteStore } from '../../stores/palette-store';
 import { invoke } from '../../lib/ipc';
+import { createPage } from '../editor/create-page';
 
 /**
  * 内置命令（⌘K 面板）。后续票据的命令：
@@ -18,9 +19,7 @@ commandRegistry.register({
   category: '标签页',
   keywords: ['new', 'tab', '页面'],
   shortcut: '⌘T（UI 快捷键 DEV-017）',
-  run: () => {
-    openTabInActivePane('page', '未命名页面');
-  },
+  run: () => void createPage(),
 });
 
 commandRegistry.register({
