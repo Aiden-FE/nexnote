@@ -1,5 +1,6 @@
 // 类型
 export type * from './types/vault';
+export type * from './types/ai';
 // IPC
 export type * from './ipc/result';
 export type * from './ipc/contract';

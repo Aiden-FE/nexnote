@@ -1,4 +1,4 @@
-import { app, dialog, ipcMain, shell } from 'electron';
+import { app, dialog, ipcMain, safeStorage, shell } from 'electron';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { AppStore } from './vault/app-store';
@@ -9,6 +9,9 @@ import { WindowManager } from './window';
 import { registerAllIpcHandlers } from './ipc';
 import { checkForUpdates, initAutoUpdater } from './updater';
 import { SmokeController } from './smoke';
+import { AiStore } from './ai/ai-store';
+import { AiService } from './ai/ai-service';
+import { createSecretVault } from './ai/secret-store';
 
 const isSmokeMode = process.env.NEXNOTE_SMOKE === '1';
 
@@ -45,6 +48,12 @@ function bootstrap(): void {
   });
   const fs = new VaultFsService(() => vaultSession.getCurrent()?.root ?? null);
 
+  // AI 层（DEV-009）：密钥经 safeStorage（系统钥匙串）加密后落盘；事件经主窗口推送
+  const secrets = createSecretVault(safeStorage);
+  const aiStore = new AiStore(join(app.getPath('userData'), 'nexnote-ai.json'), secrets);
+  const winRef = windows;
+  const ai = new AiService({ store: aiStore, sendEvent: (channel, payload) => winRef.sendToMainWindow(channel, payload) });
+
   initAutoUpdater(log);
 
   registerAllIpcHandlers(ipcMain, {
@@ -52,6 +61,7 @@ function bootstrap(): void {
     appStore,
     vaultSession,
     fs,
+    ai,
     dialogs: {
       async pickDirectory() {
         const win = windows?.getMainWindow() ?? null;
@@ -92,8 +102,9 @@ function bootstrap(): void {
   if (isSmokeMode) {
     const smoke = new SmokeController({
       windows,
-      // out/main/index.js → ../.. = worktree 根（.scratch/ 与仓库同级）
-      outputDir: join(__dirname, '../../.scratch/nexnote-build/smoke/DEV-003'),
+// out/main/index.js → ../.. = worktree 根（.scratch/ 与仓库同级）；可用 NEXNOTE_SMOKE_DIR 覆盖
+      outputDir:
+        process.env.NEXNOTE_SMOKE_DIR ?? join(__dirname, '../../.scratch/nexnote-build/smoke/DEV-003'),
     });
     void smoke.init();
   }

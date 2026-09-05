@@ -10,6 +10,18 @@ import { VaultFsService } from '../src/fs/fs-service';
 import { VaultWatchService } from '../src/fs/watch-service';
 import { IPC_CHANNELS } from '@nexnote/shared';
 import type { IpcServices } from '../src/ipc/services';
+import { AiStore } from '../src/ai/ai-store';
+import { AiService } from '../src/ai/ai-service';
+import type { SecretVault } from '../src/ai/secret-store';
+
+/** 测试用明文假保险库（密钥仍不落渲染层）。 */
+function plainFakeVault(): SecretVault {
+  return {
+    available: true,
+    encrypt: (p) => `fake:${btoa(p)}`,
+    decrypt: (b) => atob(b.slice('fake:'.length)),
+  };
+}
 
 class FakeIpcMain implements IpcMainLike {
   readonly handlers = new Map<string, (event: unknown, ...args: unknown[]) => unknown>();
@@ -54,11 +66,16 @@ function makeServices(): { services: IpcServices; session: VaultSession; store: 
     windows: windows as never,
   });
   const fs = new VaultFsService(() => session.getCurrent()?.root ?? null);
+  const ai = new AiService({
+    store: new AiStore(path.join(tmp, 'ai.json'), plainFakeVault()),
+    sendEvent: () => undefined,
+  });
   const services: IpcServices = {
     windows: windows as never,
     appStore: store,
     vaultSession: session,
     fs,
+    ai,
     dialogs: { pickDirectory: async () => null },
     trash: async () => {},
     revealItem: async () => {},

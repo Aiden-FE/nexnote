@@ -1,4 +1,5 @@
 import type { VaultInfo } from '../types/vault';
+import type { ChatStreamEvent, AiConfigState } from '../types/ai';
 
 /**
  * 主进程 → 渲染层推送事件契约。
@@ -12,6 +13,10 @@ export interface IpcEventMap {
    * path 为 vault 相对路径；change 表示内容变化（同一路径重写）。
    */
   'fs:changed': FsChangeEvent;
+  /** AI 对话流事件（统一内部协议，按 streamId 关联） */
+  'ai:streamEvent': { streamId: string; event: ChatStreamEvent };
+  /** AI 配置变化（Profile 增删改/分功能指定/embedding generation 变更） */
+  'ai:configChanged': { state: AiConfigState };
 }
 
 export interface FsChangeEvent {
@@ -20,7 +25,12 @@ export interface FsChangeEvent {
   path: string;
 }
 
-export const IPC_EVENT_CHANNELS: readonly string[] = ['vault:changed', 'fs:changed'];
+export const IPC_EVENT_CHANNELS: readonly string[] = [
+  'vault:changed',
+  'fs:changed',
+  'ai:streamEvent',
+  'ai:configChanged',
+];
 
 export type IpcEventChannel = keyof IpcEventMap & string;
 

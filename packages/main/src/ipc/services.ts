@@ -7,6 +7,7 @@ import type { VaultSession } from '../vault/vault-session';
 import type { VaultFsService } from '../fs/fs-service';
 import type { VaultWatchService } from '../fs/watch-service';
 import type { WindowManager } from '../window';
+import type { AiService } from '../ai/ai-service';
 
 /** 注入给所有 IPC handler 的服务集合（全部可替身，便于单测）。 */
 export interface IpcServices {
@@ -14,6 +15,8 @@ export interface IpcServices {
   appStore: AppStore;
   vaultSession: VaultSession;
   fs: VaultFsService;
+  /** AI 组装层（DEV-009）：密钥仅存在于此层 + 系统钥匙串 */
+  ai: AiService;
   /** 系统目录选择对话框（渲染层无原生能力，统一走主进程） */
   dialogs: {
     pickDirectory(): Promise<string | null>;
