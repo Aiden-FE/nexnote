@@ -3,13 +3,12 @@ import { TaskList, TaskItem } from '@tiptap/extension-list';
 import Image from '@tiptap/extension-image';
 import { Markdown } from '@tiptap/markdown';
 import type { Extensions } from '@tiptap/core';
-import type { Marked } from 'marked';
 
 import { Callout } from './callout';
 import { Wikilink } from './wikilink';
 import { Hashtag } from './hashtag';
 import { Frontmatter } from './frontmatter';
-import { KernelCodeBlock, KernelTable } from './code-table';
+import { KernelCodeBlock, KernelTable, KernelTableCell, KernelTableHeader, KernelTableRow } from './code-table';
 import { createBlockIdExtensions } from './block-id';
 import { SlashMenu } from './slash-menu';
 import { createKernelDragHandle } from './drag-handle';
@@ -44,6 +43,9 @@ export function buildKernelExtensions(options: KernelExtensionsOptions = {}): Ex
     TaskList,
     TaskItem.configure({ nested: true }),
     KernelTable.configure({ resizable: true }),
+    KernelTableRow,
+    KernelTableHeader,
+    KernelTableCell,
     Image.configure({ allowBase64: options.allowBase64 ?? true, inline: false }),
     Frontmatter,
     Callout,

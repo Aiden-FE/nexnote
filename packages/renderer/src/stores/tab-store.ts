@@ -1,4 +1,11 @@
 import { create } from 'zustand';
+import {
+  bindH1ToTitle,
+  firstH1,
+  pagePathForTitle,
+  sanitizePageTitle,
+  titleFromPath,
+} from '../editor/title-sync';
 
 export type TabKind = 'welcome' | 'page' | 'files';
 
@@ -6,6 +13,8 @@ export interface TabDescriptor {
   id: string;
   kind: TabKind;
   title: string;
+  /** page 标签的 vault 相对 Markdown 路径；welcome/files 无此字段 */
+  path?: string;
   createdAt: number;
 }
 
@@ -23,7 +32,9 @@ interface WorkspaceState {
   splitEnabled: boolean;
   splitRatio: number;
   /** 打开标签（默认进当前激活 pane） */
-  openTab(paneId: PaneId, tab: { kind: TabKind; title: string }): TabDescriptor;
+  openTab(paneId: PaneId, tab: { kind: TabKind; title: string; path?: string }): TabDescriptor;
+  /** 更新标签标题，并可更新 page 路径（文件名联动） */
+  updateTab(paneId: PaneId, tabId: string, patch: { title?: string; path?: string }): void;
   closeTab(paneId: PaneId, tabId: string): void;
   setActiveTab(paneId: PaneId, tabId: string): void;
   setActivePane(paneId: PaneId): void;
@@ -56,8 +67,8 @@ export const useTabStore = create<WorkspaceState>((set) => ({
   splitEnabled: true,
   splitRatio: 0.5,
 
-  openTab(paneId, { kind, title }) {
-    const tab: TabDescriptor = { id: nextTabId(), kind, title, createdAt: Date.now() };
+  openTab(paneId, { kind, title, path }) {
+    const tab: TabDescriptor = { id: nextTabId(), kind, title, path, createdAt: Date.now() };
     set((state) => {
       // 目标 pane 不存在（如分屏关着）时落回 left
       const target: PaneId = paneId === 'right' && !state.panes.right ? 'left' : paneId;
@@ -72,6 +83,21 @@ export const useTabStore = create<WorkspaceState>((set) => ({
       };
     });
     return tab;
+  },
+
+  updateTab(paneId, tabId, patch) {
+    set((state) => {
+      const pane = state.panes[paneId];
+      if (!pane) return state;
+      const tabs = pane.tabs.map((tab) => (tab.id === tabId ? { ...tab, ...patch } : tab));
+      const updated: PaneState = { ...pane, tabs };
+      return {
+        panes:
+          paneId === 'left'
+            ? { ...state.panes, left: updated }
+            : { ...state.panes, right: updated },
+      };
+    });
   },
 
   closeTab(paneId, tabId) {
@@ -139,8 +165,14 @@ export function activePane(state: WorkspaceState): PaneState {
 }
 
 /** 冒烟/命令面板使用：在当前激活 pane 打开。 */
-export function openTabInActivePane(kind: TabKind, title: string): TabDescriptor {
-  return useTabStore.getState().openTab(useTabStore.getState().activePaneId, { kind, title });
+export function openTabInActivePane(
+  kind: TabKind,
+  title: string,
+  path?: string,
+): TabDescriptor {
+  return useTabStore
+    .getState()
+    .openTab(useTabStore.getState().activePaneId, { kind, title, path });
 }
 
 export function getTabStore() {
@@ -148,3 +180,12 @@ export function getTabStore() {
 }
 
 export { getTabStore as __getTabStoreForSmoke };
+
+/** title-sync 纯函数统一从 store 包对外导出，便于 renderer 测试与后续模块复用。 */
+export {
+  bindH1ToTitle,
+  firstH1,
+  pagePathForTitle,
+  sanitizePageTitle,
+  titleFromPath,
+};

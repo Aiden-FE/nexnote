@@ -4,16 +4,18 @@ import { useTabStore, type PaneId } from '../stores/tab-store';
 import { WelcomePage } from '../pages/WelcomePage';
 import { PlaceholderPage } from '../pages/PlaceholderPage';
 import { FilesPage } from '../pages/FilesPage';
+import { EditorView } from '../editor/EditorView';
 import type { TabDescriptor } from '../stores/tab-store';
 import { cn } from '../lib/utils';
 
-function TabContent({ tab }: { tab: TabDescriptor }) {
+function TabContent({ paneId, tab }: { paneId: PaneId; tab: TabDescriptor }) {
   switch (tab.kind) {
     case 'welcome':
       return <WelcomePage />;
     case 'files':
       return <FilesPage />;
     case 'page':
+      return <EditorView paneId={paneId} tab={tab} />;
     default:
       return <PlaceholderPage title={tab.title} />;
   }
@@ -38,7 +40,7 @@ function PaneView({ paneId }: { paneId: PaneId }) {
     >
       <TabStrip paneId={paneId} />
       <div className="min-h-0 flex-1 overflow-auto">
-        {activeTab ? <TabContent tab={activeTab} /> : (
+        {activeTab ? <TabContent paneId={paneId} tab={activeTab} /> : (
           <div className="flex h-full items-center justify-center text-sm text-muted-foreground">
             此 pane 没有打开的页面
           </div>

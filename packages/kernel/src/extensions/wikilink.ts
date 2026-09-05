@@ -102,7 +102,7 @@ export const Wikilink = Node.create<WikilinkOptions>({
 
     tokenize(src: string) {
       // [[target]] / [[target|alias]]；target 内不允许换行与 [[ ]]
-      const m = /^\[\[([^\[\]\n|]+)(?:\|([^\[\]\n]*))?\]\]/.exec(src);
+      const m = /^\[\[([^\]\n|]+)(?:\|([^\]\n]*))?\]\]/.exec(src);
       if (!m) return undefined;
       return {
         type: 'wikilink',

@@ -1,5 +1,7 @@
 import { Editor } from '@tiptap/core';
 import type { Extensions, JSONContent } from '@tiptap/core';
+import { Fragment } from '@tiptap/pm/model';
+import type { Node as ProseMirrorNode } from '@tiptap/pm/model';
 
 import { buildKernelExtensions } from './extensions';
 import type { KernelExtensionsOptions } from './extensions';
@@ -51,6 +53,11 @@ export interface EditorKernelInstance {
   flushPendingSave(): Promise<void>;
   /** 是否有待保存内容 */
   hasPendingSave(): boolean;
+  /**
+   * 按稳定 blockId 重排顶层块（DragHandle 的可测试事务入口）。
+   * target 边界 before/after；成功后可 undo/redo，保存后顺序持久化。
+   */
+  moveBlock(blockId: string, targetBlockId: string, side?: 'before' | 'after'): boolean;
   /** 撤销 */
   undo(): boolean;
   /** 重做 */
@@ -132,6 +139,26 @@ export function createEditor(
     },
     hasPendingSave() {
       return scheduler.hasPending();
+    },
+    moveBlock(blockId: string, targetBlockId: string, side = 'before') {
+      if (blockId === targetBlockId) return false;
+      const nodes: ProseMirrorNode[] = [];
+      editor.state.doc.forEach((node) => nodes.push(node));
+      const from = nodes.findIndex((n) => n.attrs.blockId === blockId);
+      const target = nodes.findIndex((n) => n.attrs.blockId === targetBlockId);
+      if (from < 0 || target < 0) return false;
+      const [moving] = nodes.splice(from, 1);
+      if (!moving) return false;
+      let insertAt = nodes.findIndex((n) => n.attrs.blockId === targetBlockId);
+      if (insertAt < 0) return false;
+      if (side === 'after') insertAt += 1;
+      nodes.splice(insertAt, 0, moving);
+      editor.view.dispatch(
+        editor.state.tr
+          .replaceWith(0, editor.state.doc.content.size, Fragment.fromArray(nodes))
+          .scrollIntoView(),
+      );
+      return true;
     },
     undo() {
       return editor.chain().focus('end').undo().run();

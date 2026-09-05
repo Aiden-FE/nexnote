@@ -1,5 +1,5 @@
 import CodeBlockLowlight from '@tiptap/extension-code-block-lowlight';
-import { Table } from '@tiptap/extension-table';
+import { Table, TableCell, TableHeader, TableRow } from '@tiptap/extension-table';
 import { common, createLowlight } from 'lowlight';
 import type { JSONContent, MarkdownToken } from '@tiptap/core';
 import { ANCHOR_OPEN, ANCHOR_CLOSE, BLOCK_ID_RE_SOURCE } from '../markdown/block-id';
@@ -92,3 +92,8 @@ export const KernelTable = Table.extend({
     return stripped;
   },
 });
+
+// Table 节点的 schema 依赖：行 / 表头 / 单元格必须随内核表格一起注册。
+export const KernelTableRow = TableRow;
+export const KernelTableHeader = TableHeader;
+export const KernelTableCell = TableCell;

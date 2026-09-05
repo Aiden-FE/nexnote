@@ -84,7 +84,7 @@ function extractTrailingPlaceholder(
   const m = PLACEHOLDER_TAIL_RE.exec(last.text);
   if (!m) return null;
   const id = m[1] as string;
-  let text = last.text.slice(0, m.index).replace(/[ \t\n]+$/, '');
+  const text = last.text.slice(0, m.index).replace(/[ \t\n]+$/, '');
   const rest = content.slice(0, -1);
   if (text.length > 0) rest.push({ ...last, text });
   return { id, content: rest };

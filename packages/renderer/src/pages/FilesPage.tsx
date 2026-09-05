@@ -1,7 +1,10 @@
 import { useEffect, useState } from 'react';
-import { FileText, Folder, RefreshCw } from 'lucide-react';
+import { FileText, Folder, Plus, RefreshCw } from 'lucide-react';
 import { invoke } from '../lib/ipc';
 import type { DirEntry } from '@nexnote/shared';
+import { createPage } from '../features/editor/create-page';
+import { openTabInActivePane } from '../stores/tab-store';
+import { titleFromPath } from '../editor/title-sync';
 
 /**
  * Vault 文件浏览占位页：真实调用主进程 fs:listDir（演示渲染层只能经 IPC 访问文件系统）。
@@ -32,6 +35,14 @@ export function FilesPage() {
         <h1 className="text-lg font-semibold tracking-tight">Vault 文件</h1>
         <button
           type="button"
+          onClick={() => void createPage()}
+          title="新建 Markdown 页面"
+          className="rounded p-1 text-muted-foreground hover:bg-accent hover:text-foreground"
+        >
+          <Plus className="size-3.5" />
+        </button>
+        <button
+          type="button"
           onClick={() => setReloadKey((k) => k + 1)}
           title="刷新"
           className="rounded p-1 text-muted-foreground hover:bg-accent hover:text-foreground"
@@ -58,7 +69,12 @@ export function FilesPage() {
               <li
                 key={entry.path}
                 data-testid="files-entry"
-                className="flex items-center gap-2 border-b px-3 py-2 text-sm last:border-b-0 hover:bg-accent/40"
+                onDoubleClick={() => {
+                  if (entry.kind === 'file' && entry.name.toLowerCase().endsWith('.md')) {
+                    openTabInActivePane('page', titleFromPath(entry.path), entry.path);
+                  }
+                }}
+                className="flex cursor-default items-center gap-2 border-b px-3 py-2 text-sm last:border-b-0 hover:bg-accent/40"
               >
                 <Icon className="size-4 shrink-0 text-muted-foreground" />
                 <span className="truncate">{entry.name}</span>

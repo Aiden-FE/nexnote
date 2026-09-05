@@ -23,5 +23,8 @@
     "@tiptap/starter-kit": "^3.31.3",
     "lowlight": "^3.3.0",
     "marked": "^17.0.6"
+  },
+  "devDependencies": {
+    "happy-dom": "^20.14.0"
   }
 }

@@ -130,7 +130,12 @@ export function normalizeForCompare(markdown: string): string {
       if (/^\s*\|/.test(l)) {
         l = l
           .split('|')
-          .map((cell) => cell.trim())
+          .map((cell) => {
+            const trimmed = cell.trim();
+            // 分隔行的连字符数量不承载语义（GFM 只要求 >=3），归一为 3
+            const delimiter = /^(:?)-{3,}(:?)$/.exec(trimmed);
+            return delimiter ? `${delimiter[1] ?? ''}---${delimiter[2] ?? ''}` : trimmed;
+          })
           .join('|');
       }
       return l;

@@ -1,0 +1,218 @@
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { AlertCircle, Check, LoaderCircle, Save } from 'lucide-react';
+import { createEditor } from '@nexnote/kernel';
+import type { EditorKernelInstance } from '@nexnote/kernel';
+import { invoke } from '../lib/ipc';
+import { useTabStore, type PaneId, type TabDescriptor } from '../stores/tab-store';
+import {
+  bindH1ToTitle,
+  firstH1,
+  pagePathForTitle,
+  sanitizePageTitle,
+  titleFromPath,
+} from './title-sync';
+
+interface EditorViewProps {
+  paneId: PaneId;
+  tab: TabDescriptor;
+}
+
+type LoadState =
+  | { phase: 'loading' }
+  | { phase: 'ready'; markdown: string }
+  | { phase: 'error'; message: string };
+
+type SaveState = 'saved' | 'saving' | 'error';
+
+/**
+ * React → 框架无关 kernel 桥：
+ * - 从 vault IPC 读写 .md（Renderer 永不直接触碰 Node fs）
+ * - 编辑防抖保存；卸载/窗口 blur 时 flush
+ * - 默认文件名 ↔ 首 H1 绑定：文件名初始补 H1，H1 修改后原子 rename
+ */
+export function EditorView({ paneId, tab }: EditorViewProps) {
+  const path = tab.path ?? `${sanitizePageTitle(tab.title)}.md`;
+  const [load, setLoad] = useState<LoadState>({ phase: 'loading' });
+  const [saveState, setSaveState] = useState<SaveState>('saved');
+  const [saveError, setSaveError] = useState<string | null>(null);
+  const [displayPath, setDisplayPath] = useState(path);
+  const hostRef = useRef<HTMLDivElement>(null);
+  const kernelRef = useRef<EditorKernelInstance | null>(null);
+  const pathRef = useRef(path);
+  const saveChainRef = useRef<Promise<void>>(Promise.resolve());
+  const unmountedRef = useRef(false);
+
+  useEffect(() => {
+    pathRef.current = path;
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- 外部 tab store 路径同步
+    setDisplayPath(path);
+  }, [path]);
+
+  // 新建页：不存在则写入包含 H1 的初始 Markdown；已有文件则读取。
+  useEffect(() => {
+    let cancelled = false;
+    queueMicrotask(() => {
+      if (!cancelled) {
+        setLoad({ phase: 'loading' });
+        setSaveError(null);
+      }
+    });
+
+    void (async () => {
+      try {
+        const exists = await invoke('fs:exists', { path });
+        let markdown: string;
+        if (exists) {
+          markdown = await invoke('fs:readTextFile', { path });
+        } else {
+          markdown = `# ${titleFromPath(path)}\n\n`;
+          await invoke('fs:writeTextFile', { path, content: markdown, createParentDirs: true });
+        }
+
+        // 默认绑定：无首 H1 则用文件名补一个（保留 frontmatter 在最前）
+        if (!firstH1(markdown)) markdown = bindH1ToTitle(markdown, titleFromPath(path));
+        if (!cancelled) {
+          pathRef.current = path;
+          setLoad({ phase: 'ready', markdown });
+        }
+      } catch (e) {
+        if (!cancelled) {
+          setLoad({ phase: 'error', message: e instanceof Error ? e.message : String(e) });
+        }
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [path]);
+
+  const save = useCallback(
+    async (markdown: string) => {
+      if (unmountedRef.current) return;
+      setSaveState('saving');
+      setSaveError(null);
+
+      // 串行化 rename/write，避免高速输入时旧保存覆盖新保存。
+      saveChainRef.current = saveChainRef.current.then(async () => {
+        let currentPath = pathRef.current;
+        const heading = firstH1(markdown);
+        if (heading) {
+          const desiredTitle = sanitizePageTitle(heading);
+          const desiredPath = pagePathForTitle(currentPath, desiredTitle);
+          if (desiredPath !== currentPath) {
+            const collision = await invoke('fs:exists', { path: desiredPath });
+            if (collision) throw new Error(`无法重命名：${desiredPath} 已存在`);
+            await invoke('fs:rename', { from: currentPath, to: desiredPath });
+            currentPath = desiredPath;
+            pathRef.current = desiredPath;
+            setDisplayPath(desiredPath);
+            useTabStore.getState().updateTab(paneId, tab.id, {
+              title: desiredTitle,
+              path: desiredPath,
+            });
+          }
+        }
+        await invoke('fs:writeTextFile', {
+          path: currentPath,
+          content: markdown,
+          createParentDirs: true,
+        });
+      });
+
+      try {
+        await saveChainRef.current;
+        if (!unmountedRef.current) setSaveState('saved');
+      } catch (e) {
+        if (!unmountedRef.current) {
+          const message = e instanceof Error ? e.message : String(e);
+          setSaveState('error');
+          setSaveError(message);
+        }
+        throw e;
+      }
+    },
+    [paneId, tab.id],
+  );
+
+  // load ready 后挂载 kernel；path 变化来自标题 rename 时不重挂（load.markdown 不变）。
+  useEffect(() => {
+    if (load.phase !== 'ready' || !hostRef.current) return;
+    unmountedRef.current = false;
+    const kernel = createEditor(hostRef.current, {
+      initialMarkdown: load.markdown,
+      saveDelayMs: 500,
+      onContentChange: save,
+      onSaveError: (e) => {
+        if (!unmountedRef.current) {
+          setSaveState('error');
+          setSaveError(e instanceof Error ? e.message : String(e));
+        }
+      },
+      onWikilinkActivate: (target) => {
+        const pageName = target.split('#')[0] || target;
+        const nextPath = `${sanitizePageTitle(pageName)}.md`;
+        useTabStore.getState().openTab(paneId, {
+          kind: 'page',
+          title: titleFromPath(nextPath),
+          path: nextPath,
+        });
+      },
+    });
+    kernelRef.current = kernel;
+
+    const flush = () => void kernel.flushPendingSave();
+    window.addEventListener('blur', flush);
+    return () => {
+      window.removeEventListener('blur', flush);
+      // 先 flush 再 destroy：destroy 会 cancel，不能颠倒。
+      void kernel.flushPendingSave().finally(() => kernel.destroy());
+      kernelRef.current = null;
+      unmountedRef.current = true;
+    };
+  }, [load, paneId, save]);
+
+  const status = useMemo(() => {
+    if (saveState === 'saving') return { icon: LoaderCircle, text: '保存中…', className: 'animate-spin' };
+    if (saveState === 'error') return { icon: AlertCircle, text: '保存失败', className: 'text-destructive' };
+    return { icon: Check, text: '已保存', className: '' };
+  }, [saveState]);
+  const StatusIcon = status.icon;
+
+  if (load.phase === 'loading') {
+    return (
+      <div className="flex h-full items-center justify-center gap-2 text-sm text-muted-foreground">
+        <LoaderCircle className="size-4 animate-spin" /> 正在打开 {path}…
+      </div>
+    );
+  }
+
+  if (load.phase === 'error') {
+    return (
+      <div className="mx-auto mt-12 max-w-lg rounded-lg border border-destructive/40 bg-destructive/10 p-4 text-sm text-destructive">
+        <div className="mb-1 flex items-center gap-2 font-medium">
+          <AlertCircle className="size-4" /> 页面打开失败
+        </div>
+        <p className="text-xs">{load.message}</p>
+      </div>
+    );
+  }
+
+  return (
+    <div data-testid="editor-view" data-path={displayPath} className="nexnote-editor-view flex h-full min-h-0 flex-col">
+      <div className="flex h-8 shrink-0 items-center gap-1.5 border-b px-3 text-[11px] text-muted-foreground">
+        <Save className="size-3" />
+        <span className="min-w-0 truncate">{displayPath}</span>
+        <span className="ml-auto flex shrink-0 items-center gap-1" title={saveError ?? undefined}>
+          <StatusIcon className={`size-3 ${status.className}`} />
+          {status.text}
+        </span>
+      </div>
+      <div className="nexnote-editor-scroll min-h-0 flex-1 overflow-auto">
+        <div className="nexnote-editor-relative relative mx-auto max-w-[var(--editor-content-width)] px-10 py-10">
+          <div ref={hostRef} data-testid="editor-host" className="nexnote-editor-host" />
+        </div>
+      </div>
+    </div>
+  );
+}

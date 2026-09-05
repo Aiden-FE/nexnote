@@ -210,6 +210,7 @@ export const SlashMenu = Extension.create<SlashMenuOptions, SlashMenuState>({
   },
 
   addProseMirrorPlugins() {
+    // eslint-disable-next-line @typescript-eslint/no-this-alias
     const ext = this;
     let menu: MenuView | null = null;
     /** `/` 前的文本位置（含斜杠），执行后需要删除的范围 */
@@ -289,7 +290,6 @@ export const SlashMenu = Extension.create<SlashMenuOptions, SlashMenuState>({
               // 空段落或行尾输入 `/` 触发（限制在段首空行，避免路径/数字里的斜杠）
               if (text === '/') {
                 const $from = view.state.doc.resolve(from);
-                const parentText = $from.parent.textContent;
                 const textBefore = $from.parent.textBetween(0, $from.parentOffset, undefined, '\ufffc');
                 if ($from.parent.type.name === 'paragraph' && textBefore.trim() === '') {
                   open(view, from);
