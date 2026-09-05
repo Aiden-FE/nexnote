@@ -80,11 +80,14 @@ export class WindowManager {
       },
     });
 
-    win.once('ready-to-show', () => win.show());
+    win.once('ready-to-show', () => {
+      if (saved?.maximized) win.maximize();
+      win.show();
+    });
 
     win.on('close', () => {
       if (!win.isMinimized() && win.isVisible()) {
-        const b = win.getBounds();
+        const b = win.isMaximized() ? win.getNormalBounds() : win.getBounds();
         store.setWindowBounds({
           x: b.x,
           y: b.y,
