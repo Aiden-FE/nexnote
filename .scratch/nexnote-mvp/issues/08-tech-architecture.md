@@ -28,7 +28,7 @@ Blocked by: 01, 02, 03, 04
 | 编辑器内核 | TipTap 3 + @tiptap/markdown + UniqueID + DragHandle + Suggestion | 02 票：MD 双向官方挂点完整，可落 Obsidian `^id`；内核独立为框架无关包 |
 | 存储/映射 | MD + YAML frontmatter，沿用 Obsidian 公开方言（`^id`、callout、wikilink+别名、frontmatter），不发明新内嵌语法 | 04 票 + 本票收敛 |
 | 索引 | SQLite 单库：FTS5 全文 + Link Index 关系表 + sqlite-vec 向量；主进程驻留，可全量重建 | 05 票 + 本票收敛 |
-| Git | simple-git + 系统 git 探测（≥2.23）+ dugite-native 捆绑回退 | 03 票 |
+| Git | simple-git 调用**默认捆绑 Git（dugite-native）**+ 系统凭证/SSH 环境集成 + 系统 Git 高级回退开关（默认关） | 03 票 + 修订（见下方修订记录 / ADR 0002） |
 
 ### 差异化主轴
 
@@ -45,3 +45,7 @@ Blocked by: 01, 02, 03, 04
 - shadcn/ui 与 ProseMirror/TipTap 样式体系需 CSS 变量桥接（原型票呈现该细节）。
 - 图谱渲染库未定（React Flow 为默认候选），认可原型后定。
 - ADR：docs/adr/0001-default-tech-stack.md
+
+### 修订记录
+
+- 2025-09-05（用户确认）：Git 绑定策略由「系统 git 优先、捆绑回退」修订为「**默认捆绑 Git（dugite-native）+ 系统凭证/SSH 环境集成 + 系统 Git 高级回退（默认关）**」。理由：版本矩阵固定、三端 QA 可复现、产品行为可控；远程授权不靠复用系统 Git 二进制，而是复用系统凭证环境（~/.gitconfig、SSH_AUTH_SOCK、ssh-agent / macOS Keychain / Windows GCM），首次绑定远程做授权预检（`git ls-remote` 无写入验证）+ 失败修复路径。新增产品面：授权预检 UI、设置页「使用系统 Git」开关。详见 ADR 0002。
