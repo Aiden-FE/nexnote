@@ -1,0 +1,1940 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>NexNote · 原型 A · 块编辑优先工作台</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Source+Serif+4:ital,opsz,wght@0,8..60,500;0,8..60,600;1,8..60,500&family=JetBrains+Mono:wght@400;500&family=Noto+Color+Emoji&display=swap" rel="stylesheet" />
+<style>
+  /* ===== Design Tokens (notion-pre-ai 锚定) ===== */
+  :root {
+    --ground: #FFFFFF;
+    --surface: #F7F6F3;
+    --surface-hover: #EFEDEA;
+    --ink: #37352F;
+    --ink-secondary: #787774;
+    --ink-tertiary: #9B9A97;
+    --hairline: #E9E9E7;
+    --hairline-strong: #DCDCD9;
+    --accent-mint: #E4F4F1;
+    --accent-mint-ink: #2E7D6E;
+    --accent-peach: #FFEDD5;
+    --accent-peach-ink: #9A5B24;
+    --accent-rose: #FCE7F3;
+    --accent-rose-ink: #9D3767;
+    --accent-sand: #FEF3C7;
+    --accent-sand-ink: #856404;
+    --accent-blue: #DBEAFE;
+    --accent-blue-ink: #1E40AF;
+    --shadow-sm: 0 2px 8px rgba(15,15,15,0.04);
+    --shadow-md: 0 4px 16px rgba(15,15,15,0.07);
+    --shadow-lg: 0 8px 32px rgba(15,15,15,0.10);
+    --radius-sm: 4px;
+    --radius-md: 8px;
+    --radius-lg: 16px;
+    --font-sans: 'Inter', 'Noto Color Emoji', system-ui, -apple-system, sans-serif;
+    --font-serif: 'Source Serif 4', Georgia, serif;
+    --font-mono: 'JetBrains Mono', ui-monospace, monospace;
+  }
+  * { box-sizing: border-box; }
+  html, body { height: 100%; margin: 0; padding: 0; }
+  body {
+    font-family: var(--font-sans);
+    font-size: 15px;
+    line-height: 1.6;
+    color: var(--ink);
+    background: var(--surface);
+    text-wrap: pretty;
+    -webkit-font-smoothing: antialiased;
+    user-select: none;
+  }
+  #root { height: 100vh; width: 100vw; }
+
+  /* ===== Layout ===== */
+  .app {
+    display: flex; flex-direction: column;
+    height: 100vh; width: 100vw;
+    background: var(--ground);
+    overflow: hidden;
+  }
+  .titlebar {
+    height: 38px;
+    background: var(--surface);
+    border-bottom: 1px solid var(--hairline);
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 0 12px;
+    font-size: 12.5px; color: var(--ink-secondary);
+    -webkit-app-region: drag;
+  }
+  .traffic-lights { display: flex; gap: 8px; }
+  .tl { width: 12px; height: 12px; border-radius: 50%; }
+  .tl.close { background: #FF5F57; }
+  .tl.min { background: #FEBC2E; }
+  .tl.max { background: #28C840; }
+  .title-text { font-weight: 500; color: var(--ink); }
+
+  .tabbar {
+    height: 36px;
+    background: var(--surface);
+    border-bottom: 1px solid var(--hairline);
+    display: flex; align-items: flex-end;
+    padding: 0 8px;
+    gap: 2px;
+  }
+  .tab {
+    padding: 6px 12px 5px;
+    font-size: 13px;
+    color: var(--ink-secondary);
+    border: 1px solid transparent;
+    border-bottom: none;
+    border-radius: 6px 6px 0 0;
+    cursor: pointer;
+    display: flex; align-items: center; gap: 6px;
+    white-space: nowrap;
+    transition: color 0.15s ease;
+  }
+  .tab:hover { color: var(--ink); }
+  .tab.active {
+    background: var(--ground);
+    border-color: var(--hairline);
+    color: var(--ink);
+    font-weight: 500;
+    margin-bottom: -1px;
+  }
+  .tab .tab-icon { font-size: 14px; }
+  .tab .tab-close { opacity: 0; margin-left: 4px; }
+  .tab:hover .tab-close { opacity: 0.6; }
+  .tab-add {
+    padding: 6px 8px 5px;
+    color: var(--ink-tertiary);
+    cursor: pointer;
+    font-size: 14px;
+  }
+
+  .toolbar {
+    height: 40px;
+    background: var(--ground);
+    border-bottom: 1px solid var(--hairline);
+    display: flex; align-items: center;
+    padding: 0 12px;
+    gap: 8px;
+  }
+  .toolbar-left { flex: 1; display: flex; align-items: center; gap: 8px; }
+  .toolbar-right { display: flex; align-items: center; gap: 6px; }
+  .icon-btn {
+    width: 28px; height: 28px;
+    border-radius: var(--radius-sm);
+    display: inline-flex; align-items: center; justify-content: center;
+    cursor: pointer; color: var(--ink-secondary);
+    font-size: 14px;
+    transition: background 0.15s ease, color 0.15s ease;
+    border: none; background: transparent;
+  }
+  .icon-btn:hover { background: var(--surface-hover); color: var(--ink); }
+  .icon-btn.primary { color: var(--ink); }
+
+  .cmd-palette-trigger {
+    width: 240px;
+    height: 28px;
+    background: var(--surface);
+    border: 1px solid var(--hairline);
+    border-radius: var(--radius-sm);
+    padding: 0 10px;
+    font-size: 12.5px;
+    color: var(--ink-tertiary);
+    display: flex; align-items: center; gap: 8px;
+    cursor: text;
+  }
+  .cmd-palette-trigger:hover { border-color: var(--hairline-strong); }
+  .cmd-kbd {
+    margin-left: auto;
+    font-family: var(--font-mono);
+    font-size: 11px;
+    padding: 1px 5px;
+    background: var(--ground);
+    border: 1px solid var(--hairline);
+    border-radius: 3px;
+    color: var(--ink-secondary);
+  }
+
+  .main { flex: 1; display: flex; overflow: hidden; }
+
+  .sidebar {
+    width: 280px;
+    background: var(--surface);
+    border-right: 1px solid var(--hairline);
+    display: flex; flex-direction: column;
+    transition: width 0.25s ease;
+    overflow: hidden;
+  }
+  .sidebar.collapsed { width: 0; border-right: none; }
+
+  .sidebar-header {
+    padding: 10px 12px;
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--ink-secondary);
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    display: flex; align-items: center; justify-content: space-between;
+  }
+  .sidebar-tabs {
+    display: flex; gap: 2px;
+    padding: 4px 8px;
+    border-bottom: 1px solid var(--hairline);
+  }
+  .sidebar-tab {
+    padding: 5px 10px;
+    font-size: 12px;
+    color: var(--ink-secondary);
+    border-radius: 5px;
+    cursor: pointer;
+  }
+  .sidebar-tab.active {
+    background: var(--surface-hover);
+    color: var(--ink);
+    font-weight: 500;
+  }
+  .sidebar-body { flex: 1; overflow-y: auto; padding: 8px 0 16px; }
+  .sidebar-body::-webkit-scrollbar { width: 6px; }
+  .sidebar-body::-webkit-scrollbar-thumb { background: var(--hairline-strong); border-radius: 3px; }
+
+  .page-tree-item {
+    display: flex; align-items: center; gap: 6px;
+    padding: 4px 10px 4px 8px;
+    font-size: 13.5px;
+    color: var(--ink);
+    cursor: pointer;
+    border-left: 2px solid transparent;
+    transition: background 0.1s ease;
+  }
+  .page-tree-item:hover { background: var(--surface-hover); }
+  .page-tree-item.active {
+    background: #EFEDE9;
+    border-left-color: var(--ink);
+    font-weight: 500;
+  }
+  .page-tree-item.folder { color: var(--ink-secondary); }
+  .page-tree-item .indent-1 { padding-left: 20px; }
+  .page-tree-item .indent-2 { padding-left: 36px; }
+  .page-icon { font-size: 14px; width: 18px; text-align: center; flex-shrink: 0; }
+  .chevron { font-size: 10px; width: 12px; text-align: center; color: var(--ink-tertiary); flex-shrink: 0; }
+
+  .backlink-section {
+    padding: 8px 12px 4px;
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--ink-secondary);
+  }
+  .backlink-item {
+    padding: 8px 12px;
+    margin: 0 8px;
+    border-radius: 6px;
+    cursor: pointer;
+    font-size: 13px;
+  }
+  .backlink-item:hover { background: var(--surface-hover); }
+  .backlink-title { color: var(--ink); font-weight: 500; margin-bottom: 2px; }
+  .backlink-snippet {
+    font-size: 12px; color: var(--ink-secondary);
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  }
+  .backlink-count {
+    font-size: 11px;
+    color: var(--ink-tertiary);
+    margin-left: auto;
+    background: var(--ground);
+    padding: 1px 6px;
+    border-radius: 10px;
+    border: 1px solid var(--hairline);
+  }
+
+  .content {
+    flex: 1;
+    overflow-y: auto;
+    background: var(--ground);
+    position: relative;
+  }
+  .content::-webkit-scrollbar { width: 8px; }
+  .content::-webkit-scrollbar-thumb { background: var(--hairline-strong); border-radius: 4px; }
+
+  .page-wrapper {
+    max-width: 820px;
+    margin: 0 auto;
+    padding: 48px 96px 120px;
+  }
+  .page-icon-large {
+    font-size: 56px;
+    line-height: 1;
+    margin-bottom: 8px;
+  }
+  .page-title {
+    font-family: var(--font-serif);
+    font-size: 42px;
+    font-weight: 600;
+    line-height: 1.2;
+    color: var(--ink);
+    margin: 0 0 24px 0;
+    letter-spacing: -0.5px;
+  }
+
+  /* ===== Blocks ===== */
+  .block {
+    position: relative;
+    padding: 2px 0;
+    display: flex;
+    gap: 2px;
+    transition: background 0.1s ease;
+  }
+  .block-handle-col {
+    width: 32px;
+    flex-shrink: 0;
+    display: flex;
+    align-items: flex-start;
+    justify-content: flex-end;
+    padding-top: 4px;
+    gap: 2px;
+    opacity: 0;
+    transition: opacity 0.15s ease;
+  }
+  .block:hover .block-handle-col { opacity: 1; }
+  .block-btn {
+    width: 18px; height: 18px;
+    border-radius: 3px;
+    display: inline-flex; align-items: center; justify-content: center;
+    color: var(--ink-tertiary);
+    cursor: grab;
+    font-size: 14px;
+    line-height: 1;
+  }
+  .block-btn:hover { background: var(--surface-hover); color: var(--ink); }
+  .block-btn.drag { cursor: grab; }
+  .block-btn.drag:active { cursor: grabbing; }
+
+  .block-content { flex: 1; min-width: 0; }
+  .block p { margin: 0; padding: 3px 2px; }
+  .block h1 { font-family: var(--font-serif); font-size: 30px; font-weight: 600; margin: 16px 0 6px; line-height: 1.25; }
+  .block h2 { font-family: var(--font-serif); font-size: 24px; font-weight: 600; margin: 14px 0 4px; line-height: 1.3; }
+  .block h3 { font-family: var(--font-serif); font-size: 19px; font-weight: 600; margin: 12px 0 4px; line-height: 1.35; }
+  .block ul, .block ol { margin: 2px 0; padding-left: 26px; }
+  .block li { padding: 2px 0; }
+  .block code {
+    font-family: var(--font-mono);
+    font-size: 13px;
+    background: var(--surface);
+    padding: 1px 4px;
+    border-radius: 3px;
+    color: #B45309;
+  }
+  .block pre {
+    background: var(--surface);
+    padding: 14px 16px;
+    border-radius: var(--radius-md);
+    font-family: var(--font-mono);
+    font-size: 13px;
+    line-height: 1.5;
+    margin: 6px 0;
+    overflow-x: auto;
+    color: var(--ink);
+  }
+  .block blockquote {
+    margin: 6px 0;
+    padding: 4px 14px;
+    border-left: 3px solid var(--hairline-strong);
+    color: var(--ink-secondary);
+    font-style: italic;
+  }
+  .wikilink {
+    color: #2E7D6E;
+    text-decoration: none;
+    border-bottom: 1px dashed #2E7D6E88;
+    cursor: pointer;
+  }
+  .wikilink:hover { background: var(--accent-mint); }
+  .hashtag {
+    color: #9D3767;
+    background: var(--accent-rose);
+    padding: 0 6px;
+    border-radius: 8px;
+    font-size: 12.5px;
+    cursor: pointer;
+  }
+
+  /* Callout block */
+  .callout {
+    background: var(--surface);
+    border-radius: var(--radius-md);
+    padding: 12px 14px;
+    display: flex; gap: 10px;
+    margin: 8px 0;
+  }
+  .callout-icon { font-size: 18px; line-height: 1.5; }
+  .callout-body { flex: 1; font-size: 14.5px; }
+
+  /* Divider */
+  .block .divider {
+    height: 1px;
+    background: var(--hairline);
+    margin: 12px 0;
+  }
+
+  /* Table block (frontmatter) */
+  .meta-table {
+    width: 100%;
+    border-collapse: collapse;
+    margin: 8px 0 16px;
+    font-size: 13px;
+    border: 1px solid var(--hairline);
+    border-radius: var(--radius-md);
+    overflow: hidden;
+  }
+  .meta-table th, .meta-table td {
+    padding: 8px 12px;
+    text-align: left;
+    border-bottom: 1px solid var(--hairline);
+    font-weight: 400;
+    vertical-align: middle;
+  }
+  .meta-table th {
+    background: var(--surface);
+    color: var(--ink-secondary);
+    width: 120px;
+    font-weight: 500;
+  }
+  .meta-table tr:last-child td { border-bottom: none; }
+  .meta-tag {
+    display: inline-flex; align-items: center;
+    padding: 1px 8px;
+    background: var(--accent-rose);
+    color: var(--accent-rose-ink);
+    border-radius: 10px;
+    font-size: 12px;
+    margin-right: 4px;
+  }
+  .meta-toggle {
+    font-size: 11px;
+    color: var(--ink-tertiary);
+    cursor: pointer;
+    margin-left: 8px;
+    text-decoration: underline;
+  }
+
+  /* Selection floating toolbar */
+  .sel-toolbar {
+    position: absolute;
+    top: 260px;
+    left: 320px;
+    background: var(--ink);
+    color: var(--ground);
+    border-radius: var(--radius-sm);
+    padding: 4px;
+    display: flex; gap: 2px;
+    box-shadow: var(--shadow-md);
+    z-index: 100;
+    animation: fadeUp 0.15s ease-out;
+  }
+  @keyframes fadeUp {
+    from { opacity: 0; transform: translateY(4px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+  .sel-btn {
+    padding: 4px 8px;
+    font-size: 12px;
+    border-radius: 3px;
+    cursor: pointer;
+    color: #E9E9E7;
+    display: inline-flex; align-items: center; gap: 4px;
+  }
+  .sel-btn:hover { background: #4A4843; }
+  .sel-btn.ai {
+    background: #E4F4F1;
+    color: #2E7D6E;
+    font-weight: 500;
+  }
+  .sel-btn.ai:hover { background: #D1E8E2; }
+
+  /* Slash menu */
+  .slash-menu {
+    position: absolute;
+    top: 340px;
+    left: 130px;
+    width: 320px;
+    background: var(--ground);
+    border: 1px solid var(--hairline);
+    border-radius: var(--radius-md);
+    box-shadow: var(--shadow-lg);
+    padding: 6px;
+    z-index: 120;
+    animation: fadeUp 0.12s ease-out;
+  }
+  .slash-header {
+    padding: 6px 10px;
+    font-size: 11px;
+    font-weight: 600;
+    color: var(--ink-tertiary);
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+  }
+  .slash-item {
+    padding: 7px 10px;
+    border-radius: 6px;
+    display: flex; align-items: center; gap: 10px;
+    cursor: pointer;
+    transition: background 0.1s ease;
+  }
+  .slash-item:hover, .slash-item.selected { background: var(--surface-hover); }
+  .slash-icon {
+    width: 32px; height: 32px;
+    background: var(--surface);
+    border: 1px solid var(--hairline);
+    border-radius: var(--radius-sm);
+    display: inline-flex; align-items: center; justify-content: center;
+    font-size: 16px;
+    flex-shrink: 0;
+  }
+  .slash-text { flex: 1; min-width: 0; }
+  .slash-title { font-size: 13px; color: var(--ink); font-weight: 500; }
+  .slash-desc { font-size: 11.5px; color: var(--ink-secondary); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .slash-kbd {
+    font-family: var(--font-mono);
+    font-size: 10.5px;
+    color: var(--ink-tertiary);
+    padding: 1px 5px;
+    background: var(--surface);
+    border-radius: 3px;
+  }
+
+  /* Block menu */
+  .block-menu {
+    position: absolute;
+    top: 280px;
+    left: 40px;
+    width: 200px;
+    background: var(--ground);
+    border: 1px solid var(--hairline);
+    border-radius: var(--radius-md);
+    box-shadow: var(--shadow-lg);
+    padding: 4px;
+    z-index: 130;
+    animation: fadeUp 0.12s ease-out;
+  }
+  .bm-item {
+    padding: 6px 8px;
+    font-size: 13px;
+    border-radius: 5px;
+    cursor: pointer;
+    display: flex; align-items: center; gap: 8px;
+    color: var(--ink);
+  }
+  .bm-item:hover { background: var(--surface-hover); }
+  .bm-item.danger { color: #DC2626; }
+  .bm-icon { width: 16px; text-align: center; font-size: 12px; }
+  .bm-shortcut {
+    margin-left: auto;
+    font-size: 11px;
+    color: var(--ink-tertiary);
+    font-family: var(--font-mono);
+  }
+
+  /* ===== AI Dock ===== */
+  .dock {
+    width: 380px;
+    background: var(--ground);
+    border-left: 1px solid var(--hairline);
+    display: flex; flex-direction: column;
+    transition: width 0.25s ease;
+    overflow: hidden;
+  }
+  .dock.collapsed { width: 0; border-left: none; }
+  .dock-header {
+    padding: 12px 14px;
+    border-bottom: 1px solid var(--hairline);
+    display: flex; align-items: center; gap: 8px;
+  }
+  .dock-title {
+    font-size: 14px; font-weight: 600;
+    display: flex; align-items: center; gap: 6px;
+  }
+  .dock-actions { margin-left: auto; display: flex; gap: 2px; }
+  .dock-body {
+    flex: 1;
+    overflow-y: auto;
+    padding: 14px;
+    display: flex; flex-direction: column; gap: 12px;
+  }
+  .dock-body::-webkit-scrollbar { width: 6px; }
+  .dock-body::-webkit-scrollbar-thumb { background: var(--hairline-strong); border-radius: 3px; }
+
+  .chat-bubble {
+    max-width: 92%;
+    padding: 8px 12px;
+    border-radius: 12px;
+    font-size: 13px;
+    line-height: 1.5;
+    word-break: break-word;
+  }
+  .chat-bubble.user {
+    align-self: flex-end;
+    background: var(--accent-mint);
+    color: var(--accent-mint-ink);
+    border-bottom-right-radius: 3px;
+  }
+  .chat-bubble.ai {
+    align-self: flex-start;
+    background: var(--surface);
+    color: var(--ink);
+    border-bottom-left-radius: 3px;
+  }
+  .cited-sources {
+    background: var(--surface);
+    border: 1px solid var(--hairline);
+    border-radius: var(--radius-md);
+    padding: 8px 10px;
+    font-size: 12px;
+  }
+  .cited-title {
+    font-weight: 600;
+    color: var(--ink-secondary);
+    margin-bottom: 6px;
+    display: flex; align-items: center; gap: 6px;
+    font-size: 11.5px;
+    text-transform: uppercase;
+    letter-spacing: 0.4px;
+  }
+  .cited-item {
+    padding: 4px 0;
+    display: flex; align-items: center; gap: 6px;
+    color: var(--ink);
+    cursor: pointer;
+    border-top: 1px solid var(--hairline);
+  }
+  .cited-item:first-of-type { border-top: none; }
+  .cited-item:hover { color: var(--accent-mint-ink); }
+  .cited-stage {
+    font-size: 10.5px;
+    padding: 1px 5px;
+    border-radius: 8px;
+    background: var(--accent-peach);
+    color: var(--accent-peach-ink);
+    margin-left: auto;
+    font-weight: 500;
+  }
+  .cited-stage.vec { background: var(--accent-blue); color: var(--accent-blue-ink); }
+  .cited-stage.link { background: var(--accent-mint); color: var(--accent-mint-ink); }
+  .cited-stage.kw { background: var(--accent-sand); color: var(--accent-sand-ink); }
+
+  .recall-progress {
+    background: var(--surface);
+    border: 1px solid var(--hairline);
+    border-radius: var(--radius-md);
+    padding: 8px 10px;
+    font-size: 12px;
+    color: var(--ink-secondary);
+  }
+  .recall-stage {
+    display: flex; align-items: center; gap: 8px;
+    padding: 3px 0;
+  }
+  .recall-dot {
+    width: 8px; height: 8px; border-radius: 50%;
+    background: var(--hairline-strong);
+  }
+  .recall-dot.done { background: #16A34A; }
+  .recall-dot.active { background: #F59E0B; animation: pulse 1s infinite; }
+  @keyframes pulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.4; }
+  }
+
+  .skill-toggles {
+    background: var(--surface);
+    border: 1px solid var(--hairline);
+    border-radius: var(--radius-md);
+    padding: 8px 10px;
+    font-size: 12px;
+  }
+  .skill-row {
+    display: flex; align-items: center; gap: 8px;
+    padding: 4px 0;
+    border-top: 1px solid var(--hairline);
+  }
+  .skill-row:first-of-type { border-top: none; }
+  .toggle {
+    width: 28px; height: 16px;
+    background: var(--hairline-strong);
+    border-radius: 8px;
+    position: relative;
+    cursor: pointer;
+    transition: background 0.2s ease;
+    flex-shrink: 0;
+  }
+  .toggle.on { background: #2E7D6E; }
+  .toggle::after {
+    content: '';
+    position: absolute;
+    top: 2px; left: 2px;
+    width: 12px; height: 12px;
+    background: var(--ground);
+    border-radius: 50%;
+    transition: transform 0.2s ease;
+  }
+  .toggle.on::after { transform: translateX(12px); }
+
+  .dock-input {
+    padding: 10px 12px;
+    border-top: 1px solid var(--hairline);
+    display: flex; align-items: flex-end; gap: 6px;
+  }
+  .dock-input textarea {
+    flex: 1;
+    border: 1px solid var(--hairline);
+    border-radius: var(--radius-md);
+    padding: 8px 10px;
+    font-family: var(--font-sans);
+    font-size: 13px;
+    resize: none;
+    outline: none;
+    background: var(--ground);
+    color: var(--ink);
+    line-height: 1.4;
+  }
+  .dock-input textarea:focus { border-color: var(--accent-mint-ink); }
+
+  /* Diff preview */
+  .diff-view {
+    background: var(--surface);
+    border: 1px solid var(--hairline);
+    border-radius: var(--radius-md);
+    padding: 10px;
+    font-size: 12.5px;
+    margin-top: 8px;
+  }
+  .diff-title {
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--ink-secondary);
+    margin-bottom: 8px;
+    display: flex; align-items: center; gap: 6px;
+  }
+  .diff-line { padding: 2px 4px; border-radius: 3px; font-family: var(--font-mono); font-size: 11.5px; white-space: pre-wrap; word-break: break-word; }
+  .diff-del { background: #FEE2E2; color: #991B1B; }
+  .diff-add { background: #DCFCE7; color: #166534; }
+  .diff-ctx { color: var(--ink-secondary); }
+  .diff-actions {
+    display: flex; gap: 6px;
+    margin-top: 10px;
+  }
+  .diff-btn {
+    padding: 5px 12px;
+    border-radius: var(--radius-sm);
+    font-size: 12px;
+    font-weight: 500;
+    cursor: pointer;
+    border: 1px solid var(--hairline-strong);
+    background: var(--ground);
+    color: var(--ink);
+  }
+  .diff-btn.primary { background: var(--ink); color: var(--ground); border-color: var(--ink); }
+  .diff-btn:hover { opacity: 0.9; }
+
+  /* ===== Status Bar ===== */
+  .statusbar {
+    height: 26px;
+    background: var(--surface);
+    border-top: 1px solid var(--hairline);
+    display: flex; align-items: center;
+    padding: 0 12px;
+    font-size: 11.5px;
+    color: var(--ink-secondary);
+    gap: 16px;
+  }
+  .sb-item { display: flex; align-items: center; gap: 5px; cursor: pointer; }
+  .sb-item:hover { color: var(--ink); }
+  .sb-badge {
+    padding: 1px 6px;
+    background: var(--accent-peach);
+    color: var(--accent-peach-ink);
+    border-radius: 8px;
+    font-weight: 500;
+    font-size: 10.5px;
+  }
+  .sb-spacer { flex: 1; }
+  .sb-divider { width: 1px; height: 14px; background: var(--hairline-strong); }
+
+  /* ===== Timeline Panel (floating) ===== */
+  .timeline-panel {
+    position: absolute;
+    bottom: 38px;
+    left: 12px;
+    width: 360px;
+    max-height: 480px;
+    background: var(--ground);
+    border: 1px solid var(--hairline);
+    border-radius: var(--radius-md);
+    box-shadow: var(--shadow-lg);
+    z-index: 90;
+    display: flex; flex-direction: column;
+    overflow: hidden;
+  }
+  .panel-header {
+    padding: 10px 14px;
+    border-bottom: 1px solid var(--hairline);
+    display: flex; align-items: center; gap: 8px;
+    font-weight: 600;
+    font-size: 13px;
+  }
+  .panel-body {
+    flex: 1;
+    overflow-y: auto;
+    padding: 8px 0;
+  }
+  .timeline-group {
+    padding: 6px 14px 10px;
+  }
+  .timeline-group-title {
+    font-size: 11px;
+    font-weight: 600;
+    color: var(--ink-tertiary);
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    margin-bottom: 6px;
+  }
+  .timeline-item {
+    padding: 7px 10px;
+    border-radius: 6px;
+    cursor: pointer;
+    display: flex; align-items: flex-start; gap: 10px;
+    position: relative;
+  }
+  .timeline-item:hover { background: var(--surface-hover); }
+  .timeline-dot {
+    width: 8px; height: 8px; border-radius: 50%;
+    background: var(--accent-mint-ink);
+    margin-top: 5px;
+    flex-shrink: 0;
+  }
+  .timeline-dot.auto { background: var(--hairline-strong); }
+  .timeline-info { flex: 1; min-width: 0; }
+  .timeline-msg { font-size: 12.5px; color: var(--ink); font-weight: 500; margin-bottom: 2px; }
+  .timeline-meta { font-size: 11px; color: var(--ink-tertiary); }
+  .timeline-auto-badge {
+    font-size: 10px;
+    padding: 1px 5px;
+    background: var(--surface);
+    border: 1px solid var(--hairline);
+    border-radius: 6px;
+    color: var(--ink-tertiary);
+    margin-left: auto;
+    flex-shrink: 0;
+  }
+
+  /* ===== Graph View (full content area) ===== */
+  .graph-view {
+    width: 100%; height: 100%;
+    position: relative;
+    background: var(--ground);
+    overflow: hidden;
+  }
+  .graph-canvas { width: 100%; height: 100%; }
+  .graph-filter {
+    position: absolute;
+    top: 14px;
+    right: 14px;
+    width: 220px;
+    background: var(--ground);
+    border: 1px solid var(--hairline);
+    border-radius: var(--radius-md);
+    box-shadow: var(--shadow-md);
+    padding: 10px 12px;
+    font-size: 12px;
+  }
+  .graph-filter-title {
+    font-weight: 600;
+    margin-bottom: 8px;
+    font-size: 12.5px;
+  }
+  .graph-tag-filter {
+    display: flex; flex-wrap: wrap; gap: 4px;
+    padding-bottom: 8px;
+    border-bottom: 1px solid var(--hairline);
+    margin-bottom: 8px;
+  }
+  .graph-tag {
+    padding: 2px 8px;
+    border-radius: 10px;
+    font-size: 11px;
+    cursor: pointer;
+    border: 1px solid var(--hairline-strong);
+    background: var(--ground);
+  }
+  .graph-tag.active { background: var(--accent-mint); border-color: var(--accent-mint); color: var(--accent-mint-ink); font-weight: 500; }
+  .graph-depth { display: flex; align-items: center; gap: 8px; }
+  .graph-depth input[type=range] { flex: 1; }
+
+  /* ===== Command Palette (global overlay) ===== */
+  .cmd-overlay {
+    position: fixed;
+    inset: 0;
+    background: rgba(55, 53, 47, 0.12);
+    backdrop-filter: blur(2px);
+    display: flex; justify-content: center;
+    padding-top: 120px;
+    z-index: 200;
+    animation: fadeIn 0.15s ease-out;
+  }
+  @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+  .cmd-box {
+    width: 560px;
+    max-height: 480px;
+    background: var(--ground);
+    border-radius: var(--radius-md);
+    box-shadow: var(--shadow-lg);
+    overflow: hidden;
+    display: flex; flex-direction: column;
+    animation: fadeUp 0.18s ease-out;
+  }
+  .cmd-input {
+    padding: 12px 14px;
+    border-bottom: 1px solid var(--hairline);
+    display: flex; align-items: center; gap: 10px;
+  }
+  .cmd-input input {
+    flex: 1;
+    border: none; outline: none;
+    font-size: 15px;
+    background: transparent;
+    color: var(--ink);
+    font-family: var(--font-sans);
+  }
+  .cmd-section-title {
+    padding: 8px 14px 4px;
+    font-size: 11px;
+    font-weight: 600;
+    color: var(--ink-tertiary);
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+  }
+  .cmd-item {
+    padding: 8px 14px;
+    display: flex; align-items: center; gap: 10px;
+    cursor: pointer;
+  }
+  .cmd-item:hover, .cmd-item.selected { background: var(--surface-hover); }
+  .cmd-icon {
+    width: 28px; height: 28px;
+    background: var(--surface);
+    border-radius: 6px;
+    display: inline-flex; align-items: center; justify-content: center;
+    font-size: 14px;
+  }
+  .cmd-text { flex: 1; }
+  .cmd-title { font-size: 13.5px; color: var(--ink); }
+  .cmd-desc { font-size: 11.5px; color: var(--ink-secondary); }
+  .cmd-kbd {
+    font-family: var(--font-mono);
+    font-size: 11px;
+    color: var(--ink-tertiary);
+  }
+
+  /* ===== Prototype Label (bottom-right) ===== */
+  .proto-label {
+    position: fixed;
+    bottom: 4px;
+    right: 8px;
+    font-size: 10.5px;
+    color: var(--ink-tertiary);
+    z-index: 500;
+    display: flex; align-items: center; gap: 8px;
+  }
+  .proto-label .tech-tag {
+    background: var(--surface);
+    border: 1px solid var(--hairline);
+    padding: 1px 6px;
+    border-radius: 6px;
+    font-family: var(--font-mono);
+    font-size: 10px;
+    color: var(--ink-secondary);
+  }
+
+  /* ===== Confidence Badge in meta table ===== */
+  .confidence-row { display: flex; align-items: center; gap: 8px; }
+  .confidence-bar {
+    flex: 1;
+    height: 6px;
+    background: var(--hairline);
+    border-radius: 3px;
+    overflow: hidden;
+  }
+  .confidence-fill {
+    height: 100%;
+    background: linear-gradient(90deg, var(--accent-mint), var(--accent-mint-ink));
+    border-radius: 3px;
+  }
+  .confidence-score {
+    font-weight: 600;
+    font-family: var(--font-mono);
+    color: var(--accent-mint-ink);
+    font-size: 12px;
+  }
+
+  /* YAML raw view */
+  .yaml-raw {
+    background: var(--surface);
+    padding: 10px 14px;
+    border-radius: var(--radius-md);
+    font-family: var(--font-mono);
+    font-size: 12px;
+    line-height: 1.6;
+    color: var(--ink);
+    margin: 8px 0 16px;
+  }
+  .yaml-key { color: var(--accent-mint-ink); }
+  .yaml-str { color: #B45309; }
+  .yaml-num { color: var(--accent-rose-ink); }
+
+  /* Empty state for no selection */
+  .empty-hint {
+    position: absolute;
+    bottom: 200px;
+    left: 50%;
+    transform: translateX(-50%);
+    background: var(--surface);
+    border: 1px dashed var(--hairline-strong);
+    padding: 8px 14px;
+    border-radius: var(--radius-md);
+    font-size: 12px;
+    color: var(--ink-secondary);
+    pointer-events: none;
+  }
+  .empty-hint kbd {
+    font-family: var(--font-mono);
+    font-size: 10.5px;
+    padding: 1px 4px;
+    background: var(--ground);
+    border: 1px solid var(--hairline);
+    border-radius: 3px;
+  }
+</style>
+</head>
+<body>
+<div id="root"></div>
+
+<script crossorigin src="https://unpkg.com/react@18.3.1/umd/react.production.min.js"></script>
+<script crossorigin src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.production.min.js"></script>
+<script src="https://unpkg.com/@babel/standalone@7.26.4/babel.min.js"></script>
+
+<script type="text/babel">
+const { useState, useRef, useEffect, useMemo, useCallback } = React;
+
+// ===== Prototype A · 块编辑优先工作台 =====
+// 定位：编辑器是主角，AI / Git / 双链作为辅助面板环绕。
+// 风格锚定：Notion pre-AI 配方。
+// 绑定技术栈：Electron + React + TS + TailwindCSS + shadcn/ui + TipTap 3 + SQLite + simple-git（默认捆绑 dugite）
+
+function App() {
+  // 视图切换：'editor' | 'graph'
+  const [view, setView] = useState('editor');
+  const [activeTab, setActiveTab] = useState(0);
+  const [sidebarTab, setSidebarTab] = useState('pages'); // pages | backlinks | tags
+  const [sidebarOpen, setSidebarOpen] = useState(true);
+  const [dockOpen, setDockOpen] = useState(true);
+  const [showCmd, setShowCmd] = useState(false);
+  const [showTimeline, setShowTimeline] = useState(false);
+  const [showSlash, setShowSlash] = useState(false);
+  const [showBlockMenu, setShowBlockMenu] = useState(false);
+  const [showSelToolbar, setShowSelToolbar] = useState(false);
+  const [showDiff, setShowDiff] = useState(false);
+  const [metaMode, setMetaMode] = useState('table'); // table | yaml
+
+  // 键盘：⌘K 打开命令面板
+  useEffect(() => {
+    const handler = (e) => {
+      if ((e.metaKey || e.ctrlKey) && e.key === 'k') {
+        e.preventDefault();
+        setShowCmd(v => !v);
+      }
+      if (e.key === 'Escape') {
+        setShowCmd(false);
+        setShowSlash(false);
+        setShowBlockMenu(false);
+        setShowSelToolbar(false);
+      }
+    };
+    window.addEventListener('keydown', handler);
+    return () => window.removeEventListener('keydown', handler);
+  }, []);
+
+  const tabs = [
+    { icon: '📝', title: '渐进式召回架构', type: 'page' },
+    { icon: '🧠', title: '知识网络设计', type: 'page' },
+    { icon: '📊', title: 'Mermaid · 架构图', type: 'page' },
+    { icon: '🌐', title: '图谱视图', type: 'graph' },
+  ];
+
+  const openTab = (i) => {
+    setActiveTab(i);
+    if (tabs[i].type === 'graph') setView('graph');
+    else setView('editor');
+  };
+
+  return (
+    <div className="app">
+      {/* Title bar */}
+      <div className="titlebar">
+        <div className="traffic-lights">
+          <span className="tl close" />
+          <span className="tl min" />
+          <span className="tl max" />
+        </div>
+        <div className="title-text">{tabs[activeTab].title} — NexNote</div>
+        <div style={{ width: 60 }} />
+      </div>
+
+      {/* Tab bar */}
+      <div className="tabbar">
+        {tabs.map((t, i) => (
+          <div
+            key={i}
+            className={'tab' + (i === activeTab ? ' active' : '')}
+            onClick={() => openTab(i)}
+          >
+            <span className="tab-icon">{t.icon}</span>
+            <span>{t.title}</span>
+            <span className="tab-close">×</span>
+          </div>
+        ))}
+        <div className="tab-add" title="新建标签页">+</div>
+      </div>
+
+      {/* Toolbar */}
+      <div className="toolbar">
+        <div className="toolbar-left">
+          <button
+            className="icon-btn"
+            onClick={() => setSidebarOpen(v => !v)}
+            title="切换侧栏"
+          >
+            ☰
+          </button>
+          <div className="cmd-palette-trigger" onClick={() => setShowCmd(true)}>
+            🔍 <span>搜索页面、命令、AI 动作…</span>
+            <span className="cmd-kbd">⌘K</span>
+          </div>
+        </div>
+        <div className="toolbar-right">
+          <button className="icon-btn" title="返回">↶</button>
+          <button className="icon-btn" title="前进">↷</button>
+          <button className="icon-btn" title="分屏">◫</button>
+          <button
+            className={'icon-btn primary'}
+            onClick={() => setDockOpen(v => !v)}
+            title="AI 对话 dock"
+            style={{ background: dockOpen ? 'var(--accent-mint)' : 'transparent', color: dockOpen ? 'var(--accent-mint-ink)' : '' }}
+          >
+            ✦
+          </button>
+        </div>
+      </div>
+
+      {/* Main area */}
+      <div
+        className="main"
+        onClick={() => { setShowSlash(false); setShowBlockMenu(false); setShowSelToolbar(false); }}
+      >
+        {/* Sidebar */}
+        <aside className={'sidebar' + (sidebarOpen ? '' : ' collapsed')}>
+          <div className="sidebar-tabs">
+            <div
+              className={'sidebar-tab' + (sidebarTab === 'pages' ? ' active' : '')}
+              onClick={() => setSidebarTab('pages')}
+            >页面</div>
+            <div
+              className={'sidebar-tab' + (sidebarTab === 'backlinks' ? ' active' : '')}
+              onClick={() => setSidebarTab('backlinks')}
+            >回链</div>
+            <div
+              className={'sidebar-tab' + (sidebarTab === 'tags' ? ' active' : '')}
+              onClick={() => setSidebarTab('tags')}
+            >标签</div>
+          </div>
+          <div className="sidebar-body">
+            {sidebarTab === 'pages' && <PageTree />}
+            {sidebarTab === 'backlinks' && <BacklinksPanel />}
+            {sidebarTab === 'tags' && <TagsPanel />}
+          </div>
+        </aside>
+
+        {/* Content */}
+        <main className="content">
+          {view === 'editor' && (
+            <EditorView
+              showSlash={showSlash}
+              setShowSlash={setShowSlash}
+              showBlockMenu={showBlockMenu}
+              setShowBlockMenu={setShowBlockMenu}
+              showSelToolbar={showSelToolbar}
+              setShowSelToolbar={setShowSelToolbar}
+              showDiff={showDiff}
+              setShowDiff={setShowDiff}
+              metaMode={metaMode}
+              setMetaMode={setMetaMode}
+            />
+          )}
+          {view === 'graph' && <GraphView />}
+
+          {/* Timeline panel */}
+          {showTimeline && <TimelinePanel onClose={() => setShowTimeline(false)} />}
+        </main>
+
+        {/* AI Dock */}
+        <aside className={'dock' + (dockOpen ? '' : ' collapsed')}>
+          {dockOpen && (
+            <>
+              <div className="dock-header">
+                <div className="dock-title">
+                  ✦ AI 对话
+                </div>
+                <div className="dock-actions">
+                  <button className="icon-btn" title="上下文">≡</button>
+                  <button className="icon-btn" title="设置">⚙</button>
+                </div>
+              </div>
+              <div className="dock-body">
+                <div className="chat-bubble user">帮我润色选中的段落，让语气更专业。</div>
+                <div className="recall-progress">
+                  <div className="recall-title" style={{ fontWeight: 600, marginBottom: 4, display: 'flex', alignItems: 'center', gap: 6 }}>
+                    🔍 渐进式召回
+                  </div>
+                  <div className="recall-stage">
+                    <span className="recall-dot done" />
+                    <span>阶段 1 · 关键词粗筛</span>
+                  </div>
+                  <div className="recall-stage">
+                    <span className="recall-dot done" />
+                    <span>阶段 2 · 双链关系扩展</span>
+                  </div>
+                  <div className="recall-stage">
+                    <span className="recall-dot active" />
+                    <span>阶段 3 · 向量重排</span>
+                  </div>
+                </div>
+                <div className="chat-bubble ai">
+                  已根据你的 vault 中 <b>3 篇高置信度</b>相关页面的上下文，给出润色建议：
+                  <br /><br />
+                  原文「置信度算法直接影响召回质量」→ 建议改为「置信度作为召回排序的乘性因子，对检索精度起关键作用」。
+                  <br /><br />
+                  主要改动：补充了「乘性因子」这一机制描述，使表述更精确；将「直接影响」具体化为「对检索精度起关键作用」，呼应 <span className="wikilink">检索评估框架</span> 中的定义。
+                </div>
+                <div className="cited-sources">
+                  <div className="cited-title">📚 参考来源 · 3 条</div>
+                  <div className="cited-item">
+                    <span>📄 检索评估框架</span>
+                    <span className="cited-stage vec">向量</span>
+                  </div>
+                  <div className="cited-item">
+                    <span>📄 置信度算法设计</span>
+                    <span className="cited-stage link">关系</span>
+                  </div>
+                  <div className="cited-item">
+                    <span>📄 AI 层架构备忘</span>
+                    <span className="cited-stage kw">关键词</span>
+                  </div>
+                </div>
+
+                <div className="skill-toggles">
+                  <div className="cited-title" style={{ marginBottom: 4 }}>🔧 检索 Skill</div>
+                  <div className="skill-row">
+                    <div className="toggle on" />
+                    <span>FTS 全文检索</span>
+                  </div>
+                  <div className="skill-row">
+                    <div className="toggle on" />
+                    <span>双链关系扩展</span>
+                  </div>
+                  <div className="skill-row">
+                    <div className="toggle on" />
+                    <span>向量重排 · sqlite-vec</span>
+                  </div>
+                  <div className="skill-row">
+                    <div className="toggle" />
+                    <span>标签过滤（可选）</span>
+                  </div>
+                </div>
+
+                {showDiff && <DiffPreview onClose={() => setShowDiff(false)} />}
+              </div>
+              <div className="dock-input">
+                <textarea rows={2} placeholder="问点什么，或用 / 调用 AI 动作…" />
+                <button className="icon-btn" title="发送" style={{ background: 'var(--ink)', color: 'var(--ground)' }}>➤</button>
+              </div>
+            </>
+          )}
+        </aside>
+      </div>
+
+      {/* Status bar */}
+      <div className="statusbar">
+        <div className="sb-item" onClick={() => setShowTimeline(v => !v)}>
+          <span>⎇</span>
+          <span>main</span>
+          <span className="sb-badge">+3</span>
+        </div>
+        <div className="sb-divider" />
+        <div className="sb-item" onClick={() => setShowTimeline(v => !v)}>
+          <span>⏱</span>
+          <span>2 分钟前自动提交</span>
+        </div>
+        <div className="sb-divider" />
+        <div className="sb-item">
+          <span>✓</span>
+          <span>置信度 87%</span>
+        </div>
+        <div className="sb-spacer" />
+        <div className="sb-item">
+          <span>↓↑</span>
+          <span>同步</span>
+        </div>
+        <div className="sb-divider" />
+        <div className="sb-item">
+          <span>UTF-8</span>
+        </div>
+        <div className="sb-divider" />
+        <div className="sb-item">
+          <span>Markdown</span>
+        </div>
+      </div>
+
+      {/* Command palette */}
+      {showCmd && <CommandPalette onClose={() => setShowCmd(false)} />}
+
+      {/* Prototype label */}
+      <div className="proto-label">
+        <span>原型 A · 块编辑优先</span>
+        <span className="tech-tag">TipTap 3</span>
+        <span className="tech-tag">Electron · React</span>
+        <span className="tech-tag">SQLite · simple-git</span>
+      </div>
+    </div>
+  );
+}
+
+// ===== Page Tree =====
+function PageTree() {
+  const items = [
+    { type: 'folder', icon: '📁', title: '产品设计', indent: 0, open: true },
+    { type: 'page', icon: '🧭', title: '产品架构备忘', indent: 1, active: true },
+    { type: 'page', icon: '📝', title: '渐进式召回架构', indent: 1 },
+    { type: 'page', icon: '🧠', title: '知识网络设计', indent: 1 },
+    { type: 'page', icon: '🎨', title: '交互设计规范', indent: 1 },
+    { type: 'folder', icon: '📁', title: '技术架构', indent: 0, open: true },
+    { type: 'page', icon: '⚙️', title: '技术栈选型', indent: 1 },
+    { type: 'page', icon: '📊', title: 'Mermaid · 架构图', indent: 1 },
+    { type: 'page', icon: '🔌', title: '插件 API 设计', indent: 1 },
+    { type: 'folder', icon: '📁', title: '研究', indent: 0 },
+    { type: 'page', icon: '📚', title: '竞品块模型分析', indent: 1 },
+    { type: 'page', icon: '🔬', title: '编辑器内核对比', indent: 1 },
+    { type: 'page', icon: '🤖', title: 'AI 向量检索调研', indent: 1 },
+  ];
+  return (
+    <div>
+      {items.map((it, i) => (
+        <div
+          key={i}
+          className={'page-tree-item' + (it.active ? ' active' : '') + (it.type === 'folder' ? ' folder' : '')}
+          style={{ paddingLeft: 12 + it.indent * 16 }}
+        >
+          {it.type === 'folder' && <span className="chevron">{it.open ? '▾' : '▸'}</span>}
+          {it.type !== 'folder' && <span className="chevron" />}
+          <span className="page-icon">{it.icon}</span>
+          <span style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{it.title}</span>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+// ===== Backlinks Panel =====
+function BacklinksPanel() {
+  const groups = [
+    {
+      title: '已链接提及 · 5',
+      items: [
+        { title: '检索评估框架', snippet: '…置信度作为乘性因子参与最终排序…' },
+        { title: 'AI 层架构备忘', snippet: '…召回管道三阶段架构依赖关系索引…' },
+        { title: '知识网络设计', snippet: '…图谱节点大小映射反向链接数…' },
+        { title: '插件 API 设计', snippet: '…检索 Skill 可访问回链索引…' },
+        { title: '产品架构备忘', snippet: '…回链面板置于侧栏…' },
+      ],
+    },
+    {
+      title: '未链接提及 · 2',
+      items: [
+        { title: '竞品块模型分析', snippet: '…Obsidian 反向链接面板设计参考…' },
+        { title: '编辑器内核对比', snippet: '…wikilink 语法解析…' },
+      ],
+    },
+  ];
+  return (
+    <div>
+      {groups.map((g, gi) => (
+        <div key={gi}>
+          <div className="backlink-section">
+            {g.title}
+            <span className="backlink-count">{g.items.length}</span>
+          </div>
+          {g.items.map((it, i) => (
+            <div key={i} className="backlink-item">
+              <div className="backlink-title">{it.title}</div>
+              <div className="backlink-snippet">{it.snippet}</div>
+            </div>
+          ))}
+        </div>
+      ))}
+    </div>
+  );
+}
+
+// ===== Tags Panel =====
+function TagsPanel() {
+  const tags = [
+    { name: '架构', count: 8, color: 'mint' },
+    { name: '产品设计', count: 6, color: 'peach' },
+    { name: 'AI', count: 5, color: 'rose' },
+    { name: '编辑器', count: 4, color: 'sand' },
+    { name: '插件', count: 3, color: 'mint' },
+    { name: 'Git', count: 2, color: 'blue' },
+    { name: '研究', count: 3, color: 'peach' },
+  ];
+  const colorMap = {
+    mint: ['var(--accent-mint)', 'var(--accent-mint-ink)'],
+    peach: ['var(--accent-peach)', 'var(--accent-peach-ink)'],
+    rose: ['var(--accent-rose)', 'var(--accent-rose-ink)'],
+    sand: ['var(--accent-sand)', 'var(--accent-sand-ink)'],
+    blue: ['var(--accent-blue)', 'var(--accent-blue-ink)'],
+  };
+  return (
+    <div style={{ padding: '8px 12px', display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+      {tags.map((t, i) => {
+        const [bg, fg] = colorMap[t.color];
+        return (
+          <span
+            key={i}
+            style={{
+              background: bg, color: fg,
+              padding: '4px 10px', borderRadius: 12,
+              fontSize: 12.5, cursor: 'pointer',
+              display: 'inline-flex', alignItems: 'center', gap: 5,
+            }}
+          >
+            #{t.name} <span style={{ fontSize: 11, opacity: 0.7 }}>{t.count}</span>
+          </span>
+        );
+      })}
+    </div>
+  );
+}
+
+// ===== Editor View =====
+function EditorView({ showSlash, setShowSlash, showBlockMenu, setShowBlockMenu, showSelToolbar, setShowSelToolbar, showDiff, setShowDiff, metaMode, setMetaMode }) {
+  const openBlockMenu = () => setShowBlockMenu(v => !v);
+  const Blk = (props) => <Block {...props} onHandleClick={openBlockMenu} />;
+  return (
+  <div
+    className="page-wrapper"
+    style={{ position: 'relative' }}
+    onClick={() => { setShowSlash(false); setShowBlockMenu(false); setShowSelToolbar(false); }}
+  >
+      <div className="page-icon-large">📝</div>
+      <h1 className="page-title">渐进式召回架构</h1>
+
+      {/* Frontmatter */}
+      {metaMode === 'table' ? (
+        <table className="meta-table">
+          <tbody>
+            <tr>
+              <th>别名</th>
+              <td>Progressive Recall、三阶段召回
+                <span className="meta-toggle" onClick={() => setMetaMode('yaml')}>查看 YAML</span>
+              </td>
+            </tr>
+            <tr>
+              <th>标签</th>
+              <td>
+                <span className="meta-tag">#架构</span>
+                <span className="meta-tag">#AI</span>
+                <span className="meta-tag">#检索</span>
+              </td>
+            </tr>
+            <tr>
+              <th>创建时间</th>
+              <td style={{ fontFamily: 'var(--font-mono)', fontSize: 12 }}>2026-09-02</td>
+            </tr>
+            <tr>
+              <th>置信度</th>
+              <td>
+                <div className="confidence-row">
+                  <div className="confidence-bar"><div className="confidence-fill" style={{ width: '87%' }} /></div>
+                  <span className="confidence-score">87</span>
+                </div>
+                <div style={{ fontSize: 11, color: 'var(--ink-tertiary)', marginTop: 2 }}>
+                  高 · 12 次修订 · 最近更新于 1 天前
+                </div>
+              </td>
+            </tr>
+          </tbody>
+        </table>
+      ) : (
+        <div className="yaml-raw">
+          <span className="yaml-key">alias</span>: [<span className="yaml-str">"Progressive Recall"</span>, <span className="yaml-str">"三阶段召回"</span>]<br/>
+          <span className="yaml-key">tags</span>:<br/>
+          &nbsp;&nbsp;- <span className="yaml-str">架构</span><br/>
+          &nbsp;&nbsp;- <span className="yaml-str">AI</span><br/>
+          &nbsp;&nbsp;- <span className="yaml-str">检索</span><br/>
+          <span className="yaml-key">created</span>: <span className="yaml-str">2026-09-02</span><br/>
+          <span className="yaml-key">confidence</span>: <span className="yaml-num">87</span>
+          <span className="meta-toggle" style={{ float: 'right' }} onClick={() => setMetaMode('table')}>表格视图</span>
+        </div>
+      )}
+
+      {/* Blocks */}
+      <Blk type="h1" text="概述" />
+      <Blk
+        type="p"
+        onContentClick={(e) => { e.stopPropagation(); setShowSlash(v => !v); }}
+        text={
+          <>渐进式召回（Progressive Recall）是 NexNote AI 层的核心检索机制，旨在平衡召回质量与响应延迟。设计目标是在不牺牲精度的前提下，让 95% 的查询在 200ms 内返回首屏结果。<span className="hashtag">#架构</span></>
+        }
+      />
+
+      <Blk type="callout" icon="💡" text="核心思路：先粗后精。先用低成本方法快速缩小候选集，再用高成本方法精排。" />
+
+      <Blk type="h2" text="三阶段架构" />
+      <Blk type="p" text="召回管道分为三个递进阶段，前一阶段的输出是后一阶段的输入：" />
+
+      <Blk type="ol" items={[
+        <>关键词粗筛（FTS5）—— 基于 SQLite FTS5 的全文检索，利用 BM25 打分，从全 vault 中快速筛选 top-100 候选块。</>,
+        <>双链关系扩展（Link Index）—— 沿 <span className="wikilink">知识网络</span> 的反向链接与别名关系向外扩展 1–2 跳，补充语义关联但字面不匹配的块。</>,
+        <>向量重排（sqlite-vec）—— 对 top-50 候选块做嵌入向量余弦相似度重排，<b
+          className="sel-trigger"
+          style={{ cursor: 'pointer', borderBottom: '2px solid #F59E0B', paddingBottom: 1 }}
+          title="点击试选这段文字"
+          onClick={(e) => { e.stopPropagation(); setShowSelToolbar(v => !v); }}
+        >置信度作为乘性因子</b> 参与最终排序。</>,
+      ]} />
+
+      <Blk type="divider" />
+
+      <Blk type="h2" text="与置信度的关系" />
+      <Blk type="p" text={
+        <>置信度由 <span className="wikilink">Git 历史引擎</span> 计算，代表一篇页面的"可信程度"。它<span style={{background: '#FEF3C7', padding: '0 3px', borderRadius: 3}}>不作为 UI 中的主要筛选维度</span>（避免用户过度依赖），而是作为后端召回排序的乘性权重因子。</>
+      } />
+
+      <Blk type="quote" text="置信度是隐性的排序信号，不是显性的过滤条件。—— 设计原则" />
+
+      <Blk type="h3" text="代码示例（伪代码）" />
+      <Blk type="code" text={`function progressiveRecall(query, topK = 20) {\n  // Stage 1: FTS keyword search\n  let candidates = fts5.search(query, { limit: 100 });\n  // Stage 2: Link expansion (1-hop)\n  candidates = linkIndex.expand(candidates, { hops: 1 });\n  // Stage 3: Vector rerank × confidence\n  candidates = vecRerank(candidates, query.embedding);\n  candidates = candidates.map(c => ({\n    ...c,\n    score: c.vecScore * (0.5 + 0.5 * c.confidence / 100)\n  }));\n  return candidates.sort((a,b) => b.score - a.score).slice(0, topK);\n}`} />
+
+      <Blk type="h2" text="可扩展性" />
+      <Blk type="p" text={<>三阶段中的每一环都可通过 <span className="wikilink">检索 Skill</span> 插件扩展。例如：</>} />
+      <Blk type="ul" items={[
+        <>Stage 1 可替换为 Elasticsearch / Typesense 插件（针对超大 vault）</>,
+        <>Stage 2 可接入 GraphRAG 社区发现 Skill（后续版本）</>,
+        <>Stage 3 可切换嵌入模型 Provider</>,
+      ]} />
+
+      <Blk type="divider" />
+
+      <Blk type="p" text={<>相关页面：<span className="wikilink">置信度算法设计</span> · <span className="wikilink">检索评估框架</span> · <span className="wikilink">AI 层架构备忘</span></>} />
+
+      {/* Slash menu */}
+      {showSlash && <SlashMenu onClose={() => setShowSlash(false)} />}
+
+      {/* Block menu */}
+      {showBlockMenu && <BlockMenu onClose={() => setShowBlockMenu(false)} />}
+
+      {/* Selection toolbar */}
+      {showSelToolbar && <SelToolbar onPolish={() => { setShowSelToolbar(false); setShowDiff(true); }} onClose={() => setShowSelToolbar(false)} />}
+
+      {/* Hint */}
+      <div className="empty-hint">
+        点击 <b>第一段正文</b> 模拟输入 <kbd>/</kbd> · 悬停块左侧 <kbd>⋮⋮</kbd> 点击打开块菜单 · 点击「<b style={{color:'var(--accent-peach-ink)'}}>乘性因子</b>」模拟选中文字
+      </div>
+    </div>
+  );
+}
+
+// ===== Single Block =====
+function Block({ type, text, items, icon, onContentClick, onHandleClick }) {
+  const [hover, setHover] = useState(false);
+  const content = (() => {
+    switch (type) {
+      case 'h1': return <h1>{text}</h1>;
+      case 'h2': return <h2>{text}</h2>;
+      case 'h3': return <h3>{text}</h3>;
+      case 'p': return <p>{text}</p>;
+      case 'ul': return <ul>{items.map((it, i) => <li key={i}>{it}</li>)}</ul>;
+      case 'ol': return <ol>{items.map((it, i) => <li key={i}>{it}</li>)}</ol>;
+      case 'code': return <pre>{text}</pre>;
+      case 'quote': return <blockquote>{text}</blockquote>;
+      case 'callout': return (
+        <div className="callout">
+          <div className="callout-icon">{icon}</div>
+          <div className="callout-body">{text}</div>
+        </div>
+      );
+      case 'divider': return <div className="divider" />;
+      default: return <p>{text}</p>;
+    }
+  })();
+
+  return (
+    <div className="block" onMouseEnter={() => setHover(true)} onMouseLeave={() => setHover(false)}>
+      <div className="block-handle-col">
+        <span className="block-btn add" title="点击添加块">+</span>
+        <span className="block-btn drag" title="拖拽移动 / 点击打开块菜单" onClick={(e) => { e.stopPropagation(); onHandleClick && onHandleClick(e); }}>⋮⋮</span>
+      </div>
+      <div className="block-content" onClick={onContentClick}>{content}</div>
+    </div>
+  );
+}
+
+// ===== Slash Menu =====
+function SlashMenu({ onClose }) {
+  const groups = [
+    {
+      title: '基础块',
+      items: [
+        { icon: '¶', title: '正文', desc: '普通文本段落', kbd: '⌘⇧0' },
+        { icon: 'H₁', title: '一级标题', desc: '大标题', kbd: '⌘⇧1' },
+        { icon: 'H₂', title: '二级标题', desc: '中标题', kbd: '⌘⇧2' },
+        { icon: 'H₃', title: '三级标题', desc: '小标题', kbd: '⌘⇧3' },
+        { icon: '•', title: '无序列表', desc: '简单项目符号列表', kbd: '⌘⇧8' },
+        { icon: '1.', title: '有序列表', desc: '带编号列表', kbd: '⌘⇧7' },
+        { icon: '❝', title: '引用', desc: '引用块', kbd: '' },
+      ],
+    },
+    {
+      title: '高级块',
+      items: [
+        { icon: '</>', title: '代码块', desc: '带语法高亮', kbd: '⌘⇧C' },
+        { icon: '💡', title: '标注 Callout', desc: '醒目的提示/警告块', kbd: '' },
+        { icon: '⊞', title: '表格', desc: '结构化数据表', kbd: '' },
+        { icon: '📊', title: 'Mermaid 图表', desc: '通过插件加载', kbd: '' },
+        { icon: '📎', title: '文件嵌入', desc: '图片 / PDF / 附件', kbd: '' },
+        { icon: '🔲', title: '待办清单', desc: '可勾选任务项', kbd: '' },
+      ],
+    },
+    {
+      title: 'AI 动作',
+      items: [
+        { icon: '✦', title: 'AI 继续写作', desc: '基于上下文续写', kbd: '' },
+        { icon: '✎', title: 'AI 润色', desc: '优化表达与语气', kbd: '' },
+        { icon: '⇅', title: 'AI 扩写', desc: '展开详细论述', kbd: '' },
+        { icon: '⇵', title: 'AI 缩写', desc: '精简凝练', kbd: '' },
+      ],
+    },
+  ];
+  return (
+    <div className="slash-menu" onClick={e => e.stopPropagation()}>
+      <div className="slash-header">基础块</div>
+      {groups[0].items.slice(0, 4).map((it, i) => (
+        <div key={i} className={'slash-item' + (i === 0 ? ' selected' : '')}>
+          <div className="slash-icon">{it.icon}</div>
+          <div className="slash-text">
+            <div className="slash-title">{it.title}</div>
+            <div className="slash-desc">{it.desc}</div>
+          </div>
+          {it.kbd && <span className="slash-kbd">{it.kbd}</span>}
+        </div>
+      ))}
+      <div className="slash-header">高级块</div>
+      {groups[1].items.slice(0, 3).map((it, i) => (
+        <div key={i} className="slash-item">
+          <div className="slash-icon">{it.icon}</div>
+          <div className="slash-text">
+            <div className="slash-title">{it.title}</div>
+            <div className="slash-desc">{it.desc}</div>
+          </div>
+        </div>
+      ))}
+      <div className="slash-header">AI 动作</div>
+      {groups[2].items.slice(0, 2).map((it, i) => (
+        <div key={i} className="slash-item">
+          <div className="slash-icon" style={{ background: 'var(--accent-mint)', borderColor: 'var(--accent-mint)' }}>{it.icon}</div>
+          <div className="slash-text">
+            <div className="slash-title">{it.title}</div>
+            <div className="slash-desc">{it.desc}</div>
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+// ===== Block Menu =====
+function BlockMenu({ onClose }) {
+  const items = [
+    { icon: '⌫', title: '删除', shortcut: 'Del', danger: true },
+    { icon: '⎘', title: '复制', shortcut: '⌘D' },
+    { icon: '↕', title: '上移', shortcut: '⌘↑' },
+    { icon: '↕', title: '下移', shortcut: '⌘↓' },
+    { icon: '🔗', title: '复制块链接' },
+    { icon: '✎', title: '更改类型…' },
+    { icon: '👥', title: '查看块历史' },
+  ];
+  return (
+    <div className="block-menu" onClick={e => e.stopPropagation()}>
+      {items.map((it, i) => (
+        <div key={i} className={'bm-item' + (it.danger ? ' danger' : '')}>
+          <span className="bm-icon">{it.icon}</span>
+          <span>{it.title}</span>
+          {it.shortcut && <span className="bm-shortcut">{it.shortcut}</span>}
+        </div>
+      ))}
+    </div>
+  );
+}
+
+// ===== Selection Toolbar =====
+function SelToolbar({ onClose, onPolish }) {
+  return (
+    <div className="sel-toolbar" onClick={e => e.stopPropagation()}>
+      <div className="sel-btn"><b>B</b></div>
+      <div className="sel-btn"><i>I</i></div>
+      <div className="sel-btn"><u>U</u></div>
+      <div className="sel-btn"><code>&lt;/&gt;</code></div>
+      <div style={{ width: 1, background: '#555', margin: '2px 4px' }} />
+      <div className="sel-btn ai" onClick={onPolish}>✦ AI 润色</div>
+    </div>
+  );
+}
+
+// ===== Diff Preview =====
+function DiffPreview({ onClose }) {
+  return (
+    <div className="diff-view">
+      <div className="diff-title">
+        ✎ 润色建议 · diff 预览
+      </div>
+      <div className="diff-line diff-del">− 置信度算法直接影响召回质量。</div>
+      <div className="diff-line diff-add">+ 置信度作为召回排序的乘性因子，对检索精度起关键作用。</div>
+      <div className="diff-actions">
+        <button className="diff-btn primary">接受修改</button>
+        <button className="diff-btn">拒绝</button>
+        <button className="diff-btn">在编辑器中打开</button>
+      </div>
+    </div>
+  );
+}
+
+// ===== Timeline Panel =====
+function TimelinePanel({ onClose }) {
+  const groups = [
+    {
+      title: '今天',
+      items: [
+        { msg: '手动提交：完成三阶段架构描述', time: '14:32', auto: false },
+        { msg: '自动保存 · 修改了 1 个块', time: '14:28', auto: true },
+        { msg: '自动保存 · 修改了 3 个块', time: '14:15', auto: true },
+      ],
+    },
+    {
+      title: '昨天',
+      items: [
+        { msg: '手动提交：新增可扩展性章节', time: '昨天 21:10', auto: false },
+        { msg: '自动保存 · 7 处修改', time: '昨天 20:45', auto: true },
+        { msg: '自动保存 · 2 处修改', time: '昨天 19:30', auto: true },
+        { msg: '手动提交：初稿完成', time: '昨天 18:02', auto: false },
+      ],
+    },
+    {
+      title: '9 月 3 日',
+      items: [
+        { msg: '创建页面', time: '9 月 3 日 10:15', auto: false },
+      ],
+    },
+  ];
+  return (
+    <div className="timeline-panel" onClick={e => e.stopPropagation()}>
+      <div className="panel-header">
+        <span>⏱ 版本时间线</span>
+        <div style={{ marginLeft: 'auto', fontSize: 12, color: 'var(--ink-tertiary)', cursor: 'pointer' }} onClick={onClose}>×</div>
+      </div>
+      <div className="panel-body">
+        {groups.map((g, gi) => (
+          <div key={gi} className="timeline-group">
+            <div className="timeline-group-title">{g.title}</div>
+            {g.items.map((it, i) => (
+              <div key={i} className="timeline-item">
+                <span className={'timeline-dot' + (it.auto ? ' auto' : '')} />
+                <div className="timeline-info">
+                  <div className="timeline-msg">{it.msg}</div>
+                  <div className="timeline-meta">{it.time}</div>
+                </div>
+                {it.auto && <span className="timeline-auto-badge">自动</span>}
+              </div>
+            ))}
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+// ===== Graph View =====
+function GraphView() {
+  // 用 SVG 画一个简单的知识图谱示意
+  const nodes = useMemo(() => {
+    const list = [];
+    const center = { x: 400, y: 300, label: '渐进式召回架构', size: 14, highlight: true };
+    list.push(center);
+    const rings = [
+      { dist: 130, count: 6, size: 10 },
+      { dist: 230, count: 10, size: 7 },
+    ];
+    let id = 1;
+    const labels = [
+      '置信度算法','知识网络设计','检索评估框架','AI 层架构备忘','检索 Skill','向量检索调研',
+      '产品架构备忘','技术栈选型','插件 API 设计','编辑器内核','竞品分析','Mermaid 图',
+      'Git 集成','块模型','frontmatter','双链语法',
+    ];
+    rings.forEach((r, ri) => {
+      for (let i = 0; i < r.count; i++) {
+        const angle = (i / r.count) * Math.PI * 2 + ri * 0.3;
+        list.push({
+          x: center.x + Math.cos(angle) * r.dist + (Math.random() - 0.5) * 20,
+          y: center.y + Math.sin(angle) * r.dist * 0.75 + (Math.random() - 0.5) * 15,
+          label: labels[id - 1] || `页面 ${id}`,
+          size: r.size,
+          id: id++,
+        });
+      }
+    });
+    return list;
+  }, []);
+
+  return (
+    <div className="graph-view">
+      <svg className="graph-canvas">
+        {/* 边 */}
+        {nodes.slice(1).map((n, i) => (
+          <line key={'e'+i} x1={nodes[0].x} y1={nodes[0].y} x2={n.x} y2={n.y}
+                stroke="var(--hairline-strong)" strokeWidth={i < 6 ? 1.5 : 0.8} />
+        ))}
+        {/* 二阶之间的一些边 */}
+        {nodes.slice(7, 12).map((n, i) => (
+          <line key={'e2'+i} x1={nodes[2+i].x} y1={nodes[2+i].y} x2={n.x} y2={n.y}
+                stroke="var(--hairline)" strokeWidth={0.6} strokeDasharray="2 2" />
+        ))}
+        {/* 节点 */}
+        {nodes.map((n, i) => (
+          <g key={i}>
+            <circle cx={n.x} cy={n.y} r={n.size}
+                    fill={n.highlight ? 'var(--accent-mint-ink)' : 'var(--ground)'}
+                    stroke={n.highlight ? 'var(--accent-mint-ink)' : 'var(--hairline-strong)'}
+                    strokeWidth={1.5}
+                    style={{ cursor: 'pointer' }} />
+            {n.size >= 10 && (
+              <text x={n.x} y={n.y + n.size + 14} textAnchor="middle"
+                    fontSize={n.highlight ? 12 : 10.5}
+                    fill={n.highlight ? 'var(--ink)' : 'var(--ink-secondary)'}
+                    fontWeight={n.highlight ? 600 : 400}
+                    fontFamily="var(--font-sans)">
+                {n.label}
+              </text>
+            )}
+          </g>
+        ))}
+      </svg>
+      <div className="graph-filter">
+        <div className="graph-filter-title">🌐 图谱过滤器</div>
+        <div style={{ fontSize: 11, color: 'var(--ink-secondary)', marginBottom: 6 }}>视图模式</div>
+        <div style={{ display: 'flex', gap: 4, marginBottom: 10 }}>
+          <span style={{ flex: 1, textAlign: 'center', padding: '3px 6px', borderRadius: 5, background: 'var(--accent-mint)', color: 'var(--accent-mint-ink)', fontSize: 11, fontWeight: 500 }}>局部</span>
+          <span style={{ flex: 1, textAlign: 'center', padding: '3px 6px', borderRadius: 5, background: 'var(--surface)', fontSize: 11, color: 'var(--ink-secondary)', cursor: 'pointer' }}>全局</span>
+        </div>
+        <div style={{ fontSize: 11, color: 'var(--ink-secondary)', marginBottom: 6 }}>标签过滤</div>
+        <div className="graph-tag-filter">
+          <span className="graph-tag active">#架构</span>
+          <span className="graph-tag">#AI</span>
+          <span className="graph-tag">#检索</span>
+          <span className="graph-tag">#编辑器</span>
+        </div>
+        <div className="graph-depth">
+          <span style={{ fontSize: 11, color: 'var(--ink-secondary)' }}>关系深度</span>
+          <input type="range" min="1" max="3" defaultValue="2" />
+          <span style={{ fontSize: 11, color: 'var(--ink-secondary)', fontFamily: 'var(--font-mono)' }}>2</span>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ===== Command Palette =====
+function CommandPalette({ onClose }) {
+  const sections = [
+    {
+      title: '页面',
+      items: [
+        { icon: '📝', title: '渐进式召回架构', desc: '打开页面', kbd: '↵' },
+        { icon: '🧠', title: '知识网络设计', desc: '打开页面', kbd: '↵' },
+        { icon: '🎨', title: '交互设计规范', desc: '打开页面', kbd: '↵' },
+        { icon: '⚙️', title: '技术栈选型', desc: '打开页面', kbd: '↵' },
+      ],
+    },
+    {
+      title: '命令',
+      items: [
+        { icon: '✨', title: '新建页面', desc: '在当前文件夹创建', kbd: '⌘N' },
+        { icon: '🔍', title: '全文搜索', desc: '搜索 vault 中所有内容', kbd: '⌘⇧F' },
+        { icon: '🌐', title: '打开图谱视图', desc: '全局知识图谱', kbd: '⌘G' },
+        { icon: '⏱', title: '打开版本时间线', desc: '当前页面历史', kbd: '' },
+      ],
+    },
+    {
+      title: 'AI 动作',
+      items: [
+        { icon: '✦', title: 'AI 总结当前页面', desc: '生成摘要', kbd: '' },
+        { icon: '✦', title: 'AI 提问：关于这个 vault…', desc: '开启对话', kbd: '' },
+        { icon: '✦', title: 'AI 查找相关页面', desc: '语义相似推荐', kbd: '' },
+      ],
+    },
+  ];
+  return (
+    <div className="cmd-overlay" onClick={onClose}>
+      <div className="cmd-box" onClick={e => e.stopPropagation()}>
+        <div className="cmd-input">
+          <span style={{ color: 'var(--ink-tertiary)' }}>🔍</span>
+          <input autoFocus placeholder="搜索页面、运行命令、调用 AI…" />
+          <span style={{ fontSize: 11, color: 'var(--ink-tertiary)', fontFamily: 'var(--font-mono)' }}>ESC</span>
+        </div>
+        <div style={{ overflowY: 'auto', flex: 1 }}>
+          {sections.map((s, si) => (
+            <div key={si}>
+              <div className="cmd-section-title">{s.title}</div>
+              {s.items.map((it, i) => (
+                <div key={i} className={'cmd-item' + (si === 0 && i === 0 ? ' selected' : '')}>
+                  <div className="cmd-icon">{it.icon}</div>
+                  <div className="cmd-text">
+                    <div className="cmd-title">{it.title}</div>
+                    <div className="cmd-desc">{it.desc}</div>
+                  </div>
+                  {it.kbd && <span className="cmd-kbd">{it.kbd}</span>}
+                </div>
+              ))}
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ===== Mount =====
+const root = ReactDOM.createRoot(document.getElementById('root'));
+root.render(<App />);
+</script>
+</body>
+</html>

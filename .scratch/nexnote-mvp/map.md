@@ -33,7 +33,10 @@ Label: wayfinder:map
 - [08 · 技术架构收敛](issues/08-tech-architecture.md): 默认栈定稿——Electron + React + TS + TailwindCSS/shadcn/ui + TipTap 3（框架无关内核包）+ Obsidian 公开方言映射 + SQLite 单库（FTS5/Link Index/sqlite-vec）+ simple-git 调**默认捆绑 Git**（dugite）+ 凭证/SSH 环境集成 + 系统 Git 高级回退；三案原型同绑默认栈、差异在产品形态；Milkdown 为 round-trip spike 失败时的切换备选。ADR docs/adr/0001-default-tech-stack.md + docs/adr/0002-bundled-git-by-default.md。
 - [09 · AI 架构对齐](issues/09-ai-architecture.md): 多 Profile 供应商配置（分功能指定模型）+ 主进程持钥自有 Provider Adapter；embedding 默认远程端点、本地小模型留接口；**会话即页面**（type: chat，可续聊可双链）；召回三阶段走默认内置检索 Skill（插件可扩展）、置信度作重排乘性因子；未配置 Key = 常驻入口 + 引导向导。
 - [10 · 插件与 Skill 系统架构对齐](issues/10-plugin-skill-architecture.md): 检索 Skill = 受约束插件（同运行时同权限面，仅检索类能力）；插件 API semver + minAppVersion + 兼容矩阵；权限 = 安装 diff + 运行时首用确认 + 逐项 revoke；MVP 内置示范插件 Mermaid + KaTeX 走完整插件管线验收；本地安装文件夹/zip + ECDSA 式签名。
-- [13 · 整案原型 C：AI 原生驾驶舱](issues/13-prototype-c-ai-first.md): 原型已产出（docs/research/prototypes/c-ai-native-cockpit.html，单文件可点击）——右侧 cockpit 占 ~41% 宽度作主组织面；渐进召回三阶段可视化（粗筛/双链扩展/重排含命中数与耗时）；置信度乘性重排 bar 可视化（sim vs final，含抬升↑标注）+ 属性面板因子分解；块编辑基线（选区 AI 工具栏 6 动作/diff 回写/斜杠/^id 铬点/表格↔YAML）；Git 状态栏+时间线抽屉；会话即页面一键保存；检索 Skill 抽屉；取舍 = 编辑器让宽度换「AI 作为原生层」验证，仅待 14 号评审。
+- [11 · 整案原型 A：块编辑优先工作台](issues/11-prototype-a-block-first.md): **14 号票认可案（无修改意见直接采纳）**——Notion pre-AI 暖系、块编辑器为主角；覆盖块手柄/斜杠/选区 AI 工具栏与 diff/双链回链/frontmatter 双模式/Git 状态与时间线/置信度/对话 dock/渐进召回/局部图谱/⌘K；产物 docs/research/prototypes/a-block-first.html（canonical）。
+- [12 · 整案原型 B：知识网络优先](issues/12-prototype-b-network-first.md): B 案原型交付（docs/research/prototypes/archive/prototype-b-network-first.html），「夜间星图」视觉语言、知识网络一等公民——每页右栏常驻局部图谱+相关页+反链、全局图谱首页、标签视图、虚链即创；覆盖编辑器基线、元数据双模式、Git 时间线+置信度、AI 三阶段召回+上下文注入、Skill/插件设置。**14 号票未获采纳，已归档。**
+- [13 · 整案原型 C：AI 原生驾驶舱](issues/13-prototype-c-ai-first.md): 原型已产出（docs/research/prototypes/archive/c-ai-native-cockpit.html，单文件可点击）——右侧 cockpit 占 ~41% 宽度作主组织面；渐进召回三阶段可视化（粗筛/双链扩展/重排含命中数与耗时）；置信度乘性重排 bar 可视化（sim vs final，含抬升↑标注）+ 属性面板因子分解；块编辑基线（选区 AI 工具栏 6 动作/diff 回写/斜杠/^id 铬点/表格↔YAML）；Git 状态栏+时间线抽屉；会话即页面一键保存；检索 Skill 抽屉；取舍 = 编辑器让宽度换「AI 作为原生层」验证。**14 号票未获采纳，已归档。**
+- [14 · 原型评审确认](issues/14-prototype-review.md): 用户拍板认可案 = A（块编辑优先，v0 直接采纳、无修改意见）；A 案绑定默认栈升级为最终技术架构决策（与 08 一致，ADR 0001/0002 维持）；B/C 归档至 docs/research/prototypes/archive/；15 号票以 A v0 为基线。
 
 ## Not yet specified
 
