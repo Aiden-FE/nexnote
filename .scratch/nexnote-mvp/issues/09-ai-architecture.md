@@ -1,7 +1,7 @@
 # 09 · AI 架构对齐：适配层、上下文注入与召回
 
 Type: grilling
-Status: open
+Status: resolved
 Blocked by: 05, 08
 
 ## Question
@@ -14,3 +14,33 @@ Blocked by: 05, 08
 4. 渐进式召回管道：粗筛 → 双链扩展 → 向量重排三阶段的工程位置（Skill 内）、置信度 → 召回权重挂钩方式、向量索引构建与增量更新时机。
 
 产出：AI 层架构决策（ticket 内 Answer），可酌情落 ADR。
+
+## Answer
+
+AI 层架构定稿（grilling 一轮，均采纳推荐案；依据 05 号票研究 + 08 号票默认栈）：
+
+### 1. Provider Adapter 与配置模型
+- 自有 Provider Adapter（OpenAI 协议传输兼容；capabilities 探测 + 自有流事件协议隔离 SSE / tools / usage 差异）——05 票。
+- **多 Profile 配置**：每个 Profile = base-url + key + 模型 + 参数（如「OpenAI 官方」「本地 Ollama」「中转站」）；全局默认 Profile；写作辅助 / 对话 / embedding 三处可分别指定 Profile 与模型；支持导入导出。
+- 密钥与网络请求只发生在主进程；Renderer 经 IPC 收脱敏事件；禁止浏览器直连——05 票。
+
+### 2. Embedding
+- MVP 默认 = 用户 API 的 embeddings 端点；本地小模型留接口、按需下载为可选增强（不随包打包）。
+- 模型 / 维度 / metric 变更 = 新 generation 后全量重建，禁止混检——05 票。
+
+### 3. 写作辅助管线
+- 三入口六动作（07 票）；请求组装 = 选区/块上下文 + 可选当前文档摘要；回写 = diff 预览制（07 票）。
+- token 预算组装优先级：当前选区/块 > 当前文档 > 反向链接文档 > 召回文档，超限截断并提示。
+
+### 4. 对话面板与会话存储
+- 右侧 dock（07 票）；**会话即页面**：.md + frontmatter（type: chat，记录 Profile/模型/参数），Git 版本化、可双链引用、可续聊；用户消息与 AI 回答用块结构区分；「保存为文档」= 就地成为普通页面。
+- 上下文注入 chips（当前文档/选区/关联双链文档/手动附加）+ 召考来源展示（07 票）。
+
+### 5. 渐进召回管道
+- 三阶段（05 票）：FTS+metadata 粗筛 → Link Index 1–2 跳扩展 → 向量重排 → token packing；向量库 sqlite-vec 与 Link Index 共库（SQLite 单库，08 票）。
+- 工程位置：**默认内置检索 Skill**（官方提供、默认启用），第三方 Skill 经插件体系（10 号票）扩展/替换召回策略；多 Skill 组合 = 各自召回结果合并重排。
+- 置信度挂钩：作为最终重排的乘性加权因子 + 自动提交降权（03 票机器可读消息格式）；公式与阈值 = 开发期调参项，由 15 号票切出的开发票承载。
+- 向量索引构建：后台队列防抖聚合（随保存/自动提交节奏），状态栏进度提示；embedding 不可用时降级为两阶段召回（粗筛+扩展）并在参考来源中标注。
+
+### 6. 未配置降级
+- AI 入口常驻；未配置 Key 时点击进入引导向导（base-url/key/连通性测试→完成解锁全部 AI 面）；对话 dock 空态 = 欢迎 + 配置引导。

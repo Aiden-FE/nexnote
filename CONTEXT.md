@@ -77,3 +77,11 @@ _Avoid_: 引用列表
 
 **首启动向导（Onboarding Wizard）**:
 新建空 vault / 打开本地文件夹 / 克隆远程空仓库三选一的初始化流程。
+
+**供应商 Profile（Provider Profile）**:
+一套完整的模型服务接入配置（base-url、API key、模型名、参数）；多 Profile 并存，各 AI 功能可分别指定。
+_Avoid_: 服务商配置（泛指）、账号
+
+**会话页面**:
+`type: chat` 的页面，AI 对话的载体；可续聊、可被双链引用、随 Git 版本化。
+_Avoid_: 聊天记录、会话文件
