@@ -29,6 +29,10 @@ export interface VaultLayout {
   dockWidth: number;
   splitEnabled: boolean;
   splitRatio: number;
+  /** 页面树折叠的目录（vault 相对路径，DEV-003） */
+  treeCollapsedDirs: string[];
+  /** 页面树显示非 .md 文件（默认隐藏，DEV-003） */
+  treeShowAllFiles: boolean;
 }
 
 export function defaultVaultLayout(): VaultLayout {
@@ -40,6 +44,8 @@ export function defaultVaultLayout(): VaultLayout {
     dockWidth: 320,
     splitEnabled: true,
     splitRatio: 0.5,
+    treeCollapsedDirs: [],
+    treeShowAllFiles: false,
   };
 }
 

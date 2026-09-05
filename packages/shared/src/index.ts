@@ -22,4 +22,5 @@ export {
   isIpcEventChannel,
   defaultVaultConfig,
   defaultVaultLayout,
+  sanitizeEntryName,
 } from './ipc/reexports';
