@@ -9,7 +9,6 @@ import type {
   ChatCompletionResult,
   ChatMessage,
   ChatParams,
-  ChatStreamEvent,
   ConnectionTestResult,
   EmbedResult,
 } from '../../types/ai';

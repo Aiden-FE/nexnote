@@ -266,7 +266,6 @@ export class AiService {
     const send = (event: ChatStreamEvent): void => {
       this.deps.sendEvent('ai:streamEvent', { streamId, event });
     };
-    send({ type: 'start', model });
     const handle = adapter.chatCompletionStream({ model, messages: options.messages, params }, send);
     this.streams.set(streamId, handle);
     void handle.done.finally(() => this.streams.delete(streamId));

@@ -229,6 +229,9 @@ export class OpenAIProtocolAdapter implements ProviderAdapter {
         return;
       }
 
+      // 连接已建立：先发 start（统一内部协议由协议层负责完整生命周期）
+      onEvent({ type: 'start', model: req.model });
+
       let streamDone = false;
       const parser = createSseParser((data) => {
         if (streamDone) return;
