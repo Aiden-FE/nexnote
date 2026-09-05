@@ -1,0 +1,1993 @@
+<!doctype html>
+<html lang="zh-CN" data-theme="dark">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>原型 C · NexNote AI 原生驾驶舱</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700&family=Geist+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+/* =========================================================
+   Design tokens — shadcn-ish 变量命名（提示与 ProseMirror/ Tailwind 的桥接位）
+   ========================================================= */
+:root{
+  --bg:            oklch(15.5% 0.012 250);
+  --panel:         oklch(19.5% 0.012 250);
+  --raised:        oklch(23.5% 0.012 250);
+  --raised-2:      oklch(27% 0.012 250);
+  --border:        oklch(30% 0.012 250);
+  --border-strong: oklch(38% 0.012 250);
+  --text:          oklch(96% 0.005 250);
+  --text-muted:    oklch(74% 0.01 250);
+  --text-dim:      oklch(55% 0.012 250);
+
+  --accent:        oklch(82% 0.12 195);   /* 仪器青 — AI / 召回主色 */
+  --accent-2:      oklch(88% 0.10 195);
+  --accent-soft:   oklch(82% 0.12 195 / 0.14);
+  --accent-line:   oklch(82% 0.12 195 / 0.32);
+
+  --warm:          oklch(82% 0.14 78);    /* 置信度 / 扩展阶段 */
+  --warm-soft:     oklch(82% 0.14 78 / 0.14);
+  --steel:         oklch(74% 0.04 248);   /* 粗筛阶段 */
+  --steel-soft:    oklch(74% 0.04 248 / 0.14);
+
+  --ok:            oklch(74% 0.14 155);
+  --ok-soft:       oklch(74% 0.14 155 / 0.16);
+  --danger:        oklch(68% 0.16 25);
+  --danger-soft:   oklch(68% 0.16 25 / 0.16);
+
+  --r-xs: 4px; --r-sm: 6px; --r: 8px; --r-md: 10px; --r-lg: 14px;
+
+  --shadow-1: 0 1px 0 oklch(0% 0 0 / .25), 0 1px 2px oklch(0% 0 0 / .35);
+  --shadow-2: 0 1px 0 oklch(0% 0 0 / .3), 0 8px 24px oklch(0% 0 0 / .35);
+  --shadow-3: 0 24px 64px oklch(0% 0 0 / .55);
+
+  --font-sans: "Geist", ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  --font-mono: "Geist Mono", ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+
+  --ease: cubic-bezier(.2,.7,.2,1);
+  --t-fast: 140ms; --t: 220ms; --t-slow: 380ms;
+}
+[data-theme="light"]{
+  --bg:#f6f7f8; --panel:#ffffff; --raised:#fbfcfd; --raised-2:#f1f3f5;
+  --border:#e4e6e9; --border-strong:#cdd2d8;
+  --text:#0f1115; --text-muted:#565b64; --text-dim:#828990;
+  --accent-soft: oklch(82% 0.12 195 / .12); --accent-line: oklch(82% 0.12 195 / .28);
+  --warm-soft: oklch(82% 0.14 78 / .14); --steel-soft: oklch(74% 0.04 248 / .10);
+  --ok-soft: oklch(74% 0.14 155 / .14); --danger-soft: oklch(68% 0.16 25 / .10);
+  --shadow-1: 0 1px 0 #00000008, 0 1px 2px #00000010;
+  --shadow-2: 0 1px 0 #00000008, 0 8px 24px #00000014;
+  --shadow-3: 0 24px 64px #00000022;
+}
+
+*{ box-sizing: border-box; }
+html,body{ height:100%; margin:0; }
+body{
+  font-family: var(--font-sans);
+  font-size: 14px; line-height: 1.55;
+  color: var(--text);
+  background: var(--bg);
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+button{ font: inherit; color: inherit; background:none; border:0; cursor:pointer; }
+input,textarea{ font: inherit; color: inherit; }
+code,kbd,.mono{ font-family: var(--font-mono); font-size: .92em; }
+a{ color: var(--accent-2); text-decoration: none; }
+a:hover{ text-decoration: underline; }
+::selection{ background: var(--accent-soft); color: var(--text); }
+
+/* =========================================================
+   Prototype banner — 显式标注：候选原型 / 绑定技术栈 / 取舍一句话
+   ========================================================= */
+.proto-banner{
+  display:flex; align-items:center; gap:14px;
+  padding: 7px 14px;
+  background: linear-gradient(90deg, var(--accent-soft), transparent 60%);
+  border-bottom: 1px solid var(--border);
+  font-size: 12px; color: var(--text-muted);
+}
+.proto-banner .tag{
+  font-family: var(--font-mono);
+  font-size: 10.5px; letter-spacing: .04em;
+  padding: 2px 7px; border-radius: 999px;
+  background: var(--accent-soft); color: var(--accent-2);
+  border: 1px solid var(--accent-line);
+}
+.proto-banner .stack{ color: var(--text); }
+.proto-banner .tradeoff{ color: var(--text-dim); }
+.proto-banner .spacer{ flex:1; }
+.proto-banner .about-btn{
+  color: var(--text-muted); padding: 3px 8px; border-radius: var(--r-sm);
+}
+.proto-banner .about-btn:hover{ background: var(--raised); color: var(--text); }
+
+/* =========================================================
+   App window
+   ========================================================= */
+.app{
+  display: grid;
+  grid-template-rows: 38px 1fr 26px;
+  height: calc(100vh - 33px);
+}
+.titlebar{
+  display:flex; align-items:center; gap:10px;
+  padding: 0 12px;
+  background: var(--panel);
+  border-bottom: 1px solid var(--border);
+  -webkit-app-region: drag;
+}
+.titlebar .brand{
+  display:flex; align-items:center; gap:8px;
+  font-weight: 600; letter-spacing: .01em;
+}
+.titlebar .brand .logo{
+  width: 18px; height: 18px; border-radius: 5px;
+  background: conic-gradient(from 200deg, var(--accent), var(--warm), var(--accent));
+  box-shadow: inset 0 0 0 1px var(--accent-line);
+}
+.titlebar .menu{ display:flex; gap:2px; -webkit-app-region: no-drag; }
+.titlebar .menu button{
+  padding: 4px 8px; border-radius: var(--r-sm); color: var(--text-muted); font-size: 12.5px;
+}
+.titlebar .menu button:hover{ background: var(--raised); color: var(--text); }
+.titlebar .spacer{ flex:1; }
+.titlebar .hint{
+  font-family: var(--font-mono); font-size: 11px;
+  padding: 3px 8px; border-radius: var(--r-sm);
+  background: var(--raised); border: 1px solid var(--border);
+  color: var(--text-muted); -webkit-app-region: no-drag;
+}
+.titlebar .hint:hover{ color: var(--text); border-color: var(--border-strong); }
+.titlebar .ctrls{ display:flex; gap:6px; -webkit-app-region: no-drag; }
+.titlebar .ctrls span{ width:12px; height:12px; border-radius:50%; background: var(--raised-2); }
+.titlebar .ctrls .close{ background: oklch(68% .16 25 / .9); }
+
+/* =========================================================
+   Workspace — 3 列
+   ========================================================= */
+.workspace{
+  display:grid;
+  grid-template-columns: 240px 1fr minmax(440px, 1.05fr);
+  min-height: 0;
+}
+body[data-sidebar="collapsed"] .workspace{ grid-template-columns: 48px 1fr minmax(440px, 1.05fr); }
+body[data-sidebar="collapsed"] .sidebar .label,
+body[data-sidebar="collapsed"] .sidebar .tree,
+body[data-sidebar="collapsed"] .sidebar .section-h{ display:none; }
+body[data-sidebar="collapsed"] .sidebar .vault{ justify-content:center; padding: 10px 0; }
+body[data-sidebar="collapsed"] .sidebar .rail-icon{ display:inline-flex; }
+
+/* ---------- Sidebar ---------- */
+.sidebar{
+  background: var(--panel);
+  border-right: 1px solid var(--border);
+  display:flex; flex-direction:column;
+  min-height: 0;
+}
+.sidebar .vault{
+  display:flex; align-items:center; gap:8px;
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--border);
+}
+.sidebar .vault .dot{ width:8px; height:8px; border-radius:50%; background: var(--ok); }
+.sidebar .vault .name{ font-weight: 600; }
+.sidebar .vault .branch{
+  margin-left:auto;
+  font-family: var(--font-mono); font-size: 11px;
+  color: var(--text-muted);
+  padding: 2px 6px; border-radius: var(--r-sm);
+  background: var(--raised); border:1px solid var(--border);
+}
+.sidebar .scroll{ overflow:auto; padding: 8px 6px 16px; }
+.sidebar .section-h{
+  display:flex; align-items:center; gap:6px;
+  padding: 10px 10px 6px;
+  font-size: 10.5px; letter-spacing: .08em; text-transform: uppercase;
+  color: var(--text-dim);
+}
+.sidebar .section-h .add{ margin-left:auto; opacity:.6; }
+.sidebar .section-h .add:hover{ opacity:1; }
+.sidebar .tree{ display:flex; flex-direction:column; gap:1px; }
+.tree-row{
+  display:flex; align-items:center; gap:6px;
+  padding: 5px 8px; border-radius: var(--r-sm);
+  color: var(--text-muted); font-size: 13px;
+  cursor: pointer; user-select: none;
+}
+.tree-row .caret{ width:12px; color: var(--text-dim); display:inline-block; transition: transform var(--t) var(--ease); }
+.tree-row.is-open .caret{ transform: rotate(90deg); }
+.tree-row .ico{ width:14px; height:14px; color: var(--text-dim); }
+.tree-row.is-active{ background: var(--raised); color: var(--text); }
+.tree-row:hover{ background: var(--raised); color: var(--text); }
+.tree-row.is-active .ico{ color: var(--accent-2); }
+.tree-row .badge{
+  margin-left:auto; font-family: var(--font-mono); font-size: 10.5px;
+  color: var(--text-dim); padding: 1px 5px; border-radius: 4px; background: var(--raised-2);
+}
+.tree-children{ padding-left: 14px; display:none; }
+.tree-row.is-open + .tree-children{ display:block; }
+.tree-row.chat .ico{ color: var(--accent-2); }
+.rail-icon{ display:none; padding: 8px 0; justify-content:center; color: var(--text-muted); }
+.rail-icon svg{ width:16px; height:16px; }
+
+/* ---------- Center: tabs + editor ---------- */
+.center{
+  display:flex; flex-direction:column; min-width:0; min-height:0;
+  background: var(--bg);
+}
+.tabs{
+  display:flex; align-items:center; gap: 2px;
+  padding: 6px 10px 0;
+  background: var(--panel);
+  border-bottom: 1px solid var(--border);
+}
+.tab{
+  display:flex; align-items:center; gap:8px;
+  padding: 7px 12px;
+  border-radius: var(--r-sm) var(--r-sm) 0 0;
+  color: var(--text-muted); font-size: 13px;
+  border: 1px solid transparent; border-bottom: 0;
+}
+.tab.is-active{ background: var(--bg); color: var(--text); border-color: var(--border); }
+.tab .ico{ width:13px; height:13px; }
+.tab.is-active.chat .ico{ color: var(--accent-2); }
+.tab .close{ color: var(--text-dim); padding: 0 2px; border-radius: 3px; }
+.tab .close:hover{ background: var(--raised-2); color: var(--text); }
+.tabs .spacer{ flex:1; }
+.tabs .iconbtn{
+  display:inline-flex; align-items:center; justify-content:center;
+  width: 26px; height: 26px; border-radius: var(--r-sm); color: var(--text-muted);
+}
+.tabs .iconbtn:hover{ background: var(--raised); color: var(--text); }
+
+.editor{
+  overflow:auto; padding: 28px 56px 120px;
+  scroll-behavior: smooth;
+}
+.editor-inner{ max-width: 720px; margin: 0 auto; }
+.doc-title{
+  font-size: 30px; font-weight: 700; letter-spacing: -.01em;
+  margin: 4px 0 14px;
+}
+.fm{
+  border: 1px solid var(--border);
+  border-radius: var(--r-md);
+  background: var(--panel);
+  margin-bottom: 22px;
+  overflow: hidden;
+}
+.fm-head{
+  display:flex; align-items:center; gap:8px;
+  padding: 8px 10px;
+  border-bottom: 1px solid var(--border);
+  font-size: 12px; color: var(--text-muted);
+}
+.fm-head .label{ font-weight: 600; color: var(--text); }
+.fm-head .toggle{
+  margin-left:auto; display:inline-flex; background: var(--raised-2);
+  border: 1px solid var(--border); border-radius: var(--r-sm); padding: 2px;
+}
+.fm-head .toggle button{
+  padding: 2px 8px; border-radius: 4px; font-size: 11.5px; color: var(--text-muted);
+}
+.fm-head .toggle button.is-on{ background: var(--raised); color: var(--text); box-shadow: var(--shadow-1); }
+.fm-body{ padding: 4px 0; }
+.fm-row{
+  display:grid; grid-template-columns: 140px 1fr;
+  align-items: center; gap: 8px;
+  padding: 6px 10px;
+  border-top: 1px solid var(--border);
+}
+.fm-row:first-child{ border-top: 0; }
+.fm-row .k{ color: var(--text-muted); font-size: 12.5px; }
+.fm-row .v{ font-size: 13px; }
+.fm-row .v .chip{ display:inline-flex; align-items:center; gap:4px; padding:1px 7px; border-radius:999px; background: var(--accent-soft); color: var(--accent-2); font-size:12px; margin-right:4px; }
+.fm-row .v .chip.steel{ background: var(--steel-soft); color: var(--steel); }
+.fm-row .v .chip.warm{ background: var(--warm-soft); color: var(--warm); }
+.fm-row .v input{
+  width:100%; background:transparent; border:0; outline:0; color: var(--text);
+  padding: 2px 0;
+}
+.fm-row .v input::placeholder{ color: var(--text-dim); }
+.fm.conf-row .k{ display:flex; align-items:center; gap:6px; }
+.fm-row .conf{
+  display:flex; align-items:center; gap:10px;
+}
+.fm-row .conf .score{
+  font-family: var(--font-mono); font-weight: 500; color: var(--warm);
+}
+.fm-row .conf .bar{
+  position: relative; flex: 1; height: 6px; border-radius: 999px; background: var(--raised-2); overflow:hidden;
+}
+.fm-row .conf .bar i{
+  position:absolute; inset: 0; width: 82%;
+  background: linear-gradient(90deg, var(--warm), oklch(82% .14 78 / .5));
+  border-radius: 999px;
+}
+.fm-row .conf .factors{
+  font-size: 11.5px; color: var(--text-dim);
+}
+.fm-yaml{
+  display:none; padding: 10px 12px;
+  font-family: var(--font-mono); font-size: 12.5px; color: var(--text);
+  white-space: pre;
+  background: var(--raised);
+}
+.fm.is-yaml .fm-body{ display:none; }
+.fm.is-yaml .fm-yaml{ display:block; }
+
+.blocks{ display:flex; flex-direction:column; gap: 2px; }
+.block{
+  position: relative;
+  padding: 4px 8px 4px 34px;
+  border-radius: var(--r-sm);
+  color: var(--text);
+}
+.block .gutter{
+  position:absolute; left: 4px; top: 6px;
+  display:flex; gap: 2px; opacity: 0; transition: opacity var(--t-fast) var(--ease);
+}
+.block:hover .gutter, .block:focus-within .gutter{ opacity: 1; }
+.block .gutter button{
+  width: 22px; height: 22px; border-radius: 4px; color: var(--text-dim);
+  display:inline-flex; align-items:center; justify-content:center;
+}
+.block .gutter button:hover{ background: var(--raised-2); color: var(--text); }
+.block h1{ font-size: 24px; font-weight: 700; margin: 12px 0 4px; }
+.block h2{ font-size: 19px; font-weight: 600; margin: 14px 0 4px; }
+.block h3{ font-size: 15.5px; font-weight: 600; margin: 10px 0 2px; color: var(--text); }
+.block p{ margin: 4px 0; }
+.block ul{ margin: 4px 0; padding-left: 18px; }
+.block ul li{ margin: 2px 0; }
+.block blockquote{
+  margin: 6px 0; padding: 4px 10px;
+  border-left: 3px solid var(--accent);
+  color: var(--text-muted);
+  background: var(--accent-soft);
+  border-radius: 0 var(--r-sm) var(--r-sm) 0;
+}
+.block code{ background: var(--raised-2); padding: 1px 5px; border-radius: 4px; }
+.block pre{
+  margin: 6px 0; padding: 10px 12px;
+  background: var(--raised); border: 1px solid var(--border);
+  border-radius: var(--r-sm);
+  font-family: var(--font-mono); font-size: 12.5px; line-height: 1.6;
+  overflow:auto;
+}
+.block pre .k{ color: var(--accent-2); }
+.block pre .s{ color: oklch(80% .10 30); }
+.block .wl{ color: var(--accent-2); border-bottom: 1px dashed var(--accent-line); cursor: pointer; }
+.block .wl.is-miss{ color: var(--text-muted); border-bottom-style: dotted; }
+.block .block-id{
+  font-family: var(--font-mono); font-size: 10.5px;
+  color: var(--text-dim);
+  margin-left: 6px; user-select: none;
+  opacity: 0; transition: opacity var(--t-fast) var(--ease);
+}
+.block:hover .block-id, .block:focus-within .block-id{ opacity: 1; }
+.block.selected{ background: oklch(82% .12 195 / .08); }
+
+/* selection floating toolbar (AI) */
+.ai-bar{
+  position: fixed; z-index: 50; display: none;
+  transform: translate(-50%, -100%);
+  background: var(--raised-2);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--r-md);
+  box-shadow: var(--shadow-2);
+  padding: 4px;
+  display: none; align-items:center; gap: 2px;
+}
+.ai-bar.is-on{ display:flex; }
+.ai-bar button{
+  display:inline-flex; align-items:center; gap:5px;
+  padding: 5px 9px; border-radius: var(--r-sm);
+  font-size: 12.5px; color: var(--text);
+}
+.ai-bar button:hover{ background: var(--accent-soft); color: var(--accent-2); }
+.ai-bar .sep{ width:1px; height: 18px; background: var(--border); margin: 0 2px; }
+.ai-bar .ai-dot{
+  width: 6px; height: 6px; border-radius:50%; background: var(--accent);
+  box-shadow: 0 0 10px var(--accent);
+}
+
+/* slash menu */
+.slash-menu{
+  position: absolute; z-index: 45; display:none;
+  width: 240px; max-height: 280px; overflow:auto;
+  background: var(--raised-2); border:1px solid var(--border-strong);
+  border-radius: var(--r-md); box-shadow: var(--shadow-2);
+  padding: 4px;
+}
+.slash-menu.is-on{ display:block; }
+.slash-menu .item{
+  display:flex; align-items:center; gap:8px;
+  padding: 6px 8px; border-radius: var(--r-sm);
+  font-size: 13px; color: var(--text);
+  cursor: pointer;
+}
+.slash-menu .item .ico{ width:14px; height:14px; color: var(--accent-2); }
+.slash-menu .item:hover, .slash-menu .item.is-active{ background: var(--accent-soft); color: var(--accent-2); }
+.slash-menu .item .hint{ margin-left:auto; color: var(--text-dim); font-size: 11px; }
+.slash-menu .group-h{
+  padding: 6px 8px 2px; font-size: 10.5px; letter-spacing: .08em; text-transform: uppercase; color: var(--text-dim);
+}
+
+/* =========================================================
+   Right Cockpit — the hero of Prototype C
+   ========================================================= */
+.cockpit{
+  display:flex; flex-direction:column; min-height: 0;
+  background: var(--panel);
+  border-left: 1px solid var(--border);
+  min-width: 0;
+}
+.cockpit-head{
+  display:flex; align-items:center; gap:10px;
+  padding: 10px 14px;
+  border-bottom: 1px solid var(--border);
+}
+.cockpit-head .title{
+  display:flex; flex-direction:column; gap: 1px; min-width: 0;
+}
+.cockpit-head .title .name{
+  font-weight: 600; font-size: 14px; white-space: nowrap; overflow:hidden; text-overflow: ellipsis;
+}
+.cockpit-head .title .sub{
+  font-size: 11.5px; color: var(--text-dim);
+  display:flex; align-items:center; gap:6px;
+}
+.cockpit-head .title .sub .model{ color: var(--accent-2); font-family: var(--font-mono); }
+.cockpit-head .spacer{ flex:1; }
+.cockpit-head .iconbtn{
+  display:inline-flex; align-items:center; justify-content:center;
+  width: 28px; height: 28px; border-radius: var(--r-sm); color: var(--text-muted);
+  border: 1px solid transparent;
+}
+.cockpit-head .iconbtn:hover{ background: var(--raised); color: var(--text); border-color: var(--border); }
+.cockpit-head .save{
+  font-size: 12px; padding: 5px 10px; border-radius: var(--r-sm);
+  background: var(--accent-soft); color: var(--accent-2);
+  border: 1px solid var(--accent-line);
+}
+.cockpit-head .save:hover{ background: oklch(82% .12 195 / .22); }
+
+.ctx-chips{
+  display:flex; flex-wrap: wrap; gap: 6px;
+  padding: 10px 14px;
+  border-bottom: 1px solid var(--border);
+  background: var(--raised);
+}
+.chip{
+  display:inline-flex; align-items:center; gap:6px;
+  padding: 4px 9px; border-radius: 999px;
+  background: var(--panel); border: 1px solid var(--border);
+  font-size: 12px; color: var(--text);
+}
+.chip.kind-page{ border-color: var(--accent-line); background: var(--accent-soft); color: var(--accent-2); }
+.chip.kind-sel{ border-color: oklch(80% .14 78 / .4); background: var(--warm-soft); color: var(--warm); }
+.chip .ico{ width:12px; height:12px; }
+.chip .x{ color: var(--text-dim); padding:0 2px; border-radius:3px; }
+.chip .x:hover{ background: var(--raised-2); color: var(--text); }
+.chip.add{ color: var(--text-muted); border-style: dashed; cursor: pointer; }
+.chip.add:hover{ color: var(--text); border-color: var(--border-strong); border-style: solid; }
+
+/* thread */
+.thread{
+  flex: 1; min-height: 0; overflow: auto;
+  padding: 16px 14px 8px;
+  display: flex; flex-direction: column; gap: 14px;
+}
+.msg{ display:flex; flex-direction:column; gap: 8px; }
+.msg .bubble{
+  max-width: 100%;
+  padding: 10px 12px; border-radius: var(--r-md);
+  font-size: 13.5px; line-height: 1.6;
+  word-break: break-word;
+}
+.msg.user .bubble{
+  align-self: flex-end;
+  background: var(--accent-soft); color: var(--text);
+  border: 1px solid var(--accent-line);
+  border-bottom-right-radius: 4px;
+  max-width: 88%;
+}
+.msg.ai .bubble{
+  background: var(--raised); color: var(--text);
+  border: 1px solid var(--border);
+  border-bottom-left-radius: 4px;
+}
+.msg.ai .bubble p{ margin: 6px 0; }
+.msg.ai .bubble code{ background: var(--raised-2); padding: 1px 5px; border-radius: 4px; }
+.msg.ai .bubble ul{ margin: 4px 0; padding-left: 18px; }
+.msg-meta{
+  font-size: 11px; color: var(--text-dim);
+  display:flex; align-items:center; gap:8px; padding: 0 2px;
+}
+.msg-meta .model{ font-family: var(--font-mono); color: var(--text-muted); }
+
+/* recall panel */
+.recall{
+  border: 1px solid var(--border);
+  border-radius: var(--r-md);
+  background: var(--raised);
+  overflow: hidden;
+}
+.recall-h{
+  display:flex; align-items:center; gap: 8px;
+  padding: 8px 10px;
+  border-bottom: 1px solid var(--border);
+  font-size: 12px; color: var(--text-muted);
+}
+.recall-h .h-title{ font-weight: 600; color: var(--text); }
+.recall-h .formula{
+  margin-left:auto; font-family: var(--font-mono); font-size: 11px; color: var(--text-dim);
+}
+.recall-h .toggle-formula{
+  font-size: 11px; color: var(--text-dim); padding: 2px 6px; border-radius: 4px; border:1px solid var(--border);
+}
+.recall-h .toggle-formula:hover{ color: var(--text); border-color: var(--border-strong); }
+.recall-body{ padding: 6px 6px 8px; display:flex; flex-direction:column; gap: 4px; }
+.stage{
+  display:grid; grid-template-columns: 64px 1fr auto; gap: 10px; align-items:center;
+  padding: 8px 10px;
+  border-radius: var(--r-sm);
+  background: var(--panel);
+  border: 1px solid var(--border);
+  transition: border-color var(--t) var(--ease), background var(--t) var(--ease);
+}
+.stage .badge{
+  font-family: var(--font-mono); font-size: 10.5px; letter-spacing: .04em;
+  padding: 3px 8px; border-radius: 999px; text-align:center;
+}
+.stage .badge.s1{ background: var(--steel-soft); color: var(--steel); }
+.stage .badge.s2{ background: var(--warm-soft);  color: var(--warm);  }
+.stage .badge.s3{ background: var(--accent-soft); color: var(--accent-2); }
+.stage .body{ display:flex; flex-direction:column; gap: 4px; min-width:0; }
+.stage .name{ font-weight: 600; font-size: 13px; }
+.stage .desc{ font-size: 12px; color: var(--text-muted); }
+.stage .hits{ font-family: var(--font-mono); font-size: 11.5px; color: var(--text-dim); white-space: nowrap; }
+.stage.is-running{ border-color: var(--accent-line); background: var(--accent-soft); }
+.stage.is-done{ border-color: var(--border); }
+.stage .hits .pulse{ display:inline-block; width:6px; height:6px; border-radius:50%; background: var(--accent); margin-right:6px; vertical-align: middle; animation: pulse 1.1s infinite; }
+@keyframes pulse{ 0%,100%{ opacity:.3; transform: scale(.8);} 50%{ opacity:1; transform: scale(1.15);} }
+.stage .viz{ display:flex; align-items:center; gap: 3px; margin-top: 2px; }
+.stage .viz .node{ width: 8px; height: 8px; border-radius:50%; background: var(--text-dim); }
+.stage .viz .node.is-hit{ background: var(--accent-2); box-shadow: 0 0 6px var(--accent-soft); }
+.stage .viz .link{ width: 4px; height: 1px; background: var(--border-strong); }
+.rerank-viz{
+  display:grid; grid-template-columns: 1fr; gap: 4px;
+  margin-top: 6px;
+}
+.rr-row{
+  display:grid; grid-template-columns: 1fr 56px 64px; align-items:center; gap: 8px;
+  font-size: 11.5px; color: var(--text-muted);
+  font-family: var(--font-mono);
+}
+.rr-row .name{ font-family: var(--font-sans); color: var(--text); font-size: 12px;
+  white-space: nowrap; overflow:hidden; text-overflow: ellipsis;
+}
+.rr-row .bars{ position: relative; height: 16px; background: var(--raised-2); border-radius: 4px; overflow: hidden; }
+.rr-row .bars .sim{ position:absolute; top:0; bottom:0; left:0; background: var(--steel); opacity:.55; }
+.rr-row .bars .final{ position:absolute; top:0; bottom:0; left:0; background: var(--accent); }
+.rr-row .sim-num{ color: var(--text-dim); }
+.rr-row .final-num{ color: var(--accent-2); font-weight: 500; text-align:right; }
+.rr-row.is-lift .final-num::after{ content: " ↑"; color: var(--warm); }
+
+/* cited sources */
+.cites{ margin-top: 6px; display:flex; flex-direction:column; gap: 4px; }
+.cite{
+  display:grid; grid-template-columns: 22px 1fr auto; gap: 8px; align-items:center;
+  padding: 7px 10px;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: var(--r-sm);
+  font-size: 12.5px;
+}
+.cite .stage-tag{
+  font-family: var(--font-mono); font-size: 10.5px;
+  padding: 2px 6px; border-radius: 4px; text-align:center;
+  background: var(--accent-soft); color: var(--accent-2);
+  border: 1px solid var(--accent-line);
+}
+.cite .title{ color: var(--text); }
+.cite .title .conf{
+  margin-left: 6px; font-family: var(--font-mono); font-size: 11px; color: var(--warm);
+}
+.cite .expand{ color: var(--text-dim); font-size: 11px; }
+.cite .passage{
+  grid-column: 1 / -1; display:none;
+  padding: 6px 8px; margin-top: 4px;
+  background: var(--raised-2); border-radius: var(--r-sm);
+  font-size: 12px; color: var(--text-muted);
+  border-left: 2px solid var(--accent);
+}
+.cite.is-open .passage{ display:block; }
+
+/* composer */
+.composer{
+  border-top: 1px solid var(--border);
+  padding: 10px 12px 12px;
+  background: var(--panel);
+}
+.composer .box{
+  border: 1px solid var(--border);
+  border-radius: var(--r-md);
+  background: var(--bg);
+  padding: 8px 8px 6px;
+  transition: border-color var(--t) var(--ease), box-shadow var(--t) var(--ease);
+}
+.composer .box:focus-within{ border-color: var(--accent-line); box-shadow: 0 0 0 3px var(--accent-soft); }
+.composer textarea{
+  width: 100%; min-height: 52px; max-height: 200px; resize: none;
+  background: transparent; border: 0; outline: 0; color: var(--text);
+  font-size: 13.5px; line-height: 1.55;
+}
+.composer .bar{
+  display:flex; align-items:center; gap: 6px; margin-top: 4px;
+}
+.composer .bar .left, .composer .bar .right{ display:flex; align-items:center; gap: 4px; }
+.composer .bar .right{ margin-left: auto; }
+.composer .iconbtn{
+  display:inline-flex; align-items:center; justify-content:center; gap:5px;
+  height: 26px; padding: 0 8px; border-radius: var(--r-sm);
+  color: var(--text-muted); font-size: 12px;
+}
+.composer .iconbtn:hover{ background: var(--raised); color: var(--text); }
+.composer .iconbtn.is-on{ color: var(--accent-2); background: var(--accent-soft); }
+.composer .send{
+  height: 28px; padding: 0 12px; border-radius: var(--r-sm);
+  background: var(--accent); color: oklch(15% 0 0);
+  font-weight: 600; font-size: 12.5px;
+  display:inline-flex; align-items:center; gap: 6px;
+}
+.composer .send:hover{ filter: brightness(1.05); }
+.composer .send[disabled]{ opacity:.4; cursor: not-allowed; }
+
+/* =========================================================
+   Status bar
+   ========================================================= */
+.statusbar{
+  display:flex; align-items:center; gap: 6px;
+  padding: 0 10px;
+  background: var(--panel);
+  border-top: 1px solid var(--border);
+  font-size: 11.5px; color: var(--text-muted);
+}
+.statusbar .seg{
+  display:inline-flex; align-items:center; gap:5px;
+  padding: 3px 7px; border-radius: var(--r-sm);
+  cursor: pointer; user-select: none;
+}
+.statusbar .seg:hover{ background: var(--raised); color: var(--text); }
+.statusbar .seg .dot{ width:6px; height:6px; border-radius:50%; background: var(--ok); }
+.statusbar .seg.warn .dot{ background: var(--warm); }
+.statusbar .seg.dirty .dot{ background: var(--accent); }
+.statusbar .seg .k{ font-family: var(--font-mono); }
+.statusbar .spacer{ flex:1; }
+.statusbar .btn{
+  padding: 3px 8px; border-radius: var(--r-sm);
+  color: var(--text); border: 1px solid var(--border);
+}
+.statusbar .btn:hover{ background: var(--raised); border-color: var(--border-strong); }
+.statusbar .btn.primary{ background: var(--accent-soft); color: var(--accent-2); border-color: var(--accent-line); }
+
+/* =========================================================
+   Overlays: command palette, context picker, diff, timeline, skill, about, tweaks
+   ========================================================= */
+.overlay{
+  position: fixed; inset: 0; z-index: 100;
+  background: oklch(8% 0 0 / .45);
+  backdrop-filter: blur(6px);
+  display:none; align-items:flex-start; justify-content:center;
+  padding-top: 12vh;
+}
+.overlay.is-on{ display:flex; }
+.overlay-card{
+  width: min(640px, 92vw);
+  background: var(--panel); border: 1px solid var(--border-strong);
+  border-radius: var(--r-md);
+  box-shadow: var(--shadow-3);
+  overflow: hidden;
+}
+.cmd{ display:flex; align-items:center; gap:10px; padding: 12px 14px; border-bottom: 1px solid var(--border); }
+.cmd input{
+  flex:1; background:transparent; border:0; outline:0; color: var(--text);
+  font-size: 15px;
+}
+.cmd .kbd{
+  font-family: var(--font-mono); font-size: 11px;
+  padding: 2px 6px; border-radius: 4px; background: var(--raised-2); border:1px solid var(--border); color: var(--text-muted);
+}
+.cmd-list{ max-height: 50vh; overflow:auto; padding: 4px; }
+.cmd-gh{ padding: 6px 10px 2px; font-size: 10.5px; letter-spacing: .08em; text-transform: uppercase; color: var(--text-dim); }
+.cmd-row{
+  display:flex; align-items:center; gap: 10px;
+  padding: 7px 10px; border-radius: var(--r-sm);
+  font-size: 13px; color: var(--text); cursor: pointer;
+}
+.cmd-row .ico{ width:14px; height:14px; color: var(--text-dim); }
+.cmd-row.is-active{ background: var(--accent-soft); color: var(--accent-2); }
+.cmd-row.is-active .ico{ color: var(--accent-2); }
+.cmd-row .hint{ margin-left:auto; font-family: var(--font-mono); font-size: 11px; color: var(--text-dim); }
+
+/* context picker (linked docs) */
+.picker{ display:none; position: absolute; z-index: 60; }
+.picker.is-on{ display:block; }
+.picker-card{
+  width: 360px; max-height: 360px; overflow:hidden;
+  background: var(--raised-2); border:1px solid var(--border-strong);
+  border-radius: var(--r-md); box-shadow: var(--shadow-2);
+  display:flex; flex-direction:column;
+}
+.picker .search{ padding: 10px; border-bottom: 1px solid var(--border); }
+.picker .search input{ width:100%; background: var(--bg); border:1px solid var(--border); border-radius: var(--r-sm); padding: 6px 8px; outline:0; color: var(--text); }
+.picker .list{ overflow:auto; padding: 4px; }
+.picker .item{
+  display:flex; align-items:center; gap:8px; padding: 6px 8px; border-radius: var(--r-sm);
+  font-size: 13px; color: var(--text); cursor: pointer;
+}
+.picker .item:hover, .picker .item.is-active{ background: var(--accent-soft); color: var(--accent-2); }
+.picker .item .path{ margin-left:auto; color: var(--text-dim); font-size: 11px; font-family: var(--font-mono); }
+
+/* diff modal */
+.diff-card{ width: min(820px, 94vw); }
+.diff-h{ display:flex; align-items:center; gap:10px; padding: 12px 14px; border-bottom: 1px solid var(--border); }
+.diff-h .title{ font-weight: 600; }
+.diff-h .action{ color: var(--accent-2); }
+.diff-h .spacer{ flex:1; }
+.diff-body{ padding: 14px; display:grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+.diff-col{ background: var(--raised); border:1px solid var(--border); border-radius: var(--r-sm); padding: 10px 12px; font-size: 13px; line-height: 1.65; }
+.diff-col h4{ margin: 0 0 8px; font-size: 11.5px; letter-spacing: .08em; text-transform: uppercase; color: var(--text-dim); }
+.diff-col .del{ background: var(--danger-soft); color: oklch(40% .12 25); text-decoration: line-through; padding: 0 3px; border-radius: 3px; }
+.diff-col .ins{ background: var(--ok-soft); color: oklch(36% .12 155); padding: 0 3px; border-radius: 3px; }
+[data-theme="dark"] .diff-col .del{ color: oklch(88% .10 25); }
+[data-theme="dark"] .diff-col .ins{ color: oklch(88% .10 155); }
+.diff-foot{ display:flex; gap: 8px; padding: 12px 14px; border-top: 1px solid var(--border); background: var(--raised); }
+.diff-foot .spacer{ flex:1; }
+.diff-foot .btn{ padding: 7px 14px; border-radius: var(--r-sm); border: 1px solid var(--border); font-size: 13px; }
+.diff-foot .btn.primary{ background: var(--accent); color: oklch(15% 0 0); border-color: transparent; font-weight: 600; }
+.diff-foot .btn:hover{ background: var(--raised-2); }
+.diff-foot .btn.primary:hover{ filter: brightness(1.05); background: var(--accent); }
+
+/* timeline drawer */
+.drawer{ position: fixed; top: 0; right: 0; bottom: 0; z-index: 80; width: min(420px, 96vw);
+  background: var(--panel); border-left: 1px solid var(--border);
+  box-shadow: var(--shadow-3);
+  transform: translateX(100%); transition: transform var(--t) var(--ease);
+  display:flex; flex-direction:column;
+}
+.drawer.is-on{ transform: translateX(0); }
+.drawer-h{ display:flex; align-items:center; gap:10px; padding: 12px 14px; border-bottom: 1px solid var(--border); }
+.drawer-h .title{ font-weight: 600; }
+.drawer-h .spacer{ flex:1; }
+.drawer-body{ overflow:auto; padding: 12px 14px; display:flex; flex-direction:column; gap: 10px; }
+.commit{
+  position: relative; padding: 8px 8px 8px 26px; border-radius: var(--r-sm);
+  background: var(--raised); border: 1px solid var(--border);
+}
+.commit::before{
+  content:""; position:absolute; left: 12px; top: 14px; bottom: -10px; width: 2px; background: var(--border);
+}
+.commit:last-child::before{ display:none; }
+.commit .dot{ position:absolute; left: 8px; top: 12px; width: 10px; height:10px; border-radius:50%; background: var(--text-dim); border: 2px solid var(--panel); }
+.commit.is-manual .dot{ background: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
+.commit .head{ display:flex; align-items:center; gap: 6px; font-size: 12px; }
+.commit .hash{ font-family: var(--font-mono); color: var(--text-muted); }
+.commit .tag{
+  font-family: var(--font-mono); font-size: 10.5px;
+  padding: 1px 5px; border-radius: 4px; background: var(--steel-soft); color: var(--steel);
+}
+.commit.is-manual .tag{ background: var(--accent-soft); color: var(--accent-2); }
+.commit .time{ margin-left:auto; color: var(--text-dim); font-size: 11.5px; }
+.commit .msg{ margin-top: 4px; font-size: 13px; }
+.commit .actions{ display:flex; gap: 6px; margin-top: 6px; }
+.commit .actions button{
+  font-size: 11.5px; padding: 3px 8px; border-radius: var(--r-sm);
+  background: var(--panel); border: 1px solid var(--border); color: var(--text-muted);
+}
+.commit .actions button:hover{ background: var(--raised-2); color: var(--text); }
+.commit .actions .danger{ color: oklch(72% .14 25); }
+.commit-group{ font-size: 10.5px; letter-spacing: .08em; text-transform: uppercase; color: var(--text-dim); padding: 6px 4px 0; }
+
+/* skill drawer */
+.skill-list{ display:flex; flex-direction:column; gap: 6px; }
+.skill{
+  display:grid; grid-template-columns: 18px 1fr auto auto; gap: 10px; align-items:center;
+  padding: 8px 10px; background: var(--raised); border:1px solid var(--border); border-radius: var(--r-sm);
+}
+.skill .handle{ color: var(--text-dim); cursor: grab; }
+.skill .meta .name{ font-weight: 600; font-size: 13px; }
+.skill .meta .desc{ font-size: 11.5px; color: var(--text-muted); }
+.skill .stage{ font-family: var(--font-mono); font-size: 10.5px; padding: 2px 6px; border-radius: 4px; background: var(--steel-soft); color: var(--steel); }
+.skill.is-on .switch{ background: var(--accent); border-color: var(--accent); }
+.skill.is-on .switch i{ left: 18px; }
+.switch{ position: relative; width: 34px; height: 18px; border-radius: 999px; background: var(--raised-2); border: 1px solid var(--border); cursor: pointer; transition: background var(--t) var(--ease); }
+.switch i{ position:absolute; top:1px; left:1px; width: 14px; height: 14px; border-radius:50%; background: var(--text); transition: left var(--t) var(--ease); }
+
+/* tweaks */
+.tweaks{
+  position: fixed; right: 14px; bottom: 38px; z-index: 70;
+  background: var(--raised-2); border:1px solid var(--border-strong);
+  border-radius: var(--r-md); box-shadow: var(--shadow-2);
+  width: 240px;
+  transform: translateY(calc(100% + 10px)); opacity: 0; pointer-events: none;
+  transition: transform var(--t) var(--ease), opacity var(--t) var(--ease);
+}
+.tweaks.is-on{ transform: translateY(0); opacity:1; pointer-events:auto; }
+.tweaks-h{ display:flex; align-items:center; gap: 8px; padding: 8px 10px; border-bottom: 1px solid var(--border); font-size: 12.5px; font-weight: 600; }
+.tweaks-h .dot{ width: 8px; height: 8px; border-radius:50%; background: var(--accent); box-shadow: 0 0 8px var(--accent); }
+.tweaks-h .spacer{ flex:1; }
+.tweaks-h button{ font-size: 11px; color: var(--text-dim); }
+.tweaks-h button:hover{ color: var(--text); }
+.tweaks-body{ padding: 8px 10px 10px; display:flex; flex-direction:column; gap: 10px; }
+.tweaks-row{ display:flex; align-items:center; gap: 8px; font-size: 12px; color: var(--text-muted); }
+.tweaks-row .spacer{ flex:1; }
+.tweaks-row .opts{ display:inline-flex; background: var(--panel); border:1px solid var(--border); border-radius: var(--r-sm); padding: 2px; }
+.tweaks-row .opts button{ padding: 3px 8px; font-size: 11px; border-radius: 4px; color: var(--text-muted); }
+.tweaks-row .opts button.is-on{ background: var(--raised); color: var(--text); box-shadow: var(--shadow-1); }
+.tweaks-fab{
+  position: fixed; right: 14px; bottom: 38px; z-index: 71;
+  display:inline-flex; align-items:center; gap:6px;
+  padding: 7px 12px; border-radius: 999px;
+  background: var(--raised-2); border:1px solid var(--border-strong);
+  box-shadow: var(--shadow-2);
+  font-size: 12px; color: var(--text);
+}
+.tweaks-fab .dot{ width: 7px; height: 7px; border-radius:50%; background: var(--accent); box-shadow: 0 0 8px var(--accent); }
+.tweaks-fab:hover{ background: var(--raised); }
+
+/* about */
+.about-card{ width: min(580px, 92vw); padding: 4px; }
+.about-body{ padding: 14px 16px; font-size: 13.5px; line-height: 1.7; color: var(--text); }
+.about-body h4{ margin: 14px 0 6px; font-size: 11.5px; letter-spacing: .08em; text-transform: uppercase; color: var(--text-dim); }
+.about-body ul{ margin: 4px 0 0; padding-left: 18px; color: var(--text-muted); }
+.about-body code{ background: var(--raised-2); padding: 1px 5px; border-radius: 4px; }
+.about-body .tradeoff{
+  margin-top: 8px; padding: 10px 12px;
+  background: var(--accent-soft); border: 1px solid var(--accent-line); border-radius: var(--r-sm);
+  color: var(--text);
+}
+
+/* generic icon size */
+svg{ display:block; }
+
+/* small responsive guard — keep 3-col reasonable on narrow */
+@media (max-width: 1180px){
+  .workspace{ grid-template-columns: 220px 1fr minmax(380px, 1fr); }
+}
+</style>
+</head>
+<body data-sidebar="expanded" data-theme="dark">
+
+<!-- ========= Prototype banner ========= -->
+<div class="proto-banner" role="note">
+  <span class="tag">原型 C</span>
+  <span class="stack">AI 原生驾驶舱</span>
+  <span>·</span>
+  <span class="mono" style="color:var(--text-dim)">Electron + React + TS + TipTap 3 + Tailwind/shadcn + SQLite(FTS5/Link/vec) + 捆绑 Git(dugite)</span>
+  <span class="spacer"></span>
+  <span class="tradeoff">三案同栈，差异在产品形态；C 的代价 = 编辑器让出宽度给 AI 驾驶舱，换取「AI 作为原生层」的可信验证</span>
+  <button class="about-btn" data-open="about">关于 / About</button>
+</div>
+
+<!-- ========= App window ========= -->
+<div class="app">
+
+  <!-- Title bar -->
+  <header class="titlebar">
+    <div class="brand"><span class="logo"></span> NexNote</div>
+    <nav class="menu">
+      <button>文件</button><button>编辑</button><button>视图</button><button>页面</button><button>插件</button>
+    </nav>
+    <span class="spacer"></span>
+    <button class="hint" data-open="cmd" title="命令面板">⌘K 命令面板</button>
+    <div class="ctrls"><span></span><span></span><span class="close"></span></div>
+  </header>
+
+  <!-- Workspace -->
+  <div class="workspace">
+
+    <!-- Sidebar -->
+    <aside class="sidebar">
+      <div class="vault">
+        <span class="dot"></span>
+        <span class="label name">研究笔记</span>
+        <span class="branch mono" title="当前分支">main</span>
+      </div>
+      <div class="scroll">
+        <div class="section-h">
+          <span class="label">页面</span>
+          <button class="add" title="新建页面">+</button>
+        </div>
+        <div class="tree" id="tree">
+          <div class="tree-row is-open" data-toggle>
+            <span class="caret">▸</span>
+            <svg class="ico" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4"><path d="M2 4h3l1 1h8v8H2z"/></svg>
+            <span class="label">检索</span>
+            <span class="badge">12</span>
+          </div>
+          <div class="tree-children">
+            <div class="tree-row is-active" data-page="向量检索笔记">
+              <span class="caret" style="visibility:hidden">▸</span>
+              <svg class="ico" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4"><path d="M3 2h7l3 3v9H3z"/><path d="M10 2v3h3"/></svg>
+              <span class="label">向量检索笔记</span>
+            </div>
+            <div class="tree-row" data-page="FTS5 分词器对比">
+              <span class="caret" style="visibility:hidden">▸</span>
+              <svg class="ico" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4"><path d="M3 2h7l3 3v9H3z"/><path d="M10 2v3h3"/></svg>
+              <span class="label">FTS5 分词器对比</span>
+            </div>
+            <div class="tree-row" data-page="Link Index 重建策略">
+              <span class="caret" style="visibility:hidden">▸</span>
+              <svg class="ico" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4"><path d="M3 2h7l3 3v9H3z"/><path d="M10 2v3h3"/></svg>
+              <span class="label">Link Index 重建策略</span>
+            </div>
+          </div>
+          <div class="tree-row" data-toggle>
+            <span class="caret">▸</span>
+            <svg class="ico" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4"><path d="M2 4h3l1 1h8v8H2z"/></svg>
+            <span class="label">架构</span>
+            <span class="badge">5</span>
+          </div>
+          <div class="tree-children">
+            <div class="tree-row"><span class="caret" style="visibility:hidden">▸</span><svg class="ico" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4"><path d="M3 2h7l3 3v9H3z"/><path d="M10 2v3h3"/></svg><span class="label">块模型取舍</span></div>
+            <div class="tree-row"><span class="caret" style="visibility:hidden">▸</span><svg class="ico" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4"><path d="M3 2h7l3 3v9H3z"/><path d="M10 2v3h3"/></svg><span class="label">TipTap 适配</span></div>
+          </div>
+          <div class="tree-row chat" data-page="与 AI 讨论检索策略">
+            <span class="caret" style="visibility:hidden">▸</span>
+            <svg class="ico" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4"><path d="M3 4h10v8H6l-3 2z"/></svg>
+            <span class="label">与 AI 讨论检索策略</span>
+            <span class="badge" style="background:var(--accent-soft);color:var(--accent-2)">chat</span>
+          </div>
+        </div>
+
+        <div class="section-h"><span class="label">回链</span></div>
+        <div class="tree" id="backrefs">
+          <div class="tree-row"><svg class="ico" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4"><path d="M5 8a3 3 0 1 0 2-2.8"/><path d="M11 8a3 3 0 1 0-2 2.8"/><path d="M8 5v6"/></svg><span class="label">FTS5 分词器对比</span></div>
+          <div class="tree-row"><svg class="ico" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4"><path d="M5 8a3 3 0 1 0 2-2.8"/><path d="M11 8a3 3 0 1 0-2 2.8"/><path d="M8 5v6"/></svg><span class="label">RAG 工程笔记</span></div>
+          <div class="tree-row"><svg class="ico" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4"><path d="M5 8a3 3 0 1 0 2-2.8"/><path d="M11 8a3 3 0 1 0-2 2.8"/><path d="M8 5v6"/></svg><span class="label">索引冷启动</span></div>
+        </div>
+
+        <div class="section-h"><span class="label">标签</span></div>
+        <div class="tree" style="padding: 0 8px 4px; flex-wrap:wrap; flex-direction:row; gap:4px;">
+          <span class="chip" style="background:var(--accent-soft);color:var(--accent-2)">#检索</span>
+          <span class="chip" style="background:var(--warm-soft);color:var(--warm)">#sqlite</span>
+          <span class="chip" style="background:var(--steel-soft);color:var(--steel)">#架构</span>
+          <span class="chip">#tip</span>
+        </div>
+      </div>
+      <div class="rail-icon" title="折叠/展开侧栏">
+        <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4"><path d="M6 3v10M2 8h12"/></svg>
+      </div>
+    </aside>
+
+    <!-- Center -->
+    <main class="center">
+      <div class="tabs">
+        <div class="tab is-active" data-tab="doc">
+          <svg class="ico" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4"><path d="M3 2h7l3 3v9H3z"/><path d="M10 2v3h3"/></svg>
+          <span>向量检索笔记</span>
+          <span class="close" title="关闭">×</span>
+        </div>
+        <div class="tab chat" data-tab="chat">
+          <svg class="ico" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4"><path d="M3 4h10v8H6l-3 2z"/></svg>
+          <span>与 AI 讨论检索策略</span>
+          <span class="close" title="关闭">×</span>
+        </div>
+        <div class="spacer"></div>
+        <button class="iconbtn" title="拆分视图"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" width="14" height="14"><rect x="2" y="3" width="5" height="10"/><rect x="9" y="3" width="5" height="10"/></svg></button>
+        <button class="iconbtn" title="新建标签页">+</button>
+      </div>
+
+      <div class="editor" id="editor" data-active="doc">
+        <!-- DOC TAB -->
+        <div class="editor-inner" data-pane="doc">
+          <h1 class="doc-title">向量检索笔记</h1>
+
+          <div class="fm" id="fm">
+            <div class="fm-head">
+              <span class="label">属性</span>
+              <span style="color:var(--text-dim)">·</span>
+              <span style="color:var(--text-dim); font-size:11.5px">frontmatter</span>
+              <span class="toggle">
+                <button class="is-on" data-fm="table">表格</button>
+                <button data-fm="yaml">YAML</button>
+              </span>
+            </div>
+            <div class="fm-body">
+              <div class="fm-row"><span class="k">title</span><span class="v"><input value="向量检索笔记" /></span></div>
+              <div class="fm-row"><span class="k">tags</span><span class="v">
+                <span class="chip">#检索</span><span class="chip steel">#sqlite</span><span class="chip warm">#RAG</span>
+                <input placeholder="+ 添加标签" style="width:120px" />
+              </span></div>
+              <div class="fm-row"><span class="k">aliases</span><span class="v">
+                <span class="chip" style="background:var(--raised-2);color:var(--text-muted)">向量索引</span>
+                <input placeholder="+ 添加别名" style="width:120px" />
+              </span></div>
+              <div class="fm-row conf-row"><span class="k">
+                <svg viewBox="0 0 16 16" width="13" height="13" fill="none" stroke="currentColor" stroke-width="1.4"><circle cx="8" cy="8" r="6"/><path d="M8 5v3l2 1"/></svg>
+                置信度
+              </span>
+                <span class="v"><div class="conf">
+                  <span class="score">0.82</span>
+                  <div class="bar"><i></i></div>
+                  <span class="factors">修改频次 0.71 · 最近更新 0.94 · 作者活跃 0.85 · 综合 ↑</span>
+                </div></span>
+              </div>
+              <div class="fm-row"><span class="k">updated</span><span class="v mono" style="color:var(--text-muted)">2025-09-04 14:21 · 14 次自动提交 · 2 次手动</span></div>
+            </div>
+            <pre class="fm-yaml">---
+title: 向量检索笔记
+tags: [检索, sqlite, RAG]
+aliases: [向量索引]
+confidence:
+  score: 0.82
+  factors: { freq: 0.71, recency: 0.94, author: 0.85 }
+updated: 2025-09-04T14:21:00Z
+auto_commits: 14
+manual_commits: 2
+---</pre>
+          </div>
+
+          <div class="blocks">
+            <div class="block"><div class="gutter">
+              <button title="拖拽"><svg viewBox="0 0 16 16" width="13" height="13" fill="none" stroke="currentColor" stroke-width="1.4"><circle cx="5" cy="4" r="1"/><circle cx="5" cy="8" r="1"/><circle cx="5" cy="12" r="1"/><circle cx="11" cy="4" r="1"/><circle cx="11" cy="8" r="1"/><circle cx="11" cy="12" r="1"/></svg></button>
+              <button title="+">+</button></div>
+              <h2>选型结论<span class="block-id mono">^sec-conclusion</span></h2>
+            </div>
+            <div class="block" data-block>
+              <div class="gutter">
+                <button title="拖拽"><svg viewBox="0 0 16 16" width="13" height="13" fill="none" stroke="currentColor" stroke-width="1.4"><circle cx="5" cy="4" r="1"/><circle cx="5" cy="8" r="1"/><circle cx="5" cy="12" r="1"/><circle cx="11" cy="4" r="1"/><circle cx="11" cy="8" r="1"/><circle cx="11" cy="12" r="1"/></svg></button>
+                <button title="+">+</button></div>
+              <p>使用 <code>sqlite-vec</code> 作为派生索引，配合 <span class="wl" title="跳转 / 新建">[[FTS5 分词器对比]]</span> 的关键词召回。两者通过统一 <code>Link Index</code> 关联，召回结果再喂给 LLM。详见 <span class="wl" title="跳转 / 新建">[[Link Index 重建策略]]</span>。<span class="block-id mono">^p-overview</span></p>
+            </div>
+            <div class="block"><div class="gutter"><button title="拖拽"><svg viewBox="0 0 16 16" width="13" height="13" fill="none" stroke="currentColor" stroke-width="1.4"><circle cx="5" cy="4" r="1"/><circle cx="5" cy="8" r="1"/><circle cx="5" cy="12" r="1"/><circle cx="11" cy="4" r="1"/><circle cx="11" cy="8" r="1"/><circle cx="11" cy="12" r="1"/></svg></button><button title="+">+</button></div>
+              <h3>关键决策</h3>
+            </div>
+            <div class="block"><div class="gutter"><button title="拖拽"><svg viewBox="0 0 16 16" width="13" height="13" fill="none" stroke="currentColor" stroke-width="1.4"><circle cx="5" cy="4" r="1"/><circle cx="5" cy="8" r="1"/><circle cx="5" cy="12" r="1"/><circle cx="11" cy="4" r="1"/><circle cx="11" cy="8" r="1"/><circle cx="11" cy="12" r="1"/></svg></button><button title="+">+</button></div>
+              <ul>
+                <li>embedding 走远程端点（OpenAI 协议），本地小模型留接口</li>
+                <li>向量与 FTS5 同库不同表，<code>doc_id</code> 关联；不引入 LanceDB</li>
+                <li>召回三阶段：粗筛 → 双链扩展 → 向量重排（置信度作乘性因子）</li>
+              </ul>
+            </div>
+            <div class="block"><div class="gutter"><button title="拖拽"><svg viewBox="0 0 16 16" width="13" height="13" fill="none" stroke="currentColor" stroke-width="1.4"><circle cx="5" cy="4" r="1"/><circle cx="5" cy="8" r="1"/><circle cx="5" cy="12" r="1"/><circle cx="11" cy="4" r="1"/><circle cx="11" cy="8" r="1"/><circle cx="11" cy="12" r="1"/></svg></button><button title="+">+</button></div>
+              <blockquote>风险：向量重建全量会拉高首启动耗时；走「启动时空索引 + 闲置时增量」缓解。</blockquote>
+            </div>
+            <div class="block"><div class="gutter"><button title="拖拽"><svg viewBox="0 0 16 16" width="13" height="13" fill="none" stroke="currentColor" stroke-width="1.4"><circle cx="5" cy="4" r="1"/><circle cx="5" cy="8" r="1"/><circle cx="5" cy="12" r="1"/><circle cx="11" cy="4" r="1"/><circle cx="11" cy="8" r="1"/><circle cx="11" cy="12" r="1"/></svg></button><button title="+">+</button></div>
+              <pre><span class="k">CREATE VIRTUAL TABLE</span> docs_vec <span class="k">USING</span> vec0(
+  doc_id <span class="k">INTEGER</span>,
+  embedding float[<span class="s">1536</span>],
+  distance_metric=<span class="s">cosine</span>
+);</pre>
+            </div>
+            <div class="block" data-block>
+              <div class="gutter">
+                <button title="拖拽"><svg viewBox="0 0 16 16" width="13" height="13" fill="none" stroke="currentColor" stroke-width="1.4"><circle cx="5" cy="4" r="1"/><circle cx="5" cy="8" r="1"/><circle cx="5" cy="12" r="1"/><circle cx="11" cy="4" r="1"/><circle cx="11" cy="8" r="1"/><circle cx="11" cy="12" r="1"/></svg></button>
+                <button title="+">+</button></div>
+              <p>下一段计划：把 <span class="wl is-miss" title="点击新建">[[召回权重 A/B]]</span> 跑起来，比较「仅 cosine」与「cosine × 置信度」的 MRR 差异。<span class="block-id mono">^p-next</span></p>
+            </div>
+          </div>
+        </div>
+
+        <!-- CHAT TAB (会话即页面) -->
+        <div class="editor-inner" data-pane="chat" hidden>
+          <h1 class="doc-title" style="display:flex; align-items:center; gap:10px;">
+            <svg viewBox="0 0 16 16" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.4" style="color:var(--accent-2)"><path d="M3 4h10v8H6l-3 2z"/></svg>
+            与 AI 讨论检索策略
+            <span class="chip" style="background:var(--accent-soft);color:var(--accent-2); border:1px solid var(--accent-line); font-family:var(--font-mono); font-size:11px;">type: chat</span>
+          </h1>
+          <div class="fm" style="margin-bottom:14px">
+            <div class="fm-head"><span class="label">属性</span><span style="color:var(--text-dim)">·</span><span style="color:var(--text-dim); font-size:11.5px">会话页面（可被双链引用）</span></div>
+            <div class="fm-body">
+              <div class="fm-row"><span class="k">linked</span><span class="v"><span class="chip" style="background:var(--raised-2);color:var(--text-muted)">向量检索笔记</span><span class="chip" style="background:var(--raised-2);color:var(--text-muted)">FTS5 分词器对比</span></span></div>
+              <div class="fm-row"><span class="k">messages</span><span class="v mono" style="color:var(--text-muted)">2 轮 · 引用 5 来源 · 创建于 2025-09-05</span></div>
+            </div>
+          </div>
+          <p style="color:var(--text-muted); font-size:13px">这是右栏驾驶舱的「已保存」视图 — 双链、Git 版本、搜索都把它当页面处理。</p>
+        </div>
+      </div>
+    </main>
+
+    <!-- Cockpit (hero) -->
+    <section class="cockpit" aria-label="AI 驾驶舱">
+      <div class="cockpit-head">
+        <svg viewBox="0 0 16 16" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.4" style="color:var(--accent-2)"><path d="M3 4h10v8H6l-3 2z"/></svg>
+        <div class="title">
+          <div class="name">检索策略 · 工作会话</div>
+          <div class="sub">
+            <span class="model">GPT-5 · Profile: 写作</span>
+            <span>·</span>
+            <span>3 轮引用</span>
+          </div>
+        </div>
+        <span class="spacer"></span>
+        <button class="iconbtn" id="open-skill" title="检索 Skill"><svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.4"><path d="M3 6h10M3 10h10"/><circle cx="5" cy="6" r="1.2"/><circle cx="11" cy="10" r="1.2"/></svg></button>
+        <button class="iconbtn" title="新会话"><svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.4"><path d="M8 3v10M3 8h10"/></svg></button>
+        <button class="save" id="save-as-page">保存为页面</button>
+      </div>
+
+      <div class="ctx-chips" id="chips">
+        <span class="chip kind-page"><svg class="ico" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4"><path d="M3 2h7l3 3v9H3z"/></svg>当前页面: 向量检索笔记<span class="x" data-x>×</span></span>
+        <span class="chip kind-sel"><svg class="ico" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4"><rect x="2" y="3" width="12" height="10" rx="1"/></svg>选区: 1 块<span class="x" data-x>×</span></span>
+        <span class="chip"><svg class="ico" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4"><path d="M5 8a3 3 0 1 0 2-2.8"/><path d="M11 8a3 3 0 1 0-2 2.8"/></svg>FTS5 分词器对比<span class="x" data-x>×</span></span>
+        <span class="chip add" id="add-ctx">+ 添加关联双链</span>
+      </div>
+
+      <div class="thread" id="thread">
+        <!-- prior exchange (completed) -->
+        <div class="msg user">
+          <div class="bubble">我的 vault 里关于「向量索引」的笔记散在多页，怎么让 AI 回答时自动跨页串起来？</div>
+        </div>
+        <div class="msg ai">
+          <div class="recall">
+            <div class="recall-h">
+              <span class="h-title">渐进召回</span>
+              <span style="color:var(--text-dim)">3 阶段 · 7 候选 · 320ms</span>
+              <button class="toggle-formula" id="toggle-formula">final = sim · confidence<sup>0.7</sup></button>
+            </div>
+            <div class="recall-body">
+              <div class="stage is-done">
+                <div class="badge s1">S1·粗筛</div>
+                <div class="body">
+                  <div class="name">关键词 + 标签 + frontmatter</div>
+                  <div class="desc">命中 <span class="mono">向量检索笔记</span> / <span class="mono">FTS5 分词器对比</span> / <span class="mono">Link Index 重建策略</span> 等 12 文档</div>
+                </div>
+                <div class="hits mono">12 · 84ms</div>
+              </div>
+              <div class="stage is-done">
+                <div class="badge s2">S2·扩展</div>
+                <div class="body">
+                  <div class="name">wikilink 1–2 跳扩展</div>
+                  <div class="desc">
+                    <span class="viz" aria-hidden>
+                      <span class="node is-hit"></span><span class="link"></span><span class="node is-hit"></span><span class="link"></span><span class="node is-hit"></span>
+                      <span class="link" style="width:8px"></span>
+                      <span class="node"></span><span class="link"></span><span class="node"></span>
+                    </span>
+                    12 → 34 候选
+                  </div>
+                </div>
+                <div class="hits mono">34 · 96ms</div>
+              </div>
+              <div class="stage is-done">
+                <div class="badge s3">S3·重排</div>
+                <div class="body">
+                  <div class="name">embedding + cosine × 置信度</div>
+                  <div class="rerank-viz">
+                    <div class="rr-row">
+                      <span class="name">向量检索笔记</span>
+                      <div class="bars"><span class="sim" style="width:81%"></span><span class="final" style="width:75%"></span></div>
+                      <span class="sim-num">0.81</span>
+                      <span class="final-num" style="display:none">0.75</span>
+                    </div>
+                    <div class="rr-row is-lift">
+                      <span class="name">FTS5 分词器对比</span>
+                      <div class="bars"><span class="sim" style="width:78%"></span><span class="final" style="width:84%"></span></div>
+                      <span class="sim-num">0.78</span>
+                      <span class="final-num" style="display:none">0.84</span>
+                    </div>
+                    <div class="rr-row is-lift">
+                      <span class="name">Link Index 重建策略</span>
+                      <div class="bars"><span class="sim" style="width:74%"></span><span class="final" style="width:80%"></span></div>
+                      <span class="sim-num">0.74</span>
+                      <span class="final-num" style="display:none">0.80</span>
+                    </div>
+                    <div class="rr-row">
+                      <span class="name">RAG 工程笔记</span>
+                      <div class="bars"><span class="sim" style="width:70%"></span><span class="final" style="width:64%"></span></div>
+                      <span class="sim-num">0.70</span>
+                      <span class="final-num" style="display:none">0.64</span>
+                    </div>
+                  </div>
+                </div>
+                <div class="hits mono">Top 4 · 140ms</div>
+              </div>
+            </div>
+          </div>
+          <div class="bubble">
+            <p>建议用「渐进召回」：先按关键词/标签/frontmatter 粗筛，再沿 wikilink 1–2 跳扩展，最后用向量相似度重排 — 召回三阶段，置信度作 <span class="mono" style="color:var(--warm)">乘性因子</span> 抬高/压低排序。</p>
+            <p>对本库而言，启用 <code>sqlite-vec</code> 作向量派生索引最划算：同库不同表，<code>doc_id</code> 关联，零外部依赖；embedding 走远程端点，本地小模型接口预留。</p>
+            <p>需要我把「召回权重 A/B」实验方案写到 <span class="wl" style="font-size:12px">[[向量检索笔记]]</span> 的「下一段计划」里吗？</p>
+            <div class="cites">
+              <div class="cite is-open" data-cite>
+                <span class="stage-tag">rerank</span>
+                <span class="title">向量检索笔记<span class="conf mono">· 0.75</span></span>
+                <span class="expand">▾ 已展开</span>
+                <div class="passage">「使用 <code>sqlite-vec</code> 作为派生索引，配合 FTS5 的关键词召回。两者通过统一 Link Index 关联，召回结果再喂给 LLM。」</div>
+              </div>
+              <div class="cite" data-cite>
+                <span class="stage-tag">rerank</span>
+                <span class="title">FTS5 分词器对比<span class="conf mono">· 0.84</span></span>
+                <span class="expand">▸ 展开</span>
+                <div class="passage">中文用 <code>unicode61 with tokenchars</code> 收益高于 trigram；与 wikilink 标题分词共享同一分词器表。</div>
+              </div>
+              <div class="cite" data-cite>
+                <span class="stage-tag">expand</span>
+                <span class="title">Link Index 重建策略<span class="conf mono">· 0.80</span></span>
+                <span class="expand">▸ 展开</span>
+                <div class="passage">Link Index 是可全量重建的派生缓存：监听 frontmatter 变更 + 周期性扫描 wikilink 边。</div>
+              </div>
+            </div>
+          </div>
+          <div class="msg-meta">
+            <span class="model">GPT-5</span><span>·</span>
+            <span>引用 3 · 召回 12→34→4</span><span>·</span>
+            <span>已写回 wikilink 建议</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="composer">
+        <div class="box">
+          <textarea id="qa" placeholder="问点什么 — 召回默认启用，⌘↩ 发送">置信度权重对召回排序的提升有多大？给个量化建议</textarea>
+          <div class="bar">
+            <div class="left">
+              <button class="iconbtn is-on" title="启用检索"><svg viewBox="0 0 16 16" width="13" height="13" fill="none" stroke="currentColor" stroke-width="1.4"><circle cx="7" cy="7" r="5"/><path d="M11 11l3 3"/></svg>检索</button>
+              <button class="iconbtn" title="选择模型"><svg viewBox="0 0 16 16" width="13" height="13" fill="none" stroke="currentColor" stroke-width="1.4"><path d="M8 2l5 5-5 7-5-7z"/></svg>写作</button>
+            </div>
+            <div class="right">
+              <span style="color:var(--text-dim); font-size:11.5px; margin-right:6px">3 chip · 双链 ✓ · 选区 ✓</span>
+              <button class="send" id="send"><svg viewBox="0 0 16 16" width="13" height="13" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M2 8l12-6-4 14-3-6z"/></svg>发送</button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+  </div>
+
+  <!-- Status bar -->
+  <footer class="statusbar">
+    <span class="seg"><span class="dot"></span>main</span>
+    <span class="seg dirty" title="未提交修改"><span class="dot"></span>+3 变更</span>
+    <span class="seg"><span class="k mono">e4975f1</span> · chore: amend git binding</span>
+    <span class="seg">14:21 · Aiden</span>
+    <span class="spacer"></span>
+    <span class="seg" id="open-timeline">⏱ 时间线</span>
+    <span class="seg"><span class="dot" style="background:var(--accent)"></span>检索 Skill · 3 启用</span>
+    <span class="seg">AI · GPT-5</span>
+    <button class="btn" id="btn-pull">↓ Pull</button>
+    <button class="btn primary" id="btn-push">↑ Push</button>
+  </footer>
+</div>
+
+<!-- ===== Overlays / drawers ===== -->
+
+<!-- Command palette -->
+<div class="overlay" id="ov-cmd" role="dialog" aria-modal="true">
+  <div class="overlay-card">
+    <div class="cmd">
+      <svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.4"><circle cx="7" cy="7" r="5"/><path d="M11 11l3 3"/></svg>
+      <input id="cmd-input" placeholder="搜索页面、命令、AI 动作…" />
+      <span class="kbd">esc</span>
+    </div>
+    <div class="cmd-list" id="cmd-list">
+      <div class="cmd-gh">页面</div>
+      <div class="cmd-row" data-go="page:向量检索笔记"><svg class="ico" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4"><path d="M3 2h7l3 3v9H3z"/></svg>向量检索笔记 <span class="hint">检索/</span></div>
+      <div class="cmd-row" data-go="page:FTS5 分词器对比"><svg class="ico" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4"><path d="M3 2h7l3 3v9H3z"/></svg>FTS5 分词器对比</div>
+      <div class="cmd-row" data-go="page:与 AI 讨论检索策略"><svg class="ico" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4"><path d="M3 4h10v8H6l-3 2z"/></svg>与 AI 讨论检索策略 <span class="hint">chat</span></div>
+      <div class="cmd-gh">命令</div>
+      <div class="cmd-row" data-go="cmd:palette"><svg class="ico" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4"><path d="M3 6h10M3 10h10"/></svg>切换侧栏 <span class="hint">⌘\\</span></div>
+      <div class="cmd-row" data-go="cmd:palette"><svg class="ico" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4"><circle cx="8" cy="8" r="6"/><path d="M8 5v3l2 1"/></svg>时间线 <span class="hint">⌘T</span></div>
+      <div class="cmd-gh">AI 动作</div>
+      <div class="cmd-row" data-go="ai:diff"><svg class="ico" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" style="color:var(--accent-2)"><path d="M3 8h10M5 5l-2 3 2 3M11 5l2 3-2 3"/></svg>改写当前选区</div>
+      <div class="cmd-row" data-go="ai:diff"><svg class="ico" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" style="color:var(--accent-2)"><path d="M3 8h6M5 5l-2 3 2 3"/></svg>缩写当前段落</div>
+      <div class="cmd-row" data-go="ai:insert"><svg class="ico" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" style="color:var(--accent-2)"><path d="M8 3v10M3 8h10"/></svg>补充论据（追加新块）</div>
+    </div>
+  </div>
+</div>
+
+<!-- About -->
+<div class="overlay" id="ov-about" role="dialog" aria-modal="true">
+  <div class="overlay-card about-card">
+    <div class="diff-h">
+      <span class="title">关于此原型 · Prototype C</span>
+      <span class="spacer"></span>
+      <button class="iconbtn" data-close="ov-about" style="color:var(--text-muted)">×</button>
+    </div>
+    <div class="about-body">
+      <h4>方向</h4>
+      <p><b>AI 原生驾驶舱</b> — AI 召回与对话不是外挂面板，而是主组织面。右侧约 40% 宽度的驾驶舱承担「上下文注入 → 渐进召回 → 引用答案」全链路；编辑器退居其次。</p>
+
+      <h4>绑定的技术栈组合（与 11/12 同栈）</h4>
+      <ul>
+        <li>桌面壳: <code>Electron</code>（三端渲染一致，块编辑器生态最稳）</li>
+        <li>前端: <code>React + TypeScript</code></li>
+        <li>UI: <code>TailwindCSS + shadcn/ui</code>（CSS 变量需与 ProseMirror 桥接）</li>
+        <li>编辑器: <code>TipTap 3 + @tiptap/markdown + UniqueID + DragHandle + Suggestion</code></li>
+        <li>存储: <code>MD + YAML frontmatter</code>，沿用 Obsidian 公开方言 (<code>^id</code> / callout / wikilink+alias)</li>
+        <li>索引: <code>SQLite 单库</code>（FTS5 + Link Index + sqlite-vec）</li>
+        <li>Git: <code>simple-git + 默认捆绑 Git(dugite-native)</code>，系统凭证/SSH 环境集成</li>
+      </ul>
+
+      <h4>取舍一句话</h4>
+      <div class="tradeoff">
+        三案同栈，差异只在产品形态 / UI 取向。<b>C 的代价</b> = 编辑器让出近半宽度给右侧 AI 驾驶舱，换取「AI 作为原生层」的可信验证；该方案<b>仅在 AI 确为一级价值</b>时成立（A/B 案若胜出会收回宽度）。
+      </div>
+
+      <h4>原型内可交互项</h4>
+      <ul>
+        <li>编辑器: 选区 → 浮动 AI 工具栏（6 动作）→ <b>改写</b> 触发 diff 预览接受/拒绝</li>
+        <li>空块 <code>/</code> 触发斜杠命令；属性表格 ↔ YAML 切换</li>
+        <li>驾驶舱: 发送新问题 → <b>渐进召回三阶段动画</b>（粗筛/扩展/重排，含置信度乘性重排的 bar 可视化）</li>
+        <li>召回算式 <code>final = sim · confidence^0.7</code>（点 toggle 显隐）</li>
+        <li>上下文注入 chip: 移除/添加（点 <b>+ 添加关联双链</b> 弹搜索式选择器）</li>
+        <li>引用答案卡片: <b>展开</b> 查看召回阶段命中的原文片段</li>
+        <li>右栏 <b>Skill</b> 按钮 → 检索 Skill 抽屉（启用/排序/参数）</li>
+        <li>状态栏 <b>时间线</b> → 版本抽屉（自动提交折叠 / 手动提交标注 / hunk 回滚预览）</li>
+        <li><b>Push</b> 按钮 → 远程同步确认弹窗</li>
+        <li>右下 <b>Tweaks</b> 浮动面板: 主题 / 密度 / 主色 / 召回速度 / 算式显隐</li>
+        <li>左下 <b>关于</b> 按钮 → 本说明</li>
+      </ul>
+    </div>
+  </div>
+</div>
+
+<!-- Diff modal -->
+<div class="overlay" id="ov-diff" role="dialog" aria-modal="true">
+  <div class="overlay-card diff-card">
+    <div class="diff-h">
+      <svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.4" style="color:var(--accent-2)"><path d="M3 8h10M5 5l-2 3 2 3M11 5l2 3-2 3"/></svg>
+      <span class="title">改写选区</span>
+      <span class="action mono" style="color:var(--text-dim)">~p-overview</span>
+      <span class="spacer"></span>
+      <button class="iconbtn" data-close="ov-diff" style="color:var(--text-muted)">×</button>
+    </div>
+    <div class="diff-body">
+      <div class="diff-col">
+        <h4>原选区</h4>
+        <p>使用 <code>sqlite-vec</code> 作为派生索引，配合 FTS5 的关键词召回。两者通过统一 <code>Link Index</code> 关联，召回结果再喂给 LLM。详见 <span class="wl">[[Link Index 重建策略]]</span>。</p>
+      </div>
+      <div class="diff-col">
+        <h4>改写建议</h4>
+        <p>使用 <code>sqlite-vec</code> 作为<span class="ins">单库</span>的向量派生索引<span class="ins">（同库不同表）</span>，配合 <span class="del">FTS5 的关键词召回</span><span class="ins">FTS5 粗筛</span>。两者通过统一 <code>Link Index</code> 关联<span class="ins">，并以 <code>doc_id</code> 作为主外键</span>，召回结果再喂给 LLM。详见 <span class="wl">[[Link Index 重建策略]]</span><span class="ins">（含重建策略与一致性约束）</span>。</p>
+      </div>
+    </div>
+    <div class="diff-foot">
+      <button class="btn">重新生成</button>
+      <span class="spacer"></span>
+      <button class="btn" data-close="ov-diff">拒绝</button>
+      <button class="btn primary" data-close="ov-diff">接受并写回</button>
+    </div>
+  </div>
+</div>
+
+<!-- Timeline drawer -->
+<aside class="drawer" id="drawer-timeline" aria-label="版本时间线">
+  <div class="drawer-h">
+    <svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.4"><circle cx="8" cy="8" r="6"/><path d="M8 5v3l2 1"/></svg>
+    <span class="title">版本时间线</span>
+    <span class="mono" style="color:var(--text-dim); font-size:11.5px">向量检索笔记</span>
+    <span class="spacer"></span>
+    <button class="iconbtn" id="close-timeline" style="color:var(--text-muted)">×</button>
+  </div>
+  <div class="drawer-body">
+    <div class="commit-group">今日 · 自动提交（已折叠分组）</div>
+    <div class="commit">
+      <div class="dot"></div>
+      <div class="head">
+        <span class="hash mono">a91f0c2</span>
+        <span class="tag">auto</span>
+        <span class="time">14:21</span>
+      </div>
+      <div class="msg">属性 · confidence.score 0.78 → 0.82</div>
+      <div class="actions"><button>查看变更</button><button class="danger">回滚 hunk</button></div>
+    </div>
+    <div class="commit">
+      <div class="dot"></div>
+      <div class="head">
+        <span class="hash mono">7c2e4d8</span>
+        <span class="tag">auto</span>
+        <span class="time">12:07</span>
+      </div>
+      <div class="msg">段落 · 关键决策 第 2 条（embedding 走远程端点）</div>
+      <div class="actions"><button>查看变更</button><button class="danger">回滚 hunk</button></div>
+    </div>
+    <div class="commit">
+      <div class="dot"></div>
+      <div class="head">
+        <span class="hash mono">4f1ab03</span>
+        <span class="tag">auto</span>
+        <span class="time">10:42</span>
+      </div>
+      <div class="msg">段落 · 选型结论（首段）</div>
+      <div class="actions"><button>查看变更</button><button class="danger">回滚 hunk</button></div>
+    </div>
+    <div class="commit-group">昨日</div>
+    <div class="commit is-manual">
+      <div class="dot"></div>
+      <div class="head">
+        <span class="hash mono">e4975f1</span>
+        <span class="tag">manual</span>
+        <span class="time">昨天 21:14</span>
+      </div>
+      <div class="msg">手动：确立 sqlite-vec + FTS5 + Link Index 三件套</div>
+      <div class="actions"><button>查看变更</button><button class="danger">回滚文件</button></div>
+    </div>
+  </div>
+</aside>
+
+<!-- Skill drawer -->
+<aside class="drawer" id="drawer-skill" aria-label="检索 Skill">
+  <div class="drawer-h">
+    <svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.4"><path d="M3 6h10M3 10h10"/></svg>
+    <span class="title">检索 Skill</span>
+    <span class="mono" style="color:var(--text-dim); font-size:11.5px">驱动驾驶舱的渐进召回</span>
+    <span class="spacer"></span>
+    <button class="iconbtn" id="close-skill" style="color:var(--text-muted)">×</button>
+  </div>
+  <div class="drawer-body">
+    <div class="skill is-on">
+      <span class="handle">⋮⋮</span>
+      <div class="meta"><div class="name">关键词 + 标签 + frontmatter 粗筛</div><div class="desc">FTS5 + 元数据命中，过滤低质量候选</div></div>
+      <span class="stage">S1·filter</span>
+      <div class="switch" data-toggle><i></i></div>
+    </div>
+    <div class="skill is-on">
+      <span class="handle">⋮⋮</span>
+      <div class="meta"><div class="name">wikilink 1–2 跳扩展</div><div class="desc">沿 Link Index 双向扩展候选</div></div>
+      <span class="stage">S2·expand</span>
+      <div class="switch" data-toggle><i></i></div>
+    </div>
+    <div class="skill is-on">
+      <span class="handle">⋮⋮</span>
+      <div class="meta"><div class="name">embedding + cosine 重排</div><div class="desc">远程端点 embedding · 置信度作乘性因子</div></div>
+      <span class="stage">S3·rerank</span>
+      <div class="switch" data-toggle><i></i></div>
+    </div>
+    <div class="skill">
+      <span class="handle">⋮⋮</span>
+      <div class="meta"><div class="name">代码片段检索（示例）</div><div class="desc">未启用 — 安装自「代码检索」插件</div></div>
+      <span class="stage">S3·rerank</span>
+      <div class="switch" data-toggle><i></i></div>
+    </div>
+    <p style="color:var(--text-dim); font-size:11.5px; margin-top:8px">拖拽调顺序；顺序即召回阶段执行顺序。检索 Skill 是一类受约束插件（与 UI 插件同运行时、仅检索类能力）。</p>
+  </div>
+</aside>
+
+<!-- Push confirm modal -->
+<div class="overlay" id="ov-push" role="dialog" aria-modal="true">
+  <div class="overlay-card" style="width: min(460px, 92vw)">
+    <div class="diff-h">
+      <span class="title">推送到 origin/main</span>
+      <span class="spacer"></span>
+      <button class="iconbtn" data-close="ov-push" style="color:var(--text-muted)">×</button>
+    </div>
+    <div style="padding: 12px 16px; font-size: 13px; color: var(--text-muted); line-height: 1.7;">
+      即将推送 <b style="color:var(--text)">3 个提交</b> 到 <code>origin/main</code>，其中 2 个自动提交 / 1 个手动提交（<code>e4975f1</code> 之前）。<br/>
+      远程凭证：复用 <code>SSH_AUTH_SOCK</code>（已检测到 ssh-agent）。<br/>
+      <span style="color:var(--warm)">建议</span>：推送前 pull 一次避免分叉。
+    </div>
+    <div class="diff-foot">
+      <button class="btn" data-close="ov-push">取消</button>
+      <span class="spacer"></span>
+      <button class="btn">先 Pull</button>
+      <button class="btn primary" data-close="ov-push">确认 Push</button>
+    </div>
+  </div>
+</div>
+
+<!-- Context picker -->
+<div class="picker" id="picker" style="top: 188px; right: 14px;">
+  <div class="picker-card">
+    <div class="search">
+      <input id="picker-q" placeholder="搜索页面以加入上下文…" />
+    </div>
+    <div class="list" id="picker-list">
+      <div class="item" data-add="RAG 工程笔记"><svg class="ico" viewBox="0 0 16 16" width="13" height="13" fill="none" stroke="currentColor" stroke-width="1.4"><path d="M3 2h7l3 3v9H3z"/></svg>RAG 工程笔记<span class="path">检索/</span></div>
+      <div class="item" data-add="索引冷启动"><svg class="ico" viewBox="0 0 16 16" width="13" height="13" fill="none" stroke="currentColor" stroke-width="1.4"><path d="M3 2h7l3 3v9H3z"/></svg>索引冷启动<span class="path">架构/</span></div>
+      <div class="item" data-add="TipTap 适配"><svg class="ico" viewBox="0 0 16 16" width="13" height="13" fill="none" stroke="currentColor" stroke-width="1.4"><path d="M3 2h7l3 3v9H3z"/></svg>TipTap 适配<span class="path">架构/</span></div>
+      <div class="item" data-add="块模型取舍"><svg class="ico" viewBox="0 0 16 16" width="13" height="13" fill="none" stroke="currentColor" stroke-width="1.4"><path d="M3 2h7l3 3v9H3z"/></svg>块模型取舍<span class="path">架构/</span></div>
+      <div class="item" data-add="召回权重 A/B"><svg class="ico" viewBox="0 0 16 16" width="13" height="13" fill="none" stroke="currentColor" stroke-width="1.4" style="color:var(--text-dim)"><path d="M3 2h7l3 3v9H3z"/><path d="M10 2v3h3"/></svg>召回权重 A/B<span class="path">未创建</span></div>
+    </div>
+  </div>
+</div>
+
+<!-- AI selection floating toolbar -->
+<div class="ai-bar" id="ai-bar" role="toolbar">
+  <span class="ai-dot"></span>
+  <button data-ai="改写" data-action="diff">改写</button>
+  <button data-ai="扩写">扩写</button>
+  <button data-ai="缩写">缩写</button>
+  <button data-ai="润色">润色</button>
+  <span class="sep"></span>
+  <button data-ai="查漏补缺">查漏</button>
+  <button data-ai="补充论据">论据</button>
+</div>
+
+<!-- Slash command menu -->
+<div class="slash-menu" id="slash" role="menu">
+  <div class="group-h">基础块</div>
+  <div class="item" data-slash="text"><svg class="ico" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4"><path d="M3 5h10M3 8h10M3 11h7"/></svg>文本<span class="hint">⌘⌥0</span></div>
+  <div class="item is-active" data-slash="h1"><svg class="ico" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4"><path d="M3 13V4M9 13V4M3 8.5h6"/></svg>标题 1<span class="hint">⌘⌥1</span></div>
+  <div class="item" data-slash="h2"><svg class="ico" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4"><path d="M3 13V4M9 13V4M3 8.5h6"/></svg>标题 2<span class="hint">⌘⌥2</span></div>
+  <div class="item" data-slash="ul"><svg class="ico" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4"><circle cx="3" cy="5" r="1"/><path d="M6 5h7M6 11h7"/><circle cx="3" cy="11" r="1"/></svg>无序列表</div>
+  <div class="item" data-slash="code"><svg class="ico" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4"><path d="M5 5L2 8l3 3M11 5l3 3-3 3"/></svg>代码块</div>
+  <div class="item" data-slash="quote"><svg class="ico" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4"><path d="M3 5v6M3 5h3l-1 2H3M9 5v6M9 5h3l-1 2H9"/></svg>引用</div>
+  <div class="group-h">AI 动作</div>
+  <div class="item" data-slash="ai"><svg class="ico" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" style="color:var(--accent-2)"><path d="M8 2l1.6 3.4L13 7l-3.4 1.6L8 12 6.4 8.6 3 7l3.4-1.6z"/></svg>用 AI 续写此处</div>
+  <div class="item" data-slash="ai"><svg class="ico" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" style="color:var(--accent-2)"><path d="M3 8h10M5 5l-2 3 2 3M11 5l2 3-2 3"/></svg>让 AI 解释这段</div>
+</div>
+
+<!-- Tweaks -->
+<button class="tweaks-fab" id="tweaks-fab">
+  <span class="dot"></span>Tweaks
+</button>
+<div class="tweaks" id="tweaks">
+  <div class="tweaks-h">
+    <span class="dot"></span>
+    <span>Tweaks</span>
+    <span class="spacer"></span>
+    <button id="tweaks-close">收起</button>
+  </div>
+  <div class="tweaks-body">
+    <div class="tweaks-row">
+      <span>主题</span>
+      <span class="spacer"></span>
+      <span class="opts">
+        <button class="is-on" data-theme="dark">暗</button>
+        <button data-theme="light">亮</button>
+      </span>
+    </div>
+    <div class="tweaks-row">
+      <span>密度</span>
+      <span class="spacer"></span>
+      <span class="opts">
+        <button data-density="comfortable">舒适</button>
+        <button class="is-on" data-density="cozy">紧凑</button>
+      </span>
+    </div>
+    <div class="tweaks-row">
+      <span>主色</span>
+      <span class="spacer"></span>
+      <span class="opts">
+        <button class="is-on" data-accent="teal">青</button>
+        <button data-accent="amber">琥珀</button>
+        <button data-accent="violet">紫</button>
+      </span>
+    </div>
+    <div class="tweaks-row">
+      <span>召回动画</span>
+      <span class="spacer"></span>
+      <span class="opts">
+        <button data-speed="off">关</button>
+        <button data-speed="fast">快</button>
+        <button class="is-on" data-speed="normal">正常</button>
+      </span>
+    </div>
+    <div class="tweaks-row">
+      <span>显示召回算式</span>
+      <span class="spacer"></span>
+      <span class="opts">
+        <button class="is-on" data-formula="on">开</button>
+        <button data-formula="off">关</button>
+      </span>
+    </div>
+  </div>
+</div>
+
+<script>
+/* =========================================================
+   Interactions — vanilla JS, no framework
+   ========================================================= */
+(function(){
+  const $  = (s, r=document) => r.querySelector(s);
+  const $$ = (s, r=document) => Array.from(r.querySelectorAll(s));
+  const sleep = ms => new Promise(r => setTimeout(r, ms));
+  const state = {
+    theme: 'dark', accent: 'teal', density: 'cozy',
+    speed: 'normal', formula: true,
+    animMs: { off: 0, fast: 220, normal: 520, slow: 900 }[ 'normal' ],
+  };
+
+  // ---------- Theme / density / accent / formula ----------
+  function applyAccent(name){
+    const map = {
+      teal:   { h:'195 0.12', a:'oklch(82% 0.12 195)', a2:'oklch(88% 0.10 195)' },
+      amber:  { h:'78 0.14',  a:'oklch(82% 0.14 78)',  a2:'oklch(88% 0.12 78)'  },
+      violet: { h:'290 0.10', a:'oklch(78% 0.12 290)', a2:'oklch(85% 0.10 290)' }
+    }[name] || {};
+    const r = document.documentElement.style;
+    if(name==='teal'){
+      r.setProperty('--accent', 'oklch(82% 0.12 195)');
+      r.setProperty('--accent-2', 'oklch(88% 0.10 195)');
+    } else if(name==='amber'){
+      r.setProperty('--accent', 'oklch(82% 0.14 78)');
+      r.setProperty('--accent-2', 'oklch(88% 0.12 78)');
+    } else if(name==='violet'){
+      r.setProperty('--accent', 'oklch(78% 0.12 290)');
+      r.setProperty('--accent-2', 'oklch(85% 0.10 290)');
+    }
+    state.accent = name;
+  }
+  function applyTheme(name){
+    document.body.setAttribute('data-theme', name);
+    state.theme = name;
+  }
+  function applyDensity(name){
+    document.body.style.setProperty('--editor-pad', name==='cozy' ? '20px 48px 120px' : '28px 56px 120px');
+    state.density = name;
+  }
+
+  // ---------- Tabs ----------
+  $$('.tab').forEach(t => t.addEventListener('click', () => {
+    $$('.tab').forEach(x => x.classList.remove('is-active'));
+    t.classList.add('is-active');
+    const which = t.dataset.tab;
+    $('#editor').setAttribute('data-active', which);
+    $$('#editor [data-pane]').forEach(p => p.hidden = p.dataset.pane !== which);
+  }));
+
+  // ---------- Sidebar tree toggles ----------
+  $$('[data-toggle]').forEach(t => t.addEventListener('click', e => {
+    if(e.target.closest('.tree-children')) return;
+    t.classList.toggle('is-open');
+  }));
+
+  // ---------- Frontmatter table ↔ YAML ----------
+  $$('#fm [data-fm]').forEach(b => b.addEventListener('click', () => {
+    $$('#fm [data-fm]').forEach(x => x.classList.remove('is-on'));
+    b.classList.add('is-on');
+    $('#fm').classList.toggle('is-yaml', b.dataset.fm === 'yaml');
+  }));
+
+  // ---------- AI selection toolbar ----------
+  const aiBar = $('#ai-bar');
+  let savedRange = null;
+  function showAiBarAtSelection(){
+    const sel = window.getSelection();
+    if(!sel || sel.isCollapsed || !sel.rangeCount){ aiBar.classList.remove('is-on'); return; }
+    const range = sel.getRangeAt(0);
+    const rect = range.getBoundingClientRect();
+    if(!rect.width || !rect.height){ aiBar.classList.remove('is-on'); return; }
+    savedRange = range.cloneRange();
+    aiBar.style.left = (rect.left + rect.width/2) + 'px';
+    aiBar.style.top  = (rect.top - 6) + 'px';
+    aiBar.classList.add('is-on');
+  }
+  document.addEventListener('selectionchange', () => {
+    const sel = window.getSelection();
+    const node = sel && sel.anchorNode;
+    if(!node) return;
+    if(!(node.nodeType === 1 ? node : node.parentElement).closest('[data-block]')){
+      aiBar.classList.remove('is-on'); return;
+    }
+    if(sel.isCollapsed){ aiBar.classList.remove('is-on'); return; }
+    showAiBarAtSelection();
+  });
+  $$('#ai-bar button').forEach(b => b.addEventListener('mousedown', e => e.preventDefault()));
+  $('#ai-bar').addEventListener('click', e => {
+    const b = e.target.closest('button'); if(!b) return;
+    if(b.dataset.action === 'diff'){ openOverlay('ov-diff'); }
+    else { toast('AI 动作：' + b.dataset.ai + '（原型）'); }
+    aiBar.classList.remove('is-on');
+    window.getSelection().removeAllRanges();
+  });
+  document.addEventListener('scroll', () => aiBar.classList.remove('is-on'), true);
+
+  // ---------- Slash menu ----------
+  const slash = $('#slash');
+  function placeSlash(){
+    const sel = window.getSelection();
+    if(!sel || !sel.rangeCount) return;
+    const r = sel.getRangeAt(0).getBoundingClientRect();
+    slash.style.left = Math.max(8, r.left) + 'px';
+    slash.style.top  = (r.bottom + 4) + 'px';
+  }
+  document.addEventListener('keydown', e => {
+    if(e.key === '/' && document.activeElement && document.activeElement.closest('[data-block]')){
+      setTimeout(() => { placeSlash(); slash.classList.add('is-on'); }, 0);
+    } else if(e.key === 'Escape'){
+      slash.classList.remove('is-on');
+    }
+  });
+  document.addEventListener('click', e => {
+    if(!e.target.closest('#slash') && !e.target.closest('[data-block]')) slash.classList.remove('is-on');
+  });
+  $$('#slash .item').forEach(i => i.addEventListener('click', () => {
+    toast('插入块：' + i.textContent.trim().split(/\s+/)[0]);
+    slash.classList.remove('is-on');
+  }));
+
+  // ---------- Overlays ----------
+  function openOverlay(id){ $('#'+id).classList.add('is-on'); }
+  function closeOverlay(id){ $('#'+id).classList.remove('is-on'); }
+  $$('[data-open]').forEach(b => b.addEventListener('click', e => { e.stopPropagation(); openOverlay(b.dataset.open); }));
+  $$('[data-close]').forEach(b => b.addEventListener('click', e => { e.stopPropagation(); closeOverlay(b.dataset.close); }));
+  $$('.overlay').forEach(o => o.addEventListener('click', e => { if(e.target === o) o.classList.remove('is-on'); }));
+  document.addEventListener('keydown', e => {
+    if(e.key === 'Escape'){ $$('.overlay.is-on').forEach(o => o.classList.remove('is-on')); closeDrawer(); }
+  });
+
+  // ---------- Command palette ----------
+  const cmdInput = $('#cmd-input');
+  const cmdList  = $('#cmd-list');
+  let cmdActive = 0;
+  function openCmd(){
+    openOverlay('ov-cmd');
+    setTimeout(() => cmdInput.focus(), 30);
+  }
+  $$('[data-open="cmd"]').forEach(b => b.addEventListener('click', openCmd));
+  cmdInput && cmdInput.addEventListener('input', () => {
+    const q = cmdInput.value.toLowerCase();
+    $$('.cmd-row', cmdList).forEach(r => {
+      r.style.display = r.textContent.toLowerCase().includes(q) ? '' : 'none';
+    });
+  });
+  cmdInput && cmdInput.addEventListener('keydown', e => {
+    const rows = $$('.cmd-row', cmdList).filter(r => r.style.display !== 'none');
+    if(e.key === 'ArrowDown'){ cmdActive = (cmdActive+1) % rows.length; e.preventDefault(); }
+    else if(e.key === 'ArrowUp'){ cmdActive = (cmdActive-1+rows.length) % rows.length; e.preventDefault(); }
+    else if(e.key === 'Enter'){ rows[cmdActive]?.click(); }
+    rows.forEach((r,i) => r.classList.toggle('is-active', i === cmdActive));
+  });
+  $$('.cmd-row').forEach(r => r.addEventListener('click', () => {
+    const go = r.dataset.go || '';
+    if(go.startsWith('ai:diff')){ openOverlay('ov-diff'); }
+    else if(go.startsWith('ai:insert')){ toast('已追加新块（可撤销）'); }
+    else if(go.startsWith('page:')){ toast('跳转：' + go.slice(5)); }
+    else { toast('执行：' + r.textContent.trim()); }
+    closeOverlay('ov-cmd');
+  }));
+
+  // ---------- Drawers ----------
+  function openDrawer(id){ $('#'+id).classList.add('is-on'); }
+  function closeDrawer(){ $$('.drawer.is-on').forEach(d => d.classList.remove('is-on')); }
+  $('#open-timeline').addEventListener('click', () => openDrawer('drawer-timeline'));
+  $('#close-timeline').addEventListener('click', closeDrawer);
+  $('#open-skill').addEventListener('click', () => openDrawer('drawer-skill'));
+  $('#close-skill').addEventListener('click', closeDrawer);
+
+  // ---------- Skill toggle ----------
+  $$('.switch').forEach(sw => sw.addEventListener('click', () => sw.parentElement.classList.toggle('is-on')));
+
+  // ---------- Context chips ----------
+  $$('#chips .x').forEach(x => x.addEventListener('click', e => {
+    e.stopPropagation();
+    x.closest('.chip').remove();
+  }));
+  const picker = $('#picker');
+  $('#add-ctx').addEventListener('click', e => {
+    e.stopPropagation();
+    const r = $('#add-ctx').getBoundingClientRect();
+    picker.style.top  = (r.bottom + 4) + 'px';
+    picker.style.right = (window.innerWidth - r.right) + 'px';
+    picker.classList.toggle('is-on');
+    setTimeout(() => $('#picker-q').focus(), 30);
+  });
+  document.addEventListener('click', e => {
+    if(!e.target.closest('#picker') && !e.target.closest('#add-ctx')) picker.classList.remove('is-on');
+  });
+  $('#picker-q') && $('#picker-q').addEventListener('input', e => {
+    const q = e.target.value.toLowerCase();
+    $$('#picker-list .item').forEach(it => {
+      it.style.display = it.textContent.toLowerCase().includes(q) ? '' : 'none';
+    });
+  });
+  $$('#picker-list .item').forEach(it => it.addEventListener('click', () => {
+    const name = it.dataset.add;
+    const chip = document.createElement('span');
+    chip.className = 'chip';
+    chip.innerHTML = '<svg class="ico" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4"><path d="M5 8a3 3 0 1 0 2-2.8"/><path d="M11 8a3 3 0 1 0-2 2.8"/></svg>'+name+'<span class="x" data-x>×</span>';
+    $('#add-ctx').before(chip);
+    chip.querySelector('.x').addEventListener('click', ev => { ev.stopPropagation(); chip.remove(); });
+    picker.classList.remove('is-on');
+    $('#picker-q').value = '';
+  }));
+
+  // ---------- Cite expand ----------
+  $$('.cite').forEach(c => c.addEventListener('click', () => c.classList.toggle('is-open')));
+
+  // ---------- Status bar ----------
+  $('#btn-push').addEventListener('click', () => openOverlay('ov-push'));
+  $('#btn-pull').addEventListener('click', () => toast('已从 origin/main 拉取 0 提交（无更新）'));
+
+  // ---------- Tweaks ----------
+  const tweaks = $('#tweaks');
+  $('#tweaks-fab').addEventListener('click', () => tweaks.classList.toggle('is-on'));
+  $('#tweaks-close').addEventListener('click', () => tweaks.classList.remove('is-on'));
+  $$('#tweaks [data-theme]').forEach(b => b.addEventListener('click', () => {
+    $$('#tweaks [data-theme]').forEach(x => x.classList.remove('is-on')); b.classList.add('is-on');
+    applyTheme(b.dataset.theme);
+  }));
+  $$('#tweaks [data-density]').forEach(b => b.addEventListener('click', () => {
+    $$('#tweaks [data-density]').forEach(x => x.classList.remove('is-on')); b.classList.add('is-on');
+    applyDensity(b.dataset.density);
+  }));
+  $$('#tweaks [data-accent]').forEach(b => b.addEventListener('click', () => {
+    $$('#tweaks [data-accent]').forEach(x => x.classList.remove('is-on')); b.classList.add('is-on');
+    applyAccent(b.dataset.accent);
+  }));
+  $$('#tweaks [data-speed]').forEach(b => b.addEventListener('click', () => {
+    $$('#tweaks [data-speed]').forEach(x => x.classList.remove('is-on')); b.classList.add('is-on');
+    state.speed = b.dataset.speed;
+    state.animMs = { off:0, fast:220, normal:520, slow:900 }[state.speed];
+  }));
+  $$('#tweaks [data-formula]').forEach(b => b.addEventListener('click', () => {
+    $$('#tweaks [data-formula]').forEach(x => x.classList.remove('is-on')); b.classList.add('is-on');
+    state.formula = b.dataset.formula === 'on';
+    $('#toggle-formula').style.display = state.formula ? '' : 'none';
+  }));
+
+  // ---------- Recall formula toggle ----------
+  $('#toggle-formula').addEventListener('click', () => {
+    state.formula = !state.formula;
+    $('#toggle-formula').style.opacity = state.formula ? '1' : '.4';
+    toast('召回算式：' + (state.formula ? '显示' : '隐藏'));
+  });
+
+  // ---------- Save as page ----------
+  $('#save-as-page').addEventListener('click', () => {
+    const name = '与 AI 讨论检索策略 · ' + new Date().toLocaleTimeString('zh-CN',{hour:'2-digit',minute:'2-digit'});
+    const tab = document.createElement('div'); tab.className = 'tab chat';
+    tab.dataset.tab = 'chat';
+    tab.innerHTML = '<svg class="ico" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4"><path d="M3 4h10v8H6l-3 2z"/></svg><span>'+name+'</span><span class="close" title="关闭">×</span>';
+    $('.tabs').insertBefore(tab, $('.tabs .spacer'));
+    tab.click();
+    toast('已保存为页面：' + name);
+  });
+
+  // ---------- Cockpit send (animate recall + stream answer) ----------
+  $('#send').addEventListener('click', sendCockpit);
+  $('#qa').addEventListener('keydown', e => {
+    if((e.metaKey || e.ctrlKey) && e.key === 'Enter'){ e.preventDefault(); sendCockpit(); }
+  });
+
+  async function sendCockpit(){
+    const q = $('#qa').value.trim();
+    if(!q) return;
+    $('#qa').value = '';
+    appendUserMsg(q);
+    const recallEl = appendRecallPanel();
+    await animateRecall(recallEl);
+    const answerEl = appendAnswer(`对 <code>${q.replace(/</g,'&lt;')}</code> 这类问题，推荐先用 5–10 条标注样本离线算一遍 MRR，对比「<code>sim</code>」与「<code>sim · confidence<sup>0.7</sup></code>」两条公式；如库小可手算 50 条，库大可上 1k 条子集。
+      <p>一般规律：在 Link Index 密度高的 vault 上，置信度权重能带来 <b>5–15% MRR 提升</b>，但要小心 <code>confidence</code> 受最近更新偏置 — 建议 <code>α</code> 起步 0.5、观察 hit@5 是否抖动，再调到 0.7。</p>
+      <p>下一步可以让我把这段写进 <span class="wl" style="font-size:12px">[[向量检索笔记]]</span> 的「下一段计划」。</p>`);
+    streamAnswer(answerEl);
+  }
+
+  function appendUserMsg(text){
+    const m = document.createElement('div'); m.className = 'msg user';
+    m.innerHTML = `<div class="bubble">${text}</div>`;
+    $('#thread').appendChild(m); scrollThread();
+  }
+  function appendRecallPanel(){
+    const m = document.createElement('div'); m.className = 'msg ai';
+    m.innerHTML = `
+      <div class="recall">
+        <div class="recall-h">
+          <span class="h-title">渐进召回</span>
+          <span class="status" style="color:var(--text-dim)">运行中…</span>
+          <button class="toggle-formula">final = sim · confidence<sup>0.7</sup></button>
+        </div>
+        <div class="recall-body">
+          <div class="stage" data-s="1">
+            <div class="badge s1">S1·粗筛</div>
+            <div class="body">
+              <div class="name">关键词 + 标签 + frontmatter</div>
+              <div class="desc">扫描 FTS5 + 元数据匹配…</div>
+            </div>
+            <div class="hits mono"><span class="pulse"></span>…</div>
+          </div>
+          <div class="stage" data-s="2">
+            <div class="badge s2">S2·扩展</div>
+            <div class="body">
+              <div class="name">wikilink 1–2 跳扩展</div>
+              <div class="desc">等待 S1…</div>
+            </div>
+            <div class="hits mono" style="color:var(--text-dim)">—</div>
+          </div>
+          <div class="stage" data-s="3">
+            <div class="badge s3">S3·重排</div>
+            <div class="body">
+              <div class="name">embedding + cosine × 置信度</div>
+              <div class="desc">等待 S2…</div>
+            </div>
+            <div class="hits mono" style="color:var(--text-dim)">—</div>
+          </div>
+        </div>
+      </div>`;
+    $('#thread').appendChild(m); scrollThread();
+    return m;
+  }
+  async function animateRecall(root){
+    const stages = $$('.stage', root);
+    const ms = state.animMs;
+    for(let i=0; i<stages.length; i++){
+      const s = stages[i];
+      s.classList.add('is-running');
+      if(ms){ await sleep(ms); } else { await sleep(1); }
+      // finalize
+      s.classList.remove('is-running');
+      s.classList.add('is-done');
+      const hit = s.querySelector('.hits');
+      if(i===0){ s.querySelector('.desc').textContent = '命中 向量检索笔记 / FTS5 分词器对比 / Link Index 重建策略 等 9 文档'; hit.innerHTML = '9 · '+ (60+Math.floor(Math.random()*40)) +'ms'; }
+      if(i===1){ s.querySelector('.desc').innerHTML = '<span class="viz"><span class="node is-hit"></span><span class="link"></span><span class="node is-hit"></span><span class="link"></span><span class="node is-hit"></span><span class="link" style="width:8px"></span><span class="node"></span></span> 9 → 27 候选'; hit.innerHTML = '27 · '+(70+Math.floor(Math.random()*40))+'ms'; }
+      if(i===2){
+        s.querySelector('.desc').innerHTML = `
+          <div class="rerank-viz">
+            <div class="rr-row"><span class="name">向量检索笔记</span><div class="bars"><span class="sim" style="width:84%"></span><span class="final" style="width:78%"></span></div><span class="sim-num">0.84</span><span class="final-num" style="display:none">0.78</span></div>
+            <div class="rr-row is-lift"><span class="name">召回权重 A/B</span><div class="bars"><span class="sim" style="width:76%"></span><span class="final" style="width:83%"></span></div><span class="sim-num">0.76</span><span class="final-num" style="display:none">0.83</span></div>
+            <div class="rr-row is-lift"><span class="name">FTS5 分词器对比</span><div class="bars"><span class="sim" style="width:72%"></span><span class="final" style="width:79%"></span></div><span class="sim-num">0.72</span><span class="final-num" style="display:none">0.79</span></div>
+            <div class="rr-row"><span class="name">RAG 工程笔记</span><div class="bars"><span class="sim" style="width:69%"></span><span class="final" style="width:62%"></span></div><span class="sim-num">0.69</span><span class="final-num" style="display:none">0.62</span></div>
+          </div>`;
+        hit.innerHTML = 'Top 4 · '+(120+Math.floor(Math.random()*50))+'ms';
+      }
+    }
+    const status = root.querySelector('.status');
+    if(status) status.textContent = '3 阶段 · 27 候选 · '+(state.animMs? '~520ms' : '即时');
+    // attach formula toggle on this panel too
+    const t = root.querySelector('.toggle-formula');
+    t && t.addEventListener('click', () => { state.formula = !state.formula; t.style.opacity = state.formula?1:.4; });
+  }
+  function appendAnswer(html){
+    const m = document.createElement('div'); m.className = 'msg ai';
+    m.innerHTML = `<div class="bubble"></div>
+      <div class="msg-meta">
+        <span class="model">GPT-5</span><span>·</span>
+        <span>引用 4 · 召回 9→27→4</span>
+      </div>`;
+    m.querySelector('.bubble').innerHTML = html;
+    $('#thread').appendChild(m); scrollThread();
+    return m;
+  }
+  function streamAnswer(msgEl){
+    // reveal final answer (no per-character for stability, just append cites)
+    const cite = document.createElement('div'); cite.className = 'cites';
+    cite.innerHTML = `
+      <div class="cite is-open" data-cite>
+        <span class="stage-tag">rerank</span>
+        <span class="title">向量检索笔记<span class="conf mono">· 0.78</span></span>
+        <span class="expand">▾ 已展开</span>
+        <div class="passage">「召回三阶段：粗筛 → 双链扩展 → 向量重排（置信度作乘性因子）」</div>
+      </div>
+      <div class="cite" data-cite>
+        <span class="stage-tag">rerank</span>
+        <span class="title">召回权重 A/B<span class="conf mono">· 0.83</span></span>
+        <span class="expand">▸ 展开</span>
+        <div class="passage">「在 Link Index 密度高的 vault 上，置信度权重能带来 5–15% MRR 提升」</div>
+      </div>
+      <div class="cite" data-cite>
+        <span class="stage-tag">expand</span>
+        <span class="title">FTS5 分词器对比<span class="conf mono">· 0.79</span></span>
+        <span class="expand">▸ 展开</span>
+        <div class="passage">中文分词策略 + 与 wikilink 标题分词共享同一分词器表</div>
+      </div>
+      <div class="cite" data-cite>
+        <span class="stage-tag">rerank</span>
+        <span class="title">RAG 工程笔记<span class="conf mono">· 0.62</span></span>
+        <span class="expand">▸ 展开</span>
+        <div class="passage">避免将 confidence 与「最近更新」过度耦合，否则新文档会被过压。</div>
+      </div>`;
+    msgEl.querySelector('.bubble').appendChild(cite);
+    $$('.cite', msgEl).forEach(c => c.addEventListener('click', () => c.classList.toggle('is-open')));
+    scrollThread();
+  }
+  function scrollThread(){ const t = $('#thread'); t.scrollTop = t.scrollHeight; }
+
+  // ---------- Toast ----------
+  let toastEl;
+  function toast(text){
+    if(!toastEl){
+      toastEl = document.createElement('div');
+      toastEl.style.cssText = 'position:fixed; left:50%; bottom:64px; transform:translateX(-50%); z-index:200; background:var(--raised-2); border:1px solid var(--border-strong); border-radius:var(--r-sm); box-shadow:var(--shadow-2); padding:8px 12px; font-size:12.5px; color:var(--text); opacity:0; transition:opacity var(--t) var(--ease);';
+      document.body.appendChild(toastEl);
+    }
+    toastEl.textContent = text;
+    toastEl.style.opacity = '1';
+    clearTimeout(toastEl._t);
+    toastEl._t = setTimeout(() => toastEl.style.opacity = '0', 1900);
+  }
+
+  // ---------- Init ----------
+  applyAccent('teal'); applyTheme('dark'); applyDensity('cozy');
+  $('#toggle-formula').addEventListener('click', () => {
+    $$('.recall').forEach(r => { const t = r.querySelector('.toggle-formula'); if(t) t.style.opacity = state.formula? '1':'.4'; });
+  });
+})();
+</script>
+</body>
+</html>
