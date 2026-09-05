@@ -93,7 +93,7 @@ function bootstrap(): void {
     const smoke = new SmokeController({
       windows,
       // out/main/index.js → ../.. = worktree 根（.scratch/ 与仓库同级）
-      outputDir: join(__dirname, '../../.scratch/nexnote-build/smoke/DEV-001'),
+      outputDir: join(__dirname, '../../.scratch/nexnote-build/smoke/DEV-003'),
     });
     void smoke.init();
   }
