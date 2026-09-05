@@ -1,5 +1,6 @@
 import type {
   ChatStreamEvent,
+  ProviderCapabilities,
   TokenUsage,
 } from '@nexnote/shared';
 import { createSseParser } from './sse';
@@ -133,6 +134,58 @@ export class OpenAIProtocolAdapter implements ProviderAdapter {
 
   declaredCapabilities() {
     return { chat: true, streaming: true, embeddings: true, tools: true };
+  }
+
+  async testConnection(defaultModel = ''): Promise<{
+    reachable: boolean;
+    capabilities: ProviderCapabilities;
+    models: string[];
+    latencyMs: number;
+    error?: string;
+  }> {
+    const started = Date.now();
+    const declared = this.declaredCapabilities();
+    let models: string[] = [];
+    try {
+      models = await this.listModels();
+    } catch {
+      // 列模型失败不视为不可达
+    }
+    const chatModel =
+      defaultModel || models.find((m) => !m.toLowerCase().includes('embed')) || '';
+    const chatOk = chatModel
+      ? await (async () => {
+          try {
+            await this.chatCompletion({ model: chatModel, messages: [{ role: 'user', content: 'ping' }], params: { maxTokens: 1 } });
+            return true;
+          } catch {
+            return false;
+          }
+        })()
+      : false;
+    const embeddingModel = models.find((m) => m.toLowerCase().includes('embed')) ?? '';
+    let embeddingProbe: { dimensions: number } | null = null;
+    if (embeddingModel) {
+      try {
+        const r = await this.embeddings({ model: embeddingModel, inputs: ['ping'] });
+        embeddingProbe = { dimensions: r.vectors[0]?.length ?? 0 };
+      } catch {
+        embeddingProbe = null;
+      }
+    }
+    const reachable = chatOk || models.length > 0;
+    return {
+      reachable,
+      capabilities: {
+        chat: chatOk || (!chatModel && models.length > 0),
+        streaming: chatOk || models.length > 0,
+        embeddings: embeddingProbe !== null,
+        tools: declared.tools && chatOk,
+      },
+      models,
+      latencyMs: Date.now() - started,
+      ...(reachable ? {} : { error: '无法连接供应商（模型列表与对话探测均失败）' }),
+    };
   }
 
   async listModels(): Promise<string[]> {

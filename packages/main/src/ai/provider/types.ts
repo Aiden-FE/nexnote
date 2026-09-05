@@ -63,7 +63,16 @@ export interface ProviderAdapter {
 
   listModels(): Promise<string[]>;
 
-  /** 协议级能力声明（tools 等）；连通性相关的 chat/streaming/embeddings 由 testConnection 实测 */
+  /** Adapter 级连通性/能力探测（最小协议实测；AiService 再封装为 Profile/candidate API）。 */
+  testConnection(defaultModel?: string): Promise<{
+    reachable: boolean;
+    capabilities: ProviderCapabilities;
+    models: string[];
+    latencyMs: number;
+    error?: string;
+  }>;
+
+  /** 协议级能力声明（tools 等）；连接相关能力由 testConnection 实测 */
   declaredCapabilities(): ProviderCapabilities;
 }
 

@@ -176,68 +176,8 @@ export class AiService {
    * 3. 模型列表含 embed 类模型 → 最小 embeddings 请求实测（得到维度）
    */
   async testConnection(target: AiConnectionTarget): Promise<ConnectionTestResult> {
-    const started = Date.now();
     const { adapter, defaultModel } = this.targetAdapter(target);
-    const declared = adapter.declaredCapabilities();
-
-    let models: string[] = [];
-    try {
-      models = await adapter.listModels();
-    } catch {
-      // 列模型失败不视为不可达（部分网关禁用 /models）；继续 chat 实测
-    }
-
-    const chatModel =
-      defaultModel || models.find((m) => !m.toLowerCase().includes('embed')) || '';
-    const chatOk = await this.probeChat(adapter, chatModel);
-
-    const embeddingModel = models.find((m) => m.toLowerCase().includes('embed')) ?? '';
-    const embeddingProbe = embeddingModel
-      ? await this.probeEmbeddings(adapter, embeddingModel)
-      : null;
-
-    const reachable = chatOk || models.length > 0;
-    const result: ConnectionTestResult = {
-      reachable,
-      capabilities: {
-        chat: chatOk || (!chatModel && models.length > 0),
-        streaming: chatOk || models.length > 0,
-        embeddings: embeddingProbe !== null,
-        tools: declared.tools && chatOk,
-      },
-      models,
-      latencyMs: Date.now() - started,
-    };
-    if (!reachable) {
-      result.error = '无法连接供应商（模型列表与对话探测均失败），请检查 base-url / 密钥 / 网络';
-    }
-    return result;
-  }
-
-  private async probeChat(adapter: ProviderAdapter, model: string): Promise<boolean> {
-    if (!model) return false;
-    try {
-      await adapter.chatCompletion({
-        model,
-        messages: [{ role: 'user', content: 'ping' }],
-        params: { maxTokens: 1 },
-      });
-      return true;
-    } catch {
-      return false;
-    }
-  }
-
-  private async probeEmbeddings(
-    adapter: ProviderAdapter,
-    model: string,
-  ): Promise<{ dimensions: number } | null> {
-    try {
-      const res = await adapter.embeddings({ model, inputs: ['ping'] });
-      return { dimensions: res.vectors[0]?.length ?? 0 };
-    } catch {
-      return null;
-    }
+    return adapter.testConnection(defaultModel);
   }
 
   // ── 对话 ────────────────────────────────────────────

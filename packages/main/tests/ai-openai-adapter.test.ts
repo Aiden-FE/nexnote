@@ -90,10 +90,20 @@ describe('OpenAI 协议适配器', () => {
     expect(res.vectors[0]).not.toEqual(res.vectors[1]);
   });
 
-  it('listModels 返回模型清单', async () => {
-    const models = await adapter().listModels();
+  it('listModels 与 adapter.testConnection 返回模型清单/能力探测', async () => {
+    const a = adapter();
+    const models = await a.listModels();
     expect(models).toContain('gpt-4o-mini');
     expect(models).toContain('text-embedding-3-small');
+
+    const connection = await a.testConnection();
+    expect(connection.reachable).toBe(true);
+    expect(connection.capabilities).toMatchObject({
+      chat: true,
+      streaming: true,
+      embeddings: true,
+      tools: true,
+    });
   });
 
   it('Azure 变体：deployment 路径 + api-key 头', async () => {
