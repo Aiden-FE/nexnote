@@ -1,0 +1,19 @@
+{
+  "name": "@nexnote/renderer",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "typecheck": "tsc --noEmit -p tsconfig.json"
+  },
+  "dependencies": {
+    "@nexnote/kernel": "workspace:*",
+    "@nexnote/shared": "workspace:*",
+    "clsx": "^2.1.1",
+    "lucide-react": "^1.41.0",
+    "react": "^19.2.0",
+    "react-dom": "^19.2.0",
+    "tailwind-merge": "^3.4.0",
+    "zustand": "^5.0.15"
+  }
+}
