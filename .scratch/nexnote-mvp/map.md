@@ -37,6 +37,7 @@ Label: wayfinder:map
 - [12 · 整案原型 B：知识网络优先](issues/12-prototype-b-network-first.md): B 案原型交付（docs/research/prototypes/archive/prototype-b-network-first.html），「夜间星图」视觉语言、知识网络一等公民——每页右栏常驻局部图谱+相关页+反链、全局图谱首页、标签视图、虚链即创；覆盖编辑器基线、元数据双模式、Git 时间线+置信度、AI 三阶段召回+上下文注入、Skill/插件设置。**14 号票未获采纳，已归档。**
 - [13 · 整案原型 C：AI 原生驾驶舱](issues/13-prototype-c-ai-first.md): 原型已产出（docs/research/prototypes/archive/c-ai-native-cockpit.html，单文件可点击）——右侧 cockpit 占 ~41% 宽度作主组织面；渐进召回三阶段可视化（粗筛/双链扩展/重排含命中数与耗时）；置信度乘性重排 bar 可视化（sim vs final，含抬升↑标注）+ 属性面板因子分解；块编辑基线（选区 AI 工具栏 6 动作/diff 回写/斜杠/^id 铬点/表格↔YAML）；Git 状态栏+时间线抽屉；会话即页面一键保存；检索 Skill 抽屉；取舍 = 编辑器让宽度换「AI 作为原生层」验证。**14 号票未获采纳，已归档。**
 - [14 · 原型评审确认](issues/14-prototype-review.md): 用户拍板认可案 = A（块编辑优先，v0 直接采纳、无修改意见）；A 案绑定默认栈升级为最终技术架构决策（与 08 一致，ADR 0001/0002 维持）；B/C 归档至 docs/research/prototypes/archive/；15 号票以 A v0 为基线。
+- [15 · MVP 开发任务票据切分](issues/15-dev-ticket-slicing.md): 切出 19 张开发票（7 模块：foundation / editor / knowledge / git / ai / plugins / integration），首票 DEV-001 项目骨架；含 TipTap round-trip spike 强制验证项；Git 与 AI Provider 可与编辑器并行；插件系统 XL 工作量但不阻塞核心路径；全模块一次性大交付，DEV-019 为集成验收关。开发票据与索引见 `.scratch/nexnote-build/`。
 
 ## Not yet specified
 
