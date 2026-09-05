@@ -4,6 +4,7 @@ import { join } from 'node:path';
 import { AppStore } from './vault/app-store';
 import { VaultSession } from './vault/vault-session';
 import { VaultFsService } from './fs/fs-service';
+import { VaultWatchService } from './fs/watch-service';
 import { WindowManager } from './window';
 import { registerAllIpcHandlers } from './ipc';
 import { checkForUpdates, initAutoUpdater } from './updater';
@@ -35,7 +36,13 @@ let windows: WindowManager | null = null;
 function bootstrap(): void {
   const appStore = new AppStore(join(app.getPath('userData'), 'nexnote-app.json'));
   windows = new WindowManager({ getAppStore: () => appStore, devTools: !!process.env.NEXNOTE_DEVTOOLS });
-  const vaultSession = new VaultSession({ appStore, windows });
+  const vaultSession = new VaultSession({ appStore, windows, onChanged: () => void watch.sync() });
+  // 文件监视（DEV-003）：vault 打开/关闭时自动启停，变化推送 fs:changed
+  const watch = new VaultWatchService({
+    getRoot: () => vaultSession.getCurrent()?.root ?? null,
+    emit: (event) => windows?.sendToMainWindow('fs:changed', event),
+    onError: (e) => log('watch error:', e),
+  });
   const fs = new VaultFsService(() => vaultSession.getCurrent()?.root ?? null);
 
   initAutoUpdater(log);
@@ -61,6 +68,10 @@ function bootstrap(): void {
     async trash(absPath) {
       await shell.trashItem(absPath);
     },
+    async revealItem(absPath) {
+      shell.showItemInFolder(absPath);
+    },
+    watch,
     appInfo() {
       return {
         version: app.getVersion(),
