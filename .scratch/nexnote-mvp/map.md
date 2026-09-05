@@ -28,11 +28,12 @@ Label: wayfinder:map
 - [04 · 竞品块模型与存储格式研究](issues/04-competitor-arch-research.md): 无损边界 = CommonMark+GFM+LaTeX；块 ID 采用 Obsidian `^id` 锚点语法；嵌套容器/合并单元格必降级、块样式必丢弃；Link Index 做可从 vault 全量重建的派生缓存。报告 docs/research/competitor-arch.md。
 - [05 · AI 集成与本地向量检索研究](issues/05-ai-vector-research.md): 自有 Provider Adapter + 主进程持钥 + sqlite-vec 派生索引 + 三阶段渐进召回（非 GraphRAG）；LanceDB / GraphRAG 为后续备选。报告 docs/research/ai-vector.md。
 - [06 · 插件系统机制研究](issues/06-plugin-system-research.md): sandbox iframe UI + capability RPC + 宿主预注册 plugin_block；V1 增 QuickJS/WASM logic worker；Node 子进程仅限 desktop-privileged。报告 docs/research/plugin-system.md。
+- [07 · 产品架构对齐](issues/07-product-architecture.md): 产品架构定稿——页面=md+子文件夹嵌套、文件名默认=标题可解耦；多 tab+分屏+右侧 AI 对话 dock+状态栏；回链侧栏面板、元数据表格↔YAML 双模式、双轨标签；置信度仅属性面板呈现+召回权重后端挂钩；AI 三入口（选区工具栏/斜杠/右键）+ diff 预览回写；图谱全局+局部均进 MVP；Git 状态栏+时间线+pull/push 快捷；Skill/插件设置页管理+召回透明+权限确认；首启动向导三选一。
 - （02 · 块编辑器内核选型：首次子代理未完成，重试中；待收口）
 
 ## Not yet specified
 
-- 置信度算法细则：公式、因子权重、UI 呈现、与 AI 召回权重的挂钩方式——等 Git 底座与 AI 架构落定后再立票。
+- 置信度算法细则：公式、因子权重、与 AI 召回权重的具体挂钩方式（**UI 呈现已定：仅文档属性面板**）——等 Git 底座与 AI 架构落定后再立票。
 - 冲突处理与导入策略细则：远程同步冲突提示 UX、本地文件夹批量导入、特定知识导入——等技术架构定。
 - 图谱视图选型与交互细节——等技术架构与认可原型定。
 - 块 ↔ Markdown 双向映射的具体约定（哪些块类型无损、哪些降级）——等编辑器内核选型与竞品研究落定。

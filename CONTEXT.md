@@ -50,3 +50,30 @@ _Avoid_: 技能（泛指）、技能系统
 **整案原型（Full-Stack Prototype）**:
 产品形态 + UI 交互 + 技术栈组合的一体化可点击 HTML 方案；评审后仅保留一案。
 _Avoid_: demo、mockup（泛指）
+
+### 产品信息架构
+
+**命令面板（Command Palette）**:
+⌘K 模糊入口，聚合页面跳转、命令与 AI 动作。
+_Avoid_: 快速打开、launcher
+
+**反向链接面板（Linked Mentions）**:
+侧栏中列出引用当前页面（含经别名）的位置。
+_Avoid_: 回链区、底部引用
+
+**对话 dock（Chat Dock）**:
+右侧可折叠的 AI 会话面板，内含上下文注入选择与召回参考来源。
+_Avoid_: AI 侧窗、聊天窗口
+
+**上下文注入（Context Injection）**:
+AI 请求组装时选取当前文档、选区、关联双链文档等作为上下文的行为。
+
+**版本时间线（Version Timeline）**:
+单篇文档的提交历史视图；自动提交折叠分组、手动提交标注。
+
+**参考来源（Cited Sources）**:
+对话回答中展示的召回命中文档及其阶段标注；可展开。
+_Avoid_: 引用列表
+
+**首启动向导（Onboarding Wizard）**:
+新建空 vault / 打开本地文件夹 / 克隆远程空仓库三选一的初始化流程。
