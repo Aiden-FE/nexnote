@@ -12,6 +12,10 @@ interface UiState {
   dockVisible: boolean;
   dockWidth: number;
   activeDockPanelId: string | null;
+  /** 页面树折叠目录（vault 相对路径；持久化到 vault 配置，DEV-003） */
+  treeCollapsedDirs: string[];
+  /** 页面树显示非 .md 文件（默认隐藏，DEV-003） */
+  treeShowAllFiles: boolean;
   toggleSidebar(): void;
   setSidebarWidth(width: number): void;
   setSidebarCollapsed(collapsed: boolean): void;
@@ -20,6 +24,9 @@ interface UiState {
   setDockVisible(visible: boolean): void;
   setDockWidth(width: number): void;
   setActiveDockPanel(id: string): void;
+  toggleTreeDir(path: string): void;
+  setTreeCollapsedDirs(dirs: string[]): void;
+  setTreeShowAllFiles(show: boolean): void;
 }
 
 const clamp = (v: number, min: number, max: number) => Math.min(max, Math.max(min, v));
@@ -31,6 +38,8 @@ export const useUiStore = create<UiState>((set) => ({
   dockVisible: true,
   dockWidth: 320,
   activeDockPanelId: null,
+  treeCollapsedDirs: [],
+  treeShowAllFiles: false,
 
   toggleSidebar() {
     set((s) => ({ sidebarCollapsed: !s.sidebarCollapsed }));
@@ -55,5 +64,18 @@ export const useUiStore = create<UiState>((set) => ({
   },
   setActiveDockPanel(id) {
     set(() => ({ activeDockPanelId: id, dockVisible: true }));
+  },
+  toggleTreeDir(path) {
+    set((s) => ({
+      treeCollapsedDirs: s.treeCollapsedDirs.includes(path)
+        ? s.treeCollapsedDirs.filter((p) => p !== path)
+        : [...s.treeCollapsedDirs, path],
+    }));
+  },
+  setTreeCollapsedDirs(dirs) {
+    set(() => ({ treeCollapsedDirs: dirs }));
+  },
+  setTreeShowAllFiles(show) {
+    set(() => ({ treeShowAllFiles: show }));
   },
 }));

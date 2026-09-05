@@ -4,16 +4,23 @@ import { useTabStore, type PaneId } from '../stores/tab-store';
 import { WelcomePage } from '../pages/WelcomePage';
 import { PlaceholderPage } from '../pages/PlaceholderPage';
 import { FilesPage } from '../pages/FilesPage';
+import { PageView } from '../pages/PageView';
 import type { TabDescriptor } from '../stores/tab-store';
 import { cn } from '../lib/utils';
 
-function TabContent({ tab }: { tab: TabDescriptor }) {
+function TabContent({ tab, paneId }: { tab: TabDescriptor; paneId: PaneId }) {
   switch (tab.kind) {
     case 'welcome':
       return <WelcomePage />;
     case 'files':
       return <FilesPage />;
     case 'page':
+      // 有路径的页面 → 面包屑 + H1 标题 + 内容占位；无路径 → DEV-002 占位
+      return tab.pagePath ? (
+        <PageView key={tab.pagePath} tab={tab} paneId={paneId} />
+      ) : (
+        <PlaceholderPage title={tab.title} />
+      );
     default:
       return <PlaceholderPage title={tab.title} />;
   }
@@ -38,7 +45,7 @@ function PaneView({ paneId }: { paneId: PaneId }) {
     >
       <TabStrip paneId={paneId} />
       <div className="min-h-0 flex-1 overflow-auto">
-        {activeTab ? <TabContent tab={activeTab} /> : (
+        {activeTab ? <TabContent tab={activeTab} paneId={paneId} /> : (
           <div className="flex h-full items-center justify-center text-sm text-muted-foreground">
             此 pane 没有打开的页面
           </div>

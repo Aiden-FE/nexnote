@@ -1,5 +1,9 @@
+import { useState } from 'react';
 import { FileText, FolderOpen, Home, Plus, X } from 'lucide-react';
 import { useTabStore, type PaneId, type TabKind } from '../stores/tab-store';
+import { ContextMenu, type ContextMenuItem } from '../components/ContextMenu';
+import { invoke } from '../lib/ipc';
+import { useVault } from '../shell/vault-context';
 import { cn } from '../lib/utils';
 
 const kindIcon: Record<TabKind, typeof Home> = {
@@ -12,15 +16,62 @@ interface TabStripProps {
   paneId: PaneId;
 }
 
-/** 单个 pane 的标签栏：打开/关闭/激活/中键关闭/新建。 */
+/** 单个 pane 的标签栏：打开/关闭/激活/中键关闭/新建 + 右键菜单（DEV-003）。 */
 export function TabStrip({ paneId }: TabStripProps) {
   const pane = useTabStore((s) => s.panes[paneId]);
   const activePaneId = useTabStore((s) => s.activePaneId);
+  const vault = useVault();
   const { setActiveTab, closeTab, openTab, setActivePane } = useTabStore.getState();
+  const [menu, setMenu] = useState<{
+    x: number;
+    y: number;
+    items: ContextMenuItem[];
+  } | null>(null);
   if (!pane) return null;
 
   const isFocused = activePaneId === paneId;
   const isActivePanePopulated = pane.tabs.length > 0;
+
+  const openTabMenu = (e: React.MouseEvent, tabId: string): void => {
+    e.preventDefault();
+    const tab = pane.tabs.find((t) => t.id === tabId);
+    if (!tab) return;
+    const store = useTabStore.getState();
+    const idx = pane.tabs.findIndex((t) => t.id === tabId);
+    const pagePath = tab.pagePath ?? null;
+    const absPath = pagePath && vault ? `${vault.root}/${pagePath}` : null;
+    const items: ContextMenuItem[] = [
+      { label: '关闭', hint: '⌘W', onSelect: () => store.closeTab(paneId, tabId) },
+      {
+        label: '关闭其他',
+        disabled: pane.tabs.length <= 1,
+        onSelect: () => store.closeOtherTabs(paneId, tabId),
+      },
+      {
+        label: '关闭右侧',
+        disabled: idx >= pane.tabs.length - 1,
+        onSelect: () => store.closeTabsToRight(paneId, tabId),
+      },
+    ];
+    if (pagePath) {
+      items.push(
+        { kind: 'separator' },
+        {
+          label: '在 Finder 中显示',
+          onSelect: () =>
+            void invoke('fs:revealInFinder', { path: pagePath }).catch(() => undefined),
+        },
+        {
+          label: '复制路径',
+          hint: '绝对路径',
+          onSelect: () => {
+            if (absPath) void navigator.clipboard.writeText(absPath).catch(() => undefined);
+          },
+        },
+      );
+    }
+    setMenu({ x: e.clientX, y: e.clientY, items });
+  };
 
   return (
     <div
@@ -40,10 +91,12 @@ export function TabStrip({ paneId }: TabStripProps) {
             key={tab.id}
             data-testid="tab"
             data-active={isActive}
+            data-page-path={tab.pagePath ?? undefined}
             role="tab"
             aria-selected={isActive}
             tabIndex={0}
             onClick={() => setActiveTab(paneId, tab.id)}
+            onContextMenu={(e) => openTabMenu(e, tab.id)}
             onMouseDown={(e) => {
               if (e.button === 1) {
                 e.preventDefault();
@@ -92,6 +145,15 @@ export function TabStrip({ paneId }: TabStripProps) {
       {!isActivePanePopulated && (
         <span className="my-auto ml-2 text-[11px] text-muted-foreground/70">空 pane — 点击 + 新建</span>
       )}
+
+      <ContextMenu
+        open={menu !== null}
+        x={menu?.x ?? 0}
+        y={menu?.y ?? 0}
+        items={menu?.items ?? []}
+        onClose={() => setMenu(null)}
+        testId="tab-context-menu"
+      />
     </div>
   );
 }
