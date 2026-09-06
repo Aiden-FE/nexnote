@@ -48,7 +48,13 @@ function App() {
         event.preventDefault();
         if (state.phase !== 'ready') return;
 
-        void requestAppSave(window).then(() => invoke('git:commit', { message: '保存当前工作区' }));
+        void requestAppSave(window)
+          .then(() => invoke('git:commit', { message: '保存当前工作区' }))
+          .catch((error) => {
+            // Fail closed: a failed save must never create a Git commit, and the
+            // editor surfaces the per-file error while we log the app-level cause.
+            console.error('[app] 保存失败，跳过本次 Git 提交', error);
+          });
       }
     };
     window.addEventListener('keydown', saveAndCommit);

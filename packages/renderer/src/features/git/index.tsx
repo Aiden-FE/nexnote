@@ -96,6 +96,15 @@ function GitStatusItem() {
         <GitBranch className="size-3.5" />
         {status.branch ?? '未初始化'}
       </span>
+      {status.conflict && (
+        <span
+          data-testid="status-git-conflict"
+          className="rounded bg-destructive/15 px-1 font-medium text-destructive"
+          title="存在未解决的合并冲突；请解决后手动提交"
+        >
+          ⚠ 冲突
+        </span>
+      )}
       {status.changed > 0 && (
         <span className="rounded bg-amber-500/15 px-1 text-amber-700">● {status.changed}</span>
       )}

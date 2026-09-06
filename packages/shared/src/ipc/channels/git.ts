@@ -19,6 +19,8 @@ export interface GitStatus {
   ahead: number;
   behind: number;
   remote: string | null;
+  /** 有未解决的合并冲突（unmerged index 或文件内冲突标记）。 */
+  conflict: boolean;
   usingSystemGit: boolean;
 }
 

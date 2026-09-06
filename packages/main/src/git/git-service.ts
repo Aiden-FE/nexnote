@@ -58,6 +58,26 @@ export class GitService {
   /** 当前生效的自动提交防抖窗口。setDebounceMs 写入；fs handler 同步读它。 */
   private debounceMs: number;
 
+  /**
+   * 分支绑定的上游远程；`branch.<name>.remote` 显式配置优先，
+   * 其次解析 tracking（origin/main → origin），最后回退 origin。
+   */
+  private async branchRemote(git: SimpleGit, branch: string): Promise<string | null> {
+    try {
+      const configured = (await git.raw(['config', `branch.${branch}.remote`])).trim();
+      if (configured) return configured;
+    } catch {
+      // no upstream configured; fall through to tracking/origin
+    }
+    const status = await git.status();
+    if (status.tracking) {
+      const slash = status.tracking.indexOf('/');
+      if (slash > 0) return status.tracking.slice(0, slash);
+    }
+    const remotes = await git.getRemotes();
+    return remotes.some((r) => r.name === 'origin') ? 'origin' : (remotes[0]?.name ?? null);
+  }
+
   constructor(options: GitServiceOptions = {}) {
     this.useSystemGit = options.useSystemGit ?? false;
     this.defaultDebounceMs = normalizeDebounceMs(options.defaultDebounceMs ?? DEFAULT_DEBOUNCE_MS);
@@ -185,7 +205,7 @@ export class GitService {
 
   async statusFor(root: string): Promise<GitStatus> {
     const git = this.git(root);
-    if (!(await this.isRepository(root))) {
+      if (!(await this.isRepository(root))) {
       return {
         repository: false,
         branch: null,
@@ -193,17 +213,23 @@ export class GitService {
         ahead: 0,
         behind: 0,
         remote: null,
+        conflict: false,
         usingSystemGit: this.useSystemGit,
       };
     }
-    const [status, remotes] = await Promise.all([git.status(), git.getRemotes(true)]);
+    const status = await git.status();
+    const remote =
+      status.current ? await this.branchRemote(git, status.current) : null;
+    const conflict =
+      this.hasUnresolvedConflict(status) || (await this.hasConflictMarkers(root, status));
     return {
       repository: true,
       branch: status.current || null,
       changed: status.files.length,
       ahead: status.ahead,
       behind: status.behind,
-      remote: remotes[0]?.name ?? null,
+      remote,
+      conflict,
       usingSystemGit: this.useSystemGit,
     };
   }
@@ -215,7 +241,8 @@ export class GitService {
       '--max-count': Math.max(1, Math.min(limit, 500)),
       ...(file ? { file: this.requireVaultPath(file) } : {}),
     });
-    return logs.all.map((entry, index) => ({
+    const head = await git.revparse('HEAD');
+    return logs.all.map((entry) => ({
       hash: entry.hash,
       shortHash: entry.hash.slice(0, 8),
       author: entry.author_name,
@@ -223,7 +250,7 @@ export class GitService {
       date: entry.date,
       message: entry.message,
       kind: commitKind(entry.message),
-      isHead: index === 0,
+      isHead: entry.hash === head,
     }));
   }
 
@@ -233,19 +260,20 @@ export class GitService {
       throw new GitServiceError('远程名称不合法', 'INVALID_REMOTE');
     if (!url.trim()) throw new GitServiceError('远程地址不能为空', 'INVALID_REMOTE');
     const git = this.git(root);
-    const remotes = await git.getRemotes();
-    if (remotes.some((remote) => remote.name === name)) await git.remote(['set-url', name, url]);
-    else await git.addRemote(name, url);
+    // Preflight against the URL before touching repository state: a failed
+    // check must not leave a newly-added remote or an overwritten URL behind.
     try {
-      await git.raw(['ls-remote', '--heads', name]);
+      await git.raw(['ls-remote', '--heads', url]);
     } catch (error) {
-      // set-url/addRemote already changed repository state even when preflight fails.
       await this.notifyCurrentStatus();
       throw new GitServiceError(
-        `远程已保存但授权预检失败。请检查网络、SSH key 或 HTTPS 凭证：${sanitizeRemoteText(errorMessage(error))}`,
+        `远程未保存：授权预检失败。请检查网络、SSH key 或 HTTPS 凭证：${sanitizeRemoteText(errorMessage(error))}`,
         'REMOTE_AUTH_FAILED',
       );
     }
+    const remotes = await git.getRemotes();
+    if (remotes.some((remote) => remote.name === name)) await git.remote(['set-url', name, url]);
+    else await git.addRemote(name, url);
     const result = { message: `远程 ${name} 已验证`, status: await this.statusFor(root) };
     this.notifyStatus(result.status);
     return result;
@@ -275,7 +303,7 @@ export class GitService {
           'WORKTREE_DIRTY',
         );
       }
-      const remote = (await git.getRemotes())[0]?.name;
+      const remote = status.current ? await this.branchRemote(git, status.current) : null;
       if (!remote || !status.current)
         throw new GitServiceError('尚未绑定可拉取的远程分支', 'NO_REMOTE');
       // --no-rebase pins the merge strategy: without it modern Git aborts divergent
@@ -294,8 +322,9 @@ export class GitService {
   async push(): Promise<GitOperationResult> {
     const root = this.requireRoot();
     try {
-      const status = await this.git(root).status();
-      const remote = (await this.git(root).getRemotes())[0]?.name;
+      const git = this.git(root);
+      const status = await git.status();
+      const remote = status.current ? await this.branchRemote(git, status.current) : null;
       if (!remote || !status.current)
         throw new GitServiceError('尚未绑定可推送的远程分支', 'NO_REMOTE');
       await this.git(root).push(['-u', remote, status.current]);
