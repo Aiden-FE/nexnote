@@ -1,6 +1,6 @@
 import { existsSync, readFileSync, renameSync, writeFileSync } from 'node:fs';
 import * as path from 'node:path';
-import type { RecentVaultEntry } from '@nexnote/shared';
+import type { RecentVaultEntry, UpdateChannel } from '@nexnote/shared';
 
 export interface WindowBounds {
   x?: number;
@@ -15,12 +15,13 @@ export interface AppStoreData {
   lastVaultPath: string | null;
   recentVaults: RecentVaultEntry[];
   windowBounds: WindowBounds | null;
+  updateChannel: UpdateChannel | null;
 }
 
 export const MAX_RECENT_VAULTS = 10;
 
 function defaults(): AppStoreData {
-  return { version: 1, lastVaultPath: null, recentVaults: [], windowBounds: null };
+  return { version: 1, lastVaultPath: null, recentVaults: [], windowBounds: null, updateChannel: null };
 }
 
 function coerce(raw: unknown): AppStoreData {
@@ -40,6 +41,10 @@ function coerce(raw: unknown): AppStoreData {
     windowBounds:
       typeof data.windowBounds === 'object' && data.windowBounds !== null
         ? data.windowBounds
+        : null,
+    updateChannel:
+      data.updateChannel === 'stable' || data.updateChannel === 'beta' || data.updateChannel === 'alpha'
+        ? data.updateChannel
         : null,
   };
 }
@@ -104,6 +109,11 @@ export class AppStore {
 
   setWindowBounds(bounds: WindowBounds): void {
     this.data.windowBounds = bounds;
+    this.persist();
+  }
+
+  setUpdateChannel(channel: UpdateChannel): void {
+    this.data.updateChannel = channel;
     this.persist();
   }
 }

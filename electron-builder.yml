@@ -41,10 +41,11 @@ fileAssociations:
 
 # ── 自动更新发布源 ──────────────────────────────────────
 # 多通道（stable / beta / alpha）通过 CI 注入 NEXNOTE_UPDATE_CHANNEL 切换；
-# GitHub Releases 为主发布源（electron-updater 原生支持 latest.yml / beta.yml / alpha.yml）。
+# GitHub Releases 为主发布源（electron-updater 原生支持 latest*.yml / beta*.yml / alpha*.yml）。
+# owner/repo 必须与 git origin（https://github.com/Aiden-FE/nexnote）一致。
 publish:
   - provider: github
-    owner: nexnote
+    owner: Aiden-FE
     repo: nexnote
 
 # ── macOS ──────────────────────────────────────────────
@@ -63,7 +64,8 @@ mac:
   #   CSC_LINK / CSC_KEY_PASSWORD                 — Developer ID 证书
   #   APPLE_ID / APPLE_APP_SPECIFIC_PASSWORD / APPLE_TEAM_ID — 公证
   # electron-builder 自动从 CSC_LINK / CSC_KEY_PASSWORD 发现 Developer ID；
-  # 无凭据的本地构建用 CSC_IDENTITY_AUTO_DISCOVERY=false 明确跳过签名。
+  # 所有 distributable 构建必须提供签名与公证凭据；缺失时 afterSign 直接失败。
+  # 仅供开发的 unpacked `--dir` 构建不属于可发布产物。
   # 顶层 afterSign 钩子在签名后执行 Apple notarization。
 
 dmg:

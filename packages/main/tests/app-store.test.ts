@@ -25,6 +25,7 @@ describe('AppStore', () => {
       lastVaultPath: null,
       recentVaults: [],
       windowBounds: null,
+      updateChannel: null,
     });
   });
 
@@ -62,11 +63,14 @@ describe('AppStore', () => {
     const store = new AppStore(storeFile);
     store.setLastVault('/v/keep');
     store.setWindowBounds({ x: 1, y: 2, width: 1200, height: 800 });
+    store.setUpdateChannel('beta');
     const raw = JSON.parse(await readFile(storeFile, 'utf8'));
     expect(raw.lastVaultPath).toBe('/v/keep');
+    expect(raw.updateChannel).toBe('beta');
     const reopened = new AppStore(storeFile);
     expect(reopened.get().lastVaultPath).toBe('/v/keep');
     expect(reopened.get().windowBounds).toMatchObject({ width: 1200 });
+    expect(reopened.get().updateChannel).toBe('beta');
   });
 
   it('existingRecents 只保留磁盘上存在的目录', async () => {

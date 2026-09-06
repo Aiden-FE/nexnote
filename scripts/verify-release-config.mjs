@@ -1,16 +1,38 @@
 /* eslint-disable no-console */
 /**
- * Validate electron-builder configs + channel metadata without building packages.
+ * Validate electron-builder configs + release workflow metadata without building packages.
  * Used in CI to catch config errors fast. Requires js-yaml (devDependency).
  */
 import { readFileSync } from 'node:fs';
 import { resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { execFileSync } from 'node:child_process';
 import yaml from 'js-yaml';
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const cfg = yaml.load(readFileSync(resolve(root, 'electron-builder.yml'), 'utf8'));
 const releaseWorkflow = readFileSync(resolve(root, '.github/workflows/release.yml'), 'utf8');
+const devWorkflow = readFileSync(resolve(root, '.github/workflows/pr-check.yml'), 'utf8');
+const updater = readFileSync(resolve(root, 'packages/main/src/updater.ts'), 'utf8');
+const runBuilder = readFileSync(resolve(root, 'scripts/run-builder.mjs'), 'utf8');
+const notarize = readFileSync(resolve(root, 'scripts/notarize.cjs'), 'utf8');
+const smoke = readFileSync(resolve(root, 'scripts/ci-smoke.mjs'), 'utf8');
+const appStore = readFileSync(resolve(root, 'packages/main/src/vault/app-store.ts'), 'utf8');
+const qaChecklist = readFileSync(resolve(root, 'docs/release/QA-CHECKLIST.md'), 'utf8');
+
+// The git origin is the single source of truth for the publish repository.
+let originOwner = '';
+let originRepo = '';
+try {
+  const url = execFileSync('git', ['remote', 'get-url', 'origin'], { cwd: root, encoding: 'utf8' }).trim();
+  const m = /github\.com[:/]([^/]+)\/([^/]+?)(?:\.git)?$/.exec(url);
+  if (m) {
+    originOwner = m[1];
+    originRepo = m[2];
+  }
+} catch {
+  /* origin may be unavailable outside a git checkout */
+}
 
 const checks = [];
 
@@ -49,9 +71,14 @@ check('Linux 有 AppImage + deb', () => {
   if (!kinds.has('AppImage')) throw new Error('linux AppImage missing');
   if (!kinds.has('deb')) throw new Error('linux deb missing');
 });
-check('publish 存在 github provider', () => {
+check('publish 仓库与 git origin 一致且非占位符', () => {
   const providers = cfg.publish ?? [];
-  if (!providers.some((p) => p.provider === 'github')) throw new Error('no github publish');
+  const gh = providers.find((p) => p.provider === 'github');
+  if (!gh) throw new Error('no github publish');
+  if (gh.owner !== 'Aiden-FE' || gh.repo !== 'nexnote') throw new Error(`publish repository must be Aiden-FE/nexnote, got ${gh.owner}/${gh.repo}`);
+  if (originOwner && (gh.owner !== originOwner || gh.repo !== originRepo)) throw new Error(`publish ${gh.owner}/${gh.repo} != origin ${originOwner}/${originRepo}`);
+  if (!runBuilder.includes(`REPO_OWNER = 'Aiden-FE'`)) throw new Error('run-builder owner placeholder or mismatch');
+  if (!updater.includes(`REPO_OWNER = 'Aiden-FE'`)) throw new Error('updater owner placeholder or mismatch');
 });
 check('asar 启用且 unpack 含 dugite', () => {
   if (!cfg.asar) throw new Error('asar disabled');
@@ -61,32 +88,82 @@ check('asar 启用且 unpack 含 dugite', () => {
 check('macOS entitlements 文件已声明', () => {
   if (!cfg.mac?.entitlements) throw new Error('mac entitlements missing');
 });
-check('notarize afterSign 钩子已声明或说明', () => {
+check('macOS 签名与公证是强制 gate', () => {
   if (cfg.mac?.hardenedRuntime !== true) throw new Error('hardenedRuntime required for notarization');
   if (!cfg.afterSign && !cfg.mac?.afterSign) throw new Error('afterSign hook missing');
+  if (/skipping notarization|credentials absent; skipping/i.test(notarize)) throw new Error('notarization must not be skippable');
+  if (!/throw new Error/.test(notarize)) throw new Error('missing notarization credentials must fail');
+  for (const command of ['codesign --verify --deep --strict', 'xcrun stapler validate', 'spctl --assess']) {
+    if (!releaseWorkflow.includes(command)) throw new Error(`missing macOS verification: ${command}`);
+  }
 });
-check('release channel wiring (NEXNOTE_UPDATE_CHANNEL → publish + updater)', () => {
-  // Release workflow must propagate channel into the build env so run-builder can override publish.
+check('channel 接线：build env → 打包发布 → updater 烘焙通道', () => {
   if (!/NEXNOTE_UPDATE_CHANNEL:\s*\$\{\{\s*needs\.prepare\.outputs\.channel/.test(releaseWorkflow)) {
-    throw new Error('release.yml must export NEXNOTE_UPDATE_CHANNEL from prepare.outputs.channel');
+    throw new Error('release.yml build env must export NEXNOTE_UPDATE_CHANNEL from prepare.outputs.channel');
   }
   if (!/output.*channel/.test(releaseWorkflow)) {
     throw new Error('prepare job must output the resolved channel');
   }
-  // Updater must consult the env and validate the value.
-  const updater = readFileSync(resolve(root, 'packages/main/src/updater.ts'), 'utf8');
-  if (!updater.includes('NEXNOTE_UPDATE_CHANNEL')) throw new Error('updater does not read NEXNOTE_UPDATE_CHANNEL');
-  if (!updater.includes("VALID_CHANNELS") && !updater.includes("'stable'")) throw new Error('updater has no channel validation');
+  if (!/readBakedChannel|app-update\.yml/.test(updater)) throw new Error('updater must read the baked channel from app-update.yml');
+  if (!/VALID_CHANNELS/.test(updater)) throw new Error('updater has no channel validation');
+  if (!/updateChannel/.test(appStore) || !/setUpdateChannel\(channel/.test(appStore)) throw new Error('selected update channel is not persisted in AppStore');
+  if (!/appStore\.get\(\)\.updateChannel/.test(readFileSync(resolve(root, 'packages/main/src/index.ts'), 'utf8'))) throw new Error('main updater does not restore persisted channel');
 });
-check('Windows signing secret mapping (WIN_CSC_FILE → CSC_LINK / CSC_KEY_PASSWORD)', () => {
-  if (!/WIN_CSC_FILE/.test(releaseWorkflow)) throw new Error('WIN_CSC_FILE env not declared');
-  // The Windows step must export CSC_LINK/CSC_KEY_PASSWORD for electron-builder.
-  if (!/CSC_LINK=/.test(releaseWorkflow)) throw new Error('CSC_LINK not exported by Windows step');
-  if (!/CSC_KEY_PASSWORD=/.test(releaseWorkflow)) throw new Error('CSC_KEY_PASSWORD not exported by Windows step');
+check('publish 在上传前必须是 hard gate（签名缺失则失败）', () => {
+  if (!releaseWorkflow.includes('--publish never')) throw new Error('build must use --publish never');
+  if (releaseWorkflow.includes('--publish always')) throw new Error('build must not publish concurrently (publish race)');
+  if (/runner\.os == 'macOS'/.test(releaseWorkflow) && !/codesign --verify --deep --strict/.test(releaseWorkflow)) {
+    throw new Error('macOS must verify signature before upload');
+  }
+  if (/runner\.os == 'Windows'/.test(releaseWorkflow) && !/Get-AuthenticodeSignature/.test(releaseWorkflow)) {
+    throw new Error('Windows must verify Authenticode before upload');
+  }
+  if (/runner\.os == 'Linux'/.test(releaseWorkflow) && !/gpg --verify/.test(releaseWorkflow)) {
+    throw new Error('Linux must verify .asc signature before upload');
+  }
 });
-check('macOS signing secret mapping (MACOS_CERTIFICATE → CSC_LINK / CSC_KEY_PASSWORD)', () => {
-  if (!/MACOS_CERTIFICATE/.test(releaseWorkflow)) throw new Error('MACOS_CERTIFICATE env not declared');
-  if (!/CSC_LINK=/.test(releaseWorkflow)) throw new Error('CSC_LINK not exported by macOS step');
+check('平台密钥最小权限且仅 step 级引用', () => {
+  const build = /  build:\n([\s\S]*?)(?=\n  smoke:)/.exec(releaseWorkflow)?.[1] ?? '';
+  const jobEnv = /\n    env:\n([\s\S]*?)(?=\n    steps:)/.exec(build)?.[1] ?? '';
+  if (/secrets\./.test(jobEnv)) throw new Error('secrets must not appear in build job env');
+  const scopes = [
+    ['MACOS_CERTIFICATE', "if: runner.os == 'macOS'"],
+    ['WINDOWS_CERTIFICATE', "if: runner.os == 'Windows'"],
+    ['LINUX_GPG_PRIVATE_KEY', "if: runner.os == 'Linux'"],
+  ];
+  for (const [secret, platformGuard] of scopes) {
+    const index = build.indexOf(secret);
+    if (index < 0) throw new Error(`missing ${secret}`);
+    const stepStart = build.lastIndexOf('- name:', index);
+    if (stepStart < 0 || !build.slice(stepStart, index).includes(platformGuard)) throw new Error(`${secret} is not platform-scoped`);
+  }
+});
+check('单个 publish job，无矩阵 race，且在 smoke/preflight 后才公开', () => {
+  const wf = yaml.load(releaseWorkflow);
+  const jobs = Object.keys(wf.jobs ?? {});
+  if (!jobs.includes('publish')) throw new Error('no publish job');
+  if (wf.jobs.publish.strategy) throw new Error('publish must not be a matrix');
+  if (wf.jobs.build?.permissions?.contents === 'write') throw new Error('build must not have release write permission');
+  if (wf.jobs.publish?.permissions?.contents !== 'write') throw new Error('publish must hold the only contents: write permission');
+  if (JSON.stringify(wf.jobs.publish?.needs) !== JSON.stringify(['build', 'smoke'])) throw new Error('publish must wait for build and smoke');
+  if (!/Preflight complete signed release set/.test(releaseWorkflow) || !/softprops\/action-gh-release/.test(releaseWorkflow)) throw new Error('publish requires preflight then single uploader');
+});
+check('Linux GPG 在上传前签名，所有 .asc 均作为 Release asset', () => {
+  if (!/Linux GPG private key is required/.test(releaseWorkflow)) throw new Error('Linux key may not be optional');
+  if (!/gpg --batch --yes --armor --detach-sign/.test(releaseWorkflow) || !/gpg --verify/.test(releaseWorkflow)) throw new Error('linux artifacts must be signed and verified');
+  if (!/release\/\*\.AppImage release\/\*\.deb/.test(releaseWorkflow)) throw new Error('AppImage and deb must be signed');
+  if (!/files: release\/\*\*\/\*/.test(releaseWorkflow)) throw new Error('publish glob must include release/**/* to capture .asc');
+});
+check('smoke 缺产物必须失败且 QA 文档受版本控制', () => {
+  if (/skipping e2e smoke|process\.exit\(0\)/.test(smoke)) throw new Error('smoke script may not skip missing artifact');
+  if (!/process\.exit\(1\)/.test(smoke)) throw new Error('smoke must fail without packaged app');
+  if (!/事实边界/.test(qaChecklist) || !/未进行.*跨平台物理安装/.test(qaChecklist)) throw new Error('QA checklist must truthfully record physical-validation boundary');
+});
+check('PR 检查覆盖 lint/typecheck/test/build', () => {
+  if (!/pnpm lint/.test(devWorkflow)) throw new Error('pr-check missing lint');
+  if (!/pnpm typecheck/.test(devWorkflow)) throw new Error('pr-check missing typecheck');
+  if (!/pnpm test/.test(devWorkflow)) throw new Error('pr-check missing test');
+  if (!/pnpm build/.test(devWorkflow)) throw new Error('pr-check missing build');
 });
 
 const failed = checks.filter((c) => !c.ok);

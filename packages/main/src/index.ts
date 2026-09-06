@@ -45,7 +45,7 @@ function bootstrap(): void {
   });
   const fs = new VaultFsService(() => vaultSession.getCurrent()?.root ?? null);
 
-  initAutoUpdater(log, (status) => windows?.sendToMainWindow('app:updateStatus', status));
+  initAutoUpdater(log, (status) => windows?.sendToMainWindow('app:updateStatus', status), appStore.get().updateChannel ?? undefined);
 
   registerAllIpcHandlers(ipcMain, {
     windows,
@@ -84,7 +84,11 @@ function bootstrap(): void {
     checkForUpdates,
     downloadUpdate,
     installUpdate,
-    setUpdateChannel,
+    setUpdateChannel(channel) {
+      const result = setUpdateChannel(channel);
+      if (result.status !== 'error') appStore.setUpdateChannel(channel);
+      return result;
+    },
   });
 
   // 单实例：第二个实例启动时聚焦既有窗口（未来：解析 argv 文件路径直接打开，DEV-019）

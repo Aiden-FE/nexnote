@@ -26,6 +26,65 @@ export type UpdateFeedConfig =
   | { provider: 'github'; owner: string; repo: string; channel?: string }
   | { provider: 'generic'; url: string; channel?: string };
 
+const VALID_CHANNELS: readonly UpdateChannel[] = ['stable', 'beta', 'alpha'] as const;
+
+/** Must match the git origin, not a hard-coded placeholder. */
+export const REPO_OWNER = 'Aiden-FE';
+export const REPO_NAME = 'nexnote';
+
+/** Normalize arbitrary input to a channel, or undefined when not stable|beta|alpha. */
+export function normalizeChannel(raw: unknown): UpdateChannel | undefined {
+  const value = typeof raw === 'string' ? (raw.trim().toLowerCase() as UpdateChannel) : undefined;
+  return value && VALID_CHANNELS.includes(value) ? value : undefined;
+}
+
+/** Deterministic env override, pinned by CI so a build never silently drifts to stable. */
+function resolveChannelFromEnv(): UpdateChannel {
+  return normalizeChannel(process.env.NEXNOTE_UPDATE_CHANNEL) ?? 'stable';
+}
+
+/**
+ * The channel electron-builder baked into app-update.yml at build time.
+ * This is the only channel the packaged app knows about: NEXNOTE_UPDATE_CHANNEL is a
+ * build-time variable and is *not* present in the shipped process.env. Reading this is
+ * what makes stable/beta/alpha packages behave differently instead of all defaulting to stable.
+ */
+let getResourcesPath = (): string | undefined => process.resourcesPath;
+
+function readBakedChannel(): UpdateChannel | undefined {
+  try {
+    const resources = getResourcesPath();
+    if (!resources) return undefined;
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const fs = require('node:fs') as { readFileSync(p: string, e: string): string };
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const yaml = require('js-yaml') as { load(s: string): unknown };
+    const doc = yaml.load(fs.readFileSync(`${resources}/app-update.yml`, 'utf8')) as { channel?: unknown };
+    return normalizeChannel(doc?.channel);
+  } catch {
+    return undefined;
+  }
+}
+
+/** Startup channel priority: persisted selection → baked app-update.yml → env → stable. */
+function resolveStartupChannel(persisted: UpdateChannel | undefined): UpdateChannel {
+  if (persisted && VALID_CHANNELS.includes(persisted)) return persisted;
+  if (electronApp.isPackaged) {
+    const baked = readBakedChannel();
+    if (baked) return baked;
+  }
+  return resolveChannelFromEnv();
+}
+
+const feedConfig = (channel: UpdateChannel): UpdateFeedConfig => {
+  if (!VALID_CHANNELS.includes(channel)) {
+    throw new Error(`非法更新通道: ${channel}（必须是 stable/beta/alpha）`);
+  }
+  const genericBase = process.env.NEXNOTE_UPDATE_URL?.replace(/\/+$/, '');
+  if (genericBase) return { provider: 'generic', url: `${genericBase}/${channel}`, channel };
+  return { provider: 'github', owner: REPO_OWNER, repo: REPO_NAME, channel };
+};
+
 /** electron-updater 的 autoUpdater 在 import 时即读取 Electron app（Node 环境会崩），按需懒加载。 */
 const lazyAutoUpdater = (): UpdaterAdapter =>
   // eslint-disable-next-line @typescript-eslint/no-require-imports
@@ -48,25 +107,6 @@ let electronApp: ElectronAppLike = (() => {
   return { isPackaged: false, getVersion: () => '0.0.0-test' };
 })();
 
-const VALID_CHANNELS: readonly UpdateChannel[] = ['stable', 'beta', 'alpha'] as const;
-
-function resolveChannelFromEnv(): UpdateChannel {
-  const raw = process.env.NEXNOTE_UPDATE_CHANNEL?.trim().toLowerCase();
-  if (raw && VALID_CHANNELS.includes(raw as UpdateChannel)) {
-    return raw as UpdateChannel;
-  }
-  return 'stable';
-}
-
-const feedConfig = (channel: UpdateChannel): UpdateFeedConfig => {
-  if (!VALID_CHANNELS.includes(channel)) {
-    throw new Error(`非法更新通道: ${channel}（必须是 stable/beta/alpha）`);
-  }
-  const genericBase = process.env.NEXNOTE_UPDATE_URL?.replace(/\/+$/, '');
-  if (genericBase) return { provider: 'generic', url: `${genericBase}/${channel}`, channel };
-  return { provider: 'github', owner: 'nexnote', repo: 'nexnote', channel };
-};
-
 function emit(status: UpdateCheckResult['status'], message?: string, progress?: number): UpdateCheckResult {
   const result: UpdateCheckResult & { channel: UpdateChannel } = {
     status,
@@ -82,15 +122,15 @@ function emit(status: UpdateCheckResult['status'], message?: string, progress?: 
 export function initAutoUpdater(
   log: Log,
   statusSender: SendStatus = () => {},
-  channel: UpdateChannel = resolveChannelFromEnv(),
+  persistedChannel?: UpdateChannel,
 ): void {
-  if (!VALID_CHANNELS.includes(channel)) {
-    log(`[updater] 非法通道 ${channel}，回退到 stable`);
-    channel = 'stable';
+  if (persistedChannel && !VALID_CHANNELS.includes(persistedChannel)) {
+    log(`[updater] 非法持久化通道 ${persistedChannel}，使用打包默认值`);
+    persistedChannel = undefined;
   }
   logger = log;
   sendStatus = statusSender;
-  activeChannel = channel;
+  activeChannel = resolveStartupChannel(persistedChannel);
   availableVersion = undefined;
   if (!electronApp.isPackaged) {
     log('[updater] 开发模式，跳过自动更新初始化');
@@ -100,8 +140,11 @@ export function initAutoUpdater(
   const a = getAdapter();
   a.autoDownload = false;
   a.autoInstallOnAppQuit = true;
-  a.channel = channel;
-  a.setFeedURL(feedConfig(channel));
+  a.channel = activeChannel;
+  // GitHub 默认交给 electron-updater 读取打包进 app-update.yml 的 provider/channel；
+  // 仅当配置了 generic 静态源时才主动 setFeedURL 覆盖。
+  const genericBase = process.env.NEXNOTE_UPDATE_URL?.replace(/\/+$/, '');
+  if (genericBase) a.setFeedURL(feedConfig(activeChannel));
   a.on('error', (...args: unknown[]) => {
     const e = args[0];
     emit('error', e instanceof Error ? e.message : String(e ?? 'unknown error'));
@@ -177,13 +220,20 @@ export function installUpdate(): { willRestart: true } {
 }
 
 /** Test seam; never call from production code. */
-export function setUpdaterAdapterForTests(next: UpdaterAdapter, appLike: ElectronAppLike = electronApp): () => void {
+export function setUpdaterAdapterForTests(
+  next: UpdaterAdapter,
+  appLike: ElectronAppLike = electronApp,
+  resourcesPath?: string,
+): () => void {
   const previousAdapter = adapter;
   const previousApp = electronApp;
+  const previousResourcesPath = getResourcesPath;
   adapter = next;
   electronApp = appLike;
+  if (resourcesPath !== undefined) getResourcesPath = () => resourcesPath;
   return () => {
     adapter = previousAdapter;
     electronApp = previousApp;
+    getResourcesPath = previousResourcesPath;
   };
 }

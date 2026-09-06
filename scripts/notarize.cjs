@@ -10,8 +10,7 @@ exports.default = async function notarizeMac(context) {
   if (context.electronPlatformName !== 'darwin') return;
   const { APPLE_ID, APPLE_APP_SPECIFIC_PASSWORD, APPLE_TEAM_ID } = process.env;
   if (!APPLE_ID || !APPLE_APP_SPECIFIC_PASSWORD || !APPLE_TEAM_ID) {
-    console.log('[notarize] Apple credentials absent; skipping notarization (non-release build)');
-    return;
+    throw new Error('[notarize] Apple credentials are required for every macOS distributable build');
   }
   const appName = context.packager.appInfo.productFilename;
   console.log(`[notarize] submitting ${appName}.app to Apple notary service`);
