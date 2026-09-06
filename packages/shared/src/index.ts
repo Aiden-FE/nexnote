@@ -1,5 +1,7 @@
 // 类型
 export type * from './types/vault';
+export type * from './types/index';
+export * from './markdown/wikilink';
 // IPC
 export type * from './ipc/result';
 export type * from './ipc/contract';
@@ -11,6 +13,7 @@ export type * from './ipc/channels/editor';
 export type * from './ipc/channels/git';
 export type * from './ipc/channels/ai';
 export type * from './ipc/channels/plugins';
+export type * from './ipc/channels/index';
 // 运行时值
 export {
   ok,

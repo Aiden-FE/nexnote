@@ -1,4 +1,5 @@
 import type { VaultInfo } from '../types/vault';
+import type { IndexStatus } from '../types/index';
 
 /**
  * 主进程 → 渲染层推送事件契约。
@@ -12,6 +13,8 @@ export interface IpcEventMap {
    * path 为 vault 相对路径；change 表示内容变化（同一路径重写）。
    */
   'fs:changed': FsChangeEvent;
+  /** 关系索引状态变化（扫描进度、ready、error）。DEV-004。 */
+  'index:statusChanged': IndexStatus;
 }
 
 export interface FsChangeEvent {
@@ -20,7 +23,7 @@ export interface FsChangeEvent {
   path: string;
 }
 
-export const IPC_EVENT_CHANNELS: readonly string[] = ['vault:changed', 'fs:changed'];
+export const IPC_EVENT_CHANNELS: readonly string[] = ['vault:changed', 'fs:changed', 'index:statusChanged'];
 
 export type IpcEventChannel = keyof IpcEventMap & string;
 

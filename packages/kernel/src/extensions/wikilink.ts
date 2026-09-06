@@ -1,5 +1,6 @@
 import { Node, mergeAttributes } from '@tiptap/core';
 import type { MarkdownToken } from '@tiptap/core';
+import { parseWikilinkAtStart } from '@nexnote/shared';
 
 /**
  * Obsidian 双链：`[[页面名|别名]]`（别名可省略，支持 `#标题` / `#^块ID` 子引用）。
@@ -101,14 +102,13 @@ export const Wikilink = Node.create<WikilinkOptions>({
     },
 
     tokenize(src: string) {
-      // [[target]] / [[target|alias]]；target 内不允许换行与 [[ ]]
-      const m = /^\[\[([^\]\n|]+)(?:\|([^\]\n]*))?\]\]/.exec(src);
-      if (!m) return undefined;
+      const parsed = parseWikilinkAtStart(src);
+      if (!parsed) return undefined;
       return {
         type: 'wikilink',
-        raw: m[0],
-        wikilinkTarget: (m[1] ?? '').trim(),
-        wikilinkAlias: m[2] && m[2].length > 0 ? m[2] : undefined,
+        raw: parsed.raw,
+        wikilinkTarget: parsed.target,
+        wikilinkAlias: parsed.alias ?? undefined,
       };
     },
   },

@@ -6,15 +6,19 @@ import { StatusBar } from './StatusBar';
 import { SplitView } from '../split/SplitView';
 import { useVaultLayoutPersistence } from './layout-persistence';
 import { bindVaultFsEvents, usePageTreeStore } from '../stores/page-tree-store';
+import { bindIndexEvents, useIndexStore } from '../stores/index-store';
 
 /** 工作区：三面板（侧栏 + 主内容 + 右侧 dock）+ 底部状态栏。 */
 export function WorkspaceView({ vault }: { vault: VaultInfo }) {
   useVaultLayoutPersistence(vault);
 
-  // vault 就绪：拉取页面树 + 绑定 fs:changed 实时同步（幂等，进程内一次）
+  // vault 就绪：拉取页面树 + 绑定 fs:changed / index:statusChanged（幂等，进程内一次）
   useEffect(() => {
     bindVaultFsEvents();
+    bindIndexEvents();
     void usePageTreeStore.getState().load();
+    void useIndexStore.getState().loadStatus();
+    void useIndexStore.getState().loadTags();
   }, [vault.root]);
 
   return (
