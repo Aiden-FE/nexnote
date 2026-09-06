@@ -7,6 +7,7 @@ import { SplitView } from '../split/SplitView';
 import { useVaultLayoutPersistence } from './layout-persistence';
 import { bindVaultFsEvents, usePageTreeStore } from '../stores/page-tree-store';
 import { bindIndexEvents, useIndexStore } from '../stores/index-store';
+import { WritingAssistantLayer } from '../features/ai/writing';
 
 /** 工作区：三面板（侧栏 + 主内容 + 右侧 dock）+ 底部状态栏。 */
 export function WorkspaceView({ vault }: { vault: VaultInfo }) {
@@ -33,6 +34,7 @@ export function WorkspaceView({ vault }: { vault: VaultInfo }) {
         <DockHost />
       </div>
       <StatusBar />
+      <WritingAssistantLayer />
     </div>
   );
 }

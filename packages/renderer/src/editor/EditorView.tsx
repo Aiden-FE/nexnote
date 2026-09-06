@@ -18,6 +18,14 @@ import {
   titleFromPath,
 } from './title-sync';
 import { registerAppSaveListener } from './app-save';
+import { registerEditor } from './active-editor';
+import {
+  createWritingController,
+  writingBubbleActions,
+  type WritingController,
+  writingContextMenu,
+  writingSlashItems,
+} from '../features/ai/writing';
 
 interface EditorViewProps {
   paneId: PaneId;
@@ -53,6 +61,27 @@ export function EditorView({ paneId, tab }: EditorViewProps) {
   const [knownTags, setKnownTags] = useState<string[]>([]);
   const indexTags = useIndexStore((s) => s.tags);
   const setDocument = useDocumentPropertiesStore((s) => s.setDocument);
+
+  // 写作辅助编排器（DEV-010）：在 mount effect 中创建（effect 内读取 ref 合法），
+  // getter 在事件触发时才经 ref 读取实时 kernel/路径；控制器本身稳定。
+  const writingControllerRef = useRef<WritingController | null>(null);
+  useEffect(() => {
+    writingControllerRef.current = createWritingController({
+      getKernel: () => kernelRef.current,
+      getContext: () => {
+        const markdown = kernelRef.current?.getMarkdown() ?? '';
+        const idx = useIndexStore.getState();
+        const backlinks =
+          idx.backlinksFor === pathRef.current
+            ? idx.backlinks.map((b) => ({ title: b.fromTitle, snippet: b.snippet }))
+            : [];
+        return { markdown, backlinks };
+      },
+    });
+    return () => {
+      writingControllerRef.current = null;
+    };
+  }, []);
 
   useEffect(() => {
     pathRef.current = path;
@@ -156,6 +185,7 @@ export function EditorView({ paneId, tab }: EditorViewProps) {
   useEffect(() => {
     if (load.phase !== 'ready' || !hostRef.current) return;
     unmountedRef.current = false;
+    const writingController = writingControllerRef.current;
     const kernel = createEditor(hostRef.current, {
       initialMarkdown: load.markdown,
       saveDelayMs: 500,
@@ -175,8 +205,18 @@ export function EditorView({ paneId, tab }: EditorViewProps) {
           pagePath: nextPath,
         });
       },
+      selectionBubble: {
+        actions: writingBubbleActions(),
+        onAction: (id, ctx) => writingController?.trigger(id, ctx),
+      },
+      contextMenu: {
+        build: writingContextMenu,
+        onAction: (id, ctx) => writingController?.trigger(id, ctx),
+      },
+      extraSlashItems: writingController ? writingSlashItems(writingController) : [],
     });
     kernelRef.current = kernel;
+    const editorRegistration = registerEditor(kernel);
 
     const flush = () => void kernel.flushPendingSave();
     const unregisterAppSave = registerAppSaveListener(window, () => kernel.flushPendingSave());
@@ -184,6 +224,7 @@ export function EditorView({ paneId, tab }: EditorViewProps) {
     return () => {
       unregisterAppSave();
       window.removeEventListener('blur', flush);
+      editorRegistration.unregister();
       // 先 flush 再 destroy：destroy 会 cancel，不能颠倒。
       void kernel.flushPendingSave().finally(() => kernel.destroy());
       kernelRef.current = null;
@@ -259,6 +300,12 @@ export function EditorView({ paneId, tab }: EditorViewProps) {
       cancelled = true;
     };
   }, [load]);
+
+  // DEV-010：预加载当前页反链，供 AI 写作上下文组装（失败/无索引静默回退）。
+  useEffect(() => {
+    if (load.phase !== 'ready') return;
+    void useIndexStore.getState().loadBacklinks(displayPath).catch(() => undefined);
+  }, [load.phase, displayPath]);
 
   // DEV-004 索引标签为实时真值；索引未就绪时回退到全库扫描标签。
   const effectiveKnownTags = useMemo(

@@ -36,6 +36,12 @@ export { KernelCodeBlock, KernelTable } from './extensions/code-table';
 export { SlashMenu, defaultSlashMenuItems, slashMenuPluginKey } from './extensions/slash-menu';
 export type { SlashMenuItem, SlashMenuOptions, SlashMenuState } from './extensions/slash-menu';
 export { createKernelDragHandle } from './extensions/drag-handle';
+export { SelectionBubble, selectionBubblePluginKey } from './extensions/selection-bubble';
+export type { BubbleAction, SelectionBubbleOptions } from './extensions/selection-bubble';
+export { ContextMenu, contextMenuPluginKey } from './extensions/context-menu';
+export type { ContextMenuItem, ContextMenuOptions } from './extensions/context-menu';
+export { computeEditorActionContext } from './extensions/action-context';
+export type { EditorActionContext, EditorActionTarget } from './extensions/action-context';
 export { generateBlockId } from './extensions/block-id';
 
 export {
