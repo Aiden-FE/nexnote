@@ -1,15 +1,13 @@
 import { useEffect } from 'react';
 import { Bot, Sparkles } from 'lucide-react';
 import { useAiConfig, useAiWizard, needsOnboarding } from './ai-config';
-import { AiChatDebug } from './AiChatDebug';
-import { RetrievalTester } from './retrieval/RetrievalTester';
-import { openSettings } from '../../lib/open-settings';
+import { ChatDock } from './chat/ChatDock';
 import { Button } from '../../components/ui/button';
 
 /**
- * 对话 dock 面板（DEV-009 空态版）：
+ * 对话 dock 面板：
  * - 未配置 → 欢迎文案 + 配置入口（首启动 AI 引导向导）
- * - 已配置 → 迷你流式调试对话（真实对话 UI 在 DEV-012 接入）
+ * - 已配置 → 正式对话 dock（DEV-012：流式回答 / 上下文注入 / 会话即页面 / 参考来源）
  */
 export function AiDockPanel() {
   const state = useAiConfig((s) => s.state);
@@ -39,24 +37,8 @@ export function AiDockPanel() {
   }
 
   return (
-    <div data-testid="ai-dock-ready" className="flex h-full min-h-0 flex-col gap-2">
-      <p className="text-[11px] leading-relaxed text-muted-foreground">
-        已连接 {state?.profiles.length} 个 Profile · 完整对话体验将在 DEV-012 接入，下方可先试用流式补全。
-      </p>
-      <div data-testid="dock-retrieval" className="shrink-0 border-t pt-1.5">
-        <RetrievalTester />
-      </div>
-      <div className="min-h-0 flex-1">
-        <AiChatDebug compact />
-      </div>
-      <button
-        type="button"
-        data-testid="ai-dock-open-settings"
-        className="self-start text-[11px] text-muted-foreground underline-offset-2 hover:text-foreground hover:underline"
-        onClick={() => openSettings('ai')}
-      >
-        管理 AI 配置 →
-      </button>
+    <div data-testid="ai-dock-ready" className="h-full min-h-0">
+      <ChatDock />
     </div>
   );
 }

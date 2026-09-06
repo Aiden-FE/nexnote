@@ -6,6 +6,7 @@ import { registerGitHandlers } from './git-handlers';
 import { registerVaultHandlers } from './vault-handlers';
 import { registerFsHandlers } from './fs-handlers';
 import { registerAiHandlers } from './ai-handlers';
+import { registerChatHandlers } from './chat-handlers';
 import { registerIndexHandlers } from './index-handlers';
 
 /** 注册全部命名空间 handler。新增命名空间 = 新增文件 + 在这里追加一行。 */
@@ -19,6 +20,7 @@ export function registerAllIpcHandlers(ipcMain: IpcMainLike, services: IpcServic
   registerVaultHandlers(registrar);
   registerFsHandlers(registrar);
   registerAiHandlers(registrar, services.ai);
+  registerChatHandlers(registrar);
   registerGitHandlers(registrar);
   registerIndexHandlers(registrar);
   registerNamespacePingHandlers(registrar);

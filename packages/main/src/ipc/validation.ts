@@ -235,6 +235,16 @@ const saveLayout: PayloadValidator = (payload) => {
   return null;
 };
 
+const chatNew = object(['title'], [optionalField('title', 'string')]);
+const chatSave = object(['session'], [
+  (p) => (isPlainObject((p as Record<string, unknown>).session) ? null : invalid('session 必须是对象')),
+]);
+const chatSaveAsDoc = object(
+  ['path', 'userAsQuote'],
+  [stringField('path'), optionalField('userAsQuote', 'boolean')],
+);
+const chatFolderSet = object(['folder'], [stringField('folder')]);
+
 const VALIDATORS: Partial<Record<IpcChannel, PayloadValidator>> = {
   'ai:credential:submit': aiCredentialSubmit,
   'ai:profile:save': aiProfileSave,
@@ -249,6 +259,11 @@ const VALIDATORS: Partial<Record<IpcChannel, PayloadValidator>> = {
   'ai:embed': aiEmbed,
   'ai:embedWithMetadata': aiEmbed,
   'ai:import': aiImport,
+  'chat:get': pathOnly,
+  'chat:new': chatNew,
+  'chat:save': chatSave,
+  'chat:saveAsDoc': chatSaveAsDoc,
+  'chat:folder:set': chatFolderSet,
   'fs:readTextFile': pathOnly,
   'fs:writeTextFile': write,
   'fs:exists': pathOnly,
