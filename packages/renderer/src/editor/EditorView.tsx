@@ -4,6 +4,10 @@ import { createEditor } from '@nexnote/kernel';
 import type { EditorKernelInstance } from '@nexnote/kernel';
 import { invoke } from '../lib/ipc';
 import { useTabStore, type PaneId, type TabDescriptor } from '../stores/tab-store';
+import { FrontmatterPanel } from '../features/frontmatter/FrontmatterPanel';
+import { useDocumentPropertiesStore } from '../features/frontmatter/document-properties-store';
+import type { FrontmatterData } from '@nexnote/kernel';
+import { parseFrontmatterYaml, serializeFrontmatterYaml, splitFrontmatter } from '@nexnote/kernel';
 import {
   bindH1ToTitle,
   firstH1,
@@ -41,6 +45,10 @@ export function EditorView({ paneId, tab }: EditorViewProps) {
   const pathRef = useRef(path);
   const saveChainRef = useRef<Promise<void>>(Promise.resolve());
   const unmountedRef = useRef(false);
+  const [fmData, setFmData] = useState<FrontmatterData>({});
+  const [fmSource, setFmSource] = useState('');
+  const [knownTags, setKnownTags] = useState<string[]>([]);
+  const setDocument = useDocumentPropertiesStore((s) => s.setDocument);
 
   useEffect(() => {
     pathRef.current = path;
@@ -73,6 +81,17 @@ export function EditorView({ paneId, tab }: EditorViewProps) {
         if (!firstH1(markdown)) markdown = bindH1ToTitle(markdown, titleFromPath(path));
         if (!cancelled) {
           pathRef.current = path;
+          const { yaml } = splitFrontmatter(markdown);
+          let parsed: FrontmatterData = {};
+          if (yaml !== null) {
+            try {
+              parsed = parseFrontmatterYaml(yaml);
+            } catch {
+              parsed = {};
+            }
+          }
+          setFmData(parsed);
+          setFmSource(yaml ?? '');
           setLoad({ phase: 'ready', markdown });
         }
       } catch (e) {
@@ -172,6 +191,76 @@ export function EditorView({ paneId, tab }: EditorViewProps) {
     };
   }, [load, paneId, save]);
 
+  // 把当前 frontmatter 数据写回编辑器，并触发保存（防抖路径会与内容变更共享）。
+  const applyFrontmatter = useCallback(
+    (next: FrontmatterData) => {
+      const kernel = kernelRef.current;
+      if (!kernel) return;
+      const current = kernel.getMarkdown();
+      const { body } = splitFrontmatter(current);
+      const yaml = serializeFrontmatterYaml(next);
+      const rebuilt = yaml.length > 0
+        ? `---\n${yaml}\n---\n\n${body.replace(/^\n+/, '')}`
+        : body;
+      kernel.setMarkdown(rebuilt);
+      // setMarkdown 不触发更新事件，所以手动触发保存 + 数据同步
+      setFmData(next);
+      setFmSource(yaml);
+      void save(rebuilt);
+    },
+    [save],
+  );
+
+  // 属性面板数据源：编辑内容变化时刷新。
+  useEffect(() => {
+    if (load.phase !== 'ready') return;
+    const kernel = kernelRef.current;
+    const markdown = kernel?.getMarkdown() ?? load.markdown;
+    const { yaml } = splitFrontmatter(markdown);
+    let parsed: FrontmatterData = fmData;
+    if (yaml !== null) {
+      try {
+        parsed = parseFrontmatterYaml(yaml);
+      } catch {
+        // 保持之前的结构化数据
+      }
+    }
+    setDocument({ filePath: displayPath, markdown, data: parsed });
+  }, [load, displayPath, saveState, setDocument, fmData]);
+
+  // 已知标签：扫描 vault 中 .md 前 matter tags（DEV-003 真实标签面板接入前的基础实现）。
+  useEffect(() => {
+    if (load.phase !== 'ready') return;
+    let cancelled = false;
+    void (async () => {
+      try {
+        const entries = await invoke('fs:listDir', { path: '' });
+        const mdFiles = entries
+          .filter((e) => e.kind === 'file' && e.name.endsWith('.md'))
+          .slice(0, 200);
+        const tags = new Set<string>();
+        for (const f of mdFiles) {
+          try {
+            const content = await invoke('fs:readTextFile', { path: f.path });
+            const { yaml } = splitFrontmatter(content);
+            if (yaml === null) continue;
+            const data = parseFrontmatterYaml(yaml);
+            const list = Array.isArray(data.tags) ? data.tags : [];
+            for (const t of list) tags.add(String(t));
+          } catch {
+            // 单文件失败忽略
+          }
+        }
+        if (!cancelled) setKnownTags([...tags].sort());
+      } catch {
+        // vault 未就绪等场景忽略
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [load]);
+
   const status = useMemo(() => {
     if (saveState === 'saving') return { icon: LoaderCircle, text: '保存中…', className: 'animate-spin' };
     if (saveState === 'error') return { icon: AlertCircle, text: '保存失败', className: 'text-destructive' };
@@ -210,6 +299,20 @@ export function EditorView({ paneId, tab }: EditorViewProps) {
       </div>
       <div className="nexnote-editor-scroll min-h-0 flex-1 overflow-auto">
         <div className="nexnote-editor-relative relative mx-auto max-w-[var(--editor-content-width)] px-10 py-10">
+          <FrontmatterPanel
+            data={fmData}
+            source={fmSource}
+            knownTags={knownTags}
+            onChange={(next) => {
+              setFmData(next);
+              applyFrontmatter(next);
+            }}
+            onYamlChange={(source, next) => {
+              setFmSource(source);
+              setFmData(next);
+              applyFrontmatter(next);
+            }}
+          />
           <div ref={hostRef} data-testid="editor-host" className="nexnote-editor-host" />
         </div>
       </div>
