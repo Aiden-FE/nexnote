@@ -11,6 +11,7 @@ describe('release policy executable gates', () => {
   it('requires an explicit matching semver release tag', () => {
     expect(run('check-version.mjs', ['--require-tag']).status).toBe(1);
     expect(run('check-version.mjs', ['--require-tag', 'master']).status).toBe(1);
+    expect(run('check-version.mjs', ['--require-tag', 'dev/DEV-018']).status).toBe(1);
     expect(run('check-version.mjs', ['--require-tag', 'v9.9.9']).status).toBe(1);
     expect(run('check-version.mjs', ['--require-tag', 'v0.1.0']).status).toBe(0);
   });

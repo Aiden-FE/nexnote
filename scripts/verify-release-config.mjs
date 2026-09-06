@@ -148,7 +148,9 @@ check('单个 publish job，经受保护 QA Environment 与 evidence gate 后才
   if (wf.jobs.publish.strategy) throw new Error('publish must not be a matrix');
   if (wf.jobs.build?.permissions?.contents === 'write') throw new Error('build must not have release write permission');
   if (wf.jobs.publish?.permissions?.contents !== 'write') throw new Error('publish must hold the only contents: write permission');
-  if (JSON.stringify(wf.jobs.publish?.needs) !== JSON.stringify(['prepare', 'smoke'])) throw new Error('publish must wait for prepare and smoke');
+  if (JSON.stringify(wf.jobs.preflight?.needs) !== JSON.stringify(['prepare', 'build', 'smoke'])) throw new Error('preflight must wait for signed build and smoke');
+  if (wf.jobs.preflight?.environment) throw new Error('preflight must complete before protected Environment approval');
+  if (JSON.stringify(wf.jobs.publish?.needs) !== JSON.stringify(['prepare', 'preflight'])) throw new Error('publish must wait for completed preflight');
   if (wf.jobs.publish?.environment?.name !== 'release-qa') throw new Error('publish must require release-qa protected Environment approval');
   if (wf.concurrency) throw new Error('GitHub concurrency drops older pending runs; durable publisher lease must be used instead');
   if (!/required reviewers/.test(releaseWorkflow) || !/QA checklist evidence/.test(releaseWorkflow)) throw new Error('workflow must document required-reviewer QA evidence approval');
@@ -162,7 +164,9 @@ check('workflow_dispatch 只能发布 existing immutable tag 且版本必须匹�
   for (const name of ['release-tag', 'qa-evidence-url', 'qa-evidence-sha256', 'qa-all-required-checks-passed']) {
     if (inputs[name]?.required !== true) throw new Error(`required dispatch input missing: ${name}`);
   }
+  if (!/\^v\[0-9\]\+/.test(releaseWorkflow) || !/GITHUB_REF.*refs\/tags\/\$RELEASE_TAG/.test(releaseWorkflow)) throw new Error('dispatch ref must strictly equal a v<semver> tag, never a branch');
   if (!/refs\/tags\/\$RELEASE_TAG\^\{commit\}/.test(releaseWorkflow)) throw new Error('dispatch tag must resolve to an existing tag commit');
+  if (!/test "\$commit" = "\$GITHUB_SHA"/.test(releaseWorkflow)) throw new Error('resolved tag commit must bind the dispatched target SHA');
   if (!/check-version\.mjs --require-tag/.test(releaseWorkflow) || !/--require-tag/.test(checkVersion)) throw new Error('release path must require explicit tag/version match');
   if (/no tag provided[\s\S]*process\.exit\(0\)/.test(checkVersion) && !/if \(required\)/.test(checkVersion)) throw new Error('required release check may not pass without a tag');
   if (!/tag_name:\s*\$\{\{ needs\.prepare\.outputs\.tag \}\}/.test(releaseWorkflow)) throw new Error('publisher must target resolved immutable tag');
@@ -174,17 +178,20 @@ check('publisher 使用不丢队列的 durable remote-ref lease 与幂等 tag re
   if (!/run remains failed and rerunnable, never silently dropped/.test(releaseWorkflow)) throw new Error('lease timeout behavior must be explicit and rerunnable');
   if (!/tag_name:/.test(releaseWorkflow)) throw new Error('release retries must be idempotent by immutable tag');
 });
-check('Linux GPG 在上传前签名，所有 .asc 均作为 Release asset', () => {
+check('preflight 强制 channel manifest、blockmap 与 Linux .asc', () => {
   if (!/Linux GPG private key is required/.test(releaseWorkflow)) throw new Error('Linux key may not be optional');
   if (!/gpg --batch --yes --armor --detach-sign/.test(releaseWorkflow) || !/gpg --verify/.test(releaseWorkflow)) throw new Error('linux artifacts must be signed and verified');
   if (!/release\/\*\.AppImage release\/\*\.deb/.test(releaseWorkflow)) throw new Error('AppImage and deb must be signed');
-  if (!/files: release\/\*\*\/\*/.test(releaseWorkflow)) throw new Error('publish glob must include release/**/* to capture .asc');
+  for (const metadata of ['stable) manifests=(release/latest*.yml)', 'beta) manifests=(release/beta*.yml', 'alpha) manifests=(release/alpha*.yml', 'blockmaps=(release/*.blockmap)']) {
+    if (!releaseWorkflow.includes(metadata)) throw new Error(`preflight metadata requirement missing: ${metadata}`);
+  }
+  if (!/files: release\/\*\*\/\*/.test(releaseWorkflow)) throw new Error('publish glob must include release/**/* to capture metadata and .asc');
 });
 check('smoke 缺产物必须失败且 QA 文档 gate 顺序一致', () => {
   if (/skipping e2e smoke|process\.exit\(0\)/.test(smoke)) throw new Error('smoke script may not skip missing artifact');
   if (!/process\.exit\(1\)/.test(smoke)) throw new Error('smoke must fail without packaged app');
   if (!/事实边界/.test(qaChecklist) || !/未进行.*跨平台物理安装/.test(qaChecklist)) throw new Error('QA checklist must truthfully record physical-validation boundary');
-  if (!/release-qa.*Environment.*审批前必须全部完成/.test(qaChecklist)) throw new Error('manual QA must be explicitly required before Environment approval');
+  if (!/preflight.*dependency job.*全部通过[\s\S]*release-qa.*Environment.*审批/.test(qaChecklist)) throw new Error('machine and manual QA gates must complete before Environment approval');
   if (!/After public publication \(monitoring, not a publication gate\)/.test(qaChecklist)) throw new Error('post-publication checks must be separated from publication gates');
   const postPublication = qaChecklist.split('## After public publication')[1] ?? '';
   if (/🔒/.test(postPublication)) throw new Error('no publication gate may appear after public publication');
