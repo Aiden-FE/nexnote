@@ -8,8 +8,8 @@
 
 ## 0. 最新状态（持续更新，优先于下方陈旧冻结段）
 
-- **真实进度：11 / 19** —— DEV-001~DEV-011 已全部合入 master。
-- master HEAD：`993fe82c6c4d07202a4d153c9539f91f8391ccf2`（merge DEV-011），clean；post-merge typecheck/eslint/402 tests(2 skipped)/build 全过。
+- **真实进度：12 / 19** —— DEV-001~DEV-012 已全部合入 master。
+- master HEAD：`9829e4d`（merge DEV-012），clean；post-merge typecheck/eslint/423 tests(2 skipped)/build 全过。
 - 子Agent 派发工具 `multi_agent_v1__spawn_agent` 在本环境返回 unsupported，按用户接管规则由主控直接在隔离 worktree 实现。
 - better-sqlite3 ABI：vitest 用 Node ABI；electron smoke 用 `runtime=electron target=44.2.0 arch=arm64`，smoke 后务必切回 Node ABI。
 - Electron smoke 当前环境基线 **60/69**：9 项失败为 DEV-003/004/006/007 既有环境基线（Git 状态栏 2、新笔记 frontmatter/面包屑 2、标签面板/过滤 2、重命名 wikilink 1、500 节点 FPS 1、时间线 1）；master 与候选失败集逐名一致，DEV-010 无新增回归。
@@ -28,9 +28,17 @@
 - 验收覆盖（main 7 项 + renderer 2 项）：全量/增量/模型指纹、三阶段均有命中、置信度重排、降级、1200 块召回 <500ms、来源渲染/跳转。
 - NOT_RUN：真实 embedding provider 与 Electron 人工检索（bag-of-words fake embedder + 真实 FTS/双链/置信度链路等价覆盖）。sqlite-vec ANN 未引入（候选集精确余弦 <500ms），VectorStore 接口预留替换。
 
-### 下一张：DEV-012 AI 对话 dock 与会话即页面（依赖 DEV-009+011 均满足）
-- 新建 worktree `.wt/DEV-012`（从 master）；票据 `issues/012-ai-chat-dock.md`。
-- 要点：对话 dock 正式化（替换 AiChatDebug）、会话即页面/会话持久化、回答内联 RetrievalSources（复用 DEV-011）、回答插入块（复用 DEV-010 insertIntoActiveEditor）。
+### DEV-012 · AI 对话 dock 与会话即页面（已合并 `9829e4d`，候选 `51ce48a`）
+- 会话即页面：每会话 = vault 内 `<chatFolder>/<name>.md`（frontmatter `type: chat` + HTML 注释消息块 role/meta=base64url JSON）。默认目录 `AI Chats/`（VaultConfig.chatFolder，可经 chat:folder:set 配置；放普通目录以便双链引用与语义索引）。每条消息后 chat:save 自动保存；chat:list/get 历史列表与续聊；重启后从磁盘恢复。
+- 主进程：`chat/chat-format.ts`（parse/serialize 纯函数，frontmatter 标量 + base64url meta，CRLF/损坏 meta 容错）、`chat/chat-service.ts`（list/get/new/save/saveAsDocument/folder get-set；save 路径限定会话目录越权防护 OUTSIDE_CHAT_FOLDER；存为文档 = AI 回答转正文 + 用户消息转引用 `>`/HTML 注释，写 vault 根唯一文件名，原会话保留）。chat:* IPC 7 条 + validation；VaultConfig 增加 chatFolder，vault-manager 加 sanitizeChatFolder。
+- renderer：`features/ai/chat/*`（ChatDock/ContextChips/chat-store/chat-runtime/context/chat-context-bridge/ask-ai）。流式回答（复用 ai:chat:stream:*，feature=chat）、多行 textarea ⌘Enter、新会话/历史菜单/设置工具栏、空态。上下文 chips：当前文档自动、可加当前选区/反链文档/特定页面；token 估算 + head-tail 截断。发送前 refreshAutoDocumentChip 注入最新正文 + ai:retrieve 的 contextText；回答下方折叠 RetrievalSources（复用 DEV-011），来源持久化到 assistant meta。插入为块复用 DEV-010 insertIntoActiveEditor。
+- 入口/双链：EditorView selection bubble + 右键新增「询问 AI」（ask-ai.requestAskAi → queueAsk + 打开 dock + 选区 chip）；onWikilinkActivate 先 openChatWikilinkOrNull（按 frontmatter title 匹配 chat:list）命中则打开 dock 加载会话，否则原打开页面逻辑。AiDockPanel 配置后渲染 ChatDock（替换 AiChatDebug/RetrievalTester；二者文件保留，设置页仍用 AiChatDebug）。
+- 验收覆盖：main 14（format 往返/frontmatter 引号冒号/meta 附着/非 chat null/损坏 meta/CRLF；service 新建落盘/续聊来源/倒序忽略非 chat/越权拒绝/存为文档引用与注释/切目录/非法目录）+ renderer 7（上下文优先级截断/token、流式→来源→自动保存/标题取问题、双链标题打开、询问 AI 载荷）。
+- NOT_RUN：真实 provider 对话流式与 embedding 召回（mock bridge + fake retrieve 等价覆盖）、Electron 内人工点击三入口/历史切换/存为文档打开 tab/双链打开 dock 的端到端、右键「询问 AI」实际浮层点击（由 kernel 浮层测试 + requestAskAi 单测等价覆盖）。
+
+### 下一张：DEV-013 插件运行时（XL，依赖链关键；旧 WIP `.wt/DEV-013` @ `9f283f3` 需基于最新 master 重做）
+- 新建 worktree `.wt/DEV-013`（从 master）；票据 `issues/013-plugin-runtime*.md`。
+- 硬阻塞（checkpoint 旧段）：CSP Electron bootstrap、lifecycle/error ownership、RPC NOT_IMPLEMENTED、watchdog、plugin dispatch、同线程 hang 隔离、ZIP wrapper-dir；DEV-011 BuiltinRetrievalSkill 待 DEV-014 经插件扩展点接入。
 
 
 ## 1. 全局基线
