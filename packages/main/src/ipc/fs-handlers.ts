@@ -46,7 +46,8 @@ export function registerFsHandlers(registrar: IpcRegistrar): void {
     return ok(result);
   });
   registrar.register('fs:delete', async ({ path, toTrash }, services): Promise<Result<void>> => {
-    if (path.trim().length === 0 || path.trim() === '.') return err('不允许删除 vault 根目录', 'VAULT_ROOT_OPERATION');
+    if (path.trim().length === 0 || path.trim() === '.')
+      return err('不允许删除 vault 根目录', 'VAULT_ROOT_OPERATION');
     if (toTrash) {
       const { abs } = await services.fs.resolve(path);
       try {
@@ -66,14 +67,20 @@ export function registerFsHandlers(registrar: IpcRegistrar): void {
     await recordWrite(services, `删除 ${path}`);
     return ok(undefined);
   });
-  registrar.register('fs:createNote', async ({ parentDir, name, content }, services): Promise<Result<FileInfo>> =>
-    ok(await createNote(services.fs, parentDir, name, content)),
+  registrar.register(
+    'fs:createNote',
+    async ({ parentDir, name, content }, services): Promise<Result<FileInfo>> =>
+      ok(await createNote(services.fs, parentDir, name, content)),
   );
-  registrar.register('fs:listTree', async ({ showAllFiles }, services): Promise<Result<DirEntry[]>> =>
-    ok(await services.fs.listTree(showAllFiles ?? false)),
+  registrar.register(
+    'fs:listTree',
+    async ({ showAllFiles }, services): Promise<Result<DirEntry[]>> =>
+      ok(await services.fs.listTree(showAllFiles ?? false)),
   );
-  registrar.register('fs:renameLinked', async ({ from, to }, services): Promise<Result<RenameLinkedResult>> =>
-    ok(await renameWithLinks(services.fs, from, to)),
+  registrar.register(
+    'fs:renameLinked',
+    async ({ from, to }, services): Promise<Result<RenameLinkedResult>> =>
+      ok(await renameWithLinks(services.fs, from, to)),
   );
   registrar.register('fs:revealInFinder', async ({ path }, services): Promise<Result<void>> => {
     const { abs } = await services.fs.resolve(path);
