@@ -8,8 +8,10 @@ onlyBuiltDependencies:
   - electron-winstaller
   - electron-builder
   - dugite
+  - better-sqlite3
 allowBuilds:
   dugite: true
+  better-sqlite3: true
   electron-winstaller: true
   esbuild: true
 minimumReleaseAgeExclude:

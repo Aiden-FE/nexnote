@@ -1,15 +1,13 @@
 {
   "name": "@nexnote/main",
-  "version": "0.0.0",
-  "private": true,
-  "type": "module",
-  "scripts": {
-    "typecheck": "tsc --noEmit -p tsconfig.json"
-  },
   "dependencies": {
     "@nexnote/shared": "workspace:*",
+    "better-sqlite3": "^12.11.1",
     "chokidar": "^5.0.0",
     "dugite": "^3.2.3",
     "simple-git": "^3.36.0"
+  },
+  "devDependencies": {
+    "@types/better-sqlite3": "^7.6.13"
   }
 }

@@ -60,11 +60,16 @@ function ThemeToggleItem() {
 function VersionItem() {
   const [info, setInfo] = useState<AppInfo | null>(null);
   useEffect(() => {
-    void invoke('app:getInfo').then(setInfo).catch(() => undefined);
+    void invoke('app:getInfo')
+      .then(setInfo)
+      .catch(() => undefined);
   }, []);
   if (!info) return null;
   return (
-    <span className="opacity-70" title={`Electron ${info.electronVersion} · ${info.platform}/${info.arch}`}>
+    <span
+      className="opacity-70"
+      title={`Electron ${info.electronVersion} · ${info.platform}/${info.arch}`}
+    >
       v{info.version}
     </span>
   );

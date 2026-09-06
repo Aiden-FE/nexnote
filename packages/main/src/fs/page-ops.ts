@@ -1,6 +1,12 @@
 import { randomUUID } from 'node:crypto';
-import * as path from 'node:path';
-import { sanitizeEntryName, type DirEntry, type FileInfo, type TagStat } from '@nexnote/shared';
+import {
+  rewriteNormalLinkTargets,
+  rewriteWikiTargets,
+  sanitizeEntryName,
+  type DirEntry,
+  type FileInfo,
+  type TagStat,
+} from '@nexnote/shared';
 import { FsError, type VaultFsService } from './fs-service';
 
 /**
@@ -65,77 +71,29 @@ export async function createNote(
   return fs.writeTextFile(relPath, body, true);
 }
 
-// ── wikilink 重写 ────────────────────────────────────────────
+// ── wikilink / Markdown 链接重写（委托 @nexnote/shared 的 code-aware 解析器） ──
 
 /**
- * 单个 wikilink 的解析结果。`[[dir/name#heading|display]]` →
- * { linkPath: 'dir/name', heading: '#heading', display: 'display' }。
+ * code-aware 普通 Markdown 链接重写（与索引器共用共享解析器）。
+ * 按链接所在文件（sourcePath，vault 相对）目录解析真实目标，仅当目标命中被重命名/
+ * 移动的路径时才改写，避免 basename 误伤其他目录、代码示例或资源链接。
  */
-interface WikilinkParts {
-  linkPath: string;
-  heading: string;
-  display: string;
+export function rewriteMarkdownLinks(
+  content: string,
+  fromStem: string,
+  toStem: string,
+  sourcePath = '',
+): { content: string; changed: boolean } {
+  return rewriteNormalLinkTargets(content, fromStem, toStem, sourcePath);
 }
 
-const WIKILINK_RE = /(!?)\[\[([^[\]]+)\]\]/g;
-
-function parseWikilink(raw: string): WikilinkParts {
-  let rest = raw;
-  let display = '';
-  const barIdx = rest.indexOf('|');
-  if (barIdx !== -1) {
-    display = rest.slice(barIdx + 1);
-    rest = rest.slice(0, barIdx);
-  }
-  let heading = '';
-  const hashIdx = rest.indexOf('#');
-  if (hashIdx !== -1) {
-    heading = rest.slice(hashIdx);
-    rest = rest.slice(0, hashIdx);
-  }
-  // 归一化：去掉 ./ 前缀（Obsidian 允许 [[./note]]）
-  if (rest.startsWith('./')) rest = rest.slice(2);
-  return { linkPath: rest.trim(), heading, display };
-}
-
-function isDescendantOrSelf(linkPath: string, stem: string): boolean {
-  return linkPath === stem || linkPath.startsWith(`${stem}/`);
-}
-
-/**
- * 把 content 中指向 `fromStem`（旧路径 stem，无 .md）的 wikilink 改写为 `toStem`。
- * 匹配范围（简单字符串替换版，DEV-004 升级为索引精确解析）：
- * - 短名引用 `[[old]]`（basename）→ basename 形式改写（保持最短形式：移动不改名时不动）
- * - 完整路径引用 `[[dir/old]]` / `[[dir/old#标题]]` / `[[dir/old|别名]]` → 前缀替换
- * - 目录移动：`[[olddir/note]]` → `[[newdir/note]]`（stem 为目录时按前缀匹配）
- * - embed `![[old]]` 同样处理；大小写敏感（已知限制）
- */
+/** code-aware wikilink 重写（与索引器共用共享解析器，跳过代码段，保留 alias/anchor/embed）。 */
 export function rewriteWikilinks(
   content: string,
   fromStem: string,
   toStem: string,
 ): { content: string; changed: boolean } {
-  if (fromStem === toStem) return { content, changed: false };
-  const fromBase = path.posix.basename(fromStem);
-  const toBase = path.posix.basename(toStem);
-  let changed = false;
-  const next = content.replace(WIKILINK_RE, (whole, bang: string, inner: string) => {
-    const parts = parseWikilink(inner);
-    if (parts.linkPath.length === 0) return whole;
-    let newPath: string | null = null;
-    if (fromBase.length > 0 && parts.linkPath === fromBase) {
-      // 短名（basename）引用：跟随改名；移动不改名时目标相同（保持最短形式）
-      newPath = toBase;
-    } else if (isDescendantOrSelf(parts.linkPath, fromStem)) {
-      // 完整路径（含目录前缀/子页面）引用：整体前缀替换
-      newPath = toStem + parts.linkPath.slice(fromStem.length);
-    } else {
-      return whole;
-    }
-    changed = true;
-    return `${bang}[[${newPath}${parts.heading}${parts.display ? `|${parts.display}` : ''}]]`;
-  });
-  return { content: next, changed };
+  return rewriteWikiTargets(content, fromStem, toStem);
 }
 
 /** 收集 vault 内全部 .md 文件相对路径（排除 .nexnote/.git/.trash 等内部目录）。 */
@@ -179,8 +137,10 @@ export async function renameWithLinks(
       } catch {
         continue; // 单文件读取失败不阻断整体重命名
       }
-      const { content, changed } = rewriteWikilinks(text, fromStem, toStem);
-      if (changed) {
+      const wiki = rewriteWikilinks(text, fromStem, toStem);
+      const normal = rewriteMarkdownLinks(wiki.content, fromStem, toStem, file);
+      if (wiki.changed || normal.changed) {
+        const content = normal.content;
         await fs.writeTextFile(file, content, true);
         updatedFiles.push(file);
       }

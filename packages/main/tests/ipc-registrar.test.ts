@@ -9,6 +9,7 @@ import { VaultSession } from '../src/vault/vault-session';
 import { VaultFsService } from '../src/fs/fs-service';
 import { VaultWatchService } from '../src/fs/watch-service';
 import { GitService } from '../src/git/git-service';
+import { LinkIndexService } from '../src/indexer/index-service';
 import { IPC_CHANNELS } from '@nexnote/shared';
 import type { IpcServices } from '../src/ipc/services';
 
@@ -44,9 +45,15 @@ afterEach(async () => {
   await rm(tmp, { recursive: true, force: true });
 });
 
-function makeServices(): { services: IpcServices; session: VaultSession; store: AppStore } {
+function makeServices(): {
+  services: IpcServices;
+  session: VaultSession;
+  store: AppStore;
+  reveals: string[];
+} {
   const store = new AppStore(path.join(tmp, 'store.json'));
   const windows = new FakeWindows();
+  const reveals: string[] = [];
   const session = new VaultSession({
     appStore: store,
     windows: windows as never,
@@ -61,8 +68,9 @@ function makeServices(): { services: IpcServices; session: VaultSession; store: 
     git,
     dialogs: { pickDirectory: async () => null },
     trash: async () => {},
-    revealItem: async () => {},
+    revealItem: async (absPath: string) => { reveals.push(absPath); },
     watch: new VaultWatchService({ getRoot: () => null, emit: () => undefined }),
+    index: new LinkIndexService(),
     appInfo: () => ({
       version: '0.1.0',
       platform: 'test',
@@ -72,7 +80,7 @@ function makeServices(): { services: IpcServices; session: VaultSession; store: 
     }),
     checkForUpdates: async () => ({ status: 'not-configured' as const }),
   };
-  return { services, session, store };
+  return { services, session, store, reveals };
 }
 
 describe('IPC 注册表框架', () => {
@@ -221,6 +229,19 @@ describe('IPC 集成（vault + fs，单一注册表）', () => {
     };
     expect(denied.ok).toBe(false);
     expect(denied.code).toBe('NO_VAULT');
+  });
+
+  it('vault:reveal 解析 vault 内路径并调用系统文件管理器', async () => {
+    const ipc = new FakeIpcMain();
+    const { services, reveals } = makeServices();
+    registerAllIpcHandlers(ipc, services);
+    await ipc.invoke('vault:initGit', { path: tmp });
+    await ipc.invoke('vault:open', { path: tmp });
+    const result = (await ipc.invoke('vault:reveal', { path: 'nested/note.md' })) as {
+      ok: boolean;
+    };
+    expect(result.ok).toBe(true);
+    expect(reveals).toEqual([path.join(tmp, 'nested/note.md')]);
   });
 
   it('vault:open 对未初始化 Git 的普通目录拒绝打开（引导走显式确认初始化）', async () => {

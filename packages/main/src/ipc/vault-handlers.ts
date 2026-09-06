@@ -186,6 +186,12 @@ export function registerVaultHandlers(registrar: IpcRegistrar): void {
     }
     return ok(undefined);
   });
+
+  registrar.register('vault:reveal', async ({ path }, services): Promise<Result<void>> => {
+    const { abs } = await services.fs.resolve(path);
+    await services.revealItem(abs);
+    return ok(undefined);
+  });
 }
 
 /** 供单测重置懒恢复标记。 */

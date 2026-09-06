@@ -19,6 +19,7 @@ export const VAULT_CHANNELS = [
   'vault:removeRecent',
   'vault:getLayout',
   'vault:saveLayout',
+  'vault:reveal',
 ] as const;
 
 export type VaultChannel = (typeof VAULT_CHANNELS)[number];
@@ -46,4 +47,7 @@ export interface VaultChannelMap {
   };
   /** 经用户确认后初始化并打开一个已有文件夹；不会由 vault:open 隐式执行。 */
   'vault:initGit': { request: { path: string }; response: Result<VaultInfo> };
+  /** 在 Finder / 资源管理器中显示 vault 内文件 */
+  'vault:reveal': { request: { path: string }; response: Result<void> };
+
 }

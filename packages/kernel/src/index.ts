@@ -21,6 +21,17 @@ export type { CalloutType } from './extensions/callout';
 export { Wikilink } from './extensions/wikilink';
 export { Hashtag } from './extensions/hashtag';
 export { Frontmatter, splitFrontmatter } from './extensions/frontmatter';
+export {
+  assertSafeFrontmatterKey,
+  fieldTypeOf,
+  getList,
+  getString,
+  isStandardField,
+  normalizeList,
+  parseFrontmatterYaml,
+  serializeFrontmatterYaml,
+} from './frontmatter/model';
+export type { FrontmatterData, FrontmatterValue } from './frontmatter/model';
 export { KernelCodeBlock, KernelTable } from './extensions/code-table';
 export { SlashMenu, defaultSlashMenuItems, slashMenuPluginKey } from './extensions/slash-menu';
 export type { SlashMenuItem, SlashMenuOptions, SlashMenuState } from './extensions/slash-menu';

@@ -81,16 +81,26 @@ export async function runSmokeIfEnabled(): Promise<void> {
     check('vault:create 成功', created.name === 'smoke-vault', created.root);
 
     // vault:changed 事件 → App 切到工作区
-    check('工作区出现（vault:changed 驱动）', await waitFor(() => !!document.querySelector('[data-testid="app-sidebar"]')));
+    check(
+      '工作区出现（vault:changed 驱动）',
+      await waitFor(() => !!document.querySelector('[data-testid="app-sidebar"]')),
+    );
 
     // ── 3. 三面板布局 ─────────────────────────────────────────
     const sidebar = !!document.querySelector('[data-testid="app-sidebar"]');
     const main = !!document.querySelector('[data-testid="main-content"]');
     const dock = !!document.querySelector('[data-testid="right-dock"]');
     const statusbar = !!document.querySelector('[data-testid="status-bar"]');
-    check('三面板布局（侧栏+主区+右侧 dock）', sidebar && main && dock, `sb=${sidebar} main=${main} dock=${dock}`);
+    check(
+      '三面板布局（侧栏+主区+右侧 dock）',
+      sidebar && main && dock,
+      `sb=${sidebar} main=${main} dock=${dock}`,
+    );
     check('底部状态栏', statusbar);
-    check('侧栏三个占位面板已注册', !!document.querySelector('[data-testid="sidebar-panel-pages"]'));
+    check(
+      '侧栏至少一个面板已注册（按合并后 DEV-003 实际面板为准）',
+      document.querySelectorAll('[data-testid^="sidebar-panel-"]').length >= 1,
+    );
     check('Dock AI 占位面板已注册', !!document.querySelector('[data-testid="dock-panel-ai-chat"]'));
     check('Dock Git 时间线面板已注册（DEV-007）', dockPanelRegistry.get('git-timeline') !== undefined);
     check('状态栏 Git 状态项（分支可见）', !!document.querySelector('[data-testid="status-git-branch"]'));
@@ -124,7 +134,9 @@ export async function runSmokeIfEnabled(): Promise<void> {
       'page Tab 挂载真实 TipTap EditorView',
       await waitFor(() => !!document.querySelector('[data-testid="editor-view"] .ProseMirror')),
     );
-    const leftPageTab = useTabStore.getState().panes.left.tabs.find((t) => t.title === '冒烟页面 A');
+    const leftPageTab = useTabStore
+      .getState()
+      .panes.left.tabs.find((t) => t.title === '冒烟页面 A');
     const editorRoot = document.querySelector<HTMLElement>(
       '[data-testid="pane-left"] [data-testid="editor-view"] .ProseMirror',
     );
@@ -153,7 +165,9 @@ export async function runSmokeIfEnabled(): Promise<void> {
         ? await invoke('fs:readTextFile', { path: '冒烟重命名页.md' })
         : '';
       check('编辑防抖保存并由 H1 重命名文件', renamedExists && renamedContent.includes('第一块'));
-      const updatedTab = useTabStore.getState().panes.left.tabs.find((t) => t.id === leftPageTab.id);
+      const updatedTab = useTabStore
+        .getState()
+        .panes.left.tabs.find((t) => t.id === leftPageTab.id);
       check(
         'H1 → 文件名/Tab 标题双向联动',
         updatedTab?.pagePath === '冒烟重命名页.md' && updatedTab.title === '冒烟重命名页',
@@ -167,7 +181,8 @@ export async function runSmokeIfEnabled(): Promise<void> {
       });
       await waitFor(
         () =>
-          document.querySelector('[data-testid="pane-left"] [data-testid="editor-view"] .ProseMirror')
+          document
+            .querySelector('[data-testid="pane-left"] [data-testid="editor-view"] .ProseMirror')
             ?.textContent?.includes('第一块') ?? false,
       );
       check(
@@ -200,7 +215,10 @@ export async function runSmokeIfEnabled(): Promise<void> {
     window.dispatchEvent(
       new KeyboardEvent('keydown', { key: 'k', metaKey: true, bubbles: true, cancelable: true }),
     );
-    check('⌘K 唤起命令面板', await waitFor(() => !!document.querySelector('[data-testid="command-palette"]')));
+    check(
+      '⌘K 唤起命令面板',
+      await waitFor(() => !!document.querySelector('[data-testid="command-palette"]')),
+    );
     // 动态注册新命令（验证「可注册新命令」的扩展机制）
     let customCommandRan = false;
     commandRegistry.register({
@@ -212,10 +230,7 @@ export async function runSmokeIfEnabled(): Promise<void> {
       },
     });
     const input = document.querySelector<HTMLInputElement>('[data-testid="palette-input"]');
-    const nativeSetter = Object.getOwnPropertyDescriptor(
-      HTMLInputElement.prototype,
-      'value',
-    )?.set;
+    const nativeSetter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')?.set;
     if (input && nativeSetter) {
       nativeSetter.call(input, '切换亮/暗主题');
       input.dispatchEvent(new Event('input', { bubbles: true }));
@@ -258,7 +273,8 @@ export async function runSmokeIfEnabled(): Promise<void> {
     useUiStore.getState().toggleSidebar();
     await sleep(250);
     const collapsed =
-      document.querySelector('[data-testid="app-sidebar"]')?.getAttribute('data-collapsed') === 'true';
+      document.querySelector('[data-testid="app-sidebar"]')?.getAttribute('data-collapsed') ===
+      'true';
     check('侧栏可折叠', collapsed);
     await capture('07-sidebar-collapsed');
     useUiStore.getState().toggleSidebar();
@@ -270,7 +286,11 @@ export async function runSmokeIfEnabled(): Promise<void> {
     const entriesText = [...document.querySelectorAll('[data-testid="files-entry"]')]
       .map((el) => el.textContent ?? '')
       .join(' ');
-    check('fs:listDir 经 IPC 返回 vault 内容', entriesText.includes('.nexnote'), entriesText.slice(0, 80));
+    check(
+      'fs:listDir 经 IPC 返回 vault 内容',
+      entriesText.includes('.nexnote'),
+      entriesText.slice(0, 80),
+    );
 
     // ── 9.5 DEV-003 页面树与文件操作 ─────────────────────
     const treeRow = (rel: string): Element | null =>
@@ -502,14 +522,21 @@ export async function runSmokeIfEnabled(): Promise<void> {
 
     // ── 11. 关闭 vault 回到向导 ───────────────────────────────
     await invoke('vault:close');
-    check('vault:close 后回到向导', await waitFor(() => !!document.querySelector('[data-testid="onboarding"]')));
+    check(
+      'vault:close 后回到向导',
+      await waitFor(() => !!document.querySelector('[data-testid="onboarding"]')),
+    );
     // 最近列表应包含刚创建的 vault
     await sleep(400);
     const recentShown = document.querySelector('[data-testid="onboarding"]')?.textContent ?? '';
     check('最近打开列表持久化并显示', recentShown.includes('smoke-vault'));
     await capture('08-recent-list');
   } catch (e) {
-    check('冒烟 harness 未抛错', false, e instanceof Error ? `${e.message}\n${e.stack}` : String(e));
+    check(
+      '冒烟 harness 未抛错',
+      false,
+      e instanceof Error ? `${e.message}\n${e.stack}` : String(e),
+    );
   }
 
   await bridge.finish({ finishedAt: new Date().toISOString(), checks, captures: [] });

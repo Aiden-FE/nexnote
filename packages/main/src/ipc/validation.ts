@@ -179,6 +179,7 @@ const VALIDATORS: Partial<Record<IpcChannel, PayloadValidator>> = {
   'vault:initGit': pathOnly,
   'vault:clone': vaultClone,
   'vault:removeRecent': pathOnly,
+  'vault:reveal': pathOnly,
   'vault:saveLayout': saveLayout,
 };
 
