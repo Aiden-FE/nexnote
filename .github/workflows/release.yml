@@ -26,6 +26,8 @@ jobs:
     outputs:
       channel: ${{ steps.channel.outputs.value }}
     steps:
+      # Pinned action SHAs are maintained by Dependabot (.github/dependabot.yml).
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
       - id: channel
         run: |
           if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then echo "value=${{ inputs.channel }}" >> "$GITHUB_OUTPUT";
@@ -58,10 +60,10 @@ jobs:
     env:
       NEXNOTE_UPDATE_CHANNEL: ${{ needs.prepare.outputs.channel }}
     steps:
-      - uses: actions/checkout@v4
-      - uses: pnpm/action-setup@v4
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+      - uses: pnpm/action-setup@a7487c7e89a18df4991f7f222e4898a00d66ddda # v4.1.0
         with: { version: 10 }
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with: { node-version: 22, cache: pnpm }
       - run: pnpm install --frozen-lockfile
       - run: pnpm lint && pnpm typecheck && pnpm test && pnpm verify:release-config && pnpm version:check
@@ -135,24 +137,24 @@ jobs:
             gpg --verify "$artifact.asc" "$artifact"
           done
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: nexnote-${{ matrix.artifact }}
           path: release/*
           if-no-files-found: error
 
-  # The signed macOS artifact is tested before any public Release is created.
+  # The signed macOS artifact is tested before manual QA approval or public publication.
   smoke:
     needs: build
     runs-on: macos-14
     steps:
-      - uses: actions/checkout@v4
-      - uses: pnpm/action-setup@v4
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+      - uses: pnpm/action-setup@a7487c7e89a18df4991f7f222e4898a00d66ddda # v4.1.0
         with: { version: 10 }
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with: { node-version: 22, cache: pnpm }
       - run: pnpm install --frozen-lockfile
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
         with:
           name: nexnote-macos-arm64
           path: release
@@ -165,14 +167,17 @@ jobs:
         env:
           NEXNOTE_APP_PATH: release/smoke-app/NexNote.app/Contents/MacOS/NexNote
 
-  # This is the sole public publication operation and waits for every signing and smoke gate.
+  # Repository admins must configure the `release-qa` Environment with required reviewers.
+  # Approval must include the completed QA checklist evidence before this sole public publisher runs.
   publish:
     needs: [build, smoke]
     runs-on: ubuntu-latest
+    environment:
+      name: release-qa
     permissions:
       contents: write
     steps:
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
         with:
           pattern: nexnote-*
           path: release
@@ -188,7 +193,7 @@ jobs:
           ((${#appimages[@]} && ${#debs[@]} && ${#maczips[@]} && ${#macdmg[@]} && ${#windows[@]})) || { echo '::error::incomplete cross-platform artifact set'; exit 1; }
           for artifact in "${appimages[@]}" "${debs[@]}"; do test -f "$artifact.asc" || { echo "::error::missing GPG signature for $artifact"; exit 1; }; done
       - name: Attach artifacts to GitHub Release
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@3bb12739c298aeb8a4eeaf626c5b8d85266b0e65 # v2
         with:
           files: release/**/*
           generate_release_notes: true

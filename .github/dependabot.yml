@@ -1,0 +1,8 @@
+version: 2
+updates:
+  # Keep immutable GitHub Action pins current through reviewable Dependabot PRs.
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 5

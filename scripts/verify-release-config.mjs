@@ -19,6 +19,7 @@ const notarize = readFileSync(resolve(root, 'scripts/notarize.cjs'), 'utf8');
 const smoke = readFileSync(resolve(root, 'scripts/ci-smoke.mjs'), 'utf8');
 const appStore = readFileSync(resolve(root, 'packages/main/src/vault/app-store.ts'), 'utf8');
 const qaChecklist = readFileSync(resolve(root, 'docs/release/QA-CHECKLIST.md'), 'utf8');
+const dependabot = readFileSync(resolve(root, '.github/dependabot.yml'), 'utf8');
 
 // The git origin is the single source of truth for the publish repository.
 let originOwner = '';
@@ -138,7 +139,7 @@ check('平台密钥最小权限且仅 step 级引用', () => {
     if (stepStart < 0 || !build.slice(stepStart, index).includes(platformGuard)) throw new Error(`${secret} is not platform-scoped`);
   }
 });
-check('单个 publish job，无矩阵 race，且在 smoke/preflight 后才公开', () => {
+check('单个 publish job，经受保护 QA Environment 审批后才公开', () => {
   const wf = yaml.load(releaseWorkflow);
   const jobs = Object.keys(wf.jobs ?? {});
   if (!jobs.includes('publish')) throw new Error('no publish job');
@@ -146,6 +147,8 @@ check('单个 publish job，无矩阵 race，且在 smoke/preflight 后才公开
   if (wf.jobs.build?.permissions?.contents === 'write') throw new Error('build must not have release write permission');
   if (wf.jobs.publish?.permissions?.contents !== 'write') throw new Error('publish must hold the only contents: write permission');
   if (JSON.stringify(wf.jobs.publish?.needs) !== JSON.stringify(['build', 'smoke'])) throw new Error('publish must wait for build and smoke');
+  if (wf.jobs.publish?.environment?.name !== 'release-qa') throw new Error('publish must require release-qa protected Environment approval');
+  if (!/required reviewers/.test(releaseWorkflow) || !/QA checklist evidence/.test(releaseWorkflow)) throw new Error('workflow must document required-reviewer QA evidence approval');
   if (!/Preflight complete signed release set/.test(releaseWorkflow) || !/softprops\/action-gh-release/.test(releaseWorkflow)) throw new Error('publish requires preflight then single uploader');
 });
 check('Linux GPG 在上传前签名，所有 .asc 均作为 Release asset', () => {
@@ -154,10 +157,27 @@ check('Linux GPG 在上传前签名，所有 .asc 均作为 Release asset', () =
   if (!/release\/\*\.AppImage release\/\*\.deb/.test(releaseWorkflow)) throw new Error('AppImage and deb must be signed');
   if (!/files: release\/\*\*\/\*/.test(releaseWorkflow)) throw new Error('publish glob must include release/**/* to capture .asc');
 });
-check('smoke 缺产物必须失败且 QA 文档受版本控制', () => {
+check('smoke 缺产物必须失败且 QA 文档 gate 顺序一致', () => {
   if (/skipping e2e smoke|process\.exit\(0\)/.test(smoke)) throw new Error('smoke script may not skip missing artifact');
   if (!/process\.exit\(1\)/.test(smoke)) throw new Error('smoke must fail without packaged app');
   if (!/事实边界/.test(qaChecklist) || !/未进行.*跨平台物理安装/.test(qaChecklist)) throw new Error('QA checklist must truthfully record physical-validation boundary');
+  if (!/release-qa.*Environment.*审批前必须全部完成/.test(qaChecklist)) throw new Error('manual QA must be explicitly required before Environment approval');
+  if (!/After public publication \(monitoring, not a publication gate\)/.test(qaChecklist)) throw new Error('post-publication checks must be separated from publication gates');
+  const postPublication = qaChecklist.split('## After public publication')[1] ?? '';
+  if (/🔒/.test(postPublication)) throw new Error('no publication gate may appear after public publication');
+});
+check('所有 GitHub Actions 使用 immutable SHA 并由 Dependabot 维护', () => {
+  const workflowFiles = ['.github/workflows/pr-check.yml', '.github/workflows/nightly.yml', '.github/workflows/release.yml'];
+  const useLine = /^\s*-\s+uses:\s+([^\s#]+)(?:\s+#.*)?$/gm;
+  for (const file of workflowFiles) {
+    const source = readFileSync(resolve(root, file), 'utf8');
+    for (const match of source.matchAll(useLine)) {
+      const ref = match[1].split('@')[1];
+      if (!ref || !/^[0-9a-f]{40}$/.test(ref)) throw new Error(`${file} has unpinned action: ${match[1]}`);
+    }
+  }
+  if (!/package-ecosystem:\s*github-actions/.test(dependabot)) throw new Error('Dependabot github-actions update strategy missing');
+  if (!/softprops\/action-gh-release@[0-9a-f]{40}/.test(releaseWorkflow)) throw new Error('release publisher must be pinned by full SHA');
 });
 check('PR 检查覆盖 lint/typecheck/test/build', () => {
   if (!/pnpm lint/.test(devWorkflow)) throw new Error('pr-check missing lint');
