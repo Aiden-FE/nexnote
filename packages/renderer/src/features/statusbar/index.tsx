@@ -12,7 +12,6 @@ import type { AppInfo } from '@nexnote/shared';
  * - 右：主题切换、版本号
  */
 statusBarRegistry.register({ id: 'vault', align: 'left', render: VaultStatusItem });
-statusBarRegistry.register({ id: 'git', align: 'left', render: GitStatusPlaceholder });
 statusBarRegistry.register({ id: 'theme', align: 'right', render: ThemeToggleItem });
 statusBarRegistry.register({ id: 'version', align: 'right', render: VersionItem });
 
@@ -27,7 +26,7 @@ function VaultStatusItem() {
   );
 }
 
-function GitStatusPlaceholder() {
+function _GitStatusPlaceholder() {
   return (
     <span
       className="flex items-center gap-1.5 opacity-60"
@@ -61,11 +60,16 @@ function ThemeToggleItem() {
 function VersionItem() {
   const [info, setInfo] = useState<AppInfo | null>(null);
   useEffect(() => {
-    void invoke('app:getInfo').then(setInfo).catch(() => undefined);
+    void invoke('app:getInfo')
+      .then(setInfo)
+      .catch(() => undefined);
   }, []);
   if (!info) return null;
   return (
-    <span className="opacity-70" title={`Electron ${info.electronVersion} · ${info.platform}/${info.arch}`}>
+    <span
+      className="opacity-70"
+      title={`Electron ${info.electronVersion} · ${info.platform}/${info.arch}`}
+    >
       v{info.version}
     </span>
   );

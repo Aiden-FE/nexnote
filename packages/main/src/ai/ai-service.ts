@@ -26,6 +26,21 @@ export function defaultTokenEstimator(text: string): number {
   return Math.ceil(text.length / 4);
 }
 
+/** Credential tokens are portable only within one normalized provider origin. */
+function credentialOrigin(baseUrl: string): string {
+  let url: URL;
+  try {
+    url = new URL(baseUrl.trim());
+  } catch {
+    throw new ProviderError('Base URL 必须是有效的 http(s) URL', 'BAD_BASE_URL');
+  }
+  if (url.protocol !== 'http:' && url.protocol !== 'https:') {
+    throw new ProviderError('Base URL 必须使用 http(s) 协议', 'BAD_BASE_URL');
+  }
+  if (url.username || url.password) throw new ProviderError('Base URL 不得包含凭据', 'BAD_BASE_URL');
+  return `${url.protocol}//${url.host}`;
+}
+
 export interface AiServiceDeps {
   store: AiStore;
   /** 主进程 → 渲染层事件推送（ai:streamEvent / ai:configChanged） */
@@ -75,7 +90,10 @@ export function splitEmbedBatches(
 export class AiService {
   private readonly streams = new Map<string, { abort(): void; done: Promise<void> }>();
   /** Renderer-submitted credentials: opaque-token keyed, main-process only, short lived. */
-  private readonly pendingCredentials = new Map<string, { secret: string; expiresAt: number }>();
+  private readonly pendingCredentials = new Map<
+    string,
+    { secret: string; origin: string; expiresAt: number }
+  >();
 
   constructor(private readonly deps: AiServiceDeps) {}
 
@@ -131,20 +149,30 @@ export class AiService {
 
   // ── 配置 ────────────────────────────────────────────
 
-  submitCredential(secret: string): string {
+  submitCredential(secret: string, baseUrl: string): string {
     if (!secret.trim()) throw new ProviderError('凭据不能为空', 'BAD_REQUEST');
     this.sweepCredentials();
     const token = randomUUID();
-    this.pendingCredentials.set(token, { secret, expiresAt: Date.now() + 10 * 60_000 });
+    this.pendingCredentials.set(token, {
+      secret,
+      origin: credentialOrigin(baseUrl),
+      expiresAt: Date.now() + 10 * 60_000,
+    });
     return token;
   }
 
-  private credential(token: string | undefined, consume = false): string | undefined {
+  private credential(
+    token: string | undefined,
+    context: { origin: string; consume?: boolean },
+  ): string | undefined {
     if (!token) return undefined;
     this.sweepCredentials();
     const pending = this.pendingCredentials.get(token);
     if (!pending) throw new ProviderError('凭据提交已过期，请重新输入', 'CREDENTIAL_EXPIRED');
-    if (consume) this.pendingCredentials.delete(token);
+    if (pending.origin !== context.origin) {
+      throw new ProviderError('凭据目标不一致，请重新输入', 'CREDENTIAL_SCOPE_MISMATCH');
+    }
+    if (context.consume) this.pendingCredentials.delete(token);
     return pending.secret;
   }
 
@@ -164,7 +192,12 @@ export class AiService {
   }
 
   saveProfile(id: string | undefined, input: AiProfileInput): { id: string; state: AiConfigState } {
-    const apiKey = this.credential(input.credentialToken, true);
+    const apiKey = input.credentialToken
+      ? this.credential(input.credentialToken, {
+          origin: credentialOrigin(input.baseUrl),
+          consume: true,
+        })
+      : undefined;
     const saved = this.deps.store.saveProfile(id, {
       name: input.name,
       kind: input.kind,
@@ -223,7 +256,9 @@ export class AiService {
             : new OpenAIProtocolAdapter({
                 baseUrl: c.baseUrl,
                 apiKey:
-                  this.credential(c.credentialToken) ??
+                  this.credential(c.credentialToken, {
+                    origin: credentialOrigin(c.baseUrl),
+                  }) ??
                   (saved &&
                   saved.kind === c.kind &&
                   saved.baseUrl === c.baseUrl.trim().replace(/\/+$/, '')

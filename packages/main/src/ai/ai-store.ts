@@ -175,9 +175,6 @@ export class AiStore {
         if (p.keyBlob?.startsWith('enc:v1:') && this.migration.safeStorage) {
           try {
             const secret = decryptLegacySafeStorage(p.keyBlob, this.migration.safeStorage);
-            if (!this.secrets.available) {
-              return { ...p, keyBlob: null, keyStorage: 'system-credential' as const };
-            }
             const account = newSecretAccount();
             this.secrets.put(account, secret);
             migrated = true;

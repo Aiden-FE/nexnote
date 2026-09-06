@@ -72,6 +72,7 @@ beforeEach(async () => {
     appStore: {},
     vaultSession: {},
     fs: {},
+    git: { onStatusChanged: () => undefined },
     ai,
     dialogs: { pickDirectory: async () => null },
     trash: async () => {},
@@ -97,6 +98,7 @@ describe('密钥安全 IPC 契约（密钥永不经过渲染层）', () => {
     // 1. 保存（密钥一次性流入主进程）
     const credential = await call<{ credentialToken: string }>('ai:credential:submit', {
       secret: SECRET,
+      baseUrl: `${mock.url}/v1`,
     });
     const saved = await call<{ id: string; state: unknown }>('ai:profile:save', {
       profile: {
@@ -146,6 +148,7 @@ describe('密钥安全 IPC 契约（密钥永不经过渲染层）', () => {
   it('Profile 视图对象无密钥字段（结构级保证）', async () => {
     const { credentialToken } = await call<{ credentialToken: string }>('ai:credential:submit', {
       secret: SECRET,
+      baseUrl: `${mock.url}/v1`,
     });
     const saved = await call<{ state: { profiles: Array<Record<string, unknown>> } }>('ai:profile:save', {
       profile: {
@@ -165,7 +168,10 @@ describe('密钥安全 IPC 契约（密钥永不经过渲染层）', () => {
   });
 
   it('磁盘存储只含 opaque system-account ref（无明文密钥）', async () => {
-    const credential = await call<{ credentialToken: string }>('ai:credential:submit', { secret: SECRET });
+    const credential = await call<{ credentialToken: string }>('ai:credential:submit', {
+      secret: SECRET,
+      baseUrl: `${mock.url}/v1`,
+    });
     const saved = await call<{ id: string }>('ai:profile:save', {
       profile: {
         name: '磁盘检查',
@@ -188,7 +194,10 @@ describe('密钥安全 IPC 契约（密钥永不经过渲染层）', () => {
 
   it('错误路径也不泄漏密钥（坏密钥的 testConnection 错误信息无密钥）', async () => {
     mock.failNextChatWith = 401;
-    const credential = await call<{ credentialToken: string }>('ai:credential:submit', { secret: SECRET });
+    const credential = await call<{ credentialToken: string }>('ai:credential:submit', {
+      secret: SECRET,
+      baseUrl: `${mock.url}/v1`,
+    });
     const conn = await call<{ reachable: boolean; error?: string }>('ai:testConnection', {
       candidate: {
         kind: 'openai-compatible',

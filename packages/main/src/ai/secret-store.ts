@@ -1,6 +1,4 @@
 import { randomUUID } from 'node:crypto';
-import { Entry } from '@napi-rs/keyring';
-
 export interface SecretVault {
   readonly available: boolean;
   put(account: string, secret: string): void;
@@ -93,11 +91,19 @@ export function newSecretAccount(): string {
   return `${ACCOUNT_PREFIX}${randomUUID()}`;
 }
 
-export function createSecretVault(
+export async function createSecretVault(
   entryFactory?: (account: string) => KeyringEntryLike,
-): SecretVault {
+): Promise<SecretVault> {
+  if (entryFactory) {
+    try {
+      return new KeyringSecretVault(entryFactory);
+    } catch {
+      return new UnavailableSecretVault();
+    }
+  }
   try {
-    return new KeyringSecretVault(entryFactory);
+    const { Entry } = await import('@napi-rs/keyring');
+    return new KeyringSecretVault((account) => new Entry(SERVICE, account));
   } catch {
     return new UnavailableSecretVault();
   }

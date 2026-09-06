@@ -151,10 +151,10 @@ function WizardBody({
     const input = apiKeyInput();
     const secret = input?.value.trim();
     if (!secret) return;
-    const credential = await invoke('ai:credential:submit', { secret });
+    const credential = await invoke('ai:credential:submit', { secret, baseUrl: baseUrl.trim() });
     credentialTokenRef.current = credential.credentialToken;
     if (input) input.value = '';
-  }, []);
+  }, [baseUrl]);
 
   const leaveConnection = useCallback(async () => {
     try {

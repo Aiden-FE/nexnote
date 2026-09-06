@@ -108,6 +108,21 @@ describe('OpenAI 协议适配器', () => {
     }
   });
 
+  it('authenticated model requests reject redirects before following them', async () => {
+    mock.redirectNextModels = true;
+    try {
+      const redirectAdapter = new OpenAIProtocolAdapter({
+        baseUrl: `${mock.url}/v1/redirect`,
+        apiKey: 'sk-secret',
+        kind: 'openai-compatible',
+      });
+      await expect(redirectAdapter.listModels()).rejects.toThrow('网络请求失败');
+    } finally {
+      mock.redirectNextModels = false;
+    }
+    expect(mock.requests.filter((request) => request.url === '/v1/redirect/models')).toHaveLength(1);
+  });
+
   it('HTTP 错误映射为 error 事件（含状态提示）', async () => {
     mock.failNextChatWith = 401;
     const events: ChatStreamEvent[] = [];
@@ -135,6 +150,17 @@ describe('OpenAI 协议适配器', () => {
     );
     // 顺序可区分：不同输入 → 不同向量
     expect(res.vectors[0]).not.toEqual(res.vectors[1]);
+  });
+
+  it('embeddings reject empty vectors and non-finite values', async () => {
+    mock.nextEmbeddings = [[]];
+    await expect(adapter().embeddings({ model: 'm', inputs: ['a'] })).rejects.toThrow(
+      /空向量|非有限/,
+    );
+    mock.nextEmbeddings = [[1, 'NaN', 3]];
+    await expect(adapter().embeddings({ model: 'm', inputs: ['a'] })).rejects.toThrow(/非有限/);
+    mock.nextEmbeddings = [[1, 'Infinity', 3]];
+    await expect(adapter().embeddings({ model: 'm', inputs: ['a'] })).rejects.toThrow(/非有限/);
   });
 
   it('testConnection：实测 chat/streaming/embeddings/tools 各能力', async () => {

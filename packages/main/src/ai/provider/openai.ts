@@ -119,6 +119,10 @@ export class OpenAIProtocolAdapter implements ProviderAdapter {
     return headers;
   }
 
+  private request(url: string, init: RequestInit): Promise<Response> {
+    return this.fetchImpl(url, { ...init, redirect: 'error' });
+  }
+
   private chatUrl(model: string, stream: boolean): string {
     if (this.kind === 'azure-openai') {
       const q = `api-version=${this.apiVersion}${stream ? '&stream=true' : ''}`;
@@ -224,7 +228,7 @@ export class OpenAIProtocolAdapter implements ProviderAdapter {
     const toolsOk = chatModel
       ? await (async () => {
           try {
-            const res = await this.fetchImpl(this.chatUrl(chatModel, false), {
+            const res = await this.request(this.chatUrl(chatModel, false), {
               method: 'POST',
               headers: this.headers(true),
               body: JSON.stringify({
@@ -282,7 +286,7 @@ export class OpenAIProtocolAdapter implements ProviderAdapter {
   async listModels(): Promise<string[]> {
     let res: Response;
     try {
-      res = await this.fetchImpl(this.modelsUrl(), {
+      res = await this.request(this.modelsUrl(), {
         method: 'GET',
         headers: this.headers(false),
         signal: AbortSignal.timeout(CONNECT_TIMEOUT_MS),
@@ -310,7 +314,7 @@ export class OpenAIProtocolAdapter implements ProviderAdapter {
   ): Promise<{ content: string; model: string; usage?: TokenUsage }> {
     let res: Response;
     try {
-      res = await this.fetchImpl(this.chatUrl(req.model, false), {
+      res = await this.request(this.chatUrl(req.model, false), {
         method: 'POST',
         headers: this.headers(true),
         body: JSON.stringify({
@@ -359,7 +363,7 @@ export class OpenAIProtocolAdapter implements ProviderAdapter {
     const done = (async (): Promise<void> => {
       let res: Response;
       try {
-        res = await this.fetchImpl(this.chatUrl(req.model, true), {
+        res = await this.request(this.chatUrl(req.model, true), {
           method: 'POST',
           headers: this.headers(true),
           body: JSON.stringify({
@@ -468,7 +472,7 @@ export class OpenAIProtocolAdapter implements ProviderAdapter {
   async embeddings(req: EmbedRequest): Promise<EmbedResponse> {
     let res: Response;
     try {
-      res = await this.fetchImpl(this.embeddingsUrl(req.model), {
+      res = await this.request(this.embeddingsUrl(req.model), {
         method: 'POST',
         headers: this.headers(true),
         body: JSON.stringify({ model: req.model, input: req.inputs }),
@@ -495,7 +499,16 @@ export class OpenAIProtocolAdapter implements ProviderAdapter {
       if (!Array.isArray(d.embedding)) {
         throw new ProviderError('embeddings 响应缺少向量数据', 'BAD_EMBEDDING');
       }
-      return d.embedding.map((v) => (typeof v === 'number' ? v : Number(v)));
+      if (d.embedding.length === 0) {
+        throw new ProviderError('embeddings 返回空向量', 'BAD_EMBEDDING');
+      }
+      return d.embedding.map((value) => {
+        const vector = typeof value === 'number' ? value : Number(value);
+        if (!Number.isFinite(vector)) {
+          throw new ProviderError('embeddings 返回非有限数值', 'BAD_EMBEDDING');
+        }
+        return vector;
+      });
     });
     if (vectors.length !== req.inputs.length) {
       throw new ProviderError(

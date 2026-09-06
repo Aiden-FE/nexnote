@@ -11,6 +11,7 @@ export default tseslint.config(
       '**/dist/**',
       '**/release/**',
       '.scratch/**',
+      '.wt/**',
       'build/**',
     ],
   },

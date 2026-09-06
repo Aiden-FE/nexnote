@@ -58,7 +58,7 @@ function saveMockProfile(service: AiService, overrides: Record<string, unknown> 
     defaultModel: 'gpt-4o-mini',
     ...overrides,
   };
-  const credentialToken = service.submitCredential('sk-service-secret-xyz');
+  const credentialToken = service.submitCredential('sk-service-secret-xyz', input.baseUrl);
   const { id } = service.saveProfile(undefined, { ...input, credentialToken });
   return id;
 }
@@ -121,7 +121,7 @@ describe('AiService', () => {
 
   it('testConnection：candidate 直测（向导场景）+ capabilities 实测', async () => {
     const { service } = makeService();
-    const credentialToken = service.submitCredential('sk-cand');
+    const credentialToken = service.submitCredential('sk-cand', `${mock.url}/v1`);
     const result = await service.testConnection({
       candidate: { kind: 'openai-compatible', baseUrl: `${mock.url}/v1`, credentialToken },
     });
@@ -193,12 +193,46 @@ describe('AiService', () => {
       candidate: {
         kind: 'openai-compatible',
         baseUrl: 'http://127.0.0.1:1/v1',
-        credentialToken: service.submitCredential('k'),
+        credentialToken: service.submitCredential('k', 'http://127.0.0.1:1/v1'),
       },
     });
     expect(result.reachable).toBe(false);
     expect(result.error).toBeTruthy();
     expect(result.capabilities.chat).toBe(false);
+  });
+
+  it('credential tokens reject a different provider origin', async () => {
+    const { service } = makeService();
+    const token = service.submitCredential('sk-bound', `${mock.url}/v1`);
+    await expect(
+      service.listModels({
+        candidate: {
+          kind: 'openai-compatible',
+          baseUrl: 'https://other.example.com/v1',
+          credentialToken: token,
+        },
+      }),
+    ).rejects.toMatchObject({ code: 'CREDENTIAL_SCOPE_MISMATCH' });
+    expect(() => service.saveProfile(undefined, {
+      name: 'Wrong operation',
+      kind: 'openai-compatible',
+      baseUrl: 'https://saved.example.com/v1',
+      defaultModel: 'gpt-4o-mini',
+      credentialToken: token,
+    })).toThrow(/凭据目标不一致/);
+  });
+
+  it('authenticated provider requests never follow redirects', async () => {
+    const { service } = makeService();
+    const id = saveMockProfile(service);
+    mock.redirectNextModels = true;
+    try {
+      await expect(service.listModels({ profileId: id })).rejects.toThrow('网络请求失败');
+    } finally {
+      mock.redirectNextModels = false;
+    }
+    expect(mock.requests.filter((request) => request.url === '/v1/models')).toHaveLength(1);
+    expect(mock.requests.filter((request) => request.url === '/attacker/models')).toHaveLength(0);
   });
 
   it('系统凭据不可用时 candidate testConnection 仍可跑（不经过 store）', async () => {
@@ -214,7 +248,7 @@ describe('AiService', () => {
       candidate: {
         kind: 'openai-compatible',
         baseUrl: `${mock.url}/v1`,
-        credentialToken: service.submitCredential('sk-temp-cand'),
+        credentialToken: service.submitCredential('sk-temp-cand', `${mock.url}/v1`),
       },
     });
     expect(result.reachable).toBe(true);
@@ -230,7 +264,10 @@ describe('AiService', () => {
         kind: 'openai-compatible',
         baseUrl: `${mock.url}/v1`,
         defaultModel: 'gpt-4o-mini',
-        credentialToken: service.submitCredential('sk-should-not-be-saved'),
+        credentialToken: service.submitCredential(
+          'sk-should-not-be-saved',
+          `${mock.url}/v1`,
+        ),
       }),
     ).toThrow(/凭据存储不可用/);
   });

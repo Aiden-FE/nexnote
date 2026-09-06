@@ -12,6 +12,7 @@
     "start": "electron-vite preview",
     "build": "electron-vite build",
     "smoke": "NEXNOTE_SMOKE=1 electron-vite dev",
+    "test:git-remote-acceptance": "NEXNOTE_GIT_ACCEPT=1 vitest run packages/main/tests/git-remote-acceptance.test.ts",
     "typecheck": "pnpm -r --if-present typecheck",
     "lint": "eslint .",
     "lint:fix": "eslint . --fix",
@@ -25,8 +26,10 @@
     "dist:linux": "electron-vite build && electron-builder --linux"
   },
   "dependencies": {
-    "@napi-rs/keyring": "^1.3.0",
     "electron-updater": "^6.8.9"
+  },
+  "optionalDependencies": {
+    "@napi-rs/keyring": "^1.3.0"
   },
   "devDependencies": {
     "@eslint/js": "^9.39.5",

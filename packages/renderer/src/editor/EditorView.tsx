@@ -4,6 +4,12 @@ import { createEditor } from '@nexnote/kernel';
 import type { EditorKernelInstance } from '@nexnote/kernel';
 import { invoke } from '../lib/ipc';
 import { useTabStore, type PaneId, type TabDescriptor } from '../stores/tab-store';
+import { FrontmatterPanel } from '../features/frontmatter/FrontmatterPanel';
+import { useDocumentPropertiesStore } from '../features/frontmatter/document-properties-store';
+import { useIndexStore } from '../stores/index-store';
+import type { FrontmatterData } from '@nexnote/kernel';
+import { parseFrontmatterYaml, serializeFrontmatterYaml, splitFrontmatter } from '@nexnote/kernel';
+import { collectVaultTags, inspectFrontmatter } from '../features/frontmatter/frontmatter-utils';
 import {
   bindH1ToTitle,
   firstH1,
@@ -11,6 +17,7 @@ import {
   sanitizePageTitle,
   titleFromPath,
 } from './title-sync';
+import { registerAppSaveListener } from './app-save';
 
 interface EditorViewProps {
   paneId: PaneId;
@@ -18,9 +25,7 @@ interface EditorViewProps {
 }
 
 type LoadState =
-  | { phase: 'loading' }
-  | { phase: 'ready'; markdown: string }
-  | { phase: 'error'; message: string };
+  { phase: 'loading' } | { phase: 'ready'; markdown: string } | { phase: 'error'; message: string };
 
 type SaveState = 'saved' | 'saving' | 'error';
 
@@ -41,6 +46,13 @@ export function EditorView({ paneId, tab }: EditorViewProps) {
   const pathRef = useRef(path);
   const saveChainRef = useRef<Promise<void>>(Promise.resolve());
   const unmountedRef = useRef(false);
+  const [fmData, setFmData] = useState<FrontmatterData>({});
+  const [fmSource, setFmSource] = useState('');
+  const [fmLocked, setFmLocked] = useState(false);
+  const [fmParseError, setFmParseError] = useState<string | null>(null);
+  const [knownTags, setKnownTags] = useState<string[]>([]);
+  const indexTags = useIndexStore((s) => s.tags);
+  const setDocument = useDocumentPropertiesStore((s) => s.setDocument);
 
   useEffect(() => {
     pathRef.current = path;
@@ -73,6 +85,11 @@ export function EditorView({ paneId, tab }: EditorViewProps) {
         if (!firstH1(markdown)) markdown = bindH1ToTitle(markdown, titleFromPath(path));
         if (!cancelled) {
           pathRef.current = path;
+          const inspected = inspectFrontmatter(markdown);
+          setFmData(inspected.data);
+          setFmSource(inspected.source);
+          setFmLocked(inspected.locked);
+          setFmParseError(inspected.parseError);
           setLoad({ phase: 'ready', markdown });
         }
       } catch (e) {
@@ -162,8 +179,10 @@ export function EditorView({ paneId, tab }: EditorViewProps) {
     kernelRef.current = kernel;
 
     const flush = () => void kernel.flushPendingSave();
+    const unregisterAppSave = registerAppSaveListener(window, () => kernel.flushPendingSave());
     window.addEventListener('blur', flush);
     return () => {
+      unregisterAppSave();
       window.removeEventListener('blur', flush);
       // 先 flush 再 destroy：destroy 会 cancel，不能颠倒。
       void kernel.flushPendingSave().finally(() => kernel.destroy());
@@ -172,9 +191,86 @@ export function EditorView({ paneId, tab }: EditorViewProps) {
     };
   }, [load, paneId, save]);
 
+  // 仅替换 ProseMirror 文档首部 frontmatter 节点，保留正文选择与撤销映射。
+  const applyFrontmatter = useCallback((next: FrontmatterData, sourceOverride?: string) => {
+    const kernel = kernelRef.current;
+    if (!kernel) return;
+    const editor = kernel.editor;
+    const first = editor.state.doc.firstChild;
+    const type = editor.state.schema.nodes.frontmatter;
+    if (!type) return;
+    const yaml = sourceOverride ?? serializeFrontmatterYaml(next);
+
+    if (first?.type.name === 'frontmatter') {
+      if (first.textContent !== yaml) {
+        const tr =
+          yaml.length > 0
+            ? editor.state.tr.replaceWith(
+                0,
+                first.nodeSize,
+                type.create(null, editor.state.schema.text(yaml)),
+              )
+            : editor.state.tr.delete(0, first.nodeSize);
+        editor.view.dispatch(tr);
+      }
+    } else if (yaml.length > 0) {
+      editor.view.dispatch(
+        editor.state.tr.insert(0, type.create(null, editor.state.schema.text(yaml))),
+      );
+    }
+    setFmData(next);
+    setFmSource(yaml);
+    setFmLocked(false);
+    setFmParseError(null);
+  }, []);
+
+  // 属性面板数据源：编辑内容变化时刷新。
+  useEffect(() => {
+    if (load.phase !== 'ready') return;
+    const kernel = kernelRef.current;
+    const markdown = kernel?.getMarkdown() ?? load.markdown;
+    const { yaml } = splitFrontmatter(markdown);
+    let parsed: FrontmatterData = fmData;
+    if (yaml !== null) {
+      try {
+        parsed = parseFrontmatterYaml(yaml);
+      } catch {
+        // 保持之前的结构化数据
+      }
+    }
+    setDocument({ filePath: displayPath, markdown, data: parsed });
+  }, [load, displayPath, saveState, setDocument, fmData]);
+
+  // 已知标签：递归扫描 vault 全部 Markdown，接口与 DEV-004 索引替换 seam 一致。
+  useEffect(() => {
+    if (load.phase !== 'ready') return;
+    let cancelled = false;
+    void collectVaultTags({
+      listDir: (relativePath) => invoke('fs:listDir', { path: relativePath }),
+      readTextFile: (relativePath) => invoke('fs:readTextFile', { path: relativePath }),
+    })
+      .then((tags) => {
+        if (!cancelled) setKnownTags(tags);
+      })
+      .catch(() => {
+        // vault 未就绪等场景忽略
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [load]);
+
+  // DEV-004 索引标签为实时真值；索引未就绪时回退到全库扫描标签。
+  const effectiveKnownTags = useMemo(
+    () => (indexTags.length > 0 ? indexTags.map((t) => t.tag) : knownTags),
+    [indexTags, knownTags],
+  );
+
   const status = useMemo(() => {
-    if (saveState === 'saving') return { icon: LoaderCircle, text: '保存中…', className: 'animate-spin' };
-    if (saveState === 'error') return { icon: AlertCircle, text: '保存失败', className: 'text-destructive' };
+    if (saveState === 'saving')
+      return { icon: LoaderCircle, text: '保存中…', className: 'animate-spin' };
+    if (saveState === 'error')
+      return { icon: AlertCircle, text: '保存失败', className: 'text-destructive' };
     return { icon: Check, text: '已保存', className: '' };
   }, [saveState]);
   const StatusIcon = status.icon;
@@ -199,7 +295,11 @@ export function EditorView({ paneId, tab }: EditorViewProps) {
   }
 
   return (
-    <div data-testid="editor-view" data-path={displayPath} className="nexnote-editor-view flex h-full min-h-0 flex-col">
+    <div
+      data-testid="editor-view"
+      data-path={displayPath}
+      className="nexnote-editor-view flex h-full min-h-0 flex-col"
+    >
       <div className="flex h-8 shrink-0 items-center gap-1.5 border-b px-3 text-[11px] text-muted-foreground">
         <Save className="size-3" />
         <span className="min-w-0 truncate">{displayPath}</span>
@@ -210,6 +310,19 @@ export function EditorView({ paneId, tab }: EditorViewProps) {
       </div>
       <div className="nexnote-editor-scroll min-h-0 flex-1 overflow-auto">
         <div className="nexnote-editor-relative relative mx-auto max-w-[var(--editor-content-width)] px-10 py-10">
+          <FrontmatterPanel
+            data={fmData}
+            source={fmSource}
+            knownTags={effectiveKnownTags}
+            locked={fmLocked}
+            parseError={fmParseError}
+            onChange={(next) => {
+              applyFrontmatter(next);
+            }}
+            onYamlChange={(source, next) => {
+              applyFrontmatter(next, source);
+            }}
+          />
           <div ref={hostRef} data-testid="editor-host" className="nexnote-editor-host" />
         </div>
       </div>

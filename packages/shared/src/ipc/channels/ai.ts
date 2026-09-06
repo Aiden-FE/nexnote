@@ -49,7 +49,7 @@ export interface AiChannelMap {
   };
   /** Input-only credential boundary. No retrieve channel exists; response contains only an opaque token. */
   'ai:credential:submit': {
-    request: { secret: string };
+    request: { secret: string; baseUrl: string };
     response: Result<{ credentialToken: string }>;
   };
   'ai:profile:save': {

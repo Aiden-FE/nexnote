@@ -1,5 +1,7 @@
-import { Settings as SettingsIcon, Sparkles, Folder, Keyboard } from 'lucide-react';
+import { useEffect, useState } from 'react';
+import { Settings as SettingsIcon, Sparkles, Folder, Keyboard, GitBranch } from 'lucide-react';
 import { settingsSectionRegistry } from '../../registries';
+import { invoke } from '../../lib/ipc';
 
 /**
  * 设置占位分区（DEV-016 完整设置系统前的最小可视结构）。
@@ -31,6 +33,14 @@ settingsSectionRegistry.register({
 });
 
 settingsSectionRegistry.register({
+  id: 'git',
+  title: 'Git',
+  icon: GitBranch,
+  order: 35,
+  render: () => <GitSection />,
+});
+
+settingsSectionRegistry.register({
   id: 'shortcuts',
   title: '快捷键',
   icon: Keyboard,
@@ -56,7 +66,9 @@ function AppearanceSection() {
   return (
     <div className="space-y-2 text-sm">
       <h3 className="text-base font-medium">外观</h3>
-      <p className="text-muted-foreground">主题、字体、间距。主题切换在 ⌘K 命令面板「切换亮/暗主题」。</p>
+      <p className="text-muted-foreground">
+        主题、字体、间距。主题切换在 ⌘K 命令面板「切换亮/暗主题」。
+      </p>
     </div>
   );
 }
@@ -68,6 +80,56 @@ function VaultSection() {
       <p className="text-muted-foreground">
         最近打开列表、默认 vault 路径、Git 凭证（DEV-007/014 接入）。
       </p>
+    </div>
+  );
+}
+
+function GitSection() {
+  const [milliseconds, setMilliseconds] = useState(30_000);
+  const [message, setMessage] = useState<string | null>(null);
+
+  useEffect(() => {
+    void invoke('git:getAutoCommitDebounce')
+      .then(({ milliseconds: stored }) => setMilliseconds(stored))
+      .catch((error) => setMessage(error instanceof Error ? error.message : String(error)));
+  }, []);
+
+  const save = async (): Promise<void> => {
+    try {
+      const result = await invoke('git:setAutoCommitDebounce', { milliseconds });
+      setMilliseconds(result.milliseconds);
+      setMessage(`已保存自动提交防抖：${result.milliseconds}ms`);
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : String(error));
+    }
+  };
+
+  return (
+    <div className="space-y-3 text-sm">
+      <h3 className="text-base font-medium">Git</h3>
+      <label className="block space-y-1">
+        <span>自动提交防抖（毫秒）</span>
+        <input
+          type="number"
+          min={500}
+          max={600_000}
+          step={500}
+          value={milliseconds}
+          onChange={(event) => setMilliseconds(Number(event.target.value))}
+          className="h-8 w-40 rounded border bg-background px-2 text-xs"
+        />
+      </label>
+      <p className="text-xs text-muted-foreground">
+        编辑停止后自动提交；有效范围为 500ms 到 10 分钟。
+      </p>
+      <button
+        type="button"
+        onClick={() => void save()}
+        className="rounded border px-3 py-1.5 text-xs hover:bg-accent"
+      >
+        保存 Git 设置
+      </button>
+      {message && <p className="text-xs text-muted-foreground">{message}</p>}
     </div>
   );
 }

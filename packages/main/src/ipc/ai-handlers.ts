@@ -13,7 +13,7 @@ export function registerAiHandlers(registrar: IpcRegistrar, ai: AiService): void
   );
 
   registrar.register('ai:credential:submit', async (payload) => {
-    return ok({ credentialToken: ai.submitCredential(payload.secret) });
+    return ok({ credentialToken: ai.submitCredential(payload.secret, payload.baseUrl) });
   });
 
   registrar.register(

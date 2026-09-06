@@ -101,6 +101,34 @@ describe('AiStore（Profile 存储 + 密钥安全）', () => {
     expect(unavailable.getState().profiles[0]!.hasApiKey).toBe(false);
   });
 
+  it('legacy encrypted credentials survive when native keyring migration is unavailable', () => {
+    const file = path.join(tmp, 'legacy-enc-v1.json');
+    const blob = `enc:v1:${Buffer.from('legacy-secret').toString('base64')}`;
+    writeFileSync(file, JSON.stringify({
+      version: 1,
+      profiles: [{
+        id: 'legacy',
+        name: 'Legacy',
+        kind: 'openai-compatible',
+        baseUrl: 'https://api.example.com/v1',
+        defaultModel: 'm',
+        params: {},
+        keyBlob: blob,
+        keyStorage: 'system-credential',
+        createdAt: 1,
+        updatedAt: 1,
+      }],
+      defaultProfileId: null,
+      features: { writing: null, chat: null, embedding: null },
+      embeddingFingerprint: null,
+      embeddingGeneration: 0,
+    }));
+    new AiStore(file, new UnavailableSecretVault());
+    const raw = readFileSync(file, 'utf8');
+    expect(raw).toContain(blob);
+    expect(raw).not.toContain('legacy-secret');
+  });
+
   it('遗留 plain: blob 加载时被清除（fail-closed 迁移）', () => {
     // 模拟旧版本写入的明文 blob
     const legacyJson = JSON.stringify({

@@ -10,6 +10,7 @@
     "typecheck": "tsc --noEmit -p tsconfig.json"
   },
   "dependencies": {
+    "@nexnote/shared": "workspace:*",
     "@tiptap/core": "^3.31.3",
     "@tiptap/extension-code": "^3.31.3",
     "@tiptap/extension-code-block-lowlight": "^3.31.3",

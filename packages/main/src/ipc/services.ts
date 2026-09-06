@@ -1,13 +1,12 @@
-import type {
-  AppInfo,
-  UpdateCheckResult,
-} from '@nexnote/shared';
+import type { AppInfo, UpdateCheckResult } from '@nexnote/shared';
 import type { AppStore } from '../vault/app-store';
 import type { VaultSession } from '../vault/vault-session';
 import type { VaultFsService } from '../fs/fs-service';
 import type { VaultWatchService } from '../fs/watch-service';
+import type { GitService } from '../git/git-service';
 import type { WindowManager } from '../window';
 import type { AiService } from '../ai/ai-service';
+import type { LinkIndexService } from '../indexer/index-service';
 
 /** 注入给所有 IPC handler 的服务集合（全部可替身，便于单测）。 */
 export interface IpcServices {
@@ -17,6 +16,7 @@ export interface IpcServices {
   fs: VaultFsService;
   /** AI 组装层（DEV-009）：密钥仅存在于此层 + 系统钥匙串 */
   ai: AiService;
+  git: GitService;
   /** 系统目录选择对话框（渲染层无原生能力，统一走主进程） */
   dialogs: {
     pickDirectory(): Promise<string | null>;
@@ -27,6 +27,8 @@ export interface IpcServices {
   revealItem(absPath: string): Promise<void>;
   /** vault 文件监视（fs:changed 事件源，DEV-003） */
   watch: VaultWatchService;
+  /** SQLite 关系索引（DEV-004）。 */
+  index: LinkIndexService;
   appInfo(): AppInfo;
   checkForUpdates(): Promise<UpdateCheckResult>;
 }

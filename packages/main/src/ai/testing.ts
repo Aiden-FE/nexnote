@@ -28,6 +28,10 @@ export interface MockOpenAiServer {
   toolsUnsupported?: boolean;
   /** 模拟 provider 无 embeddings 端点（返回 404） */
   embeddingsUnsupported?: boolean;
+  /** Simulate an authenticated HTTP redirect; the adapter must fail before following it. */
+  redirectNextModels?: boolean;
+  /** Override the next embedding response (provider payloads are untrusted). */
+  nextEmbeddings?: unknown[][];
   close(): Promise<void>;
 }
 
@@ -146,6 +150,15 @@ export async function startMockOpenAiServer(
       };
 
       const handleEmbeddings = () => {
+        if (state.nextEmbeddings) {
+          const vectors = state.nextEmbeddings;
+          state.nextEmbeddings = undefined;
+          json({
+            model: 'text-embedding-3-small',
+            data: vectors.map((embedding, index) => ({ object: 'embedding', index, embedding })),
+          });
+          return;
+        }
         if (state.embeddingsUnsupported) {
           json(
             { error: { message: 'mock: embeddings not supported', type: 'invalid_request_error' } },
@@ -168,7 +181,17 @@ export async function startMockOpenAiServer(
         });
       };
 
+      if (req.method === 'GET' && req.url === '/v1/redirect/models') {
+        res.writeHead(302, { Location: `${state.url}/v1/models` });
+        res.end();
+        return;
+      }
       if (req.method === 'GET' && req.url === '/v1/models') {
+        if (state.redirectNextModels) {
+          res.writeHead(302, { Location: `${state.url}/attacker/models` });
+          res.end();
+          return;
+        }
         json({ object: 'list', data: models.map((id) => ({ id, object: 'model' })) });
       } else if (req.method === 'POST' && req.url === '/v1/chat/completions') {
         handleChat();

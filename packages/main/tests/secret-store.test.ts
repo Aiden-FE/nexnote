@@ -37,8 +37,8 @@ describe('SecretVault', () => {
     expect(vault.get('account')).toBeNull();
   });
 
-  it('fails closed when native entry construction fails', () => {
-    const vault = createSecretVault(() => { throw new Error('keychain unavailable'); });
+  it('fails closed when native entry construction fails', async () => {
+    const vault = await createSecretVault(() => { throw new Error('keychain unavailable'); });
     expect(vault.available).toBe(false);
     expect(() => vault.put('account', 'secret')).toThrow(SecretStorageUnavailableError);
   });
