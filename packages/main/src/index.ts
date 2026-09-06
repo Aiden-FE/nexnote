@@ -130,7 +130,9 @@ async function bootstrap(): Promise<void> {
   if (isSmokeMode) {
     const smoke = new SmokeController({
       windows,
-      outputDir: join(__dirname, '../../.scratch/nexnote-build/smoke/DEV-007'),
+      outputDir: process.env.NEXNOTE_SMOKE_DIR
+        ? process.env.NEXNOTE_SMOKE_DIR
+        : join(__dirname, '../../.scratch/nexnote-build/smoke/DEV-007'),
     });
     void smoke.init();
   }

@@ -65,6 +65,29 @@ export class SmokeController {
         }
       },
     );
+    ipcMain.handle('smoke:seedGraph', async (_event, root: unknown) => {
+      try {
+        if (typeof root !== 'string') throw new Error('graph vault root is required');
+        const groups = ['group-a', 'group-b'] as const;
+        await Promise.all(
+          groups.flatMap((group) =>
+            Array.from({ length: 250 }, async (_, index) => {
+              const name = `${group}-node-${index}`;
+              const targets = Array.from(
+                { length: 4 },
+                (_, offset) => `[[graph/${group}/${group}-node-${(index + offset + 1) % 250}]]`,
+              ).join(' ');
+              const abs = path.join(root, 'graph', group, `${name}.md`);
+              await mkdir(path.dirname(abs), { recursive: true });
+              await writeFile(abs, `---\ntags: [smoke/${group}]\n---\n# ${name}\n\n${targets}\n`, 'utf8');
+            }),
+          ),
+        );
+        return { ok: true, pages: 500, links: 2000 };
+      } catch (e) {
+        return { ok: false, error: e instanceof Error ? e.message : String(e) };
+      }
+    });
     ipcMain.handle('smoke:capture', async (_event, name: unknown) => {
       try {
         const file = await this.capture(String(name));

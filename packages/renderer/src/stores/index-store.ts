@@ -44,15 +44,14 @@ export function bindIndexEvents(): void {
     // The same page path can exist in another vault; invalidate all pending responses.
     useIndexStore.getState().reset();
   });
-  onEvent('index:statusChanged', (status) => {
-    useIndexStore.getState().applyStatusEvent(status);
-    // ready 事件意味着反链/标签可能已更新
-    if (status.phase === 'ready') {
-      const store = useIndexStore.getState();
-      if (store.backlinksFor) void store.loadBacklinks(store.backlinksFor);
-      void store.loadTags();
-      if (store.graphStatus === 'ready') useIndexStore.setState({ graphStatus: 'stale' });
-    }
+    onEvent('index:statusChanged', (status) => {
+      useIndexStore.getState().applyStatusEvent(status);
+      // ready 事件意味着反链/标签可能已更新
+      if (status.phase === 'ready') {
+        const store = useIndexStore.getState();
+        if (store.backlinksFor) void store.loadBacklinks(store.backlinksFor);
+        void store.loadTags();
+      }
   });
 }
 
@@ -136,7 +135,10 @@ export const useIndexStore = create<IndexState>((set, get) => ({
   },
 
   applyStatusEvent(status) {
-    set({ status });
+    set((state) => ({
+      status,
+      graphStatus: status.phase === 'ready' && state.graphStatus === 'ready' ? 'stale' : state.graphStatus,
+    }));
   },
 
   reset() {

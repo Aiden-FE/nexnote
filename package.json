@@ -26,7 +26,7 @@
     "dist:linux": "electron-vite build && electron-builder --linux"
   },
   "dependencies": {
-    "@xyflow/react": "^12.11.6",
+    "better-sqlite3": "^12.11.1",
     "electron-updater": "^6.8.9"
   },
   "optionalDependencies": {

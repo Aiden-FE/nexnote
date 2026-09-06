@@ -111,6 +111,7 @@ export function GlobalGraphView() {
           nodesDraggable
           panOnDrag
           zoomOnScroll
+          onlyRenderVisibleElements
         >
           <Background variant={BackgroundVariant.Dots} gap={22} size={1} />
           <Controls showInteractive={false} />

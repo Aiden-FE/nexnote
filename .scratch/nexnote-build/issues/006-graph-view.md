@@ -54,3 +54,12 @@ Priority: P1
 - 局部图谱随当前页面切换实时更新
 - 点击节点正确跳转到对应页面
 - 标签/文件夹过滤正常工作
+
+## Answer
+
+**选型结论：采用 React Flow 12（`@xyflow/react`）。**
+
+- 数据面：`LinkIndexService.graph()` 一次 SQL 快照返回页面、文件夹、标签、入度/出度和去重有向边，renderer 端再做过滤、局部 N 跳收缩和确定性布局，避免真实大索引下逐页 N+1。
+- 性能验证：production Electron smoke 注入 500 页 / 2000 条已解析链接；全局 fitView 下连续 62 次 wheel 缩放实测 **69.0 FPS**，超过 30 FPS 验收线。已启用 `onlyRenderVisibleElements`，并保留确定性 O(n²) 布局的迭代上限。
+- 交互验证：节点拖拽/缩放/平移、hover title、点击跳页、标签/文件夹子树过滤、孤立页面开关、选中邻接高亮、局部 1→2 跳实时更新均通过。
+- 结论：500 节点量级无需迁移 D3/Sigma/G6；DEV-019 如做千级以上真实数据回归，可再评估 Canvas/WebGL 降级，但当前票据不需要。

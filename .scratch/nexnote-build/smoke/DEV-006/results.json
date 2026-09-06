@@ -1,0 +1,300 @@
+{
+  "finishedAt": "2026-09-06T14:24:52.540Z",
+  "checks": [
+    {
+      "name": "首启动向导可见（新建/打开/克隆三选一）",
+      "passed": true
+    },
+    {
+      "name": "向导包含三选一入口",
+      "passed": true
+    },
+    {
+      "name": "vault:create 成功",
+      "passed": true,
+      "detail": "/var/folders/np/sd6hrwgj7gs9m5chdfpcycv00000gn/T/nexnote-smoke-vault-0UrucM/smoke-vault"
+    },
+    {
+      "name": "工作区出现（vault:changed 驱动）",
+      "passed": true
+    },
+    {
+      "name": "三面板布局（侧栏+主区+右侧 dock）",
+      "passed": true,
+      "detail": "sb=true main=true dock=true"
+    },
+    {
+      "name": "底部状态栏",
+      "passed": true
+    },
+    {
+      "name": "侧栏至少一个面板已注册（按合并后 DEV-003 实际面板为准）",
+      "passed": true
+    },
+    {
+      "name": "Dock AI 占位面板已注册",
+      "passed": true
+    },
+    {
+      "name": "Dock Git 时间线面板已注册（DEV-007）",
+      "passed": true
+    },
+    {
+      "name": "状态栏 Git 状态项（分支可见）",
+      "passed": false
+    },
+    {
+      "name": "状态栏在 vault 创建后即显示分支与变更数",
+      "passed": false,
+      "detail": "Git…"
+    },
+    {
+      "name": "默认欢迎 Tab 激活",
+      "passed": true
+    },
+    {
+      "name": "Tab 可打开（左右 pane 各一）",
+      "passed": true,
+      "detail": "count=3"
+    },
+    {
+      "name": "右 pane 含新 Tab 内容",
+      "passed": true
+    },
+    {
+      "name": "Tab 可关闭",
+      "passed": true,
+      "detail": "count=2"
+    },
+    {
+      "name": "page Tab 挂载真实 TipTap EditorView",
+      "passed": true
+    },
+    {
+      "name": "空 vault 新页编辑后防抖保存",
+      "passed": true
+    },
+    {
+      "name": "编辑防抖保存并由 H1 重命名文件",
+      "passed": true
+    },
+    {
+      "name": "H1 → 文件名/Tab 标题双向联动",
+      "passed": true
+    },
+    {
+      "name": "关闭并重新打开 Markdown 页面内容一致",
+      "passed": true
+    },
+    {
+      "name": "分屏比例可调（拖拽目标值生效）",
+      "passed": true,
+      "detail": "ratio=0.620"
+    },
+    {
+      "name": "分屏分隔线存在",
+      "passed": true
+    },
+    {
+      "name": "⌘K 唤起命令面板",
+      "passed": true
+    },
+    {
+      "name": "面板过滤命令",
+      "passed": true,
+      "detail": "items=1"
+    },
+    {
+      "name": "面板 Enter 执行命令（主题已切换）",
+      "passed": true,
+      "detail": "resolved=dark->light"
+    },
+    {
+      "name": "命令面板执行后关闭",
+      "passed": true
+    },
+    {
+      "name": "外部模块可注册新命令并执行",
+      "passed": true
+    },
+    {
+      "name": "暗色主题生效（CSS 变量切换）",
+      "passed": true
+    },
+    {
+      "name": "切回亮色主题",
+      "passed": true
+    },
+    {
+      "name": "侧栏可折叠",
+      "passed": true
+    },
+    {
+      "name": "fs:listDir 经 IPC 返回 vault 内容",
+      "passed": true,
+      "detail": ".gitdirectory .nexnotedirectory .gitignorefile 冒烟重命名页.mdfile 冒烟页面 B.mdfile"
+    },
+    {
+      "name": "新建笔记：树实时出现（fs:changed 驱动）",
+      "passed": true
+    },
+    {
+      "name": "新建笔记：打开 tab，frontmatter 含 created/id",
+      "passed": false
+    },
+    {
+      "name": "面包屑含 vault 根与页面名",
+      "passed": false
+    },
+    {
+      "name": "外部写入成功",
+      "passed": true
+    },
+    {
+      "name": "外部创建文件实时反映到树（含目录自动创建）",
+      "passed": true
+    },
+    {
+      "name": "搜索实时过滤：仅命中页面与祖先目录可见",
+      "passed": true,
+      "detail": "fileRows=1 total=2"
+    },
+    {
+      "name": "标签面板聚合 frontmatter + 内联标签（计数=2）",
+      "passed": false
+    },
+    {
+      "name": "点击标签过滤页面树（仅含标签页面 + 过滤 chip）",
+      "passed": false,
+      "detail": "rows=6"
+    },
+    {
+      "name": "重命名：树实时更新，wikilink 已替换",
+      "passed": true,
+      "detail": "updated=链接源.md"
+    },
+    {
+      "name": "重命名：已打开 tab 的路径与标题联动",
+      "passed": true
+    },
+    {
+      "name": "移动：树刷新到新位置",
+      "passed": true
+    },
+    {
+      "name": "删除：树移除 + 指向它的 tab 关闭",
+      "passed": true
+    },
+    {
+      "name": "外部 mkdir 也实时同步",
+      "passed": true
+    },
+    {
+      "name": "折叠状态持久化到 vault 配置（treeCollapsedDirs）",
+      "passed": true
+    },
+    {
+      "name": "侧栏宽度可调",
+      "passed": true,
+      "detail": "260 -> 300"
+    },
+    {
+      "name": "tab 右键菜单弹出",
+      "passed": true
+    },
+    {
+      "name": "菜单含 关闭其他/关闭右侧/复制路径",
+      "passed": true
+    },
+    {
+      "name": "图谱性能种子写入 500 页 / 2000 链接",
+      "passed": true
+    },
+    {
+      "name": "全局图谱展示 500 页 / 2000 链接快照",
+      "passed": true,
+      "detail": "知识图谱506 页面 · 2000 链接标签全部冒烟专用项目/inboxsmoke/group-asmoke/group-b文件夹全部graph/group-agraph/group-b孤立页面页gr"
+    },
+    {
+      "name": "React Flow 渲染全部图谱节点",
+      "passed": true
+    },
+    {
+      "name": "500 节点 / 2000 边连续交互 FPS ≥ 30",
+      "passed": true,
+      "detail": "fps=69.0 wheels=62"
+    },
+    {
+      "name": "文件夹子树过滤生效",
+      "passed": true,
+      "detail": "知识图谱250 页面 · 1000 链接标签全部冒烟专用项目/inboxsmoke/group-asmoke/group-b文件夹全部graph/group-agraph/group-b孤立页面页gr"
+    },
+    {
+      "name": "点击图谱节点跳转页面",
+      "passed": true
+    },
+    {
+      "name": "局部图谱面板随当前页面更新",
+      "passed": true
+    },
+    {
+      "name": "局部图谱支持 2 跳扩展",
+      "passed": true,
+      "detail": "nodes=17"
+    },
+    {
+      "name": "editor:* 命名空间通道可用（占位）",
+      "passed": true
+    },
+    {
+      "name": "git:getStatus 报告真实仓库",
+      "passed": true
+    },
+    {
+      "name": "git:getTimeline 返回 ≥1 提交",
+      "passed": true
+    },
+    {
+      "name": "git:getTimeline 首条为 initial",
+      "passed": true
+    },
+    {
+      "name": "手动提交成功（commitManual）",
+      "passed": true
+    },
+    {
+      "name": "手动提交形成新 HEAD（kind=manual）",
+      "passed": true
+    },
+    {
+      "name": "版本时间线 dock 面板渲染 commit 列表",
+      "passed": false,
+      "detail": "版本时间线单篇文件时间线提交远程仓库与 Git 设置添加/更新保存时执行 git ls-remote 授权预检；失败请检查网络、SSH key 或 HTTPS "
+    },
+    {
+      "name": "vault:close 后回到向导",
+      "passed": true
+    },
+    {
+      "name": "最近打开列表持久化并显示",
+      "passed": true
+    }
+  ],
+  "captures": [
+    "/Users/aiden/dev/aiden/nexnote/.wt/DEV-006/.scratch/nexnote-build/smoke/DEV-006/01-onboarding.png",
+    "/Users/aiden/dev/aiden/nexnote/.wt/DEV-006/.scratch/nexnote-build/smoke/DEV-006/02-workspace.png",
+    "/Users/aiden/dev/aiden/nexnote/.wt/DEV-006/.scratch/nexnote-build/smoke/DEV-006/02b-editor.png",
+    "/Users/aiden/dev/aiden/nexnote/.wt/DEV-006/.scratch/nexnote-build/smoke/DEV-006/03-split.png",
+    "/Users/aiden/dev/aiden/nexnote/.wt/DEV-006/.scratch/nexnote-build/smoke/DEV-006/04-palette.png",
+    "/Users/aiden/dev/aiden/nexnote/.wt/DEV-006/.scratch/nexnote-build/smoke/DEV-006/05-dark.png",
+    "/Users/aiden/dev/aiden/nexnote/.wt/DEV-006/.scratch/nexnote-build/smoke/DEV-006/06-light.png",
+    "/Users/aiden/dev/aiden/nexnote/.wt/DEV-006/.scratch/nexnote-build/smoke/DEV-006/07-sidebar-collapsed.png",
+    "/Users/aiden/dev/aiden/nexnote/.wt/DEV-006/.scratch/nexnote-build/smoke/DEV-006/09-page-tree.png",
+    "/Users/aiden/dev/aiden/nexnote/.wt/DEV-006/.scratch/nexnote-build/smoke/DEV-006/10-tags.png",
+    "/Users/aiden/dev/aiden/nexnote/.wt/DEV-006/.scratch/nexnote-build/smoke/DEV-006/11-tree-final.png",
+    "/Users/aiden/dev/aiden/nexnote/.wt/DEV-006/.scratch/nexnote-build/smoke/DEV-006/16-global-graph.png",
+    "/Users/aiden/dev/aiden/nexnote/.wt/DEV-006/.scratch/nexnote-build/smoke/DEV-006/17-local-graph.png",
+    "/Users/aiden/dev/aiden/nexnote/.wt/DEV-006/.scratch/nexnote-build/smoke/DEV-006/09-git-timeline.png",
+    "/Users/aiden/dev/aiden/nexnote/.wt/DEV-006/.scratch/nexnote-build/smoke/DEV-006/08-recent-list.png"
+  ]
+}

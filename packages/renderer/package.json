@@ -7,6 +7,7 @@
     "typecheck": "tsc --noEmit -p tsconfig.json"
   },
   "dependencies": {
+    "@xyflow/react": "^12.11.6",
     "@nexnote/kernel": "workspace:*",
     "@nexnote/shared": "workspace:*",
     "clsx": "^2.1.1",

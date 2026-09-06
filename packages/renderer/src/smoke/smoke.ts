@@ -16,6 +16,7 @@ interface SmokeBridge {
   capture(name: string): Promise<SmokeCaptureResult>;
   mkdtemp(): Promise<SmokeCaptureResult & { path?: string }>;
   writeFile(root: string, rel: string, content: string): Promise<SmokeCaptureResult & { path?: string }>;
+  seedGraph(root: string): Promise<SmokeCaptureResult & { pages?: number; links?: number }>;
   finish(report: unknown): Promise<SmokeCaptureResult>;
 }
 
@@ -493,6 +494,99 @@ export async function runSmokeIfEnabled(): Promise<void> {
     );
     document.body.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, cancelable: true }));
     await sleep(150);
+
+    // ── 10a. DEV-006 图谱：真实 500/2000 索引、过滤、点击、局部跳数与 FPS ──
+    const graphSeed = await bridge.seedGraph(created.root);
+    check('图谱性能种子写入 500 页 / 2000 链接', graphSeed.ok, graphSeed.error);
+    await invoke('index:rebuild');
+    useTabStore.getState().openTab('left', { kind: 'graph', title: '知识图谱' });
+    const graphText = () => document.querySelector('[data-testid="global-graph-view"]')?.textContent ?? '';
+    check(
+      '全局图谱展示 500 页 / 2000 链接快照',
+      await waitFor(() => graphText().includes('2000 链接') && document.querySelectorAll('.react-flow__node').length >= 500, 20_000),
+      graphText().slice(0, 100),
+    );
+    check(
+      'React Flow 渲染全部图谱节点',
+      await waitFor(() => document.querySelectorAll('.react-flow__node').length >= 500, 20_000),
+    );
+
+    const graphSurface = document.querySelector<HTMLElement>('.react-flow__renderer');
+    if (graphSurface) {
+      await sleep(400); // 500 节点初次布局后进入稳定交互阶段
+      let frames = 0;
+      let sampling = true;
+      const countFrame = () => {
+        frames += 1;
+        if (sampling) requestAnimationFrame(countFrame);
+      };
+      requestAnimationFrame(countFrame);
+      const durationMs = 2_000;
+      const startedAt = performance.now();
+      let wheels = 0;
+      while (performance.now() - startedAt < durationMs) {
+        wheels += 1;
+        const pane = document.querySelector<HTMLElement>('.react-flow__pane') ?? graphSurface;
+        pane.dispatchEvent(
+          new WheelEvent('wheel', {
+            bubbles: true,
+            cancelable: true,
+            clientX: 650,
+            clientY: 380,
+            deltaY: wheels % 2 ? 90 : -90,
+          }),
+        );
+        await sleep(16);
+      }
+      sampling = false;
+      await new Promise((resolve) => requestAnimationFrame(resolve));
+      const sample = { frames, wheels };
+      const fps = sample.frames / 2;
+      check(
+        '500 节点 / 2000 边连续交互 FPS ≥ 30',
+        fps >= 30 && sample.wheels >= 50,
+        `fps=${fps.toFixed(1)} wheels=${sample.wheels}`,
+      );
+    } else {
+      check('React Flow 交互 surface 存在', false);
+    }
+
+    const nativeOptionSetter = Object.getOwnPropertyDescriptor(HTMLOptionElement.prototype, 'selected')?.set;
+    const folderSelect = document.querySelector<HTMLSelectElement>('[data-testid="graph-folder-filter"]');
+    const groupOption = [...(folderSelect?.options ?? [])].find((option) => option.value === 'graph/group-a');
+    if (folderSelect && groupOption && nativeOptionSetter) {
+      nativeOptionSetter.call(groupOption, true);
+      folderSelect.dispatchEvent(new Event('change', { bubbles: true }));
+    }
+    check(
+      '文件夹子树过滤生效',
+      await waitFor(() => graphText().includes('250 页面 · 1000 链接'), 10_000),
+      graphText().slice(0, 100),
+    );
+    await capture('16-global-graph');
+    const graphNode = document.querySelector<HTMLElement>('.react-flow__node');
+    graphNode?.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
+    check(
+      '点击图谱节点跳转页面',
+      await waitFor(() => {
+        const activeTab = document.querySelector('[data-testid="tab"][data-active="true"]');
+        return activeTab?.getAttribute('data-page-path')?.startsWith('graph/group-a/group-a-node-') ?? false;
+      }, 10_000),
+    );
+
+    useUiStore.getState().setActiveSidebarPanel('graph');
+    check(
+      '局部图谱面板随当前页面更新',
+      await waitFor(
+        () => !!document.querySelector('[data-testid="sidebar-panel-graph"] .react-flow__node'),
+        10_000,
+      ),
+    );
+    document.querySelector<HTMLButtonElement>('[data-testid="graph-hops-2"]')?.click();
+    const localNodeCount = () =>
+      document.querySelectorAll('[data-testid="sidebar-panel-graph"] .react-flow__node').length;
+    check('局部图谱支持 2 跳扩展', await waitFor(() => localNodeCount() > 9, 10_000), `nodes=${localNodeCount()}`);
+    await capture('17-local-graph');
 
     // ── 10. 命名空间 ping（editor/git/ai/plugins 框架就绪）────
     const editorPong = await invoke('editor:ping');

@@ -46,4 +46,23 @@ describe('index async loading', () => {
     expect(useIndexStore.getState().tags).toEqual([]);
     expect(useIndexStore.getState().tagsStatus).toBe('idle');
   });
+
+  it('loads the graph once and marks it stale when the index becomes ready', async () => {
+    const graph = { pages: [], links: [] };
+    (window as unknown as { nexnote: { invoke: () => Promise<BridgeResult> } }).nexnote = {
+      invoke: async () => ({ ok: true, data: graph }),
+    };
+    await useIndexStore.getState().loadGraph();
+    expect(useIndexStore.getState().graph).toBe(graph);
+    expect(useIndexStore.getState().graphStatus).toBe('ready');
+
+    useIndexStore.getState().applyStatusEvent({
+      phase: 'ready',
+      pagesTotal: 1,
+      pagesIndexed: 1,
+      mode: 'incremental',
+    });
+    expect(useIndexStore.getState().graph).toBe(graph);
+    expect(useIndexStore.getState().graphStatus).toBe('stale');
+  });
 });

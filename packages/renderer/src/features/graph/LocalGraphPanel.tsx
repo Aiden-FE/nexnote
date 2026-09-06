@@ -74,6 +74,7 @@ function LocalGraphPanel() {
             nodesDraggable
             zoomOnScroll={false}
             panOnDrag
+            onlyRenderVisibleElements
           >
             <Background variant={BackgroundVariant.Dots} gap={18} size={1} />
           </ReactFlow>
