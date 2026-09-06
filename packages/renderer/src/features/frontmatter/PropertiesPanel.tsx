@@ -1,7 +1,8 @@
 import { useMemo } from 'react';
-import { FileText, Gauge, Link2, ListOrdered, Calendar, FolderOpen } from 'lucide-react';
+import { FileText, Gauge, Link2, ListOrdered, Calendar, FolderOpen, Braces } from 'lucide-react';
 import type { FrontmatterData } from '@nexnote/kernel';
-import { getList, getString } from '@nexnote/kernel';
+import { getList, getString, isStandardField, type FrontmatterValue } from '@nexnote/kernel';
+import { invoke } from '../../lib/ipc';
 import { pageStatistics } from './frontmatter-utils';
 
 export interface PropertiesPanelProps {
@@ -23,12 +24,12 @@ export function PropertiesPanel({
   const tags = getList(data, 'tags');
   const aliases = getList(data, 'aliases');
   const confidence = data.confidence;
+  const customFields = Object.entries(data)
+    .filter(([key]) => !isStandardField(key))
+    .sort(([a], [b]) => a.localeCompare(b));
 
   const showInFinder = () => {
-    // 占位：后续调用 IPC 在 Finder/资源管理器中显示
-    if (typeof window !== 'undefined') {
-      void navigator.clipboard?.writeText(filePath);
-    }
+    void invoke('vault:reveal', { path: filePath });
   };
 
   return (
@@ -40,7 +41,7 @@ export function PropertiesPanel({
             type="button"
             onClick={showInFinder}
             className="max-w-full truncate text-left font-mono text-[11px] text-muted-foreground hover:text-foreground"
-            title={`${filePath}（点击复制路径）`}
+            title={`${filePath}（在 Finder/资源管理器中显示）`}
           >
             {filePath}
           </button>
@@ -77,6 +78,19 @@ export function PropertiesPanel({
             </div>
           )}
         </InfoRow>
+      </section>
+
+      <section>
+        <SectionHeader icon={<Braces className="size-3.5" />} title="自定义字段" />
+        {customFields.length === 0 ? (
+          <p className="py-1 text-[11px] text-muted-foreground">无自定义字段</p>
+        ) : (
+          customFields.map(([key, value]) => (
+            <InfoRow key={key} label={key}>
+              <FrontmatterValueDisplay value={value} />
+            </InfoRow>
+          ))
+        )}
       </section>
 
       <section>
@@ -132,6 +146,24 @@ function InfoRow({ label, children }: { label: string; children: React.ReactNode
       <span className="text-right text-foreground">{children}</span>
     </div>
   );
+}
+
+function FrontmatterValueDisplay({ value }: { value: FrontmatterValue }) {
+  if (value === null) return <span className="text-muted-foreground">null</span>;
+  if (value instanceof Date) {
+    return <span className="font-mono text-[11px]">{value.toISOString()}</span>;
+  }
+  if (Array.isArray(value)) {
+    return (
+      <span className="flex flex-wrap justify-end gap-1">
+        {value.map((item) => (
+          <span key={item} className="rounded-full border px-1.5 py-0.5 text-[10px]">{item}</span>
+        ))}
+      </span>
+    );
+  }
+  if (typeof value === 'boolean') return <span>{value ? 'true' : 'false'}</span>;
+  return <span className="break-all">{String(value)}</span>;
 }
 
 function ConfidenceDisplay({ value }: { value: FrontmatterData['confidence'] | undefined }) {

@@ -285,13 +285,16 @@ function ValueEditor({
   }
 
   if (value instanceof Date) {
-    const iso = value.toISOString().slice(0, 10);
+    const iso = value.toISOString();
+    const hasTime = !iso.endsWith('T00:00:00.000Z');
+    const inputValue = hasTime ? iso.slice(0, 16) : iso.slice(0, 10);
     return (
       <input
-        type="date"
-        value={iso}
+        type={hasTime ? 'datetime-local' : 'date'}
+        value={inputValue}
         onChange={(e) => {
-          const d = new Date(`${e.target.value}T00:00:00Z`);
+          // datetime-local 按 UTC 语义回写，保留已有时间分量；纯 date 仍为日期类型。
+          const d = new Date(hasTime ? `${e.target.value}:00Z` : `${e.target.value}T00:00:00Z`);
           if (!Number.isNaN(d.getTime())) onChange(d);
         }}
         className="h-7 w-full rounded border border-input bg-background px-2 text-xs"

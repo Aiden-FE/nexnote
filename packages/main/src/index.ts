@@ -61,6 +61,9 @@ function bootstrap(): void {
     async trash(absPath) {
       await shell.trashItem(absPath);
     },
+    reveal(absPath) {
+      shell.showItemInFolder(absPath);
+    },
     appInfo() {
       return {
         version: app.getVersion(),

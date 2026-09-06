@@ -68,6 +68,12 @@ export function registerVaultHandlers(registrar: IpcRegistrar): void {
     await saveVaultLayout(current.root, layout);
     return ok(undefined);
   });
+
+  registrar.register('vault:reveal', async ({ path }, services): Promise<Result<void>> => {
+    const { abs } = await services.fs.resolve(path);
+    services.reveal(abs);
+    return ok(undefined);
+  });
 }
 
 /** 供单测重置懒恢复标记。 */

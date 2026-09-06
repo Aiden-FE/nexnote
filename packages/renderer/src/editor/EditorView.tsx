@@ -8,6 +8,7 @@ import { FrontmatterPanel } from '../features/frontmatter/FrontmatterPanel';
 import { useDocumentPropertiesStore } from '../features/frontmatter/document-properties-store';
 import type { FrontmatterData } from '@nexnote/kernel';
 import { parseFrontmatterYaml, serializeFrontmatterYaml, splitFrontmatter } from '@nexnote/kernel';
+import { collectVaultTags, inspectFrontmatter } from '../features/frontmatter/frontmatter-utils';
 import {
   bindH1ToTitle,
   firstH1,
@@ -47,6 +48,8 @@ export function EditorView({ paneId, tab }: EditorViewProps) {
   const unmountedRef = useRef(false);
   const [fmData, setFmData] = useState<FrontmatterData>({});
   const [fmSource, setFmSource] = useState('');
+  const [fmLocked, setFmLocked] = useState(false);
+  const [fmParseError, setFmParseError] = useState<string | null>(null);
   const [knownTags, setKnownTags] = useState<string[]>([]);
   const setDocument = useDocumentPropertiesStore((s) => s.setDocument);
 
@@ -81,17 +84,11 @@ export function EditorView({ paneId, tab }: EditorViewProps) {
         if (!firstH1(markdown)) markdown = bindH1ToTitle(markdown, titleFromPath(path));
         if (!cancelled) {
           pathRef.current = path;
-          const { yaml } = splitFrontmatter(markdown);
-          let parsed: FrontmatterData = {};
-          if (yaml !== null) {
-            try {
-              parsed = parseFrontmatterYaml(yaml);
-            } catch {
-              parsed = {};
-            }
-          }
-          setFmData(parsed);
-          setFmSource(yaml ?? '');
+          const inspected = inspectFrontmatter(markdown);
+          setFmData(inspected.data);
+          setFmSource(inspected.source);
+          setFmLocked(inspected.locked);
+          setFmParseError(inspected.parseError);
           setLoad({ phase: 'ready', markdown });
         }
       } catch (e) {
@@ -191,25 +188,31 @@ export function EditorView({ paneId, tab }: EditorViewProps) {
     };
   }, [load, paneId, save]);
 
-  // 把当前 frontmatter 数据写回编辑器，并触发保存（防抖路径会与内容变更共享）。
-  const applyFrontmatter = useCallback(
-    (next: FrontmatterData) => {
-      const kernel = kernelRef.current;
-      if (!kernel) return;
-      const current = kernel.getMarkdown();
-      const { body } = splitFrontmatter(current);
-      const yaml = serializeFrontmatterYaml(next);
-      const rebuilt = yaml.length > 0
-        ? `---\n${yaml}\n---\n\n${body.replace(/^\n+/, '')}`
-        : body;
-      kernel.setMarkdown(rebuilt);
-      // setMarkdown 不触发更新事件，所以手动触发保存 + 数据同步
-      setFmData(next);
-      setFmSource(yaml);
-      void save(rebuilt);
-    },
-    [save],
-  );
+  // 仅替换 ProseMirror 文档首部 frontmatter 节点，保留正文选择与撤销映射。
+  const applyFrontmatter = useCallback((next: FrontmatterData, sourceOverride?: string) => {
+    const kernel = kernelRef.current;
+    if (!kernel) return;
+    const editor = kernel.editor;
+    const first = editor.state.doc.firstChild;
+    const type = editor.state.schema.nodes.frontmatter;
+    if (!type) return;
+    const yaml = sourceOverride ?? serializeFrontmatterYaml(next);
+
+    if (first?.type.name === 'frontmatter') {
+      if (first.textContent !== yaml) {
+        const tr = yaml.length > 0
+          ? editor.state.tr.replaceWith(0, first.nodeSize, type.create(null, editor.state.schema.text(yaml)))
+          : editor.state.tr.delete(0, first.nodeSize);
+        editor.view.dispatch(tr);
+      }
+    } else if (yaml.length > 0) {
+      editor.view.dispatch(editor.state.tr.insert(0, type.create(null, editor.state.schema.text(yaml))));
+    }
+    setFmData(next);
+    setFmSource(yaml);
+    setFmLocked(false);
+    setFmParseError(null);
+  }, []);
 
   // 属性面板数据源：编辑内容变化时刷新。
   useEffect(() => {
@@ -228,34 +231,20 @@ export function EditorView({ paneId, tab }: EditorViewProps) {
     setDocument({ filePath: displayPath, markdown, data: parsed });
   }, [load, displayPath, saveState, setDocument, fmData]);
 
-  // 已知标签：扫描 vault 中 .md 前 matter tags（DEV-003 真实标签面板接入前的基础实现）。
+  // 已知标签：递归扫描 vault 全部 Markdown，接口与 DEV-004 索引替换 seam 一致。
   useEffect(() => {
     if (load.phase !== 'ready') return;
     let cancelled = false;
-    void (async () => {
-      try {
-        const entries = await invoke('fs:listDir', { path: '' });
-        const mdFiles = entries
-          .filter((e) => e.kind === 'file' && e.name.endsWith('.md'))
-          .slice(0, 200);
-        const tags = new Set<string>();
-        for (const f of mdFiles) {
-          try {
-            const content = await invoke('fs:readTextFile', { path: f.path });
-            const { yaml } = splitFrontmatter(content);
-            if (yaml === null) continue;
-            const data = parseFrontmatterYaml(yaml);
-            const list = Array.isArray(data.tags) ? data.tags : [];
-            for (const t of list) tags.add(String(t));
-          } catch {
-            // 单文件失败忽略
-          }
-        }
-        if (!cancelled) setKnownTags([...tags].sort());
-      } catch {
+    void collectVaultTags({
+      listDir: (relativePath) => invoke('fs:listDir', { path: relativePath }),
+      readTextFile: (relativePath) => invoke('fs:readTextFile', { path: relativePath }),
+    })
+      .then((tags) => {
+        if (!cancelled) setKnownTags(tags);
+      })
+      .catch(() => {
         // vault 未就绪等场景忽略
-      }
-    })();
+      });
     return () => {
       cancelled = true;
     };
@@ -303,14 +292,13 @@ export function EditorView({ paneId, tab }: EditorViewProps) {
             data={fmData}
             source={fmSource}
             knownTags={knownTags}
+            locked={fmLocked}
+            parseError={fmParseError}
             onChange={(next) => {
-              setFmData(next);
               applyFrontmatter(next);
             }}
             onYamlChange={(source, next) => {
-              setFmSource(source);
-              setFmData(next);
-              applyFrontmatter(next);
+              applyFrontmatter(next, source);
             }}
           />
           <div ref={hostRef} data-testid="editor-host" className="nexnote-editor-host" />

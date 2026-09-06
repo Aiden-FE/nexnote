@@ -45,9 +45,10 @@ afterEach(async () => {
   await rm(tmp, { recursive: true, force: true });
 });
 
-function makeServices(): { services: IpcServices; session: VaultSession; store: AppStore } {
+function makeServices(): { services: IpcServices; session: VaultSession; store: AppStore; reveals: string[] } {
   const store = new AppStore(path.join(tmp, 'store.json'));
   const windows = new FakeWindows();
+  const reveals: string[] = [];
   const session = new VaultSession({
     appStore: store,
     windows: windows as never,
@@ -60,6 +61,7 @@ function makeServices(): { services: IpcServices; session: VaultSession; store: 
     fs,
     dialogs: { pickDirectory: async () => null },
     trash: async () => {},
+    reveal: (absPath) => reveals.push(absPath),
     appInfo: () => ({
       version: '0.1.0',
       platform: 'test',
@@ -69,7 +71,7 @@ function makeServices(): { services: IpcServices; session: VaultSession; store: 
     }),
     checkForUpdates: async () => ({ status: 'not-configured' as const }),
   };
-  return { services, session, store };
+  return { services, session, store, reveals };
 }
 
 describe('IPC 注册表框架', () => {
@@ -201,6 +203,16 @@ describe('IPC 集成（vault + fs，单一注册表）', () => {
     };
     expect(denied.ok).toBe(false);
     expect(denied.code).toBe('NO_VAULT');
+  });
+
+  it('vault:reveal 解析 vault 内路径并调用系统文件管理器', async () => {
+    const ipc = new FakeIpcMain();
+    const { services, reveals } = makeServices();
+    registerAllIpcHandlers(ipc, services);
+    await ipc.invoke('vault:open', { path: tmp });
+    const result = (await ipc.invoke('vault:reveal', { path: 'nested/note.md' })) as { ok: boolean };
+    expect(result.ok).toBe(true);
+    expect(reveals).toEqual([path.join(tmp, 'nested/note.md')]);
   });
 
   it('vault:open 对普通目录自动初始化 .nexnote', async () => {

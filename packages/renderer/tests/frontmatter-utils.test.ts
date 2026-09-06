@@ -1,10 +1,14 @@
 import { describe, expect, it } from 'vitest';
 import {
+  collectVaultTags,
+  countMixedWords,
+  inspectFrontmatter,
   pageStatistics,
   readFrontmatter,
   removeFrontmatterValue,
   renameFrontmatterKey,
   setFrontmatterValue,
+  tokenizeYaml,
   writeFrontmatter,
 } from '../src/features/frontmatter/frontmatter-utils';
 
@@ -90,5 +94,71 @@ describe('pageStatistics', () => {
     const stats = pageStatistics('# 只有正文');
     expect(stats.created).toBe('—');
     expect(stats.updated).toBe('—');
+  });
+
+  it('CJK 字符逐个计数，西文连续段按词计数', () => {
+    expect(countMixedWords('中文 English 混排 test-case 42')).toBe(7);
+    // 中(1)+文(1)+English(1)+混(1)+排(1)+test-case(1)+42(1) = 7；标题标记不会计数。
+    expect(pageStatistics('# 中文 English 混排 test-case 42').words).toBe(7);
+  });
+});
+
+describe('不可解析 frontmatter 数据保护', () => {
+  it('锁定源码模式并原样保留 source，避免空对象覆盖', () => {
+    const source = 'title: ok\n  bad indent: value';
+    const md = `---\n${source}\n---\n\n正文`;
+    const inspected = inspectFrontmatter(md);
+    expect(inspected.locked).toBe(true);
+    expect(inspected.parseError).toBeTruthy();
+    expect(inspected.source).toBe(source);
+    expect(inspected.body).toContain('正文');
+    expect(() => readFrontmatter(md)).toThrow();
+  });
+
+  it('修复 YAML 后解除锁定且数据可解析', () => {
+    const inspected = inspectFrontmatter('---\ntitle: fixed\ncustom: 3\n---\n\n正文');
+    expect(inspected.locked).toBe(false);
+    expect(inspected.parseError).toBeNull();
+    expect(inspected.data).toMatchObject({ title: 'fixed', custom: 3 });
+  });
+});
+
+describe('YAML 高亮 tokenizer', () => {
+  it('识别 key/value/注释与 atom', () => {
+    const lines = tokenizeYaml('title: "Hello"\ncount: 3\n# comment');
+    expect(lines[0]?.map((t) => t.kind)).toContain('key');
+    expect(lines[0]?.map((t) => t.kind)).toContain('string');
+    expect(lines[1]?.map((t) => t.kind)).toContain('atom');
+    expect(lines[2]?.map((t) => t.kind)).toContain('comment');
+  });
+});
+
+describe('递归标签聚合', () => {
+  it('扫描嵌套文件夹且跳过隐藏目录', async () => {
+    const tree: Record<string, Array<{ name: string; path: string; kind: 'file' | 'directory' }>> = {
+      '': [
+        { name: 'root.md', path: 'root.md', kind: 'file' },
+        { name: 'notes', path: 'notes', kind: 'directory' },
+        { name: '.git', path: '.git', kind: 'directory' },
+      ],
+      notes: [
+        { name: 'nested.md', path: 'notes/nested.md', kind: 'file' },
+        { name: 'ignore.txt', path: 'notes/ignore.txt', kind: 'file' },
+      ],
+    };
+    const docs: Record<string, string> = {
+      'root.md': '---\ntags: [root, shared]\n---\n\nroot',
+      'notes/nested.md': '---\ntags: [nested, shared]\n---\n\nnested',
+    };
+    const calls: string[] = [];
+    const tags = await collectVaultTags({
+      listDir: async (path) => {
+        calls.push(path);
+        return tree[path] ?? [];
+      },
+      readTextFile: async (path) => docs[path] ?? '',
+    });
+    expect(tags).toEqual(['nested', 'root', 'shared']);
+    expect(calls).toEqual(['', 'notes']);
   });
 });

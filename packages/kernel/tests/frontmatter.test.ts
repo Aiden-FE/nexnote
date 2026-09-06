@@ -65,14 +65,14 @@ describe('serializeFrontmatterYaml', () => {
     expect(lines.indexOf('alpha')).toBeLessThan(lines.indexOf('zeta'));
   });
 
-  it('类型往返保真', () => {
+  it('类型往返保真（datetime 保留时间分量）', () => {
     const data = {
       title: '标题',
       count: 7,
       on: true,
       off: false,
       nil: null,
-      date: new Date('2024-05-01T00:00:00.000Z'),
+      date: new Date('2024-05-01T08:30:45.000Z'),
       tags: ['a', 'b'],
       longList: ['one', 'two', 'three', 'four', 'five', 'six'],
     };

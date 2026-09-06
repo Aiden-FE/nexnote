@@ -16,6 +16,7 @@ export const VAULT_CHANNELS = [
   'vault:removeRecent',
   'vault:getLayout',
   'vault:saveLayout',
+  'vault:reveal',
 ] as const;
 
 export type VaultChannel = (typeof VAULT_CHANNELS)[number];
@@ -36,4 +37,6 @@ export interface VaultChannelMap {
   'vault:getLayout': { request: void; response: Result<VaultLayout | null> };
   /** 渲染层布局变化时持久化进 vault 配置 */
   'vault:saveLayout': { request: { layout: VaultLayout }; response: Result<void> };
+  /** 在 Finder / 资源管理器中显示 vault 内文件 */
+  'vault:reveal': { request: { path: string }; response: Result<void> };
 }

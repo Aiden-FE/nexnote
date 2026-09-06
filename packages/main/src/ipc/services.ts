@@ -19,6 +19,8 @@ export interface IpcServices {
   };
   /** 移入系统回收站（fs:delete toTrash=true 时使用） */
   trash(absPath: string): Promise<void>;
+  /** 在系统文件管理器中显示文件 */
+  reveal(absPath: string): void;
   appInfo(): AppInfo;
   checkForUpdates(): Promise<UpdateCheckResult>;
 }
