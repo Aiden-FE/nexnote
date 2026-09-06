@@ -6,6 +6,7 @@ import type {
   PageJumpResult,
   SearchHit,
   TagIndexEntry,
+  GraphSnapshot,
 } from '../../types/index';
 
 /** 关系索引能力（DEV-004 Link Index + FTS5 + Tags）。 */
@@ -18,6 +19,7 @@ export const INDEX_CHANNELS = [
   'index:tags',
   'index:tagPages',
   'index:pageSummary',
+  'index:graph',
 ] as const;
 
 export type IndexChannel = (typeof INDEX_CHANNELS)[number];
@@ -31,4 +33,5 @@ export interface IndexChannelMap {
   'index:tags': { request: { flat?: boolean }; response: Result<TagIndexEntry[]> };
   'index:tagPages': { request: { tag: string }; response: Result<string[]> };
   'index:pageSummary': { request: { path: string }; response: Result<PageIndexSummary | null> };
+  'index:graph': { request: void; response: Result<GraphSnapshot> };
 }

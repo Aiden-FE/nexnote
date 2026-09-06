@@ -327,6 +327,53 @@ describe('LinkIndexService', () => {
     svc.close();
   });
 
+  it('graph exports page metadata, resolved links, and ignores red links', async () => {
+    await page('a.md', '---\ntags: [work/project]\n---\n', '# Alpha\n');
+    await page('docs/b.md', '', '# Beta\n\n[[a]] [[a]] [[ghost]]\n');
+    const svc = new LinkIndexService();
+    svc.setRoot(tmp);
+
+    const snapshot = svc.graph();
+    expect(snapshot.pages).toEqual([
+      { path: 'a.md', title: 'Alpha', folder: '', tags: ['work/project'], inboundLinks: 1, outboundLinks: 0 },
+      { path: 'docs/b.md', title: 'Beta', folder: 'docs', tags: [], inboundLinks: 0, outboundLinks: 1 },
+    ]);
+    expect(snapshot.links).toEqual([{ source: 'docs/b.md', target: 'a.md' }]);
+
+    await page('c.md', '', '# Gamma\n\n[[a]]\n');
+    svc.updateFile('c.md');
+    expect(svc.graph().links).toEqual([
+      { source: 'c.md', target: 'a.md' },
+      { source: 'docs/b.md', target: 'a.md' },
+    ]);
+    svc.close();
+  });
+
+  it('graph exports the 500-page / 2000-link acceptance scale in bounded time', async () => {
+    const jobs: Promise<void>[] = [];
+    for (let page = 0; page < 500; page += 1) {
+      const targets = Array.from(
+        { length: 4 },
+        (_, offset) => `[[page-${(page + offset + 1) % 500}]]`,
+      ).join(' ');
+      jobs.push(writeFile(path.join(tmp, `page-${page}.md`), `# Page ${page}\n\n${targets}\n`, 'utf8'));
+    }
+    await Promise.all(jobs);
+
+    const svc = new LinkIndexService();
+    svc.setRoot(tmp);
+    const started = performance.now();
+    const snapshot = svc.graph();
+    const graphMs = performance.now() - started;
+
+    expect(snapshot.pages).toHaveLength(500);
+    expect(snapshot.links).toHaveLength(2000);
+    expect(snapshot.pages.every((page) => page.inboundLinks === 4 && page.outboundLinks === 4)).toBe(true);
+    console.log(`[bench] graph export 500 pages / 2000 links=${graphMs.toFixed(2)}ms`);
+    expect(graphMs).toBeLessThan(500);
+    svc.close();
+  }, 60_000);
+
   it('coalesces directory churn into one authoritative rebuild', async () => {
     await page('before.md', '', '# Before\n');
     const svc = new LinkIndexService();

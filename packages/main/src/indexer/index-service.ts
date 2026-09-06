@@ -1,7 +1,7 @@
 import Database from 'better-sqlite3';
 import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync } from 'node:fs';
 import * as path from 'node:path';
-import type { Backlink, IndexStatus, PageIndexSummary, PageJumpResult, SearchHit, TagIndexEntry } from '@nexnote/shared';
+import type { Backlink, GraphSnapshot, IndexStatus, PageIndexSummary, PageJumpResult, SearchHit, TagIndexEntry } from '@nexnote/shared';
 import { parsePageMarkdown, type ParsedPage } from './markdown-indexer';
 
 const SCHEMA_VERSION = 3;
@@ -432,6 +432,45 @@ export class LinkIndexService {
     const outboundLinks = (this.db!.prepare('SELECT COUNT(DISTINCT target_page_id) c FROM links WHERE source_page_id=? AND target_page_id IS NOT NULL').get(row.id) as { c: number }).c;
     return { path: row.path, title: row.title, aliases: JSON.parse(row.aliases) as string[], tags, updatedAt: row.updated_at ?? '', wordCount: row.wordCount, blockCount: row.blockCount, inboundLinks, outboundLinks };
   }
+
+  graph(): GraphSnapshot {
+    const db = this.db;
+    if (!db) return { pages: [], links: [] };
+    type PageRow = {
+      path: string;
+      title: string;
+      tags: string | null;
+      inboundLinks: number;
+      outboundLinks: number;
+    };
+    const pages = (
+      db.prepare(`
+        SELECT p.path, p.title,
+          (SELECT GROUP_CONCAT(DISTINCT t.tag_name) FROM tags t WHERE t.page_id = p.id) tags,
+          (SELECT COUNT(DISTINCT l.source_page_id) FROM links l WHERE l.target_page_id = p.id) inboundLinks,
+          (SELECT COUNT(DISTINCT l.target_page_id) FROM links l WHERE l.source_page_id = p.id AND l.target_page_id IS NOT NULL) outboundLinks
+        FROM pages p
+        ORDER BY p.path
+      `).all() as PageRow[]
+    ).map((row) => ({
+      path: row.path,
+      title: row.title,
+      folder: row.path.includes('/') ? row.path.slice(0, row.path.lastIndexOf('/')) : '',
+      tags: row.tags ? row.tags.split(',').filter(Boolean).sort() : [],
+      inboundLinks: row.inboundLinks ?? 0,
+      outboundLinks: row.outboundLinks ?? 0,
+    }));
+    type LinkRow = { source: string; target: string };
+    const links = db.prepare(`
+      SELECT DISTINCT source.path source, target.path target
+      FROM links l
+      JOIN pages source ON source.id = l.source_page_id
+      JOIN pages target ON target.id = l.target_page_id
+      ORDER BY source.path, target.path
+    `).all() as LinkRow[];
+    return { pages, links };
+  }
+
   /** Testing hook: delete cache and make a new service auto rebuild at same root. */
   static removeDatabase(root: string): void { rmSync(path.join(root,'.nexnote','index.db'),{force:true}); rmSync(path.join(root,'.nexnote','index.db-wal'),{force:true}); rmSync(path.join(root,'.nexnote','index.db-shm'),{force:true}); }
 }

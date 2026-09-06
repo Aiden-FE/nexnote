@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import type { Backlink, IndexStatus, SearchHit, TagIndexEntry } from '@nexnote/shared';
+import type { Backlink, GraphSnapshot, IndexStatus, SearchHit, TagIndexEntry } from '@nexnote/shared';
 import { invoke, onEvent } from '../lib/ipc';
 
 /**
@@ -18,10 +18,13 @@ interface IndexState {
   /** 索引驱动的标签列表 */
   tags: TagIndexEntry[];
   tagsStatus: 'idle' | 'loading' | 'ready' | 'error';
+  graph: GraphSnapshot;
+  graphStatus: 'idle' | 'loading' | 'ready' | 'stale' | 'error';
   loadStatus(): Promise<void>;
   loadBacklinks(pagePath: string): Promise<void>;
   clearBacklinks(): void;
   loadTags(): Promise<void>;
+  loadGraph(): Promise<void>;
   search(query: string, limit?: number): Promise<SearchHit[]>;
   rebuild(): Promise<void>;
   applyStatusEvent(status: IndexStatus): void;
@@ -31,6 +34,7 @@ interface IndexState {
 let eventsBound = false;
 let tagLoadGeneration = 0;
 let backlinkGeneration = 0;
+let graphLoadGeneration = 0;
 
 /** 进程内绑定一次 index:statusChanged 推送。 */
 export function bindIndexEvents(): void {
@@ -59,6 +63,8 @@ export const useIndexStore = create<IndexState>((set, get) => ({
   error: null,
   tags: [],
   tagsStatus: 'idle',
+  graph: { pages: [], links: [] },
+  graphStatus: 'idle',
 
   async loadStatus() {
     try {
@@ -106,18 +112,39 @@ export const useIndexStore = create<IndexState>((set, get) => ({
     return invoke('index:search', { query, limit });
   },
 
+  async loadGraph() {
+    const generation = ++graphLoadGeneration;
+    set({ graphStatus: 'loading' });
+    try {
+      const graph = await invoke('index:graph');
+      if (generation !== graphLoadGeneration) return;
+      set({ graph, graphStatus: 'ready' });
+    } catch (e) {
+      if (generation !== graphLoadGeneration) return;
+      set({
+        graph: { pages: [], links: [] },
+        graphStatus: 'error',
+        error: e instanceof Error ? e.message : String(e),
+      });
+    }
+  },
+
   async rebuild() {
     await invoke('index:rebuild');
     await get().loadStatus();
   },
 
   applyStatusEvent(status) {
-    set({ status });
+    set((state) => ({
+      status,
+      graphStatus: status.phase === 'ready' && state.graphStatus === 'ready' ? 'stale' : state.graphStatus,
+    }));
   },
 
   reset() {
     tagLoadGeneration += 1;
     backlinkGeneration += 1;
+    graphLoadGeneration += 1;
     set({
       status: { phase: 'idle', pagesTotal: 0, pagesIndexed: 0, mode: 'full' },
       backlinks: [],
@@ -126,6 +153,8 @@ export const useIndexStore = create<IndexState>((set, get) => ({
       error: null,
       tags: [],
       tagsStatus: 'idle',
+      graph: { pages: [], links: [] },
+      graphStatus: 'idle',
     });
   },
 }));

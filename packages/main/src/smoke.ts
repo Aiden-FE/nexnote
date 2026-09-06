@@ -3,6 +3,7 @@ import { mkdir, mkdtemp, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import * as path from 'node:path';
 import type { WindowManager } from './window';
+import { startMockOpenAiServer } from './ai/testing';
 
 export interface SmokeCheckResult {
   name: string;
@@ -35,6 +36,12 @@ export class SmokeController {
 
   async init(): Promise<void> {
     await mkdir(this.deps.outputDir, { recursive: true });
+
+    // DEV-009：冒烟模式内嵌 mock OpenAI 服务器（127.0.0.1 随机端口）。
+    // 渲染层冒烟脚本经 smoke:aiMock 拿到 baseUrl，全链路验证 AI 向导/连通/流式/embedding。
+    const mock = await startMockOpenAiServer({ chunkDelayMs: 30 });
+    console.log('[smoke] ai mock server at', mock.url);
+    ipcMain.handle('smoke:aiMock', () => ({ ok: true, url: `${mock.url}/v1` }));
     ipcMain.handle('smoke:mkdtemp', async () => {
       try {
         const dir = await mkdtemp(path.join(tmpdir(), 'nexnote-smoke-vault-'));
@@ -58,6 +65,29 @@ export class SmokeController {
         }
       },
     );
+    ipcMain.handle('smoke:seedGraph', async (_event, root: unknown) => {
+      try {
+        if (typeof root !== 'string') throw new Error('graph vault root is required');
+        const groups = ['group-a', 'group-b'] as const;
+        await Promise.all(
+          groups.flatMap((group) =>
+            Array.from({ length: 250 }, async (_, index) => {
+              const name = `${group}-node-${index}`;
+              const targets = Array.from(
+                { length: 4 },
+                (_, offset) => `[[graph/${group}/${group}-node-${(index + offset + 1) % 250}]]`,
+              ).join(' ');
+              const abs = path.join(root, 'graph', group, `${name}.md`);
+              await mkdir(path.dirname(abs), { recursive: true });
+              await writeFile(abs, `---\ntags: [smoke/${group}]\n---\n# ${name}\n\n${targets}\n`, 'utf8');
+            }),
+          ),
+        );
+        return { ok: true, pages: 500, links: 2000 };
+      } catch (e) {
+        return { ok: false, error: e instanceof Error ? e.message : String(e) };
+      }
+    });
     ipcMain.handle('smoke:capture', async (_event, name: unknown) => {
       try {
         const file = await this.capture(String(name));

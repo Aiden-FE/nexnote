@@ -1,4 +1,4 @@
-import { app, dialog, ipcMain, shell } from 'electron';
+import { app, dialog, ipcMain, safeStorage, shell } from 'electron';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { AppStore } from './vault/app-store';
@@ -10,6 +10,9 @@ import { WindowManager } from './window';
 import { registerAllIpcHandlers } from './ipc';
 import { checkForUpdates, initAutoUpdater } from './updater';
 import { SmokeController } from './smoke';
+import { AiStore } from './ai/ai-store';
+import { AiService } from './ai/ai-service';
+import { createSecretVault } from './ai/secret-store';
 import { GitService } from './git/git-service';
 
 const isSmokeMode = process.env.NEXNOTE_SMOKE === '1';
@@ -35,7 +38,7 @@ if (!app.requestSingleInstanceLock()) {
 
 let windows: WindowManager | null = null;
 
-function bootstrap(): void {
+async function bootstrap(): Promise<void> {
   const appStore = new AppStore(join(app.getPath('userData'), 'nexnote-app.json'));
   windows = new WindowManager({ getAppStore: () => appStore, devTools: !!process.env.NEXNOTE_DEVTOOLS });
   const vaultSession = new VaultSession({
@@ -69,6 +72,14 @@ function bootstrap(): void {
     defaultDebounceMs: appStore.getAutoCommitDebounceMs(),
   });
 
+  // AI credentials live in the native OS credential manager; safeStorage is migration-only.
+  const secrets = await createSecretVault();
+  const aiStore = new AiStore(join(app.getPath('userData'), 'nexnote-ai.json'), secrets, {
+    safeStorage,
+  });
+  const winRef = windows;
+  const ai = new AiService({ store: aiStore, sendEvent: (channel, payload) => winRef.sendToMainWindow(channel, payload) });
+
   initAutoUpdater(log);
 
   registerAllIpcHandlers(ipcMain, {
@@ -76,6 +87,7 @@ function bootstrap(): void {
     appStore,
     vaultSession,
     fs,
+    ai,
     git,
     dialogs: {
       async pickDirectory() {
@@ -118,8 +130,9 @@ function bootstrap(): void {
   if (isSmokeMode) {
     const smoke = new SmokeController({
       windows,
-      // out/main/index.js → ../.. = worktree 根（.scratch/ 与仓库同级）
-      outputDir: join(__dirname, '../../.scratch/nexnote-build/smoke/DEV-007'),
+      outputDir: process.env.NEXNOTE_SMOKE_DIR
+        ? process.env.NEXNOTE_SMOKE_DIR
+        : join(__dirname, '../../.scratch/nexnote-build/smoke/DEV-007'),
     });
     void smoke.init();
   }
