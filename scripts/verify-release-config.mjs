@@ -148,6 +148,10 @@ check('单个 publish job，经受保护 QA Environment 审批后才公开', () 
   if (wf.jobs.publish?.permissions?.contents !== 'write') throw new Error('publish must hold the only contents: write permission');
   if (JSON.stringify(wf.jobs.publish?.needs) !== JSON.stringify(['build', 'smoke'])) throw new Error('publish must wait for build and smoke');
   if (wf.jobs.publish?.environment?.name !== 'release-qa') throw new Error('publish must require release-qa protected Environment approval');
+  if (wf.concurrency?.group !== 'nexnote-public-release' || wf.concurrency?.['cancel-in-progress'] !== false) {
+    throw new Error('all release refs must share the fixed non-cancelling nexnote-public-release lock');
+  }
+  if (/github\.ref|github\.ref_name|inputs\.channel/.test(String(wf.concurrency?.group))) throw new Error('publication lock must not vary by ref or channel');
   if (!/required reviewers/.test(releaseWorkflow) || !/QA checklist evidence/.test(releaseWorkflow)) throw new Error('workflow must document required-reviewer QA evidence approval');
   if (!/Preflight complete signed release set/.test(releaseWorkflow) || !/softprops\/action-gh-release/.test(releaseWorkflow)) throw new Error('publish requires preflight then single uploader');
 });

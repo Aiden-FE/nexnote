@@ -16,8 +16,10 @@ on:
 permissions:
   contents: read
 
+# One repository-wide lock prevents distinct tags/refs from publishing concurrently.
+# Do not add ref/channel expressions here: any differing value would permit a release race.
 concurrency:
-  group: release-${{ github.ref }}
+  group: nexnote-public-release
   cancel-in-progress: false
 
 jobs:
