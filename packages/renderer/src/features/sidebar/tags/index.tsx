@@ -1,9 +1,10 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { ChevronRight, Tags, X } from 'lucide-react';
 import { sidebarPanelRegistry } from '../../../registries';
 import { useIndexStore } from '../../../stores/index-store';
 import { useTagStore } from '../../../stores/tag-store';
 import { usePageTreeStore } from '../../../stores/page-tree-store';
+import { useUiStore } from '../../../stores/ui-store';
 import { invoke } from '../../../lib/ipc';
 import { cn } from '../../../lib/utils';
 import { buildTagTree, type TagNode } from './tree';
@@ -29,6 +30,7 @@ export function TagsPanel() {
   const activeTag = usePageTreeStore((s) => s.tagFilter);
   const loadIndexTags = useIndexStore((s) => s.loadTags);
   const [expanded, setExpanded] = useState<Set<string>>(() => new Set());
+  const tagRequest = useRef(0);
 
   useEffect(() => {
     void loadIndexTags();
@@ -53,13 +55,21 @@ export function TagsPanel() {
     return legacyStats.filter((s) => s.tag === tag || s.tag.startsWith(`${tag}/`)).flatMap((s) => s.files);
   };
 
-  const toggleFilter = (tag: string): void => {
+  const openTagResults = (tag: string): void => {
     const pageTree = usePageTreeStore.getState();
     if (pageTree.tagFilter === tag) {
+      tagRequest.current += 1;
       pageTree.setTagFilter(null, null);
-    } else {
-      void filesFor(tag).then((files) => pageTree.setTagFilter(tag, [...new Set(files)].sort()));
+      return;
     }
+    const request = ++tagRequest.current;
+    void filesFor(tag).then((files) => {
+      // A later tag click owns the UI; never let an older promise overwrite it.
+      if (request !== tagRequest.current) return;
+      const paths = [...new Set(files)].sort();
+      pageTree.setTagFilter(tag, paths); // optional tree filter stays in sync with search route
+      useUiStore.getState().showTagSearch(tag, paths);
+    });
   };
 
   const toggleExpanded = (tag: string): void => {
@@ -92,7 +102,7 @@ export function TagsPanel() {
           activeTag={activeTag}
           expanded={expanded}
           onToggleExpanded={toggleExpanded}
-          onToggleFilter={toggleFilter}
+          onToggleFilter={openTagResults}
         />
       </div>
     </div>

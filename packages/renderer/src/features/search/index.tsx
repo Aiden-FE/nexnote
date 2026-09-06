@@ -17,7 +17,9 @@ export function useSearchHotkey(): void {
     const onKeydown = (e: KeyboardEvent) => {
       if ((e.metaKey || e.ctrlKey) && e.shiftKey && e.key.toLowerCase() === 'f') {
         e.preventDefault();
-        useUiStore.getState().setSearchOpen(!useUiStore.getState().searchOpen);
+        const ui = useUiStore.getState();
+        if (ui.searchOpen) ui.setSearchOpen(false);
+        else ui.showFulltextSearch();
       }
     };
     window.addEventListener('keydown', onKeydown);
@@ -34,8 +36,30 @@ const TIER_LABEL: Record<SearchHit['tier'], string> = {
 
 export function SearchPanel() {
   const open = useUiStore((s) => s.searchOpen);
+  const route = useUiStore((s) => s.searchRoute);
   if (!open) return null;
-  return <SearchPanelInner />;
+  return route.kind === 'tag' ? <TagSearchResults tag={route.tag} paths={route.paths} /> : <SearchPanelInner />;
+}
+
+function TagSearchResults({ tag, paths }: { tag: string; paths: string[] }) {
+  const setOpen = useUiStore((s) => s.setSearchOpen);
+  const activePaneId = useTabStore((s) => s.activePaneId);
+  const go = (path: string): void => {
+    setOpen(false);
+    useTabStore.getState().openPageTab(activePaneId, path);
+  };
+  return (
+    <div data-testid="tag-search-results" className="fixed inset-0 z-50 flex items-start justify-center bg-black/40 pt-[14vh]" onClick={(e) => { if (e.target === e.currentTarget) setOpen(false); }}>
+      <div className="w-[620px] max-w-[90vw] overflow-hidden rounded-xl border bg-popover text-popover-foreground shadow-2xl">
+        <div className="flex items-center gap-2 border-b px-3.5 py-3"><Search className="size-4 text-muted-foreground" /><span className="text-sm font-medium">标签搜索：#{tag}</span></div>
+        <div className="max-h-96 overflow-auto p-1.5">
+          {paths.length === 0 ? <p className="px-3 py-8 text-center text-sm text-muted-foreground">未找到含该标签的页面</p> : paths.map((path) => (
+            <button key={path} type="button" data-testid="tag-search-hit" onClick={() => go(path)} className="flex w-full rounded-lg px-3 py-2 text-left text-sm hover:bg-accent/60">{path}</button>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
 }
 
 function highlight(text: string, query: string): Array<{ text: string; hit: boolean }> {

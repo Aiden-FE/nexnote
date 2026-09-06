@@ -216,6 +216,58 @@ describe('LinkIndexService', () => {
     svc.close();
   });
 
+  it('coalesces directory churn into one authoritative rebuild', async () => {
+    await page('before.md', '', '# Before\n');
+    const svc = new LinkIndexService();
+    svc.setRoot(tmp);
+    await page('bulk/one.md', '', '# One\n');
+    await page('bulk/two.md', '', '# Two\n');
+    svc.scheduleRebuild();
+    svc.scheduleRebuild();
+    svc.scheduleRebuild();
+    await new Promise((resolve) => setTimeout(resolve, 300));
+    expect(svc.jumpTo('one').some((page) => page.path === 'bulk/one.md')).toBe(true);
+    expect(svc.jumpTo('two').some((page) => page.path === 'bulk/two.md')).toBe(true);
+    svc.close();
+  });
+
+  it('service boundary rejects absolute and traversal update paths', async () => {
+    await page('safe.md', '', '# Safe\n\n原内容\n');
+    const outside = path.join(tmp, '..', 'outside.md');
+    await writeFile(outside, '# Outside\n\n不应索引\n', 'utf8');
+    const svc = new LinkIndexService();
+    svc.setRoot(tmp);
+    svc.updateFile('../outside.md');
+    svc.updateFile(outside);
+    svc.scheduleUpdate('../outside.md');
+    await new Promise((resolve) => setTimeout(resolve, 220));
+    expect(svc.search('不应索引')).toEqual([]);
+    expect(svc.pageSummary('safe.md')).not.toBeNull();
+    svc.close();
+    await rm(outside, { force: true });
+  });
+
+  it('maps repeated identical blocks to their actual source block', async () => {
+    await page('target.md', '', '# Target\n');
+    await page('src.md', '', '重复段落\n\n重复段落含 [[target]]\n');
+    const svc = new LinkIndexService();
+    svc.setRoot(tmp);
+    const backlink = svc.backlinks('target.md')[0]!;
+    expect(backlink.blockPosition).toBe(1);
+    expect(backlink.snippet).toContain('[[target]]');
+    svc.close();
+  });
+
+  it('LIKE fallback applies AND semantics to multi-term Chinese queries', async () => {
+    await page('both.md', '', '# Both\n\n中文甲 中文乙\n');
+    await page('one.md', '', '# One\n\n中文甲\n');
+    const svc = new LinkIndexService();
+    svc.setRoot(tmp);
+    // The LIKE path supplements FTS; both terms must be present in a matching document.
+    expect(svc.search('中文甲 中文乙').map((hit) => hit.path)).toEqual(['both.md']);
+    svc.close();
+  });
+
   it('删除 index.db 后重开自动全量重建（验收项 5）', async () => {
     await page('keep.md', '', '# Keep\n');
     const svc1 = new LinkIndexService();

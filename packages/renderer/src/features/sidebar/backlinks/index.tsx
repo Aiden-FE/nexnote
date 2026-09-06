@@ -29,6 +29,7 @@ function BacklinksPanel() {
     const pane = panes[activePaneId];
     const tab = pane?.tabs.find((t) => t.id === pane.activeTabId);
     if (tab?.pagePath) void load(tab.pagePath);
+    else useIndexStore.getState().clearBacklinks();
   }, [panes, activePaneId, load]);
 
   const open = (b: Backlink): void => {

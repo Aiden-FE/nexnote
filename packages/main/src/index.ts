@@ -52,8 +52,12 @@ function bootstrap(): void {
     getRoot: () => vaultSession.getCurrent()?.root ?? null,
     emit: (event) => {
       windows?.sendToMainWindow('fs:changed', event);
+      const root = vaultSession.getCurrent()?.root ?? null;
       if (event.kind === 'add' || event.kind === 'change' || event.kind === 'unlink') {
-        index.scheduleUpdate(event.path, vaultSession.getCurrent()?.root ?? null);
+        index.scheduleUpdate(event.path, root);
+      } else if (event.kind === 'addDir' || event.kind === 'unlinkDir') {
+        // Directory operations can produce a storm of descendant mutations; coalesce one atomic rebuild.
+        index.scheduleRebuild(root);
       }
     },
     onError: (e) => log('watch error:', e),

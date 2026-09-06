@@ -20,6 +20,7 @@ interface IndexState {
   tagsStatus: 'idle' | 'loading' | 'ready' | 'error';
   loadStatus(): Promise<void>;
   loadBacklinks(pagePath: string): Promise<void>;
+  clearBacklinks(): void;
   loadTags(): Promise<void>;
   search(query: string, limit?: number): Promise<SearchHit[]>;
   rebuild(): Promise<void>;
@@ -72,6 +73,10 @@ export const useIndexStore = create<IndexState>((set, get) => ({
       if (get().backlinksFor !== pagePath) return;
       set({ backlinksStatus: 'error', error: e instanceof Error ? e.message : String(e), backlinks: [] });
     }
+  },
+
+  clearBacklinks() {
+    set({ backlinks: [], backlinksFor: null, backlinksStatus: 'idle' });
   },
 
   async loadTags() {

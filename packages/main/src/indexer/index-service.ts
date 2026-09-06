@@ -20,6 +20,15 @@ function escFts(value: string): string {
 }
 function stem(value: string): string { return value.replace(/\.md$/i, '').replace(/^\.\//, ''); }
 
+/** Canonical vault-relative path, or null for absolute/traversal input. */
+function vaultRelativePath(root: string, relPath: string): string | null {
+  if (!relPath || path.isAbsolute(relPath)) return null;
+  const resolved = path.resolve(root, relPath);
+  const relative = path.relative(root, resolved);
+  if (!relative || relative === '..' || relative.startsWith(`..${path.sep}`) || path.isAbsolute(relative)) return null;
+  return relative.split(path.sep).join('/');
+}
+
 /** 围绕 source_text 在 source_block.content_text 中取 ±60 字符的上下文片段。 */
 function snippetAround(blockText: string, sourceText: string): string {
   if (!blockText) return sourceText;
@@ -42,6 +51,8 @@ export class LinkIndexService {
     this.onStatus(this.status);
   }
   private timers = new Map<string, ReturnType<typeof setTimeout>>();
+  private rebuildScheduled = false;
+  private pendingPaths = new Set<string>();
 
   get status(): IndexStatus { return { ...this._status }; }
   setRoot(root: string | null): void {
@@ -49,7 +60,7 @@ export class LinkIndexService {
     this.close(); this.root = root;
     if (root) this.openAndEnsure();
   }
-  close(): void { for (const t of this.timers.values()) clearTimeout(t); this.timers.clear(); this.db?.close(); this.db = null; this.root = null; this._status = emptyStatus(); }
+  close(): void { for (const t of this.timers.values()) clearTimeout(t); this.timers.clear(); this.pendingPaths.clear(); this.rebuildScheduled = false; this.db?.close(); this.db = null; this.root = null; this._status = emptyStatus(); }
   private requireRoot(): string { if (!this.root) throw Object.assign(new Error('尚未打开任何 vault'), { code: 'NO_VAULT' }); return this.root; }
   private openAndEnsure(): void {
     const root = this.requireRoot(); const dir = path.join(root, '.nexnote'); mkdirSync(dir, { recursive: true });
@@ -101,19 +112,46 @@ export class LinkIndexService {
    * 实际执行时若 root 已切换则丢弃，防止旧 vault 事件以新 root 重新索引。
    */
   scheduleUpdate(relPath: string, sourceRoot: string | null = this.root): void {
-    if (!relPath.toLowerCase().endsWith('.md')) return;
     if (!sourceRoot) return;
-    const prior = this.timers.get(relPath); if (prior) clearTimeout(prior);
-    this.timers.set(relPath, setTimeout(() => {
-      this.timers.delete(relPath);
-      this.updateFile(relPath, sourceRoot);
+    const safePath = vaultRelativePath(sourceRoot, relPath);
+    if (!safePath || !safePath.toLowerCase().endsWith('.md') || this.rebuildScheduled) return;
+    this.pendingPaths.add(safePath);
+    const key = '__updates__'; const prior = this.timers.get(key); if (prior) clearTimeout(prior);
+    this.timers.set(key, setTimeout(() => {
+      this.timers.delete(key);
+      const paths = [...this.pendingPaths]; this.pendingPaths.clear();
+      this.updateFiles(paths, sourceRoot);
     }, 160));
   }
-  updateFile(relPath: string, sourceRoot: string | null = this.root): void {
-    if (!this.root || this.root !== sourceRoot) return; // 切换/关闭后丢弃旧事件
-    const root = this.requireRoot(); const abs = path.join(root, relPath); this.publish({ phase: 'scanning', pagesTotal: 1, pagesIndexed: 0, currentFile: relPath, mode: 'incremental' });
-    const db = this.db!; const run = db.transaction(() => { if (!existsSync(abs)) this.deletePath(relPath); else this.upsertPage(parsePageMarkdown(relPath, readFileSync(abs, 'utf8')), true); this.resolveLinks(); });
-    try { run(); this.publish({ phase: 'ready', pagesTotal: 1, pagesIndexed: 1, mode: 'incremental' }); } catch (e) { this.publish({ ...this._status, phase: 'error', error: e instanceof Error ? e.message : String(e) }); }
+  /** Coalesce directory churn into one rebuild rather than resolving links per descendant. */
+  scheduleRebuild(sourceRoot: string | null = this.root): void {
+    if (!sourceRoot) return;
+    this.rebuildScheduled = true;
+    this.pendingPaths.clear();
+    const updateTimer = this.timers.get('__updates__'); if (updateTimer) clearTimeout(updateTimer); this.timers.delete('__updates__');
+    const key = '__rebuild__'; const prior = this.timers.get(key); if (prior) clearTimeout(prior);
+    this.timers.set(key, setTimeout(() => {
+      this.timers.delete(key);
+      try { if (this.root === sourceRoot) this.rebuild(); } finally { this.rebuildScheduled = false; }
+    }, 200));
+  }
+  updateFile(relPath: string, sourceRoot: string | null = this.root): void { this.updateFiles([relPath], sourceRoot); }
+  private updateFiles(relPaths: string[], sourceRoot: string | null): void {
+    if (!this.root || this.root !== sourceRoot) return; // switch/close drops stale batches
+    const root = this.requireRoot();
+    const paths = [...new Set(relPaths.map((value) => vaultRelativePath(root, value)).filter((value): value is string => !!value && value.toLowerCase().endsWith('.md')))];
+    if (paths.length === 0) return;
+    this.publish({ phase: 'scanning', pagesTotal: paths.length, pagesIndexed: 0, currentFile: paths[0], mode: 'incremental' });
+    const db = this.db!;
+    const run = db.transaction(() => {
+      for (const safePath of paths) {
+        const abs = path.join(root, safePath);
+        if (!existsSync(abs)) this.deletePath(safePath);
+        else this.upsertPage(parsePageMarkdown(safePath, readFileSync(abs, 'utf8')), false);
+      }
+      this.resolveLinks(); // once per debounce batch, not once per file
+    });
+    try { run(); this.publish({ phase: 'ready', pagesTotal: paths.length, pagesIndexed: paths.length, mode: 'incremental' }); } catch (e) { this.publish({ ...this._status, phase: 'error', error: e instanceof Error ? e.message : String(e) }); }
   }
   private deletePath(relPath: string): void { const db = this.db!; const row = db.prepare('SELECT id FROM pages WHERE path=?').get(relPath) as { id: number } | undefined; if (!row) return; db.prepare('DELETE FROM page_fts WHERE path=?').run(relPath); db.prepare('DELETE FROM pages WHERE id=?').run(row.id); }
   private upsertPage(page: ParsedPage, resolve = true): void {
@@ -208,8 +246,11 @@ export class LinkIndexService {
     }
     let likeRows: RawHit[] = [];
     try {
-      const like = `%${needle.toLowerCase()}%`;
-      likeRows = db.prepare(`SELECT path,title,aliases,tags,content,'' snippet,0 rank FROM page_fts WHERE lower(title) LIKE ? OR lower(aliases) LIKE ? OR lower(tags) LIKE ? OR lower(content) LIKE ? LIMIT ?`).all(like, like, like, like, limit * 2) as RawHit[];
+      // LIKE fallback mirrors FTS multi-term AND semantics, including Chinese substring terms.
+      const terms = needle.toLowerCase().split(/\s+/).filter(Boolean);
+      const clauses = terms.map(() => '(lower(title) LIKE ? OR lower(aliases) LIKE ? OR lower(tags) LIKE ? OR lower(content) LIKE ?)').join(' AND ');
+      const values = terms.flatMap((term) => Array(4).fill(`%${term}%`));
+      likeRows = db.prepare(`SELECT path,title,aliases,tags,content,'' snippet,0 rank FROM page_fts WHERE ${clauses} LIMIT ?`).all(...values, limit * 2) as RawHit[];
     } catch (e) {
       this.onStatus({ ...this._status, phase: this._status.phase, error: `search like: ${e instanceof Error ? e.message : String(e)}` });
     }

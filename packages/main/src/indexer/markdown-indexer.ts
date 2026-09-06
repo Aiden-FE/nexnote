@@ -38,15 +38,24 @@ function classifyBlock(raw: string): string {
   return 'paragraph';
 }
 
-function parseBlocks(body: string): { blocks: ParsedBlock[]; rawBlocks: string[] } {
-  const rawBlocks = body.split(/\n{2,}/);
+function parseBlocks(body: string): { blocks: ParsedBlock[]; rawBlocks: Array<{ text: string; start: number; position: number }> } {
+  // Preserve each split segment's source offset: identical paragraphs must remain distinct.
+  const rawBlocks: Array<{ text: string; start: number; position: number }> = [];
+  let start = 0;
+  let position = 0;
+  for (const separator of body.matchAll(/\n{2,}/g)) {
+    rawBlocks.push({ text: body.slice(start, separator.index), start, position });
+    start = (separator.index ?? 0) + separator[0].length;
+    position += 1;
+  }
+  rawBlocks.push({ text: body.slice(start), start, position });
   const blocks: ParsedBlock[] = [];
-  for (let position = 0; position < rawBlocks.length; position += 1) {
-    const raw = rawBlocks[position] ?? '';
+  for (const segment of rawBlocks) {
+    const { text: raw, position: blockPosition } = segment;
     if (raw.trim().length === 0) continue;
     const anchor = /(?:^|\s)\^([A-Za-z0-9_-]+)\s*$/.exec(raw);
     const content = raw.replace(/\^([A-Za-z0-9_-]+)\s*$/, '').trim();
-    blocks.push({ blockId: anchor?.[1] ?? null, blockType: classifyBlock(raw), content, position });
+    blocks.push({ blockId: anchor?.[1] ?? null, blockType: classifyBlock(raw), content, position: blockPosition });
   }
   return { blocks, rawBlocks };
 }
@@ -78,10 +87,7 @@ export function parsePageMarkdown(pagePath: string, text: string): ParsedPage {
     if (!targetPart) continue;
     const sourceText = match[0];
     const offset = match.index ?? 0;
-    const blockIndex = rawBlocks.findIndex((blk) => {
-      const start = body.indexOf(blk, 0);
-      return start >= 0 && offset >= start && offset < start + blk.length;
-    });
+    const blockIndex = rawBlocks.find((block) => offset >= block.start && offset < block.start + block.text.length)?.position;
     links.push({
       targetRaw: raw,
       targetName: targetPart,
@@ -89,7 +95,7 @@ export function parsePageMarkdown(pagePath: string, text: string): ParsedPage {
       anchor: hash < 0 ? null : raw.slice(hash),
       linkType: 'normal',
       sourceText,
-      sourceBlockIndex: blockIndex >= 0 ? blockIndex : 0,
+      sourceBlockIndex: blockIndex ?? 0,
     });
   }
   const tags = [...new Set([...(frontmatter ? parseFrontmatterTags(frontmatter) : []), ...extractInlineTags(body)])].sort();

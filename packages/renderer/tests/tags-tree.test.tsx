@@ -6,6 +6,7 @@ import { act } from 'react';
 globalThis.IS_REACT_ACT_ENVIRONMENT = true;
 import { useIndexStore } from '../src/stores/index-store';
 import { usePageTreeStore } from '../src/stores/page-tree-store';
+import { useUiStore } from '../src/stores/ui-store';
 import type { TagIndexEntry } from '@nexnote/shared';
 import { TagsPanel } from '../src/features/sidebar/tags/index';
 import { buildTagTree } from '../src/features/sidebar/tags/tree';
@@ -113,6 +114,8 @@ describe('TagsPanel（嵌套树）', () => {
       const filter = usePageTreeStore.getState().tagFilter;
       expect(filter).toBe('work');
       expect(usePageTreeStore.getState().tagFiles).toEqual(['a.md', 'b.md', 'c.md']);
+      expect(useUiStore.getState().searchOpen).toBe(true);
+      expect(useUiStore.getState().searchRoute).toEqual({ kind: 'tag', tag: 'work', paths: ['a.md', 'b.md', 'c.md'] });
 
       // 再次点击取消过滤
       await act(async () => {
