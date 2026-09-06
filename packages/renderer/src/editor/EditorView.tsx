@@ -6,6 +6,7 @@ import { invoke } from '../lib/ipc';
 import { useTabStore, type PaneId, type TabDescriptor } from '../stores/tab-store';
 import { FrontmatterPanel } from '../features/frontmatter/FrontmatterPanel';
 import { useDocumentPropertiesStore } from '../features/frontmatter/document-properties-store';
+import { useIndexStore } from '../stores/index-store';
 import type { FrontmatterData } from '@nexnote/kernel';
 import { parseFrontmatterYaml, serializeFrontmatterYaml, splitFrontmatter } from '@nexnote/kernel';
 import { collectVaultTags, inspectFrontmatter } from '../features/frontmatter/frontmatter-utils';
@@ -49,6 +50,7 @@ export function EditorView({ paneId, tab }: EditorViewProps) {
   const [fmLocked, setFmLocked] = useState(false);
   const [fmParseError, setFmParseError] = useState<string | null>(null);
   const [knownTags, setKnownTags] = useState<string[]>([]);
+  const indexTags = useIndexStore((s) => s.tags);
   const setDocument = useDocumentPropertiesStore((s) => s.setDocument);
 
   useEffect(() => {
@@ -255,6 +257,12 @@ export function EditorView({ paneId, tab }: EditorViewProps) {
     };
   }, [load]);
 
+  // DEV-004 索引标签为实时真值；索引未就绪时回退到全库扫描标签。
+  const effectiveKnownTags = useMemo(
+    () => (indexTags.length > 0 ? indexTags.map((t) => t.tag) : knownTags),
+    [indexTags, knownTags],
+  );
+
   const status = useMemo(() => {
     if (saveState === 'saving')
       return { icon: LoaderCircle, text: '保存中…', className: 'animate-spin' };
@@ -302,7 +310,7 @@ export function EditorView({ paneId, tab }: EditorViewProps) {
           <FrontmatterPanel
             data={fmData}
             source={fmSource}
-            knownTags={knownTags}
+            knownTags={effectiveKnownTags}
             locked={fmLocked}
             parseError={fmParseError}
             onChange={(next) => {
