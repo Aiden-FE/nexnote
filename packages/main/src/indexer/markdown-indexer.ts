@@ -39,14 +39,28 @@ function classifyBlock(raw: string): string {
 }
 
 function parseBlocks(body: string): { blocks: ParsedBlock[]; rawBlocks: Array<{ text: string; start: number; position: number }> } {
-  // Preserve each split segment's source offset: identical paragraphs must remain distinct.
+  // Keep CRLF/LF blank-line boundaries aligned with shared extractWikilinks, ignoring blanks inside fences.
   const rawBlocks: Array<{ text: string; start: number; position: number }> = [];
   let start = 0;
   let position = 0;
-  for (const separator of body.matchAll(/\n{2,}/g)) {
-    rawBlocks.push({ text: body.slice(start, separator.index), start, position });
-    start = (separator.index ?? 0) + separator[0].length;
-    position += 1;
+  let inFence = false;
+  let previousBlank = false;
+  const lines = body.match(/[^\r\n]*(?:\r\n|\n|$)/g)?.filter((part, index, all) => part.length > 0 || index < all.length - 1) ?? [];
+  let cursor = 0;
+  for (const lineWithSeparator of lines) {
+    const separator = lineWithSeparator.endsWith('\r\n') ? '\r\n' : lineWithSeparator.endsWith('\n') ? '\n' : '';
+    const line = separator ? lineWithSeparator.slice(0, -separator.length) : lineWithSeparator;
+    if (/^\s*(```|~~~)/.test(line)) inFence = !inFence;
+    const blank = !inFence && line.trim().length === 0;
+    if (blank && !previousBlank) {
+      rawBlocks.push({ text: body.slice(start, cursor), start, position });
+      start = cursor + lineWithSeparator.length;
+      position += 1;
+    } else if (blank) {
+      start = cursor + lineWithSeparator.length;
+    }
+    previousBlank = blank;
+    cursor += lineWithSeparator.length;
   }
   rawBlocks.push({ text: body.slice(start), start, position });
   const blocks: ParsedBlock[] = [];
@@ -78,14 +92,20 @@ export function parsePageMarkdown(pagePath: string, text: string): ParsedPage {
       sourceBlockIndex: ref.blockIndex,
     });
   }
-  // 普通 Markdown 链接：定位所在块，把 raw 与块 index 一同写入，便于反链上下文。
-  for (const match of body.matchAll(/(?<!!)\[[^\]]*\]\(([^)]+)\)/g)) {
+  // Mask fenced/inline code at equal UTF-16 length before scanning normal Markdown links.
+  let inFence = false;
+  const searchableBody = body.split(/(?<=\n)/).map((line) => {
+    if (/^\s*(```|~~~)/.test(line)) { inFence = !inFence; return ' '.repeat(line.length); }
+    if (inFence) return ' '.repeat(line.length);
+    return line.replace(/`[^`]*`/g, (code) => ' '.repeat(code.length));
+  }).join('');
+  for (const match of searchableBody.matchAll(/(?<!!)\[[^\]]*\]\(([^)]+)\)/g)) {
     const raw = (match[1] ?? '').trim();
     if (!raw || /^[a-z][a-z0-9+.-]*:/i.test(raw) || raw.startsWith('#')) continue;
     const hash = raw.indexOf('#');
     const targetPart = (hash < 0 ? raw : raw.slice(0, hash)).replace(/^\.\//, '').replace(/\.md$/i, '');
     if (!targetPart) continue;
-    const sourceText = match[0];
+    const sourceText = body.slice(match.index, (match.index ?? 0) + match[0].length);
     const offset = match.index ?? 0;
     const blockIndex = rawBlocks.find((block) => offset >= block.start && offset < block.start + block.text.length)?.position;
     links.push({

@@ -20,6 +20,14 @@ describe('parsePageMarkdown', () => {
     expect(parsed.blocks.some((block) => block.blockId === 'src-block')).toBe(true);
   });
 
+  it('CRLF blocks align link positions and ignore normal links inside code', () => {
+    const parsed = parsePageMarkdown(
+      'source.md',
+      '首段\r\n\r\n[real](target.md) 与 [[target]]\r\n\r\n`[inline](hidden.md)`\r\n\r\n```md\r\n[fenced](hidden.md)\r\n```',
+    );
+    expect(parsed.links.map((link) => [link.targetName, link.sourceBlockIndex])).toEqual([['target', 1], ['target', 1]]);
+  });
+
   it('解析指向 vault markdown 页面的普通链接，跳过外链与页内 anchor', () => {
     const parsed = parsePageMarkdown(
       'source.md',

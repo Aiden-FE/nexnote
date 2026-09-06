@@ -90,6 +90,7 @@ function SearchPanelInner() {
   const [status, setStatus] = useState<'idle' | 'loading' | 'done'>('idle');
   const inputRef = useRef<HTMLInputElement>(null);
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const requestGeneration = useRef(0);
 
   useEffect(() => {
     const raf = requestAnimationFrame(() => inputRef.current?.focus());
@@ -99,22 +100,24 @@ function SearchPanelInner() {
   // 防抖实时搜索（FTS5 千页级 <100ms，客户端再留 120ms 合并输入）
   useEffect(() => {
     if (timer.current) clearTimeout(timer.current);
+    const generation = ++requestGeneration.current;
     timer.current = setTimeout(() => {
       if (!query.trim()) {
-        setHits([]);
-        setStatus('idle');
+        if (generation === requestGeneration.current) { setHits([]); setStatus('idle'); }
         return;
       }
       setStatus('loading');
       void search(query)
         .then((results) => {
+          if (generation !== requestGeneration.current) return;
           setHits(results);
           setStatus('done');
         })
-        .catch(() => setStatus('done'));
+        .catch(() => { if (generation === requestGeneration.current) setStatus('done'); });
     }, query.trim() ? 120 : 0);
     return () => {
       if (timer.current) clearTimeout(timer.current);
+      requestGeneration.current += 1;
     };
   }, [query, search]);
 

@@ -110,6 +110,34 @@ function isDescendantOrSelf(linkPath: string, stem: string): boolean {
  * - 目录移动：`[[olddir/note]]` → `[[newdir/note]]`（stem 为目录时按前缀匹配）
  * - embed `![[old]]` 同样处理；大小写敏感（已知限制）
  */
+export function rewriteMarkdownLinks(
+  content: string,
+  fromStem: string,
+  toStem: string,
+): { content: string; changed: boolean } {
+  if (fromStem === toStem) return { content, changed: false };
+  const fromBase = path.posix.basename(fromStem);
+  const toBase = path.posix.basename(toStem);
+  let changed = false;
+  const next = content.replace(/(!?\[[^\]]*\]\()([^)]+)(\))/g, (whole, prefix: string, destination: string, suffix: string) => {
+    if (prefix.startsWith('!') || /^[a-z][a-z0-9+.-]*:/i.test(destination) || destination.startsWith('#')) return whole;
+    const hash = destination.indexOf('#');
+    const destinationPath = hash < 0 ? destination : destination.slice(0, hash);
+    const hadDotSlash = destinationPath.startsWith('./');
+    const hadMarkdownExtension = /\.md$/i.test(destinationPath);
+    const rawPath = destinationPath.replace(/^\.\//, '').replace(/\.md$/i, '');
+    const anchor = hash < 0 ? '' : destination.slice(hash);
+    let replacement: string | null = null;
+    if (rawPath === fromBase) replacement = toBase;
+    else if (isDescendantOrSelf(rawPath, fromStem)) replacement = toStem + rawPath.slice(fromStem.length);
+    if (replacement !== null) replacement = `${hadDotSlash ? './' : ''}${replacement}${hadMarkdownExtension ? '.md' : ''}`;
+    if (replacement === null) return whole;
+    changed = true;
+    return `${prefix}${replacement}${anchor}${suffix}`;
+  });
+  return { content: next, changed };
+}
+
 export function rewriteWikilinks(
   content: string,
   fromStem: string,
@@ -179,8 +207,10 @@ export async function renameWithLinks(
       } catch {
         continue; // 单文件读取失败不阻断整体重命名
       }
-      const { content, changed } = rewriteWikilinks(text, fromStem, toStem);
-      if (changed) {
+      const wiki = rewriteWikilinks(text, fromStem, toStem);
+      const normal = rewriteMarkdownLinks(wiki.content, fromStem, toStem);
+      if (wiki.changed || normal.changed) {
+        const content = normal.content;
         await fs.writeTextFile(file, content, true);
         updatedFiles.push(file);
       }
