@@ -1,0 +1,13 @@
+export { WRITING_ACTIONS, WRITING_ACTION_MAP, buildWritingMessages, toAiActionId, fromAiActionId } from './actions';
+export type { WritingActionDef, WritingActionId, WritingKind } from './actions';
+export { assembleWritingContext, TRUNCATION_NOTE } from './context';
+export type { BacklinkSnippet, WritingContextAssembly } from './context';
+export { diffLines, hasVisibleDiff } from './diff';
+export type { DiffOp } from './diff';
+export { startWritingStream } from './stream';
+export { useWritingStore } from './writing-store';
+export type { WritingSession } from './writing-store';
+export { createWritingController } from './controller';
+export type { WritingController, WritingControllerDeps } from './controller';
+export { writingBubbleActions, writingContextMenu, writingSlashItems } from './kernel-options';
+export { WritingAssistantLayer } from './WritingAssistantLayer';

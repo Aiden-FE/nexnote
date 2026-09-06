@@ -4,7 +4,8 @@ import { invoke, onEvent } from '../../lib/ipc';
 import { useAiConfig, needsOnboarding } from './ai-config';
 import { Button } from '../../components/ui/button';
 import { cn } from '../../lib/utils';
-import { CircleStop, Loader2, RotateCcw, Send, Sparkles } from 'lucide-react';
+import { CircleStop, CornerDownLeft, Loader2, RotateCcw, Send, Sparkles } from 'lucide-react';
+import { insertIntoActiveEditor } from '../../editor/active-editor';
 
 interface DebugTurn {
   role: 'user' | 'assistant';
@@ -188,15 +189,30 @@ export function AiChatDebug({ compact = false }: { compact?: boolean }) {
         {turns.map((t, i) => (
           <div
             key={i}
-            data-testid={t.role === 'user' ? 'ai-debug-turn-user' : 'ai-debug-turn-assistant'}
-            className={cn(
-              'max-w-[90%] whitespace-pre-wrap break-words rounded-lg px-2.5 py-1.5 text-[13px] leading-relaxed',
-              t.role === 'user'
-                ? 'ml-auto bg-primary text-primary-foreground'
-                : 'bg-background border text-foreground',
-            )}
+            className={cn('group/turn flex flex-col', t.role === 'user' ? 'items-end' : 'items-start')}
           >
-            {t.content || <Loader2 className="size-3.5 animate-spin text-muted-foreground" />}
+            <div
+              data-testid={t.role === 'user' ? 'ai-debug-turn-user' : 'ai-debug-turn-assistant'}
+              className={cn(
+                'max-w-[90%] whitespace-pre-wrap break-words rounded-lg px-2.5 py-1.5 text-[13px] leading-relaxed',
+                t.role === 'user'
+                  ? 'bg-primary text-primary-foreground'
+                  : 'bg-background border text-foreground',
+              )}
+            >
+              {t.content || <Loader2 className="size-3.5 animate-spin text-muted-foreground" />}
+            </div>
+            {t.role === 'assistant' && t.content && (
+              <button
+                type="button"
+                data-testid="ai-debug-insert-block"
+                className="mt-0.5 flex items-center gap-1 rounded px-1.5 py-0.5 text-[10px] text-muted-foreground opacity-0 hover:bg-accent hover:text-foreground group-hover/turn:opacity-100"
+                title="将这条回答作为新块插入当前笔记（可撤销）"
+                onClick={() => insertIntoActiveEditor(t.content, 'end')}
+              >
+                <CornerDownLeft className="size-3" /> 插入为块
+              </button>
+            )}
           </div>
         ))}
         {reasoning && (
