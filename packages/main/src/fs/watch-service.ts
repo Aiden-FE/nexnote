@@ -8,6 +8,8 @@ import { EXCLUDED_DIRS } from './fs-service';
  * 把外部/内部文件变化以 fs:changed 事件推给渲染层（页面树实时同步）。
  *
  * - vault 打开/关闭/切换时调用 sync()（由 VaultSession.onChanged 驱动）
+ * - 多次 sync() 串行化（syncChain），快速切换 vault 时不会出现「前一个 watcher 仍活着」
+ * - emit 时再校验 getRoot()：若调用方已切换 vault，丢弃该事件
  * - ignoreInitial：初始树由 fs:listTree 一次性拉取，避免启动事件风暴
  * - 始终忽略 .nexnote/ .git/ .trash/ node_modules（与树/扫描口径一致）
  * - awaitWriteFinish：合并写文件的抖动（渲染层另有防抖重扫标签）
@@ -16,6 +18,7 @@ export class VaultWatchService {
   private watcher: FSWatcher | null = null;
   private watchedRoot: string | null = null;
   private readyPromise: Promise<void> | null = null;
+  private syncChain: Promise<void> = Promise.resolve();
 
   constructor(
     private readonly deps: {
@@ -29,20 +32,30 @@ export class VaultWatchService {
     return this.watchedRoot;
   }
 
-  /** root 变化时切换 watcher；root 为 null 时停止监听。幂等。 */
-  async sync(): Promise<void> {
+  /** root 变化时切换 watcher；root 为 null 时停止监听。幂等；多次调用按顺序串行执行。 */
+  sync(): Promise<void> {
+    const next = this.syncChain.then(() => this.runSync());
+    // 串行：即使当前 sync 抛错也继续
+    this.syncChain = next.catch(() => undefined);
+    return next;
+  }
+
+  private async runSync(): Promise<void> {
     const root = this.deps.getRoot();
     if (root === this.watchedRoot) return;
     await this.stop();
     if (!root) return;
 
+    const capturedRoot = root;
     const toEvent = (kind: FsChangeEvent['kind']) => (absPath: string) => {
-      const rel = toRelative(root, absPath);
+      // 发送前再校验：调用方已切换 vault 则丢弃
+      if (this.deps.getRoot() !== capturedRoot) return;
+      const rel = toRelative(capturedRoot, absPath);
       if (rel === null || rel.length === 0) return;
       this.deps.emit({ kind, path: rel });
     };
 
-    const watcher = watch(root, {
+    const watcher = watch(capturedRoot, {
       ignored: (p: string) => EXCLUDED_DIRS.has(path.basename(p)),
       ignoreInitial: true,
       persistent: false,
@@ -57,8 +70,7 @@ export class VaultWatchService {
       .on('unlinkDir', toEvent('unlinkDir'))
       .on('error', (e) => this.deps.onError?.(e));
     this.watcher = watcher;
-    this.watchedRoot = root;
-    // ready = 初始扫描完成（ignoreInitial 下后续变化才开始推送）；测试与调用方可等待
+    this.watchedRoot = capturedRoot;
     this.readyPromise = new Promise<void>((resolve) => {
       watcher.once('ready', () => resolve());
     });

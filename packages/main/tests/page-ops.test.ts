@@ -164,6 +164,13 @@ describe('renameWithLinks 重命名/移动 + 全库链接更新（真实临时�
     expect(await service.readTextFile('index.md')).toBe('链接 [[c]] 与 [[c|别名]]');
   });
 
+  it('页面重命名同时更新普通 Markdown 链接', async () => {
+    await service.writeTextFile('index.md', '[短名](b.md#part) 与 [路径](./b.md)');
+    const r = await renameWithLinks(service, 'b.md', 'renamed.md');
+    expect(r.updatedFiles).toContain('index.md');
+    expect(await service.readTextFile('index.md')).toBe('[短名](renamed.md#part) 与 [路径](./renamed.md)');
+  });
+
   it('目录重命名更新其内页面的路径引用', async () => {
     await service.writeTextFile('dir/b.md', '目录页面');
     await service.writeTextFile('index.md', '[[dir/b]]');

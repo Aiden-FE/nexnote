@@ -6,6 +6,7 @@ import { VaultContext } from './shell/vault-context';
 import { WorkspaceView } from './shell/WorkspaceView';
 import { OnboardingWizard } from './onboarding/OnboardingWizard';
 import { CommandPalette, useCommandPaletteHotkey } from './palette/CommandPalette';
+import { SearchPanel, useSearchHotkey, useJumpToInjection } from './features/search';
 
 type StartupState =
   | { phase: 'loading' }
@@ -37,6 +38,8 @@ function App() {
   }, [refresh]);
 
   useCommandPaletteHotkey();
+  useSearchHotkey();
+  useJumpToInjection();
 
   return (
     <ThemeProvider>
@@ -51,6 +54,7 @@ function App() {
         )}
         {state.phase === 'ready' && <WorkspaceView vault={state.vault} />}
         <CommandPalette />
+        <SearchPanel />
       </VaultContext.Provider>
     </ThemeProvider>
   );

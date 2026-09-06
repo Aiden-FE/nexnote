@@ -2,6 +2,9 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { CornerDownLeft, Search } from 'lucide-react';
 import { commandRegistry, useRegistryItems, type CommandDef } from '../registries';
 import { usePaletteStore } from '../stores/palette-store';
+import { useUiStore } from '../stores/ui-store';
+import { useTabStore } from '../stores/tab-store';
+import { notifyPaletteQuery } from '../features/search';
 import { cn } from '../lib/utils';
 
 /** ⌘K 全局监听（App 挂载时注册一次）。 */
@@ -40,19 +43,43 @@ export function CommandPalette() {
 function PaletteInner() {
   const setOpen = usePaletteStore((s) => s.setOpen);
   const commands = useRegistryItems(commandRegistry);
+  const jumpResults = useUiStore((s) => s.jumpResults);
   const [query, setQuery] = useState('');
   const [activeIndex, setActiveIndex] = useState(0);
   const inputRef = useRef<HTMLInputElement>(null);
   const listRef = useRef<HTMLDivElement>(null);
 
+  // 输入变化 → 通知页面跳转注入器（index:jumpTo）
+  const onQueryChange = (value: string): void => {
+    setQuery(value);
+    setActiveIndex(0);
+    notifyPaletteQuery(value);
+  };
+
+  const jumpItems = useMemo(
+    () =>
+      jumpResults.map((r) => ({
+        id: `jump:${r.path}`,
+        title: r.title,
+        category: '页面',
+        run: () => {
+          useTabStore.getState().openPageTab(useTabStore.getState().activePaneId, r.path);
+        },
+      })) as CommandDef[],
+    [jumpResults],
+  );
+
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
-    return commands
+    const fromCommands = commands
       .map((cmd) => ({ cmd, s: score(cmd, q) }))
       .filter((x) => x.s > 0)
       .sort((a, b) => b.s - a.s)
       .map((x) => x.cmd);
-  }, [commands, query]);
+    // 有查询词时：页面跳转优先展示，命令随后（Obsidian ⌘K 行为）
+    if (q) return [...jumpItems, ...fromCommands];
+    return fromCommands;
+  }, [commands, query, jumpItems]);
 
   // 派生安全索引（过滤结果变短时自动钳制，无需 effect）
   const safeIndex = Math.min(activeIndex, Math.max(filtered.length - 1, 0));
@@ -109,8 +136,7 @@ function PaletteInner() {
             data-testid="palette-input"
             value={query}
             onChange={(e) => {
-              setQuery(e.target.value);
-              setActiveIndex(0);
+              onQueryChange(e.target.value);
             }}
             onKeyDown={onKeyDown}
             placeholder="搜索命令…"
