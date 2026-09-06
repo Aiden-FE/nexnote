@@ -266,8 +266,9 @@ export class LinkIndexService {
   }
   jumpTo(query: string, limit = 20): PageJumpResult[] {
     type JumpRow = { path: string; title: string; aliases: string };
-    const lowered = query.trim().toLowerCase(); const q = `%${lowered}%`; if (!lowered) return [];
-    const rows = this.db!.prepare(`SELECT path,title,aliases FROM pages WHERE lower(title) LIKE ? OR lower(aliases) LIKE ? OR lower(path) LIKE ? ORDER BY CASE WHEN lower(title) LIKE ? THEN 0 WHEN lower(aliases) LIKE ? THEN 1 ELSE 2 END,title LIMIT ?`).all(q, q, q, `${lowered}%`, `${lowered}%`, limit) as JumpRow[];
+    const lowered = query.trim().toLowerCase(); if (!lowered) return [];
+    const escaped = escLike(lowered); const q = `%${escaped}%`; const prefix = `${escaped}%`;
+    const rows = this.db!.prepare("SELECT path,title,aliases FROM pages WHERE lower(title) LIKE ? ESCAPE '\\' OR lower(aliases) LIKE ? ESCAPE '\\' OR lower(path) LIKE ? ESCAPE '\\' ORDER BY CASE WHEN lower(title) LIKE ? ESCAPE '\\' THEN 0 WHEN lower(aliases) LIKE ? ESCAPE '\\' THEN 1 ELSE 2 END,title LIMIT ?").all(q, q, q, prefix, prefix, limit) as JumpRow[];
     return rows.map((page) => ({ path: page.path, title: page.title, subtitle: page.path, match: page.title.toLowerCase().includes(lowered) ? 'title' : (JSON.parse(page.aliases) as string[]).some((alias) => alias.toLowerCase().includes(lowered)) ? 'alias' : 'path' }));
   }
   tags(flat = false): TagIndexEntry[] {

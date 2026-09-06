@@ -8,7 +8,7 @@ beforeEach(() => {
   useIndexStore.getState().reset();
 });
 
-describe('index tag loading', () => {
+describe('index async loading', () => {
   it('clears stale tags and exposes error state for legacy fallback', async () => {
     useIndexStore.setState({ tags: [{ tag: 'stale', pageCount: 1, descendantPageCount: 1, path: ['stale'] }] });
     (window as unknown as { nexnote: { invoke: () => Promise<BridgeResult> } }).nexnote = {
@@ -19,7 +19,22 @@ describe('index tag loading', () => {
     expect(useIndexStore.getState().tagsStatus).toBe('error');
   });
 
-  it('reset invalidates a pending load from the previous vault session', async () => {
+  it('reset invalidates backlinks from the previous vault even for the same page path', async () => {
+    let resolve!: (value: BridgeResult) => void;
+    (window as unknown as { nexnote: { invoke: () => Promise<BridgeResult> } }).nexnote = {
+      invoke: () => new Promise((done) => { resolve = done; }),
+    };
+    const pending = useIndexStore.getState().loadBacklinks('same.md');
+    useIndexStore.getState().reset();
+    // New vault happens to have the same path; the old result must remain invalid.
+    useIndexStore.setState({ backlinksFor: 'same.md', backlinksStatus: 'loading' });
+    resolve({ ok: true, data: [{ fromPath: 'old.md' }] });
+    await pending;
+    expect(useIndexStore.getState().backlinks).toEqual([]);
+    expect(useIndexStore.getState().backlinksStatus).toBe('loading');
+  });
+
+  it('reset invalidates a pending tag load from the previous vault session', async () => {
     let resolve!: (value: BridgeResult) => void;
     (window as unknown as { nexnote: { invoke: () => Promise<BridgeResult> } }).nexnote = {
       invoke: () => new Promise((done) => { resolve = done; }),

@@ -277,6 +277,15 @@ describe('LinkIndexService', () => {
     svc.close();
   });
 
+  it('jumpTo treats %, _, and backslash as literal query characters', async () => {
+    await page('literal.md', '', '# 100%_Done\\Path\n');
+    await page('wildcard.md', '', '# 100XXDoneXPath\n');
+    const svc = new LinkIndexService();
+    svc.setRoot(tmp);
+    expect(svc.jumpTo('100%_done\\path').map((hit) => hit.path)).toEqual(['literal.md']);
+    svc.close();
+  });
+
   it('删除 index.db 后重开自动全量重建（验收项 5）', async () => {
     await page('keep.md', '', '# Keep\n');
     const svc1 = new LinkIndexService();

@@ -30,11 +30,16 @@ interface IndexState {
 
 let eventsBound = false;
 let tagLoadGeneration = 0;
+let backlinkGeneration = 0;
 
 /** 进程内绑定一次 index:statusChanged 推送。 */
 export function bindIndexEvents(): void {
   if (eventsBound) return;
   eventsBound = true;
+  onEvent('vault:changed', () => {
+    // The same page path can exist in another vault; invalidate all pending responses.
+    useIndexStore.getState().reset();
+  });
   onEvent('index:statusChanged', (status) => {
     useIndexStore.getState().applyStatusEvent(status);
     // ready 事件意味着反链/标签可能已更新
@@ -65,18 +70,20 @@ export const useIndexStore = create<IndexState>((set, get) => ({
   },
 
   async loadBacklinks(pagePath) {
+    const generation = ++backlinkGeneration;
     set({ backlinksStatus: 'loading', backlinksFor: pagePath });
     try {
       const backlinks = await invoke('index:backlinks', { pagePath });
-      if (get().backlinksFor !== pagePath) return; // 已切换页面：丢弃过期结果
+      if (generation !== backlinkGeneration || get().backlinksFor !== pagePath) return;
       set({ backlinks, backlinksStatus: 'ready' });
     } catch (e) {
-      if (get().backlinksFor !== pagePath) return;
+      if (generation !== backlinkGeneration || get().backlinksFor !== pagePath) return;
       set({ backlinksStatus: 'error', error: e instanceof Error ? e.message : String(e), backlinks: [] });
     }
   },
 
   clearBacklinks() {
+    backlinkGeneration += 1;
     set({ backlinks: [], backlinksFor: null, backlinksStatus: 'idle' });
   },
 
@@ -110,6 +117,7 @@ export const useIndexStore = create<IndexState>((set, get) => ({
 
   reset() {
     tagLoadGeneration += 1;
+    backlinkGeneration += 1;
     set({
       status: { phase: 'idle', pagesTotal: 0, pagesIndexed: 0, mode: 'full' },
       backlinks: [],
