@@ -1,6 +1,8 @@
 /**
  * Obsidian wikilink 统一解析器（DEV-002 编辑器 + DEV-004 关系索引共享）。
  */
+import { extractMarkdownLinks } from './links';
+
 export interface WikilinkReference {
   /** 完整源码，如 [[title#heading|alias]] */
   raw: string;
@@ -39,62 +41,21 @@ export function parseWikilinkAtStart(src: string): WikilinkReference | null {
   };
 }
 
-/** 内部辅助：在单行 line 上抓取所有 wikilink，返回每条的 raw 长度以便 lastIndex 推进。 */
-function scanLine(line: string): { raw: string; inner: string; target: string; targetName: string; alias: string | null; anchor: string | null; colStart: number }[] {
-  const out: { raw: string; inner: string; target: string; targetName: string; alias: string | null; anchor: string | null; colStart: number }[] = [];
-  // Mask inline code without changing UTF-16 positions of following links.
-  const cleaned = line.replace(/`[^`]*`/g, (code) => ' '.repeat(code.length));
-  const re = /!?\[\[/g;
-  for (let m = re.exec(cleaned); m; m = re.exec(cleaned)) {
-    const parsed = parseWikilinkAtStart(line.slice(m.index));
-    if (!parsed) continue;
-    out.push({ ...parsed, colStart: m.index });
-    re.lastIndex = m.index + parsed.raw.length;
-  }
-  return out;
-}
-
 /**
- * 从整篇 Markdown 抽取 wikilinks；跳过 fenced code 与 inline code。
- * 每个引用包含原始字符串的 UTF-16 偏移与所在段落块序号（CRLF/LF 空行均为块边界）。
+ * 从整篇 Markdown 抽取 wikilinks（委托到共享 code-aware 解析器）。
+ * 跳过 fenced code 与 inline code（含多反引号）；偏移为 UTF-16，blockIndex 与块切分一致。
  */
 export function extractWikilinks(markdown: string): WikilinkReference[] {
-  const out: WikilinkReference[] = [];
-  let inFence = false;
-  let blockIndex = 0;
-  let cursor = 0;
-  let prevEmpty = false;
-  // Keep separators so cursor advances by the exact original UTF-16 length (LF or CRLF).
-  const lines = markdown.match(/[^\r\n]*(?:\r\n|\n|$)/g)?.filter((part, index, all) => part.length > 0 || index < all.length - 1) ?? [];
-  for (const lineWithSeparator of lines) {
-    const separator = lineWithSeparator.endsWith('\r\n') ? '\r\n' : lineWithSeparator.endsWith('\n') ? '\n' : '';
-    const rawLine = separator ? lineWithSeparator.slice(0, -separator.length) : lineWithSeparator;
-    const advance = rawLine.length + separator.length;
-    if (/^\s*(```|~~~)/.test(rawLine)) {
-      inFence = !inFence;
-      prevEmpty = false;
-      cursor += advance;
-      continue;
-    }
-    if (inFence) {
-      prevEmpty = false;
-      cursor += advance;
-      continue;
-    }
-    if (rawLine.trim().length === 0) {
-      // 连续空行只算一次块边界，从内容行跨到空行时递增
-      if (!prevEmpty) blockIndex += 1;
-      prevEmpty = true;
-      cursor += advance;
-      continue;
-    }
-    prevEmpty = false;
-    const colStart = cursor;
-    for (const item of scanLine(rawLine)) {
-      const offset = colStart + item.colStart;
-      out.push({ ...item, offset, blockIndex });
-    }
-    cursor += advance;
-  }
-  return out;
+  return extractMarkdownLinks(markdown)
+    .filter((link): link is Extract<typeof link, { kind: 'wiki' }> => link.kind === 'wiki')
+    .map((ref) => ({
+      raw: ref.raw,
+      inner: `${ref.target}${ref.anchor ?? ''}${ref.alias ? `|${ref.alias}` : ''}`,
+      target: `${ref.targetName}${ref.anchor ?? ''}`,
+      targetName: ref.targetName,
+      alias: ref.alias,
+      anchor: ref.anchor,
+      offset: ref.offset,
+      blockIndex: ref.blockIndex,
+    }));
 }

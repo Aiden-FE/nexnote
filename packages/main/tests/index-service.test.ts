@@ -92,6 +92,62 @@ describe('LinkIndexService', () => {
     svc.close();
   });
 
+  it('search returns the matching content block id and a block-local snippet', async () => {
+    await page('blocks.md', '', '# Blocks\n\nFirst unrelated paragraph.\n\nNeedle appears in this target block with context. ^target-block\n\nLast unrelated paragraph.\n');
+    const svc = new LinkIndexService();
+    svc.setRoot(tmp);
+    const hit = svc.search('needle').find((item) => item.path === 'blocks.md');
+    expect(hit).toMatchObject({ tier: 'content', blockId: 'target-block' });
+    expect(hit?.snippet).toContain('Needle appears in this target block');
+    expect(hit?.snippet).not.toContain('First unrelated paragraph');
+    svc.close();
+  });
+
+  it('ambiguous basename does not arbitrarily resolve to the last page', async () => {
+    await page('referrer.md', '', '# Ref\n\n短名引用 [[note]]；精确路径 [[x/note]]');
+    await page('x/note.md', '', '# Note in x');
+    await page('y/note.md', '', '# Note in y');
+    const svc = new LinkIndexService();
+    svc.setRoot(tmp);
+    // 同名 basename 跨目录歧义 → 短名 [[note]] 保持红链（不落到任意一页）
+    expect(svc.backlinks('x/note.md').map((b) => b.fromPath)).toEqual(['referrer.md']);
+    expect(svc.backlinks('y/note.md').map((b) => b.fromPath)).toEqual([]);
+    svc.close();
+  });
+
+  it('normal Markdown links resolve relative to their source dir, not by basename', async () => {
+    await page('dir/index.md', '', '[本地](b.md)');
+    await page('dir/b.md', '', '# Local target');
+    await page('b.md', '', '# Root target');
+    await page('other/index.md', '', '[本地](b.md)');
+    const svc = new LinkIndexService();
+    svc.setRoot(tmp);
+    // dir/index.md 的 [本地](b.md) → dir/b.md（源目录相对），不落到根 b.md
+    expect(svc.backlinks('dir/b.md').map((b) => b.fromPath)).toEqual(['dir/index.md']);
+    expect(svc.backlinks('b.md').map((b) => b.fromPath)).toEqual([]); // other/index → other/b（红链）；根 b 无入链
+    // 资源/外链不产生笔记反链
+    svc.close();
+  });
+
+  it('asset and external Markdown links do not create note backlinks', async () => {
+    await page('assets.md', '', '![封面](cover.png) [文档](doc.pdf) [站点](https://x.com/a.md) [真实](real.md)');
+    await page('real.md', '', '# Real note');
+    const svc = new LinkIndexService();
+    svc.setRoot(tmp);
+    expect(svc.backlinks('real.md').map((b) => b.fromPath)).toEqual(['assets.md']);
+    svc.close();
+  });
+
+  it('CJK substring search matches through FTS without LIKE fallback', async () => {
+    await page('p.md', '', '# P\n\n这是知识库搜索基准的正文片段');
+    const svc = new LinkIndexService();
+    svc.setRoot(tmp);
+    for (const q of ['基准', '搜索', '识库', '正文']) {
+      expect(svc.search(q).some((h) => h.path === 'p.md'), `query ${q}`).toBe(true);
+    }
+    svc.close();
+  });
+
   it('search applies tag tier before limit across a global candidate set', async () => {
     for (let i = 0; i < 1_001; i += 1) await page(`content-tag-${i}.md`, '', `# Page ${i}\n\nneedle body\n`);
     await page('tag.md', '---\ntags: [needle]\n---\n', '# Untitled\n');

@@ -1,6 +1,6 @@
 import { createHash } from 'node:crypto';
 import * as path from 'node:path';
-import { extractWikilinks } from '@nexnote/shared';
+import { extractMarkdownLinks, resolveNoteLinkTarget, splitMarkdownBlocks } from '@nexnote/shared';
 import { extractInlineTags, parseFrontmatterTags, splitFrontmatter } from '../fs/page-ops';
 
 export interface ParsedLink {
@@ -39,30 +39,8 @@ function classifyBlock(raw: string): string {
 }
 
 function parseBlocks(body: string): { blocks: ParsedBlock[]; rawBlocks: Array<{ text: string; start: number; position: number }> } {
-  // Keep CRLF/LF blank-line boundaries aligned with shared extractWikilinks, ignoring blanks inside fences.
-  const rawBlocks: Array<{ text: string; start: number; position: number }> = [];
-  let start = 0;
-  let position = 0;
-  let inFence = false;
-  let previousBlank = false;
-  const lines = body.match(/[^\r\n]*(?:\r\n|\n|$)/g)?.filter((part, index, all) => part.length > 0 || index < all.length - 1) ?? [];
-  let cursor = 0;
-  for (const lineWithSeparator of lines) {
-    const separator = lineWithSeparator.endsWith('\r\n') ? '\r\n' : lineWithSeparator.endsWith('\n') ? '\n' : '';
-    const line = separator ? lineWithSeparator.slice(0, -separator.length) : lineWithSeparator;
-    if (/^\s*(```|~~~)/.test(line)) inFence = !inFence;
-    const blank = !inFence && line.trim().length === 0;
-    if (blank && !previousBlank) {
-      rawBlocks.push({ text: body.slice(start, cursor), start, position });
-      start = cursor + lineWithSeparator.length;
-      position += 1;
-    } else if (blank) {
-      start = cursor + lineWithSeparator.length;
-    }
-    previousBlank = blank;
-    cursor += lineWithSeparator.length;
-  }
-  rawBlocks.push({ text: body.slice(start), start, position });
+  // 共享块切分：与 extractMarkdownLinks.blockIndex 严格对齐（CRLF/LF、fence 内空行均已处理）。
+  const rawBlocks = splitMarkdownBlocks(body);
   const blocks: ParsedBlock[] = [];
   for (const segment of rawBlocks) {
     const { text: raw, position: blockPosition } = segment;
@@ -79,43 +57,34 @@ export function parsePageMarkdown(pagePath: string, text: string): ParsedPage {
   const { frontmatter, body } = splitFrontmatter(text);
   const title = /^#\s+(.+?)\s*$/m.exec(body)?.[1]?.trim() ?? path.posix.basename(pagePath, '.md');
   const aliases = yamlList(frontmatter, 'aliases');
-  const { blocks, rawBlocks } = parseBlocks(body);
+  const { blocks } = parseBlocks(body);
   const links: ParsedLink[] = [];
-  for (const ref of extractWikilinks(body)) {
+  for (const ref of extractMarkdownLinks(body)) {
+    if (ref.kind === 'wiki') {
+      links.push({
+        targetRaw: `${ref.targetName}${ref.anchor ?? ''}`,
+        targetName: ref.targetName,
+        alias: ref.alias,
+        anchor: ref.anchor,
+        linkType: 'wiki',
+        sourceText: ref.raw,
+        sourceBlockIndex: ref.blockIndex,
+      });
+      continue;
+    }
+    if (ref.isImage) continue; // ![...](...) 为资源嵌入，不计入笔记关系
+    // 普通链接：相对源文件目录归一化到 vault 相对 stem；外链/锚点/资源/路径逃逸一律跳过。
+    const resolved = resolveNoteLinkTarget(pagePath, ref.destination);
+    if (resolved === null) continue;
+    const hash = ref.destination.indexOf('#');
     links.push({
-      targetRaw: ref.inner,
-      targetName: ref.targetName,
-      alias: ref.alias,
-      anchor: ref.anchor,
-      linkType: 'wiki',
+      targetRaw: ref.destination,
+      targetName: resolved,
+      alias: null,
+      anchor: hash < 0 ? null : ref.destination.slice(hash),
+      linkType: 'normal',
       sourceText: ref.raw,
       sourceBlockIndex: ref.blockIndex,
-    });
-  }
-  // Mask fenced/inline code at equal UTF-16 length before scanning normal Markdown links.
-  let inFence = false;
-  const searchableBody = body.split(/(?<=\n)/).map((line) => {
-    if (/^\s*(```|~~~)/.test(line)) { inFence = !inFence; return ' '.repeat(line.length); }
-    if (inFence) return ' '.repeat(line.length);
-    return line.replace(/`[^`]*`/g, (code) => ' '.repeat(code.length));
-  }).join('');
-  for (const match of searchableBody.matchAll(/(?<!!)\[[^\]]*\]\(([^)]+)\)/g)) {
-    const raw = (match[1] ?? '').trim();
-    if (!raw || /^[a-z][a-z0-9+.-]*:/i.test(raw) || raw.startsWith('#')) continue;
-    const hash = raw.indexOf('#');
-    const targetPart = (hash < 0 ? raw : raw.slice(0, hash)).replace(/^\.\//, '').replace(/\.md$/i, '');
-    if (!targetPart) continue;
-    const sourceText = body.slice(match.index, (match.index ?? 0) + match[0].length);
-    const offset = match.index ?? 0;
-    const blockIndex = rawBlocks.find((block) => offset >= block.start && offset < block.start + block.text.length)?.position;
-    links.push({
-      targetRaw: raw,
-      targetName: targetPart,
-      alias: null,
-      anchor: hash < 0 ? null : raw.slice(hash),
-      linkType: 'normal',
-      sourceText,
-      sourceBlockIndex: blockIndex ?? 0,
     });
   }
   const tags = [...new Set([...(frontmatter ? parseFrontmatterTags(frontmatter) : []), ...extractInlineTags(body)])].sort();

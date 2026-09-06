@@ -4,22 +4,68 @@ import * as path from 'node:path';
 import type { Backlink, IndexStatus, PageIndexSummary, PageJumpResult, SearchHit, TagIndexEntry } from '@nexnote/shared';
 import { parsePageMarkdown, type ParsedPage } from './markdown-indexer';
 
-const SCHEMA_VERSION = 2;
+const SCHEMA_VERSION = 3;
 type Db = Database.Database;
 
 function emptyStatus(): IndexStatus { return { phase: 'idle', pagesTotal: 0, pagesIndexed: 0, mode: 'full' }; }
-/** 用户查询 → FTS5 前缀短语表达式（去 # 前缀、引号转义、多词 AND）。 */
-function escFts(value: string): string {
-  return value
-    .replace(/"/g, '""')
-    .split(/\s+/)
-    .map((t) => t.replace(/^#+/, ''))
-    .filter(Boolean)
-    .map((t) => `"${t}"*`)
-    .join(' AND ');
-}
-function stem(value: string): string { return value.replace(/\.md$/i, '').replace(/^\.\//, ''); }
 function escLike(value: string): string { return value.replace(/[\\%_]/g, (char) => `\\${char}`); }
+
+// ── CJK/拉丁 FTS 分析器 ─────────────────────────────────────────
+// unicode61 把连续中文当作一个 token，子串（如“搜索基准”里的“基准”）无法前缀命中。
+// 为 CJK run 建 unigram + bigram 索引，查询用 bigram AND，既支持中文子串又走 FTS（无全表 LIKE 扫描）。
+const CJK = '\u3400-\u4DBF\u4E00-\u9FFF\uF900-\uFAFF';
+const TOKEN_RE = new RegExp(`([${CJK}]+)|([a-z0-9]+)`, 'g');
+function quoteToken(token: string): string { return `"${token.replace(/"/g, '""')}"`; }
+/** 索引侧：CJK run → unigram+bigram；拉丁/数字 → 小写词。 */
+function ftsIndexTokens(text: string): string[] {
+  const tokens: string[] = [];
+  const lower = text.toLowerCase();
+  TOKEN_RE.lastIndex = 0;
+  let m: RegExpExecArray | null;
+  while ((m = TOKEN_RE.exec(lower)) !== null) {
+    if (m[1]) {
+      const run = m[1];
+      for (let i = 0; i < run.length; i += 1) tokens.push(run[i]!);
+      for (let i = 0; i + 1 < run.length; i += 1) tokens.push(run.slice(i, i + 2));
+    } else if (m[2]) {
+      tokens.push(m[2]);
+    }
+  }
+  return tokens;
+}
+/** 查询侧：CJK run（≥2）→ bigram AND；单字 → unigram；拉丁词 → 前缀匹配。 */
+function ftsQueryExpr(query: string): string {
+  const terms: string[] = [];
+  const lower = query.toLowerCase();
+  TOKEN_RE.lastIndex = 0;
+  let m: RegExpExecArray | null;
+  while ((m = TOKEN_RE.exec(lower)) !== null) {
+    if (m[1]) {
+      const run = m[1];
+      if (run.length === 1) terms.push(quoteToken(run));
+      else for (let i = 0; i + 1 < run.length; i += 1) terms.push(quoteToken(run.slice(i, i + 2)));
+    } else if (m[2]) {
+      terms.push(`${quoteToken(m[2])}*`);
+    }
+  }
+  return terms.join(' AND ');
+}
+/** 在命中块内容中按词定位，返回 block-local 上下文片段。 */
+function blockLocalSnippet(content: string, terms: string[]): string {
+  if (!content) return '';
+  const lower = content.toLowerCase();
+  let idx = -1;
+  for (const term of terms) {
+    const at = lower.indexOf(term);
+    if (at >= 0 && (idx === -1 || at < idx)) idx = at;
+  }
+  if (idx === -1) return '';
+  const lead = 40;
+  const start = Math.max(0, idx - lead);
+  const end = Math.min(content.length, idx + terms[0]!.length + 100);
+  return (start > 0 ? '…' : '') + content.slice(start, end) + (end < content.length ? '…' : '');
+}
+
 
 /** Canonical vault-relative path, or null for absolute/traversal input. */
 function vaultRelativePath(root: string, relPath: string): string | null {
@@ -94,6 +140,13 @@ export class LinkIndexService {
         UPDATE links SET source_text = target_raw WHERE source_text = '';
       `);
     }
+    if (version < 3) {
+      // 派生缓存可重建：升级为「原始列 UNINDEXED + CJK 感知 tok 列」的 FTS 表。
+      db.exec(`
+        DROP TABLE IF EXISTS page_fts;
+        CREATE VIRTUAL TABLE page_fts USING fts5(path UNINDEXED, title UNINDEXED, aliases UNINDEXED, tags UNINDEXED, content UNINDEXED, tok);
+      `);
+    }
     db.pragma(`user_version = ${SCHEMA_VERSION}`);
   }
   private allMarkdownFiles(): string[] {
@@ -102,8 +155,17 @@ export class LinkIndexService {
     walk(''); return found.sort();
   }
   rebuild(): IndexStatus {
-    const root = this.requireRoot(); const files = this.allMarkdownFiles(); this.publish({ phase: 'scanning', pagesTotal: files.length, pagesIndexed: 0, mode: 'full' });
-    const pages = files.map((file) => parsePageMarkdown(file, readFileSync(path.join(root, file), 'utf8')));
+    const root = this.requireRoot();
+    let files: string[];
+    try { files = this.allMarkdownFiles(); }
+    catch (e) { this.publish({ phase: 'error', pagesTotal: 0, pagesIndexed: 0, mode: 'full', error: e instanceof Error ? e.message : String(e) }); return this.status; }
+    this.publish({ phase: 'scanning', pagesTotal: files.length, pagesIndexed: 0, mode: 'full' });
+    // 单个文件读取/解析失败不阻断全库重建（派生缓存尽力而为），错误集中到 transaction/边界。
+    const pages: ParsedPage[] = [];
+    for (const file of files) {
+      try { pages.push(parsePageMarkdown(file, readFileSync(path.join(root, file), 'utf8'))); }
+      catch { /* 跳过不可读/损坏文件 */ }
+    }
     const db = this.db!; const run = db.transaction(() => { db.exec('DELETE FROM page_fts; DELETE FROM links; DELETE FROM tags; DELETE FROM blocks; DELETE FROM pages;'); for (const page of pages) { this.upsertPage(page, false); this._status.pagesIndexed += 1; if (this._status.pagesIndexed % 25 === 0 || this._status.pagesIndexed === files.length) this.onStatus(this.status); } this.resolveLinks(); });
     try { run(); this.publish({ phase: 'ready', pagesTotal: files.length, pagesIndexed: files.length, mode: 'full' }); } catch (e) { this.publish({ ...this._status, phase: 'error', error: e instanceof Error ? e.message : String(e) }); }
     return this.status;
@@ -148,7 +210,10 @@ export class LinkIndexService {
       for (const safePath of paths) {
         const abs = path.join(root, safePath);
         if (!existsSync(abs)) this.deletePath(safePath);
-        else this.upsertPage(parsePageMarkdown(safePath, readFileSync(abs, 'utf8')), false);
+        else {
+          try { this.upsertPage(parsePageMarkdown(safePath, readFileSync(abs, 'utf8')), false); }
+          catch { /* 跳过不可读/损坏文件，其余批次照常 */ }
+        }
       }
       this.resolveLinks(); // once per debounce batch, not once per file
     });
@@ -172,27 +237,48 @@ export class LinkIndexService {
       linkInsert.run(id,null,item.targetRaw,item.targetName,item.linkType,item.anchor,sourceBlockId,item.sourceText);
     }
     const tag = db.prepare('INSERT INTO tags(page_id,tag_name,tag_path) VALUES(?,?,?)'); for (const value of page.tags) tag.run(id,value,value);
-    db.prepare('INSERT INTO page_fts(path,title,aliases,tags,content) VALUES(?,?,?,?,?)').run(page.path,page.title,page.aliases.join(' '),page.tags.join(' '),page.body);
+    const tok = ftsIndexTokens([page.title, page.aliases.join(' '), page.tags.join(' '), page.body].join('\n')).join(' ');
+    db.prepare('INSERT INTO page_fts(path,title,aliases,tags,content,tok) VALUES(?,?,?,?,?,?)').run(page.path,page.title,page.aliases.join(' '),page.tags.join(' '),page.body,tok);
     if (resolve) this.resolveLinks();
   }
   /** Resolve target; priority required by spec: alias > title > filename/path. */
   private resolveLinks(): void {
     const db = this.db!;
     const pages = db.prepare('SELECT id,path,title,aliases FROM pages').all() as Array<{ id: number; path: string; title: string; aliases: string }>;
-    const lookup = new Map<string, number>();
-    // Lowest priority first; later writes override collisions.
+    // 精确 vault 相对 stem（含子目录）→ id。普通链接已归一化到 stem，wiki 的 [[dir/name]] 也走这里。
+    const byPath = new Map<string, number>();
+    for (const page of pages) byPath.set(page.path.replace(/\.md$/i, '').toLowerCase(), page.id);
+    // basename：同名 basename 跨多个目录时为歧义，不武断 last-win（保持红链）。
+    const basenameOwners = new Map<string, Set<number>>();
+    const ownerOf = (map: Map<string, Set<number>>, key: string, id: number): void => {
+      let set = map.get(key); if (!set) { set = new Set(); map.set(key, set); }
+      set.add(id);
+    };
+    for (const page of pages) ownerOf(basenameOwners, path.posix.basename(page.path, path.posix.extname(page.path)).toLowerCase(), page.id);
+    const uniqueBasename = new Map<string, number>();
+    for (const [key, owners] of basenameOwners) if (owners.size === 1) uniqueBasename.set(key, [...owners][0]!);
+    // alias / title：多页声明同名时为歧义，唯一时才解析（优先级 alias > title）。
+    const aliasOwners = new Map<string, Set<number>>();
+    const titleOwners = new Map<string, Set<number>>();
     for (const page of pages) {
-      lookup.set(stem(page.path).toLowerCase(), page.id);
-      lookup.set(path.posix.basename(page.path, path.posix.extname(page.path)).toLowerCase(), page.id);
-      lookup.set(page.path.replace(/\.md$/i, '').toLowerCase(), page.id);
+      ownerOf(titleOwners, page.title.toLowerCase(), page.id);
+      for (const alias of JSON.parse(page.aliases) as string[]) ownerOf(aliasOwners, alias.toLowerCase(), page.id);
     }
-    for (const page of pages) lookup.set(page.title.toLowerCase(), page.id);
-    for (const page of pages) {
-      for (const alias of JSON.parse(page.aliases) as string[]) lookup.set(alias.toLowerCase(), page.id);
-    }
+    const unique = (map: Map<string, Set<number>>, key: string): number | null => {
+      const owners = map.get(key); return owners && owners.size === 1 ? [...owners][0]! : null;
+    };
     const update = db.prepare('UPDATE links SET target_page_id=? WHERE id=?');
     for (const link of db.prepare('SELECT id,target_name FROM links').all() as Array<{ id: number; target_name: string }>) {
-      update.run(lookup.get(link.target_name.toLowerCase()) ?? null, link.id);
+      const name = link.target_name.toLowerCase();
+      let target: number | null;
+      if (name.includes('/')) {
+        // 路径化目标：仅精确 stem 命中，绝不 basename 误匹配其他目录。
+        target = byPath.get(name) ?? null;
+      } else {
+        // 短名：alias > title > 唯一 basename；歧义一律留红链。
+        target = unique(aliasOwners, name) ?? unique(titleOwners, name) ?? uniqueBasename.get(name) ?? null;
+      }
+      update.run(target, link.id);
     }
   }
   backlinks(pagePath: string): Backlink[] {
@@ -228,47 +314,77 @@ export class LinkIndexService {
     });
   }
   /**
-   * FTS 全文搜索：
-   * - 主路径 FTS5（含 LIKE 子串补偿以覆盖 unicode61 对连续中文短子串的弱支持）
-   * - FTS query 抛错（malformed）不会吞掉 LIKE 结果；LIKE 路径独立 try/catch
+   * FTS 全文搜索（CJK 感知）：
+   * - 主路径 FTS5（tok 列：CJK unigram+bigram、拉丁前缀），中文子串也走 FTS，无全表 LIKE 扫描。
+   * - 仅当 FTS 抛错（malformed）才回退有界 LIKE；FTS 成功（即使 0 行）不做 unbounded leading-wildcard LIKE。
+   * - tier 为 term-wise：每个词按 title>tag>alias>content 累积命中；排序前不 cap，最后才 slice(limit)。
    */
   search(query: string, limit = 50): SearchHit[] {
-    const needle = query.trim().replace(/^#+/, ''); if (!needle) return [];
-    const m = escFts(needle);
+    const needle = query.trim().replace(/^#+/, '');
+    if (!needle) return [];
     const db = this.db!;
-    type RawHit = { path: string; title: string; aliases: string; tags: string; content: string; snippet: string; rank: number };
-    // Tier ordering is application-level; fetch the complete match set before applying caller limit.
-    let ftsRows: RawHit[] = [];
-    let ftsSucceeded = false;
-    if (m) {
+    type RawHit = { path: string; title: string; aliases: string; tags: string; content: string; rank: number };
+    let rows: RawHit[] = [];
+    let ftsOk = false;
+    const expr = ftsQueryExpr(needle);
+    if (expr) {
       try {
-        ftsRows = db.prepare(`SELECT path,title,aliases,tags,content,snippet(page_fts,4,'','', ' … ',12) snippet,-bm25(page_fts) rank FROM page_fts WHERE page_fts MATCH ?`).all(m) as RawHit[];
-        ftsSucceeded = ftsRows.length > 0;
+        rows = db.prepare('SELECT path,title,aliases,tags,content,-bm25(page_fts) rank FROM page_fts WHERE page_fts MATCH ?').all(expr) as RawHit[];
+        ftsOk = true;
       } catch (e) {
-        // Only an FTS failure needs the leading-wildcard LIKE compatibility fallback.
-        this.onStatus({ ...this._status, phase: this._status.phase, error: `search fts: ${e instanceof Error ? e.message : String(e)}` });
+        this.onStatus({ ...this._status, phase: this._status.phase, error: 'search fts: ' + (e instanceof Error ? e.message : String(e)) });
       }
     }
-    let likeRows: RawHit[] = [];
-    if (!ftsSucceeded) {
+    if (!ftsOk) {
+      // 仅 FTS 异常时的兼容回退（FTS 正常不触发，避免千页级全表 %LIKE% 扫描）。
       try {
-        const terms = needle.toLowerCase().split(/\s+/).filter(Boolean);
-        const clauses = terms.map(() => "(lower(title) LIKE ? ESCAPE '\\' OR lower(aliases) LIKE ? ESCAPE '\\' OR lower(tags) LIKE ? ESCAPE '\\' OR lower(content) LIKE ? ESCAPE '\\')").join(' AND ');
-        const values = terms.flatMap((term) => Array(4).fill(`%${escLike(term)}%`));
-        likeRows = db.prepare(`SELECT path,title,aliases,tags,content,'' snippet,0 rank FROM page_fts WHERE ${clauses}`).all(...values) as RawHit[];
+        const lt = needle.toLowerCase().split(/\s+/).filter(Boolean);
+        const clauses = lt.map(() => "(lower(title) LIKE ? ESCAPE '\\' OR lower(aliases) LIKE ? ESCAPE '\\' OR lower(tags) LIKE ? ESCAPE '\\' OR lower(content) LIKE ? ESCAPE '\\')").join(' AND ');
+        const values = lt.flatMap((term) => Array(4).fill('%' + escLike(term) + '%'));
+        rows = db.prepare('SELECT path,title,aliases,tags,content,0 rank FROM page_fts WHERE ' + clauses).all(...values) as RawHit[];
       } catch (e) {
-        this.onStatus({ ...this._status, phase: this._status.phase, error: `search like: ${e instanceof Error ? e.message : String(e)}` });
+        this.onStatus({ ...this._status, phase: this._status.phase, error: 'search like: ' + (e instanceof Error ? e.message : String(e)) });
       }
     }
-    const merged = new Map<string, RawHit>(); for (const r of [...ftsRows, ...likeRows]) { if (!merged.has(r.path)) merged.set(r.path, r); }
-    const q = needle.toLowerCase(); const order: Record<SearchHit['tier'], number> = { title: 0, tag: 1, alias: 2, content: 3 };
-    const hits = [...merged.values()].map((r): SearchHit => {
-      const tier: SearchHit['tier'] = r.title.toLowerCase().includes(q) ? 'title' : r.tags.toLowerCase().includes(q) ? 'tag' : r.aliases.toLowerCase().includes(q) ? 'alias' : 'content';
-      const i = r.content.toLowerCase().indexOf(q); const snippet = r.snippet || (i >= 0 ? `${i > 40 ? '…' : ''}${r.content.slice(Math.max(0, i - 40), i + q.length + 100)}` : '');
-      return { path: r.path, title: r.title, tier, snippet, rank: r.rank };
+    const merged = new Map<string, RawHit>();
+    for (const r of rows) {
+      if (!merged.has(r.path)) merged.set(r.path, r);
+    }
+    const terms = needle.toLowerCase().split(/\s+/).filter(Boolean);
+    const every = (field: string): boolean => terms.every((t) => field.includes(t));
+    const order: Record<SearchHit['tier'], number> = { title: 0, tag: 1, alias: 2, content: 3 };
+    // term-wise 分层（排序前不 cap），随后一次性批量取正文块（单查询，避免 N+1）。
+    const prelim = [...merged.values()].map((r) => {
+      const title = r.title.toLowerCase();
+      const tags = title + '\n' + r.tags.toLowerCase();
+      const aliases = tags + '\n' + r.aliases.toLowerCase();
+      const tier: SearchHit['tier'] = every(title) ? 'title' : every(tags) ? 'tag' : every(aliases) ? 'alias' : 'content';
+      return { r, tier };
+    });
+    const blockMap = this.contentBlocksFor(db, prelim.filter((p) => p.tier === 'content').map((p) => p.r.path), terms);
+    const hits = prelim.map(({ r, tier }): SearchHit => {
+      const block = tier === 'content' ? blockMap.get(r.path) : undefined;
+      const content = block?.content ?? r.content;
+      const snippet = blockLocalSnippet(content, terms);
+      return { path: r.path, title: r.title, tier, snippet, blockId: block?.blockId ?? undefined, rank: r.rank };
     });
     return hits.sort((a, b) => order[a.tier] - order[b.tier] || b.rank - a.rank).slice(0, limit);
   }
+
+  /** 单查询批量取命中正文块：范围仅限候选页（有界），块需包含全部词（CJK 子串 LIKE）。 */
+  private contentBlocksFor(db: Db, paths: string[], terms: string[]): Map<string, { blockId: string | null; content: string }> {
+    const map = new Map<string, { blockId: string | null; content: string }>();
+    if (paths.length === 0 || terms.length === 0) return map;
+    const placeholders = paths.map(() => '?').join(',');
+    const termClauses = terms.map(() => "lower(b.content_text) LIKE ? ESCAPE '\\'").join(' AND ');
+    const sql = 'SELECT p.path path, b.block_id blockId, b.content_text content FROM blocks b JOIN pages p ON p.id = b.page_id WHERE p.path IN (' + placeholders + ') AND ' + termClauses + ' ORDER BY p.path, b.position';
+    const values = [...paths, ...terms.map((t) => '%' + escLike(t) + '%')];
+    for (const row of db.prepare(sql).all(...values) as Array<{ path: string; blockId: string | null; content: string }>) {
+      if (!map.has(row.path)) map.set(row.path, { blockId: row.blockId, content: row.content });
+    }
+    return map;
+  }
+
   jumpTo(query: string, limit = 20): PageJumpResult[] {
     type JumpRow = { path: string; title: string; aliases: string };
     const lowered = query.trim().toLowerCase(); if (!lowered) return [];
@@ -305,7 +421,7 @@ export class LinkIndexService {
   }
   /** 返回命中该 tag 或其任意后代 tag 的页面路径（子树过滤）。 */
   tagPages(tag: string): string[] {
-    return (this.db!.prepare("SELECT DISTINCT p.path FROM tags t JOIN pages p ON p.id=t.page_id WHERE t.tag_name=? OR t.tag_name LIKE ? ORDER BY p.path").all(tag, `${tag}/%`) as Array<{ path: string }>).map((row) => row.path);
+    return (this.db!.prepare("SELECT DISTINCT p.path FROM tags t JOIN pages p ON p.id=t.page_id WHERE t.tag_name=? OR t.tag_name LIKE ? ESCAPE '\\' ORDER BY p.path").all(tag, `${escLike(tag)}/%`) as Array<{ path: string }>).map((row) => row.path);
   }
   pageSummary(pagePath: string): PageIndexSummary | null {
     type SummaryRow = { path: string; title: string; aliases: string; updated_at: string | null; blockCount: number; wordCount: number };
