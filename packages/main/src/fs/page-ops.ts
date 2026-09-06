@@ -218,6 +218,23 @@ export function splitFrontmatter(text: string): { frontmatter: string | null; bo
   return { frontmatter: m[1]!, body: text.slice(m[0].length) };
 }
 
+/** Set a numeric scalar in YAML frontmatter, creating the fence when needed. Returns null when already current. */
+export function setFrontmatterNumber(text: string, key: string, value: number): string | null {
+  const line = `${key}: ${value}`;
+  const match = /^---\r?\n([\s\S]*?)\r?\n---\r?\n?/.exec(text);
+  if (!match) return `---\n${line}\n---\n\n${text}`;
+  const fence = match[0];
+  const existing = new RegExp(`^${key}:\\s*.*$`, 'm').exec(fence);
+  if (existing?.[0] === line) return null;
+  if (existing) {
+    const updated = fence.slice(0, existing.index) + line + fence.slice((existing.index ?? 0) + existing[0].length);
+    return text.slice(0, match.index) + updated + text.slice((match.index ?? 0) + fence.length);
+  }
+  const closing = fence.lastIndexOf('---');
+  const updated = fence.slice(0, closing) + line + '\n' + fence.slice(closing);
+  return text.slice(0, match.index) + updated + text.slice((match.index ?? 0) + fence.length);
+}
+
 /**
  * 扫描全库标签（DEV-003 基础版）：frontmatter tags + 内联 #tag 聚合。
  * DEV-004 关系索引完成后升级为索引驱动。

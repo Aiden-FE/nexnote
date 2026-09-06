@@ -14,6 +14,7 @@ import { AiStore } from './ai/ai-store';
 import { AiService } from './ai/ai-service';
 import { createSecretVault } from './ai/secret-store';
 import { GitService } from './git/git-service';
+import { ConfidenceService } from './confidence/confidence-service';
 
 const isSmokeMode = process.env.NEXNOTE_SMOKE === '1';
 
@@ -46,11 +47,18 @@ async function bootstrap(): Promise<void> {
     windows,
     onChanged: () => {
       const root = vaultSession.getCurrent()?.root ?? null;
+      git.setRoot(root);
       index.setRoot(root);
       void watch.sync();
     },
   });
-  const index = new LinkIndexService((status) => windows?.sendToMainWindow('index:statusChanged', status));
+  let confidenceService: ConfidenceService | null = null;
+  const index = new LinkIndexService(
+    (status) => windows?.sendToMainWindow('index:statusChanged', status),
+    (paths) => {
+      if (confidenceService) void confidenceService.refresh(paths === null ? undefined : paths);
+    },
+  );
   // 文件监视（DEV-003）：事件同时驱动树刷新与 DEV-004 的防抖单文件索引。
   const watch = new VaultWatchService({
     getRoot: () => vaultSession.getCurrent()?.root ?? null,
@@ -70,6 +78,16 @@ async function bootstrap(): Promise<void> {
   const git = new GitService({
     useSystemGit: appStore.getUseSystemGit(),
     defaultDebounceMs: appStore.getAutoCommitDebounceMs(),
+  });
+  const confidence = new ConfidenceService(
+    index,
+    git,
+    (paths) => windows?.sendToMainWindow('index:confidenceChanged', { paths }),
+    (error) => log('confidence error:', error),
+  );
+  confidenceService = confidence;
+  git.onCommitted((root, files) => {
+    if (root === (vaultSession.getCurrent()?.root ?? null)) void confidence.refresh(files);
   });
 
   // AI credentials live in the native OS credential manager; safeStorage is migration-only.
@@ -110,6 +128,7 @@ async function bootstrap(): Promise<void> {
     },
     watch,
     index,
+    confidence,
     appInfo() {
       return {
         version: app.getVersion(),

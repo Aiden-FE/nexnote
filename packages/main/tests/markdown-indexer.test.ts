@@ -20,6 +20,13 @@ describe('parsePageMarkdown', () => {
     expect(parsed.blocks.some((block) => block.blockId === 'src-block')).toBe(true);
   });
 
+  it('parses confidence_boost as a number without requiring the confidence field', () => {
+    const parsed = parsePageMarkdown('boost.md', '---\nconfidence_boost: 72\n---\n# Boost\n');
+    expect(parsed.confidenceBoost).toBe(72);
+    expect(parsePageMarkdown('plain.md', '# Plain\n').confidenceBoost).toBeNull();
+    expect(parsePageMarkdown('invalid.md', '---\nconfidence_boost: strong\n---\n# Bad\n').confidenceBoost).toBeNull();
+  });
+
   it('CRLF blocks align link positions and ignore normal links inside code', () => {
     const parsed = parsePageMarkdown(
       'source.md',

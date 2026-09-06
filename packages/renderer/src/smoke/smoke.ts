@@ -588,6 +588,42 @@ export async function runSmokeIfEnabled(): Promise<void> {
     check('局部图谱支持 2 跳扩展', await waitFor(() => localNodeCount() > 9, 10_000), `nodes=${localNodeCount()}`);
     await capture('17-local-graph');
 
+    const activePath = document.querySelector('[data-testid="tab"][data-active="true"]')?.getAttribute('data-page-path');
+    const activeSummary = activePath ? await invoke('index:pageSummary', { path: activePath }) : null;
+    check(
+      'DEV-008 IPC pageSummary 返回图谱页面',
+      !!activeSummary,
+      JSON.stringify({ activePath, activeSummary }),
+    );
+    const activeConfidence = activeSummary
+      ? await invoke('index:confidence', { pageId: activeSummary.pageId })
+      : null;
+    check(
+      'DEV-008 IPC getConfidence 返回缓存分数',
+      !!activeConfidence,
+      JSON.stringify({ pageId: activeSummary?.pageId, activeConfidence }),
+    );
+
+    useUiStore.getState().setActiveDockPanel('document-properties');
+    const confidenceReady = await waitFor(() => {
+      const panel = document.querySelector('[data-testid="properties-panel"]');
+      return !!panel && panel.querySelectorAll('[data-testid^="confidence-factor-"]').length === 6;
+    }, 20_000);
+    const propertiesPanel = document.querySelector('[data-testid="properties-panel"]');
+    const confidenceText = propertiesPanel?.textContent ?? '';
+    check(
+      'DEV-008 属性面板显示真实置信度总分与六个因子',
+      confidenceReady && /\/ 100/.test(confidenceText),
+      confidenceText.slice(0, 120),
+    );
+    const firstFactor = propertiesPanel?.querySelector('[data-testid^="confidence-factor-"]');
+    check(
+      'DEV-008 因子悬停解释 tooltip 已提供',
+      !!firstFactor?.getAttribute('title')?.includes('改动'),
+      firstFactor?.getAttribute('title') ?? 'missing title',
+    );
+    await capture('18-confidence-properties');
+
     // ── 10. 命名空间 ping（editor/git/ai/plugins 框架就绪）────
     const editorPong = await invoke('editor:ping');
     check('editor:* 命名空间通道可用（占位）', editorPong.pong === true);

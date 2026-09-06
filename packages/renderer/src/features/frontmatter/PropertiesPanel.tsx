@@ -1,5 +1,6 @@
 import { useMemo } from 'react';
 import { FileText, Gauge, Link2, ListOrdered, Calendar, FolderOpen, Braces } from 'lucide-react';
+import type { ConfidenceResult } from '@nexnote/shared';
 import type { FrontmatterData } from '@nexnote/kernel';
 import { getList, getString, isStandardField, type FrontmatterValue } from '@nexnote/kernel';
 import { invoke } from '../../lib/ipc';
@@ -11,6 +12,7 @@ export interface PropertiesPanelProps {
   filePath: string;
   /** 入链 / 出链数量（由 DEV-004 Link Index 实时提供）。 */
   linkCounts?: { in: number; out: number };
+  confidence?: ConfidenceResult | null;
 }
 
 /** 右侧「文档属性」面板。 */
@@ -19,11 +21,11 @@ export function PropertiesPanel({
   data,
   filePath,
   linkCounts = { in: 0, out: 0 },
+  confidence = null,
 }: PropertiesPanelProps) {
   const stats = useMemo(() => pageStatistics(markdown), [markdown]);
   const tags = getList(data, 'tags');
   const aliases = getList(data, 'aliases');
-  const confidence = data.confidence;
   const customFields = Object.entries(data)
     .filter(([key]) => !isStandardField(key))
     .sort(([a], [b]) => a.localeCompare(b));
@@ -97,7 +99,7 @@ export function PropertiesPanel({
       </section>
 
       <section>
-        <SectionHeader icon={<Gauge className="size-3.5" />} title="置信度（DEV-008 计算）" />
+        <SectionHeader icon={<Gauge className="size-3.5" />} title="置信度" />
         <ConfidenceDisplay value={confidence} />
       </section>
 
@@ -183,35 +185,33 @@ function FrontmatterValueDisplay({ value }: { value: FrontmatterValue }) {
   return <span className="break-all">{String(value)}</span>;
 }
 
-function ConfidenceDisplay({ value }: { value: FrontmatterData['confidence'] | undefined }) {
-  if (typeof value !== 'number' || Number.isNaN(value)) {
+function ConfidenceDisplay({ value }: { value: ConfidenceResult | null }) {
+  if (!value) {
     return (
       <div className="rounded-md border border-dashed px-3 py-2 text-center text-[11px] text-muted-foreground">
         置信度尚未计算（由 DEV-008 Git 底座提供）
       </div>
     );
   }
-  const pct = Math.max(0, Math.min(100, value));
-  const factors = [
-    { name: 'Git 历史长度', weight: 0.3 },
-    { name: '最近活跃度', weight: 0.3 },
-    { name: '引用数量', weight: 0.25 },
-    { name: '编辑稳定性', weight: 0.15 },
-  ];
   return (
     <div className="space-y-1.5">
       <div className="flex items-baseline justify-between">
-        <span className="text-sm font-semibold">{pct.toFixed(0)}</span>
+        <span className="text-sm font-semibold">{value.score}</span>
         <span className="text-[10px] text-muted-foreground">/ 100</span>
       </div>
       <div className="h-1.5 w-full overflow-hidden rounded-full bg-muted">
-        <div className="h-full rounded-full bg-primary" style={{ width: `${pct}%` }} />
+        <div className="h-full rounded-full bg-primary" style={{ width: `${Math.max(0, Math.min(100, value.score))}%` }} />
       </div>
-      <ul className="space-y-0.5 text-[10px] text-muted-foreground">
-        {factors.map((f) => (
-          <li key={f.name} className="flex justify-between">
-            <span>{f.name}</span>
-            <span>{Math.round(f.weight * pct)}</span>
+      <ul className="space-y-1.5">
+        {value.factors.map((item) => (
+          <li key={item.key} title={`${item.label}：${item.detail}`} data-testid={`confidence-factor-${item.key}`}>
+            <div className="flex justify-between">
+              <span className="text-[10px] text-muted-foreground">{item.label}</span>
+              <span className="text-[10px]">{item.contribution.toFixed(1)}</span>
+            </div>
+            <div className="h-1 w-full overflow-hidden rounded-full bg-muted">
+              <div className="h-full rounded-full bg-secondary" style={{ width: `${item.score * 100}%` }} />
+            </div>
           </li>
         ))}
       </ul>

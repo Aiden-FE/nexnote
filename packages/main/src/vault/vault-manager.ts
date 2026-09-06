@@ -70,6 +70,9 @@ export async function readVaultConfig(root: string): Promise<VaultConfig> {
     const fallback = defaultVaultConfig();
     return {
       version: 1,
+      features: {
+        confidenceFrontmatter: parsed?.features?.confidenceFrontmatter === true,
+      },
       layout: { ...fallback.layout, ...(parsed?.layout ?? {}) },
       lastSession: { ...fallback.lastSession, ...(parsed?.lastSession ?? {}) },
     };

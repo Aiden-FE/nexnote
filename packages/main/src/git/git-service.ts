@@ -43,6 +43,22 @@ export interface GitServiceOptions {
   minCommitIntervalMs?: number;
 }
 
+export interface GitHistoryEvent {
+  date: string;
+  additions: number;
+  deletions: number;
+}
+
+export interface GitFileHistory {
+  commits: number;
+  authors: number;
+  firstCommitAt: string;
+  lastCommitAt: string;
+  events: GitHistoryEvent[];
+}
+
+export type GitFileHistoryIndex = Map<string, GitFileHistory>;
+
 /**
  * Vault-scoped Git orchestration. This is deliberately the only main-process
  * module that invokes git: renderer code only receives typed IPC data.
@@ -55,6 +71,7 @@ export class GitService {
   private autoTimer: ReturnType<typeof setTimeout> | null = null;
   private lastCommitAt = 0;
   private statusListener: ((status: GitStatus) => void) | null = null;
+  private commitListener: ((root: string, files: string[]) => void) | null = null;
   /** 当前生效的自动提交防抖窗口。setDebounceMs 写入；fs handler 同步读它。 */
   private debounceMs: number;
 
@@ -116,6 +133,11 @@ export class GitService {
    */
   onStatusChanged(listener: ((status: GitStatus) => void) | null): void {
     this.statusListener = listener;
+  }
+
+  /** Confidence recalculates the pages touched by a completed local commit. */
+  onCommitted(listener: ((root: string, files: string[]) => void) | null): void {
+    this.commitListener = listener;
   }
 
   async isRepository(root: string): Promise<boolean> {
@@ -252,6 +274,67 @@ export class GitService {
       kind: commitKind(entry.message),
       isHead: entry.hash === head,
     }));
+  }
+
+  /**
+   * One batched Git traversal for the confidence engine. Per-file `git log`
+   * would turn a 1,000-page vault into 1,000 processes and miss the <10s target.
+   */
+  async confidenceHistory(): Promise<GitFileHistoryIndex> {
+    const root = this.requireRoot();
+    if (!(await this.isRepository(root))) return new Map();
+    const git = this.git(root);
+    const output = await git.raw([
+      '-c',
+      'core.quotepath=false',
+      'log',
+      '--all',
+      '--numstat',
+      '--format=%x1e%H%x1f%aI%x1f%an%x1f%ae',
+    ]);
+    const histories = new Map<string, GitFileHistory & { authorSet: Set<string> }>();
+    let commit: { hash: string; date: string; author: string } | null = null;
+    for (const line of output.split(/\r?\n/)) {
+      if (line.startsWith('\u001e')) {
+        const [hash, date, authorName, authorEmail] = line.slice(1).split('\u001f');
+        commit = hash ? { hash, date: date ?? '', author: `${authorName ?? ''} <${authorEmail ?? ''}>` } : null;
+        continue;
+      }
+      const match = /^(\d+|-)\t(\d+|-)\t(.+)$/.exec(line);
+      if (!commit || !match) continue;
+      const filePath = normalizeNumstatPath(match[3] ?? '');
+      if (!filePath.toLowerCase().endsWith('.md') || filePath.startsWith('.nexnote/')) continue;
+      let history = histories.get(filePath);
+      if (!history) {
+        history = {
+          commits: 0,
+          authors: 0,
+          firstCommitAt: commit.date,
+          lastCommitAt: commit.date,
+          events: [],
+          authorSet: new Set(),
+        };
+        histories.set(filePath, history);
+      }
+      history.authorSet.add(commit.author);
+      history.events.push({
+        date: commit.date,
+        additions: match[1] === '-' ? 0 : Number(match[1]),
+        deletions: match[2] === '-' ? 0 : Number(match[2]),
+      });
+    }
+    const result: GitFileHistoryIndex = new Map();
+    for (const [filePath, history] of histories) {
+      const events = [...history.events].sort((left, right) => Date.parse(right.date) - Date.parse(left.date));
+      result.set(filePath, {
+        commits: events.length,
+        authors: history.authorSet.size,
+        firstCommitAt: events.at(-1)?.date ?? history.firstCommitAt,
+        lastCommitAt: events[0]?.date ?? history.lastCommitAt,
+        events,
+      });
+    }
+    return result;
   }
 
   async addRemote(name: string, url: string): Promise<GitOperationResult> {
@@ -422,9 +505,11 @@ export class GitService {
     await this.ensureIdentity(git);
     const status = await git.status();
     if (status.files.length === 0) return;
+    const files = status.files.map((file) => file.path.replace(/\\/g, '/'));
     await git.add(['.']);
     await git.commit(message);
     this.lastCommitAt = Date.now();
+    if (files.length > 0) this.commitListener?.(root, files);
   }
 
   private async ensureIdentity(git: SimpleGit): Promise<void> {
@@ -575,6 +660,17 @@ function cleanSummary(value: string): string {
     .replace(/[\r\n]+/g, ' ')
     .trim()
     .slice(0, 160);
+}
+
+function normalizeNumstatPath(rawPath: string): string {
+  let value = rawPath.trim();
+  if (value.length > 1 && value.startsWith('"') && value.endsWith('"')) value = value.slice(1, -1);
+  const renamed = value.match(/^(.*)\{(.*) => (.*)\}(.*)$/) ?? value.match(/^(.*) => (.*)$/);
+  if (renamed) {
+    if (renamed[3] !== undefined) value = `${renamed[1] ?? ''}${renamed[3] ?? ''}${renamed[4] ?? ''}`;
+    else value = renamed[2] ?? value;
+  }
+  return value.replace(/\\/g, '/').replace(/\/+/g, '/');
 }
 
 function commitKind(message: string): GitCommit['kind'] {

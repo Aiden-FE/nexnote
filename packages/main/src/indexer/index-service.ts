@@ -1,10 +1,10 @@
 import Database from 'better-sqlite3';
 import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync } from 'node:fs';
 import * as path from 'node:path';
-import type { Backlink, GraphSnapshot, IndexStatus, PageIndexSummary, PageJumpResult, SearchHit, TagIndexEntry } from '@nexnote/shared';
+import type { Backlink, ConfidenceResult, GraphSnapshot, IndexStatus, PageIndexSummary, PageJumpResult, SearchHit, TagIndexEntry } from '@nexnote/shared';
 import { parsePageMarkdown, type ParsedPage } from './markdown-indexer';
 
-const SCHEMA_VERSION = 3;
+const SCHEMA_VERSION = 4;
 type Db = Database.Database;
 
 function emptyStatus(): IndexStatus { return { phase: 'idle', pagesTotal: 0, pagesIndexed: 0, mode: 'full' }; }
@@ -91,7 +91,10 @@ export class LinkIndexService {
   private root: string | null = null;
   private _status: IndexStatus = emptyStatus();
 
-  constructor(private readonly onStatus: (status: IndexStatus) => void = () => undefined) {}
+  constructor(
+    private readonly onStatus: (status: IndexStatus) => void = () => undefined,
+    private readonly onIndexed: (paths: string[] | null) => void = () => undefined,
+  ) {}
 
   private publish(status: IndexStatus): void {
     this._status = status;
@@ -100,8 +103,10 @@ export class LinkIndexService {
   private timers = new Map<string, ReturnType<typeof setTimeout>>();
   private rebuildScheduled = false;
   private pendingPaths = new Set<string>();
+  private graphStructureChanged = false;
 
   get status(): IndexStatus { return { ...this._status }; }
+  get rootPath(): string | null { return this.root; }
   setRoot(root: string | null): void {
     if (this.root === root) return;
     this.close(); this.root = root;
@@ -147,6 +152,18 @@ export class LinkIndexService {
         CREATE VIRTUAL TABLE page_fts USING fts5(path UNINDEXED, title UNINDEXED, aliases UNINDEXED, tags UNINDEXED, content UNINDEXED, tok);
       `);
     }
+    if (version < 4) {
+      db.exec(`
+        ALTER TABLE pages ADD COLUMN confidence_boost REAL;
+        CREATE TABLE IF NOT EXISTS confidence (
+          page_id INTEGER PRIMARY KEY REFERENCES pages(id) ON DELETE CASCADE,
+          score REAL NOT NULL,
+          factors_json TEXT NOT NULL,
+          computed_at TEXT NOT NULL
+        );
+        CREATE INDEX IF NOT EXISTS confidence_page_idx ON confidence(page_id);
+      `);
+    }
     db.pragma(`user_version = ${SCHEMA_VERSION}`);
   }
   private allMarkdownFiles(): string[] {
@@ -167,7 +184,7 @@ export class LinkIndexService {
       catch { /* 跳过不可读/损坏文件 */ }
     }
     const db = this.db!; const run = db.transaction(() => { db.exec('DELETE FROM page_fts; DELETE FROM links; DELETE FROM tags; DELETE FROM blocks; DELETE FROM pages;'); for (const page of pages) { this.upsertPage(page, false); this._status.pagesIndexed += 1; if (this._status.pagesIndexed % 25 === 0 || this._status.pagesIndexed === files.length) this.onStatus(this.status); } this.resolveLinks(); });
-    try { run(); this.publish({ phase: 'ready', pagesTotal: files.length, pagesIndexed: files.length, mode: 'full' }); } catch (e) { this.publish({ ...this._status, phase: 'error', error: e instanceof Error ? e.message : String(e) }); }
+    try { run(); this.publish({ phase: 'ready', pagesTotal: files.length, pagesIndexed: files.length, mode: 'full' }); this.onIndexed(null); } catch (e) { this.publish({ ...this._status, phase: 'error', error: e instanceof Error ? e.message : String(e) }); }
     return this.status;
   }
   /**
@@ -206,6 +223,8 @@ export class LinkIndexService {
     if (paths.length === 0) return;
     this.publish({ phase: 'scanning', pagesTotal: paths.length, pagesIndexed: 0, currentFile: paths[0], mode: 'incremental' });
     const db = this.db!;
+    const beforePages = this.pagePathSet(db);
+    const beforeEdges = this.resolvedLinkEdges(db);
     const run = db.transaction(() => {
       for (const safePath of paths) {
         const abs = path.join(root, safePath);
@@ -216,14 +235,40 @@ export class LinkIndexService {
         }
       }
       this.resolveLinks(); // once per debounce batch, not once per file
+      this.graphStructureChanged =
+        !this.edgeSetsEqual(beforePages, this.pagePathSet(db)) ||
+        !this.edgeSetsEqual(beforeEdges, this.resolvedLinkEdges(db));
     });
-    try { run(); this.publish({ phase: 'ready', pagesTotal: paths.length, pagesIndexed: paths.length, mode: 'incremental' }); } catch (e) { this.publish({ ...this._status, phase: 'error', error: e instanceof Error ? e.message : String(e) }); }
+    try {
+      run();
+      this.publish({ phase: 'ready', pagesTotal: paths.length, pagesIndexed: paths.length, mode: 'incremental' });
+      this.onIndexed(this.graphStructureChanged ? null : paths);
+    } catch (e) { this.publish({ ...this._status, phase: 'error', error: e instanceof Error ? e.message : String(e) }); }
+  }
+  private pagePathSet(db: Db): Set<string> {
+    return new Set((db.prepare('SELECT path FROM pages').all() as Array<{ path: string }>).map((row) => row.path));
+  }
+  private resolvedLinkEdges(db: Db): Set<string> {
+    const edges = new Set<string>();
+    const rows = db.prepare(`
+      SELECT source.path source, target.path target
+      FROM links l
+      JOIN pages source ON source.id = l.source_page_id
+      JOIN pages target ON target.id = l.target_page_id
+    `).all() as Array<{ source: string; target: string }>;
+    for (const row of rows) edges.add(`${row.source}\u0000${row.target}`);
+    return edges;
+  }
+  private edgeSetsEqual(left: Set<string>, right: Set<string>): boolean {
+    if (left.size !== right.size) return false;
+    for (const edge of left) if (!right.has(edge)) return false;
+    return true;
   }
   private deletePath(relPath: string): void { const db = this.db!; const row = db.prepare('SELECT id FROM pages WHERE path=?').get(relPath) as { id: number } | undefined; if (!row) return; db.prepare('DELETE FROM page_fts WHERE path=?').run(relPath); db.prepare('DELETE FROM pages WHERE id=?').run(row.id); }
   private upsertPage(page: ParsedPage, resolve = true): void {
     const db = this.db!; const old = db.prepare('SELECT id, hash FROM pages WHERE path=?').get(page.path) as { id:number; hash:string } | undefined; if (old?.hash === page.hash) return;
     if (old) { db.prepare('DELETE FROM page_fts WHERE path=?').run(page.path); db.prepare('DELETE FROM links WHERE source_page_id=?').run(old.id); db.prepare('DELETE FROM tags WHERE page_id=?').run(old.id); db.prepare('DELETE FROM blocks WHERE page_id=?').run(old.id); }
-    db.prepare(`INSERT INTO pages(path,title,aliases,created_at,updated_at,hash) VALUES(?,?,?,?,?,?) ON CONFLICT(path) DO UPDATE SET title=excluded.title,aliases=excluded.aliases,created_at=excluded.created_at,updated_at=excluded.updated_at,hash=excluded.hash`).run(page.path,page.title,JSON.stringify(page.aliases),page.createdAt,page.updatedAt,page.hash);
+    db.prepare(`INSERT INTO pages(path,title,aliases,created_at,updated_at,hash,confidence_boost) VALUES(?,?,?,?,?,?,?) ON CONFLICT(path) DO UPDATE SET title=excluded.title,aliases=excluded.aliases,created_at=excluded.created_at,updated_at=excluded.updated_at,hash=excluded.hash,confidence_boost=excluded.confidence_boost`).run(page.path,page.title,JSON.stringify(page.aliases),page.createdAt,page.updatedAt,page.hash,page.confidenceBoost);
     const id = (db.prepare('SELECT id FROM pages WHERE path=?').get(page.path) as {id:number}).id;
     const block = db.prepare('INSERT INTO blocks(page_id,block_id,block_type,content_text,position) VALUES(?,?,?,?,?)');
     const blockIdRows: number[] = []; // index = position
@@ -430,7 +475,71 @@ export class LinkIndexService {
     const tags = (this.db!.prepare('SELECT tag_name FROM tags t JOIN pages p ON p.id=t.page_id WHERE p.path=? ORDER BY tag_name').all(pagePath) as Array<{ tag_name: string }>).map((item) => item.tag_name);
     const inboundLinks = (this.db!.prepare('SELECT COUNT(DISTINCT source_page_id) c FROM links WHERE target_page_id=?').get(row.id) as { c: number }).c;
     const outboundLinks = (this.db!.prepare('SELECT COUNT(DISTINCT target_page_id) c FROM links WHERE source_page_id=? AND target_page_id IS NOT NULL').get(row.id) as { c: number }).c;
-    return { path: row.path, title: row.title, aliases: JSON.parse(row.aliases) as string[], tags, updatedAt: row.updated_at ?? '', wordCount: row.wordCount, blockCount: row.blockCount, inboundLinks, outboundLinks };
+    return { pageId: row.id, path: row.path, title: row.title, aliases: JSON.parse(row.aliases) as string[], tags, updatedAt: row.updated_at ?? '', wordCount: row.wordCount, blockCount: row.blockCount, inboundLinks, outboundLinks };
+  }
+
+  confidencePages(paths?: string[]): Array<{ id: number; path: string; createdAt: string | null; confidenceBoost: number | null }> {
+    const db = this.db;
+    if (!db) return [];
+    const rows = db.prepare('SELECT id, path, created_at, confidence_boost FROM pages ORDER BY path').all() as Array<{
+      id: number;
+      path: string;
+      created_at: string | null;
+      confidence_boost: number | null;
+    }>;
+    const mapped = rows.map((row) => ({
+      id: row.id,
+      path: row.path,
+      createdAt: row.created_at,
+      confidenceBoost: row.confidence_boost,
+    }));
+    if (!paths) return mapped;
+    const scope = new Set(paths);
+    return mapped.filter((row) => scope.has(row.path));
+  }
+
+  replaceConfidence(results: ConfidenceResult[], scopePaths?: string[]): void {
+    const db = this.db;
+    if (!db) return;
+    const run = db.transaction(() => {
+      if (!scopePaths) db.prepare('DELETE FROM confidence').run();
+      else {
+        const deleteStatement = db.prepare(`
+          DELETE FROM confidence WHERE page_id IN (
+            SELECT id FROM pages WHERE path IN (${scopePaths.map(() => '?').join(',')})
+          )
+        `);
+        if (scopePaths.length > 0) deleteStatement.run(...scopePaths);
+      }
+      const insert = db.prepare('INSERT INTO confidence(page_id,score,factors_json,computed_at) VALUES(?,?,?,?)');
+      for (const result of results) insert.run(result.pageId, result.score, JSON.stringify(result.factors), result.computedAt);
+    });
+    run();
+  }
+
+  confidence(pageId: number): ConfidenceResult | null {
+    const db = this.db;
+    if (!db) return null;
+    const row = db.prepare(`
+      SELECT c.page_id, p.path, c.score, c.factors_json, c.computed_at
+      FROM confidence c JOIN pages p ON p.id = c.page_id
+      WHERE c.page_id = ?
+    `).get(pageId) as
+      | { page_id: number; path: string; score: number; factors_json: string; computed_at: string }
+      | undefined;
+    if (!row) return null;
+    return {
+      pageId: row.page_id,
+      path: row.path,
+      score: row.score,
+      factors: JSON.parse(row.factors_json) as ConfidenceResult['factors'],
+      computedAt: row.computed_at,
+    };
+  }
+
+  /** DEV-008 retrieval API: confidence cache lookup by stable page id. */
+  getConfidence(pageId: number): ConfidenceResult | null {
+    return this.confidence(pageId);
   }
 
   graph(): GraphSnapshot {

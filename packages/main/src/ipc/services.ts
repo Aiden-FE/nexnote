@@ -7,6 +7,7 @@ import type { GitService } from '../git/git-service';
 import type { WindowManager } from '../window';
 import type { AiService } from '../ai/ai-service';
 import type { LinkIndexService } from '../indexer/index-service';
+import type { ConfidenceService } from '../confidence/confidence-service';
 
 /** 注入给所有 IPC handler 的服务集合（全部可替身，便于单测）。 */
 export interface IpcServices {
@@ -29,6 +30,7 @@ export interface IpcServices {
   watch: VaultWatchService;
   /** SQLite 关系索引（DEV-004）。 */
   index: LinkIndexService;
+  confidence?: ConfidenceService;
   appInfo(): AppInfo;
   checkForUpdates(): Promise<UpdateCheckResult>;
 }
