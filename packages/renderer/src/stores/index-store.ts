@@ -29,6 +29,7 @@ interface IndexState {
 }
 
 let eventsBound = false;
+let tagLoadGeneration = 0;
 
 /** 进程内绑定一次 index:statusChanged 推送。 */
 export function bindIndexEvents(): void {
@@ -80,11 +81,14 @@ export const useIndexStore = create<IndexState>((set, get) => ({
   },
 
   async loadTags() {
+    const generation = ++tagLoadGeneration;
     set({ tagsStatus: 'loading' });
     try {
       const tags = await invoke('index:tags', { flat: false });
+      if (generation !== tagLoadGeneration) return;
       set({ tags, tagsStatus: 'ready' });
     } catch (e) {
+      if (generation !== tagLoadGeneration) return;
       // Clear stale index data so TagsPanel reliably falls back to the vault scanner.
       set({ tags: [], tagsStatus: 'error', error: e instanceof Error ? e.message : String(e) });
     }
@@ -105,6 +109,7 @@ export const useIndexStore = create<IndexState>((set, get) => ({
   },
 
   reset() {
+    tagLoadGeneration += 1;
     set({
       status: { phase: 'idle', pagesTotal: 0, pagesIndexed: 0, mode: 'full' },
       backlinks: [],

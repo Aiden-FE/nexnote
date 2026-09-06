@@ -26,6 +26,7 @@ export function TagsPanel() {
   const vault = useVault();
   const entries = useIndexStore((s) => s.tags);
   const indexStatus = useIndexStore((s) => s.status.phase);
+  const tagsStatus = useIndexStore((s) => s.tagsStatus);
   const legacyStats = useTagStore((s) => s.stats);
   const legacyStatus = useTagStore((s) => s.status);
   const legacyError = useTagStore((s) => s.error);
@@ -41,7 +42,7 @@ export function TagsPanel() {
   }, [loadIndexTags, vault?.root]);
 
   // 索引不可用（错误/未就绪）→ 回退 fs:scanTags 数据
-  const useLegacy = indexStatus === 'error' || (indexStatus !== 'ready' && legacyStatus === 'ready');
+  const useLegacy = tagsStatus === 'error' || indexStatus === 'error' || (indexStatus !== 'ready' && legacyStatus === 'ready');
   const tree = useMemo(() => buildTagTree(
     useLegacy
       ? legacyStats.map((s) => ({ tag: s.tag, pageCount: s.files.length, descendantPageCount: s.files.length, path: s.tag.split('/') }))
