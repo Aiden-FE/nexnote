@@ -65,4 +65,17 @@ describe('index async loading', () => {
     expect(useIndexStore.getState().graph).toBe(graph);
     expect(useIndexStore.getState().graphStatus).toBe('stale');
   });
+
+  it('reset invalidates a pending graph load from the previous vault session', async () => {
+    let resolve!: (value: BridgeResult) => void;
+    (window as unknown as { nexnote: { invoke: () => Promise<BridgeResult> } }).nexnote = {
+      invoke: () => new Promise((done) => { resolve = done; }),
+    };
+    const pending = useIndexStore.getState().loadGraph();
+    useIndexStore.getState().reset();
+    resolve({ ok: true, data: { pages: [{ path: 'old.md' }], links: [] } });
+    await pending;
+    expect(useIndexStore.getState().graph).toEqual({ pages: [], links: [] });
+    expect(useIndexStore.getState().graphStatus).toBe('idle');
+  });
 });

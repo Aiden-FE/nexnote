@@ -38,7 +38,7 @@ describe('graph model', () => {
       filterGraph(snapshot, { tag: 'work', folder: '', showIsolated: true }).pages.map((item) => item.path),
     ).toEqual(['a.md', 'work/b.md']);
     const folderGraph = filterGraph(snapshot, { tag: '', folder: 'work', showIsolated: false });
-    expect(folderGraph.pages.map((item) => item.path)).toEqual(['work/b.md']);
+    expect(folderGraph.pages.map((item) => item.path)).toEqual([]);
     expect(folderGraph.links).toEqual([]);
     expect(
       filterGraph(snapshot, { tag: '', folder: '', showIsolated: false }).pages.map((item) => item.path),
@@ -54,6 +54,32 @@ describe('graph model', () => {
     const connectedGraph = filterGraph(snapshot, { tag: '', folder: '', showIsolated: false });
     expect(localGraph(snapshot, 'work/b.md', 2)).toEqual(connectedGraph);
     expect(localGraph(snapshot, null, 2)).toEqual({ pages: [], links: [] });
+  });
+
+  it('hides pages that become isolated after a folder filter and centers unindexed pages', () => {
+    const crossFolder: GraphSnapshot = {
+      pages: [
+        page('a/linked.md'),
+        page('b/target.md'),
+        page('a/isolated.md'),
+      ],
+      links: [{ source: 'a/linked.md', target: 'b/target.md' }],
+    };
+    const filtered = filterGraph(crossFolder, { tag: '', folder: 'a', showIsolated: false });
+    expect(filtered).toEqual({ pages: [], links: [] });
+
+    const local = localGraph(crossFolder, 'brand-new.md', 1);
+    expect(local.pages).toEqual([
+      {
+        path: 'brand-new.md',
+        title: 'brand-new',
+        folder: '',
+        tags: [],
+        inboundLinks: 0,
+        outboundLinks: 0,
+      },
+    ]);
+    expect(local.links).toEqual([]);
   });
 
   it('highlights the selected page and its adjacent nodes and edges', () => {

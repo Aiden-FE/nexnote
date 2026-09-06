@@ -43,15 +43,21 @@ function connectedPages(snapshot: GraphSnapshot, links: GraphLink[]): Set<string
 }
 
 export function filterGraph(snapshot: GraphSnapshot, filters: GraphFilters): GraphSnapshot {
-  const connected = connectedPages(snapshot, snapshot.links);
-  const pages = snapshot.pages.filter((page) => {
-    if (!filters.showIsolated && !connected.has(page.path)) return false;
+  const eligible = snapshot.pages.filter((page) => {
     if (filters.folder && !isDescendant(page.folder, filters.folder)) return false;
     if (filters.tag && !page.tags.some((tag) => isDescendant(tag, filters.tag))) return false;
     return true;
   });
+  const eligiblePaths = new Set(eligible.map((page) => page.path));
+  const eligibleLinks = snapshot.links.filter(
+    (link) => eligiblePaths.has(link.source) && eligiblePaths.has(link.target),
+  );
+  const connected = connectedPages(snapshot, eligibleLinks);
+  const pages = filters.showIsolated
+    ? eligible
+    : eligible.filter((page) => connected.has(page.path));
   const retained = new Set(pages.map((page) => page.path));
-  const links = snapshot.links.filter((link) => retained.has(link.source) && retained.has(link.target));
+  const links = eligibleLinks.filter((link) => retained.has(link.source) && retained.has(link.target));
   return { pages, links };
 }
 
@@ -65,6 +71,17 @@ export function localGraph(snapshot: GraphSnapshot, center: string | null, hops:
     frontier.forEach((path) => selected.add(path));
   }
   const pages = snapshot.pages.filter((page) => selected.has(page.path));
+  if (!pages.some((page) => page.path === center)) {
+    const title = center.split('/').pop()?.replace(/\.md$/i, '') ?? center;
+    pages.push({
+      path: center,
+      title,
+      folder: center.includes('/') ? center.slice(0, center.lastIndexOf('/')) : '',
+      tags: [],
+      inboundLinks: 0,
+      outboundLinks: 0,
+    });
+  }
   const links = snapshot.links.filter((link) => selected.has(link.source) && selected.has(link.target));
   return { pages, links };
 }

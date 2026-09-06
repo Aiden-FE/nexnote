@@ -144,6 +144,7 @@ export const useIndexStore = create<IndexState>((set, get) => ({
   reset() {
     tagLoadGeneration += 1;
     backlinkGeneration += 1;
+    graphLoadGeneration += 1;
     set({
       status: { phase: 'idle', pagesTotal: 0, pagesIndexed: 0, mode: 'full' },
       backlinks: [],

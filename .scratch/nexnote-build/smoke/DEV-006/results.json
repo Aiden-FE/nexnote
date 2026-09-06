@@ -1,5 +1,5 @@
 {
-  "finishedAt": "2026-09-06T14:24:52.540Z",
+  "finishedAt": "2026-09-06T14:39:53.979Z",
   "checks": [
     {
       "name": "首启动向导可见（新建/打开/克隆三选一）",
@@ -12,7 +12,7 @@
     {
       "name": "vault:create 成功",
       "passed": true,
-      "detail": "/var/folders/np/sd6hrwgj7gs9m5chdfpcycv00000gn/T/nexnote-smoke-vault-0UrucM/smoke-vault"
+      "detail": "/var/folders/np/sd6hrwgj7gs9m5chdfpcycv00000gn/T/nexnote-smoke-vault-dFweq5/smoke-vault"
     },
     {
       "name": "工作区出现（vault:changed 驱动）",
@@ -222,7 +222,7 @@
     {
       "name": "500 节点 / 2000 边连续交互 FPS ≥ 30",
       "passed": true,
-      "detail": "fps=69.0 wheels=62"
+      "detail": "fps=71.0 wheels=63"
     },
     {
       "name": "文件夹子树过滤生效",
