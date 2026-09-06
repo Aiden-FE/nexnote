@@ -103,8 +103,10 @@ export class AiService {
       const assignment = state.features[options.feature];
       if (assignment) profile = this.deps.store.getProfile(assignment.profileId);
     }
-    if (!profile && state.defaultProfileId)
+    if (!profile && state.defaultProfileId) {
       profile = this.deps.store.getProfile(state.defaultProfileId);
+      if (options.feature === 'chat' && profile?.kind === 'local-embedding') profile = undefined;
+    }
     if (!profile) {
       throw new ProviderError(
         '未配置 AI Profile（或指定 Profile 不存在），请先完成 AI 引导',

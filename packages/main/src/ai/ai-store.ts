@@ -279,12 +279,21 @@ export class AiStore {
     return `${effective.profileId}:${effective.model}:${dims}:${metric}`;
   }
 
+  /** A global default is usable only for chat/writing; embedding-only profiles stay feature-scoped. */
+  private isChatCapable(profile: AiStoredProfile): boolean {
+    return profile.kind !== 'local-embedding';
+  }
+
+  private firstChatCapableProfile(profiles = this.data.profiles): AiStoredProfile | undefined {
+    return profiles.find((profile) => this.isChatCapable(profile));
+  }
+
   /** 跟随默认 Profile 的虚拟 embedding 源（无显式 assignment 时）。 */
   private defaultEmbeddingFallback(): { profileId: string; model: string } | null {
     const def = this.data.defaultProfileId
       ? this.getProfile(this.data.defaultProfileId)
       : undefined;
-    if (!def) return null;
+    if (!def || !this.isChatCapable(def)) return null;
     return { profileId: def.id, model: def.defaultModel };
   }
 
@@ -359,10 +368,16 @@ export class AiStore {
     const profiles = existing
       ? this.data.profiles.map((p) => (p.id === existing.id ? profile : p))
       : [...this.data.profiles, profile];
-    const first = this.data.profiles.length === 0;
+    const firstChat = !this.firstChatCapableProfile();
     this.data = { ...this.data, profiles };
-    if (first || !this.data.defaultProfileId) {
+    const currentDefault = this.data.defaultProfileId
+      ? this.getProfile(this.data.defaultProfileId)
+      : undefined;
+    if (this.isChatCapable(profile) && (firstChat || !currentDefault)) {
       this.data = { ...this.data, defaultProfileId: profile.id };
+    } else if (!currentDefault || !this.isChatCapable(currentDefault)) {
+      // Editing a former default into embedding-only must not leave a chat-invalid global default.
+      this.data = { ...this.data, defaultProfileId: this.firstChatCapableProfile()?.id ?? null };
     }
     this.persist();
     // 首个 Profile 自动成为默认，以及默认 Profile 的模型被编辑时，都会改变跟随默认的 embedding 源。
@@ -383,14 +398,20 @@ export class AiStore {
       ...this.data,
       profiles,
       features,
-      defaultProfileId: this.data.defaultProfileId === id ? null : this.data.defaultProfileId,
+      defaultProfileId:
+        this.data.defaultProfileId === id
+          ? (this.firstChatCapableProfile(profiles)?.id ?? null)
+          : this.data.defaultProfileId,
     };
     this.persist();
     this.refreshEmbeddingFingerprint();
   }
 
   setDefaultProfile(id: string): void {
-    if (!this.getProfile(id)) throw new Error(`Profile 不存在: ${id}`);
+    const profile = this.getProfile(id);
+    if (!profile) throw new Error(`Profile 不存在: ${id}`);
+    if (!this.isChatCapable(profile))
+      throw new Error('本地 embedding Profile 不能作为全局聊天默认');
     this.data = { ...this.data, defaultProfileId: id };
     this.persist();
     // 默认 Profile 变化 → embedding「跟随默认」的虚拟源变 → 指纹刷新
@@ -559,12 +580,15 @@ export class AiStore {
       embedding: resolve(bundle.features.embedding),
     };
     // 导入保持 bundle 声明的默认 Profile（SPEC-9：默认不能退化为首个）；无声明则不覆盖本地默认。
-    const def = resolveProfile(bundle.defaultProfileRef ?? undefined, bundle.defaultProfileName ?? '');
+    const def = resolveProfile(
+      bundle.defaultProfileRef ?? undefined,
+      bundle.defaultProfileName ?? '',
+    );
     let defaultProfileId = this.data.defaultProfileId;
-    if (def) defaultProfileId = def.id;
-    else if (!def && this.data.profiles.length > 0 && !defaultProfileId) {
-      // 仅当本地空置且 bundle 未声明时，才以首个作兜底
-      defaultProfileId = this.data.profiles[0]!.id;
+    if (def && this.isChatCapable(def)) defaultProfileId = def.id;
+    else if (!def && !defaultProfileId) {
+      // 仅当本地空置且 bundle 未声明时，才以首个可聊天 Profile 作兜底。
+      defaultProfileId = this.firstChatCapableProfile()?.id ?? null;
     }
     this.data = { ...this.data, features, defaultProfileId };
     this.persist();

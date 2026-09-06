@@ -136,6 +136,21 @@ describe('AiStore（Profile 存储 + 密钥安全）', () => {
     expect(rewritten).not.toContain('plain:');
   });
 
+  it('首个 local embedding 不会成为全局聊天默认；首个聊天 Profile 才会成为默认', () => {
+    const local = store.saveProfile(undefined, {
+      name: 'Local vectors',
+      kind: 'local-embedding',
+      baseUrl: 'local://embedding',
+      defaultModel: 'local-hash-384',
+      apiKey: null,
+    });
+    expect(store.getState().defaultProfileId).toBeNull();
+    expect(() => store.setDefaultProfile(local.id)).toThrow(/不能作为全局聊天默认/);
+
+    const chat = store.saveProfile(undefined, input);
+    expect(store.getState().defaultProfileId).toBe(chat.id);
+  });
+
   it('local embedding 仅接受精确 local://embedding 且禁止凭据', () => {
     const local = store.saveProfile(undefined, {
       ...input,
@@ -183,7 +198,7 @@ describe('AiStore（Profile 存储 + 密钥安全）', () => {
     store.deleteProfile(a.id);
     const state = store.getState();
     expect(state.profiles.map((p) => p.id)).toEqual([b.id]);
-    expect(state.defaultProfileId).toBeNull();
+    expect(state.defaultProfileId).toBe(b.id); // promote the remaining chat-capable Profile
     expect(state.features.chat).toBeNull();
   });
 
