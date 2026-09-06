@@ -86,11 +86,15 @@ function VaultSection() {
 
 function GitSection() {
   const [milliseconds, setMilliseconds] = useState(30_000);
+  const [confidenceFrontmatter, setConfidenceFrontmatter] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
 
   useEffect(() => {
     void invoke('git:getAutoCommitDebounce')
       .then(({ milliseconds: stored }) => setMilliseconds(stored))
+      .catch((error) => setMessage(error instanceof Error ? error.message : String(error)));
+    void invoke('index:confidenceSettings')
+      .then(({ writeFrontmatter }) => setConfidenceFrontmatter(writeFrontmatter))
       .catch((error) => setMessage(error instanceof Error ? error.message : String(error)));
   }, []);
 
@@ -98,7 +102,13 @@ function GitSection() {
     try {
       const result = await invoke('git:setAutoCommitDebounce', { milliseconds });
       setMilliseconds(result.milliseconds);
-      setMessage(`已保存自动提交防抖：${result.milliseconds}ms`);
+      const confidenceResult = await invoke('index:setConfidenceFrontmatter', {
+        enabled: confidenceFrontmatter,
+      });
+      setConfidenceFrontmatter(confidenceResult.writeFrontmatter);
+      setMessage(
+        `已保存 Git 设置：自动提交防抖 ${result.milliseconds}ms；frontmatter 同步 ${confidenceResult.writeFrontmatter ? '开启' : '关闭'}`,
+      );
     } catch (error) {
       setMessage(error instanceof Error ? error.message : String(error));
     }
@@ -122,6 +132,15 @@ function GitSection() {
       <p className="text-xs text-muted-foreground">
         编辑停止后自动提交；有效范围为 500ms 到 10 分钟。
       </p>
+      <label className="flex items-center gap-2 text-xs" data-testid="confidence-frontmatter-setting">
+        <input
+          type="checkbox"
+          checked={confidenceFrontmatter}
+          onChange={(event) => setConfidenceFrontmatter(event.target.checked)}
+          className="size-3.5"
+        />
+        将置信度总分同步到 Markdown frontmatter
+      </label>
       <button
         type="button"
         onClick={() => void save()}

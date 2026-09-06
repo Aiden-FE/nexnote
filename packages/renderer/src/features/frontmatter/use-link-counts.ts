@@ -3,6 +3,7 @@ import type { IndexStatus } from '@nexnote/shared';
 import { invoke, onEvent } from '../../lib/ipc';
 
 interface LinkCountsState {
+  pageId: number | null;
   path: string | null;
   in: number;
   out: number;
@@ -13,8 +14,8 @@ interface LinkCountsState {
  * 索引每次增量重建完成（index:statusChanged ready）后刷新，保证标签/链接改动实时反映。
  * 计数按 filePath 键控：切页期间不显示上一页的陈旧数据。
  */
-export function useLinkCounts(filePath: string | null): { in: number; out: number } {
-  const [state, setState] = useState<LinkCountsState>({ path: null, in: 0, out: 0 });
+export function useLinkCounts(filePath: string | null): { pageId: number | null; in: number; out: number } {
+  const [state, setState] = useState<LinkCountsState>({ pageId: null, path: null, in: 0, out: 0 });
 
   useEffect(() => {
     if (!filePath) return;
@@ -23,7 +24,7 @@ export function useLinkCounts(filePath: string | null): { in: number; out: numbe
       void invoke('index:pageSummary', { path: filePath })
         .then((summary) => {
           if (alive && summary) {
-            setState({ path: filePath, in: summary.inboundLinks, out: summary.outboundLinks });
+            setState({ pageId: summary.pageId, path: filePath, in: summary.inboundLinks, out: summary.outboundLinks });
           }
         })
         .catch(() => undefined);
@@ -38,5 +39,5 @@ export function useLinkCounts(filePath: string | null): { in: number; out: numbe
     };
   }, [filePath]);
 
-  return state.path === filePath ? { in: state.in, out: state.out } : { in: 0, out: 0 };
+  return state.path === filePath ? { pageId: state.pageId, in: state.in, out: state.out } : { pageId: null, in: 0, out: 0 };
 }

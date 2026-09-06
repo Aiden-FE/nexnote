@@ -1,4 +1,4 @@
-import { mkdtemp, rm } from 'node:fs/promises';
+import { mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import * as path from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
@@ -147,6 +147,33 @@ describe('IPC 注册表框架', () => {
     expect(result.ok).toBe(false);
     expect(result.error).toBe('boom');
     expect(result.code).toBe('READ_FAILED');
+  });
+
+  it('index 查询通道接受契约声明的 payload', async () => {
+    const ipc = new FakeIpcMain();
+    const { services } = makeServices();
+    registerAllIpcHandlers(ipc, services);
+    await writeFile(path.join(tmp, 'a.md'), '# A\n\n[[b]]\n', 'utf8');
+    services.index.setRoot(tmp);
+
+    const tags = await ipc.invoke('index:tags', { flat: true });
+    expect(tags).toMatchObject({ ok: true });
+    const search = await ipc.invoke('index:search', { query: 'A', limit: 5 });
+    expect(search).toMatchObject({ ok: true });
+    const jump = await ipc.invoke('index:jumpTo', { query: 'A' });
+    expect(jump).toMatchObject({ ok: true });
+    const tagPages = await ipc.invoke('index:tagPages', { tag: 'missing' });
+    expect(tagPages).toMatchObject({ ok: true });
+    const backlinks = await ipc.invoke('index:backlinks', { pagePath: 'b.md' });
+    expect(backlinks).toMatchObject({ ok: true });
+    const summary = (await ipc.invoke('index:pageSummary', { path: 'a.md' })) as {
+      ok: boolean;
+      data: { pageId: number } | null;
+    };
+    expect(summary.ok).toBe(true);
+    expect(summary.data?.pageId).toBeGreaterThan(0);
+    const confidence = await ipc.invoke('index:confidence', { pageId: summary.data!.pageId });
+    expect(confidence).toMatchObject({ ok: true, data: null });
   });
 });
 

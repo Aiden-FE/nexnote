@@ -7,6 +7,7 @@ import type {
   SearchHit,
   TagIndexEntry,
   GraphSnapshot,
+  ConfidenceResult,
 } from '../../types/index';
 
 /** 关系索引能力（DEV-004 Link Index + FTS5 + Tags）。 */
@@ -20,6 +21,9 @@ export const INDEX_CHANNELS = [
   'index:tagPages',
   'index:pageSummary',
   'index:graph',
+  'index:confidence',
+  'index:confidenceSettings',
+  'index:setConfidenceFrontmatter',
 ] as const;
 
 export type IndexChannel = (typeof INDEX_CHANNELS)[number];
@@ -34,4 +38,10 @@ export interface IndexChannelMap {
   'index:tagPages': { request: { tag: string }; response: Result<string[]> };
   'index:pageSummary': { request: { path: string }; response: Result<PageIndexSummary | null> };
   'index:graph': { request: void; response: Result<GraphSnapshot> };
+  'index:confidence': { request: { pageId: number }; response: Result<ConfidenceResult | null> };
+  'index:confidenceSettings': { request: void; response: Result<{ writeFrontmatter: boolean }> };
+  'index:setConfidenceFrontmatter': {
+    request: { enabled: boolean };
+    response: Result<{ writeFrontmatter: boolean }>;
+  };
 }

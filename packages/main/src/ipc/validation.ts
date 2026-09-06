@@ -178,6 +178,22 @@ const restore = object(['path', 'commit'], [stringField('path'), stringField('co
 const pull = object(['force'], [optionalField('force', 'boolean')]);
 const useSystemGit = object(['enabled'], [booleanField('enabled')]);
 const autoCommitDebounce = object(['milliseconds'], [finiteNumberField('milliseconds')]);
+const confidence = object(['pageId'], [
+  (payload) => {
+    const pageId = (payload as Record<string, unknown>).pageId;
+    return typeof pageId === 'number' && Number.isInteger(pageId) && pageId > 0
+      ? null
+      : invalid('pageId 必须是正整数');
+  },
+]);
+const confidenceFrontmatter = object(['enabled'], [booleanField('enabled')]);
+const indexBacklinks = object(['pagePath'], [stringField('pagePath')]);
+const indexQuery = object(
+  ['query', 'limit'],
+  [stringField('query'), optionalField('limit', 'number')],
+);
+const indexTags = object(['flat'], [optionalField('flat', 'boolean')]);
+const indexTagPages = object(['tag'], [stringField('tag')]);
 const vaultCreate = object(['parentDir', 'name'], [stringField('parentDir'), stringField('name')]);
 const vaultClone = object(
   ['url', 'parentDir', 'name'],
@@ -254,6 +270,14 @@ const VALIDATORS: Partial<Record<IpcChannel, PayloadValidator>> = {
   'git:pull': pull,
   'git:setUseSystemGit': useSystemGit,
   'git:setAutoCommitDebounce': autoCommitDebounce,
+  'index:backlinks': indexBacklinks,
+  'index:search': indexQuery,
+  'index:jumpTo': indexQuery,
+  'index:tags': indexTags,
+  'index:tagPages': indexTagPages,
+  'index:pageSummary': pathOnly,
+  'index:confidence': confidence,
+  'index:setConfidenceFrontmatter': confidenceFrontmatter,
   'vault:create': vaultCreate,
   'vault:open': pathOnly,
   'vault:initGit': pathOnly,

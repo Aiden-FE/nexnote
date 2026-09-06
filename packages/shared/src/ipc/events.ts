@@ -20,6 +20,8 @@ export interface IpcEventMap {
   'git:statusChanged': GitStatus;
   /** 关系索引状态变化（扫描进度、ready、error）。DEV-004。 */
   'index:statusChanged': IndexStatus;
+  /** 置信度全量/增量计算完成。DEV-008。 */
+  'index:confidenceChanged': { paths: string[] | null };
 }
 
 export interface FsChangeEvent {
@@ -34,6 +36,7 @@ export const IPC_EVENT_CHANNELS: readonly string[] = [
   'ai:configChanged',
   'git:statusChanged',
   'index:statusChanged',
+  'index:confidenceChanged',
 ];
 
 export type IpcEventChannel = keyof IpcEventMap & string;

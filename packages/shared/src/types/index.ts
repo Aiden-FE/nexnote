@@ -54,6 +54,7 @@ export interface TagIndexEntry {
 
 /** 页面索引摘要。 */
 export interface PageIndexSummary {
+  pageId: number;
   path: string;
   title: string;
   aliases: string[];
@@ -95,4 +96,32 @@ export interface GraphLink {
 export interface GraphSnapshot {
   pages: GraphPage[];
   links: GraphLink[];
+}
+
+/** DEV-008 置信度因子键。 */
+export type ConfidenceFactorKey =
+  | 'stability'
+  | 'review_count'
+  | 'author_count'
+  | 'age'
+  | 'link_authority'
+  | 'manual_boost';
+
+/** 单个置信度因子的归一化分数与最终贡献。 */
+export interface ConfidenceFactor {
+  key: ConfidenceFactorKey;
+  label: string;
+  score: number;
+  weight: number;
+  contribution: number;
+  detail: string;
+}
+
+/** Link Index 缓存的置信度结果。 */
+export interface ConfidenceResult {
+  pageId: number;
+  path: string;
+  score: number;
+  factors: ConfidenceFactor[];
+  computedAt: string;
 }

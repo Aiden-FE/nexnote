@@ -3,6 +3,7 @@ import { dockPanelRegistry } from '../../registries';
 import { PropertiesPanel } from './PropertiesPanel';
 import { useDocumentPropertiesStore } from './document-properties-store';
 import { useLinkCounts } from './use-link-counts';
+import { useConfidence } from './use-confidence';
 
 /** DEV-005：右侧 Dock 的文档属性页签。 */
 dockPanelRegistry.register({
@@ -17,6 +18,7 @@ function DocumentPropertiesDockPanel() {
   const markdown = useDocumentPropertiesStore((s) => s.markdown);
   const data = useDocumentPropertiesStore((s) => s.data);
   const linkCounts = useLinkCounts(filePath);
+  const confidence = useConfidence(linkCounts.pageId);
 
   if (!filePath) {
     return (
@@ -29,5 +31,13 @@ function DocumentPropertiesDockPanel() {
     );
   }
 
-  return <PropertiesPanel markdown={markdown} data={data} filePath={filePath} linkCounts={linkCounts} />;
+  return (
+    <PropertiesPanel
+      markdown={markdown}
+      data={data}
+      filePath={filePath}
+      linkCounts={linkCounts}
+      confidence={confidence}
+    />
+  );
 }

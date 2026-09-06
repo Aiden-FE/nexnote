@@ -12,6 +12,7 @@ import {
   renameWithLinks,
   rewriteWikilinks,
   scanTags,
+  setFrontmatterNumber,
   splitFrontmatter,
 } from '../src/fs/page-ops';
 
@@ -261,6 +262,13 @@ describe('标签扫描', () => {
     const plain = splitFrontmatter('只是正文');
     expect(plain.frontmatter).toBeNull();
     expect(plain.body).toBe('只是正文');
+  });
+
+  it('setFrontmatterNumber creates, updates, and preserves frontmatter', () => {
+    expect(setFrontmatterNumber('# Body', 'confidence', 42)).toBe('---\nconfidence: 42\n---\n\n# Body');
+    expect(setFrontmatterNumber('---\ntags: [a]\nconfidence: 41\n---\n# Body', 'confidence', 42)).toBe('---\ntags: [a]\nconfidence: 42\n---\n# Body');
+    expect(setFrontmatterNumber('---\ntags: [a]\n---\n# Body', 'confidence', 42)).toBe('---\ntags: [a]\nconfidence: 42\n---\n# Body');
+    expect(setFrontmatterNumber('---\nconfidence: 42\n---\n# Body', 'confidence', 42)).toBeNull();
   });
 
   it('scanTags 聚合全库标签（frontmatter + 内联，含文件归属）', async () => {

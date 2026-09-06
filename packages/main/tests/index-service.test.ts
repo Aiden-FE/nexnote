@@ -3,6 +3,7 @@ import { existsSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import * as path from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import Database from 'better-sqlite3';
 import { LinkIndexService, } from '../src/indexer/index-service';
 
 let tmp: string;
@@ -22,6 +23,28 @@ async function page(rel: string, frontmatter: string, body: string): Promise<voi
 }
 
 describe('LinkIndexService', () => {
+  it('migrates a v3 index database to confidence schema v4', async () => {
+    await page('a.md', '---\nconfidence_boost: 55\n---\n', '# A\n');
+    await mkdir(path.join(tmp, '.nexnote'), { recursive: true });
+    const legacy = new Database(path.join(tmp, '.nexnote', 'index.db'));
+    legacy.exec(`
+      PRAGMA user_version = 3;
+      CREATE TABLE pages (id INTEGER PRIMARY KEY, path TEXT NOT NULL UNIQUE, title TEXT NOT NULL, aliases TEXT NOT NULL DEFAULT '[]', created_at TEXT, updated_at TEXT, hash TEXT NOT NULL);
+      CREATE TABLE links (id INTEGER PRIMARY KEY, source_page_id INTEGER NOT NULL REFERENCES pages(id) ON DELETE CASCADE, target_page_id INTEGER REFERENCES pages(id) ON DELETE SET NULL, target_raw TEXT NOT NULL, target_name TEXT NOT NULL, link_type TEXT NOT NULL DEFAULT 'wiki', anchor TEXT, source_block_id INTEGER, source_text TEXT NOT NULL DEFAULT '');
+      CREATE TABLE tags (id INTEGER PRIMARY KEY, page_id INTEGER NOT NULL REFERENCES pages(id) ON DELETE CASCADE, tag_name TEXT NOT NULL, tag_path TEXT NOT NULL);
+      CREATE TABLE blocks (id INTEGER PRIMARY KEY, page_id INTEGER NOT NULL REFERENCES pages(id) ON DELETE CASCADE, block_id TEXT, block_type TEXT NOT NULL, content_text TEXT NOT NULL, position INTEGER NOT NULL);
+      CREATE VIRTUAL TABLE page_fts USING fts5(path UNINDEXED, title UNINDEXED, aliases UNINDEXED, tags UNINDEXED, content UNINDEXED, tok);
+    `);
+    legacy.close();
+
+    const svc = new LinkIndexService();
+    svc.setRoot(tmp);
+    const summary = svc.pageSummary('a.md');
+    expect(summary?.pageId).toBeGreaterThan(0);
+    expect(svc.getConfidence(summary!.pageId)).toBeNull();
+    svc.close();
+  });
+
   it('full rebuild: 解析 frontmatter / wikilink / 标签 / 块，反链可查', async () => {
     await page('a.md', '---\naliases: [甲, Alpha]\ntags: [work]\n---\n', '# A\n\n见 [[b]] 与 [[甲|self]]\n\n含 #inline 标签\n\n块一 ^blk1\n');
     await page('dir/b.md', '', '# B\n\n引用 [[a]] 和 [[dir/c#head]] 与红链 [[ghost]]\n');
@@ -234,6 +257,24 @@ describe('LinkIndexService', () => {
     expect(svc.search('内容甲')).toEqual([]);
     expect(svc.search('内容丙').length).toBe(1);
 
+    svc.close();
+  });
+
+  it('置信度回调在链接边变化时升级为全量，纯内容变化保持增量', async () => {
+    await page('target.md', '', '# Target\n');
+    await page('source.md', '', '# Source\n\n[[target]]\n');
+    const indexed: Array<string[] | null> = [];
+    const svc = new LinkIndexService(() => undefined, (paths) => indexed.push(paths));
+    svc.setRoot(tmp);
+    expect(indexed).toEqual([null]);
+
+    await writeFile(path.join(tmp, 'source.md'), '# Source\n\n保留链接 [[target]]，仅改正文\n', 'utf8');
+    svc.updateFile('source.md');
+    expect(indexed.at(-1)).toEqual(['source.md']);
+
+    await writeFile(path.join(tmp, 'source.md'), '# Source\n\n移除链接\n', 'utf8');
+    svc.updateFile('source.md');
+    expect(indexed.at(-1)).toBeNull();
     svc.close();
   });
 
