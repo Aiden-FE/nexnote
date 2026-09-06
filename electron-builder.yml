@@ -8,6 +8,11 @@ files:
   - package.json
 # 生产依赖（electron-updater）由 electron-builder 自动收进 asar
 asar: true
+# @napi-rs/keyring loads a platform-specific .node binary at runtime. Electron cannot dlopen it
+# from app.asar, so unpack both the loader and optional platform package binaries.
+asarUnpack:
+  - node_modules/@napi-rs/keyring/**
+  - node_modules/@napi-rs/keyring-*/**
 icon: build/icon.png
 mac:
   target:

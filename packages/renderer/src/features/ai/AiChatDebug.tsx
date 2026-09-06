@@ -25,10 +25,12 @@ export function AiChatDebug({ compact = false }: { compact?: boolean }) {
   const [error, setError] = useState<string | null>(null);
   const [modelLabel, setModelLabel] = useState<string | null>(null);
   const streamIdRef = useRef<string | null>(null);
+  const disposedRef = useRef(false);
   const scrollRef = useRef<HTMLDivElement>(null);
 
   // 订阅统一流事件协议（按 streamId 关联本会话）并在卸载时取消仍在运行的请求。
   useEffect(() => {
+    disposedRef.current = false;
     const unsubscribe = onEvent('ai:streamEvent', ({ streamId, event }) => {
       if (streamId !== streamIdRef.current) return;
       if (event.type === 'start') {
@@ -54,6 +56,7 @@ export function AiChatDebug({ compact = false }: { compact?: boolean }) {
       }
     });
     return () => {
+      disposedRef.current = true;
       const streamId = streamIdRef.current;
       streamIdRef.current = null;
       if (streamId) void invoke('ai:chat:stream:cancel', { streamId }).catch(() => undefined);
@@ -86,10 +89,18 @@ export function AiChatDebug({ compact = false }: { compact?: boolean }) {
           messages: history,
           feature: 'chat',
         });
+        if (disposedRef.current) {
+          // The component can unmount while start IPC is in flight. Cancel the late stream instead
+          // of retaining provider-side prompt/request resources with no renderer consumer.
+          void invoke('ai:chat:stream:cancel', { streamId }).catch(() => undefined);
+          return;
+        }
         streamIdRef.current = streamId;
       } catch (e) {
-        setError(e instanceof Error ? e.message : String(e));
-        setStreaming(false);
+        if (!disposedRef.current) {
+          setError(e instanceof Error ? e.message : String(e));
+          setStreaming(false);
+        }
       }
     },
     [streaming, turns],
