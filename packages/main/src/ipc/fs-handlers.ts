@@ -9,7 +9,12 @@ import type { IpcServices } from './services';
 export function registerFsHandlers(registrar: IpcRegistrar): void {
   const recordWrite = async (services: IpcServices, summary: string): Promise<void> => {
     services.git.scheduleAutoCommit(summary);
-    services.windows.sendToMainWindow('git:statusChanged', await services.git.status());
+    // Git status is advisory; a slow/broken status query must not fail the FS mutation.
+    try {
+      services.windows.sendToMainWindow('git:statusChanged', await services.git.status());
+    } catch {
+      // The write already succeeded and the debounce remains scheduled.
+    }
   };
 
   registrar.register('fs:readTextFile', async ({ path }, services): Promise<Result<string>> =>

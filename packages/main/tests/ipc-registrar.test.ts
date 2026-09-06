@@ -456,6 +456,9 @@ describe('IPC 集成（vault + fs，单一注册表）', () => {
       ['vault:create', { parentDir: tmp }, 'vault:create 缺 name'],
       ['vault:create', { parentDir: tmp, name: 'x', evil: true }, 'vault:create 多余字段'],
       ['vault:saveLayout', { layout: 'oops' }, 'vault:saveLayout 错误 layout'],
+      ['vault:saveLayout', { layout: { sidebarWidth: 'wide' } }, 'vault:saveLayout 嵌套字段错误'],
+      ['vault:saveLayout', { layout: { unknown: true } }, 'vault:saveLayout 嵌套未知字段'],
+      ['vault:saveLayout', { layout: { treeCollapsedDirs: [1] } }, 'vault:saveLayout 嵌套数组错误'],
       // void channels reject any non-null object
       ['git:getStatus', { sneaky: 'oops' }, 'git:getStatus 不收 payload'],
     ];

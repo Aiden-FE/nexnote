@@ -18,6 +18,7 @@ import type {
 import { dockPanelRegistry, statusBarRegistry } from '../../registries';
 import { invoke, onEvent } from '../../lib/ipc';
 import { invokeSyncOperation } from './operation';
+import { requestAppSave } from '../../editor/app-save';
 import { useVault } from '../../shell/vault-context';
 
 statusBarRegistry.register({ id: 'git', align: 'left', render: GitStatusItem });
@@ -55,21 +56,29 @@ function GitStatusItem() {
   const [status, refresh] = useGitStatus();
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [confirm, setConfirm] = useState<'pull' | 'push' | null>(null);
+  const [confirm, setConfirm] = useState<'pull' | 'pull-force' | 'push' | null>(null);
   const operation = async () => {
     if (!confirm) return;
     setBusy(true);
     setError(null);
+    let keepConfirmation = false;
     try {
-      await invokeSyncOperation(confirm, {
-        pull: () => invoke('git:pull', {}),
+      await invokeSyncOperation(confirm === 'push' ? 'push' : 'pull', {
+        pull: () => invoke('git:pull', confirm === 'pull-force' ? { force: true } : {}),
         push: () => invoke('git:push'),
       });
     } catch (caught) {
-      setError(caught instanceof Error ? caught.message : String(caught));
+      const text = caught instanceof Error ? caught.message : String(caught);
+      if (confirm === 'pull' && (caught as { code?: string }).code === 'WORKTREE_DIRTY') {
+        keepConfirmation = true;
+        setConfirm('pull-force');
+        setError(null);
+        return;
+      }
+      setError(text);
     } finally {
       setBusy(false);
-      setConfirm(null);
+      if (!keepConfirmation) setConfirm(null);
       void refresh();
     }
   };
@@ -124,11 +133,13 @@ function GitStatusItem() {
       </button>
       {confirm && (
         <ConfirmDialog
-          title={`确认${confirm === 'pull' ? '拉取远程变更' : '推送本地提交'}？`}
+          title={`确认${confirm === 'push' ? '推送本地提交' : confirm === 'pull-force' ? '强制拉取远程变更' : '拉取远程变更'}？`}
           detail={
-            confirm === 'pull'
-              ? '拉取可能产生冲突，冲突需在仓库目录手动解决。'
-              : '将把当前分支提交推送至远程。'
+            confirm === 'pull-force'
+              ? '工作区含未提交变更。确认后将使用 force:true 拉取，可能覆盖本地文件。'
+              : confirm === 'pull'
+                ? '拉取可能产生冲突，冲突需在仓库目录手动解决。'
+                : '将把当前分支提交推送至远程。'
           }
           onConfirm={() => void operation()}
           onCancel={() => setConfirm(null)}
@@ -185,6 +196,7 @@ function GitTimeline() {
   const commitManual = async (): Promise<void> => {
     if (!manualMessage.trim()) return setMessage('提交说明不能为空');
     try {
+      await requestAppSave(window);
       await invoke('git:commit', { message: manualMessage });
       setManualMessage('');
       setMessage('已创建手动提交');

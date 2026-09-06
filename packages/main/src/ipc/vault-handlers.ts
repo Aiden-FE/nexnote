@@ -178,7 +178,12 @@ export function registerVaultHandlers(registrar: IpcRegistrar): void {
     if (!current) return { ok: false, error: '尚未打开任何 vault', code: 'NO_VAULT' };
     await saveVaultLayout(current.root, layout);
     services.git.scheduleAutoCommit('保存 vault 布局');
-    services.windows.sendToMainWindow('git:statusChanged', await services.git.status());
+    // Layout persistence is successful even if Git status is temporarily unavailable.
+    try {
+      services.windows.sendToMainWindow('git:statusChanged', await services.git.status());
+    } catch {
+      // The scheduled commit will publish status later.
+    }
     return ok(undefined);
   });
 }

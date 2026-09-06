@@ -109,6 +109,35 @@ const saveLayout: PayloadValidator = (payload) => {
   if (!isPlainObject(payload)) return invalid('payload 必须是普通对象');
   if (Object.keys(payload).some((key) => key !== 'layout')) return invalid('未知字段');
   if (!isPlainObject(payload.layout)) return invalid('layout 必须是对象');
+  const layout = payload.layout;
+  const fields: Record<string, 'number' | 'boolean' | 'nullable-string' | 'string-array'> = {
+    sidebarWidth: 'number',
+    sidebarCollapsed: 'boolean',
+    activeSidebarPanelId: 'nullable-string',
+    dockVisible: 'boolean',
+    dockWidth: 'number',
+    splitEnabled: 'boolean',
+    splitRatio: 'number',
+    treeCollapsedDirs: 'string-array',
+    treeShowAllFiles: 'boolean',
+  };
+  if (Object.keys(layout).some((key) => !(key in fields))) return invalid('layout 包含未知字段');
+  for (const [key, type] of Object.entries(fields)) {
+    const value = layout[key];
+    // DEV-003 layouts may predate newer tree fields; missing fields are defaulted on read.
+    if (value === undefined) continue;
+    if (type === 'number' && (typeof value !== 'number' || !Number.isFinite(value)))
+      return invalid(`layout.${key} 必须是有限数字`);
+    if (type === 'boolean' && typeof value !== 'boolean')
+      return invalid(`layout.${key} 必须是布尔值`);
+    if (type === 'nullable-string' && value !== null && typeof value !== 'string')
+      return invalid(`layout.${key} 必须是字符串或 null`);
+    if (
+      type === 'string-array' &&
+      (!Array.isArray(value) || value.some((item) => typeof item !== 'string'))
+    )
+      return invalid(`layout.${key} 必须是字符串数组`);
+  }
   return null;
 };
 

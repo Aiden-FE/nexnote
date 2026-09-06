@@ -100,7 +100,14 @@ export class GitService {
 
   async isRepository(root: string): Promise<boolean> {
     try {
-      return await this.git(root).checkIsRepo();
+      // simple-git discovery walks upward; a vault nested inside another repository
+      // must not accidentally operate on that parent repository.
+      const topLevel = (await this.git(root).raw(['rev-parse', '--show-toplevel'])).trim();
+      const [realTopLevel, realRoot] = await Promise.all([
+        fsp.realpath(topLevel).catch(() => path.resolve(topLevel)),
+        fsp.realpath(root).catch(() => path.resolve(root)),
+      ]);
+      return realTopLevel === realRoot;
     } catch {
       return false;
     }
@@ -154,10 +161,7 @@ export class GitService {
     }
     const git = this.git(root);
     const status = await git.status();
-    if (
-      status.conflicted.length > 0 ||
-      status.files.some((file) => file.index === 'U' || file.working_dir === 'U')
-    ) {
+    if (this.hasUnresolvedConflict(status) || (await this.hasConflictMarkers(root, status))) {
       await this.notifyCurrentStatus();
       return;
     }
@@ -258,6 +262,8 @@ export class GitService {
 
   async pull(input: { force?: boolean } = {}): Promise<GitOperationResult> {
     const root = this.requireRoot();
+    // Never allow a pre-pull debounce to race with merge/conflict handling.
+    this.cancelAutoCommit();
     try {
       const git = this.git(root);
       const status = await git.status();
@@ -330,7 +336,7 @@ export class GitService {
 
   async restoreFile(file: string, commit: string): Promise<GitOperationResult> {
     const root = this.requireRoot();
-    const relative = this.requireVaultPath(file);
+    const relative = this.requireTrackedFilePath(file);
     const git = this.git(root);
     // checkout stages only this file. Commit with an explicit pathspec so unrelated
     // staged or unstaged edits can never hitchhike into the restore commit.
@@ -346,6 +352,25 @@ export class GitService {
     ]);
     this.lastCommitAt = Date.now();
     return this.notified({ message: `已恢复 ${relative}，并创建新的恢复提交`, root });
+  }
+
+  private hasUnresolvedConflict(status: Awaited<ReturnType<SimpleGit['status']>>): boolean {
+    return (
+      status.conflicted.length > 0 ||
+      status.files.some((file) => file.index === 'U' || file.working_dir === 'U')
+    );
+  }
+
+  private async hasConflictMarkers(
+    root: string,
+    status: Awaited<ReturnType<SimpleGit['status']>>,
+  ): Promise<boolean> {
+    const changedFiles = status.files.map((file) => file.path).filter(Boolean);
+    for (const file of changedFiles) {
+      const contents = await fsp.readFile(path.join(root, file), 'utf8').catch(() => null);
+      if (contents && /^(<<<<<<< |=======|>>>>>>> )/m.test(contents)) return true;
+    }
+    return false;
   }
 
   private async notified(input: { message: string; root: string }): Promise<GitOperationResult> {
@@ -469,6 +494,21 @@ export class GitService {
       throw new GitServiceError('文件路径必须位于当前 vault 内', 'INVALID_PATH');
     }
     return file.replace(/\\/g, '/');
+  }
+
+  private requireTrackedFilePath(file: string): string {
+    const relative = this.requireVaultPath(file);
+    const normalized = path.posix.normalize(relative);
+    if (
+      normalized === '.' ||
+      normalized.endsWith('/') ||
+      normalized === '' ||
+      relative.endsWith('/.') ||
+      relative.split('/').some((segment) => segment === '.')
+    ) {
+      throw new GitServiceError('恢复目标必须是 vault 内的已跟踪文件', 'INVALID_PATH');
+    }
+    return normalized;
   }
 
   private remoteOperationError(action: string, error: unknown): GitServiceError {

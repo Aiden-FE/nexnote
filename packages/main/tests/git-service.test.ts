@@ -141,6 +141,27 @@ describe.runIf(runIfGit())('GitService（系统 Git，临时仓库）', () => {
     expect(log[0]!.message).toMatch(/保存 notes\/page\.md/);
   });
 
+  it('restore rejects root and lexical directory targets', async () => {
+    await service.initialize(root);
+    const commit = (await service.timeline())[0]!.hash;
+    await expect(service.restoreFile('.', commit)).rejects.toMatchObject({ code: 'INVALID_PATH' });
+    await expect(service.restoreFile('notes/.', commit)).rejects.toMatchObject({
+      code: 'INVALID_PATH',
+    });
+  });
+
+  it('auto commit refuses conflict marker files even without unmerged index state', async () => {
+    await service.initialize(root);
+    await fsp.writeFile(
+      path.join(root, 'marker.md'),
+      '<<<<<<< local\na\n=======\nb\n>>>>>>> remote\n',
+    );
+    await service.commitAuto('不得提交标记冲突');
+    expect(
+      (await service.timeline()).every((entry) => !entry.message.includes('不得提交标记冲突')),
+    ).toBe(true);
+  });
+
   it('remote text strips credentials before IPC-facing results', () => {
     const secret = 'https://alice:token-123@example.test/repo.git?access_token=abc&token=def';
     const redacted = sanitizeRemoteText(secret);
