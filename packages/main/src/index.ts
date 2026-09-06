@@ -97,8 +97,8 @@ function bootstrap(): void {
   if (isSmokeMode) {
     const smoke = new SmokeController({
       windows,
-      // out/main/index.js → ../.. = worktree 根（.scratch/ 与仓库同级）
-      outputDir: join(__dirname, '../../.scratch/nexnote-build/smoke/DEV-003'),
+      // Packaged resources/ASAR are read-only; smoke evidence must use writable temp storage.
+      outputDir: process.env.NEXNOTE_SMOKE_OUTPUT_DIR ?? join(app.getPath('temp'), `nexnote-smoke-results-${Date.now()}`),
     });
     void smoke.init();
   }

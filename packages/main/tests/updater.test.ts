@@ -132,9 +132,26 @@ describe('updater policy', () => {
     await checkForUpdates();
     listeners.get('download-progress')?.({ percent: 42 });
     expect(statuses.at(-1)).toMatchObject({ status: 'downloading', progress: 42 });
-    expect(await downloadUpdate()).toMatchObject({ status: 'downloaded' });
+    expect(await downloadUpdate()).toMatchObject({ status: 'downloading' });
+    expect(() => installUpdate()).toThrow(/没有已下载/);
+    listeners.get('update-downloaded')?.({ version: '9.9.9' });
     expect(installUpdate()).toEqual({ willRestart: true });
     expect(adapter.quitAndInstall).toHaveBeenCalledWith(false, true);
+  });
+
+  it('deduplicates repeated available events and concurrent download requests', async () => {
+    delete process.env.NEXNOTE_UPDATE_CHANNEL;
+    envBackup = { ...process.env };
+    const { adapter, listeners } = makeAdapter();
+    restore = setUpdaterAdapterForTests(adapter, { isPackaged: true, getVersion: () => '0.1.0' });
+    const statuses: Array<{ status: string }> = [];
+    initAutoUpdater(() => {}, (status) => statuses.push(status));
+    listeners.get('update-available')?.({ version: '9.9.9' });
+    listeners.get('update-available')?.({ version: '9.9.9' });
+    expect(statuses.filter((s) => s.status === 'available')).toHaveLength(1);
+    await downloadUpdate();
+    await downloadUpdate();
+    expect(adapter.downloadUpdate).toHaveBeenCalledTimes(1);
   });
 
   it('does not install before a packaged update is downloaded', () => {

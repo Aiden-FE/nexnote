@@ -96,6 +96,8 @@ let sendStatus: SendStatus = () => {};
 let logger: Log = () => {};
 let activeChannel: UpdateChannel = resolveChannelFromEnv();
 let availableVersion: string | undefined;
+let downloadedVersion: string | undefined;
+let downloadInFlight = false;
 let electronApp: ElectronAppLike = (() => {
   try {
     // eslint-disable-next-line @typescript-eslint/no-require-imports
@@ -132,6 +134,8 @@ export function initAutoUpdater(
   sendStatus = statusSender;
   activeChannel = resolveStartupChannel(persistedChannel);
   availableVersion = undefined;
+  downloadedVersion = undefined;
+  downloadInFlight = false;
   if (!electronApp.isPackaged) {
     log('[updater] 开发模式，跳过自动更新初始化');
     return;
@@ -152,7 +156,9 @@ export function initAutoUpdater(
   a.on('checking-for-update', () => emit('checking', '正在检查更新…'));
   a.on('update-available', (...args: unknown[]) => {
     const info = args[0] as { version?: string } | undefined;
+    if (info?.version && info.version === availableVersion) return;
     availableVersion = info?.version;
+    downloadedVersion = undefined;
     emit('available', info?.version ? `发现新版本 ${info.version}` : '发现新版本');
   });
   a.on('update-not-available', () => emit('up-to-date', `当前 ${electronApp.getVersion()} 已是最新`));
@@ -163,6 +169,8 @@ export function initAutoUpdater(
   a.on('update-downloaded', (...args: unknown[]) => {
     const info = args[0] as { version?: string } | undefined;
     availableVersion = info?.version ?? availableVersion;
+    downloadedVersion = availableVersion;
+    downloadInFlight = false;
     emit('downloaded', '更新已下载，可重启安装');
   });
 
@@ -176,6 +184,8 @@ export function setUpdateChannel(channel: UpdateChannel): UpdateCheckResult {
   }
   activeChannel = channel;
   availableVersion = undefined;
+  downloadedVersion = undefined;
+  downloadInFlight = false;
   if (electronApp.isPackaged) {
     const a = getAdapter();
     a.channel = channel;
@@ -191,6 +201,7 @@ export async function checkForUpdates(): Promise<UpdateCheckResult> {
     const result = await getAdapter().checkForUpdates();
     const remoteVersion = result?.updateInfo?.version;
     if (remoteVersion && remoteVersion !== electronApp.getVersion()) {
+      if (remoteVersion !== availableVersion) downloadedVersion = undefined;
       availableVersion = remoteVersion;
       return emit('available', `发现新版本 ${remoteVersion}`);
     }
@@ -203,17 +214,24 @@ export async function checkForUpdates(): Promise<UpdateCheckResult> {
 export async function downloadUpdate(): Promise<UpdateCheckResult> {
   if (!electronApp.isPackaged) return { status: 'not-configured', message: '开发模式不能下载发布更新', channel: activeChannel };
   if (!availableVersion) return { status: 'error', message: '没有可下载的更新，请先检查更新', channel: activeChannel };
+  if (downloadedVersion === availableVersion) return emit('downloaded', '更新已下载，可重启安装');
+  if (downloadInFlight) return emit('downloading', '更新正在下载…');
   try {
+    downloadInFlight = true;
     emit('downloading', '正在下载更新…', 0);
     await getAdapter().downloadUpdate();
-    return emit('downloaded', '更新已下载，可重启安装');
+    // Some adapters resolve before the event; never enable install until update-downloaded confirms it.
+    return downloadedVersion === availableVersion
+      ? emit('downloaded', '更新已下载，可重启安装')
+      : emit('downloading', '正在等待下载确认…');
   } catch (e) {
+    downloadInFlight = false;
     return emit('error', e instanceof Error ? e.message : String(e));
   }
 }
 
 export function installUpdate(): { willRestart: true } {
-  if (!electronApp.isPackaged || !availableVersion) throw new Error('没有已下载的更新可安装');
+  if (!electronApp.isPackaged || !availableVersion || downloadedVersion !== availableVersion) throw new Error('没有已下载的更新可安装');
   logger('[updater] quitAndInstall');
   getAdapter().quitAndInstall(false, true);
   return { willRestart: true };

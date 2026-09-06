@@ -107,6 +107,7 @@ jobs:
       - name: Package signed and notarized macOS distributables
         if: runner.os == 'macOS'
         env:
+          NEXNOTE_NOTARIZE_MODE: required
           MACOS_CERTIFICATE: ${{ secrets.MACOS_CERTIFICATE }}
           MACOS_CERTIFICATE_PASSWORD: ${{ secrets.MACOS_CERTIFICATE_PASSWORD }}
           APPLE_ID: ${{ secrets.APPLE_ID }}
@@ -114,7 +115,7 @@ jobs:
           APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
         run: |
           test -n "$MACOS_CERTIFICATE" && test -n "$MACOS_CERTIFICATE_PASSWORD" && test -n "$APPLE_ID" && test -n "$APPLE_APP_SPECIFIC_PASSWORD" && test -n "$APPLE_TEAM_ID" || { echo '::error::macOS signing and notarization credentials are required'; exit 1; }
-          printf '%s' "$MACOS_CERTIFICATE" | base64 --decode > "$RUNNER_TEMP/nexnote.p12"
+          python3 -c 'import base64, os, pathlib; pathlib.Path(os.environ["RUNNER_TEMP"], "nexnote.p12").write_bytes(base64.b64decode(os.environ["MACOS_CERTIFICATE"]))'
           export CSC_LINK="$RUNNER_TEMP/nexnote.p12"
           export CSC_KEY_PASSWORD="$MACOS_CERTIFICATE_PASSWORD"
           node scripts/run-builder.mjs ${{ matrix.target }} --publish never

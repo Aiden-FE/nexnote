@@ -13,6 +13,7 @@ const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const cfg = yaml.load(readFileSync(resolve(root, 'electron-builder.yml'), 'utf8'));
 const releaseWorkflow = readFileSync(resolve(root, '.github/workflows/release.yml'), 'utf8');
 const devWorkflow = readFileSync(resolve(root, '.github/workflows/pr-check.yml'), 'utf8');
+const nightlyWorkflow = readFileSync(resolve(root, '.github/workflows/nightly.yml'), 'utf8');
 const updater = readFileSync(resolve(root, 'packages/main/src/updater.ts'), 'utf8');
 const runBuilder = readFileSync(resolve(root, 'scripts/run-builder.mjs'), 'utf8');
 const notarize = readFileSync(resolve(root, 'scripts/notarize.cjs'), 'utf8');
@@ -91,11 +92,15 @@ check('asar 启用且 unpack 含 dugite', () => {
 check('macOS entitlements 文件已声明', () => {
   if (!cfg.mac?.entitlements) throw new Error('mac entitlements missing');
 });
-check('macOS 签名与公证是强制 gate', () => {
+check('macOS release 公证强制且 nightly 明确不可发布', () => {
   if (cfg.mac?.hardenedRuntime !== true) throw new Error('hardenedRuntime required for notarization');
   if (!cfg.afterSign && !cfg.mac?.afterSign) throw new Error('afterSign hook missing');
-  if (/skipping notarization|credentials absent; skipping/i.test(notarize)) throw new Error('notarization must not be skippable');
-  if (!/throw new Error/.test(notarize)) throw new Error('missing notarization credentials must fail');
+  if (!/NEXNOTE_NOTARIZE_MODE/.test(notarize) || !/mode === 'disabled'/.test(notarize)) throw new Error('notarization mode must explicitly distinguish non-publishable builds');
+  if (!/NEXNOTE_NOTARIZE_MODE:\s*required/.test(releaseWorkflow)) throw new Error('release mac build must require notarization');
+  if (!/NEXNOTE_NOTARIZE_MODE:\s*disabled/.test(nightlyWorkflow) || !/non-publishable/.test(nightlyWorkflow)) throw new Error('nightly must explicitly disable notarization as non-publishable');
+  if (!/throw new Error/.test(notarize)) throw new Error('missing release notarization credentials must fail');
+  const macStep = /- name: Package signed and notarized macOS distributables([\s\S]*?)(?=\n\s+- name: Package signed Windows)/.exec(releaseWorkflow)?.[1] ?? '';
+  if (/base64 --decode/.test(macStep) || !/python3 -c 'import base64/.test(macStep)) throw new Error('mac certificate decoding must be portable across BSD/GNU base64');
   for (const command of ['codesign --verify --deep --strict', 'xcrun stapler validate', 'spctl --assess']) {
     if (!releaseWorkflow.includes(command)) throw new Error(`missing macOS verification: ${command}`);
   }
@@ -108,6 +113,9 @@ check('channel 接线：build env → 打包发布 → updater 烘焙通道', ()
     throw new Error('prepare job must output the resolved channel');
   }
   if (!/readBakedChannel|app-update\.yml/.test(updater)) throw new Error('updater must read the baked channel from app-update.yml');
+  if (!/"js-yaml"/.test(readFileSync(resolve(root, 'package.json'), 'utf8')) || /"js-yaml"/.test(readFileSync(resolve(root, 'package.json'), 'utf8').split('"devDependencies"')[1] ?? '')) {
+    throw new Error('js-yaml must be a production dependency for packaged channel parsing');
+  }
   if (!/VALID_CHANNELS/.test(updater)) throw new Error('updater has no channel validation');
   if (!/updateChannel/.test(appStore) || !/setUpdateChannel\(channel/.test(appStore)) throw new Error('selected update channel is not persisted in AppStore');
   if (!/appStore\.get\(\)\.updateChannel/.test(readFileSync(resolve(root, 'packages/main/src/index.ts'), 'utf8'))) throw new Error('main updater does not restore persisted channel');
@@ -187,9 +195,10 @@ check('preflight 强制 channel manifest、blockmap 与 Linux .asc', () => {
   }
   if (!/files: release\/\*\*\/\*/.test(releaseWorkflow)) throw new Error('publish glob must include release/**/* to capture metadata and .asc');
 });
-check('smoke 缺产物必须失败且 QA 文档 gate 顺序一致', () => {
+check('smoke 缺产物必须失败、写入临时目录且 QA gate 顺序一致', () => {
   if (/skipping e2e smoke|process\.exit\(0\)/.test(smoke)) throw new Error('smoke script may not skip missing artifact');
   if (!/process\.exit\(1\)/.test(smoke)) throw new Error('smoke must fail without packaged app');
+  if (!/NEXNOTE_SMOKE_OUTPUT_DIR/.test(smoke) || !/mkdtempSync/.test(smoke)) throw new Error('packaged smoke evidence must use a writable temp directory');
   if (!/事实边界/.test(qaChecklist) || !/未进行.*跨平台物理安装/.test(qaChecklist)) throw new Error('QA checklist must truthfully record physical-validation boundary');
   if (!/preflight.*dependency job.*全部通过[\s\S]*release-qa.*Environment.*审批/.test(qaChecklist)) throw new Error('machine and manual QA gates must complete before Environment approval');
   if (!/After public publication \(monitoring, not a publication gate\)/.test(qaChecklist)) throw new Error('post-publication checks must be separated from publication gates');
@@ -209,6 +218,11 @@ check('所有 GitHub Actions 使用 immutable SHA 并由 Dependabot 维护', () 
   if (!/package-ecosystem:\s*github-actions/.test(dependabot)) throw new Error('Dependabot github-actions update strategy missing');
   if (!/softprops\/action-gh-release@[0-9a-f]{40}/.test(releaseWorkflow)) throw new Error('release publisher must be pinned by full SHA');
   if (!/Aiden-FE\\\/nexnote/.test(releaseEvidence) || !/allRequiredChecksPassed/.test(releaseEvidence)) throw new Error('QA evidence validator must bind canonical repository and all-checks attestation');
+});
+check('updater 下载状态只在事件确认后允许安装且去重 available', () => {
+  if (!/downloadedVersion !== availableVersion/.test(updater)) throw new Error('install must require confirmed downloaded version');
+  if (!/info\.version === availableVersion\) return/.test(updater)) throw new Error('duplicate update-available events must be suppressed');
+  if (!/downloadInFlight/.test(updater)) throw new Error('concurrent download requests must be deduplicated');
 });
 check('PR 检查覆盖 lint/typecheck/test/build', () => {
   if (!/pnpm lint/.test(devWorkflow)) throw new Error('pr-check missing lint');
