@@ -53,7 +53,7 @@ function bootstrap(): void {
     emit: (event) => {
       windows?.sendToMainWindow('fs:changed', event);
       if (event.kind === 'add' || event.kind === 'change' || event.kind === 'unlink') {
-        index.scheduleUpdate(event.path);
+        index.scheduleUpdate(event.path, vaultSession.getCurrent()?.root ?? null);
       }
     },
     onError: (e) => log('watch error:', e),

@@ -5,7 +5,7 @@ export default defineConfig({
     include: [
       'packages/main/tests/**/*.test.ts',
       'packages/kernel/tests/**/*.test.ts',
-      'packages/renderer/tests/**/*.test.ts',
+      'packages/renderer/tests/**/*.test.{ts,tsx}',
     ],
     environment: 'node',
     testTimeout: 20_000,

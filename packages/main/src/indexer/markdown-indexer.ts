@@ -3,7 +3,17 @@ import * as path from 'node:path';
 import { extractWikilinks } from '@nexnote/shared';
 import { extractInlineTags, parseFrontmatterTags, splitFrontmatter } from '../fs/page-ops';
 
-export interface ParsedLink { targetRaw: string; targetName: string; alias: string | null; anchor: string | null; linkType: 'wiki' | 'normal'; }
+export interface ParsedLink {
+  targetRaw: string;
+  targetName: string;
+  alias: string | null;
+  anchor: string | null;
+  linkType: 'wiki' | 'normal';
+  /** 原始 wikilink 字符串（`[[Target|显示]]`），用于反链上下文定位。 */
+  sourceText: string;
+  /** 该链接所在的 0-based 段落块序号。 */
+  sourceBlockIndex: number;
+}
 export interface ParsedBlock { blockId: string | null; blockType: string; content: string; position: number; }
 export interface ParsedPage { path: string; title: string; aliases: string[]; createdAt: string | null; updatedAt: string | null; hash: string; body: string; tags: string[]; links: ParsedLink[]; blocks: ParsedBlock[]; }
 
@@ -18,33 +28,70 @@ function yamlList(frontmatter: string | null, key: string): string[] {
   return (raw.startsWith('[') && raw.endsWith(']') ? raw.slice(1, -1) : raw).split(',').map((s) => s.trim().replace(/^['"]|['"]$/g, '')).filter(Boolean);
 }
 
+function classifyBlock(raw: string): string {
+  const first = raw.trimStart();
+  if (first.startsWith('#')) return 'heading';
+  if (first.startsWith('```')) return 'codeBlock';
+  if (first.startsWith('>')) return 'blockquote';
+  if (first.startsWith('- [')) return 'taskList';
+  if (first.startsWith('- ')) return 'bulletList';
+  return 'paragraph';
+}
+
+function parseBlocks(body: string): { blocks: ParsedBlock[]; rawBlocks: string[] } {
+  const rawBlocks = body.split(/\n{2,}/);
+  const blocks: ParsedBlock[] = [];
+  for (let position = 0; position < rawBlocks.length; position += 1) {
+    const raw = rawBlocks[position] ?? '';
+    if (raw.trim().length === 0) continue;
+    const anchor = /(?:^|\s)\^([A-Za-z0-9_-]+)\s*$/.exec(raw);
+    const content = raw.replace(/\^([A-Za-z0-9_-]+)\s*$/, '').trim();
+    blocks.push({ blockId: anchor?.[1] ?? null, blockType: classifyBlock(raw), content, position });
+  }
+  return { blocks, rawBlocks };
+}
+
 /** Shared markdown extraction used by the SQLite index. Keeps DEV-002 wikilink grammar. */
 export function parsePageMarkdown(pagePath: string, text: string): ParsedPage {
   const { frontmatter, body } = splitFrontmatter(text);
   const title = /^#\s+(.+?)\s*$/m.exec(body)?.[1]?.trim() ?? path.posix.basename(pagePath, '.md');
   const aliases = yamlList(frontmatter, 'aliases');
-  const links: ParsedLink[] = extractWikilinks(body).map((ref) => ({
-    targetRaw: ref.inner,
-    targetName: ref.targetName,
-    alias: ref.alias,
-    anchor: ref.anchor,
-    linkType: 'wiki',
-  }));
-  // 普通 Markdown 链接，仅索引指向 vault 内 .md 的相对链接；http(s)/mailto 等外链跳过。
+  const { blocks, rawBlocks } = parseBlocks(body);
+  const links: ParsedLink[] = [];
+  for (const ref of extractWikilinks(body)) {
+    links.push({
+      targetRaw: ref.inner,
+      targetName: ref.targetName,
+      alias: ref.alias,
+      anchor: ref.anchor,
+      linkType: 'wiki',
+      sourceText: ref.raw,
+      sourceBlockIndex: ref.blockIndex,
+    });
+  }
+  // 普通 Markdown 链接：定位所在块，把 raw 与块 index 一同写入，便于反链上下文。
   for (const match of body.matchAll(/(?<!!)\[[^\]]*\]\(([^)]+)\)/g)) {
     const raw = (match[1] ?? '').trim();
     if (!raw || /^[a-z][a-z0-9+.-]*:/i.test(raw) || raw.startsWith('#')) continue;
     const hash = raw.indexOf('#');
     const targetPart = (hash < 0 ? raw : raw.slice(0, hash)).replace(/^\.\//, '').replace(/\.md$/i, '');
     if (!targetPart) continue;
-    links.push({ targetRaw: raw, targetName: targetPart, alias: null, anchor: hash < 0 ? null : raw.slice(hash), linkType: 'normal' });
+    const sourceText = match[0];
+    const offset = match.index ?? 0;
+    const blockIndex = rawBlocks.findIndex((blk) => {
+      const start = body.indexOf(blk, 0);
+      return start >= 0 && offset >= start && offset < start + blk.length;
+    });
+    links.push({
+      targetRaw: raw,
+      targetName: targetPart,
+      alias: null,
+      anchor: hash < 0 ? null : raw.slice(hash),
+      linkType: 'normal',
+      sourceText,
+      sourceBlockIndex: blockIndex >= 0 ? blockIndex : 0,
+    });
   }
-  const blocks = body.split(/\n{2,}/).map((raw, position) => {
-    const anchor = /(?:^|\s)\^([A-Za-z0-9_-]+)\s*$/.exec(raw);
-    const first = raw.trimStart();
-    const blockType = first.startsWith('#') ? 'heading' : first.startsWith('```') ? 'codeBlock' : first.startsWith('>') ? 'blockquote' : first.startsWith('- [') ? 'taskList' : first.startsWith('- ') ? 'bulletList' : 'paragraph';
-    return { blockId: anchor?.[1] ?? null, blockType, content: raw.replace(/\^([A-Za-z0-9_-]+)\s*$/, '').trim(), position };
-  }).filter((b) => b.content.length > 0);
   const tags = [...new Set([...(frontmatter ? parseFrontmatterTags(frontmatter) : []), ...extractInlineTags(body)])].sort();
   return { path: pagePath, title, aliases, createdAt: yamlValue(frontmatter, 'created'), updatedAt: yamlValue(frontmatter, 'updated'), hash: createHash('sha256').update(text).digest('hex'), body, tags, links, blocks };
 }

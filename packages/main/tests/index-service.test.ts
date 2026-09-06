@@ -55,7 +55,7 @@ describe('LinkIndexService', () => {
     expect(names).toContain('work');
     expect(names).toContain('work/project');
     expect(names).toContain('inline');
-    expect(svc.tagPages('work')).toEqual(['a.md']);
+    expect(svc.tagPages('work').sort()).toEqual(['a.md', 'dir/c.md']);
 
     // 块索引
     const summary = svc.pageSummary('a.md');
@@ -122,6 +122,96 @@ describe('LinkIndexService', () => {
     await new Promise((r) => setTimeout(r, 300));
     expect(svc.search('内容甲')).toEqual([]);
     expect(svc.search('内容丙').length).toBe(1);
+
+    svc.close();
+  });
+
+  it('反链 snippet 围绕原始 wikilink 定位，alias [[Target|显示]] 也能定位', async () => {
+    await page('target.md', '', '# Target\n');
+    await page(
+      'src.md',
+      '',
+      '# 头\n\n首段无关内容\n\n这里有上下文 [[target|显示别名]] 在末尾\n\n下一段\n',
+    );
+    const svc = new LinkIndexService();
+    svc.setRoot(tmp);
+
+    const back = svc.backlinks('target.md');
+    expect(back.length).toBe(1);
+    const item = back[0]!;
+    expect(item.sourceText).toBe('[[target|显示别名]]');
+    expect(item.snippet).toContain('[[target|显示别名]]');
+    expect(item.snippet).toContain('这里有上下文');
+    // 应定位到 alias 所在段，而不是首段
+    expect(item.snippet).not.toContain('首段无关内容');
+    expect(item.snippet).not.toContain('下一段');
+    // 块元数据齐备
+    expect(item.blockId === null || typeof item.blockId === 'string').toBe(true);
+    expect(typeof item.blockPosition).toBe('number');
+
+    svc.close();
+  });
+
+  it('搜索：FTS 抛错不会吞掉 LIKE 兜底；malformed query 仍命中中文子串', async () => {
+    // 内容含带引号的畸形 token，保证 LIKE 子串命中且 FTS 语法非法
+    await page('a.md', '', '# A\n\n含 "未闭合 引号红色\n');
+    const svc = new LinkIndexService();
+    svc.setRoot(tmp);
+
+    // 合法 query 命中
+    expect(svc.search('红色').length).toBe(1);
+    // 畸形 FTS（未闭合引号）：仍应返回 LIKE 结果而非空
+    const malformed = svc.search('"未闭合');
+    expect(malformed.length).toBe(1);
+    expect(malformed[0]!.path).toBe('a.md');
+
+    svc.close();
+  });
+
+  it('标签 descPageCount 聚合：中间节点 pageCount=0，descPageCount=子页面去重数', async () => {
+    await page('a.md', '', '---\ntags: [work/project, work/notes]\n---\n# A\n');
+    await page('b.md', '', '---\ntags: [work/notes]\n---\n# B\n');
+    await page('c.md', '', '---\ntags: [archive]\n---\n# C\n');
+
+    const svc = new LinkIndexService();
+    svc.setRoot(tmp);
+
+    const map = new Map(svc.tags(false).map((t) => [t.tag, t]));
+    expect(map.get('work')?.descendantPageCount).toBe(2);
+    expect(map.get('work')?.pageCount).toBe(0);
+    expect(map.get('work')?.isIntermediate).toBe(true);
+    expect(map.get('work/project')?.pageCount).toBe(1);
+    expect(map.get('work/project')?.descendantPageCount).toBe(1);
+    expect(map.get('work/notes')?.pageCount).toBe(2);
+    expect(map.get('archive')?.pageCount).toBe(1);
+    expect(map.get('archive')?.descendantPageCount).toBe(1);
+
+    // 过滤中间节点 work 应返回 a/b 两个文件（c 不同子树）
+    expect(svc.tagPages('work').sort()).toEqual(['a.md', 'b.md']);
+
+    svc.close();
+  });
+
+  it('索引 root 切换防线：旧 root 事件不会以新 root 重新索引', async () => {
+    await page('a.md', '', '# A\n\n旧库内容甲\n');
+    await page('b.md', '', '# B\n\n旧库内容乙\n');
+    const svc = new LinkIndexService();
+    svc.setRoot(tmp);
+    expect(svc.search('内容甲').length).toBe(1);
+
+    // 切换 root：为不同 vault 建目录并 setRoot
+    const other = path.join(tmp, 'other');
+    await mkdir(other, { recursive: true });
+    await writeFile(path.join(other, 'n.md'), '# N\n\n新库内容丙\n', 'utf8');
+    svc.setRoot(other);
+    expect(svc.search('内容丙').length).toBe(1);
+
+    // 旧 root 的事件（在切换后到达）应被丢弃：updateFile 带旧 sourceRoot
+    svc.updateFile('a.md', tmp);
+    // 新 root 不应出现 旧库内容甲
+    expect(svc.search('内容甲')).toEqual([]);
+    // 旧 root 也应没有 a.md 页面残留
+    expect(svc.pageSummary('a.md')).toBeNull();
 
     svc.close();
   });
