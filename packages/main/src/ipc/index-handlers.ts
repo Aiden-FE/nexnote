@@ -1,4 +1,4 @@
-import { ok, type IndexStatus, type Result } from '@nexnote/shared';
+import { ok, type GraphSnapshot, type IndexStatus, type Result } from '@nexnote/shared';
 import type { IpcRegistrar } from './registrar';
 
 /** DEV-004 index:* IPC facade. SQLite access never crosses the renderer boundary. */
@@ -11,4 +11,5 @@ export function registerIndexHandlers(registrar: IpcRegistrar): void {
   registrar.register('index:tags', ({ flat }, services) => ok(services.index.tags(flat)));
   registrar.register('index:tagPages', ({ tag }, services) => ok(services.index.tagPages(tag)));
   registrar.register('index:pageSummary', ({ path }, services) => ok(services.index.pageSummary(path)));
+  registrar.register('index:graph', (_payload, services): Result<GraphSnapshot> => ok(services.index.graph()));
 }

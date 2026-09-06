@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { FileText, FolderOpen, Home, Plus, X } from 'lucide-react';
+import { FileText, FolderOpen, Home, Network, Plus, X } from 'lucide-react';
 import { useTabStore, type PaneId, type TabKind } from '../stores/tab-store';
 import { ContextMenu, type ContextMenuItem } from '../components/ContextMenu';
 import { invoke } from '../lib/ipc';
@@ -10,6 +10,7 @@ const kindIcon: Record<TabKind, typeof Home> = {
   welcome: Home,
   page: FileText,
   files: FolderOpen,
+  graph: Network,
 };
 
 interface TabStripProps {

@@ -13,3 +13,4 @@ import './settings';
 import './frontmatter/registry';
 import './search';
 import './search/commands';
+import './graph/LocalGraphPanel';

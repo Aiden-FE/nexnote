@@ -26,6 +26,7 @@
     "dist:linux": "electron-vite build && electron-builder --linux"
   },
   "dependencies": {
+    "@xyflow/react": "^12.11.6",
     "electron-updater": "^6.8.9"
   },
   "devDependencies": {
