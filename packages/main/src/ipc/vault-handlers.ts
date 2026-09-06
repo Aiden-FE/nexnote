@@ -114,7 +114,8 @@ export function registerVaultHandlers(registrar: IpcRegistrar): void {
         .pop()
         ?.replace(/\.git$/, '') || 'vault';
     const target = ensureSafeCloneName(parentDir, name?.trim() || fallbackName);
-    const cloned = await services.git.clone(url, target);
+    const targetName = pathUtil.basename(target);
+    const cloned = await services.git.cloneInto(url, parentDir, targetName);
     const opened = await services.vaultSession.open(target);
     services.git.setRoot(opened.root);
     services.windows.sendToMainWindow('git:statusChanged', await services.git.status());
@@ -176,6 +177,8 @@ export function registerVaultHandlers(registrar: IpcRegistrar): void {
     const current = services.vaultSession.getCurrent();
     if (!current) return { ok: false, error: '尚未打开任何 vault', code: 'NO_VAULT' };
     await saveVaultLayout(current.root, layout);
+    services.git.scheduleAutoCommit('保存 vault 布局');
+    services.windows.sendToMainWindow('git:statusChanged', await services.git.status());
     return ok(undefined);
   });
 }

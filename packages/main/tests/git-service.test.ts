@@ -205,6 +205,10 @@ describe.runIf(runIfGit())('GitService（系统 Git，临时仓库）', () => {
     await service.commitAuto('版本 1');
     await fsp.writeFile(file, 'line1\nline2 new\n');
     await service.commitAuto('版本 2');
+    // An unrelated staged edit must not be included in the restore commit.
+    await fsp.writeFile(path.join(root, 'unrelated.md'), 'keep staged\n');
+    const git = simpleGit({ baseDir: root, binary: gitBinary() });
+    await git.add(['unrelated.md']);
     const log = await service.timeline();
     const target = log[1]!.hash;
     const preview = await service.previewRestore('doc.md', target);
@@ -216,6 +220,9 @@ describe.runIf(runIfGit())('GitService（系统 Git，临时仓库）', () => {
     const newLog = await service.timeline();
     expect(newLog[0]!.kind).toBe('restore');
     expect(newLog[0]!.message).toMatch(/nexnote:restore:/);
+    const restoreFiles = await git.raw(['show', '--pretty=format:', '--name-only', 'HEAD']);
+    expect(restoreFiles.trim()).toBe('doc.md');
+    expect((await git.status()).staged).toContain('unrelated.md');
   });
 
   it('远程：file:// 本地 bare 仓库 push 与 pull 完整往返', async () => {

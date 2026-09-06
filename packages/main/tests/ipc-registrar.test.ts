@@ -287,6 +287,35 @@ describe('IPC 集成（vault + fs，单一注册表）', () => {
     expect(git.autoTimer).toBeNull();
   });
 
+  it('所有写操作路径都会安排自动提交', async () => {
+    const ipc = new FakeIpcMain();
+    const { services } = makeServices();
+    registerAllIpcHandlers(ipc, services);
+    await ipc.invoke('vault:create', { parentDir: tmp, name: 'all-mutations' });
+    const git = services.git as unknown as { autoTimer: ReturnType<typeof setTimeout> | null };
+
+    await ipc.invoke('fs:createNote', { parentDir: '', name: 'One' });
+    expect(git.autoTimer).not.toBeNull();
+    services.git.cancelAutoCommit();
+
+    await ipc.invoke('fs:renameLinked', { from: 'One.md', to: 'Two.md' });
+    expect(git.autoTimer).not.toBeNull();
+    services.git.cancelAutoCommit();
+
+    await ipc.invoke('vault:saveLayout', {
+      layout: {
+        sidebarWidth: 300,
+        sidebarCollapsed: false,
+        activeSidebarPanelId: null,
+        dockVisible: true,
+        dockWidth: 320,
+        splitEnabled: false,
+        splitRatio: 0.5,
+      },
+    });
+    expect(git.autoTimer).not.toBeNull();
+  });
+
   it('git:statusChanged 事件在写入、自动提交、手动提交后发送', async () => {
     const ipc = new FakeIpcMain();
     const { services } = makeServices();

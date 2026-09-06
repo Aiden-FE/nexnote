@@ -12,7 +12,7 @@
     "start": "electron-vite preview",
     "build": "electron-vite build",
     "smoke": "NEXNOTE_SMOKE=1 electron-vite dev",
-    "test:git-remote-acceptance": "node scripts/git-remote-acceptance.mjs",
+    "test:git-remote-acceptance": "NEXNOTE_GIT_ACCEPT=1 vitest run packages/main/tests/git-remote-acceptance.test.ts",
     "typecheck": "pnpm -r --if-present typecheck",
     "lint": "eslint .",
     "lint:fix": "eslint . --fix",

@@ -69,8 +69,11 @@ export function registerFsHandlers(registrar: IpcRegistrar): void {
   });
   registrar.register(
     'fs:createNote',
-    async ({ parentDir, name, content }, services): Promise<Result<FileInfo>> =>
-      ok(await createNote(services.fs, parentDir, name, content)),
+    async ({ parentDir, name, content }, services): Promise<Result<FileInfo>> => {
+      const result = await createNote(services.fs, parentDir, name, content);
+      await recordWrite(services, `创建笔记 ${result.path}`);
+      return ok(result);
+    },
   );
   registrar.register(
     'fs:listTree',
@@ -79,8 +82,11 @@ export function registerFsHandlers(registrar: IpcRegistrar): void {
   );
   registrar.register(
     'fs:renameLinked',
-    async ({ from, to }, services): Promise<Result<RenameLinkedResult>> =>
-      ok(await renameWithLinks(services.fs, from, to)),
+    async ({ from, to }, services): Promise<Result<RenameLinkedResult>> => {
+      const result = await renameWithLinks(services.fs, from, to);
+      await recordWrite(services, `重命名并更新链接 ${from} → ${to}`);
+      return ok(result);
+    },
   );
   registrar.register('fs:revealInFinder', async ({ path }, services): Promise<Result<void>> => {
     const { abs } = await services.fs.resolve(path);

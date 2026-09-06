@@ -292,10 +292,18 @@ export class GitService {
     return this.notified({ message: '推送完成', root });
   }
 
-  async clone(url: string, targetDir: string): Promise<GitOperationResult> {
-    if (!path.isAbsolute(targetDir))
-      throw new GitServiceError('克隆目标必须为绝对路径', 'INVALID_PATH');
-    await this.git(path.dirname(targetDir)).clone(url, targetDir);
+  /** Clone only into a validated direct child name under a caller-validated parent. */
+  async cloneInto(url: string, parentDir: string, name: string): Promise<GitOperationResult> {
+    if (!path.isAbsolute(parentDir))
+      throw new GitServiceError('克隆父目录必须为绝对路径', 'INVALID_PATH');
+    if (!name || name === '.' || name === '..' || path.basename(name) !== name) {
+      throw new GitServiceError('克隆目录名称不合法', 'INVALID_PATH');
+    }
+    const targetDir = path.resolve(parentDir, name);
+    if (path.dirname(targetDir) !== path.resolve(parentDir)) {
+      throw new GitServiceError('克隆目标必须是父目录的直接子目录', 'INVALID_PATH');
+    }
+    await this.git(parentDir).clone(url, targetDir);
     this.setRoot(targetDir);
     return this.notified({ message: '克隆完成', root: targetDir });
   }
@@ -315,9 +323,19 @@ export class GitService {
     const root = this.requireRoot();
     const relative = this.requireVaultPath(file);
     const git = this.git(root);
-    // checkout <commit> -- <file> changes only the worktree/index; subsequent commit preserves history.
+    // checkout stages only this file. Commit with an explicit pathspec so unrelated
+    // staged or unstaged edits can never hitchhike into the restore commit.
     await git.raw(['checkout', commit, '--', relative]);
-    await this.commit(root, `${RESTORE_PREFIX} restore ${relative} from ${commit.slice(0, 8)}`);
+    await this.ensureIdentity(git);
+    await git.raw([
+      'commit',
+      '--only',
+      '-m',
+      `${RESTORE_PREFIX} restore ${relative} from ${commit.slice(0, 8)}`,
+      '--',
+      relative,
+    ]);
+    this.lastCommitAt = Date.now();
     return this.notified({ message: `已恢复 ${relative}，并创建新的恢复提交`, root });
   }
 
