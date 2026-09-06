@@ -8,8 +8,8 @@
 
 ## 0. 最新状态（持续更新，优先于下方陈旧冻结段）
 
-- **真实进度：10 / 19** —— DEV-001~DEV-010 已全部合入 master。
-- master HEAD：`ab0b882030c12016b857bd9df1a486fe2cfce61b`（merge DEV-010），clean；post-merge typecheck/eslint/393 tests(2 skipped)/build 全过。
+- **真实进度：11 / 19** —— DEV-001~DEV-011 已全部合入 master。
+- master HEAD：`993fe82c6c4d07202a4d153c9539f91f8391ccf2`（merge DEV-011），clean；post-merge typecheck/eslint/402 tests(2 skipped)/build 全过。
 - 子Agent 派发工具 `multi_agent_v1__spawn_agent` 在本环境返回 unsupported，按用户接管规则由主控直接在隔离 worktree 实现。
 - better-sqlite3 ABI：vitest 用 Node ABI；electron smoke 用 `runtime=electron target=44.2.0 arch=arm64`，smoke 后务必切回 Node ABI。
 - Electron smoke 当前环境基线 **60/69**：9 项失败为 DEV-003/004/006/007 既有环境基线（Git 状态栏 2、新笔记 frontmatter/面包屑 2、标签面板/过滤 2、重命名 wikilink 1、500 节点 FPS 1、时间线 1）；master 与候选失败集逐名一致，DEV-010 无新增回归。
@@ -21,9 +21,16 @@
 - NOT_RUN：真实 provider 写作流式（smoke vault 未配置 writing profile）、Electron 内人工点击三入口与 diff 接受的端到端操作（由真实 kernel + mock 流单测/集成测试等价覆盖）。
 - 测试：kernel `writing-surfaces.test.ts` 11 项；renderer `writing-actions/context/diff/controller/layer` 共 21 项。
 
-### 下一张：DEV-011 渐进式召回管道与向量索引（依赖 DEV-004/009/008 均满足）
-- worktree `.wt/DEV-011` 已 fast-forward 到最新 master；票据 `issues/011-retrieval-pipeline-vector.md`。
-- 要点：向量索引、增量更新/后台队列、FTS+links+embedding 召回、rerank、来源、失败回退、与 DEV-008 confidence 重排挂钩；用 mock embedding，不伪造真实 provider。
+### DEV-011 · 渐进式召回管道与向量索引（已合并 `993fe82`，候选 `b59d1bf`）
+- schema v5：`block_vectors`/`vector_meta`（块粒度向量 JSON；blocks FK CASCADE 清旧向量；模型指纹分代）。
+- main `retrieval/retrieval-service.ts`：三阶段 FTS 粗筛 → 双链 1 跳 → 向量重排（候选集精确余弦）+ DEV-008 置信度乘性因子（默认权重 0.3）；token 预算打包；分阶段命中数/耗时来源标注；embedding 失败自动降级两阶段；全量构建 + 防抖增量（模型变更全量重建）。`BuiltinRetrievalSkill.search(query,options)` 供 DEV-014。
+- 通道 `ai:retrieve`、事件 `ai:retrievalStatus`；renderer RetrievalSources（参考来源+阶段统计+降级徽标+点击开 tab）、RetrievalTester 挂 AI dock。
+- 验收覆盖（main 7 项 + renderer 2 项）：全量/增量/模型指纹、三阶段均有命中、置信度重排、降级、1200 块召回 <500ms、来源渲染/跳转。
+- NOT_RUN：真实 embedding provider 与 Electron 人工检索（bag-of-words fake embedder + 真实 FTS/双链/置信度链路等价覆盖）。sqlite-vec ANN 未引入（候选集精确余弦 <500ms），VectorStore 接口预留替换。
+
+### 下一张：DEV-012 AI 对话 dock 与会话即页面（依赖 DEV-009+011 均满足）
+- 新建 worktree `.wt/DEV-012`（从 master）；票据 `issues/012-ai-chat-dock.md`。
+- 要点：对话 dock 正式化（替换 AiChatDebug）、会话即页面/会话持久化、回答内联 RetrievalSources（复用 DEV-011）、回答插入块（复用 DEV-010 insertIntoActiveEditor）。
 
 
 ## 1. 全局基线
