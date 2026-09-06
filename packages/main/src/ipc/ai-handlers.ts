@@ -64,6 +64,24 @@ export function registerAiHandlers(registrar: IpcRegistrar, ai: AiService): void
     return ok(await ai.embedWithMetadata(payload.texts));
   });
 
+  registrar.register('ai:retrieve', async (payload, services) => {
+    if (!services.retrieval) {
+      return ok({
+        query: payload.query,
+        degraded: true,
+        model: null,
+        contextText: '',
+        sources: [],
+        stages: [
+          { stage: 'fts', candidates: 0, elapsedMs: 0, enabled: false },
+          { stage: 'links', candidates: 0, elapsedMs: 0, enabled: false },
+          { stage: 'vector', candidates: 0, elapsedMs: 0, enabled: false, note: '召回服务不可用' },
+        ],
+      });
+    }
+    return ok(await services.retrieval.retrieve(payload));
+  });
+
   registrar.register('ai:export', async () => {
     return ok(ai.exportProfiles());
   });

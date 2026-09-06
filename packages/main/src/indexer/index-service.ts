@@ -4,7 +4,25 @@ import * as path from 'node:path';
 import type { Backlink, ConfidenceResult, GraphSnapshot, IndexStatus, PageIndexSummary, PageJumpResult, SearchHit, TagIndexEntry } from '@nexnote/shared';
 import { parsePageMarkdown, type ParsedPage } from './markdown-indexer';
 
-const SCHEMA_VERSION = 4;
+export interface CandidateBlock {
+  blockRowid: number;
+  pageId: number;
+  path: string;
+  title: string;
+  blockId: string | null;
+  blockType: string;
+  content: string;
+  position: number;
+}
+export interface VectorItem {
+  blockRowid: number;
+  blockId: string | null;
+  blockType: string;
+  vector: number[];
+  model: string;
+}
+
+const SCHEMA_VERSION = 5;
 type Db = Database.Database;
 
 function emptyStatus(): IndexStatus { return { phase: 'idle', pagesTotal: 0, pagesIndexed: 0, mode: 'full' }; }
@@ -162,6 +180,24 @@ export class LinkIndexService {
           computed_at TEXT NOT NULL
         );
         CREATE INDEX IF NOT EXISTS confidence_page_idx ON confidence(page_id);
+      `);
+    }
+    if (version < 5) {
+      // DEV-011 向量索引（块粒度）：vector 为 JSON number[]（归一化），按 embedding 模型指纹分代。
+      // blocks 删除时经 FK CASCADE 自动清理旧向量；本环境候选集规模（<TopN）用精确余弦即可，
+      // sqlite-vec ANN 可在 VectorStore 背后替换而不改召回契约。
+      db.exec(`
+        CREATE TABLE IF NOT EXISTS block_vectors (
+          block_rowid INTEGER PRIMARY KEY REFERENCES blocks(id) ON DELETE CASCADE,
+          page_id INTEGER NOT NULL REFERENCES pages(id) ON DELETE CASCADE,
+          block_id TEXT,
+          block_type TEXT,
+          vector TEXT NOT NULL,
+          dims INTEGER NOT NULL,
+          model TEXT NOT NULL
+        );
+        CREATE INDEX IF NOT EXISTS block_vectors_page_idx ON block_vectors(page_id);
+        CREATE TABLE IF NOT EXISTS vector_meta (key TEXT PRIMARY KEY, value TEXT NOT NULL);
       `);
     }
     db.pragma(`user_version = ${SCHEMA_VERSION}`);
@@ -578,6 +614,115 @@ export class LinkIndexService {
       ORDER BY source.path, target.path
     `).all() as LinkRow[];
     return { pages, links };
+  }
+
+  // ── DEV-011 召回支撑：块候选 / 双链邻居 / 向量存取 ─────────────────
+
+  /** 取给定页面的全部块（含 page 元数据），供召回组装与 embedding。 */
+  blocksForPaths(paths: string[]): CandidateBlock[] {
+    const db = this.db;
+    if (!db || paths.length === 0) return [];
+    const placeholders = paths.map(() => '?').join(',');
+    return db.prepare(`
+      SELECT b.id blockRowid, b.page_id pageId, p.path path, p.title title,
+             b.block_id blockId, b.block_type blockType, b.content_text content, b.position position
+      FROM blocks b JOIN pages p ON p.id = b.page_id
+      WHERE p.path IN (${placeholders}) AND length(b.content_text) > 0
+      ORDER BY p.path, b.position
+    `).all(...paths) as CandidateBlock[];
+  }
+
+  /** 全部块（向量全量构建用）。 */
+  allBlocks(): CandidateBlock[] {
+    const db = this.db;
+    if (!db) return [];
+    return db.prepare(`
+      SELECT b.id blockRowid, b.page_id pageId, p.path path, p.title title,
+             b.block_id blockId, b.block_type blockType, b.content_text content, b.position position
+      FROM blocks b JOIN pages p ON p.id = b.page_id
+      WHERE length(b.content_text) > 0
+      ORDER BY p.path, b.position
+    `).all() as CandidateBlock[];
+  }
+
+  /** 一跳双链邻居（出链 + 入链）的路径集合，不含输入路径本身。 */
+  neighborPaths(paths: string[]): string[] {
+    const db = this.db;
+    if (!db || paths.length === 0) return [];
+    const placeholders = paths.map(() => '?').join(',');
+    const rows = db.prepare(`
+      SELECT DISTINCT p.path path FROM links l
+        JOIN pages seed ON seed.id IN (SELECT id FROM pages WHERE path IN (${placeholders}))
+        JOIN pages p ON p.id = CASE
+          WHEN l.source_page_id = seed.id THEN l.target_page_id
+          WHEN l.target_page_id = seed.id THEN l.source_page_id END
+      WHERE p.path NOT IN (${placeholders})
+    `).all(...paths, ...paths) as Array<{ path: string }>;
+    return rows.map((r) => r.path).filter(Boolean);
+  }
+
+  /** DEV-011：整页向量替换（事务内 delete + insert）。 */
+  replacePageVectors(path: string, items: VectorItem[]): number {
+    const db = this.db!;
+    const page = db.prepare('SELECT id FROM pages WHERE path=?').get(path) as { id: number } | undefined;
+    if (!page) return 0;
+    const run = db.transaction((entries: VectorItem[]) => {
+      db.prepare('DELETE FROM block_vectors WHERE page_id=?').run(page.id);
+      const insert = db.prepare(
+        'INSERT INTO block_vectors(block_rowid,page_id,block_id,block_type,vector,dims,model) VALUES(?,?,?,?,?,?,?)',
+      );
+      let count = 0;
+      for (const it of entries) {
+        insert.run(it.blockRowid, page.id, it.blockId, it.blockType, JSON.stringify(it.vector), it.vector.length, it.model);
+        count += 1;
+      }
+      return count;
+    });
+    return run(items);
+  }
+
+  clearVectors(): void {
+    this.db?.exec('DELETE FROM block_vectors; DELETE FROM vector_meta;');
+  }
+
+  vectorMeta(key: string): string | null {
+    const row = this.db?.prepare('SELECT value FROM vector_meta WHERE key=?').get(key) as { value: string } | undefined;
+    return row?.value ?? null;
+  }
+
+  setVectorMeta(key: string, value: string): void {
+    this.db
+      ?.prepare('INSERT INTO vector_meta(key,value) VALUES(?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value')
+      .run(key, value);
+  }
+
+  /** 取指定块 rowid 的向量（归一化 number[]）；缺失则不在 Map 中。 */
+  vectorsForBlockRowids(rowids: number[]): Map<number, number[]> {
+    const map = new Map<number, number[]>();
+    const db = this.db;
+    if (!db || rowids.length === 0) return map;
+    const placeholders = rowids.map(() => '?').join(',');
+    const rows = db
+      .prepare(`SELECT block_rowid rowid, vector FROM block_vectors WHERE block_rowid IN (${placeholders})`)
+      .all(...rowids) as Array<{ rowid: number; vector: string }>;
+    for (const r of rows) {
+      try {
+        const v = JSON.parse(r.vector) as number[];
+        if (Array.isArray(v) && v.length > 0) map.set(r.rowid, v);
+      } catch {
+        /* 跳过损坏向量 */
+      }
+    }
+    return map;
+  }
+
+  vectorCoverage(): { blocks: number; pages: number; model: string | null } {
+    const db = this.db;
+    if (!db) return { blocks: 0, pages: 0, model: null };
+    const row = db
+      .prepare('SELECT COUNT(*) blocks, COUNT(DISTINCT page_id) pages FROM block_vectors')
+      .get() as { blocks: number; pages: number };
+    return { blocks: row.blocks, pages: row.pages, model: this.vectorMeta('embedding_model') };
   }
 
   /** Testing hook: delete cache and make a new service auto rebuild at same root. */
