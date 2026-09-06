@@ -89,13 +89,18 @@ export function OnboardingWizard({ recent, onRecentsChanged }: OnboardingWizardP
   };
 
   return (
-    <div data-testid="onboarding" className="flex h-full items-center justify-center bg-background p-6">
+    <div
+      data-testid="onboarding"
+      className="flex h-full items-center justify-center bg-background p-6"
+    >
       <div className="w-full max-w-xl">
         <div className="mb-8 text-center">
           <div className="mx-auto mb-4 flex size-14 items-center justify-center rounded-2xl bg-primary text-xl font-bold text-primary-foreground">
             N
           </div>
-          <h1 className="text-2xl font-semibold tracking-tight text-foreground">欢迎使用 NexNote</h1>
+          <h1 className="text-2xl font-semibold tracking-tight text-foreground">
+            欢迎使用 NexNote
+          </h1>
           <p className="mt-1.5 text-sm text-muted-foreground">
             本地优先的知识库：块编辑 × 双链 × Git × AI
           </p>
@@ -161,7 +166,9 @@ export function OnboardingWizard({ recent, onRecentsChanged }: OnboardingWizardP
                         title={entry.path}
                       >
                         <span className="block truncate font-medium">{entry.name}</span>
-                        <span className="block truncate text-[11px] text-muted-foreground">{entry.path}</span>
+                        <span className="block truncate text-[11px] text-muted-foreground">
+                          {entry.path}
+                        </span>
                       </button>
                       <button
                         type="button"
@@ -203,7 +210,9 @@ export function OnboardingWizard({ recent, onRecentsChanged }: OnboardingWizardP
               className="mb-4 h-9 w-full rounded-md border bg-background px-3 text-sm outline-none focus:ring-2 focus:ring-ring/40"
             />
 
-            <label className="mb-1.5 block text-xs font-medium text-muted-foreground">存放位置</label>
+            <label className="mb-1.5 block text-xs font-medium text-muted-foreground">
+              存放位置
+            </label>
             <div className="mb-5 flex items-center gap-2">
               <span className="flex h-9 min-w-0 flex-1 items-center truncate rounded-md border bg-muted/50 px-3 text-xs text-muted-foreground">
                 {parentDir ?? '未选择'}

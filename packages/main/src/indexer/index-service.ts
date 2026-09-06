@@ -424,11 +424,13 @@ export class LinkIndexService {
     return (this.db!.prepare("SELECT DISTINCT p.path FROM tags t JOIN pages p ON p.id=t.page_id WHERE t.tag_name=? OR t.tag_name LIKE ? ESCAPE '\\' ORDER BY p.path").all(tag, `${escLike(tag)}/%`) as Array<{ path: string }>).map((row) => row.path);
   }
   pageSummary(pagePath: string): PageIndexSummary | null {
-    type SummaryRow = { path: string; title: string; aliases: string; updated_at: string | null; blockCount: number; wordCount: number };
-    const row = this.db!.prepare(`SELECT p.path,p.title,p.aliases,p.updated_at,COUNT(DISTINCT b.id) blockCount,COALESCE(SUM(LENGTH(b.content_text)-LENGTH(REPLACE(b.content_text,' ',''))+1),0) wordCount FROM pages p LEFT JOIN blocks b ON b.page_id=p.id WHERE p.path=? GROUP BY p.id`).get(pagePath) as SummaryRow | undefined;
+    type SummaryRow = { id: number; path: string; title: string; aliases: string; updated_at: string | null; blockCount: number; wordCount: number };
+    const row = this.db!.prepare(`SELECT p.id id,p.path path,p.title title,p.aliases aliases,p.updated_at updated_at,COUNT(DISTINCT b.id) blockCount,COALESCE(SUM(LENGTH(b.content_text)-LENGTH(REPLACE(b.content_text,' ',''))+1),0) wordCount FROM pages p LEFT JOIN blocks b ON b.page_id=p.id WHERE p.path=? GROUP BY p.id`).get(pagePath) as SummaryRow | undefined;
     if (!row) return null;
     const tags = (this.db!.prepare('SELECT tag_name FROM tags t JOIN pages p ON p.id=t.page_id WHERE p.path=? ORDER BY tag_name').all(pagePath) as Array<{ tag_name: string }>).map((item) => item.tag_name);
-    return { path: row.path, title: row.title, aliases: JSON.parse(row.aliases) as string[], tags, updatedAt: row.updated_at ?? '', wordCount: row.wordCount, blockCount: row.blockCount };
+    const inboundLinks = (this.db!.prepare('SELECT COUNT(DISTINCT source_page_id) c FROM links WHERE target_page_id=?').get(row.id) as { c: number }).c;
+    const outboundLinks = (this.db!.prepare('SELECT COUNT(DISTINCT target_page_id) c FROM links WHERE source_page_id=? AND target_page_id IS NOT NULL').get(row.id) as { c: number }).c;
+    return { path: row.path, title: row.title, aliases: JSON.parse(row.aliases) as string[], tags, updatedAt: row.updated_at ?? '', wordCount: row.wordCount, blockCount: row.blockCount, inboundLinks, outboundLinks };
   }
   /** Testing hook: delete cache and make a new service auto rebuild at same root. */
   static removeDatabase(root: string): void { rmSync(path.join(root,'.nexnote','index.db'),{force:true}); rmSync(path.join(root,'.nexnote','index.db-wal'),{force:true}); rmSync(path.join(root,'.nexnote','index.db-shm'),{force:true}); }

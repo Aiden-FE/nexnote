@@ -138,6 +138,27 @@ describe('LinkIndexService', () => {
     svc.close();
   });
 
+  it('pageSummary reports real distinct inbound/outbound link counts (DEV-005)', async () => {
+    await page('x.md', '', '# X\n\n链接 [[y]] 与 [Z](z.md)，以及红链 [[ghost]]');
+    await page('y.md', '', '# Y\n\n回链 [[x]]');
+    await page('z.md', '', '# Z');
+    const svc = new LinkIndexService();
+    svc.setRoot(tmp);
+    // x → y(wiki) 与 x → z(normal)：出链去重目标页 = 2；红链不计。入链来自 y = 1。
+    const sx = svc.pageSummary('x.md');
+    expect(sx?.outboundLinks).toBe(2);
+    expect(sx?.inboundLinks).toBe(1);
+    // y 出链指向 x = 1；入链来自 x = 1。
+    const sy = svc.pageSummary('y.md');
+    expect(sy?.outboundLinks).toBe(1);
+    expect(sy?.inboundLinks).toBe(1);
+    // z 仅被 x 引用：入链 1，出链 0。
+    const sz = svc.pageSummary('z.md');
+    expect(sz?.inboundLinks).toBe(1);
+    expect(sz?.outboundLinks).toBe(0);
+    svc.close();
+  });
+
   it('CJK substring search matches through FTS without LIKE fallback', async () => {
     await page('p.md', '', '# P\n\n这是知识库搜索基准的正文片段');
     const svc = new LinkIndexService();

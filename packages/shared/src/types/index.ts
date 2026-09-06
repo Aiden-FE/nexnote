@@ -61,6 +61,10 @@ export interface PageIndexSummary {
   updatedAt: string;
   wordCount: number;
   blockCount: number;
+  /** 入链：指向本页的其他页面数（去重源页）。 */
+  inboundLinks: number;
+  /** 出链：本页指向已解析笔记的目标数（去重目标页；红链不计）。 */
+  outboundLinks: number;
 }
 
 /** ⌘K 页面跳转结果（标题/别名模糊匹配）。 */
