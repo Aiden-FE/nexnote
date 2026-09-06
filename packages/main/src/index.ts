@@ -34,7 +34,10 @@ let windows: WindowManager | null = null;
 
 function bootstrap(): void {
   const appStore = new AppStore(join(app.getPath('userData'), 'nexnote-app.json'));
-  windows = new WindowManager({ getAppStore: () => appStore, devTools: !!process.env.NEXNOTE_DEVTOOLS });
+  windows = new WindowManager({
+    getAppStore: () => appStore,
+    devTools: !!process.env.NEXNOTE_DEVTOOLS,
+  });
   const vaultSession = new VaultSession({ appStore, windows });
   const fs = new VaultFsService(() => vaultSession.getCurrent()?.root ?? null);
 

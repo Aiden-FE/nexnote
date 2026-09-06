@@ -18,7 +18,10 @@ function DocumentPropertiesDockPanel() {
 
   if (!filePath) {
     return (
-      <div data-testid="properties-panel-empty" className="flex h-full items-center justify-center text-center text-xs text-muted-foreground">
+      <div
+        data-testid="properties-panel-empty"
+        className="flex h-full items-center justify-center text-center text-xs text-muted-foreground"
+      >
         打开一个 Markdown 页面以查看文档属性
       </div>
     );

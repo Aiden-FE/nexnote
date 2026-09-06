@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
+  assertSafeFrontmatterKey,
   fieldTypeOf,
   getList,
   getString,
@@ -11,15 +12,17 @@ import {
 
 describe('parseFrontmatterYaml', () => {
   it('解析标量各类型', () => {
-    const data = parseFrontmatterYaml([
-      'title: 我的笔记',
-      'count: 42',
-      'ratio: 0.7',
-      'draft: true',
-      'archived: false',
-      'empty: null',
-      'created: 2024-01-15',
-    ].join('\n'));
+    const data = parseFrontmatterYaml(
+      [
+        'title: 我的笔记',
+        'count: 42',
+        'ratio: 0.7',
+        'draft: true',
+        'archived: false',
+        'empty: null',
+        'created: 2024-01-15',
+      ].join('\n'),
+    );
     expect(data.title).toBe('我的笔记');
     expect(data.count).toBe(42);
     expect(data.ratio).toBe(0.7);
@@ -30,7 +33,9 @@ describe('parseFrontmatterYaml', () => {
   });
 
   it('解析 flow 序列与块序列', () => {
-    const data = parseFrontmatterYaml(['tags: [work, "project x", 123]', 'aliases:', '  - 甲', '  - 乙'].join('\n'));
+    const data = parseFrontmatterYaml(
+      ['tags: [work, "project x", 123]', 'aliases:', '  - 甲', '  - 乙'].join('\n'),
+    );
     expect(data.tags).toEqual(['work', 'project x', '123']);
     expect(data.aliases).toEqual(['甲', '乙']);
   });
@@ -48,6 +53,25 @@ describe('parseFrontmatterYaml', () => {
   it('非法输入抛错（供源码模式标红）', () => {
     expect(() => parseFrontmatterYaml('  bad indent')).toThrow();
     expect(() => parseFrontmatterYaml('no colon here')).toThrow();
+  });
+
+  it('拒绝 __proto__ / constructor / prototype 等危险 key，防止原型污染', () => {
+    for (const key of ['__proto__', 'constructor', 'prototype']) {
+      expect(() => parseFrontmatterYaml(`${key}: value`)).toThrow();
+      expect(() => serializeFrontmatterYaml({ [key]: 'x' } as never)).toThrow();
+    }
+    const data = parseFrontmatterYaml('safe: yes');
+    expect(Object.getPrototypeOf(data)).toBeNull();
+  });
+
+  it('拒绝空 key', () => {
+    expect(() => parseFrontmatterYaml(': value')).toThrow(/不能为空/);
+  });
+
+  it('assertSafeFrontmatterKey 统一校验空与危险 key', () => {
+    expect(assertSafeFrontmatterKey('  title ')).toBe('title');
+    expect(() => assertSafeFrontmatterKey('')).toThrow(/不能为空/);
+    expect(() => assertSafeFrontmatterKey('__proto__')).toThrow(/不安全/);
   });
 });
 

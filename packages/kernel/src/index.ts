@@ -22,6 +22,7 @@ export { Wikilink } from './extensions/wikilink';
 export { Hashtag } from './extensions/hashtag';
 export { Frontmatter, splitFrontmatter } from './extensions/frontmatter';
 export {
+  assertSafeFrontmatterKey,
   fieldTypeOf,
   getList,
   getString,

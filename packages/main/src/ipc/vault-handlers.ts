@@ -1,25 +1,36 @@
 import { ok, type Result } from '@nexnote/shared';
 import type { IpcRegistrar } from './registrar';
-import { createVault, readVaultConfig, saveVaultLayout, validateVaultRoot } from '../vault/vault-manager';
+import {
+  createVault,
+  readVaultConfig,
+  saveVaultLayout,
+  validateVaultRoot,
+} from '../vault/vault-manager';
 import type { RecentVaultEntry, VaultInfo, VaultLayout, VaultStartupState } from '@nexnote/shared';
 
 /** 启动状态查询只做一次恢复（懒执行，避免在模块加载期做 IO）。 */
 let restoreAttempted = false;
 
 export function registerVaultHandlers(registrar: IpcRegistrar): void {
-  registrar.register('vault:getState', async (_payload, services): Promise<Result<VaultStartupState>> => {
-    let current = services.vaultSession.getCurrent();
-    if (!current && !restoreAttempted) {
-      restoreAttempted = true;
-      current = await services.vaultSession.restoreLast();
-    }
-    if (current) return ok({ mode: 'ready', vault: current });
-    return ok({ mode: 'onboarding', recent: services.appStore.existingRecents() });
-  });
+  registrar.register(
+    'vault:getState',
+    async (_payload, services): Promise<Result<VaultStartupState>> => {
+      let current = services.vaultSession.getCurrent();
+      if (!current && !restoreAttempted) {
+        restoreAttempted = true;
+        current = await services.vaultSession.restoreLast();
+      }
+      if (current) return ok({ mode: 'ready', vault: current });
+      return ok({ mode: 'onboarding', recent: services.appStore.existingRecents() });
+    },
+  );
 
-  registrar.register('vault:pickDirectory', async (_payload, services): Promise<Result<string | null>> => {
-    return ok(await services.dialogs.pickDirectory());
-  });
+  registrar.register(
+    'vault:pickDirectory',
+    async (_payload, services): Promise<Result<string | null>> => {
+      return ok(await services.dialogs.pickDirectory());
+    },
+  );
 
   registrar.register(
     'vault:create',

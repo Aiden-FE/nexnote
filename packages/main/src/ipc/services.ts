@@ -1,7 +1,4 @@
-import type {
-  AppInfo,
-  UpdateCheckResult,
-} from '@nexnote/shared';
+import type { AppInfo, UpdateCheckResult } from '@nexnote/shared';
 import type { AppStore } from '../vault/app-store';
 import type { VaultSession } from '../vault/vault-session';
 import type { VaultFsService } from '../fs/fs-service';

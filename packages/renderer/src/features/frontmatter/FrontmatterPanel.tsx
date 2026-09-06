@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { AlertCircle, Braces, ClipboardList, Code2, LockKeyhole } from 'lucide-react';
 import type { FrontmatterData } from '@nexnote/kernel';
 import { parseFrontmatterYaml, serializeFrontmatterYaml } from '@nexnote/kernel';
+import { renameFrontmatterKey } from './frontmatter-utils';
 import { Button } from '../../components/ui/button';
 import { FieldEditor } from './FieldEditor';
 import { tokenizeYaml, type YamlTokenKind } from './frontmatter-utils';
@@ -45,9 +46,12 @@ export function FrontmatterPanel({
   const highlightRef = useRef<HTMLPreElement>(null);
   const activeMode: FrontmatterMode = locked ? 'yaml' : mode;
 
-  useEffect(() => () => {
-    if (saveTimer.current) clearTimeout(saveTimer.current);
-  }, []);
+  useEffect(
+    () => () => {
+      if (saveTimer.current) clearTimeout(saveTimer.current);
+    },
+    [],
+  );
 
   // 表格模式下 YAML 文本跟随外部 source；源码模式下保留用户正在编辑的文本。
   const effectiveYaml = activeMode === 'table' ? source : yaml;
@@ -97,12 +101,18 @@ export function FrontmatterPanel({
   };
 
   return (
-    <section data-testid="frontmatter-panel" className="mb-4 overflow-hidden rounded-lg border bg-card">
+    <section
+      data-testid="frontmatter-panel"
+      className="mb-4 overflow-hidden rounded-lg border bg-card"
+    >
       <header className="flex min-h-9 items-center gap-1 border-b bg-muted/35 px-2">
         <ClipboardList className="ml-1 size-3.5 text-muted-foreground" />
         <span className="mr-auto text-xs font-medium">文档属性</span>
         {locked && (
-          <span className="mr-1 inline-flex items-center gap-1 text-[10px] text-destructive" title="修复 YAML 后可切回表格">
+          <span
+            className="mr-1 inline-flex items-center gap-1 text-[10px] text-destructive"
+            title="修复 YAML 后可切回表格"
+          >
             <LockKeyhole className="size-3" /> 源码锁定
           </span>
         )}
@@ -130,7 +140,12 @@ export function FrontmatterPanel({
       </header>
       {activeMode === 'table' ? (
         <div className="p-2">
-          <FieldEditor data={data} onChange={onChange} knownTags={knownTags} />
+          <FieldEditor
+            data={data}
+            onChange={onChange}
+            knownTags={knownTags}
+            onRename={(from, to) => onChange(renameFrontmatterKey(data, from, to))}
+          />
         </div>
       ) : (
         <div className="p-2">
@@ -143,7 +158,9 @@ export function FrontmatterPanel({
               {highlighted.map((line, lineIndex) => (
                 <span key={lineIndex}>
                   {line.map((token, tokenIndex) => (
-                    <span key={tokenIndex} className={TOKEN_CLASS[token.kind]}>{token.text}</span>
+                    <span key={tokenIndex} className={TOKEN_CLASS[token.kind]}>
+                      {token.text}
+                    </span>
                   ))}
                   {lineIndex < highlighted.length - 1 ? '\n' : null}
                 </span>
@@ -165,7 +182,9 @@ export function FrontmatterPanel({
             />
           </div>
           <div className="mt-1 flex items-start gap-1 text-[11px] text-muted-foreground">
-            {activeError ? <AlertCircle className="mt-0.5 size-3 shrink-0 text-destructive" /> : null}
+            {activeError ? (
+              <AlertCircle className="mt-0.5 size-3 shrink-0 text-destructive" />
+            ) : null}
             <span className={activeError ? 'text-destructive' : ''}>
               {activeError ?? `${lineCount} 行 · 语法有效，300ms 后保存；切回表格会保留当前数据`}
             </span>

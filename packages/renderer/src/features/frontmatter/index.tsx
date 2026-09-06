@@ -32,11 +32,15 @@ function PagesPlaceholder() {
   return (
     <div data-testid="sidebar-panel-pages" className="space-y-1.5 text-muted-foreground">
       <p className="mb-3 text-xs leading-relaxed">
-        页面树将在 <span className="font-medium text-foreground">DEV-003</span> 接入（文件夹 →
-        .md 文件的树形视图、右键菜单、拖拽移动）。
+        页面树将在 <span className="font-medium text-foreground">DEV-003</span> 接入（文件夹 → .md
+        文件的树形视图、右键菜单、拖拽移动）。
       </p>
       {[72, 88, 60, 96, 48].map((w, i) => (
-        <div key={i} className="flex items-center gap-1.5" style={{ paddingLeft: `${(i % 3) * 14}px` }}>
+        <div
+          key={i}
+          className="flex items-center gap-1.5"
+          style={{ paddingLeft: `${(i % 3) * 14}px` }}
+        >
           <div className="h-1.5 rounded-full bg-muted-foreground/25" style={{ width: `${w}px` }} />
         </div>
       ))}

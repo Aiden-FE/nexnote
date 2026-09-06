@@ -15,28 +15,35 @@
  * - 后续若需要复杂 YAML（多行字符串、锚点等）再替换为 js-yaml，接口保持不变。
  */
 
-export type FrontmatterValue =
-  | string
-  | number
-  | boolean
-  | null
-  | Date
-  | string[];
+export type FrontmatterValue = string | number | boolean | null | Date | string[];
 
 export type FrontmatterData = Record<string, FrontmatterValue>;
 
-const STANDARD_FIELDS: Readonly<Record<string, 'string' | 'list' | 'date' | 'number' | 'boolean'>> = {
-  title: 'string',
-  tags: 'list',
-  aliases: 'list',
-  created: 'date',
-  updated: 'date',
-  type: 'string',
-  confidence: 'number',
-};
+const UNSAFE_KEYS = new Set(['__proto__', 'constructor', 'prototype']);
+
+/** 防止普通对象原型键进入 frontmatter 数据模型。 */
+export function assertSafeFrontmatterKey(raw: string): string {
+  const key = raw.trim();
+  if (!key) throw new Error('frontmatter 字段名不能为空');
+  if (UNSAFE_KEYS.has(key)) throw new Error(`frontmatter 字段名不安全：${key}`);
+  return key;
+}
+
+const STANDARD_FIELDS: Readonly<Record<string, 'string' | 'list' | 'date' | 'number' | 'boolean'>> =
+  {
+    title: 'string',
+    tags: 'list',
+    aliases: 'list',
+    created: 'date',
+    updated: 'date',
+    type: 'string',
+    confidence: 'number',
+  };
 
 /** 推测字段的显示类型（用于属性表格选择编辑器）。 */
-export function fieldTypeOf(value: FrontmatterValue): 'string' | 'number' | 'boolean' | 'date' | 'list' | 'null' {
+export function fieldTypeOf(
+  value: FrontmatterValue,
+): 'string' | 'number' | 'boolean' | 'date' | 'list' | 'null' {
   if (value === null) return 'null';
   if (Array.isArray(value)) return 'list';
   if (value instanceof Date) return 'date';
@@ -158,7 +165,7 @@ function parseFlowSequence(body: string): FrontmatterValue[] {
  * 解析失败时抛错（字符串描述），调用方决定降级到源码模式。
  */
 export function parseFrontmatterYaml(yaml: string): FrontmatterData {
-  const data: FrontmatterData = {};
+  const data = Object.create(null) as FrontmatterData;
   const lines = yaml.split('\n');
   let i = 0;
 
@@ -178,7 +185,7 @@ export function parseFrontmatterYaml(yaml: string): FrontmatterData {
     if (colonIdx < 0) {
       throw new Error(`frontmatter 第 ${i + 1} 行不是合法字段：${rawLine}`);
     }
-    const key = rawLine.slice(0, colonIdx).trim();
+    const key = assertSafeFrontmatterKey(rawLine.slice(0, colonIdx));
     const valueRaw = rawLine.slice(colonIdx + 1).trim();
 
     // value 为空 → 可能是块序列，看下一行缩进
@@ -268,7 +275,8 @@ export function serializeFrontmatterYaml(data: FrontmatterData): string {
     .sort((a, b) => a.localeCompare(b));
 
   const lines: string[] = [];
-  for (const key of [...standardKeys, ...customKeys]) {
+  for (const rawKey of [...standardKeys, ...customKeys]) {
+    const key = assertSafeFrontmatterKey(rawKey);
     const value = data[key];
     if (value === undefined) continue;
     lines.push(serializeField(key, value));
@@ -283,7 +291,7 @@ function serializeField(key: string, value: FrontmatterValue): string {
     // 简短字符串数组用 flow 形式；长的用块序列
     const totalLen = value.reduce((sum, v) => sum + v.length, 0);
     if (totalLen < 40 && value.length <= 5) {
-      const items = value.map((v) => needsQuote(v) ? quoteString(v) : v).join(', ');
+      const items = value.map((v) => (needsQuote(v) ? quoteString(v) : v)).join(', ');
       return `${key}: [${items}]`;
     }
     const lines = [`${key}:`];
@@ -327,7 +335,10 @@ function quoteString(s: string): string {
  * 对一个字符串值列表做简单排序 + 去重（用于 tags 等字段的规范化显示）。
  * 保留原始大小写与顺序感，只做去重。
  */
-export function normalizeList(value: FrontmatterValue | undefined, fallback: string[] = []): string[] {
+export function normalizeList(
+  value: FrontmatterValue | undefined,
+  fallback: string[] = [],
+): string[] {
   if (Array.isArray(value)) return value;
   if (typeof value === 'string' && value.length > 0) return [value];
   return fallback;

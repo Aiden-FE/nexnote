@@ -13,10 +13,7 @@ import type { IpcServices } from '../src/ipc/services';
 class FakeIpcMain implements IpcMainLike {
   readonly handlers = new Map<string, (event: unknown, ...args: unknown[]) => unknown>();
 
-  handle(
-    channel: string,
-    listener: (event: unknown, ...args: unknown[]) => unknown,
-  ): void {
+  handle(channel: string, listener: (event: unknown, ...args: unknown[]) => unknown): void {
     if (this.handlers.has(channel)) throw new Error(`duplicate: ${channel}`);
     this.handlers.set(channel, listener);
   }
@@ -45,7 +42,12 @@ afterEach(async () => {
   await rm(tmp, { recursive: true, force: true });
 });
 
-function makeServices(): { services: IpcServices; session: VaultSession; store: AppStore; reveals: string[] } {
+function makeServices(): {
+  services: IpcServices;
+  session: VaultSession;
+  store: AppStore;
+  reveals: string[];
+} {
   const store = new AppStore(path.join(tmp, 'store.json'));
   const windows = new FakeWindows();
   const reveals: string[] = [];
@@ -96,9 +98,9 @@ describe('IPC 注册表框架', () => {
     const { services } = makeServices();
     const registrar = createIpcRegistrar(ipc, services);
     registrar.register('app:getInfo', (_p, s) => ({ ok: true, data: s.appInfo() }));
-    expect(() => registrar.register('app:getInfo', (_p, s) => ({ ok: true, data: s.appInfo() }))).toThrow(
-      /重复注册/,
-    );
+    expect(() =>
+      registrar.register('app:getInfo', (_p, s) => ({ ok: true, data: s.appInfo() })),
+    ).toThrow(/重复注册/);
   });
 
   it('handler 抛错时统一转 Result 错误信封（含错误码）', async () => {
@@ -210,7 +212,9 @@ describe('IPC 集成（vault + fs，单一注册表）', () => {
     const { services, reveals } = makeServices();
     registerAllIpcHandlers(ipc, services);
     await ipc.invoke('vault:open', { path: tmp });
-    const result = (await ipc.invoke('vault:reveal', { path: 'nested/note.md' })) as { ok: boolean };
+    const result = (await ipc.invoke('vault:reveal', { path: 'nested/note.md' })) as {
+      ok: boolean;
+    };
     expect(result.ok).toBe(true);
     expect(reveals).toEqual([path.join(tmp, 'nested/note.md')]);
   });

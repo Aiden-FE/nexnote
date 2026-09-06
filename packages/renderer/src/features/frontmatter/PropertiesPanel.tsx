@@ -71,7 +71,10 @@ export function PropertiesPanel({
           ) : (
             <div className="flex flex-wrap gap-1">
               {tags.map((t) => (
-                <span key={t} className="rounded-full bg-secondary px-1.5 py-0.5 text-[10px] text-secondary-foreground">
+                <span
+                  key={t}
+                  className="rounded-full bg-secondary px-1.5 py-0.5 text-[10px] text-secondary-foreground"
+                >
                   #{t}
                 </span>
               ))}
@@ -100,20 +103,32 @@ export function PropertiesPanel({
 
       <section>
         <SectionHeader icon={<Link2 className="size-3.5" />} title="链接（DEV-004 接入）" />
-        <InfoRow label="入链"><span>{linkCounts.in}</span></InfoRow>
-        <InfoRow label="出链"><span>{linkCounts.out}</span></InfoRow>
+        <InfoRow label="入链">
+          <span>{linkCounts.in}</span>
+        </InfoRow>
+        <InfoRow label="出链">
+          <span>{linkCounts.out}</span>
+        </InfoRow>
       </section>
 
       <section>
         <SectionHeader icon={<ListOrdered className="size-3.5" />} title="统计" />
-        <InfoRow label="词数"><span>{stats.words}</span></InfoRow>
-        <InfoRow label="块数"><span>{stats.blocks}</span></InfoRow>
+        <InfoRow label="词数">
+          <span>{stats.words}</span>
+        </InfoRow>
+        <InfoRow label="块数">
+          <span>{stats.blocks}</span>
+        </InfoRow>
       </section>
 
       <section>
         <SectionHeader icon={<Calendar className="size-3.5" />} title="时间" />
-        <InfoRow label="创建时间"><span className="font-mono text-[11px] text-muted-foreground">{stats.created}</span></InfoRow>
-        <InfoRow label="更新时间"><span className="font-mono text-[11px] text-muted-foreground">{stats.updated}</span></InfoRow>
+        <InfoRow label="创建时间">
+          <span className="font-mono text-[11px] text-muted-foreground">{stats.created}</span>
+        </InfoRow>
+        <InfoRow label="更新时间">
+          <span className="font-mono text-[11px] text-muted-foreground">{stats.updated}</span>
+        </InfoRow>
       </section>
 
       <section>
@@ -157,7 +172,9 @@ function FrontmatterValueDisplay({ value }: { value: FrontmatterValue }) {
     return (
       <span className="flex flex-wrap justify-end gap-1">
         {value.map((item) => (
-          <span key={item} className="rounded-full border px-1.5 py-0.5 text-[10px]">{item}</span>
+          <span key={item} className="rounded-full border px-1.5 py-0.5 text-[10px]">
+            {item}
+          </span>
         ))}
       </span>
     );

@@ -16,5 +16,7 @@ export const useDocumentPropertiesStore = create<DocumentPropertiesState>((set) 
   data: {},
   setDocument: (document) => set(document),
   clearDocument: (filePath) =>
-    set((state) => (filePath && state.filePath !== filePath ? state : { filePath: null, markdown: '', data: {} })),
+    set((state) =>
+      filePath && state.filePath !== filePath ? state : { filePath: null, markdown: '', data: {} },
+    ),
 }));

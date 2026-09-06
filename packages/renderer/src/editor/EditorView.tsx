@@ -23,9 +23,7 @@ interface EditorViewProps {
 }
 
 type LoadState =
-  | { phase: 'loading' }
-  | { phase: 'ready'; markdown: string }
-  | { phase: 'error'; message: string };
+  { phase: 'loading' } | { phase: 'ready'; markdown: string } | { phase: 'error'; message: string };
 
 type SaveState = 'saved' | 'saving' | 'error';
 
@@ -200,13 +198,20 @@ export function EditorView({ paneId, tab }: EditorViewProps) {
 
     if (first?.type.name === 'frontmatter') {
       if (first.textContent !== yaml) {
-        const tr = yaml.length > 0
-          ? editor.state.tr.replaceWith(0, first.nodeSize, type.create(null, editor.state.schema.text(yaml)))
-          : editor.state.tr.delete(0, first.nodeSize);
+        const tr =
+          yaml.length > 0
+            ? editor.state.tr.replaceWith(
+                0,
+                first.nodeSize,
+                type.create(null, editor.state.schema.text(yaml)),
+              )
+            : editor.state.tr.delete(0, first.nodeSize);
         editor.view.dispatch(tr);
       }
     } else if (yaml.length > 0) {
-      editor.view.dispatch(editor.state.tr.insert(0, type.create(null, editor.state.schema.text(yaml))));
+      editor.view.dispatch(
+        editor.state.tr.insert(0, type.create(null, editor.state.schema.text(yaml))),
+      );
     }
     setFmData(next);
     setFmSource(yaml);
@@ -251,8 +256,10 @@ export function EditorView({ paneId, tab }: EditorViewProps) {
   }, [load]);
 
   const status = useMemo(() => {
-    if (saveState === 'saving') return { icon: LoaderCircle, text: '保存中…', className: 'animate-spin' };
-    if (saveState === 'error') return { icon: AlertCircle, text: '保存失败', className: 'text-destructive' };
+    if (saveState === 'saving')
+      return { icon: LoaderCircle, text: '保存中…', className: 'animate-spin' };
+    if (saveState === 'error')
+      return { icon: AlertCircle, text: '保存失败', className: 'text-destructive' };
     return { icon: Check, text: '已保存', className: '' };
   }, [saveState]);
   const StatusIcon = status.icon;
@@ -277,7 +284,11 @@ export function EditorView({ paneId, tab }: EditorViewProps) {
   }
 
   return (
-    <div data-testid="editor-view" data-path={displayPath} className="nexnote-editor-view flex h-full min-h-0 flex-col">
+    <div
+      data-testid="editor-view"
+      data-path={displayPath}
+      className="nexnote-editor-view flex h-full min-h-0 flex-col"
+    >
       <div className="flex h-8 shrink-0 items-center gap-1.5 border-b px-3 text-[11px] text-muted-foreground">
         <Save className="size-3" />
         <span className="min-w-0 truncate">{displayPath}</span>

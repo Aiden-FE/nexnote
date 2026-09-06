@@ -10,7 +10,7 @@ export interface FieldEditorProps {
   data: FrontmatterData;
   onChange: (next: FrontmatterData) => void;
   knownTags: string[];
-  onRename?: (from: string, to: string) => void;
+  onRename: (from: string, to: string) => void;
 }
 
 type FieldType = 'string' | 'number' | 'boolean' | 'date' | 'list' | 'null';
@@ -194,7 +194,9 @@ function FieldRow({ name, value, onChange, onRemove, onRename, knownTags }: Fiel
           disabled={standard}
           className={cn(
             'rounded p-1 text-muted-foreground',
-            standard ? 'cursor-not-allowed opacity-40' : 'hover:bg-destructive/10 hover:text-destructive',
+            standard
+              ? 'cursor-not-allowed opacity-40'
+              : 'hover:bg-destructive/10 hover:text-destructive',
           )}
           aria-label="删除字段"
           title={standard ? '标准字段不可删除' : '删除字段'}
@@ -243,10 +245,18 @@ function ValueEditor({
       <div className="text-xs text-muted-foreground">
         值为空。
         <div className="mt-2 flex gap-1">
-          <Button size="sm" variant="secondary" onClick={() => onChange('')}>设为文本</Button>
-          <Button size="sm" variant="secondary" onClick={() => onChange(0)}>设为数字</Button>
-          <Button size="sm" variant="secondary" onClick={() => onChange(false)}>设为布尔</Button>
-          <Button size="sm" variant="secondary" onClick={() => onChange([])}>设为列表</Button>
+          <Button size="sm" variant="secondary" onClick={() => onChange('')}>
+            设为文本
+          </Button>
+          <Button size="sm" variant="secondary" onClick={() => onChange(0)}>
+            设为数字
+          </Button>
+          <Button size="sm" variant="secondary" onClick={() => onChange(false)}>
+            设为布尔
+          </Button>
+          <Button size="sm" variant="secondary" onClick={() => onChange([])}>
+            设为列表
+          </Button>
         </div>
       </div>
     );
@@ -254,7 +264,14 @@ function ValueEditor({
 
   if (Array.isArray(value)) {
     const isTags = name === 'tags';
-    return <ListEditor values={value} onChange={onChange} autocomplete={isTags ? knownTags : []} label={isTags ? '标签' : '列表项'} />;
+    return (
+      <ListEditor
+        values={value}
+        onChange={onChange}
+        autocomplete={isTags ? knownTags : []}
+        label={isTags ? '标签' : '列表项'}
+      />
+    );
   }
 
   if (typeof value === 'boolean') {
@@ -304,11 +321,7 @@ function ValueEditor({
 
   // string
   return (
-    <Input
-      value={value}
-      onChange={(e) => onChange(e.target.value)}
-      placeholder={`${name} 的值`}
-    />
+    <Input value={value} onChange={(e) => onChange(e.target.value)} placeholder={`${name} 的值`} />
   );
 }
 
@@ -325,7 +338,9 @@ function ListEditor({
 }) {
   const [draft, setDraft] = useState('');
   const [showSuggest, setShowSuggest] = useState(false);
-  const candidates = autocomplete.filter((t) => !values.includes(t) && t.toLowerCase().includes(draft.toLowerCase()));
+  const candidates = autocomplete.filter(
+    (t) => !values.includes(t) && t.toLowerCase().includes(draft.toLowerCase()),
+  );
 
   const addItem = (item?: string) => {
     const v = (item ?? draft).trim();
@@ -348,9 +363,7 @@ function ListEditor({
   return (
     <div className="space-y-2">
       <div className="flex flex-wrap gap-1">
-        {values.length === 0 && (
-          <span className="text-xs text-muted-foreground">暂无 {label}</span>
-        )}
+        {values.length === 0 && <span className="text-xs text-muted-foreground">暂无 {label}</span>}
         {values.map((v, i) => (
           <span
             key={`${v}-${i}`}
@@ -389,7 +402,9 @@ function ListEditor({
               }
             }}
           />
-          <Button size="sm" variant="secondary" onClick={() => addItem()}>添加</Button>
+          <Button size="sm" variant="secondary" onClick={() => addItem()}>
+            添加
+          </Button>
         </div>
         {showSuggest && candidates.length > 0 && (
           <ul className="absolute left-0 right-0 top-full z-10 mt-1 max-h-40 overflow-auto rounded-md border bg-popover p-1 text-xs shadow">

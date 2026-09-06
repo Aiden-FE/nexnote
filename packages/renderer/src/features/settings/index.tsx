@@ -56,7 +56,9 @@ function AppearanceSection() {
   return (
     <div className="space-y-2 text-sm">
       <h3 className="text-base font-medium">外观</h3>
-      <p className="text-muted-foreground">主题、字体、间距。主题切换在 ⌘K 命令面板「切换亮/暗主题」。</p>
+      <p className="text-muted-foreground">
+        主题、字体、间距。主题切换在 ⌘K 命令面板「切换亮/暗主题」。
+      </p>
     </div>
   );
 }

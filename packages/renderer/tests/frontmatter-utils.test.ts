@@ -63,7 +63,8 @@ describe('字段操作', () => {
     expect(renamed.renamed).toBe('C');
     expect(renamed.custom).toBeUndefined();
     expect(() => renameFrontmatterKey(data, 'custom', 'title')).toThrow('已存在');
-    expect(() => renameFrontmatterKey(data, 'custom', '  ')).toThrow('不能为空');
+    expect(() => renameFrontmatterKey(data, 'custom', '  ')).toThrow();
+    expect(() => renameFrontmatterKey(data, 'custom', '__proto__')).toThrow(/不安全/);
   });
 });
 
@@ -135,7 +136,10 @@ describe('YAML 高亮 tokenizer', () => {
 
 describe('递归标签聚合', () => {
   it('扫描嵌套文件夹且跳过隐藏目录', async () => {
-    const tree: Record<string, Array<{ name: string; path: string; kind: 'file' | 'directory' }>> = {
+    const tree: Record<
+      string,
+      Array<{ name: string; path: string; kind: 'file' | 'directory' }>
+    > = {
       '': [
         { name: 'root.md', path: 'root.md', kind: 'file' },
         { name: 'notes', path: 'notes', kind: 'directory' },

@@ -1,5 +1,6 @@
 import type { DirEntry } from '@nexnote/shared';
 import {
+  assertSafeFrontmatterKey,
   parseFrontmatterYaml,
   serializeFrontmatterYaml,
   splitFrontmatter,
@@ -52,9 +53,12 @@ export function writeFrontmatter(data: FrontmatterData, body: string): string {
   return yaml.length > 0 ? `---\n${yaml}\n---\n\n${body.replace(/^\n+/, '')}` : body;
 }
 
-export function setFrontmatterValue(data: FrontmatterData, key: string, value: FrontmatterValue): FrontmatterData {
-  const normalized = key.trim();
-  if (!normalized) throw new Error('字段名不能为空');
+export function setFrontmatterValue(
+  data: FrontmatterData,
+  key: string,
+  value: FrontmatterValue,
+): FrontmatterData {
+  const normalized = assertSafeFrontmatterKey(key);
   return { ...data, [normalized]: value };
 }
 
@@ -64,9 +68,12 @@ export function removeFrontmatterValue(data: FrontmatterData, key: string): Fron
   return next;
 }
 
-export function renameFrontmatterKey(data: FrontmatterData, from: string, to: string): FrontmatterData {
-  const key = to.trim();
-  if (!key) throw new Error('字段名不能为空');
+export function renameFrontmatterKey(
+  data: FrontmatterData,
+  from: string,
+  to: string,
+): FrontmatterData {
+  const key = assertSafeFrontmatterKey(to);
   if (from !== key && Object.prototype.hasOwnProperty.call(data, key)) {
     throw new Error(`字段 ${key} 已存在`);
   }
@@ -99,9 +106,7 @@ export function countMixedWords(text: string): number {
 /** 统计正文可见词数/块数；frontmatter 与 fenced code 不计入字数。 */
 export function pageStatistics(markdown: string): PageStatistics {
   const { body } = splitFrontmatter(markdown);
-  const plain = body
-    .replace(/```[\s\S]*?```/g, ' ')
-    .replace(/[`*_~#[\]()>|!]/g, ' ');
+  const plain = body.replace(/```[\s\S]*?```/g, ' ').replace(/[`*_~#[\]()>|!]/g, ' ');
   const words = countMixedWords(plain);
   const blocks = body
     .split(/\n{2,}/)
@@ -109,8 +114,18 @@ export function pageStatistics(markdown: string): PageStatistics {
     .filter(Boolean).length;
   const inspected = inspectFrontmatter(markdown);
   const data = inspected.parseError ? {} : inspected.data;
-  const created = data.created instanceof Date ? data.created.toISOString() : typeof data.created === 'string' ? data.created : '—';
-  const updated = data.updated instanceof Date ? data.updated.toISOString() : typeof data.updated === 'string' ? data.updated : '—';
+  const created =
+    data.created instanceof Date
+      ? data.created.toISOString()
+      : typeof data.created === 'string'
+        ? data.created
+        : '—';
+  const updated =
+    data.updated instanceof Date
+      ? data.updated.toISOString()
+      : typeof data.updated === 'string'
+        ? data.updated
+        : '—';
   return { words, blocks, created, updated };
 }
 
