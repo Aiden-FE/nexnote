@@ -86,10 +86,21 @@ const createNote = object(
   [stringField('parentDir'), optionalField('name', 'string'), optionalField('content', 'string')],
 );
 const listTree = object(['showAllFiles'], [optionalField('showAllFiles', 'boolean')]);
-const timeline = object(
-  ['path', 'limit'],
-  [optionalField('path', 'string'), optionalField('limit', 'number')],
-);
+const timeline: PayloadValidator = (payload) => {
+  const base = object(
+    ['path', 'limit'],
+    [optionalField('path', 'string'), optionalField('limit', 'number')],
+  )(payload);
+  if (base) return base;
+  const limit = (payload as Record<string, unknown>).limit;
+  if (
+    limit !== undefined &&
+    (typeof limit !== 'number' || !Number.isInteger(limit) || limit < 1 || limit > 500)
+  ) {
+    return invalid('limit 必须是 1 到 500 的整数');
+  }
+  return null;
+};
 const recordAutoCommit = object(
   ['summary', 'debounceMs'],
   [optionalField('summary', 'string'), optionalField('debounceMs', 'number')],
