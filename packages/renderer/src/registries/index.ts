@@ -5,6 +5,7 @@ import type {
   SettingsSectionDef,
   SidebarPanelDef,
   StatusItemDef,
+  PluginContributionDef,
 } from './types';
 
 /**
@@ -16,8 +17,17 @@ export const sidebarPanelRegistry = createRegistry<SidebarPanelDef>('sidebar-pan
 export const dockPanelRegistry = createRegistry<DockPanelDef>('dock-panel');
 export const commandRegistry = createRegistry<CommandDef>('command');
 export const statusBarRegistry = createRegistry<StatusItemDef>('status-item');
+export const pluginContributionRegistry =
+  createRegistry<PluginContributionDef>('plugin-contribution');
 export const settingsSectionRegistry = createRegistry<SettingsSectionDef>('settings-section');
 
 export { useRegistryItems } from './registry';
-export type { CommandDef, DockPanelDef, SettingsSectionDef, SidebarPanelDef, StatusItemDef } from './types';
+export type {
+  PluginContributionDef,
+  CommandDef,
+  DockPanelDef,
+  SettingsSectionDef,
+  SidebarPanelDef,
+  StatusItemDef,
+} from './types';
 export type { Registry } from './registry';

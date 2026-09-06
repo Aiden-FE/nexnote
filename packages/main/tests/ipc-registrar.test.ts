@@ -8,6 +8,7 @@ import { AppStore } from '../src/vault/app-store';
 import { VaultSession } from '../src/vault/vault-session';
 import { VaultFsService } from '../src/fs/fs-service';
 import { VaultWatchService } from '../src/fs/watch-service';
+import { PluginService } from '../src/plugins/plugin-service';
 import { GitService } from '../src/git/git-service';
 import { LinkIndexService } from '../src/indexer/index-service';
 import { IPC_CHANNELS } from '@nexnote/shared';
@@ -85,7 +86,8 @@ function makeServices(): {
     fs,
     ai,
     git,
-    dialogs: { pickDirectory: async () => null },
+    dialogs: { pickDirectory: async () => null, pickFile: async () => null },
+    plugins: new PluginService({ hostVersion: '0.1.0' }),
     trash: async () => {},
     revealItem: async (absPath: string) => { reveals.push(absPath); },
     watch: new VaultWatchService({ getRoot: () => null, emit: () => undefined }),

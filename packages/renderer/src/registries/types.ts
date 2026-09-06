@@ -42,3 +42,12 @@ export interface SettingsSectionDef {
   order?: number;
   render?: ComponentType;
 }
+
+/** 插件贡献声明的宿主通用注册表（DEV-013）；菜单/视图/块类型由宿主容器消费。 */
+export interface PluginContributionDef {
+  id: string;
+  pluginId: string;
+  kind: 'commands' | 'menus' | 'views' | 'blockTypes';
+  title: string;
+  keywords?: string[];
+}

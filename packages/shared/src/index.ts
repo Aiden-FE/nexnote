@@ -4,6 +4,7 @@ export type * from './types/ai';
 export type * from './types/index';
 export type * from './types/retrieval';
 export type * from './types/chat';
+export type * from './types/plugin';
 export * from './markdown/wikilink';
 export * from './markdown/links';
 // IPC
@@ -31,3 +32,5 @@ export {
   defaultVaultLayout,
   sanitizeEntryName,
 } from './ipc/reexports';
+
+export { PLUGIN_API_VERSION } from './types/plugin';

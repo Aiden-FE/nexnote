@@ -16,6 +16,7 @@ import { RetrievalService } from './retrieval/retrieval-service';
 import { createSecretVault } from './ai/secret-store';
 import { GitService } from './git/git-service';
 import { ConfidenceService } from './confidence/confidence-service';
+import { PluginService } from './plugins/plugin-service';
 
 const isSmokeMode = process.env.NEXNOTE_SMOKE === '1';
 
@@ -108,6 +109,13 @@ async function bootstrap(): Promise<void> {
     onStatus: (status) => winRef.sendToMainWindow('ai:retrievalStatus', { status }),
   });
 
+  // DEV-013 插件沙箱运行时：staging/状态存于 userData（vault 之外），宿主版本用于 minAppVersion 判定。
+  const plugins = new PluginService({
+    stateFile: join(app.getPath('userData'), 'nexnote-plugins.json'),
+    pluginsRoot: join(app.getPath('userData'), 'plugins'),
+    hostVersion: app.getVersion(),
+  });
+
   initAutoUpdater(log);
 
   registerAllIpcHandlers(ipcMain, {
@@ -129,6 +137,18 @@ async function bootstrap(): Promise<void> {
           : await dialog.showOpenDialog(options);
         return result.canceled ? null : (result.filePaths[0] ?? null);
       },
+      async pickFile(filters) {
+        const win = windows?.getMainWindow() ?? null;
+        const options: Electron.OpenDialogOptions = {
+          title: '选择文件',
+          properties: ['openFile'],
+          ...(filters ? { filters } : {}),
+        };
+        const result = win
+          ? await dialog.showOpenDialog(win, options)
+          : await dialog.showOpenDialog(options);
+        return result.canceled ? null : (result.filePaths[0] ?? null);
+      },
     },
     async trash(absPath) {
       await shell.trashItem(absPath);
@@ -140,6 +160,7 @@ async function bootstrap(): Promise<void> {
     index,
     confidence,
     retrieval: retrievalService,
+    plugins,
     appInfo() {
       return {
         version: app.getVersion(),

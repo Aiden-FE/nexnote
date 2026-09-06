@@ -11,6 +11,7 @@ import './statusbar/index-status';
 import './commands/builtin';
 import './settings';
 import './ai';
+import './plugins';
 import './frontmatter/registry';
 import './search';
 import './search/commands';
