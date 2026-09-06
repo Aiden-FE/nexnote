@@ -20,6 +20,7 @@ import type {
 export const AI_CHANNELS = [
   'ai:ping',
   'ai:getState',
+  'ai:credential:submit',
   'ai:profile:save',
   'ai:profile:delete',
   'ai:profile:setDefault',
@@ -45,6 +46,11 @@ export interface AiChannelMap {
   'ai:getState': {
     request: void;
     response: Result<AiConfigState>;
+  };
+  /** Input-only credential boundary. No retrieve channel exists; response contains only an opaque token. */
+  'ai:credential:submit': {
+    request: { secret: string };
+    response: Result<{ credentialToken: string }>;
   };
   'ai:profile:save': {
     request: { id?: string; profile: AiProfileInput };

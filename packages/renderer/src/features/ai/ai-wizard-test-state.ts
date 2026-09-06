@@ -3,15 +3,19 @@ import type { AiProviderKind, ConnectionTestResult } from '@nexnote/shared';
 export interface AiConnectionTestInputs {
   kind: AiProviderKind;
   baseUrl: string;
-  apiKey: string;
+  /** Model/deployment is part of the target being preflighted (especially Azure). */
+  defaultModel: string;
+  /** Opaque in-memory credential revision; the key itself is never serialized into state/signatures. */
+  credentialRevision: number;
 }
 
-/** 规范化连接输入，用于绑定一次测试结果；任一安全相关输入变化都会产生不同签名。 */
+/** Bind a test to its complete provider target without serializing an API key into React state. */
 export function connectionTestSignature(inputs: AiConnectionTestInputs): string {
   return JSON.stringify({
     kind: inputs.kind,
     baseUrl: inputs.baseUrl.trim(),
-    apiKey: inputs.apiKey,
+    defaultModel: inputs.defaultModel.trim(),
+    credentialRevision: inputs.credentialRevision,
   });
 }
 

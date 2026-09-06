@@ -48,9 +48,11 @@ function bootstrap(): void {
   });
   const fs = new VaultFsService(() => vaultSession.getCurrent()?.root ?? null);
 
-  // AI 层（DEV-009）：密钥经 safeStorage（系统钥匙串）加密后落盘；事件经主窗口推送
-  const secrets = createSecretVault(safeStorage);
-  const aiStore = new AiStore(join(app.getPath('userData'), 'nexnote-ai.json'), secrets);
+  // AI credentials live in the native OS credential manager; safeStorage is migration-only.
+  const secrets = createSecretVault();
+  const aiStore = new AiStore(join(app.getPath('userData'), 'nexnote-ai.json'), secrets, {
+    safeStorage,
+  });
   const winRef = windows;
   const ai = new AiService({ store: aiStore, sendEvent: (channel, payload) => winRef.sendToMainWindow(channel, payload) });
 

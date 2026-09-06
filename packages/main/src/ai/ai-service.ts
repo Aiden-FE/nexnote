@@ -2,6 +2,7 @@ import { randomUUID } from 'node:crypto';
 import type {
   AiConfigState,
   AiConnectionTarget,
+  AiProfileInput,
   ChatCompletionResult,
   ChatMessage,
   ChatParams,
@@ -12,6 +13,7 @@ import type {
   IpcEventMap,
 } from '@nexnote/shared';
 import { OpenAIProtocolAdapter } from './provider/openai';
+import { LocalEmbeddingAdapter } from './provider/local-embedding';
 import type { ProviderAdapter } from './provider/types';
 import { ProviderError } from './provider/types';
 import type { AiStoredProfile, AiStore } from './ai-store';
@@ -72,10 +74,13 @@ export function splitEmbedBatches(
  */
 export class AiService {
   private readonly streams = new Map<string, { abort(): void; done: Promise<void> }>();
+  /** Renderer-submitted credentials: opaque-token keyed, main-process only, short lived. */
+  private readonly pendingCredentials = new Map<string, { secret: string; expiresAt: number }>();
 
   constructor(private readonly deps: AiServiceDeps) {}
 
   private createAdapter(profile: AiStoredProfile): ProviderAdapter {
+    if (profile.kind === 'local-embedding') return new LocalEmbeddingAdapter();
     return new OpenAIProtocolAdapter({
       baseUrl: profile.baseUrl,
       apiKey: this.deps.store.getApiKey(profile.id),
@@ -124,6 +129,30 @@ export class AiService {
 
   // ── 配置 ────────────────────────────────────────────
 
+  submitCredential(secret: string): string {
+    if (!secret.trim()) throw new ProviderError('凭据不能为空', 'BAD_REQUEST');
+    this.sweepCredentials();
+    const token = randomUUID();
+    this.pendingCredentials.set(token, { secret, expiresAt: Date.now() + 10 * 60_000 });
+    return token;
+  }
+
+  private credential(token: string | undefined, consume = false): string | undefined {
+    if (!token) return undefined;
+    this.sweepCredentials();
+    const pending = this.pendingCredentials.get(token);
+    if (!pending) throw new ProviderError('凭据提交已过期，请重新输入', 'CREDENTIAL_EXPIRED');
+    if (consume) this.pendingCredentials.delete(token);
+    return pending.secret;
+  }
+
+  private sweepCredentials(): void {
+    const now = Date.now();
+    for (const [token, pending] of this.pendingCredentials) {
+      if (pending.expiresAt <= now) this.pendingCredentials.delete(token);
+    }
+  }
+
   getState(): AiConfigState {
     return this.deps.store.getState();
   }
@@ -132,11 +161,16 @@ export class AiService {
     this.deps.sendEvent('ai:configChanged', { state: this.deps.store.getState() });
   }
 
-  saveProfile(
-    id: string | undefined,
-    input: Parameters<AiStore['saveProfile']>[1],
-  ): { id: string; state: AiConfigState } {
-    const saved = this.deps.store.saveProfile(id, input);
+  saveProfile(id: string | undefined, input: AiProfileInput): { id: string; state: AiConfigState } {
+    const apiKey = this.credential(input.credentialToken, true);
+    const saved = this.deps.store.saveProfile(id, {
+      name: input.name,
+      kind: input.kind,
+      baseUrl: input.baseUrl,
+      defaultModel: input.defaultModel,
+      params: input.params,
+      apiKey: input.clearCredential ? null : apiKey,
+    });
     this.emitConfigChanged();
     return { id: saved.id, state: this.deps.store.getState() };
   }
@@ -181,12 +215,17 @@ export class AiService {
     if (target.candidate) {
       const c = target.candidate;
       return {
-        adapter: new OpenAIProtocolAdapter({
-          baseUrl: c.baseUrl,
-          apiKey: c.apiKey ?? (saved ? this.deps.store.getApiKey(saved.id) : ''),
-          kind: c.kind,
-          fetchImpl: this.deps.fetchImpl,
-        }),
+        adapter:
+          c.kind === 'local-embedding'
+            ? new LocalEmbeddingAdapter()
+            : new OpenAIProtocolAdapter({
+                baseUrl: c.baseUrl,
+                apiKey:
+                  this.credential(c.credentialToken) ??
+                  (saved ? this.deps.store.getApiKey(saved.id) : ''),
+                kind: c.kind,
+                fetchImpl: this.deps.fetchImpl,
+              }),
         defaultModel: c.defaultModel ?? saved?.defaultModel ?? '',
       };
     }

@@ -7,20 +7,28 @@ import type {
   AiProfileExportBundle,
   AiProfileInput,
   AiProfileView,
+  AiProviderKind,
   EmbeddingMetric,
 } from '@nexnote/shared';
-import { SecretStorageUnavailableError, type SecretVault } from './secret-store';
+import {
+  decryptLegacySafeStorage,
+  newSecretAccount,
+  SecretStorageUnavailableError,
+  type SafeStorageLike,
+  type SecretVault,
+} from './secret-store';
 
-/** 主进程持久化形态（userData/nexnote-ai.json）。keyBlob = SecretVault 加密后的密钥。 */
+/** 主进程持久化形态：keyBlob 是 OS credential vault 的不透明 account reference，绝不含密钥字节。 */
 export interface AiStoredProfile {
   id: string;
   name: string;
-  kind: 'openai-compatible' | 'azure-openai';
+  kind: AiProviderKind;
   baseUrl: string;
   defaultModel: string;
   params: { temperature?: number; maxTokens?: number };
+  /** Opaque OS credential account; never a secret or encrypted blob. */
   keyBlob: string | null;
-  keyStorage: 'safestorage';
+  keyStorage: 'system-credential';
   createdAt: number;
   updatedAt: number;
 }
@@ -120,30 +128,39 @@ function coerce(raw: unknown): AiStoreData {
 function scrubLegacyPlaintext(data: AiStoreData): AiStoreData {
   let changed = false;
   const profiles = data.profiles.map((p): AiStoredProfile => {
-    if (p.keyBlob && p.keyBlob.startsWith('plain:')) {
+    if (p.keyBlob?.startsWith('plain:')) {
       changed = true;
-      return { ...p, keyBlob: null, keyStorage: 'safestorage' };
+      return { ...p, keyBlob: null, keyStorage: 'system-credential' };
     }
-    if (p.keyStorage !== 'safestorage') {
-      changed = true;
-      return { ...p, keyStorage: 'safestorage' };
-    }
-    return p;
+    if (p.keyBlob?.startsWith('enc:v1:')) return p;
+    return p.keyStorage === 'system-credential'
+      ? p
+      : ((changed = true), { ...p, keyStorage: 'system-credential' });
   });
-  if (!changed) return data;
-  return { ...data, profiles };
+  return changed ? { ...data, profiles } : data;
 }
 
 /**
  * AI 配置存储：Profile（密钥仅加密 blob）+ 分功能指定 + embedding generation。
  * 视图转换（toView）保证渲染层永远拿不到密钥明文。
  */
+export type AiProfileWriteInput = Omit<AiProfileInput, 'credentialToken' | 'clearCredential'> & {
+  /** Main-process-only secret; never part of the shared renderer contract. */
+  apiKey?: string | null;
+};
+
+export interface AiStoreMigrationOptions {
+  /** Electron safeStorage is accepted only to migrate legacy encrypted JSON blobs. */
+  safeStorage?: SafeStorageLike;
+}
+
 export class AiStore {
   private data: AiStoreData;
 
   constructor(
     private readonly filePath: string,
     private readonly secrets: SecretVault,
+    private readonly migration: AiStoreMigrationOptions = {},
   ) {
     this.data = this.load();
   }
@@ -151,9 +168,30 @@ export class AiStore {
   private load(): AiStoreData {
     try {
       const raw = coerce(JSON.parse(readFileSync(this.filePath, 'utf8')));
-      const scrubbed = scrubLegacyPlaintext(raw);
-      // 若发现旧版明文回退，立即覆盖磁盘，不能只在内存中隐藏。
-      if (scrubbed !== raw) this.persistData(scrubbed);
+      let migrated = false;
+      const profiles = raw.profiles.map((p) => {
+        // Legacy safeStorage blobs are decrypted only during migration. The legacy blob is
+        // removed from JSON only after the OS credential write succeeds.
+        if (p.keyBlob?.startsWith('enc:v1:') && this.migration.safeStorage) {
+          try {
+            const secret = decryptLegacySafeStorage(p.keyBlob, this.migration.safeStorage);
+            if (!this.secrets.available) {
+              return { ...p, keyBlob: null, keyStorage: 'system-credential' as const };
+            }
+            const account = newSecretAccount();
+            this.secrets.put(account, secret);
+            migrated = true;
+            return { ...p, keyBlob: account, keyStorage: 'system-credential' as const };
+          } catch {
+            // Preserve the encrypted legacy blob for a later migration attempt. It is never treated
+            // as a system credential reference, and is removed only after the native write succeeds.
+            return p;
+          }
+        }
+        return p;
+      });
+      const scrubbed = scrubLegacyPlaintext({ ...raw, profiles });
+      if (migrated || scrubbed !== raw) this.persistData(scrubbed);
       return scrubbed;
     } catch {
       return defaultAiStoreData();
@@ -183,9 +221,9 @@ export class AiStore {
   /** 解密密钥（仅主进程内使用；渲染层永不可见）。 */
   getApiKey(profileId: string): string {
     const p = this.getProfile(profileId);
-    if (!p || !p.keyBlob) return '';
+    if (!p || !p.keyBlob || p.keyBlob.startsWith('enc:v1:')) return '';
     try {
-      return this.secrets.decrypt(p.keyBlob);
+      return this.secrets.get(p.keyBlob) ?? '';
     } catch {
       return '';
     }
@@ -199,7 +237,7 @@ export class AiStore {
       baseUrl: p.baseUrl,
       defaultModel: p.defaultModel,
       params: { ...p.params },
-      hasApiKey: !!p.keyBlob,
+      hasApiKey: !!p.keyBlob && !p.keyBlob.startsWith('enc:v1:'),
       keyStorage: p.keyStorage,
       createdAt: p.createdAt,
       updatedAt: p.updatedAt,
@@ -229,8 +267,12 @@ export class AiStore {
     assignment: AiFeatureAssignment | null,
     fallback: { profileId: string; model: string } | null,
   ): string | null {
-    const effective: { profileId: string; model: string; dimensions?: number | null; metric?: EmbeddingMetric } | null =
-      assignment ?? fallback;
+    const effective: {
+      profileId: string;
+      model: string;
+      dimensions?: number | null;
+      metric?: EmbeddingMetric;
+    } | null = assignment ?? fallback;
     if (!effective) return null;
     const dims = effective.dimensions ?? 'auto';
     const metric = effective.metric ?? DEFAULT_EMBEDDING_METRIC;
@@ -239,7 +281,9 @@ export class AiStore {
 
   /** 跟随默认 Profile 的虚拟 embedding 源（无显式 assignment 时）。 */
   private defaultEmbeddingFallback(): { profileId: string; model: string } | null {
-    const def = this.data.defaultProfileId ? this.getProfile(this.data.defaultProfileId) : undefined;
+    const def = this.data.defaultProfileId
+      ? this.getProfile(this.data.defaultProfileId)
+      : undefined;
     if (!def) return null;
     return { profileId: def.id, model: def.defaultModel };
   }
@@ -262,50 +306,55 @@ export class AiStore {
 
   // ── 写 ──────────────────────────────────────────────
 
-  saveProfile(id: string | undefined, input: AiProfileInput): AiStoredProfile {
+  saveProfile(id: string | undefined, input: AiProfileWriteInput): AiStoredProfile {
     const now = Date.now();
     const existing = id ? this.getProfile(id) : undefined;
     if (id && !existing) throw new Error(`Profile 不存在: ${id}`);
 
-    // 密钥合并语义：undefined=保留；null=清除；字符串=覆盖
-    // 加密失败（系统凭据不可用）直接抛错，绝不写入明文。
+    const name = input.name.trim();
+    const defaultModel = input.defaultModel.trim();
+    const rawBaseUrl = input.baseUrl.trim();
+    if (!name) throw new Error('Profile 名称不能为空');
+    if (!defaultModel) throw new Error('默认模型不能为空');
+    if (input.kind === 'local-embedding') {
+      if (rawBaseUrl !== 'local://embedding')
+        throw new Error('本地 embedding 地址必须为 local://embedding');
+      if (typeof input.apiKey === 'string' && input.apiKey.length > 0) {
+        throw new Error('本地 embedding 不接受凭据');
+      }
+    } else {
+      if (!/^https?:\/\//i.test(rawBaseUrl)) throw new Error('base-url 必须以 http(s):// 开头');
+      const u = new URL(rawBaseUrl);
+      if (u.username || u.password) {
+        throw new Error('base-url 不得包含用户名/密码（请使用 API Key 字段）');
+      }
+    }
+
+    // 密钥合并语义：undefined=保留；null=清除；字符串=覆盖。
+    // Local profiles always clear any credential left by a previous network profile.
     let keyBlob = existing?.keyBlob ?? null;
-    let keyStorage: 'safestorage' = existing?.keyStorage ?? 'safestorage';
-    if (input.apiKey === null) {
+    const shouldClearCredential = input.kind === 'local-embedding' || input.apiKey === null;
+    if (shouldClearCredential) {
+      if (keyBlob) this.secrets.delete(keyBlob);
       keyBlob = null;
     } else if (typeof input.apiKey === 'string' && input.apiKey.length > 0) {
-      if (!this.secrets.available) {
-        throw new SecretStorageUnavailableError();
-      }
-      keyBlob = this.secrets.encrypt(input.apiKey);
-      keyStorage = 'safestorage';
+      if (!this.secrets.available) throw new SecretStorageUnavailableError();
+      if (!keyBlob) keyBlob = newSecretAccount();
+      this.secrets.put(keyBlob, input.apiKey);
     }
 
     const profile: AiStoredProfile = {
       id: existing?.id ?? randomUUID(),
-      name: input.name.trim(),
+      name,
       kind: input.kind,
-      baseUrl: input.baseUrl.trim().replace(/\/+$/, ''),
-      defaultModel: input.defaultModel.trim(),
+      baseUrl: input.kind === 'local-embedding' ? rawBaseUrl : rawBaseUrl.replace(/\/+$/, ''),
+      defaultModel,
       params: coerceParams(input.params ?? existing?.params ?? {}),
       keyBlob,
-      keyStorage,
+      keyStorage: 'system-credential',
       createdAt: existing?.createdAt ?? now,
       updatedAt: now,
     };
-    if (!profile.name) throw new Error('Profile 名称不能为空');
-    if (!/^https?:\/\//i.test(profile.baseUrl)) throw new Error('base-url 必须以 http(s):// 开头');
-    if (!profile.defaultModel) throw new Error('默认模型不能为空');
-    // 拒绝 URL 内嵌凭据（SEC-1：凭据应走 API Key 字段）
-    try {
-      const u = new URL(profile.baseUrl);
-      if (u.username || u.password) {
-        throw new Error('base-url 不得包含用户名/密码（请使用 API Key 字段）');
-      }
-    } catch (e) {
-      if (e instanceof Error && /不得包含用户名/.test(e.message)) throw e;
-      // URL 解析失败已被上面 ^https? 捕获
-    }
 
     const profiles = existing
       ? this.data.profiles.map((p) => (p.id === existing.id ? profile : p))
@@ -322,6 +371,8 @@ export class AiStore {
   }
 
   deleteProfile(id: string): void {
+    const removed = this.getProfile(id);
+    if (removed?.keyBlob) this.secrets.delete(removed.keyBlob);
     const profiles = this.data.profiles.filter((p) => p.id !== id);
     if (profiles.length === this.data.profiles.length) return;
     const features = { ...this.data.features };
@@ -366,7 +417,10 @@ export class AiStore {
    * 返回 true 表示 state 实际变更（调用方据此广播 ai:configChanged）。
    * 无显式 assignment 时返回 false（调用方负责先提升为跟随默认的显式 assignment）。
    */
-  recordEmbeddingDimensions(dimensions: number, metric: EmbeddingMetric = DEFAULT_EMBEDDING_METRIC): boolean {
+  recordEmbeddingDimensions(
+    dimensions: number,
+    metric: EmbeddingMetric = DEFAULT_EMBEDDING_METRIC,
+  ): boolean {
     const assignment = this.data.features.embedding;
     const fallback = this.defaultEmbeddingFallback();
     const effective = assignment ?? fallback;
@@ -450,7 +504,7 @@ export class AiStore {
           baseUrl: p.baseUrl,
           defaultModel: p.defaultModel || '',
           params: p.params,
-          // 已存在 → 保留密钥（undefined）；新建 → 无密钥
+          // Imported profiles never carry credential material.
           apiKey: existing ? undefined : null,
         });
         imported += 1;

@@ -11,16 +11,12 @@ import { UnavailableSecretVault, type SecretVault } from '../src/ai/secret-store
  * JSON 只存加密 blob）。用 ROT13 表示"加密"足够验证隔离语义。
  */
 function fakeSafeStorageVault(): SecretVault {
-  const rot = (s: string): string =>
-    s.replace(/[a-zA-Z]/g, (c) =>
-      String.fromCharCode(
-        ((c.charCodeAt(0) + 13 - (c <= 'Z' ? 65 : 97)) % 26) + (c <= 'Z' ? 65 : 97),
-      ),
-    );
+  const values = new Map<string, string>();
   return {
     available: true,
-    encrypt: (p) => `enc:v1:${btoa(rot(p))}`,
-    decrypt: (b) => rot(atob(b.slice('enc:v1:'.length))),
+    put: (account, secret) => values.set(account, secret),
+    get: (account) => values.get(account) ?? null,
+    delete: (account) => values.delete(account),
   };
 }
 
@@ -57,7 +53,7 @@ describe('AiStore（Profile 存储 + 密钥安全）', () => {
 
     const view = state.profiles[0]!;
     expect(view.hasApiKey).toBe(true);
-    expect(view.keyStorage).toBe('safestorage');
+    expect(view.keyStorage).toBe('system-credential');
     expect(view.baseUrl).toBe('https://api.example.com/v1'); // 尾斜杠规范化
 
     // 密钥明文绝不出现在渲染层视图与持久化 JSON 中
@@ -70,7 +66,7 @@ describe('AiStore（Profile 存储 + 密钥安全）', () => {
     const raw = await readFile(path.join(tmp, 'ai.json'), 'utf8');
     expect(raw).not.toContain('sk-very-secret-123');
     expect(raw).toContain('keyBlob');
-    expect(raw).toContain('enc:v1:');
+    expect(raw).not.toContain('enc:v1:');
   });
 
   it('密钥可解密回明文（仅主进程 getApiKey 路径）', () => {
@@ -133,14 +129,37 @@ describe('AiStore（Profile 存储 + 密钥安全）', () => {
     const migrated = new AiStore(legacyPath, secrets);
     const view = migrated.getState().profiles[0]!;
     expect(view.hasApiKey).toBe(false); // 明文密钥被丢弃
-    expect(view.keyStorage).toBe('safestorage');
+    expect(view.keyStorage).toBe('system-credential');
     expect(migrated.getApiKey('legacy-id')).toBe('');
     const rewritten = readFileSync(legacyPath, 'utf8');
     expect(rewritten).not.toContain('sk-legacy-secret');
     expect(rewritten).not.toContain('plain:');
   });
 
-  it('校验：非法 base-url / URL userinfo / 空名称 / 空模型拒绝', () => {
+  it('local embedding 仅接受精确 local://embedding 且禁止凭据', () => {
+    const local = store.saveProfile(undefined, {
+      ...input,
+      kind: 'local-embedding',
+      baseUrl: 'local://embedding',
+      defaultModel: 'local-transformer',
+      apiKey: null,
+    });
+    expect(local.baseUrl).toBe('local://embedding');
+    expect(local.keyBlob).toBeNull();
+    expect(() => store.saveProfile(undefined, {
+      ...input,
+      kind: 'local-embedding',
+      baseUrl: 'local://other',
+      apiKey: null,
+    })).toThrow(/local:\/\/embedding/);
+    expect(() => store.saveProfile(undefined, {
+      ...input,
+      kind: 'local-embedding',
+      baseUrl: 'local://embedding',
+    })).toThrow(/不接受凭据/);
+  });
+
+  it('网络 Profile 校验：非法 base-url / URL userinfo / 空名称 / 空模型拒绝', () => {
     expect(() => store.saveProfile(undefined, { ...input, baseUrl: 'ftp://x' })).toThrow(/http/);
     expect(() =>
       store.saveProfile(undefined, {

@@ -12,6 +12,10 @@ export function registerAiHandlers(registrar: IpcRegistrar, ai: AiService): void
     },
   );
 
+  registrar.register('ai:credential:submit', async (payload) => {
+    return ok({ credentialToken: ai.submitCredential(payload.secret) });
+  });
+
   registrar.register(
     'ai:profile:save',
     async (payload): Promise<Result<{ id: string; state: ReturnType<AiService['getState']> }>> => {

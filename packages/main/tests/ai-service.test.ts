@@ -28,18 +28,13 @@ afterEach(async () => {
   mock.requests.length = 0;
 });
 
-const rot = (s: string): string =>
-  s.replace(/[a-zA-Z]/g, (c) =>
-    String.fromCharCode(
-      ((c.charCodeAt(0) + 13 - (c <= 'Z' ? 65 : 97)) % 26) + (c <= 'Z' ? 65 : 97),
-    ),
-  );
-
 function fakeVault(): SecretVault {
+  const credentials = new Map<string, string>();
   return {
     available: true,
-    encrypt: (p) => `enc:v1:${btoa(rot(p))}`,
-    decrypt: (b) => rot(atob(b.slice('enc:v1:'.length))),
+    put: (account, secret) => void credentials.set(account, secret),
+    get: (account) => credentials.get(account) ?? null,
+    delete: (account) => void credentials.delete(account),
   };
 }
 
@@ -56,14 +51,15 @@ function makeService(): { service: AiService; sent: SentEvent[]; store: AiStore 
 }
 
 function saveMockProfile(service: AiService, overrides: Record<string, unknown> = {}): string {
-  const { id } = service.saveProfile(undefined, {
+  const input = {
     name: 'Mock 网关',
-    kind: 'openai-compatible',
+    kind: 'openai-compatible' as const,
     baseUrl: `${mock.url}/v1`,
     defaultModel: 'gpt-4o-mini',
-    apiKey: 'sk-ser' + 'vice-secret-xyz',
     ...overrides,
-  });
+  };
+  const credentialToken = service.submitCredential('sk-service-secret-xyz');
+  const { id } = service.saveProfile(undefined, { ...input, credentialToken });
   return id;
 }
 
@@ -102,8 +98,9 @@ describe('AiService', () => {
 
   it('testConnection：candidate 直测（向导场景）+ capabilities 实测', async () => {
     const { service } = makeService();
+    const credentialToken = service.submitCredential('sk-cand');
     const result = await service.testConnection({
-      candidate: { kind: 'openai-compatible', baseUrl: `${mock.url}/v1`, apiKey: 'sk-cand' },
+      candidate: { kind: 'openai-compatible', baseUrl: `${mock.url}/v1`, credentialToken },
     });
     expect(result.reachable).toBe(true);
     expect(result.capabilities.chat).toBe(true);
@@ -149,7 +146,11 @@ describe('AiService', () => {
   it('testConnection：不可达端点 reachable=false + 错误信息', async () => {
     const { service } = makeService();
     const result = await service.testConnection({
-      candidate: { kind: 'openai-compatible', baseUrl: 'http://127.0.0.1:1/v1', apiKey: 'k' },
+      candidate: {
+        kind: 'openai-compatible',
+        baseUrl: 'http://127.0.0.1:1/v1',
+        credentialToken: service.submitCredential('k'),
+      },
     });
     expect(result.reachable).toBe(false);
     expect(result.error).toBeTruthy();
@@ -166,7 +167,11 @@ describe('AiService', () => {
     });
     // candidate 测试路径不碰 store/vault，密钥只在一次请求的内存中存在
     const result = await service.testConnection({
-      candidate: { kind: 'openai-compatible', baseUrl: `${mock.url}/v1`, apiKey: 'sk-temp-cand' },
+      candidate: {
+        kind: 'openai-compatible',
+        baseUrl: `${mock.url}/v1`,
+        credentialToken: service.submitCredential('sk-temp-cand'),
+      },
     });
     expect(result.reachable).toBe(true);
     expect(mock.requests.some((r) => r.headers['authorization'] === 'Bearer sk-temp-cand')).toBe(
@@ -181,7 +186,7 @@ describe('AiService', () => {
         kind: 'openai-compatible',
         baseUrl: `${mock.url}/v1`,
         defaultModel: 'gpt-4o-mini',
-        apiKey: 'sk-should-not-be-saved',
+        credentialToken: service.submitCredential('sk-should-not-be-saved'),
       }),
     ).toThrow(/凭据存储不可用/);
   });

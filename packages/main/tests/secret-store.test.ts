@@ -1,81 +1,52 @@
 import { describe, expect, it } from 'vitest';
 import {
-  UnavailableSecretVault,
   createSecretVault,
+  decryptLegacySafeStorage,
+  KeyringSecretVault,
   SecretStorageUnavailableError,
+  type KeyringEntryLike,
   type SafeStorageLike,
 } from '../src/ai/secret-store';
 
-const fakeSafe = (available = true): SafeStorageLike => ({
-  isEncryptionAvailable: () => available,
-  encryptString: (plain) => Buffer.from(plain).reverse(),
-  decryptString: (buf) => Buffer.from(buf).reverse().toString(),
-});
+function fakeEntries(): { factory: (account: string) => KeyringEntryLike; values: Map<string, string> } {
+  const values = new Map<string, string>();
+  return {
+    values,
+    factory: (account) => ({
+      setPassword: (secret) => values.set(account, secret),
+      getPassword: () => values.get(account) ?? null,
+      deleteCredential: () => values.delete(account),
+    }),
+  };
+}
 
-describe('SecretVault（密钥安全存储）', () => {
-  it('safeStorage 可用时 createSecretVault 返回可用 vault（encrypt/decrypt 往返一致）', () => {
-    const vault = createSecretVault(fakeSafe(true));
-    expect(vault.available).toBe(true);
-    const blob = vault.encrypt('hello secret');
-    expect(blob.startsWith('enc:v1:')).toBe(true);
-    expect(blob).not.toContain('hello secret'); // 密文不包含明文
-    expect(vault.decrypt(blob)).toBe('hello secret');
+const legacySafe: SafeStorageLike = {
+  isEncryptionAvailable: () => true,
+  encryptString: (value) => Buffer.from(value),
+  decryptString: (value) => value.toString(),
+  getSelectedStorageBackend: () => 'OSCrypt',
+};
+
+describe('SecretVault', () => {
+  it('stores, retrieves, and deletes credentials through a native entry', () => {
+    const fake = fakeEntries();
+    const vault = new KeyringSecretVault(fake.factory);
+    vault.put('account', 'secret');
+    expect(vault.get('account')).toBe('secret');
+    vault.delete('account');
+    expect(vault.get('account')).toBeNull();
   });
 
-  it('safeStorage 不可用时 createSecretVault 返回 UnavailableSecretVault（available=false）', () => {
-    const vault = createSecretVault(fakeSafe(false));
+  it('fails closed when native entry construction fails', () => {
+    const vault = createSecretVault(() => { throw new Error('keychain unavailable'); });
     expect(vault.available).toBe(false);
-    expect(vault).toBeInstanceOf(UnavailableSecretVault);
+    expect(() => vault.put('account', 'secret')).toThrow(SecretStorageUnavailableError);
   });
 
-  it('UnavailableSecretVault.encrypt 抛 SECRET_STORAGE_UNAVAILABLE（决不写入明文）', () => {
-    const v = new UnavailableSecretVault();
-    expect(() => v.encrypt('my-key')).toThrow(SecretStorageUnavailableError);
-    try {
-      v.encrypt('my-key');
-    } catch (e) {
-      expect((e as SecretStorageUnavailableError).code).toBe('SECRET_STORAGE_UNAVAILABLE');
-    }
-  });
-
-  it('UnavailableSecretVault.decrypt 抛 SECRET_STORAGE_UNAVAILABLE', () => {
-    const v = new UnavailableSecretVault();
-    expect(() => v.decrypt('anything')).toThrow(SecretStorageUnavailableError);
-  });
-
-  it('Linux basic_text backend 即使声称可加密也 fail-closed', () => {
-    const vault = createSecretVault({
-      ...fakeSafe(true),
-      getSelectedStorageBackend: () => 'basic_text',
-    });
-    expect(vault.available).toBe(false);
-    expect(vault).toBeInstanceOf(UnavailableSecretVault);
-  });
-
-  it('safeStorage backend 探测抛错时当作不可用', () => {
-    const vault = createSecretVault({
-      ...fakeSafe(true),
-      getSelectedStorageBackend: () => {
-        throw new Error('backend unavailable');
-      },
-    });
-    expect(vault.available).toBe(false);
-  });
-
-  it('safeStorage.isEncryptionAvailable 抛错时当作不可用', () => {
-    const broken: SafeStorageLike = {
-      isEncryptionAvailable: () => {
-        throw new Error('keychain crashed');
-      },
-      encryptString: () => Buffer.alloc(0),
-      decryptString: () => '',
-    };
-    const vault = createSecretVault(broken);
-    expect(vault.available).toBe(false);
-  });
-
-  it('SafeStorageVault.decrypt 不能识别的 blob 格式抛错', () => {
-    const vault = createSecretVault(fakeSafe(true));
-    expect(() => vault.decrypt('not-a-real-blob')).toThrow(/格式无法识别/);
+  it('decrypts legacy safeStorage payloads only when OSCrypt is available', () => {
+    const blob = `enc:v1:${Buffer.from('legacy-secret').toString('base64')}`;
+    expect(decryptLegacySafeStorage(blob, legacySafe)).toBe('legacy-secret');
+    expect(() => decryptLegacySafeStorage(blob, { ...legacySafe, getSelectedStorageBackend: () => 'basic_text' }))
+      .toThrow(SecretStorageUnavailableError);
   });
 });

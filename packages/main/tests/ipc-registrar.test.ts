@@ -14,12 +14,14 @@ import { AiStore } from '../src/ai/ai-store';
 import { AiService } from '../src/ai/ai-service';
 import type { SecretVault } from '../src/ai/secret-store';
 
-/** 测试用明文假保险库（密钥仍不落渲染层）。 */
+/** 测试用内存 credential vault（模拟系统凭据库）。 */
 function plainFakeVault(): SecretVault {
+  const credentials = new Map<string, string>();
   return {
     available: true,
-    encrypt: (p) => `fake:${btoa(p)}`,
-    decrypt: (b) => atob(b.slice('fake:'.length)),
+    put: (account, secret) => void credentials.set(account, secret),
+    get: (account) => credentials.get(account) ?? null,
+    delete: (account) => void credentials.delete(account),
   };
 }
 
@@ -98,6 +100,7 @@ describe('IPC 注册表框架', () => {
     const { services } = makeServices();
     const registrar = registerAllIpcHandlers(ipc, services);
     expect(registrar.registeredChannels().sort()).toEqual([...IPC_CHANNELS].sort());
+    expect(registrar.registeredChannels()).not.toContain('ai:credential:retrieve');
   });
 
   it('拒绝未在契约中声明的通道', () => {

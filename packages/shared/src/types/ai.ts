@@ -1,7 +1,7 @@
 /** AI 层公共类型（DEV-009）。密钥永不出现在这些类型中——渲染层只见 hasApiKey。 */
 
 /** 供应商协议种类。azure-openai 与 openai-compatible 传输同源，仅 URL/鉴权头不同。 */
-export type AiProviderKind = 'openai-compatible' | 'azure-openai';
+export type AiProviderKind = 'openai-compatible' | 'azure-openai' | 'local-embedding';
 
 /** 对话消息（OpenAI roles）。 */
 export interface ChatMessage {
@@ -54,8 +54,8 @@ export interface AiProfileView {
   params: ChatParams;
   /** 密钥是否已配置（明文永不出主进程） */
   hasApiKey: boolean;
-  /** 密钥存储方式：safestorage=系统钥匙串加密（无其他模式；系统凭据不可用时不保存密钥） */
-  keyStorage: 'safestorage';
+  /** 密钥存储方式：仅原生系统凭据库；JSON 只保存 account reference。 */
+  keyStorage: 'system-credential';
   createdAt: number;
   updatedAt: number;
 }
@@ -67,8 +67,10 @@ export interface AiProfileInput {
   baseUrl: string;
   defaultModel: string;
   params?: ChatParams;
-  /** undefined = 保留既有密钥；null = 清除；字符串 = 覆盖 */
-  apiKey?: string | null;
+  /** One-shot credential submission token issued by the main process; never credential material. */
+  credentialToken?: string;
+  /** Explicitly remove the stored system credential. */
+  clearCredential?: boolean;
 }
 
 /** 分功能指定：写作辅助 / 对话 / embedding 三处可分别指定 Profile + 模型。 */
@@ -107,7 +109,8 @@ export interface AiConnectionTarget {
   candidate?: {
     kind: AiProviderKind;
     baseUrl: string;
-    apiKey?: string;
+    /** One-shot main-process credential submission token. */
+    credentialToken?: string;
     defaultModel?: string;
   };
 }
