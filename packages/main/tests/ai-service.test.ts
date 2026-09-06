@@ -29,7 +29,11 @@ afterEach(async () => {
 });
 
 const rot = (s: string): string =>
-  s.replace(/[a-zA-Z]/g, (c) => String.fromCharCode(((c.charCodeAt(0) + 13 - (c <= 'Z' ? 65 : 97)) % 26) + (c <= 'Z' ? 65 : 97)));
+  s.replace(/[a-zA-Z]/g, (c) =>
+    String.fromCharCode(
+      ((c.charCodeAt(0) + 13 - (c <= 'Z' ? 65 : 97)) % 26) + (c <= 'Z' ? 65 : 97),
+    ),
+  );
 
 function fakeVault(): SecretVault {
   return {
@@ -87,7 +91,11 @@ describe('AiService', () => {
     await service.chatCompletion({ feature: 'chat', messages: [{ role: 'user', content: 'x' }] });
     expect((mock.requests.at(-1)?.body as { model?: string })?.model).toBe('gpt-4o');
     // 显式 profileId 覆盖 feature
-    await service.chatCompletion({ feature: 'chat', profileId: a, messages: [{ role: 'user', content: 'x' }] });
+    await service.chatCompletion({
+      feature: 'chat',
+      profileId: a,
+      messages: [{ role: 'user', content: 'x' }],
+    });
     expect((mock.requests.at(-1)?.body as { model?: string })?.model).toBe('gpt-4o-mini');
     expect(a).not.toBe(b);
   });
@@ -112,7 +120,30 @@ describe('AiService', () => {
     const id = saveMockProfile(service);
     const result = await service.testConnection({ profileId: id });
     expect(result.reachable).toBe(true);
-    expect(mock.requests.some((r) => r.headers['authorization'] === 'Bearer sk-service-secret-xyz')).toBe(true);
+    expect(
+      mock.requests.some((r) => r.headers['authorization'] === 'Bearer sk-service-secret-xyz'),
+    ).toBe(true);
+  });
+
+  it('testConnection：编辑候选使用当前 baseUrl/defaultModel，并在主进程复用已存密钥', async () => {
+    const { service } = makeService();
+    const id = saveMockProfile(service);
+    mock.requests.length = 0;
+    const result = await service.testConnection({
+      profileId: id,
+      candidate: {
+        kind: 'openai-compatible',
+        baseUrl: `${mock.url}/v1`,
+        defaultModel: 'gpt-4o',
+      },
+    });
+    expect(result.reachable).toBe(true);
+    expect(
+      mock.requests.some((r) => r.headers['authorization'] === 'Bearer sk-service-secret-xyz'),
+    ).toBe(true);
+    expect(
+      mock.requests.some((r) => (r.body as { model?: string } | null)?.model === 'gpt-4o'),
+    ).toBe(true);
   });
 
   it('testConnection：不可达端点 reachable=false + 错误信息', async () => {
@@ -123,6 +154,36 @@ describe('AiService', () => {
     expect(result.reachable).toBe(false);
     expect(result.error).toBeTruthy();
     expect(result.capabilities.chat).toBe(false);
+  });
+
+  it('系统凭据不可用时 candidate testConnection 仍可跑（不经过 store）', async () => {
+    const { UnavailableSecretVault } = await import('../src/ai/secret-store');
+    const sent: SentEvent[] = [];
+    const store = new AiStore(path.join(tmp, 'ai-unavail.json'), new UnavailableSecretVault());
+    const service = new AiService({
+      store,
+      sendEvent: (channel, payload) => sent.push({ channel, payload }),
+    });
+    // candidate 测试路径不碰 store/vault，密钥只在一次请求的内存中存在
+    const result = await service.testConnection({
+      candidate: { kind: 'openai-compatible', baseUrl: `${mock.url}/v1`, apiKey: 'sk-temp-cand' },
+    });
+    expect(result.reachable).toBe(true);
+    expect(mock.requests.some((r) => r.headers['authorization'] === 'Bearer sk-temp-cand')).toBe(
+      true,
+    );
+    // 密钥没有以任何形式进入 store（store 是空的，也没有明文文件）
+    expect(store.getState().profiles).toHaveLength(0);
+    // 尝试保存带密钥 Profile → 必须失败
+    expect(() =>
+      service.saveProfile(undefined, {
+        name: 'Will Fail',
+        kind: 'openai-compatible',
+        baseUrl: `${mock.url}/v1`,
+        defaultModel: 'gpt-4o-mini',
+        apiKey: 'sk-should-not-be-saved',
+      }),
+    ).toThrow(/凭据存储不可用/);
   });
 
   it('流式：streamId + 统一事件经 ai:streamEvent 推送；cancel 生效', async () => {
@@ -136,7 +197,7 @@ describe('AiService', () => {
     while (Date.now() < deadline) {
       const events = sent
         .filter((s) => s.channel === 'ai:streamEvent')
-        .map((s) => (s.payload as { streamId: string; event: ChatStreamEvent }));
+        .map((s) => s.payload as { streamId: string; event: ChatStreamEvent });
       if (events.some((e) => e.streamId === streamId && e.event.type === 'done')) break;
       await new Promise((r) => setTimeout(r, 20));
     }
@@ -146,9 +207,12 @@ describe('AiService', () => {
       .filter((p) => p.streamId === streamId)
       .map((p) => p.event);
     expect(mine[0]).toEqual({ type: 'start', model: 'gpt-4o-mini' });
-    expect(mine.filter((e) => e.type === 'delta').map((e) => (e as { text: string }).text).join('')).toBe(
-      '你好，流式回复',
-    );
+    expect(
+      mine
+        .filter((e) => e.type === 'delta')
+        .map((e) => (e as { text: string }).text)
+        .join(''),
+    ).toBe('你好，流式回复');
     expect(mine.at(-1)).toEqual({ type: 'done' });
     // 流结束后自动清理
     expect(service.activeStreamCount()).toBe(0);
@@ -157,21 +221,60 @@ describe('AiService', () => {
     expect(service.cancelChatStream('no-such')).toBe(false);
   });
 
-  it('embed：统一接口 + 维度 + 指纹回写（generation 递增）', async () => {
+  it('embed 维度回写：指纹/generation 变更检测（首次回写递增）', async () => {
     const { service } = makeService();
     const id = saveMockProfile(service);
     service.setFeatureAssignment('embedding', { profileId: id, model: 'text-embedding-3-small' });
     const gen0 = service.getState().embeddingGeneration;
 
-    const res = await service.embed(['你好', '世界']);
-    expect(res.vectors).toHaveLength(2);
-    expect(res.dimensions).toBe(1536);
-    expect(res.model).toBe('text-embedding-3-small');
-    expect(res.profileId).toBe(id);
+    await service.embed(['你好', '世界']);
     const state = service.getState();
     expect(state.features.embedding?.dimensions).toBe(1536);
     expect(state.embeddingGeneration).toBeGreaterThan(gen0); // 维度首次回写 → 指纹变化
     expect(state.embeddingFingerprint).toBe(`${id}:text-embedding-3-small:1536:cosine`);
+  });
+
+  it('embed 公共口径：返回 number[][]（规格 embed(texts): Promise<number[][]>）', async () => {
+    const { service } = makeService();
+    const id = saveMockProfile(service);
+    service.setFeatureAssignment('embedding', { profileId: id, model: 'text-embedding-3-small' });
+    const vectors = await service.embed(['你好', '世界']);
+    expect(Array.isArray(vectors)).toBe(true);
+    expect(vectors).toHaveLength(2);
+    expect(vectors[0]).toHaveLength(1536);
+    expect(vectors.every((v) => Array.isArray(v) && v.every((n) => typeof n === 'number'))).toBe(
+      true,
+    );
+  });
+
+  it('embedWithMetadata：返回全量 metadata（维度/模型/profileId）', async () => {
+    const { service } = makeService();
+    const id = saveMockProfile(service);
+    service.setFeatureAssignment('embedding', { profileId: id, model: 'text-embedding-3-small' });
+    const res = await service.embedWithMetadata(['你好', '世界']);
+    expect(res.vectors).toHaveLength(2);
+    expect(res.dimensions).toBe(1536);
+    expect(res.model).toBe('text-embedding-3-small');
+    expect(res.profileId).toBe(id);
+  });
+
+  it('embed 维度回写后广播 ai:configChanged；同维度二次 embed 不再推送', async () => {
+    const { service, sent } = makeService();
+    const id = saveMockProfile(service);
+    service.setFeatureAssignment('embedding', { profileId: id, model: 'text-embedding-3-small' });
+    sent.length = 0; // 排除 setFeatureAssignment 的事件
+
+    await service.embed(['a']);
+    const afterFirst = sent.filter((s) => s.channel === 'ai:configChanged');
+    expect(afterFirst).toHaveLength(1); // 首次维度回写 → 推送
+    const payload = afterFirst[0]!.payload as { state: AiConfigState };
+    expect(payload.state.features.embedding?.dimensions).toBe(1536);
+    expect(payload.state.embeddingGeneration).toBeGreaterThan(0);
+    expect(JSON.stringify(payload)).not.toContain('sk-service-secret-xyz');
+
+    await service.embed(['b']);
+    const afterSecond = sent.filter((s) => s.channel === 'ai:configChanged');
+    expect(afterSecond).toHaveLength(1); // 维度未变 → 不再推送
   });
 
   it('embed 大量文本：自动分批、多次请求、顺序保持', async () => {
@@ -181,11 +284,11 @@ describe('AiService', () => {
     mock.requests.length = 0; // 仅统计本次 embed 的请求
 
     const texts = Array.from({ length: 100 }, (_, i) => `文档片段 ${i} ${'x'.repeat(100)}`);
-    const res = await service.embed(texts);
-    expect(res.vectors).toHaveLength(100);
+    const vectors = await service.embed(texts);
+    expect(vectors).toHaveLength(100);
     // mock 向量与 (idx + d) % 17 相关：第一条应为 batch 内 idx=0 的形状
-    expect(res.vectors[0]![1]).toBeCloseTo(1 / 17);
-    expect(res.vectors[99]![1]).not.toBeCloseTo(1 / 17); // 顺序未被重排的证据（非首条形状）
+    expect(vectors[0]![1]).toBeCloseTo(1 / 17);
+    expect(vectors[99]![1]).not.toBeCloseTo(1 / 17); // 顺序未被重排的证据（非首条形状）
 
     const embedCalls = mock.requests.filter((r) => r.url === '/v1/embeddings');
     expect(embedCalls.length).toBeGreaterThanOrEqual(2); // 确有分批

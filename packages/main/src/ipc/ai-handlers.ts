@@ -5,9 +5,12 @@ import type { AiService } from '../ai/ai-service';
 
 /** ai:* 命名空间 handler。密钥安全契约：任何响应都不含密钥明文。 */
 export function registerAiHandlers(registrar: IpcRegistrar, ai: AiService): void {
-  registrar.register('ai:getState', async (): Promise<Result<ReturnType<AiService['getState']>>> => {
-    return ok(ai.getState());
-  });
+  registrar.register(
+    'ai:getState',
+    async (): Promise<Result<ReturnType<AiService['getState']>>> => {
+      return ok(ai.getState());
+    },
+  );
 
   registrar.register(
     'ai:profile:save',
@@ -50,7 +53,7 @@ export function registerAiHandlers(registrar: IpcRegistrar, ai: AiService): void
   });
 
   registrar.register('ai:embed', async (payload) => {
-    return ok(await ai.embed(payload.texts));
+    return ok(await ai.embedWithMetadata(payload.texts));
   });
 
   registrar.register('ai:export', async () => {

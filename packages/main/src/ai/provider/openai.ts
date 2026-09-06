@@ -1,8 +1,4 @@
-import type {
-  ChatStreamEvent,
-  ProviderCapabilities,
-  TokenUsage,
-} from '@nexnote/shared';
+import type { ChatStreamEvent, ProviderCapabilities, TokenUsage } from '@nexnote/shared';
 import { createSseParser } from './sse';
 import {
   ProviderError,
@@ -110,7 +106,10 @@ export class OpenAIProtocolAdapter implements ProviderAdapter {
   private chatUrl(model: string, stream: boolean): string {
     if (this.kind === 'azure-openai') {
       const q = `api-version=${this.apiVersion}${stream ? '&stream=true' : ''}`;
-      return joinUrl(this.base, `/openai/deployments/${encodeURIComponent(model)}/chat/completions?${q}`);
+      return joinUrl(
+        this.base,
+        `/openai/deployments/${encodeURIComponent(model)}/chat/completions?${q}`,
+      );
     }
     return joinUrl(this.base, '/chat/completions');
   }
@@ -144,43 +143,117 @@ export class OpenAIProtocolAdapter implements ProviderAdapter {
     error?: string;
   }> {
     const started = Date.now();
-    const declared = this.declaredCapabilities();
     let models: string[] = [];
     try {
       models = await this.listModels();
     } catch {
-      // 列模型失败不视为不可达
+      // 列模型失败不视为不可达（Azure 部分部署不可列模型）
     }
-    const chatModel =
-      defaultModel || models.find((m) => !m.toLowerCase().includes('embed')) || '';
+
+    const chatModel = defaultModel || models.find((m) => !m.toLowerCase().includes('embed')) || '';
+
+    // 1. chat 实测（非流式）
     const chatOk = chatModel
       ? await (async () => {
           try {
-            await this.chatCompletion({ model: chatModel, messages: [{ role: 'user', content: 'ping' }], params: { maxTokens: 1 } });
+            await this.chatCompletion({
+              model: chatModel,
+              messages: [{ role: 'user', content: 'ping' }],
+              params: { maxTokens: 1 },
+            });
             return true;
           } catch {
             return false;
           }
         })()
       : false;
+
+    // 2. streaming 实测：发起一次 SSE 流，收到首个非 error 事件即判成功
+    const streamingOk = chatModel
+      ? await new Promise<boolean>((resolve) => {
+          try {
+            let settled = false;
+            const finish = (ok: boolean) => {
+              if (settled) return;
+              settled = true;
+              handle.abort();
+              resolve(ok);
+            };
+            const handle = this.chatCompletionStream(
+              {
+                model: chatModel,
+                messages: [{ role: 'user', content: 'ping' }],
+                params: { maxTokens: 1 },
+              },
+              (event) => {
+                if (event.type === 'start' || event.type === 'delta') finish(true);
+                else if (event.type === 'error') finish(false);
+              },
+            );
+            // 超时保护：8 秒内没开始流则判失败
+            const t = setTimeout(() => finish(false), 8000);
+            void handle.done.finally(() => {
+              clearTimeout(t);
+              if (!settled) finish(false);
+            });
+          } catch {
+            resolve(false);
+          }
+        })
+      : false;
+
+    // 3. tools 实测：发一次带空函数 schema 的 chat，非 4xx 即支持
+    const toolsOk = chatModel
+      ? await (async () => {
+          try {
+            const res = await this.fetchImpl(this.chatUrl(chatModel, false), {
+              method: 'POST',
+              headers: this.headers(true),
+              body: JSON.stringify({
+                model: chatModel,
+                messages: [{ role: 'user', content: 'ping' }],
+                max_tokens: 1,
+                tools: [
+                  {
+                    type: 'function',
+                    function: {
+                      name: 'ping_noop',
+                      description: 'noop',
+                      parameters: { type: 'object', properties: {} },
+                    },
+                  },
+                ],
+              }),
+              signal: AbortSignal.timeout(15_000),
+            });
+            return res.ok;
+          } catch {
+            return false;
+          }
+        })()
+      : false;
+
+    // 4. embeddings 实测
     const embeddingModel = models.find((m) => m.toLowerCase().includes('embed')) ?? '';
-    let embeddingProbe: { dimensions: number } | null = null;
-    if (embeddingModel) {
-      try {
-        const r = await this.embeddings({ model: embeddingModel, inputs: ['ping'] });
-        embeddingProbe = { dimensions: r.vectors[0]?.length ?? 0 };
-      } catch {
-        embeddingProbe = null;
-      }
-    }
+    const embeddingsOk = embeddingModel
+      ? await (async () => {
+          try {
+            const r = await this.embeddings({ model: embeddingModel, inputs: ['ping'] });
+            return (r.vectors[0]?.length ?? 0) > 0;
+          } catch {
+            return false;
+          }
+        })()
+      : false;
+
     const reachable = chatOk || models.length > 0;
     return {
       reachable,
       capabilities: {
-        chat: chatOk || (!chatModel && models.length > 0),
-        streaming: chatOk || models.length > 0,
-        embeddings: embeddingProbe !== null,
-        tools: declared.tools && chatOk,
+        chat: chatOk,
+        streaming: streamingOk,
+        embeddings: embeddingsOk,
+        tools: toolsOk,
       },
       models,
       latencyMs: Date.now() - started,
@@ -199,7 +272,12 @@ export class OpenAIProtocolAdapter implements ProviderAdapter {
     } catch (e) {
       throw this.networkError(e);
     }
-    if (!res.ok) throw new ProviderError(messageFromStatus(res.status, await readErrorBody(res)), 'PROVIDER_HTTP', res.status);
+    if (!res.ok)
+      throw new ProviderError(
+        messageFromStatus(res.status, await readErrorBody(res)),
+        'PROVIDER_HTTP',
+        res.status,
+      );
     const body = (await res.json()) as { data?: Array<{ id?: string }> };
     return (body.data ?? [])
       .map((m) => (typeof m?.id === 'string' ? m.id : ''))
@@ -207,7 +285,9 @@ export class OpenAIProtocolAdapter implements ProviderAdapter {
       .sort();
   }
 
-  async chatCompletion(req: ChatRequest): Promise<{ content: string; model: string; usage?: TokenUsage }> {
+  async chatCompletion(
+    req: ChatRequest,
+  ): Promise<{ content: string; model: string; usage?: TokenUsage }> {
     let res: Response;
     try {
       res = await this.fetchImpl(this.chatUrl(req.model, false), {
@@ -224,7 +304,12 @@ export class OpenAIProtocolAdapter implements ProviderAdapter {
     } catch (e) {
       throw this.networkError(e);
     }
-    if (!res.ok) throw new ProviderError(messageFromStatus(res.status, await readErrorBody(res)), 'PROVIDER_HTTP', res.status);
+    if (!res.ok)
+      throw new ProviderError(
+        messageFromStatus(res.status, await readErrorBody(res)),
+        'PROVIDER_HTTP',
+        res.status,
+      );
     const body = (await res.json()) as {
       model?: string;
       choices?: Array<{ message?: { content?: string | null } }>;
@@ -234,7 +319,10 @@ export class OpenAIProtocolAdapter implements ProviderAdapter {
     return { content, model: body.model ?? req.model, usage: extractUsage(body.usage) };
   }
 
-  chatCompletionStream(req: ChatRequest, onEvent: (event: ChatStreamEvent) => void): ChatStreamHandle {
+  chatCompletionStream(
+    req: ChatRequest,
+    onEvent: (event: ChatStreamEvent) => void,
+  ): ChatStreamHandle {
     const abort = new AbortController();
     const timeout = setTimeout(() => abort.abort(new Error('timeout')), REQUEST_TIMEOUT_MS);
     let settled = false;
@@ -273,7 +361,11 @@ export class OpenAIProtocolAdapter implements ProviderAdapter {
       }
       if (!res.ok) {
         finish();
-        onEvent({ type: 'error', message: messageFromStatus(res.status, await readErrorBody(res)), code: 'PROVIDER_HTTP' });
+        onEvent({
+          type: 'error',
+          message: messageFromStatus(res.status, await readErrorBody(res)),
+          code: 'PROVIDER_HTTP',
+        });
         return;
       }
       if (!res.body) {
@@ -302,7 +394,8 @@ export class OpenAIProtocolAdapter implements ProviderAdapter {
         }
         const choice = chunk.choices?.[0];
         const delta = choice?.delta;
-        if (delta?.reasoning_content) onEvent({ type: 'reasoningDelta', text: delta.reasoning_content });
+        if (delta?.reasoning_content)
+          onEvent({ type: 'reasoningDelta', text: delta.reasoning_content });
         if (delta?.content) onEvent({ type: 'delta', text: delta.content });
       });
 
@@ -324,7 +417,11 @@ export class OpenAIProtocolAdapter implements ProviderAdapter {
         if (!streamDone) {
           streamDone = true;
           const msg = abort.signal.aborted ? '已取消' : e instanceof Error ? e.message : String(e);
-          onEvent({ type: 'error', message: msg, code: abort.signal.aborted ? 'CANCELLED' : 'STREAM_READ' });
+          onEvent({
+            type: 'error',
+            message: msg,
+            code: abort.signal.aborted ? 'CANCELLED' : 'STREAM_READ',
+          });
         }
       } finally {
         finish();
@@ -352,7 +449,11 @@ export class OpenAIProtocolAdapter implements ProviderAdapter {
       throw this.networkError(e);
     }
     if (!res.ok) {
-      throw new ProviderError(messageFromStatus(res.status, await readErrorBody(res)), 'PROVIDER_HTTP', res.status);
+      throw new ProviderError(
+        messageFromStatus(res.status, await readErrorBody(res)),
+        'PROVIDER_HTTP',
+        res.status,
+      );
     }
     const body = (await res.json()) as {
       model?: string;

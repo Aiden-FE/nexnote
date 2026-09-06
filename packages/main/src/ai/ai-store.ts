@@ -8,7 +8,7 @@ import type {
   AiProfileInput,
   AiProfileView,
 } from '@nexnote/shared';
-import type { SecretVault } from './secret-store';
+import { SecretStorageUnavailableError, type SecretVault } from './secret-store';
 
 /** 主进程持久化形态（userData/nexnote-ai.json）。keyBlob = SecretVault 加密后的密钥。 */
 export interface AiStoredProfile {
@@ -19,7 +19,7 @@ export interface AiStoredProfile {
   defaultModel: string;
   params: { temperature?: number; maxTokens?: number };
   keyBlob: string | null;
-  keyStorage: 'safestorage' | 'plain';
+  keyStorage: 'safestorage';
   createdAt: number;
   updatedAt: number;
 }
@@ -80,10 +80,9 @@ function coerce(raw: unknown): AiStoreData {
           typeof (p as AiStoredProfile).name === 'string',
       )
     : [];
-  const features = (typeof d.features === 'object' && d.features !== null ? d.features : {}) as Record<
-    string,
-    unknown
-  >;
+  const features = (
+    typeof d.features === 'object' && d.features !== null ? d.features : {}
+  ) as Record<string, unknown>;
   return {
     version: 1,
     profiles,
@@ -96,12 +95,35 @@ function coerce(raw: unknown): AiStoreData {
       chat: coerceAssignment(features.chat),
       embedding: coerceAssignment(features.embedding),
     },
-    embeddingFingerprint: typeof d.embeddingFingerprint === 'string' ? d.embeddingFingerprint : null,
+    embeddingFingerprint:
+      typeof d.embeddingFingerprint === 'string' ? d.embeddingFingerprint : null,
     embeddingGeneration:
       typeof d.embeddingGeneration === 'number' && d.embeddingGeneration >= 0
         ? Math.floor(d.embeddingGeneration)
         : 0,
   };
+}
+
+/**
+ * 加载时安全清理：任何遗留的 `plain:` 前缀密钥 blob 一律丢弃（fail-closed）。
+ * 明文回退已被移除，系统凭据不可用时绝不持久化密钥。
+ * keyStorage 统一规范化为 'safestorage'（仅作为 blob 格式标记，有 keyBlob 时才有效）。
+ */
+function scrubLegacyPlaintext(data: AiStoreData): AiStoreData {
+  let changed = false;
+  const profiles = data.profiles.map((p): AiStoredProfile => {
+    if (p.keyBlob && p.keyBlob.startsWith('plain:')) {
+      changed = true;
+      return { ...p, keyBlob: null, keyStorage: 'safestorage' };
+    }
+    if (p.keyStorage !== 'safestorage') {
+      changed = true;
+      return { ...p, keyStorage: 'safestorage' };
+    }
+    return p;
+  });
+  if (!changed) return data;
+  return { ...data, profiles };
 }
 
 /**
@@ -120,16 +142,24 @@ export class AiStore {
 
   private load(): AiStoreData {
     try {
-      return coerce(JSON.parse(readFileSync(this.filePath, 'utf8')));
+      const raw = coerce(JSON.parse(readFileSync(this.filePath, 'utf8')));
+      const scrubbed = scrubLegacyPlaintext(raw);
+      // 若发现旧版明文回退，立即覆盖磁盘，不能只在内存中隐藏。
+      if (scrubbed !== raw) this.persistData(scrubbed);
+      return scrubbed;
     } catch {
       return defaultAiStoreData();
     }
   }
 
-  private persist(): void {
+  private persistData(data: AiStoreData): void {
     const tmp = `${this.filePath}.tmp`;
-    writeFileSync(tmp, `${JSON.stringify(this.data, null, 2)}\n`, 'utf8');
+    writeFileSync(tmp, `${JSON.stringify(data, null, 2)}\n`, 'utf8');
     renameSync(tmp, this.filePath);
+  }
+
+  private persist(): void {
+    this.persistData(this.data);
   }
 
   // ── 读 ──────────────────────────────────────────────
@@ -211,13 +241,17 @@ export class AiStore {
     if (id && !existing) throw new Error(`Profile 不存在: ${id}`);
 
     // 密钥合并语义：undefined=保留；null=清除；字符串=覆盖
+    // 加密失败（系统凭据不可用）直接抛错，绝不写入明文。
     let keyBlob = existing?.keyBlob ?? null;
-    let keyStorage = existing?.keyStorage ?? (this.secrets.available ? 'safestorage' : 'plain');
+    let keyStorage: 'safestorage' = existing?.keyStorage ?? 'safestorage';
     if (input.apiKey === null) {
       keyBlob = null;
     } else if (typeof input.apiKey === 'string' && input.apiKey.length > 0) {
+      if (!this.secrets.available) {
+        throw new SecretStorageUnavailableError();
+      }
       keyBlob = this.secrets.encrypt(input.apiKey);
-      keyStorage = this.secrets.available ? 'safestorage' : 'plain';
+      keyStorage = 'safestorage';
     }
 
     const profile: AiStoredProfile = {
@@ -286,10 +320,13 @@ export class AiStore {
     this.refreshEmbeddingFingerprint();
   }
 
-  /** embedding 维度探测回写（首次 embed 成功后调用）。 */
-  recordEmbeddingDimensions(dimensions: number): void {
+  /**
+   * embedding 维度探测回写（首次 embed 成功后调用）。
+   * 返回 true 表示 state 实际变更（调用方据此广播 ai:configChanged）。
+   */
+  recordEmbeddingDimensions(dimensions: number): boolean {
     const assignment = this.data.features.embedding;
-    if (!assignment || assignment.dimensions === dimensions) return;
+    if (!assignment || assignment.dimensions === dimensions) return false;
     this.data = {
       ...this.data,
       features: {
@@ -299,6 +336,7 @@ export class AiStore {
     };
     this.persist();
     this.refreshEmbeddingFingerprint();
+    return true;
   }
 
   // ── 导入/导出（永不含密钥） ──────────────────────────
@@ -323,7 +361,9 @@ export class AiStore {
         params: { ...p.params },
       })),
       features: {
-        writing: f.writing ? { name: nameOf(f.writing.profileId) ?? '', model: f.writing.model } : null,
+        writing: f.writing
+          ? { name: nameOf(f.writing.profileId) ?? '', model: f.writing.model }
+          : null,
         chat: f.chat ? { name: nameOf(f.chat.profileId) ?? '', model: f.chat.model } : null,
         embedding: f.embedding
           ? { name: nameOf(f.embedding.profileId) ?? '', model: f.embedding.model }

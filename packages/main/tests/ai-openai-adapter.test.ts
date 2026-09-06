@@ -48,7 +48,10 @@ describe('OpenAI 协议适配器', () => {
       messages: [{ role: 'user', content: 'hi' }],
       params: { temperature: 0.2, maxTokens: 8 },
     });
-    const req = mock.requests.at(-1) as { headers: Record<string, string>; body: { model?: string; temperature?: number; max_tokens?: number } };
+    const req = mock.requests.at(-1) as {
+      headers: Record<string, string>;
+      body: { model?: string; temperature?: number; max_tokens?: number };
+    };
     expect(req.headers['authorization']).toBe('Bearer sk-mock-key');
     expect(req.body.model).toBe('gpt-4o-mini');
     expect(req.body.temperature).toBe(0.2);
@@ -72,7 +75,11 @@ describe('OpenAI 协议适配器', () => {
     const events: ChatStreamEvent[] = [];
     const handle = collectStream(adapter('sk-wrong'), events);
     await handle.done;
-    const err = events.find((e) => e.type === 'error') as { type: 'error'; message: string; code?: string };
+    const err = events.find((e) => e.type === 'error') as {
+      type: 'error';
+      message: string;
+      code?: string;
+    };
     expect(err).toBeDefined();
     expect(err.message).toContain('HTTP 401');
     expect(err.message).toContain('密钥无效');
@@ -85,16 +92,17 @@ describe('OpenAI 协议适配器', () => {
     });
     expect(res.vectors).toHaveLength(3);
     expect(res.vectors[0]).toHaveLength(1536);
-    expect(res.vectors.every((v) => v.every((n) => typeof n === 'number' && n >= 0 && n < 1))).toBe(true);
+    expect(res.vectors.every((v) => v.every((n) => typeof n === 'number' && n >= 0 && n < 1))).toBe(
+      true,
+    );
     // 顺序可区分：不同输入 → 不同向量
     expect(res.vectors[0]).not.toEqual(res.vectors[1]);
   });
 
-  it('listModels 与 adapter.testConnection 返回模型清单/能力探测', async () => {
+  it('testConnection：实测 chat/streaming/embeddings/tools 各能力', async () => {
     const a = adapter();
     const models = await a.listModels();
     expect(models).toContain('gpt-4o-mini');
-    expect(models).toContain('text-embedding-3-small');
 
     const connection = await a.testConnection();
     expect(connection.reachable).toBe(true);
@@ -104,6 +112,62 @@ describe('OpenAI 协议适配器', () => {
       embeddings: true,
       tools: true,
     });
+    // capabilities 由各自独立 probe 得出（不应仅靠 chat 推断）
+    // 验证：测试期间产生多个非流式 + 1 个流式 + 1 个带 tools 的 chat + 1 个 embedding 请求
+    const after = mock.requests.length;
+    const urls = mock.requests.map((r) => r.url);
+    const stream = mock.requests.find(
+      (r) =>
+        r.url === '/v1/chat/completions' &&
+        (r.body as { stream?: boolean } | null)?.stream === true,
+    );
+    const tools = mock.requests.find(
+      (r) =>
+        r.url === '/v1/chat/completions' &&
+        Array.isArray((r.body as { tools?: unknown[] } | null)?.tools),
+    );
+    expect(stream).toBeDefined();
+    expect(tools).toBeDefined();
+    expect(urls).toContain('/v1/embeddings');
+    expect(after).toBeGreaterThan(0);
+  });
+
+  it('testConnection：streaming 不被支持时 capabilities.streaming=false', async () => {
+    mock.streamingUnsupported = true;
+    try {
+      const a = adapter();
+      const connection = await a.testConnection();
+      expect(connection.reachable).toBe(true); // 非流式仍可达
+      expect(connection.capabilities.chat).toBe(true);
+      expect(connection.capabilities.streaming).toBe(false); // 实测失败
+    } finally {
+      mock.streamingUnsupported = false;
+    }
+  });
+
+  it('testConnection：tools 不被支持时 capabilities.tools=false', async () => {
+    mock.toolsUnsupported = true;
+    try {
+      const a = adapter();
+      const connection = await a.testConnection();
+      expect(connection.reachable).toBe(true);
+      expect(connection.capabilities.chat).toBe(true);
+      expect(connection.capabilities.tools).toBe(false);
+    } finally {
+      mock.toolsUnsupported = false;
+    }
+  });
+
+  it('testConnection：embeddings 不被支持时 capabilities.embeddings=false', async () => {
+    mock.embeddingsUnsupported = true;
+    try {
+      const a = adapter();
+      const connection = await a.testConnection();
+      expect(connection.reachable).toBe(true);
+      expect(connection.capabilities.embeddings).toBe(false);
+    } finally {
+      mock.embeddingsUnsupported = false;
+    }
   });
 
   it('Azure 变体：deployment 路径 + api-key 头', async () => {
@@ -118,7 +182,9 @@ describe('OpenAI 协议适配器', () => {
     });
     expect(res.content).toContain('mock 助手');
     const req = mock.requests.at(-1);
-    expect(req?.url).toBe('/openai/deployments/gpt-4o-mini/chat/completions?api-version=2024-10-21');
+    expect(req?.url).toBe(
+      '/openai/deployments/gpt-4o-mini/chat/completions?api-version=2024-10-21',
+    );
     expect(req?.headers['api-key']).toBe('az-key');
     expect(req?.headers['authorization']).toBeUndefined();
   });

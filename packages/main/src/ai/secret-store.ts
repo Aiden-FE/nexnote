@@ -2,8 +2,11 @@
  * 密钥保险库：密钥明文只在此层存在（主进程内存），落盘前必经 encrypt。
  * 生产实现 = Electron safeStorage（macOS Keychain / Windows Credential Manager /
  * Linux libsecret 的加密材料）。密钥材料由系统钥匙串保管，JSON 中只存加密 blob。
- * safeStorage 不可用（无钥匙串的 Linux 等）时回退明文存储并在 Profile 上标记
- * keyStorage='plain'（渲染层可见该标记以提示用户）。
+ *
+ * 安全契约：
+ * - 系统凭据存储不可用时，**决不**降级到 JSON 明文。
+ * - encrypt/decrypt 直接抛 SecretStorageUnavailableError，由上层决定失败策略。
+ * - 向导 candidate 测试路径不经过 store/vault，密钥只在单次请求内存中存在。
  */
 
 export interface SecretVault {
@@ -18,6 +21,19 @@ export interface SafeStorageLike {
   isEncryptionAvailable(): boolean;
   encryptString(plainText: string): Buffer;
   decryptString(encrypted: Buffer): string;
+}
+
+/**
+ * 系统凭据存储不可用错误：明确的失败信号。
+ * 上层（AiStore / IPC handler）应捕获并向用户展示：请启用系统钥匙串。
+ */
+export class SecretStorageUnavailableError extends Error {
+  readonly code = 'SECRET_STORAGE_UNAVAILABLE';
+
+  constructor() {
+    super('系统凭据存储不可用，无法安全保存 API Key；请启用系统钥匙串后重试');
+    this.name = 'SecretStorageUnavailableError';
+  }
 }
 
 class SafeStorageVault implements SecretVault {
@@ -44,24 +60,25 @@ class SafeStorageVault implements SecretVault {
   }
 }
 
-/** 明文回退（无钥匙串环境）。available=false 时由 AiStore 决定标记。 */
-export class PlainTextVault implements SecretVault {
-  get available(): boolean {
-    return false;
+/**
+ * 不可用 vault：safeStorage 不可用时的占位实现。
+ * available=false，且 encrypt/decrypt 一律抛 SecretStorageUnavailableError。
+ * 目的：fail-closed —— 密钥绝不能以明文落到 JSON。
+ */
+export class UnavailableSecretVault implements SecretVault {
+  readonly available = false;
+
+  encrypt(_plain: string): string {
+    throw new SecretStorageUnavailableError();
   }
 
-  encrypt(plain: string): string {
-    return `plain:${plain}`;
-  }
-
-  decrypt(blob: string): string {
-    if (!blob.startsWith('plain:')) throw new Error('密钥 blob 格式无法识别');
-    return blob.slice('plain:'.length);
+  decrypt(_blob: string): string {
+    throw new SecretStorageUnavailableError();
   }
 }
 
-/** 生产工厂：优先 safeStorage，不可用则明文回退。 */
+/** 生产工厂：safeStorage 可用 → SafeStorageVault；否则 fail-closed → UnavailableSecretVault。 */
 export function createSecretVault(safeStorage: SafeStorageLike): SecretVault {
   const vault = new SafeStorageVault(safeStorage);
-  return vault.available ? vault : new PlainTextVault();
+  return vault.available ? vault : new UnavailableSecretVault();
 }

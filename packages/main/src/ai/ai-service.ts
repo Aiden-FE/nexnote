@@ -76,7 +76,12 @@ export class AiService {
   }
 
   /** 解析目标：显式 profileId > feature 指定 > 全局默认。 */
-  private resolve(options: { profileId?: string; feature?: 'writing' | 'chat' | 'embedding'; model?: string; params?: ChatParams }): ResolvedTarget {
+  private resolve(options: {
+    profileId?: string;
+    feature?: 'writing' | 'chat' | 'embedding';
+    model?: string;
+    params?: ChatParams;
+  }): ResolvedTarget {
     const state = this.deps.store.get();
     let profile: AiStoredProfile | undefined;
     if (options.profileId) profile = this.deps.store.getProfile(options.profileId);
@@ -84,9 +89,13 @@ export class AiService {
       const assignment = state.features[options.feature];
       if (assignment) profile = this.deps.store.getProfile(assignment.profileId);
     }
-    if (!profile && state.defaultProfileId) profile = this.deps.store.getProfile(state.defaultProfileId);
+    if (!profile && state.defaultProfileId)
+      profile = this.deps.store.getProfile(state.defaultProfileId);
     if (!profile) {
-      throw new ProviderError('未配置 AI Profile（或指定 Profile 不存在），请先完成 AI 引导', 'AI_NOT_CONFIGURED');
+      throw new ProviderError(
+        '未配置 AI Profile（或指定 Profile 不存在），请先完成 AI 引导',
+        'AI_NOT_CONFIGURED',
+      );
     }
 
     let model = options.model?.trim();
@@ -114,7 +123,10 @@ export class AiService {
     this.deps.sendEvent('ai:configChanged', { state: this.deps.store.getState() });
   }
 
-  saveProfile(id: string | undefined, input: Parameters<AiStore['saveProfile']>[1]): { id: string; state: AiConfigState } {
+  saveProfile(
+    id: string | undefined,
+    input: Parameters<AiStore['saveProfile']>[1],
+  ): { id: string; state: AiConfigState } {
     const saved = this.deps.store.saveProfile(id, input);
     this.emitConfigChanged();
     return { id: saved.id, state: this.deps.store.getState() };
@@ -143,24 +155,34 @@ export class AiService {
 
   // ── 连通性 / 模型 ──────────────────────────────────
 
-  /** 解析测试目标：candidate 直接构 adapter；profileId 取已保存（解密密钥）。 */
-  private targetAdapter(target: AiConnectionTarget): { adapter: ProviderAdapter; defaultModel: string } {
-    if (target.profileId) {
-      const profile = this.deps.store.getProfile(target.profileId);
-      if (!profile) throw new ProviderError(`Profile 不存在: ${target.profileId}`, 'PROFILE_NOT_FOUND');
-      return { adapter: this.createAdapter(profile), defaultModel: profile.defaultModel };
+  /**
+   * 解析测试目标：
+   * - candidate 可与 profileId 同时出现（编辑场景），使用候选 kind/baseUrl/model；
+   * - candidate.apiKey 省略时，仅在主进程内从 profileId 取已存密钥；
+   * - 纯 profileId 则测试完整已保存配置。
+   */
+  private targetAdapter(target: AiConnectionTarget): {
+    adapter: ProviderAdapter;
+    defaultModel: string;
+  } {
+    const saved = target.profileId ? this.deps.store.getProfile(target.profileId) : undefined;
+    if (target.profileId && !saved) {
+      throw new ProviderError(`Profile 不存在: ${target.profileId}`, 'PROFILE_NOT_FOUND');
     }
     if (target.candidate) {
       const c = target.candidate;
       return {
         adapter: new OpenAIProtocolAdapter({
           baseUrl: c.baseUrl,
-          apiKey: c.apiKey ?? '',
+          apiKey: c.apiKey ?? (saved ? this.deps.store.getApiKey(saved.id) : ''),
           kind: c.kind,
           fetchImpl: this.deps.fetchImpl,
         }),
-        defaultModel: c.defaultModel ?? '',
+        defaultModel: c.defaultModel ?? saved?.defaultModel ?? '',
       };
+    }
+    if (saved) {
+      return { adapter: this.createAdapter(saved), defaultModel: saved.defaultModel };
     }
     throw new ProviderError('测试目标缺失（profileId 或 candidate）', 'BAD_REQUEST');
   }
@@ -170,9 +192,9 @@ export class AiService {
   }
 
   /**
-   * 连通性测试 + capabilities 探测：
+   * 连通性测试 + capabilities 独立探测：
    * 1. GET /models（best-effort；失败不阻断——Azure 部分部署不可列模型）
-   * 2. 有可用对话模型 → 最小 chat 请求实测（max_tokens=1）
+   * 2. 非流式 chat、SSE streaming、tools/function-calling 分别发送最小请求实测
    * 3. 模型列表含 embed 类模型 → 最小 embeddings 请求实测（得到维度）
    */
   async testConnection(target: AiConnectionTarget): Promise<ConnectionTestResult> {
@@ -206,7 +228,10 @@ export class AiService {
     const send = (event: ChatStreamEvent): void => {
       this.deps.sendEvent('ai:streamEvent', { streamId, event });
     };
-    const handle = adapter.chatCompletionStream({ model, messages: options.messages, params }, send);
+    const handle = adapter.chatCompletionStream(
+      { model, messages: options.messages, params },
+      send,
+    );
     this.streams.set(streamId, handle);
     void handle.done.finally(() => this.streams.delete(streamId));
     return streamId;
@@ -226,10 +251,20 @@ export class AiService {
   // ── Embedding ───────────────────────────────────────
 
   /**
-   * 统一 embed 接口：embedding 分功能指定（缺省回退默认 Profile 的 embed 模型）。
+   * 公共 embed 接口（规格对齐：`embed(texts: string[]) → number[][]`）。
+   * embedding 分功能指定（缺省回退默认 Profile 的 embed 模型）。
    * 按 token 预算自动分批；维度探测成功后回写（指纹/generation 变更检测）。
    */
-  async embed(texts: string[]): Promise<EmbedResult> {
+  async embed(texts: string[]): Promise<number[][]> {
+    const res = await this.embedWithMetadata(texts);
+    return res.vectors;
+  }
+
+  /**
+   * 内部 embed 全量返回（含 metadata）。供 IPC 与需要 model/dimensions/profileId 的业务方用。
+   * 维度回写 + configChanged 事件在此统一触发。
+   */
+  async embedWithMetadata(texts: string[]): Promise<EmbedResult> {
     if (texts.length === 0) {
       throw new ProviderError('embed 输入不能为空', 'BAD_REQUEST');
     }
@@ -249,7 +284,9 @@ export class AiService {
     }
 
     // 维度回写 → embedding 指纹/generation 变更检测（索引重建标记，DEV-011 消费）
-    this.deps.store.recordEmbeddingDimensions(dimensions);
+    // 仅在 state 实际变化时广播 ai:configChanged，保证已打开窗口同步 dimensions/generation
+    const changed = this.deps.store.recordEmbeddingDimensions(dimensions);
+    if (changed) this.emitConfigChanged();
 
     return { vectors, dimensions, model, profileId: profile.id };
   }

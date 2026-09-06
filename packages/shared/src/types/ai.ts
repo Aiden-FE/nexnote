@@ -54,8 +54,8 @@ export interface AiProfileView {
   params: ChatParams;
   /** 密钥是否已配置（明文永不出主进程） */
   hasApiKey: boolean;
-  /** 密钥存储方式：safestorage=系统钥匙串加密；plain=回退明文（无钥匙串环境） */
-  keyStorage: 'safestorage' | 'plain';
+  /** 密钥存储方式：safestorage=系统钥匙串加密（无其他模式；系统凭据不可用时不保存密钥） */
+  keyStorage: 'safestorage';
   createdAt: number;
   updatedAt: number;
 }

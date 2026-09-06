@@ -1,9 +1,10 @@
 import { mkdtemp, readFile, rm } from 'node:fs/promises';
+import { readFileSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import * as path from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { AiStore } from '../src/ai/ai-store';
-import type { SecretVault } from '../src/ai/secret-store';
+import { UnavailableSecretVault, type SecretVault } from '../src/ai/secret-store';
 
 /**
  * fake safeStorage：模拟 Electron 系统钥匙串（加密材料在"钥匙串"里，
@@ -11,7 +12,11 @@ import type { SecretVault } from '../src/ai/secret-store';
  */
 function fakeSafeStorageVault(): SecretVault {
   const rot = (s: string): string =>
-    s.replace(/[a-zA-Z]/g, (c) => String.fromCharCode(((c.charCodeAt(0) + 13 - (c <= 'Z' ? 65 : 97)) % 26) + (c <= 'Z' ? 65 : 97)));
+    s.replace(/[a-zA-Z]/g, (c) =>
+      String.fromCharCode(
+        ((c.charCodeAt(0) + 13 - (c <= 'Z' ? 65 : 97)) % 26) + (c <= 'Z' ? 65 : 97),
+      ),
+    );
   return {
     available: true,
     encrypt: (p) => `enc:v1:${btoa(rot(p))}`,
@@ -83,16 +88,56 @@ describe('AiStore（Profile 存储 + 密钥安全）', () => {
     expect(store.getState().profiles[0]!.hasApiKey).toBe(false);
   });
 
-  it('safeStorage 不可用时回退 plain 标记', () => {
-    const plain = new AiStore(path.join(tmp, 'ai2.json'), {
-      available: false,
-      encrypt: (p) => `plain:${p}`,
-      decrypt: (b) => b.slice('plain:'.length),
+  it('safeStorage 不可用时 fail-closed：保存带密钥 Profile 直接失败，不落盘任何 key', async () => {
+    const unavailable = new AiStore(path.join(tmp, 'ai2.json'), new UnavailableSecretVault());
+    // 带密钥 → 明确失败（绝不写明文）
+    expect(() => unavailable.saveProfile(undefined, input)).toThrow(/凭据存储不可用/);
+    // Profile 也没被创建（save 是原子失败）
+    expect(unavailable.getState().profiles).toHaveLength(0);
+    // 落盘文件不存在或不含密钥
+    const raw = await readFile(path.join(tmp, 'ai2.json'), 'utf8').catch(() => '');
+    expect(raw).not.toContain('sk-very-secret-123');
+    expect(raw).not.toContain('plain:');
+
+    // 无密钥 Profile（本地 Ollama）仍可创建——密钥不是必填项
+    const noKey = unavailable.saveProfile(undefined, { ...input, apiKey: null });
+    expect(noKey.id).toBeTruthy();
+    expect(unavailable.getState().profiles[0]!.hasApiKey).toBe(false);
+  });
+
+  it('遗留 plain: blob 加载时被清除（fail-closed 迁移）', () => {
+    // 模拟旧版本写入的明文 blob
+    const legacyJson = JSON.stringify({
+      version: 1,
+      profiles: [
+        {
+          id: 'legacy-id',
+          name: 'Legacy',
+          kind: 'openai-compatible',
+          baseUrl: 'https://api.example.com/v1',
+          defaultModel: 'gpt-4o-mini',
+          params: {},
+          keyBlob: 'plain:sk-legacy-secret',
+          keyStorage: 'plain',
+          createdAt: 1,
+          updatedAt: 1,
+        },
+      ],
+      defaultProfileId: 'legacy-id',
+      features: { writing: null, chat: null, embedding: null },
+      embeddingFingerprint: null,
+      embeddingGeneration: 0,
     });
-    const saved = plain.saveProfile(undefined, input);
-    const view = plain.getState().profiles[0]!;
-    expect(view.keyStorage).toBe('plain');
-    expect(plain.getApiKey(saved.id)).toBe('sk-very-secret-123');
+    const legacyPath = path.join(tmp, 'legacy.json');
+    writeFileSync(legacyPath, legacyJson, 'utf8');
+    const migrated = new AiStore(legacyPath, secrets);
+    const view = migrated.getState().profiles[0]!;
+    expect(view.hasApiKey).toBe(false); // 明文密钥被丢弃
+    expect(view.keyStorage).toBe('safestorage');
+    expect(migrated.getApiKey('legacy-id')).toBe('');
+    const rewritten = readFileSync(legacyPath, 'utf8');
+    expect(rewritten).not.toContain('sk-legacy-secret');
+    expect(rewritten).not.toContain('plain:');
   });
 
   it('校验：非法 base-url / 空名称 / 空模型拒绝', () => {

@@ -57,7 +57,10 @@ export interface ProviderAdapter {
   chatCompletion(req: ChatRequest): Promise<{ content: string; model: string; usage?: TokenUsage }>;
 
   /** 启动流式补全：立即返回 handle，事件异步送达 onEvent。 */
-  chatCompletionStream(req: ChatRequest, onEvent: (event: ChatStreamEvent) => void): ChatStreamHandle;
+  chatCompletionStream(
+    req: ChatRequest,
+    onEvent: (event: ChatStreamEvent) => void,
+  ): ChatStreamHandle;
 
   embeddings(req: EmbedRequest): Promise<EmbedResponse>;
 
@@ -72,7 +75,11 @@ export interface ProviderAdapter {
     error?: string;
   }>;
 
-  /** 协议级能力声明（tools 等）；连接相关能力由 testConnection 实测 */
+  /**
+   * 协议级能力声明（该协议结构上支持什么，与部署是否真的可用无关）。
+   * 注意：连接测试上报的 capabilities 一律以 testConnection 的实测为准，
+   * 本方法仅作为 adapter 元数据（例如 local-embedding 结构上无 chat）。
+   */
   declaredCapabilities(): ProviderCapabilities;
 }
 

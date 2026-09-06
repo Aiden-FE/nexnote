@@ -20,6 +20,12 @@ export interface MockOpenAiServer {
   server: Server;
   requests: RecordedRequest[];
   failNextChatWith?: number;
+  /** 模拟 provider 不支持 SSE 流式（chat stream 请求返回 400） */
+  streamingUnsupported?: boolean;
+  /** 模拟 provider 不支持 tools/function-calling（带 tools 的 chat 返回 400） */
+  toolsUnsupported?: boolean;
+  /** 模拟 provider 无 embeddings 端点（返回 404） */
+  embeddingsUnsupported?: boolean;
   close(): Promise<void>;
 }
 
@@ -31,12 +37,19 @@ export interface MockServerOptions {
   models?: string[];
 }
 
-export async function startMockOpenAiServer(opts: MockServerOptions = {}): Promise<MockOpenAiServer> {
+export async function startMockOpenAiServer(
+  opts: MockServerOptions = {},
+): Promise<MockOpenAiServer> {
   const dimensions = opts.embeddingDimensions ?? 1536;
   const chunkDelay = opts.chunkDelayMs ?? 10;
   const models = opts.models ?? ['gpt-4o-mini', 'gpt-4o', 'text-embedding-3-small'];
   const requests: RecordedRequest[] = [];
-  const state: MockOpenAiServer = { url: '', server: null as unknown as Server, requests, close: async () => {} };
+  const state: MockOpenAiServer = {
+    url: '',
+    server: null as unknown as Server,
+    requests,
+    close: async () => {},
+  };
 
   const server = createServer((req, res) => {
     const chunks: Buffer[] = [];
@@ -60,19 +73,45 @@ export async function startMockOpenAiServer(opts: MockServerOptions = {}): Promi
       };
 
       const handleChat = () => {
-        const isStream = !!(body as { stream?: boolean } | null)?.stream;
-        const model = (body as { model?: string } | null)?.model ?? 'gpt-4o-mini';
+        const b = (body ?? {}) as {
+          stream?: boolean;
+          model?: string;
+          tools?: unknown[];
+        };
+        const isStream = !!b.stream;
+        const model = b.model ?? 'gpt-4o-mini';
         if (state.failNextChatWith) {
           const status = state.failNextChatWith;
           state.failNextChatWith = undefined;
           json({ error: { message: 'mock failure' } }, status);
           return;
         }
+        // 能力缺失模拟：stream 或 tools 不被支持时返回 400（带明确错误信息）
+        if (isStream && state.streamingUnsupported) {
+          json(
+            { error: { message: 'mock: streaming not supported', type: 'invalid_request_error' } },
+            400,
+          );
+          return;
+        }
+        if (Array.isArray(b.tools) && b.tools.length > 0 && state.toolsUnsupported) {
+          json(
+            { error: { message: 'mock: tools not supported', type: 'invalid_request_error' } },
+            400,
+          );
+          return;
+        }
         if (!isStream) {
           json({
             id: 'chatcmpl-mock',
             model,
-            choices: [{ index: 0, message: { role: 'assistant', content: '你好，我是 mock 助手。' }, finish_reason: 'stop' }],
+            choices: [
+              {
+                index: 0,
+                message: { role: 'assistant', content: '你好，我是 mock 助手。' },
+                finish_reason: 'stop',
+              },
+            ],
             usage: { prompt_tokens: 5, completion_tokens: 7, total_tokens: 12 },
           });
           return;
@@ -105,13 +144,24 @@ export async function startMockOpenAiServer(opts: MockServerOptions = {}): Promi
       };
 
       const handleEmbeddings = () => {
+        if (state.embeddingsUnsupported) {
+          json(
+            { error: { message: 'mock: embeddings not supported', type: 'invalid_request_error' } },
+            404,
+          );
+          return;
+        }
         const input = (body as { input?: string[] | string } | null)?.input ?? [];
         const inputs = Array.isArray(input) ? input : [input];
         const seedVec = (idx: number): number[] =>
           Array.from({ length: dimensions }, (_, d) => ((idx + d) % 17) / 17);
         json({
           model: (body as { model?: string } | null)?.model ?? 'text-embedding-3-small',
-          data: inputs.map((_, idx) => ({ object: 'embedding', index: idx, embedding: seedVec(idx) })),
+          data: inputs.map((_, idx) => ({
+            object: 'embedding',
+            index: idx,
+            embedding: seedVec(idx),
+          })),
           usage: { prompt_tokens: inputs.length * 3, total_tokens: inputs.length * 3 },
         });
       };
@@ -122,9 +172,15 @@ export async function startMockOpenAiServer(opts: MockServerOptions = {}): Promi
         handleChat();
       } else if (req.method === 'POST' && req.url === '/v1/embeddings') {
         handleEmbeddings();
-      } else if (req.method === 'POST' && /^\/openai\/deployments\/[^/]+\/chat\/completions/.test(req.url ?? '')) {
+      } else if (
+        req.method === 'POST' &&
+        /^\/openai\/deployments\/[^/]+\/chat\/completions/.test(req.url ?? '')
+      ) {
         handleChat();
-      } else if (req.method === 'POST' && /^\/openai\/deployments\/[^/]+\/embeddings/.test(req.url ?? '')) {
+      } else if (
+        req.method === 'POST' &&
+        /^\/openai\/deployments\/[^/]+\/embeddings/.test(req.url ?? '')
+      ) {
         handleEmbeddings();
       } else if (req.method === 'GET' && (req.url ?? '').startsWith('/openai/models')) {
         json({ object: 'list', data: models.map((id) => ({ id, object: 'model' })) });
