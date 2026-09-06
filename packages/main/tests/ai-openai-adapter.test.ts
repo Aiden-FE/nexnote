@@ -89,6 +89,25 @@ describe('OpenAI 协议适配器', () => {
     expect(events.some((e) => e.type === 'error')).toBe(false);
   });
 
+  it('SSE 缺少 [DONE] 而 EOF 时以 STREAM_TRUNCATED 失败，不接受部分完成', async () => {
+    mock.streamingTruncated = true;
+    try {
+      const events: ChatStreamEvent[] = [];
+      const handle = collectStream(adapter(), events);
+      await handle.done;
+
+      expect(events.some((event) => event.type === 'delta')).toBe(true);
+      expect(events.some((event) => event.type === 'done')).toBe(false);
+      expect(events.at(-1)).toEqual({
+        type: 'error',
+        message: '流式响应在收到完成标记前结束，请重试',
+        code: 'STREAM_TRUNCATED',
+      });
+    } finally {
+      mock.streamingTruncated = false;
+    }
+  });
+
   it('HTTP 错误映射为 error 事件（含状态提示）', async () => {
     mock.failNextChatWith = 401;
     const events: ChatStreamEvent[] = [];
@@ -149,6 +168,17 @@ describe('OpenAI 协议适配器', () => {
     expect(tools).toBeDefined();
     expect(urls).toContain('/v1/embeddings');
     expect(after).toBeGreaterThan(0);
+  });
+
+  it('testConnection：SSE 截断时 capabilities.streaming=false', async () => {
+    mock.streamingTruncated = true;
+    try {
+      const connection = await adapter().testConnection();
+      expect(connection.reachable).toBe(true);
+      expect(connection.capabilities.streaming).toBe(false);
+    } finally {
+      mock.streamingTruncated = false;
+    }
   });
 
   it('testConnection：streaming 不被支持时 capabilities.streaming=false', async () => {

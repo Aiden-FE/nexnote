@@ -202,7 +202,9 @@ export class OpenAIProtocolAdapter implements ProviderAdapter {
                 params: { maxTokens: 1 },
               },
               (event) => {
-                if (event.type === 'start' || event.type === 'delta') finish(true);
+                // Only the protocol sentinel produces `done`; a start/delta followed by EOF
+                // is a truncated stream and must not be advertised as streaming-capable.
+                if (event.type === 'done') finish(true);
                 else if (event.type === 'error') finish(false);
               },
             );
@@ -432,7 +434,13 @@ export class OpenAIProtocolAdapter implements ProviderAdapter {
         parser.flush();
         if (!streamDone) {
           streamDone = true;
-          onEvent({ type: 'done' });
+          // A transport EOF is not a successful completion: only the OpenAI SSE sentinel
+          // commits the partial deltas. Consumers must keep the partial text visibly failed.
+          onEvent({
+            type: 'error',
+            message: '流式响应在收到完成标记前结束，请重试',
+            code: 'STREAM_TRUNCATED',
+          });
         }
       } catch (e) {
         if (!streamDone) {

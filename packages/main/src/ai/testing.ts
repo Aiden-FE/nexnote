@@ -22,6 +22,8 @@ export interface MockOpenAiServer {
   failNextChatWith?: number;
   /** 模拟 provider 不支持 SSE 流式（chat stream 请求返回 400） */
   streamingUnsupported?: boolean;
+  /** 模拟 SSE 在发送部分 delta 后干净 EOF，但没有 OpenAI [DONE] sentinel。 */
+  streamingTruncated?: boolean;
   /** 模拟 provider 不支持 tools/function-calling（带 tools 的 chat 返回 400） */
   toolsUnsupported?: boolean;
   /** 模拟 provider 无 embeddings 端点（返回 404） */
@@ -136,7 +138,7 @@ export async function startMockOpenAiServer(
             i += 1;
             setTimeout(send, chunkDelay);
           } else {
-            res.write('data: [DONE]\n\n');
+            if (!state.streamingTruncated) res.write('data: [DONE]\n\n');
             res.end();
           }
         };
