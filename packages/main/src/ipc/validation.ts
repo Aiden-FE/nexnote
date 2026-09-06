@@ -81,7 +81,11 @@ const remove = object(
   ['path', 'toTrash'],
   [stringField('path'), optionalField('toTrash', 'boolean')],
 );
-const gitInit = object(['root'], [stringField('root')]);
+const createNote = object(
+  ['parentDir', 'name', 'content'],
+  [stringField('parentDir'), optionalField('name', 'string'), optionalField('content', 'string')],
+);
+const listTree = object(['showAllFiles'], [optionalField('showAllFiles', 'boolean')]);
 const timeline = object(
   ['path', 'limit'],
   [optionalField('path', 'string'), optionalField('limit', 'number')],
@@ -92,7 +96,6 @@ const recordAutoCommit = object(
 );
 const commit = object(['message'], [stringField('message')]);
 const addRemote = object(['name', 'url'], [stringField('name'), stringField('url')]);
-const clone = object(['url', 'targetDir'], [stringField('url'), stringField('targetDir')]);
 const restore = object(['path', 'commit'], [stringField('path'), stringField('commit')]);
 const pull = object(['force'], [optionalField('force', 'boolean')]);
 const useSystemGit = object(['enabled'], [booleanField('enabled')]);
@@ -118,15 +121,16 @@ const VALIDATORS: Partial<Record<IpcChannel, PayloadValidator>> = {
   'fs:mkdir': mkdir,
   'fs:rename': rename,
   'fs:delete': remove,
-  'git:inspect': gitInit,
-  'git:init': gitInit,
+  'fs:createNote': createNote,
+  'fs:listTree': listTree,
+  'fs:renameLinked': rename,
+  'fs:revealInFinder': pathOnly,
   'git:getTimeline': timeline,
   'git:recordAutoCommit': recordAutoCommit,
   'git:commit': commit,
   'git:addRemote': addRemote,
   'git:previewRestore': restore,
   'git:restoreFile': restore,
-  'git:clone': clone,
   'git:pull': pull,
   'git:setUseSystemGit': useSystemGit,
   'git:setAutoCommitDebounce': autoCommitDebounce,

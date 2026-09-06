@@ -43,8 +43,6 @@ export interface GitOperationResult {
 /** Git 底座的主进程 IPC 契约。所有路径均为 vault 内相对路径。 */
 export const GIT_CHANNELS = [
   'git:ping',
-  'git:inspect',
-  'git:init',
   'git:getStatus',
   'git:getTimeline',
   'git:recordAutoCommit',
@@ -55,7 +53,6 @@ export const GIT_CHANNELS = [
   'git:push',
   'git:previewRestore',
   'git:restoreFile',
-  'git:clone',
   'git:setUseSystemGit',
   'git:getAutoCommitDebounce',
   'git:setAutoCommitDebounce',
@@ -68,8 +65,6 @@ export interface GitChannelMap {
     request: void;
     response: Result<{ pong: true; namespace: 'git'; implementedBy: 'DEV-007' }>;
   };
-  'git:inspect': { request: { root: string }; response: Result<{ repository: boolean }> };
-  'git:init': { request: { root: string }; response: Result<GitOperationResult> };
   'git:getStatus': { request: void; response: Result<GitStatus> };
   'git:getTimeline': { request: { path?: string; limit?: number }; response: Result<GitCommit[]> };
   'git:recordAutoCommit': {
@@ -87,10 +82,6 @@ export interface GitChannelMap {
   };
   'git:restoreFile': {
     request: { path: string; commit: string };
-    response: Result<GitOperationResult>;
-  };
-  'git:clone': {
-    request: { url: string; targetDir: string };
     response: Result<GitOperationResult>;
   };
   'git:setUseSystemGit': { request: { enabled: boolean }; response: Result<void> };

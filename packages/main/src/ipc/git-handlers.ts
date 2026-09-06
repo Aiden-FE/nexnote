@@ -18,21 +18,6 @@ export function registerGitHandlers(registrar: IpcRegistrar): void {
     ok({ pong: true as const, namespace: 'git' as const, implementedBy: 'DEV-007' as const }),
   );
 
-  registrar.register(
-    'git:inspect',
-    async ({ root }, services): Promise<Result<{ repository: boolean }>> => {
-      return ok({ repository: await services.git.isRepository(root) });
-    },
-  );
-
-  registrar.register(
-    'git:init',
-    async ({ root }, services): Promise<Result<GitOperationResult>> => {
-      services.git.setRoot(root);
-      return ok(await services.git.initialize(root));
-    },
-  );
-
   registrar.register('git:getStatus', async (_payload, services): Promise<Result<GitStatus>> => {
     return ok(await services.git.status());
   });
@@ -98,13 +83,6 @@ export function registerGitHandlers(registrar: IpcRegistrar): void {
     'git:restoreFile',
     async ({ path, commit }, services): Promise<Result<GitOperationResult>> => {
       return ok(await services.git.restoreFile(path, commit));
-    },
-  );
-
-  registrar.register(
-    'git:clone',
-    async ({ url, targetDir }, services): Promise<Result<GitOperationResult>> => {
-      return ok(await services.git.clone(url, targetDir));
     },
   );
 
