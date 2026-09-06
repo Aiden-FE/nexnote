@@ -6,6 +6,7 @@ import { PlaceholderPage } from '../pages/PlaceholderPage';
 import { FilesPage } from '../pages/FilesPage';
 import { SettingsPage } from '../pages/SettingsPage';
 import { EditorView } from '../editor/EditorView';
+import { GlobalGraphView } from '../features/graph/GlobalGraphView';
 import type { TabDescriptor } from '../stores/tab-store';
 import { cn } from '../lib/utils';
 
@@ -15,6 +16,8 @@ function TabContent({ paneId, tab }: { paneId: PaneId; tab: TabDescriptor }) {
       return <WelcomePage />;
     case 'files':
       return <FilesPage />;
+    case 'graph':
+      return <GlobalGraphView />;
     case 'settings':
       return <SettingsPage />;
     case 'page':

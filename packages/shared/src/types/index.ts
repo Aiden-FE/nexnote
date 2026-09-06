@@ -74,3 +74,25 @@ export interface PageJumpResult {
   subtitle: string;
   match: 'title' | 'alias' | 'path';
 }
+
+/** 知识图谱页面节点（DEV-006）。 */
+export interface GraphPage {
+  path: string;
+  title: string;
+  folder: string;
+  tags: string[];
+  inboundLinks: number;
+  outboundLinks: number;
+}
+
+/** 去重后的有向页面边；全局图谱渲染时按无向弹簧处理。 */
+export interface GraphLink {
+  source: string;
+  target: string;
+}
+
+/** Link Index 导出的图谱快照。 */
+export interface GraphSnapshot {
+  pages: GraphPage[];
+  links: GraphLink[];
+}

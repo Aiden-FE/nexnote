@@ -14,3 +14,4 @@ import './ai';
 import './frontmatter/registry';
 import './search';
 import './search/commands';
+import './graph/LocalGraphPanel';

@@ -46,6 +46,17 @@ commandRegistry.register({
 });
 
 commandRegistry.register({
+  id: 'view.graph',
+  title: '打开全局知识图谱',
+  category: '视图',
+  keywords: ['graph', 'knowledge', '图谱', '知识'],
+  shortcut: '⌘K',
+  run: () => {
+    openTabInActivePane('graph', '知识图谱');
+  },
+});
+
+commandRegistry.register({
   id: 'view.toggleSplit',
   title: '切换左右分屏',
   category: '视图',
