@@ -179,3 +179,15 @@ DEV-006 ← DEV-004；DEV-008 ← DEV-004+007；DEV-010 ← DEV-002+009；DEV-01
 - production Electron smoke：500 页 / 2000 链接，71.0 FPS / 63 wheels；过滤、点击跳页、局部 1→2 跳全部 PASS。整体 58/65；剩余 7 项为 DEV-003/004/007 既有 smoke 基线问题。
 - 双轴审查修复：过滤后孤立判定、vault reset graph race、未索引页局部中心占位。
 - post-merge master `31ee441`：typecheck / 349 tests / eslint / build / diff-check 全 PASS。
+
+### DEV-008 — 已完成合并（2026-09-07 00:54）
+
+- Merge commit `509979`；候选 `2f933b1`；主控接管执行（子Agent 派发工具仍 unsupported）。
+- 实现：schema v4 + `confidence` 缓存表 / `pages.confidence_boost`；一次批量 `git log --numstat` 聚合历史；主进程 `ConfidenceService` 串行队列计算 stability、review_count、author_count、age、link_authority、manual_boost 六因子；`getConfidence(pageId)` 与 `index:confidence` IPC；属性面板显示总分、因子条与 tooltip；默认不写 frontmatter，vault 配置可显式开启同步。
+- 增量策略：纯内容变化按路径增量；页面集合或已解析链接边变化自动升级全量 PageRank；提交回调触发相关页重算；vault 切换时丢弃异步旧结果。
+- 主控闸门 @ `2f933b1`：typecheck PASS / 361 tests PASS（2 skipped）/ eslint PASS / build PASS / diff-check PASS。一次全量测试遇到既有 chokidar watch flake，隔离 `watch-service` 8/8 PASS 后全量重跑 361/361 PASS。
+- fresh fixed-SHA Standards + Spec 双轴复核 PASS；修复真实 Electron smoke 暴露的 `index:*` payload validator 漏配、启动 Git root 时序、PageRank 邻接表性能与 vault 切换竞态。
+- production Electron smoke：62/69；DEV-008 专项 4/4 PASS（`index:pageSummary`、`index:confidence`、属性面板 38/100 + 六因子、tooltip）。剩余 7 项为 DEV-003/004/007 既有 smoke 基线（Git 状态、新笔记/面包屑、标签过滤、时间线 dock）。
+- 千页性能：全链路 `ConfidenceService.refresh()` 1000 页测试 <10s；纯因子计算 1000 页 bounded test 同步 PASS。
+- NOT_RUN：设置页复选框的人工点击未单独录屏/smoke；默认不写 frontmatter 与显式开启后写入由单元测试覆盖。无外部 provider/Windows/签名安装项。
+- post-merge master `509979`：typecheck / 361 tests / eslint / build / diff-check 全 PASS。
