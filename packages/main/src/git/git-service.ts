@@ -152,6 +152,15 @@ export class GitService {
       this.autoTimer = setTimeout(() => void this.commitAuto(summary).catch(() => undefined), wait);
       return;
     }
+    const git = this.git(root);
+    const status = await git.status();
+    if (
+      status.conflicted.length > 0 ||
+      status.files.some((file) => file.index === 'U' || file.working_dir === 'U')
+    ) {
+      await this.notifyCurrentStatus();
+      return;
+    }
     await this.commit(root, `${AUTO_PREFIX} ${cleanSummary(summary)}`);
     await this.notifyCurrentStatus();
   }
@@ -229,7 +238,7 @@ export class GitService {
       // set-url/addRemote already changed repository state even when preflight fails.
       await this.notifyCurrentStatus();
       throw new GitServiceError(
-        `远程已保存但授权预检失败。请检查网络、SSH key 或 HTTPS 凭证：${errorMessage(error)}`,
+        `远程已保存但授权预检失败。请检查网络、SSH key 或 HTTPS 凭证：${sanitizeRemoteText(errorMessage(error))}`,
         'REMOTE_AUTH_FAILED',
       );
     }
@@ -242,8 +251,8 @@ export class GitService {
     const remotes = await this.git(this.requireRoot()).getRemotes(true);
     return remotes.map((remote) => ({
       name: remote.name,
-      fetchUrl: remote.refs.fetch,
-      pushUrl: remote.refs.push,
+      fetchUrl: sanitizeRemoteText(remote.refs.fetch),
+      pushUrl: sanitizeRemoteText(remote.refs.push),
     }));
   }
 
@@ -463,7 +472,7 @@ export class GitService {
   }
 
   private remoteOperationError(action: string, error: unknown): GitServiceError {
-    const text = errorMessage(error);
+    const text = sanitizeRemoteText(errorMessage(error));
     const conflict = /CONFLICT|Automatic merge failed|UPDATE_NEEDED|unmerged/i.test(text);
     return new GitServiceError(
       conflict
@@ -491,4 +500,12 @@ function commitKind(message: string): GitCommit['kind'] {
 
 function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
+}
+
+/** Remove userinfo, access tokens, and query credentials before IPC can expose text. */
+export function sanitizeRemoteText(value: string): string {
+  return value
+    .replace(/([a-z][a-z0-9+.-]*:\/\/)([^\s/@:]+):[^\s/@]+@/gi, '$1$2:***@')
+    .replace(/([?&](?:access_token|token|password|passwd|secret)=)[^\s&#]+/gi, '$1***')
+    .replace(/(https?:\/\/)[^\s/@]+@/gi, '$1***@');
 }

@@ -10,6 +10,7 @@ import {
   DEFAULT_DEBOUNCE_MS,
   DEBOUNCE_RANGE_MS,
   normalizeDebounceMs,
+  sanitizeRemoteText,
 } from '../src/git/git-service';
 
 const SKIP = process.env.NEXNOTE_SKIP_GIT_TESTS === '1';
@@ -138,6 +139,15 @@ describe.runIf(runIfGit())('GitService（系统 Git，临时仓库）', () => {
     expect(log).toHaveLength(2);
     expect(log[0]!.kind).toBe('auto');
     expect(log[0]!.message).toMatch(/保存 notes\/page\.md/);
+  });
+
+  it('remote text strips credentials before IPC-facing results', () => {
+    const secret = 'https://alice:token-123@example.test/repo.git?access_token=abc&token=def';
+    const redacted = sanitizeRemoteText(secret);
+    expect(redacted).not.toContain('token-123');
+    expect(redacted).not.toContain('abc');
+    expect(redacted).not.toContain('def');
+    expect(redacted).toContain('https://***@');
   });
 
   it('commitManual 创建带 manual 前缀的提交，kind=manual', async () => {
@@ -323,6 +333,11 @@ describe.runIf(runIfGit())('GitService（系统 Git，临时仓库）', () => {
       }
 
       await expect(service.pull()).rejects.toMatchObject({ code: 'MERGE_CONFLICT' });
+      const beforeAuto = (await service.timeline()).length;
+      await service.commitAuto('不得提交未解决冲突');
+      const afterAuto = await service.timeline();
+      expect(afterAuto).toHaveLength(beforeAuto);
+      expect(afterAuto.every((entry) => !entry.message.includes('不得提交未解决冲突'))).toBe(true);
     } finally {
       rmSync(remoteRoot, { recursive: true, force: true });
     }
