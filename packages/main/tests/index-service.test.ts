@@ -80,7 +80,8 @@ describe('LinkIndexService', () => {
   });
 
   it('search applies title tier before the requested limit', async () => {
-    for (let i = 0; i < 30; i += 1) await page(`content-${i}.md`, '', `# Page ${i}\n\nneedle body\n`);
+    // More than the old 1000-candidate cap: title must still win after global tier sort.
+    for (let i = 0; i < 1_001; i += 1) await page(`content-${i}.md`, '', `# Page ${i}\n\nneedle body\n`);
     await page('title.md', '', '# Needle title\n');
     const svc = new LinkIndexService();
     svc.setRoot(tmp);

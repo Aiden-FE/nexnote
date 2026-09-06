@@ -237,12 +237,11 @@ export class LinkIndexService {
     const m = escFts(needle);
     const db = this.db!;
     type RawHit = { path: string; title: string; aliases: string; tags: string; content: string; snippet: string; rank: number };
-    // Fetch the candidate set before applying application-level tier ordering.
-    const candidateLimit = Math.max(limit * 20, 1000);
+    // Tier ordering is application-level; fetch the complete match set before applying caller limit.
     let ftsRows: RawHit[] = [];
     if (m) {
       try {
-        ftsRows = db.prepare(`SELECT path,title,aliases,tags,content,snippet(page_fts,4,'','', ' … ',12) snippet,-bm25(page_fts) rank FROM page_fts WHERE page_fts MATCH ? LIMIT ?`).all(m, candidateLimit) as RawHit[];
+        ftsRows = db.prepare(`SELECT path,title,aliases,tags,content,snippet(page_fts,4,'','', ' … ',12) snippet,-bm25(page_fts) rank FROM page_fts WHERE page_fts MATCH ?`).all(m) as RawHit[];
       } catch (e) {
         // 记录但不丢弃：保留 LIKE 兜底结果
         this.onStatus({ ...this._status, phase: this._status.phase, error: `search fts: ${e instanceof Error ? e.message : String(e)}` });
@@ -254,7 +253,7 @@ export class LinkIndexService {
       const terms = needle.toLowerCase().split(/\s+/).filter(Boolean);
       const clauses = terms.map(() => "(lower(title) LIKE ? ESCAPE '\\' OR lower(aliases) LIKE ? ESCAPE '\\' OR lower(tags) LIKE ? ESCAPE '\\' OR lower(content) LIKE ? ESCAPE '\\')").join(' AND ');
       const values = terms.flatMap((term) => Array(4).fill(`%${escLike(term)}%`));
-      likeRows = db.prepare(`SELECT path,title,aliases,tags,content,'' snippet,0 rank FROM page_fts WHERE ${clauses} LIMIT ?`).all(...values, candidateLimit) as RawHit[];
+      likeRows = db.prepare(`SELECT path,title,aliases,tags,content,'' snippet,0 rank FROM page_fts WHERE ${clauses}`).all(...values) as RawHit[];
     } catch (e) {
       this.onStatus({ ...this._status, phase: this._status.phase, error: `search like: ${e instanceof Error ? e.message : String(e)}` });
     }
