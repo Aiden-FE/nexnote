@@ -7,7 +7,7 @@ import { VaultFsService } from './fs/fs-service';
 import { VaultWatchService } from './fs/watch-service';
 import { WindowManager } from './window';
 import { registerAllIpcHandlers } from './ipc';
-import { checkForUpdates, initAutoUpdater } from './updater';
+import { checkForUpdates, downloadUpdate, initAutoUpdater, installUpdate, setUpdateChannel } from './updater';
 import { SmokeController } from './smoke';
 
 const isSmokeMode = process.env.NEXNOTE_SMOKE === '1';
@@ -45,7 +45,7 @@ function bootstrap(): void {
   });
   const fs = new VaultFsService(() => vaultSession.getCurrent()?.root ?? null);
 
-  initAutoUpdater(log);
+  initAutoUpdater(log, (status) => windows?.sendToMainWindow('app:updateStatus', status));
 
   registerAllIpcHandlers(ipcMain, {
     windows,
@@ -81,9 +81,10 @@ function bootstrap(): void {
         electronVersion: process.versions.electron ?? 'unknown',
       };
     },
-    checkForUpdates() {
-      return checkForUpdates();
-    },
+    checkForUpdates,
+    downloadUpdate,
+    installUpdate,
+    setUpdateChannel,
   });
 
   // 单实例：第二个实例启动时聚焦既有窗口（未来：解析 argv 文件路径直接打开，DEV-019）

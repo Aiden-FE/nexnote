@@ -1,0 +1,124 @@
+name: Release
+
+on:
+  push:
+    tags: ['v*.*.*']
+  workflow_dispatch:
+    inputs:
+      channel:
+        description: Release channel
+        required: true
+        default: stable
+        type: choice
+        options: [stable, beta, alpha]
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  prepare:
+    runs-on: ubuntu-latest
+    outputs:
+      channel: ${{ steps.channel.outputs.value }}
+    steps:
+      - id: channel
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then echo "value=${{ inputs.channel }}" >> "$GITHUB_OUTPUT";
+          elif [[ "${{ github.ref_name }}" == *"-alpha"* ]]; then echo "value=alpha" >> "$GITHUB_OUTPUT";
+          elif [[ "${{ github.ref_name }}" == *"-beta"* ]]; then echo "value=beta" >> "$GITHUB_OUTPUT";
+          else echo "value=stable" >> "$GITHUB_OUTPUT"; fi
+
+  build:
+    needs: prepare
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # Native runners ensure dugite postinstall downloads Git for the same target arch.
+          - os: macos-14
+            target: --mac --arm64
+            artifact: macos-arm64
+          - os: macos-13
+            target: --mac --x64
+            artifact: macos-x64
+          - os: windows-2022
+            target: --win --x64
+            artifact: windows-x64
+          - os: ubuntu-22.04
+            target: --linux --x64
+            artifact: linux-x64
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
+    env:
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      NEXNOTE_UPDATE_CHANNEL: ${{ needs.prepare.outputs.channel }}
+      # Secrets are materialized only on their target OS, never committed to the repository.
+      MACOS_CERTIFICATE: ${{ secrets.MACOS_CERTIFICATE }}
+      MACOS_CERTIFICATE_PASSWORD: ${{ secrets.MACOS_CERTIFICATE_PASSWORD }}
+      APPLE_ID: ${{ secrets.APPLE_ID }}
+      APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
+      APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+      WIN_CSC_FILE: ${{ secrets.WINDOWS_CERTIFICATE }}
+      WIN_CSC_PASSWORD: ${{ secrets.WINDOWS_CERTIFICATE_PASSWORD }}
+      LINUX_GPG_PRIVATE_KEY: ${{ secrets.LINUX_GPG_PRIVATE_KEY }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with: { version: 10 }
+      - uses: actions/setup-node@v4
+        with: { node-version: 22, cache: pnpm }
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm typecheck && pnpm test
+      - run: pnpm version:check
+      - run: pnpm build
+      - name: Materialize macOS Developer ID certificate
+        if: runner.os == 'macOS' && env.MACOS_CERTIFICATE != ''
+        run: |
+          printf '%s' "$MACOS_CERTIFICATE" | base64 --decode > "$RUNNER_TEMP/nexnote.p12"
+          echo "CSC_LINK=$RUNNER_TEMP/nexnote.p12" >> "$GITHUB_ENV"
+          echo "CSC_KEY_PASSWORD=$MACOS_CERTIFICATE_PASSWORD" >> "$GITHUB_ENV"
+      - name: Materialize Windows certificate
+        if: runner.os == 'Windows' && env.WIN_CSC_FILE != ''
+        shell: pwsh
+        run: |
+          [IO.File]::WriteAllBytes("$env:RUNNER_TEMP/nexnote.pfx", [Convert]::FromBase64String($env:WIN_CSC_FILE))
+          "CSC_LINK=$env:RUNNER_TEMP/nexnote.pfx" >> $env:GITHUB_ENV
+          "CSC_KEY_PASSWORD=$env:WIN_CSC_PASSWORD" >> $env:GITHUB_ENV
+      - name: Package and publish ${{ matrix.target }}
+        run: node scripts/run-builder.mjs ${{ matrix.target }} --publish always
+        env:
+          ELECTRON_NO_ASAR: "1"
+      - name: Sign Linux AppImage checksum
+        if: runner.os == 'Linux' && env.LINUX_GPG_PRIVATE_KEY != ''
+        run: |
+          printf '%s' "$LINUX_GPG_PRIVATE_KEY" | base64 --decode | gpg --batch --import
+          for artifact in release/*.AppImage; do gpg --batch --yes --armor --detach-sign "$artifact"; done
+      - uses: actions/upload-artifact@v4
+        with:
+          name: nexnote-${{ matrix.artifact }}
+          path: release/*
+          if-no-files-found: error
+
+  smoke:
+    needs: build
+    runs-on: macos-14
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with: { version: 10 }
+      - uses: actions/setup-node@v4
+        with: { node-version: 22, cache: pnpm }
+      - run: pnpm install --frozen-lockfile
+      - uses: actions/download-artifact@v4
+        with:
+          name: nexnote-macos-arm64
+          path: release
+      - name: Extract packaged app for smoke
+        run: unzip -q "$(find release -name '*arm64-mac.zip' -print -quit)" -d release/smoke-app
+      - run: pnpm smoke:ci
+        env:
+          NEXNOTE_APP_PATH: release/smoke-app/NexNote.app/Contents/MacOS/NexNote

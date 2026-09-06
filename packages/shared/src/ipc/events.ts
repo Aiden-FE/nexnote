@@ -1,4 +1,5 @@
 import type { VaultInfo } from '../types/vault';
+import type { UpdateCheckResult, UpdateChannel } from './channels/app';
 
 /**
  * 主进程 → 渲染层推送事件契约。
@@ -12,6 +13,8 @@ export interface IpcEventMap {
    * path 为 vault 相对路径；change 表示内容变化（同一路径重写）。
    */
   'fs:changed': FsChangeEvent;
+  /** 更新检查、下载、安装流程的实时状态（DEV-018）。 */
+  'app:updateStatus': UpdateCheckResult & { progress?: number; channel: UpdateChannel };
 }
 
 export interface FsChangeEvent {
@@ -20,7 +23,7 @@ export interface FsChangeEvent {
   path: string;
 }
 
-export const IPC_EVENT_CHANNELS: readonly string[] = ['vault:changed', 'fs:changed'];
+export const IPC_EVENT_CHANNELS: readonly string[] = ['vault:changed', 'fs:changed', 'app:updateStatus'];
 
 export type IpcEventChannel = keyof IpcEventMap & string;
 

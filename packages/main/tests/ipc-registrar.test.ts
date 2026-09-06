@@ -70,7 +70,10 @@ function makeServices(): { services: IpcServices; session: VaultSession; store: 
       isPackaged: false,
       electronVersion: 'test',
     }),
-    checkForUpdates: async () => ({ status: 'not-configured' as const }),
+    checkForUpdates: async () => ({ status: 'not-configured' as const, channel: 'stable' as const }),
+    downloadUpdate: async () => ({ status: 'not-configured' as const, channel: 'stable' as const }),
+    installUpdate: () => ({ willRestart: true as const }),
+    setUpdateChannel: (channel) => ({ status: 'not-configured' as const, channel }),
   };
   return { services, session, store };
 }

@@ -1,7 +1,4 @@
-import type {
-  AppInfo,
-  UpdateCheckResult,
-} from '@nexnote/shared';
+import type { AppInfo, UpdateChannel, UpdateCheckResult } from '@nexnote/shared';
 import type { AppStore } from '../vault/app-store';
 import type { VaultSession } from '../vault/vault-session';
 import type { VaultFsService } from '../fs/fs-service';
@@ -14,11 +11,7 @@ export interface IpcServices {
   appStore: AppStore;
   vaultSession: VaultSession;
   fs: VaultFsService;
-  /** 系统目录选择对话框（渲染层无原生能力，统一走主进程） */
-  dialogs: {
-    pickDirectory(): Promise<string | null>;
-  };
-  /** 移入系统回收站（fs:delete toTrash=true 时使用） */
+  dialogs: { pickDirectory(): Promise<string | null> };
   trash(absPath: string): Promise<void>;
   /** 在系统文件管理器中显示文件（fs:revealInFinder） */
   revealItem(absPath: string): Promise<void>;
@@ -26,4 +19,7 @@ export interface IpcServices {
   watch: VaultWatchService;
   appInfo(): AppInfo;
   checkForUpdates(): Promise<UpdateCheckResult>;
+  downloadUpdate(): Promise<UpdateCheckResult>;
+  installUpdate(): { willRestart: true };
+  setUpdateChannel(channel: UpdateChannel): UpdateCheckResult;
 }

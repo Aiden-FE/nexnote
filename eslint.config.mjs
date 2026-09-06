@@ -12,6 +12,7 @@ export default tseslint.config(
       '**/release/**',
       '.scratch/**',
       'build/**',
+      'scripts/**',
     ],
   },
   js.configs.recommended,
@@ -26,10 +27,6 @@ export default tseslint.config(
       '@typescript-eslint/no-unused-vars': [
         'error',
         { argsIgnorePattern: '^_', varsIgnorePattern: '^_' },
-      ],
-      '@typescript-eslint/consistent-type-imports': [
-        'warn',
-        { prefer: 'type-imports', fixStyle: 'inline-type-imports' },
       ],
     },
   },

@@ -1,36 +1,138 @@
+# NexNote — 打包与发布配置
+
 appId: dev.nexnote.desktop
 productName: NexNote
+copyright: Copyright © 2025 NexNote
 directories:
   output: release
   buildResources: build
 files:
   - out/**
   - package.json
-# 生产依赖（electron-updater）由 electron-builder 自动收进 asar
+  # 生产依赖（electron-updater 等）由 electron-builder 自动从 package.json 的 dependencies
+  # 收进 asar；workspace 包（@nexnote/shared）已经被 electron-vite 打进 bundle。
 asar: true
+asarUnpack:
+  # dugite-native 捆绑的 git 二进制必须落在真实文件系统上才能执行
+  - node_modules/dugite/**
+  - node_modules/dugite-core/**
+compression: normal
+removePackageScripts: true
+afterSign: scripts/notarize.cjs
+
+# ── 图标 ───────────────────────────────────────────────
+# 多格式图标：各平台 build 目录下对应命名
+#   macOS: build/icon.icns (必) + build/icon.png (可选，备份)
+#   Windows: build/icon.ico (必)
+#   Linux: build/icon.png (必, 256x256+)
+# 占位图标由 scripts/generate-icon.mjs 生成；正式品牌图标替换 build/ 下的文件即可。
 icon: build/icon.png
-mac:
-  target:
-    - target: dmg
-      arch:
-        - arm64
-        - x64
-  category: public.app-category.productivity
-  # 未签名构建（正式签名/公证位预留：设置 CSC_NAME 环境变量 + afterSign 钩子，
-  # 见 DEV-018 打包发布票；notarize 需要 APPLE_ID / APPLE_APP_SPECIFIC_PASSWORD）
-  identity: null
-  # afterSign: scripts/notarize.js
-win:
-  target: nsis
-linux:
-  target:
-    - AppImage
-    - deb
-  category: Office
-# 自动更新发布源占位（DEV-018 接入真实更新服务；generic provider 可指向任意静态服务器）
+
+# ── 协议与文件关联 ──────────────────────────────────────
+protocols:
+  - name: NexNote URL
+    schemes:
+      - nexnote
+
+fileAssociations:
+  - ext: md
+    name: Markdown
+    role: Editor
+
+# ── 自动更新发布源 ──────────────────────────────────────
+# 多通道（stable / beta / alpha）通过 CI 注入 NEXNOTE_UPDATE_CHANNEL 切换；
+# GitHub Releases 为主发布源（electron-updater 原生支持 latest.yml / beta.yml / alpha.yml）。
 publish:
-  - provider: generic
-    url: https://updates.nexnote.example/stable/
+  - provider: github
+    owner: nexnote
+    repo: nexnote
+
+# ── macOS ──────────────────────────────────────────────
+mac:
+  # 架构由 release CI 的 macOS arm64/x64 原生 runner 分别注入；
+  # 避免一个 runner 把当前架构 dugite Git 错装进另一架构包。
+  target:
+    - dmg
+    - zip
+  category: public.app-category.productivity
+  hardenedRuntime: true
+  gatekeeperAssess: false
+  entitlements: build/entitlements.mac.plist
+  entitlementsInherit: build/entitlements.mac.inherit.plist
+  # 签名需要 CI 环境变量（本地开发默认不签名）：
+  #   CSC_LINK / CSC_KEY_PASSWORD                 — Developer ID 证书
+  #   APPLE_ID / APPLE_APP_SPECIFIC_PASSWORD / APPLE_TEAM_ID — 公证
+  # electron-builder 自动从 CSC_LINK / CSC_KEY_PASSWORD 发现 Developer ID；
+  # 无凭据的本地构建用 CSC_IDENTITY_AUTO_DISCOVERY=false 明确跳过签名。
+  # 顶层 afterSign 钩子在签名后执行 Apple notarization。
+
+dmg:
+  title: NexNote ${version}
+  iconSize: 128
+  contents:
+    - x: 130
+      y: 220
+    - x: 415
+      y: 220
+      type: link
+      path: /Applications
+
+# ── Windows ────────────────────────────────────────────
+win:
+  target:
+    - target: nsis
+      arch:
+        - x64
+    - target: portable
+      arch:
+        - x64
+  artifactName: ${productName} Setup ${version}.${ext}
+  # Authenticode 签名（CI 环境变量，本地默认不签名）：
+  #   WIN_CSC_FILE / WIN_CSC_PASSWORD（或 CSC_LINK / CSC_KEY_PASSWORD）
+
 nsis:
   oneClick: false
+  perMachine: false
   allowToChangeInstallationDirectory: true
+  createDesktopShortcut: true
+  createStartMenuShortcut: true
+  shortcutName: NexNote
+  deleteAppDataOnUninstall: false
+
+portable:
+  artifactName: ${productName} ${version} portable.${ext}
+
+# ── Linux ──────────────────────────────────────────────
+linux:
+  target:
+    - target: AppImage
+      arch:
+        - x64
+    - target: deb
+      arch:
+        - x64
+  category: Office
+  icon: build/icon.png
+  synopsis: Local-first knowledge base desktop app
+  description: NexNote — block editor x wikilinks x git x AI
+  maintainer: NexNote
+
+deb:
+  depends:
+    - libnss3
+    - libatk1.0-0
+    - libatk-bridge2.0-0
+    - libcups2
+    - libdrm2
+    - libxkbcommon0
+    - libxcomposite1
+    - libxdamage1
+    - libxrandr2
+    - libgbm1
+    - libpango-1.0-0
+    - libcairo2
+    - libasound2
+    - libsecret-1-0
+
+appImage:
+  artifactName: ${productName}-${version}-${arch}.${ext}

@@ -1,0 +1,33 @@
+name: Nightly build
+
+on:
+  schedule:
+    - cron: '30 2 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  nightly:
+    runs-on: macos-14
+    timeout-minutes: 25
+    env:
+      NEXNOTE_UPDATE_CHANNEL: alpha
+      CSC_IDENTITY_AUTO_DISCOVERY: "false"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with: { version: 10 }
+      - uses: actions/setup-node@v4
+        with: { node-version: 22, cache: pnpm }
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm lint && pnpm typecheck && pnpm test
+      - run: pnpm dist:mac -- --arm64 --publish never
+        env:
+          ELECTRON_NO_ASAR: "1"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: nexnote-nightly-macos
+          path: release/*
+          retention-days: 14
