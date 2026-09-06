@@ -73,6 +73,29 @@ describe('AiService', () => {
     expect(service.getState().needsOnboarding).toBe(true);
   });
 
+  it('local-only setup supports embedding but has no usable chat default', async () => {
+    const { service } = makeService();
+    const local = service.saveProfile(undefined, {
+      name: 'Local vectors',
+      kind: 'local-embedding',
+      baseUrl: 'local://embedding',
+      defaultModel: 'local-hash-384',
+    });
+    service.setFeatureAssignment('embedding', {
+      profileId: local.id,
+      model: 'local-hash-384',
+      dimensions: 384,
+    });
+
+    expect(service.getState().needsOnboarding).toBe(false);
+    expect(service.getState().defaultProfileId).toBeNull();
+    await expect(
+      service.chatCompletion({ feature: 'chat', messages: [{ role: 'user', content: 'hi' }] }),
+    ).rejects.toMatchObject({ code: 'AI_NOT_CONFIGURED' });
+    const embedded = await service.embed(['hello']);
+    expect(embedded[0]).toHaveLength(384);
+  });
+
   it('Profile 解析优先级：显式 profileId > feature > 全局默认', async () => {
     const { service } = makeService();
     const a = saveMockProfile(service, { name: 'A' });

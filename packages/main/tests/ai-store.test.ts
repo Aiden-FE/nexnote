@@ -144,7 +144,11 @@ describe('AiStore（Profile 存储 + 密钥安全）', () => {
       defaultModel: 'local-hash-384',
       apiKey: null,
     });
-    expect(store.getState().defaultProfileId).toBeNull();
+    const localOnly = store.getState();
+    expect(localOnly.defaultProfileId).toBeNull();
+    expect(localOnly.needsOnboarding).toBe(false); // embedding setup is usable without chat.
+    store.setFeatureAssignment('embedding', { profileId: local.id, model: 'local-hash-384' });
+    expect(store.getState().features.embedding?.profileId).toBe(local.id);
     expect(() => store.setDefaultProfile(local.id)).toThrow(/不能作为全局聊天默认/);
 
     const chat = store.saveProfile(undefined, input);
