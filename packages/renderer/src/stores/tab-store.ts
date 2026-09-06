@@ -7,7 +7,7 @@ import {
   titleFromPath,
 } from '../editor/title-sync';
 
-export type TabKind = 'welcome' | 'page' | 'files' | 'graph';
+export type TabKind = 'welcome' | 'page' | 'files' | 'graph' | 'settings';
 
 export interface TabDescriptor {
   id: string;

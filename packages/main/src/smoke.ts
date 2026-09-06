@@ -3,6 +3,7 @@ import { mkdir, mkdtemp, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import * as path from 'node:path';
 import type { WindowManager } from './window';
+import { startMockOpenAiServer } from './ai/testing';
 
 export interface SmokeCheckResult {
   name: string;
@@ -35,6 +36,12 @@ export class SmokeController {
 
   async init(): Promise<void> {
     await mkdir(this.deps.outputDir, { recursive: true });
+
+    // DEV-009：冒烟模式内嵌 mock OpenAI 服务器（127.0.0.1 随机端口）。
+    // 渲染层冒烟脚本经 smoke:aiMock 拿到 baseUrl，全链路验证 AI 向导/连通/流式/embedding。
+    const mock = await startMockOpenAiServer({ chunkDelayMs: 30 });
+    console.log('[smoke] ai mock server at', mock.url);
+    ipcMain.handle('smoke:aiMock', () => ({ ok: true, url: `${mock.url}/v1` }));
     ipcMain.handle('smoke:mkdtemp', async () => {
       try {
         const dir = await mkdtemp(path.join(tmpdir(), 'nexnote-smoke-vault-'));

@@ -12,6 +12,20 @@ import { GitService } from '../src/git/git-service';
 import { LinkIndexService } from '../src/indexer/index-service';
 import { IPC_CHANNELS } from '@nexnote/shared';
 import type { IpcServices } from '../src/ipc/services';
+import { AiStore } from '../src/ai/ai-store';
+import { AiService } from '../src/ai/ai-service';
+import type { SecretVault } from '../src/ai/secret-store';
+
+/** 测试用内存 credential vault（模拟系统凭据库）。 */
+function plainFakeVault(): SecretVault {
+  const credentials = new Map<string, string>();
+  return {
+    available: true,
+    put: (account, secret) => void credentials.set(account, secret),
+    get: (account) => credentials.get(account) ?? null,
+    delete: (account) => void credentials.delete(account),
+  };
+}
 
 class FakeIpcMain implements IpcMainLike {
   readonly handlers = new Map<string, (event: unknown, ...args: unknown[]) => unknown>();
@@ -59,12 +73,17 @@ function makeServices(): {
     windows: windows as never,
   });
   const fs = new VaultFsService(() => session.getCurrent()?.root ?? null);
+  const ai = new AiService({
+    store: new AiStore(path.join(tmp, 'ai.json'), plainFakeVault()),
+    sendEvent: () => undefined,
+  });
   const git = new GitService({ useSystemGit: true, minCommitIntervalMs: 0 });
   const services: IpcServices = {
     windows: windows as never,
     appStore: store,
     vaultSession: session,
     fs,
+    ai,
     git,
     dialogs: { pickDirectory: async () => null },
     trash: async () => {},
@@ -89,6 +108,7 @@ describe('IPC 注册表框架', () => {
     const { services } = makeServices();
     const registrar = registerAllIpcHandlers(ipc, services);
     expect(registrar.registeredChannels().sort()).toEqual([...IPC_CHANNELS].sort());
+    expect(registrar.registeredChannels()).not.toContain('ai:credential:retrieve');
   });
 
   it('拒绝未在契约中声明的通道', () => {

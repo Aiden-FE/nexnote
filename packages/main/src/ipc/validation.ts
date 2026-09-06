@@ -86,6 +86,73 @@ const createNote = object(
   [stringField('parentDir'), optionalField('name', 'string'), optionalField('content', 'string')],
 );
 const listTree = object(['showAllFiles'], [optionalField('showAllFiles', 'boolean')]);
+
+const stringArrayField =
+  (key: string): PayloadValidator =>
+  (payload) => {
+    const value = (payload as Record<string, unknown>)[key];
+    if (!Array.isArray(value) || value.some((item) => typeof item !== 'string')) {
+      return invalid(`${key} 必须是字符串数组`);
+    }
+    return null;
+  };
+
+const aiCredentialSubmit = object(
+  ['secret', 'baseUrl'],
+  [stringField('secret'), stringField('baseUrl')],
+);
+const aiProfileSave = object(
+  ['id', 'profile'],
+  [optionalField('id', 'string'), (p) => (isPlainObject((p as Record<string, unknown>).profile) ? null : invalid('profile 必须是对象'))],
+);
+const idOnly = object(['id'], [stringField('id')]);
+const aiFeaturesSet = object(
+  ['feature', 'assignment'],
+  [
+    stringField('feature'),
+    (p) => {
+      const assignment = (p as Record<string, unknown>).assignment;
+      return assignment === null || isPlainObject(assignment) ? null : invalid('assignment 必须是对象或 null');
+    },
+  ],
+);
+const aiChatRequest = object(
+  ['messages', 'profileId', 'feature', 'model', 'params'],
+  [
+    (p) => {
+      const messages = (p as Record<string, unknown>).messages;
+      return Array.isArray(messages) && messages.every(isPlainObject) ? null : invalid('messages 必须是消息对象数组');
+    },
+    optionalField('profileId', 'string'),
+    optionalField('feature', 'string'),
+    optionalField('model', 'string'),
+    (p) => {
+      const params = (p as Record<string, unknown>).params;
+      return params === undefined || isPlainObject(params) ? null : invalid('params 必须是对象');
+    },
+  ],
+);
+const aiConnectionTarget: PayloadValidator = (payload) => {
+  const error = object(
+    ['profileId', 'candidate'],
+    [optionalField('profileId', 'string'), (p) => {
+      const candidate = (p as Record<string, unknown>).candidate;
+      if (candidate === undefined) return null;
+      if (!isPlainObject(candidate)) return invalid('candidate 必须是对象');
+      return object(
+        ['kind', 'baseUrl', 'credentialToken', 'defaultModel'],
+        [stringField('kind'), stringField('baseUrl'), optionalField('credentialToken', 'string'), optionalField('defaultModel', 'string')],
+      )(candidate);
+    }],
+  )(payload);
+  if (error) return error;
+  const target = payload as Record<string, unknown>;
+  return target.profileId !== undefined || target.candidate !== undefined ? null : invalid('必须提供 profileId 或 candidate');
+};
+const streamIdOnly = object(['streamId'], [stringField('streamId')]);
+const aiEmbed = object(['texts'], [stringArrayField('texts')]);
+const aiImport = object(['json'], [stringField('json')]);
+
 const timeline: PayloadValidator = (payload) => {
   const base = object(
     ['path', 'limit'],
@@ -153,6 +220,19 @@ const saveLayout: PayloadValidator = (payload) => {
 };
 
 const VALIDATORS: Partial<Record<IpcChannel, PayloadValidator>> = {
+  'ai:credential:submit': aiCredentialSubmit,
+  'ai:profile:save': aiProfileSave,
+  'ai:profile:delete': idOnly,
+  'ai:profile:setDefault': idOnly,
+  'ai:features:set': aiFeaturesSet,
+  'ai:testConnection': aiConnectionTarget,
+  'ai:listModels': aiConnectionTarget,
+  'ai:chat:complete': aiChatRequest,
+  'ai:chat:stream:start': aiChatRequest,
+  'ai:chat:stream:cancel': streamIdOnly,
+  'ai:embed': aiEmbed,
+  'ai:embedWithMetadata': aiEmbed,
+  'ai:import': aiImport,
   'fs:readTextFile': pathOnly,
   'fs:writeTextFile': write,
   'fs:exists': pathOnly,

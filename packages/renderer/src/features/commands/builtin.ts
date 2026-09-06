@@ -4,6 +4,7 @@ import { useUiStore } from '../../stores/ui-store';
 import { useThemeStore } from '../../theme/theme-store';
 import { usePaletteStore } from '../../stores/palette-store';
 import { invoke } from '../../lib/ipc';
+import { openSettings } from '../../lib/open-settings';
 import { createPage } from '../editor/create-page';
 
 /**
@@ -104,6 +105,15 @@ commandRegistry.register({
   category: '知识库',
   keywords: ['vault', 'switch', '切换', '向导'],
   run: () => void invoke('vault:close').catch(() => undefined),
+});
+
+commandRegistry.register({
+  id: 'app.settings',
+  title: '打开设置',
+  category: '应用',
+  keywords: ['settings', 'preferences', '设置', '首选项'],
+  shortcut: '⌘,（UI 快捷键 DEV-017）',
+  run: () => openSettings(),
 });
 
 commandRegistry.register({
