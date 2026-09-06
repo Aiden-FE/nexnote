@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import { PanelLeftClose, PanelLeftOpen, Settings2, FolderGit2, LogOut } from 'lucide-react';
 import { useRegistryItems, sidebarPanelRegistry } from '../registries';
 import { useUiStore } from '../stores/ui-store';
@@ -12,9 +13,29 @@ import { cn } from '../lib/utils';
  */
 export function Sidebar() {
   const panels = useRegistryItems(sidebarPanelRegistry);
-  const { sidebarWidth, sidebarCollapsed, activeSidebarPanelId, setSidebarWidth, toggleSidebar, setActiveSidebarPanel } =
-    useUiStore();
+  const {
+    sidebarWidth,
+    sidebarCollapsed,
+    activeSidebarPanelId,
+    setSidebarWidth,
+    toggleSidebar,
+    setActiveSidebarPanel,
+  } = useUiStore();
   const vault = useVault();
+  const [settingsOpen, setSettingsOpen] = useState(false);
+  const [useSystemGit, setUseSystemGit] = useState(false);
+  const [settingsMessage, setSettingsMessage] = useState<string | null>(null);
+
+  const openSettings = async (): Promise<void> => {
+    setSettingsOpen(true);
+    setSettingsMessage(null);
+    try {
+      const status = await invoke('git:getStatus');
+      setUseSystemGit(status.usingSystemGit);
+    } catch (error) {
+      setSettingsMessage(error instanceof Error ? error.message : String(error));
+    }
+  };
 
   const active = panels.find((p) => p.id === activeSidebarPanelId) ?? panels[0];
   const ActiveContent = active?.render;
@@ -105,16 +126,65 @@ export function Sidebar() {
 
         {/* 面板内容插槽 */}
         <div className="min-h-0 flex-1 overflow-auto p-2.5 text-sm">
-          {ActiveContent ? <ActiveContent /> : <p className="text-muted-foreground">暂无侧栏面板</p>}
+          {settingsOpen ? (
+            <section data-testid="git-settings" className="space-y-3">
+              <div className="flex items-center gap-2">
+                <Settings2 className="size-4" />
+                <h2 className="font-medium">Git 设置</h2>
+                <button
+                  type="button"
+                  onClick={() => setSettingsOpen(false)}
+                  className="ml-auto rounded border px-2 py-0.5 text-xs hover:bg-sidebar-accent"
+                >
+                  完成
+                </button>
+              </div>
+              <label className="flex items-start gap-2 rounded border p-2 text-xs">
+                <input
+                  type="checkbox"
+                  checked={useSystemGit}
+                  onChange={(event) => {
+                    const enabled = event.target.checked;
+                    void invoke('git:setUseSystemGit', { enabled })
+                      .then(() => {
+                        setUseSystemGit(enabled);
+                        setSettingsMessage(
+                          enabled ? '已切换至系统 Git' : '已切换至 NexNote 捆绑 Git',
+                        );
+                      })
+                      .catch((error: unknown) =>
+                        setSettingsMessage(error instanceof Error ? error.message : String(error)),
+                      );
+                  }}
+                  className="mt-0.5"
+                />
+                <span>
+                  <strong className="block font-medium">使用系统 Git</strong>
+                  <span className="mt-1 block text-muted-foreground">
+                    默认关闭；开启后使用 PATH 中的 Git。设置保存在应用 userData，重启后保持。
+                  </span>
+                </span>
+              </label>
+              {settingsMessage && (
+                <p className="rounded border px-2 py-1.5 text-xs text-muted-foreground">
+                  {settingsMessage}
+                </p>
+              )}
+            </section>
+          ) : ActiveContent ? (
+            <ActiveContent />
+          ) : (
+            <p className="text-muted-foreground">暂无侧栏面板</p>
+          )}
         </div>
 
         {/* 底部：设置占位 + 切换 vault */}
         <div className="flex items-center gap-1 border-t border-sidebar-border p-1.5">
           <button
             type="button"
-            disabled
-            title="设置（DEV-016）"
-            className="flex items-center gap-1.5 rounded px-2 py-1 text-xs text-muted-foreground opacity-60"
+            onClick={() => void openSettings()}
+            title="Git 设置"
+            className="flex items-center gap-1.5 rounded px-2 py-1 text-xs text-muted-foreground hover:bg-sidebar-accent hover:text-foreground"
           >
             <Settings2 className="size-3.5" />
             设置

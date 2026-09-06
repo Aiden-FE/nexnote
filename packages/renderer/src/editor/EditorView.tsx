@@ -17,6 +17,7 @@ import {
   sanitizePageTitle,
   titleFromPath,
 } from './title-sync';
+import { registerAppSaveListener } from './app-save';
 
 interface EditorViewProps {
   paneId: PaneId;
@@ -178,8 +179,10 @@ export function EditorView({ paneId, tab }: EditorViewProps) {
     kernelRef.current = kernel;
 
     const flush = () => void kernel.flushPendingSave();
+    const unregisterAppSave = registerAppSaveListener(window, () => kernel.flushPendingSave());
     window.addEventListener('blur', flush);
     return () => {
+      unregisterAppSave();
       window.removeEventListener('blur', flush);
       // 先 flush 再 destroy：destroy 会 cancel，不能颠倒。
       void kernel.flushPendingSave().finally(() => kernel.destroy());

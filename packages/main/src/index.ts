@@ -10,6 +10,7 @@ import { WindowManager } from './window';
 import { registerAllIpcHandlers } from './ipc';
 import { checkForUpdates, initAutoUpdater } from './updater';
 import { SmokeController } from './smoke';
+import { GitService } from './git/git-service';
 
 const isSmokeMode = process.env.NEXNOTE_SMOKE === '1';
 
@@ -63,6 +64,10 @@ function bootstrap(): void {
     onError: (e) => log('watch error:', e),
   });
   const fs = new VaultFsService(() => vaultSession.getCurrent()?.root ?? null);
+  const git = new GitService({
+    useSystemGit: appStore.getUseSystemGit(),
+    defaultDebounceMs: appStore.getAutoCommitDebounceMs(),
+  });
 
   initAutoUpdater(log);
 
@@ -71,6 +76,7 @@ function bootstrap(): void {
     appStore,
     vaultSession,
     fs,
+    git,
     dialogs: {
       async pickDirectory() {
         const win = windows?.getMainWindow() ?? null;
@@ -113,7 +119,7 @@ function bootstrap(): void {
     const smoke = new SmokeController({
       windows,
       // out/main/index.js → ../.. = worktree 根（.scratch/ 与仓库同级）
-      outputDir: join(__dirname, '../../.scratch/nexnote-build/smoke/DEV-003'),
+      outputDir: join(__dirname, '../../.scratch/nexnote-build/smoke/DEV-007'),
     });
     void smoke.init();
   }

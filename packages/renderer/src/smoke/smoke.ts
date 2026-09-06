@@ -4,6 +4,7 @@ import { useTabStore, openPageInActivePane } from '../stores/tab-store';
 import { createPage } from '../features/editor/create-page';
 import { useUiStore } from '../stores/ui-store';
 import { useThemeStore } from '../theme/theme-store';
+import { dockPanelRegistry } from '../registries';
 
 interface SmokeCaptureResult {
   ok: boolean;
@@ -101,6 +102,10 @@ export async function runSmokeIfEnabled(): Promise<void> {
       document.querySelectorAll('[data-testid^="sidebar-panel-"]').length >= 1,
     );
     check('Dock AI 占位面板已注册', !!document.querySelector('[data-testid="dock-panel-ai-chat"]'));
+    check('Dock Git 时间线面板已注册（DEV-007）', dockPanelRegistry.get('git-timeline') !== undefined);
+    check('状态栏 Git 状态项（分支可见）', !!document.querySelector('[data-testid="status-git-branch"]'));
+    const statusText = document.querySelector('[data-testid="status-git"]')?.textContent ?? '';
+    check('状态栏在 vault 创建后即显示分支与变更数', /main|master/.test(statusText), statusText.slice(0, 80));
     check('默认欢迎 Tab 激活', !!document.querySelector('[data-testid="tab"][data-active="true"]'));
     await capture('02-workspace');
 
@@ -492,6 +497,28 @@ export async function runSmokeIfEnabled(): Promise<void> {
     // ── 10. 命名空间 ping（editor/git/ai/plugins 框架就绪）────
     const editorPong = await invoke('editor:ping');
     check('editor:* 命名空间通道可用（占位）', editorPong.pong === true);
+
+    // ── 10b. DEV-007 Git 底座：状态栏 + 时间线 + 手动提交 ──
+    const status = await invoke('git:getStatus');
+    check(
+      'git:getStatus 报告真实仓库',
+      status.repository === true && (status.branch === 'master' || status.branch === 'main'),
+    );
+    const initial = await invoke('git:getTimeline', {});
+    check('git:getTimeline 返回 ≥1 提交', initial.length >= 1);
+    check('git:getTimeline 首条为 initial', (initial[0]?.kind ?? '') === 'initial');
+    await invoke('fs:writeTextFile', { path: 'smoke-note.md', content: '冒烟笔记' });
+    // 自动提交走 30s 防抖；这里用手动提交验证提交链路，随后时间线刷新。
+    const manual = await invoke('git:commit', { message: 'smoke manual commit' });
+    check('手动提交成功（commitManual）', manual.status.changed === 0);
+    const after = await invoke('git:getTimeline', {});
+    check('手动提交形成新 HEAD（kind=manual）', (after[0]?.kind ?? '') === 'manual');
+    // 切换 dock 到 git 时间线
+    useUiStore.getState().setActiveDockPanel('git-timeline');
+    await waitFor(() => !!document.querySelector('[data-testid="git-timeline"]'));
+    const timelineText = document.querySelector('[data-testid="git-timeline"]')?.textContent ?? '';
+    check('版本时间线 dock 面板渲染 commit 列表', timelineText.includes('smoke manual commit'), timelineText.slice(0, 80));
+    await capture('09-git-timeline');
 
     // ── 11. 关闭 vault 回到向导 ───────────────────────────────
     await invoke('vault:close');

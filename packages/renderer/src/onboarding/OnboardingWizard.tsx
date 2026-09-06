@@ -11,6 +11,7 @@ import {
 import { invoke } from '../lib/ipc';
 import type { RecentVaultEntry } from '@nexnote/shared';
 import { cn } from '../lib/utils';
+import { CloneRemoteStep } from './CloneRemoteStep';
 
 interface OnboardingWizardProps {
   recent: RecentVaultEntry[];
@@ -18,7 +19,7 @@ interface OnboardingWizardProps {
   onRecentsChanged: () => void;
 }
 
-type Step = 'choose' | 'create';
+type Step = 'choose' | 'create' | 'clone';
 
 /** 首启动向导：三选一（新建空 vault / 打开本地文件夹 / 克隆远程仓库占位）。 */
 export function OnboardingWizard({ recent, onRecentsChanged }: OnboardingWizardProps) {
@@ -27,6 +28,7 @@ export function OnboardingWizard({ recent, onRecentsChanged }: OnboardingWizardP
   const [error, setError] = useState<string | null>(null);
   const [name, setName] = useState('我的知识库');
   const [parentDir, setParentDir] = useState<string | null>(null);
+  const [pendingGitInitPath, setPendingGitInitPath] = useState<string | null>(null);
 
   useEffect(() => {
     if (step === 'create' && !parentDir) {
@@ -49,6 +51,28 @@ export function OnboardingWizard({ recent, onRecentsChanged }: OnboardingWizardP
     try {
       await invoke('vault:open', { path });
       // 成功后主进程广播 vault:changed → App 切到工作区
+    } catch (e) {
+      const message = e instanceof Error ? e.message : String(e);
+      if (
+        'code' in (e as object) &&
+        (e as { code?: string }).code === 'GIT_INITIALIZATION_REQUIRED'
+      ) {
+        setPendingGitInitPath(path);
+        setError(null);
+      } else {
+        setError(message);
+      }
+      setBusy(false);
+    }
+  };
+
+  const confirmGitInitialization = async (): Promise<void> => {
+    if (!pendingGitInitPath) return;
+    setBusy(true);
+    setError(null);
+    try {
+      await invoke('vault:initGit', { path: pendingGitInitPath });
+      setPendingGitInitPath(null);
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
       setBusy(false);
@@ -115,6 +139,39 @@ export function OnboardingWizard({ recent, onRecentsChanged }: OnboardingWizardP
           </p>
         )}
 
+        {pendingGitInitPath && (
+          <section
+            data-testid="git-init-confirmation"
+            className="mb-4 rounded-md border border-amber-500/40 bg-amber-500/10 p-3 text-sm"
+          >
+            <p>
+              此文件夹还不是 Git 仓库。是否在{' '}
+              <code className="break-all">{pendingGitInitPath}</code> 中初始化 Git？
+            </p>
+            <p className="mt-1 text-xs text-muted-foreground">
+              这会创建 .git、.gitignore 和初始提交；仅在你确认后执行。
+            </p>
+            <div className="mt-3 flex gap-2">
+              <button
+                type="button"
+                disabled={busy}
+                onClick={() => void confirmGitInitialization()}
+                className="rounded bg-primary px-3 py-1.5 text-xs font-medium text-primary-foreground disabled:opacity-50"
+              >
+                {busy ? '初始化中…' : '初始化 Git 并打开'}
+              </button>
+              <button
+                type="button"
+                disabled={busy}
+                onClick={() => setPendingGitInitPath(null)}
+                className="rounded border px-3 py-1.5 text-xs hover:bg-accent"
+              >
+                取消
+              </button>
+            </div>
+          </section>
+        )}
+
         {step === 'choose' && (
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
             <OptionCard
@@ -140,9 +197,8 @@ export function OnboardingWizard({ recent, onRecentsChanged }: OnboardingWizardP
             <OptionCard
               icon={CloudDownload}
               title="克隆远程仓库"
-              desc="DEV-007 提供克隆能力"
-              badge="即将推出"
-              disabled
+              desc="支持 GitHub/GitLab 等 HTTPS 或 SSH 仓库"
+              onClick={() => setStep('clone')}
             />
 
             {recent.length > 0 && (
@@ -187,6 +243,9 @@ export function OnboardingWizard({ recent, onRecentsChanged }: OnboardingWizardP
           </div>
         )}
 
+        {step === 'clone' && (
+          <CloneRemoteStep onSuccess={() => undefined} onBack={() => setStep('choose')} />
+        )}
         {step === 'create' && (
           <div className="rounded-xl border bg-card p-5">
             <div className="mb-4 flex items-center gap-2">

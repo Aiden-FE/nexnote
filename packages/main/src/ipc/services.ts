@@ -1,11 +1,9 @@
-import type {
-  AppInfo,
-  UpdateCheckResult,
-} from '@nexnote/shared';
+import type { AppInfo, UpdateCheckResult } from '@nexnote/shared';
 import type { AppStore } from '../vault/app-store';
 import type { VaultSession } from '../vault/vault-session';
 import type { VaultFsService } from '../fs/fs-service';
 import type { VaultWatchService } from '../fs/watch-service';
+import type { GitService } from '../git/git-service';
 import type { WindowManager } from '../window';
 import type { LinkIndexService } from '../indexer/index-service';
 
@@ -15,6 +13,7 @@ export interface IpcServices {
   appStore: AppStore;
   vaultSession: VaultSession;
   fs: VaultFsService;
+  git: GitService;
   /** 系统目录选择对话框（渲染层无原生能力，统一走主进程） */
   dialogs: {
     pickDirectory(): Promise<string | null>;

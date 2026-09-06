@@ -15,12 +15,33 @@ export interface AppStoreData {
   lastVaultPath: string | null;
   recentVaults: RecentVaultEntry[];
   windowBounds: WindowBounds | null;
+  /** Git binary preference; persisted in app userData rather than a vault. */
+  useSystemGit: boolean;
+  /** 自动提交防抖（毫秒），持久化到应用 userData；受 DEBOUNCE_RANGE_MS 约束。 */
+  autoCommitDebounceMs: number;
 }
 
 export const MAX_RECENT_VAULTS = 10;
+export const DEFAULT_AUTO_COMMIT_DEBOUNCE_MS = 30_000;
+export const AUTO_COMMIT_DEBOUNCE_RANGE_MS = { min: 500, max: 10 * 60_000 };
+
+function coerceDebounceMs(raw: unknown): number {
+  if (typeof raw !== 'number' || !Number.isFinite(raw)) return DEFAULT_AUTO_COMMIT_DEBOUNCE_MS;
+  return Math.min(
+    AUTO_COMMIT_DEBOUNCE_RANGE_MS.max,
+    Math.max(AUTO_COMMIT_DEBOUNCE_RANGE_MS.min, Math.round(raw)),
+  );
+}
 
 function defaults(): AppStoreData {
-  return { version: 1, lastVaultPath: null, recentVaults: [], windowBounds: null };
+  return {
+    version: 1,
+    lastVaultPath: null,
+    recentVaults: [],
+    windowBounds: null,
+    useSystemGit: false,
+    autoCommitDebounceMs: DEFAULT_AUTO_COMMIT_DEBOUNCE_MS,
+  };
 }
 
 function coerce(raw: unknown): AppStoreData {
@@ -41,6 +62,8 @@ function coerce(raw: unknown): AppStoreData {
       typeof data.windowBounds === 'object' && data.windowBounds !== null
         ? data.windowBounds
         : null,
+    useSystemGit: data.useSystemGit === true,
+    autoCommitDebounceMs: coerceDebounceMs(data.autoCommitDebounceMs),
   };
 }
 
@@ -85,10 +108,10 @@ export class AppStore {
       name: path.basename(root),
       lastOpenedAt: Date.now(),
     };
-    this.data.recentVaults = [entry, ...this.data.recentVaults.filter((e) => e.path !== root)].slice(
-      0,
-      MAX_RECENT_VAULTS,
-    );
+    this.data.recentVaults = [
+      entry,
+      ...this.data.recentVaults.filter((e) => e.path !== root),
+    ].slice(0, MAX_RECENT_VAULTS);
     this.persist();
   }
 
@@ -104,6 +127,24 @@ export class AppStore {
 
   setWindowBounds(bounds: WindowBounds): void {
     this.data.windowBounds = bounds;
+    this.persist();
+  }
+
+  getUseSystemGit(): boolean {
+    return this.data.useSystemGit;
+  }
+
+  setUseSystemGit(enabled: boolean): void {
+    this.data.useSystemGit = enabled === true;
+    this.persist();
+  }
+
+  getAutoCommitDebounceMs(): number {
+    return this.data.autoCommitDebounceMs;
+  }
+
+  setAutoCommitDebounceMs(milliseconds: number): void {
+    this.data.autoCommitDebounceMs = coerceDebounceMs(milliseconds);
     this.persist();
   }
 }

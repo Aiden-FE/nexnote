@@ -6,6 +6,7 @@
 import './sidebar';
 import './dock';
 import './statusbar';
+import './git';
 import './statusbar/index-status';
 import './commands/builtin';
 import './settings';
