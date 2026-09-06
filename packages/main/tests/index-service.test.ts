@@ -92,6 +92,18 @@ describe('LinkIndexService', () => {
     svc.close();
   });
 
+  it('search applies tag tier before limit across a global candidate set', async () => {
+    for (let i = 0; i < 1_001; i += 1) await page(`content-tag-${i}.md`, '', `# Page ${i}\n\nneedle body\n`);
+    await page('tag.md', '---\ntags: [needle]\n---\n', '# Untitled\n');
+    const svc = new LinkIndexService();
+    svc.setRoot(tmp);
+    const hits = svc.search('needle', 1);
+    expect(hits).toHaveLength(1);
+    expect(hits[0]?.path).toBe('tag.md');
+    expect(hits[0]?.tier).toBe('tag');
+    svc.close();
+  });
+
   it('增量：新文件/改名后反链与索引正确更新（验收项 1、2）', async () => {
     await page('target.md', '', '# Target\n');
     await page('src.md', '', '链到 [[target]]\n');
