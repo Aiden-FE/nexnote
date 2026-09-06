@@ -6,6 +6,7 @@ import { VaultContext } from './shell/vault-context';
 import { WorkspaceView } from './shell/WorkspaceView';
 import { OnboardingWizard } from './onboarding/OnboardingWizard';
 import { CommandPalette, useCommandPaletteHotkey } from './palette/CommandPalette';
+import { AiGlobalLayer } from './features/ai';
 import { requestAppSave } from './editor/app-save';
 import { SearchPanel, useSearchHotkey, useJumpToInjection } from './features/search';
 
@@ -74,6 +75,7 @@ function App() {
         )}
         {state.phase === 'ready' && <WorkspaceView vault={state.vault} />}
         <CommandPalette />
+        <AiGlobalLayer />
         <SearchPanel />
       </VaultContext.Provider>
     </ThemeProvider>

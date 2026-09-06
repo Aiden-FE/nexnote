@@ -10,7 +10,12 @@ export default defineConfig({
   main: {
     // @nexnote/shared 是 workspace 内部包（TS 源码导出），必须排除外部化、直接打进 bundle；
     // electron / electron-updater 等真实依赖保持外部化。
-    plugins: [externalizeDepsPlugin({ exclude: ['@nexnote/shared'] })],
+    plugins: [
+      externalizeDepsPlugin({
+        include: ['@napi-rs/keyring'],
+        exclude: ['@nexnote/shared'],
+      }),
+    ],
     build: {
       rollupOptions: {
         input: { index: resolve(root, 'packages/main/src/index.ts') },

@@ -1,5 +1,6 @@
 import type { GitStatus } from './channels/git';
 import type { VaultInfo } from '../types/vault';
+import type { ChatStreamEvent, AiConfigState } from '../types/ai';
 import type { IndexStatus } from '../types/index';
 
 /**
@@ -11,6 +12,10 @@ export interface IpcEventMap {
   'vault:changed': { vault: VaultInfo | null };
   /** vault 文件系统变化（DEV-003，chokidar 驱动）。 */
   'fs:changed': FsChangeEvent;
+  /** AI 对话流事件（统一内部协议，按 streamId 关联） */
+  'ai:streamEvent': { streamId: string; event: ChatStreamEvent };
+  /** AI 配置变化（Profile 增删改/分功能指定/embedding generation 变更） */
+  'ai:configChanged': { state: AiConfigState };
   /** Git 工作区/上游状态变化；自动提交、pull/push 后推送。 */
   'git:statusChanged': GitStatus;
   /** 关系索引状态变化（扫描进度、ready、error）。DEV-004。 */
@@ -25,6 +30,8 @@ export interface FsChangeEvent {
 export const IPC_EVENT_CHANNELS: readonly string[] = [
   'vault:changed',
   'fs:changed',
+  'ai:streamEvent',
+  'ai:configChanged',
   'git:statusChanged',
   'index:statusChanged',
 ];

@@ -1,5 +1,6 @@
 // 类型
 export type * from './types/vault';
+export type * from './types/ai';
 export type * from './types/index';
 export * from './markdown/wikilink';
 export * from './markdown/links';
