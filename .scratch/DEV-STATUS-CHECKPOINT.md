@@ -4,6 +4,28 @@
 >
 > 任何票据只有在 **clean fixed SHA + current master ancestry + 主控 typecheck/test/lint/build/diff-check + fresh Standards PASS + fresh Spec PASS + merge + post-merge verify** 后才算完成。
 
+---
+
+## 0. 最新状态（持续更新，优先于下方陈旧冻结段）
+
+- **真实进度：10 / 19** —— DEV-001~DEV-010 已全部合入 master。
+- master HEAD：`ab0b882030c12016b857bd9df1a486fe2cfce61b`（merge DEV-010），clean；post-merge typecheck/eslint/393 tests(2 skipped)/build 全过。
+- 子Agent 派发工具 `multi_agent_v1__spawn_agent` 在本环境返回 unsupported，按用户接管规则由主控直接在隔离 worktree 实现。
+- better-sqlite3 ABI：vitest 用 Node ABI；electron smoke 用 `runtime=electron target=44.2.0 arch=arm64`，smoke 后务必切回 Node ABI。
+- Electron smoke 当前环境基线 **60/69**：9 项失败为 DEV-003/004/006/007 既有环境基线（Git 状态栏 2、新笔记 frontmatter/面包屑 2、标签面板/过滤 2、重命名 wikilink 1、500 节点 FPS 1、时间线 1）；master 与候选失败集逐名一致，DEV-010 无新增回归。
+
+### DEV-010 · AI 写作辅助（已合并 `ab0b882`，候选 `2c563e4`）
+- kernel：新增框架无关扩展 SelectionBubble（选区浮动工具栏，⌘⌥+R/E/C/P/F/A 快捷键）、ContextMenu（右键 AI 子菜单，二级菜单）、`computeEditorActionContext`；SlashMenu 支持 `extraSlashItems`（`/ai` 六动作）；新增回写原语 `replaceRangeWithMarkdown` / `insertMarkdownBlocks`（单事务，可 undo）。
+- renderer：`features/ai/writing/*`（六动作 prompt、token 预算截断、LCS diff、流式封装、会话 store、编排控制器、React diff 浮层 WritingAssistantLayer）；EditorView 接入三入口 + 活动编辑器注册；AiChatDebug 回答新增「插入为块」。
+- 验收覆盖（happy-dom 真实 TipTap kernel + mock IPC streaming）：浮动工具栏六动作可触发、流式 diff、Accept 写入可 undo、Reject 原文不变、斜杠与右键可触发、超长「上下文过长，已截断」提示、accept/reject/cancel。
+- NOT_RUN：真实 provider 写作流式（smoke vault 未配置 writing profile）、Electron 内人工点击三入口与 diff 接受的端到端操作（由真实 kernel + mock 流单测/集成测试等价覆盖）。
+- 测试：kernel `writing-surfaces.test.ts` 11 项；renderer `writing-actions/context/diff/controller/layer` 共 21 项。
+
+### 下一张：DEV-011 渐进式召回管道与向量索引（依赖 DEV-004/009/008 均满足）
+- worktree `.wt/DEV-011` 已 fast-forward 到最新 master；票据 `issues/011-retrieval-pipeline-vector.md`。
+- 要点：向量索引、增量更新/后台队列、FTS+links+embedding 召回、rerank、来源、失败回退、与 DEV-008 confidence 重排挂钩；用 mock embedding，不伪造真实 provider。
+
+
 ## 1. 全局基线
 
 - 顶层目标：完成 19 张票据及 DEV-019 集成验收。
