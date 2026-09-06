@@ -7,6 +7,7 @@ import { usePageTreeStore } from '../../../stores/page-tree-store';
 import { useUiStore } from '../../../stores/ui-store';
 import { invoke } from '../../../lib/ipc';
 import { cn } from '../../../lib/utils';
+import { useVault } from '../../../shell/vault-context';
 import { buildTagTree, type TagNode } from './tree';
 
 /**
@@ -22,6 +23,7 @@ sidebarPanelRegistry.register({
 });
 
 export function TagsPanel() {
+  const vault = useVault();
   const entries = useIndexStore((s) => s.tags);
   const indexStatus = useIndexStore((s) => s.status.phase);
   const legacyStats = useTagStore((s) => s.stats);
@@ -33,8 +35,10 @@ export function TagsPanel() {
   const tagRequest = useRef(0);
 
   useEffect(() => {
+    tagRequest.current += 1; // invalidate pending tagPages from the previous vault/session
     void loadIndexTags();
-  }, [loadIndexTags]);
+    return () => { tagRequest.current += 1; };
+  }, [loadIndexTags, vault?.root]);
 
   // 索引不可用（错误/未就绪）→ 回退 fs:scanTags 数据
   const useLegacy = indexStatus === 'error' || (indexStatus !== 'ready' && legacyStatus === 'ready');

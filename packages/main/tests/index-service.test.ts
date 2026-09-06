@@ -268,6 +268,15 @@ describe('LinkIndexService', () => {
     svc.close();
   });
 
+  it('LIKE fallback treats % and _ as literal characters', async () => {
+    await page('percent.md', '', '# Percent\n\n值为 100%_done\n');
+    await page('wildcard.md', '', '# Wildcard\n\n值为 100XXdone\n');
+    const svc = new LinkIndexService();
+    svc.setRoot(tmp);
+    expect(svc.search('100%_done').map((hit) => hit.path)).toEqual(['percent.md']);
+    svc.close();
+  });
+
   it('删除 index.db 后重开自动全量重建（验收项 5）', async () => {
     await page('keep.md', '', '# Keep\n');
     const svc1 = new LinkIndexService();

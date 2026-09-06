@@ -19,6 +19,7 @@ function escFts(value: string): string {
     .join(' AND ');
 }
 function stem(value: string): string { return value.replace(/\.md$/i, '').replace(/^\.\//, ''); }
+function escLike(value: string): string { return value.replace(/[\\%_]/g, (char) => `\\${char}`); }
 
 /** Canonical vault-relative path, or null for absolute/traversal input. */
 function vaultRelativePath(root: string, relPath: string): string | null {
@@ -248,8 +249,8 @@ export class LinkIndexService {
     try {
       // LIKE fallback mirrors FTS multi-term AND semantics, including Chinese substring terms.
       const terms = needle.toLowerCase().split(/\s+/).filter(Boolean);
-      const clauses = terms.map(() => '(lower(title) LIKE ? OR lower(aliases) LIKE ? OR lower(tags) LIKE ? OR lower(content) LIKE ?)').join(' AND ');
-      const values = terms.flatMap((term) => Array(4).fill(`%${term}%`));
+      const clauses = terms.map(() => "(lower(title) LIKE ? ESCAPE '\\' OR lower(aliases) LIKE ? ESCAPE '\\' OR lower(tags) LIKE ? ESCAPE '\\' OR lower(content) LIKE ? ESCAPE '\\')").join(' AND ');
+      const values = terms.flatMap((term) => Array(4).fill(`%${escLike(term)}%`));
       likeRows = db.prepare(`SELECT path,title,aliases,tags,content,'' snippet,0 rank FROM page_fts WHERE ${clauses} LIMIT ?`).all(...values, limit * 2) as RawHit[];
     } catch (e) {
       this.onStatus({ ...this._status, phase: this._status.phase, error: `search like: ${e instanceof Error ? e.message : String(e)}` });

@@ -85,7 +85,8 @@ export const useIndexStore = create<IndexState>((set, get) => ({
       const tags = await invoke('index:tags', { flat: false });
       set({ tags, tagsStatus: 'ready' });
     } catch (e) {
-      set({ tagsStatus: 'error', error: e instanceof Error ? e.message : String(e) });
+      // Clear stale index data so TagsPanel reliably falls back to the vault scanner.
+      set({ tags: [], tagsStatus: 'error', error: e instanceof Error ? e.message : String(e) });
     }
   },
 

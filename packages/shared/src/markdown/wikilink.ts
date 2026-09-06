@@ -13,7 +13,7 @@ export interface WikilinkReference {
   alias: string | null;
   /** #heading / #^block-id */
   anchor: string | null;
-  /** wikilink 在 markdown 字符串中的字节偏移（按行累加）。 */
+  /** wikilink 在原始 markdown 字符串中的 UTF-16 code-unit 偏移（与 String.slice/indexOf 一致）。 */
   offset: number;
   /** wikilink 所在的 0-based 段落块序号（按空行切分）。 */
   blockIndex: number;
@@ -55,7 +55,7 @@ function scanLine(line: string): { raw: string; inner: string; target: string; t
 
 /**
  * 从整篇 Markdown 抽取 wikilinks；跳过 fenced code 与 inline code。
- * 每个引用包含在 body 中的字节偏移与所在段落块序号（块边界与 `/\n{2,}/` 切分一致）。
+ * 每个引用包含原始字符串的 UTF-16 偏移与所在段落块序号（CRLF/LF 空行均为块边界）。
  */
 export function extractWikilinks(markdown: string): WikilinkReference[] {
   const out: WikilinkReference[] = [];
@@ -63,24 +63,28 @@ export function extractWikilinks(markdown: string): WikilinkReference[] {
   let blockIndex = 0;
   let cursor = 0;
   let prevEmpty = false;
-  const lines = markdown.split(/\r?\n/);
-  for (const rawLine of lines) {
+  // Keep separators so cursor advances by the exact original UTF-16 length (LF or CRLF).
+  const lines = markdown.match(/[^\r\n]*(?:\r\n|\n|$)/g)?.filter((part, index, all) => part.length > 0 || index < all.length - 1) ?? [];
+  for (const lineWithSeparator of lines) {
+    const separator = lineWithSeparator.endsWith('\r\n') ? '\r\n' : lineWithSeparator.endsWith('\n') ? '\n' : '';
+    const rawLine = separator ? lineWithSeparator.slice(0, -separator.length) : lineWithSeparator;
+    const advance = rawLine.length + separator.length;
     if (/^\s*(```|~~~)/.test(rawLine)) {
       inFence = !inFence;
       prevEmpty = false;
-      cursor += rawLine.length + 1;
+      cursor += advance;
       continue;
     }
     if (inFence) {
       prevEmpty = false;
-      cursor += rawLine.length + 1;
+      cursor += advance;
       continue;
     }
     if (rawLine.trim().length === 0) {
       // 连续空行只算一次块边界，从内容行跨到空行时递增
       if (!prevEmpty) blockIndex += 1;
       prevEmpty = true;
-      cursor += rawLine.length + 1;
+      cursor += advance;
       continue;
     }
     prevEmpty = false;
@@ -88,7 +92,7 @@ export function extractWikilinks(markdown: string): WikilinkReference[] {
     for (const item of scanLine(rawLine)) {
       out.push({ ...item, offset: colStart + item.colStart, blockIndex });
     }
-    cursor += rawLine.length + 1;
+    cursor += advance;
   }
   return out;
 }
