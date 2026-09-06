@@ -191,7 +191,9 @@ export function setUpdateChannel(channel: UpdateChannel): UpdateCheckResult {
   downloadInFlight = false;
   if (electronApp.isPackaged) {
     const a = getAdapter();
-    a.channel = channel;
+    a.channel = updaterChannel(channel);
+    // Explicit switching must also update the provider; stable omits GitHub channel
+    // and resolves electron-updater's generated latest*.yml metadata.
     a.setFeedURL(feedConfig(channel));
   }
   return emit('not-configured', `已切换至 ${channel} 更新通道`);

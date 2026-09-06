@@ -66,6 +66,8 @@ check('macOS 有 dmg + zip 双架构', () => {
   const kinds = new Set(targets.map((t) => (typeof t === 'string' ? t : t.target)));
   if (!kinds.has('dmg')) throw new Error('mac dmg missing');
   if (!kinds.has('zip')) throw new Error('mac zip missing (required for auto-update)');
+  if (releaseWorkflow.includes('macos-13')) throw new Error('retired macos-13 runner must not be used');
+  if (!releaseWorkflow.includes('macos-15-intel')) throw new Error('supported Intel macOS runner missing');
   if (!releaseWorkflow.includes('target: --mac --arm64')) throw new Error('mac arm64 CI target missing');
   if (!releaseWorkflow.includes('target: --mac --x64')) throw new Error('mac x64 CI target missing');
 });
