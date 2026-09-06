@@ -62,8 +62,31 @@ check('macOS entitlements 文件已声明', () => {
   if (!cfg.mac?.entitlements) throw new Error('mac entitlements missing');
 });
 check('notarize afterSign 钩子已声明或说明', () => {
-  // afterSign 可在 CI 命令行注入；此检查只确认 entitlements/identity 策略存在
   if (cfg.mac?.hardenedRuntime !== true) throw new Error('hardenedRuntime required for notarization');
+  if (!cfg.afterSign && !cfg.mac?.afterSign) throw new Error('afterSign hook missing');
+});
+check('release channel wiring (NEXNOTE_UPDATE_CHANNEL → publish + updater)', () => {
+  // Release workflow must propagate channel into the build env so run-builder can override publish.
+  if (!/NEXNOTE_UPDATE_CHANNEL:\s*\$\{\{\s*needs\.prepare\.outputs\.channel/.test(releaseWorkflow)) {
+    throw new Error('release.yml must export NEXNOTE_UPDATE_CHANNEL from prepare.outputs.channel');
+  }
+  if (!/output.*channel/.test(releaseWorkflow)) {
+    throw new Error('prepare job must output the resolved channel');
+  }
+  // Updater must consult the env and validate the value.
+  const updater = readFileSync(resolve(root, 'packages/main/src/updater.ts'), 'utf8');
+  if (!updater.includes('NEXNOTE_UPDATE_CHANNEL')) throw new Error('updater does not read NEXNOTE_UPDATE_CHANNEL');
+  if (!updater.includes("VALID_CHANNELS") && !updater.includes("'stable'")) throw new Error('updater has no channel validation');
+});
+check('Windows signing secret mapping (WIN_CSC_FILE → CSC_LINK / CSC_KEY_PASSWORD)', () => {
+  if (!/WIN_CSC_FILE/.test(releaseWorkflow)) throw new Error('WIN_CSC_FILE env not declared');
+  // The Windows step must export CSC_LINK/CSC_KEY_PASSWORD for electron-builder.
+  if (!/CSC_LINK=/.test(releaseWorkflow)) throw new Error('CSC_LINK not exported by Windows step');
+  if (!/CSC_KEY_PASSWORD=/.test(releaseWorkflow)) throw new Error('CSC_KEY_PASSWORD not exported by Windows step');
+});
+check('macOS signing secret mapping (MACOS_CERTIFICATE → CSC_LINK / CSC_KEY_PASSWORD)', () => {
+  if (!/MACOS_CERTIFICATE/.test(releaseWorkflow)) throw new Error('MACOS_CERTIFICATE env not declared');
+  if (!/CSC_LINK=/.test(releaseWorkflow)) throw new Error('CSC_LINK not exported by macOS step');
 });
 
 const failed = checks.filter((c) => !c.ok);

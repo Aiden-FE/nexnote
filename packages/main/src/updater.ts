@@ -18,8 +18,13 @@ export interface UpdaterAdapter {
   downloadUpdate(): Promise<unknown>;
   quitAndInstall(isSilent?: boolean, isForceRunAfter?: boolean): void;
   on(event: string, listener: (...args: unknown[]) => void): void;
-  setFeedURL(config: { provider: string; channel?: string; url?: string; owner?: string; repo?: string }): void;
+  setFeedURL(config: UpdateFeedConfig): void;
 }
+
+/** Accepted publish configurations (a subset of what electron-updater supports). */
+export type UpdateFeedConfig =
+  | { provider: 'github'; owner: string; repo: string; channel?: string }
+  | { provider: 'generic'; url: string; channel?: string };
 
 /** electron-updater 的 autoUpdater 在 import 时即读取 Electron app（Node 环境会崩），按需懒加载。 */
 const lazyAutoUpdater = (): UpdaterAdapter =>
@@ -30,7 +35,7 @@ let adapter: UpdaterAdapter | null = null;
 const getAdapter = (): UpdaterAdapter => (adapter ??= lazyAutoUpdater());
 let sendStatus: SendStatus = () => {};
 let logger: Log = () => {};
-let activeChannel: UpdateChannel = 'stable';
+let activeChannel: UpdateChannel = resolveChannelFromEnv();
 let availableVersion: string | undefined;
 let electronApp: ElectronAppLike = (() => {
   try {
@@ -43,7 +48,20 @@ let electronApp: ElectronAppLike = (() => {
   return { isPackaged: false, getVersion: () => '0.0.0-test' };
 })();
 
-const feedConfig = (channel: UpdateChannel): Parameters<UpdaterAdapter['setFeedURL']>[0] => {
+const VALID_CHANNELS: readonly UpdateChannel[] = ['stable', 'beta', 'alpha'] as const;
+
+function resolveChannelFromEnv(): UpdateChannel {
+  const raw = process.env.NEXNOTE_UPDATE_CHANNEL?.trim().toLowerCase();
+  if (raw && VALID_CHANNELS.includes(raw as UpdateChannel)) {
+    return raw as UpdateChannel;
+  }
+  return 'stable';
+}
+
+const feedConfig = (channel: UpdateChannel): UpdateFeedConfig => {
+  if (!VALID_CHANNELS.includes(channel)) {
+    throw new Error(`非法更新通道: ${channel}（必须是 stable/beta/alpha）`);
+  }
   const genericBase = process.env.NEXNOTE_UPDATE_URL?.replace(/\/+$/, '');
   if (genericBase) return { provider: 'generic', url: `${genericBase}/${channel}`, channel };
   return { provider: 'github', owner: 'nexnote', repo: 'nexnote', channel };
@@ -61,7 +79,15 @@ function emit(status: UpdateCheckResult['status'], message?: string, progress?: 
 }
 
 /** Production policy: silent startup check, user-driven download/install confirmation. */
-export function initAutoUpdater(log: Log, statusSender: SendStatus = () => {}, channel: UpdateChannel = 'stable'): void {
+export function initAutoUpdater(
+  log: Log,
+  statusSender: SendStatus = () => {},
+  channel: UpdateChannel = resolveChannelFromEnv(),
+): void {
+  if (!VALID_CHANNELS.includes(channel)) {
+    log(`[updater] 非法通道 ${channel}，回退到 stable`);
+    channel = 'stable';
+  }
   logger = log;
   sendStatus = statusSender;
   activeChannel = channel;
@@ -102,6 +128,9 @@ export function initAutoUpdater(log: Log, statusSender: SendStatus = () => {}, c
 }
 
 export function setUpdateChannel(channel: UpdateChannel): UpdateCheckResult {
+  if (!VALID_CHANNELS.includes(channel)) {
+    return emit('error', `不支持的更新通道: ${channel}（必须是 stable/beta/alpha）`);
+  }
   activeChannel = channel;
   availableVersion = undefined;
   if (electronApp.isPackaged) {

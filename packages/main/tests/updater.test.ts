@@ -27,28 +27,74 @@ function makeAdapter() {
 }
 
 let restore = () => {};
-afterEach(() => restore());
+let envBackup: NodeJS.ProcessEnv = {};
 
-describe('updater policy', () => {
-  it('keeps development mode explicitly unconfigured', async () => {
+afterEach(() => {
+  restore();
+  process.env = { ...envBackup };
+});
+
+describe('update channel resolution (NEXNOTE_UPDATE_CHANNEL)', () => {
+  it('defaults to stable when env missing', async () => {
+    delete process.env.NEXNOTE_UPDATE_CHANNEL;
+    envBackup = { ...process.env };
     const { adapter } = makeAdapter();
     restore = setUpdaterAdapterForTests(adapter, { isPackaged: false, getVersion: () => '0.1.0' });
     expect(await checkForUpdates()).toMatchObject({ status: 'not-configured', channel: 'stable' });
   });
 
+  it('reads a valid alpha channel from env', async () => {
+    envBackup = { ...process.env };
+    process.env.NEXNOTE_UPDATE_CHANNEL = 'alpha';
+    const { adapter } = makeAdapter();
+    restore = setUpdaterAdapterForTests(adapter, { isPackaged: false, getVersion: () => '0.1.0' });
+    initAutoUpdater(() => {});
+    expect(setUpdateChannel('alpha')).toMatchObject({ status: 'not-configured', channel: 'alpha' });
+  });
+
+  it('falls back to stable when env is invalid', async () => {
+    envBackup = { ...process.env };
+    process.env.NEXNOTE_UPDATE_CHANNEL = 'nightly';
+    const { adapter } = makeAdapter();
+    restore = setUpdaterAdapterForTests(adapter, { isPackaged: false, getVersion: () => '0.1.0' });
+    const result = setUpdateChannel('nightly' as never);
+    expect(result).toMatchObject({ status: 'error' });
+  });
+});
+
+describe('updater policy', () => {
+  it('keeps development mode explicitly unconfigured', async () => {
+    delete process.env.NEXNOTE_UPDATE_CHANNEL;
+    envBackup = { ...process.env };
+    const { adapter } = makeAdapter();
+    restore = setUpdaterAdapterForTests(adapter, { isPackaged: false, getVersion: () => '0.1.0' });
+    initAutoUpdater(() => {}, () => {}, 'stable'); // reset module-level activeChannel
+    expect(await checkForUpdates()).toMatchObject({ status: 'not-configured', channel: 'stable' });
+  });
+
   it('configures packaged app channel and detects a newer release', async () => {
+    delete process.env.NEXNOTE_UPDATE_CHANNEL;
+    envBackup = { ...process.env };
     const { adapter } = makeAdapter();
     restore = setUpdaterAdapterForTests(adapter, { isPackaged: true, getVersion: () => '0.1.0' });
     const statuses: unknown[] = [];
-    initAutoUpdater(() => {}, (status) => statuses.push(status));
-    expect(setUpdateChannel('beta')).toMatchObject({ channel: 'beta' });
-    expect(adapter.channel).toBe('beta');
+    initAutoUpdater(() => {}, (status) => statuses.push(status), 'beta');
     expect(adapter.setFeedURL).toHaveBeenCalledWith(expect.objectContaining({ channel: 'beta' }));
     expect(await checkForUpdates()).toMatchObject({ status: 'available', version: '9.9.9', channel: 'beta' });
     expect(statuses).toContainEqual(expect.objectContaining({ status: 'available', version: '9.9.9' }));
   });
 
+  it('rejects unsupported channel on setUpdateChannel', () => {
+    delete process.env.NEXNOTE_UPDATE_CHANNEL;
+    envBackup = { ...process.env };
+    const { adapter } = makeAdapter();
+    restore = setUpdaterAdapterForTests(adapter, { isPackaged: true, getVersion: () => '0.1.0' });
+    expect(setUpdateChannel('nightly' as never)).toMatchObject({ status: 'error' });
+  });
+
   it('emits progress, downloads, and explicitly installs', async () => {
+    delete process.env.NEXNOTE_UPDATE_CHANNEL;
+    envBackup = { ...process.env };
     const { adapter, listeners } = makeAdapter();
     restore = setUpdaterAdapterForTests(adapter, { isPackaged: true, getVersion: () => '0.1.0' });
     const statuses: Array<{ status: string; progress?: number }> = [];
@@ -62,6 +108,8 @@ describe('updater policy', () => {
   });
 
   it('does not install before a packaged update is downloaded', () => {
+    delete process.env.NEXNOTE_UPDATE_CHANNEL;
+    envBackup = { ...process.env };
     const { adapter } = makeAdapter();
     restore = setUpdaterAdapterForTests(adapter, { isPackaged: false, getVersion: () => '0.1.0' });
     expect(() => installUpdate()).toThrow(/没有已下载/);
