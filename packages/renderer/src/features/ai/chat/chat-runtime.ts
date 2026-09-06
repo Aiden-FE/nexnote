@@ -1,0 +1,264 @@
+import type {
+  ChatMessage,
+  ChatSession,
+  ChatSourceRef,
+  ChatStageStat,
+  ChatTurn,
+  ChatTurnMeta,
+  RetrievalResponse,
+} from '@nexnote/shared';
+import { invoke, onEvent } from '../../../lib/ipc';
+import { retrieve } from '../retrieval/retrieval-client';
+import { useChatStore } from './chat-store';
+import { assembleChatContext } from './context';
+import { refreshAutoDocumentChip } from './chat-context-bridge';
+import * as client from './chat-client';
+
+const SYSTEM_PROMPT =
+  '你是 NexNote 内置的知识库对话助手。基于用户给出的当前笔记上下文与知识库召回内容回答问题；' +
+  '使用 Markdown 排版，保留正文中的双链 [[...]] 与标签 #tag 语法；' +
+  '若参考资料不足以回答，请明确指出，不要编造来源。';
+
+let working: ChatSession | null = null;
+let draft = false;
+let streamId: string | null = null;
+let pendingMeta: ChatTurnMeta | null = null;
+let subscribed = false;
+
+function clone<T>(value: T): T {
+  return JSON.parse(JSON.stringify(value)) as T;
+}
+
+function sync(): void {
+  if (working) useChatStore.getState().setActive(clone(working), draft);
+}
+
+function errorMessage(e: unknown): string {
+  return e instanceof Error ? e.message : String(e);
+}
+
+function toTurnMeta(retrieval: RetrievalResponse): ChatTurnMeta {
+  const sources: ChatSourceRef[] = retrieval.sources.map((s) => ({
+    path: s.path,
+    title: s.title,
+    blockId: s.blockId,
+    snippet: s.snippet,
+    score: s.score,
+    vectorSim: s.vectorSim,
+    confidenceScore: s.confidenceScore,
+    via: s.via,
+  }));
+  const stages: ChatStageStat[] = retrieval.stages.map((s) => ({
+    stage: s.stage,
+    candidates: s.candidates,
+    elapsedMs: s.elapsedMs,
+    enabled: s.enabled,
+    note: s.note,
+  }));
+  return { sources, stages, degraded: retrieval.degraded, retrievalModel: retrieval.model };
+}
+
+async function persist(session: ChatSession): Promise<void> {
+  session.meta.updatedAt = new Date().toISOString();
+  try {
+    await client.saveChat(session);
+    draft = false;
+    sync();
+    await refreshSummaries();
+  } catch (e) {
+    useChatStore.getState().setError(`会话自动保存失败：${errorMessage(e)}`);
+  }
+}
+
+function finalizeStream(attachMeta: boolean): void {
+  streamId = null;
+  useChatStore.getState().setStreaming(false);
+  if (working) {
+    const assistant = working.turns[working.turns.length - 1];
+    if (assistant && assistant.role === 'assistant') {
+      if (attachMeta && pendingMeta) assistant.meta = pendingMeta;
+    }
+    pendingMeta = null;
+    void persist(working);
+  }
+}
+
+/** 订阅统一流事件（幂等，模块加载一次）。 */
+export function initChatRuntime(): void {
+  if (subscribed) return;
+  subscribed = true;
+  onEvent('ai:streamEvent', ({ streamId: sid, event }) => {
+    if (sid !== streamId || !working) return;
+    const assistant = working.turns[working.turns.length - 1];
+    if (!assistant || assistant.role !== 'assistant') return;
+    if (event.type === 'start') {
+      useChatStore.getState().setModelLabel(event.model);
+      working.meta.model = event.model;
+    } else if (event.type === 'delta') {
+      assistant.content += event.text;
+      sync();
+    } else if (event.type === 'done') {
+      finalizeStream(true);
+    } else if (event.type === 'error') {
+      useChatStore
+        .getState()
+        .setError(`${event.message}${event.code ? `（${event.code}）` : ''}`);
+      finalizeStream(true);
+    }
+  });
+}
+
+async function cancelActiveStream(): Promise<void> {
+  const id = streamId;
+  streamId = null;
+  pendingMeta = null;
+  if (id) await invoke('ai:chat:stream:cancel', { streamId: id }).catch(() => undefined);
+  useChatStore.getState().setStreaming(false);
+}
+
+export async function refreshSummaries(): Promise<void> {
+  try {
+    useChatStore.getState().setSummaries(await client.listChats());
+  } catch {
+    // vault 未就绪等场景静默
+  }
+}
+
+export async function refreshFolder(): Promise<void> {
+  try {
+    useChatStore.getState().setFolder((await client.getChatFolder()).folder);
+  } catch {
+    // 忽略
+  }
+}
+
+export async function startNewSession(): Promise<void> {
+  await cancelActiveStream();
+  working = await client.newChat();
+  draft = true;
+  useChatStore.getState().setError(null);
+  useChatStore.getState().setModelLabel(null);
+  sync();
+}
+
+export async function openSession(path: string): Promise<void> {
+  await cancelActiveStream();
+  working = await client.getChat(path);
+  draft = false;
+  useChatStore.getState().setError(null);
+  useChatStore.getState().setModelLabel(working.meta.model ?? null);
+  sync();
+}
+
+/** 按标题匹配历史会话（双链 [[会话标题]] 打开 dock 用）。命中返回 true。 */
+export function openChatByTitle(title: string): boolean {
+  const target = title.trim();
+  if (!target) return false;
+  const match = useChatStore
+    .getState()
+    .summaries.find((s) => s.title === target || s.title.replace(/\.md$/i, '') === target);
+  if (!match) return false;
+  void openSession(match.path);
+  return true;
+}
+
+/** 双链 [[会话标题]]：确保会话列表最新后按标题匹配；命中打开会话并返回 true。 */
+export async function openChatWikilinkOrNull(pageName: string): Promise<boolean> {
+  const name = pageName.trim();
+  if (!name) return false;
+  await refreshSummaries();
+  return openChatByTitle(name);
+}
+
+export function stopStream(): void {
+  void cancelActiveStream().then(() => {
+    if (working) void persist(working);
+  });
+}
+
+/** 发送一条用户消息并流式获取回答（含上下文注入与召回来源）。 */
+export async function sendMessage(rawText: string): Promise<void> {
+  const store = useChatStore.getState();
+  const content = rawText.trim();
+  if (!content || store.streaming) return;
+
+  store.setError(null);
+  if (!working) {
+    working = await client.newChat();
+    draft = true;
+  }
+  const session = working;
+  if (session.turns.length === 0) {
+    session.meta.title = content.slice(0, 24) || '新对话';
+  }
+  session.meta.updatedAt = new Date().toISOString();
+  session.turns.push({ role: 'user', content });
+  session.turns.push({ role: 'assistant', content: '' });
+  sync();
+  store.setStreaming(true);
+
+  // 自动保存：用户消息落盘（重启可续聊）。
+  await persist(session);
+
+  // 上下文注入：chips（显式选择）+ 知识库召回（DEV-011）。
+  // 发送前刷新「当前文档」chip，保证注入最新正文。
+  refreshAutoDocumentChip();
+  const { contextBlock } = assembleChatContext(useChatStore.getState().chips);
+  let retrieval: RetrievalResponse | null = null;
+  try {
+    retrieval = await retrieve({ query: content, budgetChars: 2000 });
+  } catch {
+    retrieval = null;
+  }
+
+  const prior = session.turns.slice(0, session.turns.length - 2);
+  const messages: ChatMessage[] = [{ role: 'system', content: SYSTEM_PROMPT }];
+  for (const turn of prior) {
+    messages.push({ role: turn.role, content: turn.content });
+  }
+  const contextParts: string[] = [];
+  if (contextBlock.trim()) contextParts.push(contextBlock.trim());
+  if (retrieval?.contextText.trim()) {
+    contextParts.push(`【知识库召回内容】\n${retrieval.contextText.trim()}`);
+  }
+  const userContent =
+    contextParts.length > 0
+      ? `${contextParts.join('\n\n')}\n\n（以上为参考资料，可能不完整或已截断）\n\n我的请求：\n${content}`
+      : content;
+  messages.push({ role: 'user', content: userContent });
+
+  pendingMeta = retrieval ? toTurnMeta(retrieval) : null;
+
+  try {
+    const { streamId: sid } = await invoke('ai:chat:stream:start', {
+      messages,
+      feature: 'chat',
+    });
+    streamId = sid;
+  } catch (e) {
+    streamId = null;
+    pendingMeta = null;
+    useChatStore.getState().setStreaming(false);
+    useChatStore.getState().setError(errorMessage(e));
+    if (working) await persist(working);
+  }
+}
+
+/** 会话转普通文档并在当前 tab 打开；返回新文档路径。 */
+export async function saveActiveAsDocument(userAsQuote: boolean): Promise<string | null> {
+  if (!working) return null;
+  await persist(working);
+  const info = await client.saveChatAsDocument(working.path, userAsQuote);
+  await refreshSummaries();
+  return info.path;
+}
+
+/** 取最后一条 assistant 回答正文（插入编辑器用）。 */
+export function lastAssistantContent(): string | null {
+  if (!working) return null;
+  for (let i = working.turns.length - 1; i >= 0; i -= 1) {
+    const turn: ChatTurn = working.turns[i]!;
+    if (turn.role === 'assistant' && turn.content.trim()) return turn.content;
+  }
+  return null;
+}

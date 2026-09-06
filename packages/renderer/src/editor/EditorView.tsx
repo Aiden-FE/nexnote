@@ -26,6 +26,9 @@ import {
   writingContextMenu,
   writingSlashItems,
 } from '../features/ai/writing';
+import { CHAT_ASK_ACTION, requestAskAi } from '../features/ai/chat/ask-ai';
+import { openChatWikilinkOrNull } from '../features/ai/chat/chat-runtime';
+import { useUiStore } from '../stores/ui-store';
 
 interface EditorViewProps {
   paneId: PaneId;
@@ -198,20 +201,49 @@ export function EditorView({ paneId, tab }: EditorViewProps) {
       },
       onWikilinkActivate: (target) => {
         const pageName = target.split('#')[0] || target;
-        const nextPath = `${sanitizePageTitle(pageName)}.md`;
-        useTabStore.getState().openTab(paneId, {
-          kind: 'page',
-          title: titleFromPath(nextPath),
-          pagePath: nextPath,
+        // DEV-012：双链指向会话（type: chat）时打开对话 dock 并加载该会话。
+        void openChatWikilinkOrNull(pageName).then((hit) => {
+          if (hit) {
+            useUiStore.getState().setActiveDockPanel('ai-chat');
+            return;
+          }
+          const nextPath = `${sanitizePageTitle(pageName)}.md`;
+          useTabStore.getState().openTab(paneId, {
+            kind: 'page',
+            title: titleFromPath(nextPath),
+            pagePath: nextPath,
+          });
         });
       },
       selectionBubble: {
-        actions: writingBubbleActions(),
-        onAction: (id, ctx) => writingController?.trigger(id, ctx),
+        actions: [
+          ...writingBubbleActions(),
+          { id: CHAT_ASK_ACTION, title: '询问 AI' },
+        ],
+        onAction: (id, ctx) => {
+          if (id === CHAT_ASK_ACTION) {
+            requestAskAi(ctx.text, titleFromPath(pathRef.current), pathRef.current);
+            return;
+          }
+          writingController?.trigger(id, ctx);
+        },
       },
       contextMenu: {
-        build: writingContextMenu,
-        onAction: (id, ctx) => writingController?.trigger(id, ctx),
+        build: (ctx) => [
+          ...writingContextMenu(ctx),
+          {
+            id: CHAT_ASK_ACTION,
+            title: '💬 询问 AI（送入对话）',
+            disabled: !ctx.text.trim(),
+          },
+        ],
+        onAction: (id, ctx) => {
+          if (id === CHAT_ASK_ACTION) {
+            requestAskAi(ctx.text, titleFromPath(pathRef.current), pathRef.current);
+            return;
+          }
+          writingController?.trigger(id, ctx);
+        },
       },
       extraSlashItems: writingController ? writingSlashItems(writingController) : [],
     });
