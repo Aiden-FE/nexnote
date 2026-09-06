@@ -34,6 +34,12 @@ if (process.env.NEXNOTE_SMOKE === '1') {
       ipcRenderer.invoke('smoke:capture', name),
     mkdtemp: (): Promise<{ ok: boolean; path?: string; error?: string }> =>
       ipcRenderer.invoke('smoke:mkdtemp'),
+    writeFile: (
+      root: string,
+      rel: string,
+      content: string,
+    ): Promise<{ ok: boolean; path?: string; error?: string }> =>
+      ipcRenderer.invoke('smoke:writeFile', { root, rel, content }),
     finish: (report: unknown): Promise<{ ok: boolean; error?: string }> =>
       ipcRenderer.invoke('smoke:finish', report),
   });

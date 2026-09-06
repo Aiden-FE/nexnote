@@ -12,6 +12,9 @@ export class FsError extends Error {
   }
 }
 
+/** vault 内始终不出现在树/扫描/链接更新中的目录名。 */
+export const EXCLUDED_DIRS = new Set(['.nexnote', '.git', '.trash', 'node_modules']);
+
 async function realpathOrNull(target: string): Promise<string | null> {
   try {
     return await fsp.realpath(target);
@@ -143,6 +146,16 @@ export class VaultFsService {
   async rename(fromRel: string, toRel: string): Promise<FileInfo> {
     const from = await this.resolve(fromRel);
     const to = await this.resolve(toRel);
+    if (from.abs === to.abs) {
+      throw new FsError('源路径与目标路径相同', 'SAME_PATH');
+    }
+    if (!(await fsp.stat(from.abs).catch(() => null))) {
+      throw new FsError(`源路径不存在: ${fromRel}`, 'NOT_FOUND');
+    }
+    if (await fsp.stat(to.abs).catch(() => null)) {
+      // POSIX rename 会静默覆盖同名文件，这里必须拒绝以免丢数据
+      throw new FsError(`目标已存在: ${toRel}`, 'TARGET_EXISTS');
+    }
     try {
       await fsp.mkdir(path.dirname(to.abs), { recursive: true });
       await fsp.rename(from.abs, to.abs);
@@ -151,6 +164,39 @@ export class VaultFsService {
     }
     const st = await fsp.stat(to.abs);
     return toFileInfo(toRel, st);
+  }
+
+  /**
+   * 全量列出 vault 树（DEV-003 页面树初始加载）。
+   * 始终排除 .nexnote/、.git/、.trash/；showAllFiles=false 时非 .md 文件也不返回。
+   * 返回扁平列表（含目录自身），顺序稳定（目录先、同层按名称）。
+   */
+  async listTree(showAllFiles = false): Promise<DirEntry[]> {
+    const root = await this.requireRoot();
+    const out: DirEntry[] = [];
+    const walk = async (relDir: string): Promise<void> => {
+      const absDir = relDir === '' ? root : path.join(root, relDir);
+      let dirents;
+      try {
+        dirents = await fsp.readdir(absDir, { withFileTypes: true });
+      } catch {
+        return;
+      }
+      dirents.sort((a, b) => a.name.localeCompare(b.name));
+      for (const d of dirents) {
+        if (EXCLUDED_DIRS.has(d.name)) continue;
+        const rel = relDir === '' ? d.name : `${relDir}/${d.name}`;
+        if (d.isDirectory()) {
+          out.push({ name: d.name, path: rel, kind: 'directory' });
+          await walk(rel);
+        } else if (d.isFile()) {
+          if (!showAllFiles && !d.name.toLowerCase().endsWith('.md')) continue;
+          out.push({ name: d.name, path: rel, kind: 'file' });
+        }
+      }
+    };
+    await walk('');
+    return out;
   }
 
   /** 直接删除（回收站逻辑由 IPC handler 层经 shell.trashItem 处理）。 */

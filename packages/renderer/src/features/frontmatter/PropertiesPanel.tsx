@@ -9,7 +9,7 @@ export interface PropertiesPanelProps {
   markdown: string;
   data: FrontmatterData;
   filePath: string;
-  /** 入链 / 出链数量（本票先用占位，DEV-004 接入真实索引） */
+  /** 入链 / 出链数量（由 DEV-004 Link Index 实时提供）。 */
   linkCounts?: { in: number; out: number };
 }
 
@@ -102,7 +102,7 @@ export function PropertiesPanel({
       </section>
 
       <section>
-        <SectionHeader icon={<Link2 className="size-3.5" />} title="链接（DEV-004 接入）" />
+        <SectionHeader icon={<Link2 className="size-3.5" />} title="链接" />
         <InfoRow label="入链">
           <span>{linkCounts.in}</span>
         </InfoRow>

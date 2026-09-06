@@ -82,7 +82,7 @@ export function registerVaultHandlers(registrar: IpcRegistrar): void {
 
   registrar.register('vault:reveal', async ({ path }, services): Promise<Result<void>> => {
     const { abs } = await services.fs.resolve(path);
-    services.reveal(abs);
+    await services.revealItem(abs);
     return ok(undefined);
   });
 }

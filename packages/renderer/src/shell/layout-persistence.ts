@@ -29,6 +29,8 @@ export function useVaultLayoutPersistence(vault: VaultInfo | null): void {
       if (merged.activeSidebarPanelId) ui.setActiveSidebarPanel(merged.activeSidebarPanelId);
       ui.setDockVisible(merged.dockVisible);
       ui.setDockWidth(merged.dockWidth);
+      ui.setTreeCollapsedDirs(merged.treeCollapsedDirs ?? []);
+      ui.setTreeShowAllFiles(merged.treeShowAllFiles ?? false);
       const tabs = useTabStore.getState();
       tabs.toggleSplit(merged.splitEnabled);
       tabs.setSplitRatio(merged.splitRatio);
@@ -54,6 +56,8 @@ export function useVaultLayoutPersistence(vault: VaultInfo | null): void {
         dockWidth: ui.dockWidth,
         splitEnabled: tabs.splitEnabled,
         splitRatio: tabs.splitRatio,
+        treeCollapsedDirs: ui.treeCollapsedDirs,
+        treeShowAllFiles: ui.treeShowAllFiles,
       };
     };
     const schedule = () => {

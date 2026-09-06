@@ -2,6 +2,7 @@ import { SlidersHorizontal } from 'lucide-react';
 import { dockPanelRegistry } from '../../registries';
 import { PropertiesPanel } from './PropertiesPanel';
 import { useDocumentPropertiesStore } from './document-properties-store';
+import { useLinkCounts } from './use-link-counts';
 
 /** DEV-005：右侧 Dock 的文档属性页签。 */
 dockPanelRegistry.register({
@@ -15,6 +16,7 @@ function DocumentPropertiesDockPanel() {
   const filePath = useDocumentPropertiesStore((s) => s.filePath);
   const markdown = useDocumentPropertiesStore((s) => s.markdown);
   const data = useDocumentPropertiesStore((s) => s.data);
+  const linkCounts = useLinkCounts(filePath);
 
   if (!filePath) {
     return (
@@ -27,5 +29,5 @@ function DocumentPropertiesDockPanel() {
     );
   }
 
-  return <PropertiesPanel markdown={markdown} data={data} filePath={filePath} />;
+  return <PropertiesPanel markdown={markdown} data={data} filePath={filePath} linkCounts={linkCounts} />;
 }

@@ -15,7 +15,7 @@ function TabContent({ paneId, tab }: { paneId: PaneId; tab: TabDescriptor }) {
     case 'files':
       return <FilesPage />;
     case 'page':
-      return <EditorView paneId={paneId} tab={tab} />;
+      return <EditorView key={tab.pagePath ?? tab.id} paneId={paneId} tab={tab} />;
     default:
       return <PlaceholderPage title={tab.title} />;
   }
