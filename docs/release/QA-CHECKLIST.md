@@ -2,8 +2,8 @@
 
 > 每个签名 release 都必须附此清单的**执行记录**，逐项填写【证据】。CI 通过不替代人工安装验证。
 > 下述标 🔒 的项是**公开发布 gate**：signed build、packaged smoke、完整 metadata/artifact preflight 和 machine-readable evidence validation 必须先在无 Environment 权限的 `preflight` dependency job 全部通过；之后 `publish` 才进入 GitHub Actions `release-qa` Environment 等待 required reviewers 审批。审批后才获取 durable publication lease、上传 assets 并创建 Release。
-> **环境配置是实际的、阻断性发布 gate：** 仓库管理员必须在 GitHub repository settings 创建 `release-qa` Environment，配置 required reviewers，并限制其 secrets/branch policy。该环境不存在、未设 reviewers、或 reviewers 未批准时，**不得启动/批准 `publish`，不得公开发布**。Workflow 还要求 dispatch inputs 中提供 canonical repository QA evidence URL、其 SHA-256 和 `all-required-checks-passed=true`；publish 会把这些值与本次 run/tag/commit/channel 绑定为 `release-qa-evidence-<run-id>` artifact 后才获取 publication lease。
-> **事实边界：** 当前 DEV-018 环境未进行有真实证书/私钥的跨平台物理安装、OS 信任 UI 或 N-1 网络升级验证；这些项目绝不应被表述为已验收。自动流水线先完成签名、公证、Linux GPG `.asc`、产物 preflight 和打包 macOS smoke；随后由目标平台 QA 完成本清单、附证据并获得 Environment 审批，才可公开发布。
+> **环境配置是实际的、阻断性发布 gate：** 仓库管理员必须在 GitHub repository settings 创建 `release-qa` Environment，配置 required reviewers，并限制其 secrets/branch policy。该环境不存在、未设 reviewers、或 reviewers 未批准时，**不得启动/批准 `publish`，不得公开发布**。自动 tag-push 使用 repository variables `RELEASE_QA_EVIDENCE_URL` / `RELEASE_QA_EVIDENCE_SHA256`（受控 dispatch 使用对应 inputs）；preflight fetch/hash 并把 evidence 与本次 run/tag/commit/channel 绑定为 `release-qa-evidence-<run-id>` artifact 后，publish 才能进入 approval/lease。
+> **事实边界：** 当前 DEV-018 环境未进行有真实证书/私钥的跨平台物理安装、OS 信任 UI 或 N-1 网络升级验证；这些项目绝不应被表述为已验收。自动流水线先完成签名、公证、Linux GPG `.asc`、产物 preflight 和打包 macOS smoke；随后由目标平台 QA 完成本清单、将不可变 JSON evidence 提交到 canonical repository，并获得 Environment 审批，才可公开发布。真实平台证据与 required-reviewer approval 均是不可绕过的 operational gate。
 
 ## Release record and approval evidence
 
@@ -19,8 +19,8 @@
 
 ## Before `release-qa` approval (all platforms)
 
-- [ ] 仅通过 `workflow_dispatch` 选择远端已存在的 immutable `vX.Y.Z` tag；tag 与 `package.json` 完全一致，且 build/smoke/publish 均 checkout 该 tag commit（不是触发分支/SHA）。
-  - 证据：`node scripts/check-version.mjs --require-tag vX.Y.Z` 输出、tag commit SHA 与 workflow inputs。
+- [ ] 推送远端 immutable `vX.Y.Z` tag 会自动触发候选流水线；tag 与 `package.json` 完全一致，且 build/smoke/publish 均 checkout 该 tag commit（不是触发分支/SHA）。受控 dispatch 只允许从同一 tag ref 重跑。
+  - 证据：tag-push workflow URL、`node scripts/check-version.mjs --require-tag vX.Y.Z` 输出和 tag commit SHA。
 - [ ] `pnpm lint && pnpm typecheck && pnpm test && pnpm verify:release-config && pnpm build` 绿色。
   - 证据：各命令退出码与测试计数。
 - [ ] PR checks、三平台签名 jobs、打包 smoke 与 `preflight` dependency job 均通过，然后才允许 `release-qa` Environment 审批。

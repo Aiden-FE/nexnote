@@ -86,6 +86,17 @@ describe('channel resolution', () => {
     expect(setUpdateChannel('nightly' as never)).toMatchObject({ status: 'error' });
   });
 
+  it('maps stable to electron-updater latest metadata', async () => {
+    delete process.env.NEXNOTE_UPDATE_URL;
+    envBackup = { ...process.env };
+    const { adapter } = makeAdapter();
+    restore = setUpdaterAdapterForTests(adapter, { isPackaged: true, getVersion: () => '0.1.0' });
+    initAutoUpdater(() => {}, () => {}, 'stable');
+    expect(adapter.channel).toBe('latest');
+    // GitHub provider must omit channel for stable so electron-updater reads latest*.yml.
+    expect(adapter.setFeedURL).not.toHaveBeenCalled();
+  });
+
   it('normalizeChannel accepts only stable/beta/alpha', () => {
     expect(normalizeChannel('beta')).toBe('beta');
     expect(normalizeChannel(' BETA ')).toBe('beta');

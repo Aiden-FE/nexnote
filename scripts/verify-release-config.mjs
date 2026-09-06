@@ -55,6 +55,12 @@ check('appId 存在', () => {
 check('productName 存在', () => {
   if (!cfg.productName) throw new Error('missing productName');
 });
+check('native macOS/Windows installer icons exist', () => {
+  for (const file of ['build/icon.icns', 'build/icon.ico']) {
+    try { if (readFileSync(resolve(root, file)).length < 32) throw new Error('too small'); } catch { throw new Error(`native icon missing: ${file}`); }
+  }
+  if (cfg.mac?.icon !== 'build/icon.icns' || cfg.win?.icon !== 'build/icon.ico') throw new Error('native platform icon config missing');
+});
 check('macOS 有 dmg + zip 双架构', () => {
   const targets = cfg.mac?.target ?? [];
   const kinds = new Set(targets.map((t) => (typeof t === 'string' ? t : t.target)));
@@ -165,9 +171,9 @@ check('单个 publish job，经受保护 QA Environment 与 evidence gate 后才
   if (!/release-qa-evidence\.json/.test(releaseWorkflow) || !/release-evidence\.mjs validate/.test(releaseWorkflow)) throw new Error('publish must validate a machine-readable run-bound evidence manifest');
   if (!/Preflight signed artifact set/.test(releaseWorkflow) || !/softprops\/action-gh-release/.test(releaseWorkflow)) throw new Error('publish requires preflight then single uploader');
 });
-check('workflow_dispatch 只能发布 existing immutable tag 且版本必须匹配', () => {
+check('tag push 自动触发且只能发布 existing immutable tag', () => {
   const wf = yaml.load(releaseWorkflow);
-  if (!wf.on?.workflow_dispatch || Object.keys(wf.on).some((event) => event !== 'workflow_dispatch')) throw new Error('public release must be dispatch-only');
+  if (!wf.on?.push?.tags?.includes('v*.*.*') || !wf.on?.workflow_dispatch) throw new Error('release must trigger automatically on version-tag push and support controlled dispatch');
   const inputs = wf.on.workflow_dispatch.inputs ?? {};
   for (const name of ['release-tag', 'qa-evidence-url', 'qa-evidence-sha256', 'qa-all-required-checks-passed']) {
     if (inputs[name]?.required !== true) throw new Error(`required dispatch input missing: ${name}`);
@@ -185,6 +191,9 @@ check('publisher 使用不丢队列的 durable remote-ref lease 与幂等 tag re
   if (!/for attempt in \$\(seq 1 180\)/.test(releaseWorkflow)) throw new Error('lease contenders must retry rather than be dropped');
   if (!/run remains failed and rerunnable, never silently dropped/.test(releaseWorkflow)) throw new Error('lease timeout behavior must be explicit and rerunnable');
   if (!/tag_name:/.test(releaseWorkflow)) throw new Error('release retries must be idempotent by immutable tag');
+  for (const guard of ['$((now - owner_time))" -ge 2700', 'api.github.com/repos/$GITHUB_REPOSITORY/actions/runs/$owner_run', 'status" = completed', 'sha256sum --check SHA256SUMS', 'lost publication lease ownership']) {
+    if (!releaseWorkflow.includes(guard)) throw new Error(`stale lease/prepublish guard missing: ${guard}`);
+  }
 });
 check('preflight 强制 channel manifest、blockmap 与 Linux .asc', () => {
   if (!/Linux GPG private key is required/.test(releaseWorkflow)) throw new Error('Linux key may not be optional');
@@ -194,6 +203,8 @@ check('preflight 强制 channel manifest、blockmap 与 Linux .asc', () => {
     if (!releaseWorkflow.includes(metadata)) throw new Error(`preflight metadata requirement missing: ${metadata}`);
   }
   if (!/files: release\/\*\*\/\*/.test(releaseWorkflow)) throw new Error('publish glob must include release/**/* to capture metadata and .asc');
+  if (!/merge-multiple:\s*false/.test(releaseWorkflow) || !/merge-mac-update-manifests\.mjs/.test(releaseWorkflow)) throw new Error('native mac manifests must remain isolated until explicit merge');
+  if (!/Rebuild bundled Git for runner target architecture/.test(releaseWorkflow) || !/file "\$gitbin"/.test(releaseWorkflow)) throw new Error('mac dugite binary must be rebuilt and architecture checked');
 });
 check('smoke 缺产物必须失败、写入临时目录且 QA gate 顺序一致', () => {
   if (/skipping e2e smoke|process\.exit\(0\)/.test(smoke)) throw new Error('smoke script may not skip missing artifact');

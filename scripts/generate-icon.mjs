@@ -73,10 +73,23 @@ function makePng(size, { r, g, b }) {
 
 // NexNote placeholder: deep indigo square with lighter inner block
 const color = { r: 49, g: 46, b: 129 };
-writeFileSync(resolve(outDir, 'icon.png'), makePng(512, color));
-writeFileSync(resolve(outDir, 'linux-icon.png'), makePng(256, color));
+const png512 = makePng(512, color);
+const png256 = makePng(256, color);
+writeFileSync(resolve(outDir, 'icon.png'), png512);
+writeFileSync(resolve(outDir, 'linux-icon.png'), png256);
+// Native containers embed PNG payloads: ICO supports PNG since Vista; ICNS `ic08` is 256px PNG.
+const icoHeader = Buffer.alloc(22);
+icoHeader.writeUInt16LE(0, 0); icoHeader.writeUInt16LE(1, 2); icoHeader.writeUInt16LE(1, 4);
+icoHeader[6] = 0; icoHeader[7] = 0; icoHeader[8] = 0; icoHeader[9] = 0;
+icoHeader.writeUInt16LE(1, 10); icoHeader.writeUInt16LE(32, 12); icoHeader.writeUInt32LE(png256.length, 14); icoHeader.writeUInt32LE(22, 18);
+writeFileSync(resolve(outDir, 'icon.ico'), Buffer.concat([icoHeader, png256]));
+const icnsChunk = Buffer.concat([Buffer.from('ic08'), Buffer.alloc(4), png256]);
+icnsChunk.writeUInt32BE(icnsChunk.length, 4);
+const icns = Buffer.concat([Buffer.from('icns'), Buffer.alloc(4), icnsChunk]);
+icns.writeUInt32BE(icns.length, 4);
+writeFileSync(resolve(outDir, 'icon.icns'), icns);
 
-const files = ['icon.png', 'linux-icon.png'];
+const files = ['icon.png', 'linux-icon.png', 'icon.ico', 'icon.icns'];
 for (const f of files) {
   const p = resolve(outDir, f);
   console.log(`${f}: ${createHash('sha256').update(makePng(512, color)).digest('hex').slice(0, 0)}written ${p}`);

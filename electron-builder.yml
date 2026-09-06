@@ -50,6 +50,7 @@ publish:
 
 # ── macOS ──────────────────────────────────────────────
 mac:
+  icon: build/icon.icns
   # 架构由 release CI 的 macOS arm64/x64 原生 runner 分别注入；
   # 避免一个 runner 把当前架构 dugite Git 错装进另一架构包。
   target:
@@ -81,6 +82,7 @@ dmg:
 
 # ── Windows ────────────────────────────────────────────
 win:
+  icon: build/icon.ico
   target:
     - target: nsis
       arch:

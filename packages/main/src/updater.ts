@@ -76,13 +76,15 @@ function resolveStartupChannel(persisted: UpdateChannel | undefined): UpdateChan
   return resolveChannelFromEnv();
 }
 
+export const updaterChannel = (channel: UpdateChannel): string => (channel === 'stable' ? 'latest' : channel);
+
 const feedConfig = (channel: UpdateChannel): UpdateFeedConfig => {
   if (!VALID_CHANNELS.includes(channel)) {
     throw new Error(`非法更新通道: ${channel}（必须是 stable/beta/alpha）`);
   }
   const genericBase = process.env.NEXNOTE_UPDATE_URL?.replace(/\/+$/, '');
-  if (genericBase) return { provider: 'generic', url: `${genericBase}/${channel}`, channel };
-  return { provider: 'github', owner: REPO_OWNER, repo: REPO_NAME, channel };
+  if (genericBase) return { provider: 'generic', url: `${genericBase}/${channel}`, channel: updaterChannel(channel) };
+  return { provider: 'github', owner: REPO_OWNER, repo: REPO_NAME, ...(channel === 'stable' ? {} : { channel }) };
 };
 
 /** electron-updater 的 autoUpdater 在 import 时即读取 Electron app（Node 环境会崩），按需懒加载。 */
@@ -144,7 +146,8 @@ export function initAutoUpdater(
   const a = getAdapter();
   a.autoDownload = false;
   a.autoInstallOnAppQuit = true;
-  a.channel = activeChannel;
+  // electron-updater's stable metadata is latest*.yml, never stable*.yml.
+  a.channel = updaterChannel(activeChannel);
   // GitHub 默认交给 electron-updater 读取打包进 app-update.yml 的 provider/channel；
   // 仅当配置了 generic 静态源时才主动 setFeedURL 覆盖。
   const genericBase = process.env.NEXNOTE_UPDATE_URL?.replace(/\/+$/, '');

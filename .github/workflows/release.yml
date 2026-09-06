@@ -1,8 +1,10 @@
 name: Release
 
-# Public release is intentionally dispatch-only. A human must select an existing
-# immutable tag and supply QA evidence; arbitrary branch/SHA publication is rejected.
+# Tags automatically start the signed candidate pipeline. `prepare` binds every job
+# to that immutable tag; protected QA approval remains required before publication.
 on:
+  push:
+    tags: ['v*.*.*']
   workflow_dispatch:
     inputs:
       release-tag:
@@ -44,7 +46,10 @@ jobs:
     outputs:
       tag: ${{ steps.release.outputs.tag }}
       commit: ${{ steps.release.outputs.commit }}
-      channel: ${{ inputs.channel }}
+      channel: ${{ steps.release.outputs.channel }}
+      evidence_url: ${{ steps.release.outputs.evidence_url }}
+      evidence_sha256: ${{ steps.release.outputs.evidence_sha256 }}
+      evidence_attested: ${{ steps.release.outputs.evidence_attested }}
     steps:
       # Pinned action SHAs are maintained by Dependabot (.github/dependabot.yml).
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
@@ -53,19 +58,45 @@ jobs:
       - id: release
         name: Resolve immutable tag and enforce package version
         env:
-          RELEASE_TAG: ${{ inputs.release-tag }}
+          DISPATCH_TAG: ${{ inputs.release-tag }}
+          DISPATCH_CHANNEL: ${{ inputs.channel }}
+          DISPATCH_EVIDENCE_URL: ${{ inputs.qa-evidence-url }}
+          DISPATCH_EVIDENCE_SHA256: ${{ inputs.qa-evidence-sha256 }}
+          DISPATCH_EVIDENCE_ATTESTED: ${{ inputs.qa-all-required-checks-passed }}
+          TAG_EVIDENCE_URL: ${{ vars.RELEASE_QA_EVIDENCE_URL }}
+          TAG_EVIDENCE_SHA256: ${{ vars.RELEASE_QA_EVIDENCE_SHA256 }}
         run: |
           set -euo pipefail
+          if [ "$GITHUB_EVENT_NAME" = push ]; then
+            RELEASE_TAG="$GITHUB_REF_NAME"
+            RELEASE_CHANNEL=stable
+            [[ "$RELEASE_TAG" == *-beta.* ]] && RELEASE_CHANNEL=beta
+            [[ "$RELEASE_TAG" == *-alpha.* ]] && RELEASE_CHANNEL=alpha
+            EVIDENCE_URL="$TAG_EVIDENCE_URL"
+            EVIDENCE_SHA256="$TAG_EVIDENCE_SHA256"
+            EVIDENCE_ATTESTED=true
+          else
+            RELEASE_TAG="$DISPATCH_TAG"
+            RELEASE_CHANNEL="$DISPATCH_CHANNEL"
+            EVIDENCE_URL="$DISPATCH_EVIDENCE_URL"
+            EVIDENCE_SHA256="$DISPATCH_EVIDENCE_SHA256"
+            EVIDENCE_ATTESTED="$DISPATCH_EVIDENCE_ATTESTED"
+          fi
           [[ "$RELEASE_TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+(-[a-z]+\.[0-9]+)?$ ]] || exit 1
-          test "$GITHUB_REF" = "refs/tags/$RELEASE_TAG" || { echo '::error::dispatch ref must be the exact release tag, never a branch'; exit 1; }
+          test "$GITHUB_REF" = "refs/tags/$RELEASE_TAG" || { echo '::error::release ref must be the exact tag, never a branch'; exit 1; }
           git fetch --force --tags origin
           git rev-parse --verify "refs/tags/$RELEASE_TAG^{commit}" >/dev/null 2>&1 || { echo '::error::release-tag must be an existing immutable tag'; exit 1; }
           commit=$(git rev-parse "refs/tags/$RELEASE_TAG^{commit}")
           test "$commit" = "$GITHUB_SHA" || { echo '::error::release tag moved since dispatch'; exit 1; }
           git checkout --detach "$commit"
           node scripts/check-version.mjs --require-tag "$RELEASE_TAG"
+          test -n "$EVIDENCE_URL" && test -n "$EVIDENCE_SHA256" || { echo '::error::immutable QA evidence variables are required for automatic tag releases'; exit 1; }
           echo "tag=$RELEASE_TAG" >> "$GITHUB_OUTPUT"
           echo "commit=$commit" >> "$GITHUB_OUTPUT"
+          echo "channel=$RELEASE_CHANNEL" >> "$GITHUB_OUTPUT"
+          echo "evidence_url=$EVIDENCE_URL" >> "$GITHUB_OUTPUT"
+          echo "evidence_sha256=$EVIDENCE_SHA256" >> "$GITHUB_OUTPUT"
+          echo "evidence_attested=$EVIDENCE_ATTESTED" >> "$GITHUB_OUTPUT"
 
   build:
     needs: prepare
@@ -98,6 +129,14 @@ jobs:
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with: { node-version: 22, cache: pnpm }
       - run: pnpm install --frozen-lockfile
+      - name: Rebuild bundled Git for runner target architecture
+        if: runner.os == 'macOS'
+        run: |
+          rm -rf node_modules/.pnpm/dugite@*/node_modules/dugite/git
+          pnpm rebuild dugite
+          gitbin=$(find node_modules -path '*/dugite/git/bin/git' -print -quit)
+          test -x "$gitbin" || { echo '::error::dugite Git missing'; exit 1; }
+          file "$gitbin" | grep -q "${{ runner.arch == 'ARM64' && 'arm64' || 'x86_64' }}" || { echo '::error::dugite Git architecture mismatch'; exit 1; }
       - name: Validate immutable release version and configuration
         run: |
           node scripts/check-version.mjs --require-tag "${{ needs.prepare.outputs.tag }}"
@@ -176,7 +215,9 @@ jobs:
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: nexnote-${{ matrix.artifact }}
-          path: release/*
+          # Preserve each native builder output directory: latest-mac.yml from one
+          # architecture must never overwrite the other before preflight aggregation.
+          path: release
           if-no-files-found: error
 
   smoke:
@@ -218,7 +259,13 @@ jobs:
         with:
           pattern: nexnote-*
           path: release
-          merge-multiple: true
+          merge-multiple: false
+      - name: Merge native macOS update manifests and flatten artifacts
+        run: |
+          node scripts/merge-mac-update-manifests.mjs release "${{ needs.prepare.outputs.channel }}"
+          # Keep the newly merged root mac manifest; flatten all other artifacts only
+          # after native manifests were read from their isolated artifact directories.
+          find release -mindepth 2 -type f ! -name '*-mac.yml' -exec mv -n {} release/ \;
       - name: Preflight signed artifact set and immutable version
         run: |
           shopt -s nullglob
@@ -237,14 +284,17 @@ jobs:
           ((${#appimages[@]} && ${#debs[@]} && ${#maczips[@]} && ${#macdmg[@]} && ${#windows[@]} && ${#blockmaps[@]} && ${#manifests[@]})) || { echo '::error::incomplete distributable or auto-update metadata set'; exit 1; }
           for artifact in "${appimages[@]}" "${debs[@]}"; do test -f "$artifact.asc" || { echo "::error::missing GPG signature for $artifact"; exit 1; }; done
           node scripts/check-version.mjs --require-tag "${{ needs.prepare.outputs.tag }}"
+          # Bind the exact preflighted bytes; publish verifies this again immediately before upload.
+          (cd release && find . -type f ! -name SHA256SUMS -print0 | sort -z | xargs -0 sha256sum > SHA256SUMS)
+          test -s release/SHA256SUMS
       - name: Fetch, verify, and bind immutable QA evidence
         env:
           RELEASE_CHANNEL: ${{ needs.prepare.outputs.channel }}
           RELEASE_TAG: ${{ needs.prepare.outputs.tag }}
           RELEASE_COMMIT: ${{ needs.prepare.outputs.commit }}
-          QA_EVIDENCE_URL: ${{ inputs.qa-evidence-url }}
-          QA_EVIDENCE_SHA256: ${{ inputs.qa-evidence-sha256 }}
-          QA_ALL_REQUIRED_CHECKS_PASSED: ${{ inputs.qa-all-required-checks-passed }}
+          QA_EVIDENCE_URL: ${{ needs.prepare.outputs.evidence_url }}
+          QA_EVIDENCE_SHA256: ${{ needs.prepare.outputs.evidence_sha256 }}
+          QA_ALL_REQUIRED_CHECKS_PASSED: ${{ needs.prepare.outputs.evidence_attested }}
         run: |
           GITHUB_REF_NAME="$RELEASE_TAG" GITHUB_SHA="$RELEASE_COMMIT" node scripts/release-evidence.mjs create release-qa-evidence.json
           GITHUB_REF_NAME="$RELEASE_TAG" GITHUB_SHA="$RELEASE_COMMIT" node scripts/release-evidence.mjs validate release-qa-evidence.json
@@ -264,6 +314,8 @@ jobs:
   publish:
     needs: [prepare, preflight]
     runs-on: ubuntu-latest
+    # Bounds lease wait plus the privileged publisher action.
+    timeout-minutes: 45
     environment:
       name: release-qa
     permissions:
@@ -294,10 +346,42 @@ jobs:
               echo "PUBLICATION_LEASE_ACQUIRED=true" >> "$GITHUB_ENV"
               exit 0
             fi
+
+            # Stale takeover is fail-closed: read exact remote owner SHA/message, require
+            # an old lease AND a terminal owner run via canonical GitHub API, then CAS it.
+            git fetch --no-tags origin +refs/heads/release-publication-lock:refs/remotes/origin/release-publication-lock 2>/dev/null || { sleep 10; continue; }
+            old=$(git rev-parse refs/remotes/origin/release-publication-lock)
+            message=$(git log -1 --format=%B "$old")
+            case "$message" in publication\ lease\ *\/\*\/\*) ;; *) sleep 10; continue ;; esac
+            owner_run=$(printf '%s' "$message" | sed -E 's#^publication lease ([0-9]+)/([0-9]+)/.*#\1#')
+            owner_time=$(git log -1 --format=%ct "$old")
+            now=$(date +%s)
+            if [ "$((now - owner_time))" -ge 2700 ]; then
+              response=$(curl --fail-with-body --silent --show-error --max-time 10 \
+                -H "Authorization: Bearer $GITHUB_TOKEN" -H 'Accept: application/vnd.github+json' \
+                "https://api.github.com/repos/$GITHUB_REPOSITORY/actions/runs/$owner_run") || { sleep 10; continue; }
+              status=$(printf '%s' "$response" | python3 -c 'import json,sys; print(json.load(sys.stdin).get("status", ""))')
+              if [ "$status" = completed ] && git push --force-with-lease=refs/heads/release-publication-lock:$old origin "$owner:refs/heads/release-publication-lock"; then
+                echo "PUBLICATION_LEASE_ACQUIRED=true" >> "$GITHUB_ENV"
+                exit 0
+              fi
+            fi
             sleep 10
           done
           echo '::error::publication lease unavailable after 30 minutes; run remains failed and rerunnable, never silently dropped'
           exit 1
+      - name: Revalidate lease ownership, remote tag, commit, and artifact digests
+        env:
+          RELEASE_TAG: ${{ needs.prepare.outputs.tag }}
+          RELEASE_COMMIT: ${{ needs.prepare.outputs.commit }}
+        run: |
+          set -euo pipefail
+          test "$PUBLICATION_LEASE_ACQUIRED" = true
+          git fetch --force --tags origin
+          test "$(git rev-parse refs/remotes/origin/release-publication-lock)" = "$PUBLICATION_LEASE_OWNER" || { echo '::error::lost publication lease ownership'; exit 1; }
+          test "$(git rev-parse "refs/tags/$RELEASE_TAG^{commit}")" = "$RELEASE_COMMIT" || { echo '::error::remote release tag no longer resolves to approved commit'; exit 1; }
+          test "$(git rev-parse HEAD)" = "$RELEASE_COMMIT" || { echo '::error::publisher checkout differs from approved commit'; exit 1; }
+          (cd release && sha256sum --check SHA256SUMS)
       # Same immutable tag resolves to the same GitHub Release, making explicit retries idempotent.
       - name: Attach artifacts to GitHub Release
         uses: softprops/action-gh-release@3bb12739c298aeb8a4eeaf626c5b8d85266b0e65 # v2
