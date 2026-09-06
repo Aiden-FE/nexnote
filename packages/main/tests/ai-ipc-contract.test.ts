@@ -116,10 +116,13 @@ describe('密钥安全 IPC 契约（密钥永不经过渲染层）', () => {
       profileId: saved.id,
       messages: [{ role: 'user', content: 'hi' }],
     });
-    const embed = await call<{ dimensions: number; vectors: number[][] }>('ai:embed', {
-      texts: ['契约测试'],
-    });
-    expect(embed.dimensions).toBe(1536);
+    const embed = await call<number[][]>('ai:embed', { texts: ['契约测试'] });
+    expect(embed[0]).toHaveLength(1536);
+    const metadata = await call<{ dimensions: number; vectors: number[][] }>(
+      'ai:embedWithMetadata',
+      { texts: ['契约测试'] },
+    );
+    expect(metadata.dimensions).toBe(1536);
 
     // 等待流事件推送完成
     await new Promise((r) => setTimeout(r, 300));

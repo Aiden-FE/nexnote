@@ -43,6 +43,25 @@ describe('SecretVault（密钥安全存储）', () => {
     expect(() => v.decrypt('anything')).toThrow(SecretStorageUnavailableError);
   });
 
+  it('Linux basic_text backend 即使声称可加密也 fail-closed', () => {
+    const vault = createSecretVault({
+      ...fakeSafe(true),
+      getSelectedStorageBackend: () => 'basic_text',
+    });
+    expect(vault.available).toBe(false);
+    expect(vault).toBeInstanceOf(UnavailableSecretVault);
+  });
+
+  it('safeStorage backend 探测抛错时当作不可用', () => {
+    const vault = createSecretVault({
+      ...fakeSafe(true),
+      getSelectedStorageBackend: () => {
+        throw new Error('backend unavailable');
+      },
+    });
+    expect(vault.available).toBe(false);
+  });
+
   it('safeStorage.isEncryptionAvailable 抛错时当作不可用', () => {
     const broken: SafeStorageLike = {
       isEncryptionAvailable: () => {

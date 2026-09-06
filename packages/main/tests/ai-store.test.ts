@@ -140,8 +140,14 @@ describe('AiStore（Profile 存储 + 密钥安全）', () => {
     expect(rewritten).not.toContain('plain:');
   });
 
-  it('校验：非法 base-url / 空名称 / 空模型拒绝', () => {
+  it('校验：非法 base-url / URL userinfo / 空名称 / 空模型拒绝', () => {
     expect(() => store.saveProfile(undefined, { ...input, baseUrl: 'ftp://x' })).toThrow(/http/);
+    expect(() =>
+      store.saveProfile(undefined, {
+        ...input,
+        baseUrl: 'https://user:password@api.example.com/v1',
+      }),
+    ).toThrow(/不得包含用户名\/密码/);
     expect(() => store.saveProfile(undefined, { ...input, name: '  ' })).toThrow(/名称/);
     expect(() => store.saveProfile(undefined, { ...input, defaultModel: '' })).toThrow(/模型/);
   });
@@ -168,28 +174,28 @@ describe('AiStore（Profile 存储 + 密钥安全）', () => {
     let state = store.getState();
     expect(state.features.writing?.model).toBe('gpt-4o');
     expect(state.features.embedding?.profileId).toBe(b.id);
-    expect(state.embeddingGeneration).toBe(1); // 首次设置 embedding 即 generation 1
+    expect(state.embeddingGeneration).toBe(2); // 默认跟随源 + 显式 embedding 指定各触发一次
     expect(state.embeddingFingerprint).toBe(`${b.id}:text-embedding-3-small:auto:cosine`);
 
     // 无关变更不增 generation
     store.setFeatureAssignment('chat', { profileId: a.id, model: 'gpt-4o-mini' });
-    expect(store.getState().embeddingGeneration).toBe(1);
+    expect(store.getState().embeddingGeneration).toBe(2);
 
     // 维度探测回写 → 指纹变化 → generation+1（= 索引需重建）
     store.recordEmbeddingDimensions(1536);
     state = store.getState();
-    expect(state.embeddingGeneration).toBe(2);
+    expect(state.embeddingGeneration).toBe(3);
     expect(state.embeddingFingerprint).toBe(`${b.id}:text-embedding-3-small:1536:cosine`);
 
     // 切换 embedding 模型 → generation+1
     store.setFeatureAssignment('embedding', { profileId: b.id, model: 'text-embedding-3-large' });
-    expect(store.getState().embeddingGeneration).toBe(3);
+    expect(store.getState().embeddingGeneration).toBe(4);
 
-    // 置空 → 指纹清空（generation 仍递增）
+    // 置空 → 恢复跟随默认 Profile（generation 仍递增）
     store.setFeatureAssignment('embedding', null);
     state = store.getState();
-    expect(state.embeddingFingerprint).toBeNull();
-    expect(state.embeddingGeneration).toBe(4);
+    expect(state.embeddingFingerprint).toBe(`${a.id}:gpt-4o-mini:auto:cosine`);
+    expect(state.embeddingGeneration).toBe(5);
   });
 
   it('导出捆绑不含密钥；导入按名称合并（密钥永不导入）', () => {

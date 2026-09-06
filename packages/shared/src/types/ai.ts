@@ -74,11 +74,16 @@ export interface AiProfileInput {
 /** 分功能指定：写作辅助 / 对话 / embedding 三处可分别指定 Profile + 模型。 */
 export type AiFeatureKey = 'writing' | 'chat' | 'embedding';
 
+/** embedding 距离度量（不得硬编码；指纹计入）。 */
+export type EmbeddingMetric = 'cosine' | 'dotProduct' | 'euclidean';
+
 export interface AiFeatureAssignment {
   profileId: string;
   model: string;
   /** embedding 专用：上次成功 embed 探测到的维度（未探测为 null） */
   dimensions?: number | null;
+  /** embedding 专用：距离度量；缺省由实现按 Provider/模型决定（默认 cosine） */
+  metric?: EmbeddingMetric;
 }
 
 export type AiFeatureAssignments = Record<AiFeatureKey, AiFeatureAssignment | null>;
@@ -146,7 +151,7 @@ export interface AiProfileExportBundle {
   features: {
     writing: { name: string; model: string } | null;
     chat: { name: string; model: string } | null;
-    embedding: { name: string; model: string } | null;
+    embedding: { name: string; model: string; metric?: EmbeddingMetric } | null;
   };
   defaultProfileName: string | null;
 }

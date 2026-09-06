@@ -13,9 +13,25 @@ import {
 const REQUEST_TIMEOUT_MS = 120_000;
 const CONNECT_TIMEOUT_MS = 15_000;
 
-/** 规范化 base URL：去尾部斜杠。 */
+/** 规范化 base URL：去尾部斜杠 + 拒绝 userinfo（URL 中嵌入凭据会泄漏到请求头/日志）。 */
 function normalizeBase(baseUrl: string): string {
-  return baseUrl.trim().replace(/\/+$/, '');
+  const trimmed = baseUrl.trim().replace(/\/+$/, '');
+  let url: URL;
+  try {
+    url = new URL(trimmed);
+  } catch {
+    throw new ProviderError('Base URL 必须是有效的 http(s) URL', 'BAD_BASE_URL');
+  }
+  if (url.username || url.password) {
+    throw new ProviderError(
+      'Base URL 不得包含用户名/密码（凭据应通过 API Key 字段传入）',
+      'BAD_BASE_URL',
+    );
+  }
+  if (url.protocol !== 'http:' && url.protocol !== 'https:') {
+    throw new ProviderError('Base URL 必须使用 http(s) 协议', 'BAD_BASE_URL');
+  }
+  return trimmed;
 }
 
 function joinUrl(base: string, path: string): string {
@@ -49,16 +65,16 @@ function extractUsage(raw: unknown): TokenUsage | undefined {
   };
 }
 
-async function readErrorBody(res: Response): Promise<string> {
-  try {
-    const text = await res.text();
-    return text.slice(0, 500);
-  } catch {
-    return '';
-  }
+/**
+ * Provider bodies are untrusted and may echo credentials or document content. Never copy them to
+ * errors, IPC, or logs; only retain the status and operation for diagnostics.
+ */
+function logRedactedProviderError(res: Response, op: string): void {
+  console.warn(`[ai:${op}] HTTP ${res.status} (provider response body redacted)`);
 }
 
-function messageFromStatus(status: number, body: string): string {
+/** 通用状态消息：仅状态 + 静态提示词（不含 body），安全进入 IPC。 */
+function safeMessageFromStatus(status: number): string {
   const hint =
     status === 401 || status === 403
       ? '（密钥无效或无权限）'
@@ -67,7 +83,7 @@ function messageFromStatus(status: number, body: string): string {
         : status === 429
           ? '（限流或额度不足）'
           : '';
-  return `供应商返回 HTTP ${status}${hint}${body ? `: ${body}` : ''}`;
+  return `供应商返回 HTTP ${status}${hint}`;
 }
 
 /**
@@ -272,12 +288,14 @@ export class OpenAIProtocolAdapter implements ProviderAdapter {
     } catch (e) {
       throw this.networkError(e);
     }
-    if (!res.ok)
+    if (!res.ok) {
+      logRedactedProviderError(res, 'provider');
       throw new ProviderError(
-        messageFromStatus(res.status, await readErrorBody(res)),
+        safeMessageFromStatus(res.status),
         'PROVIDER_HTTP',
         res.status,
       );
+    }
     const body = (await res.json()) as { data?: Array<{ id?: string }> };
     return (body.data ?? [])
       .map((m) => (typeof m?.id === 'string' ? m.id : ''))
@@ -304,12 +322,14 @@ export class OpenAIProtocolAdapter implements ProviderAdapter {
     } catch (e) {
       throw this.networkError(e);
     }
-    if (!res.ok)
+    if (!res.ok) {
+      logRedactedProviderError(res, 'provider');
       throw new ProviderError(
-        messageFromStatus(res.status, await readErrorBody(res)),
+        safeMessageFromStatus(res.status),
         'PROVIDER_HTTP',
         res.status,
       );
+    }
     const body = (await res.json()) as {
       model?: string;
       choices?: Array<{ message?: { content?: string | null } }>;
@@ -361,9 +381,10 @@ export class OpenAIProtocolAdapter implements ProviderAdapter {
       }
       if (!res.ok) {
         finish();
+        logRedactedProviderError(res, 'chatStream');
         onEvent({
           type: 'error',
-          message: messageFromStatus(res.status, await readErrorBody(res)),
+          message: safeMessageFromStatus(res.status),
           code: 'PROVIDER_HTTP',
         });
         return;
@@ -449,8 +470,9 @@ export class OpenAIProtocolAdapter implements ProviderAdapter {
       throw this.networkError(e);
     }
     if (!res.ok) {
+      logRedactedProviderError(res, 'embeddings');
       throw new ProviderError(
-        messageFromStatus(res.status, await readErrorBody(res)),
+        safeMessageFromStatus(res.status),
         'PROVIDER_HTTP',
         res.status,
       );

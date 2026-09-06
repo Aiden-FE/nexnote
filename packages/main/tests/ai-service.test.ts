@@ -221,6 +221,23 @@ describe('AiService', () => {
     expect(service.cancelChatStream('no-such')).toBe(false);
   });
 
+  it('跟随默认的 embed 首次维度回写会固化有效配置并广播变更', async () => {
+    const { service, sent } = makeService();
+    const id = saveMockProfile(service, { defaultModel: 'text-embedding-3-small' });
+    sent.length = 0;
+
+    await service.embed(['hello']);
+    const state = service.getState();
+    expect(state.features.embedding).toEqual({
+      profileId: id,
+      model: 'text-embedding-3-small',
+      dimensions: 1536,
+      metric: 'cosine',
+    });
+    expect(state.embeddingFingerprint).toBe(`${id}:text-embedding-3-small:1536:cosine`);
+    expect(sent.filter((event) => event.channel === 'ai:configChanged')).toHaveLength(1);
+  });
+
   it('embed 维度回写：指纹/generation 变更检测（首次回写递增）', async () => {
     const { service } = makeService();
     const id = saveMockProfile(service);
@@ -327,7 +344,15 @@ describe('AiService', () => {
 });
 
 describe('splitEmbedBatches（token 预算分批）', () => {
-  it('按字符预算与条目上限切块；空输入→空批', () => {
+  it('按注入 token 估算器而不是字符数切块', () => {
+    const texts = ['a', 'bb', 'ccc'];
+    expect(splitEmbedBatches(texts, 3, 10, (text) => text.length)).toEqual([
+      ['a', 'bb'],
+      ['ccc'],
+    ]);
+  });
+
+  it('按 token 预算与条目上限切块；空输入→空批', () => {
     expect(splitEmbedBatches([])).toEqual([]);
     const short = Array.from({ length: 5 }, (_, i) => `t${i}`);
     expect(splitEmbedBatches(short, 100, 10)).toEqual([short]);

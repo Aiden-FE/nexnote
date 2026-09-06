@@ -21,6 +21,12 @@ export interface SafeStorageLike {
   isEncryptionAvailable(): boolean;
   encryptString(plainText: string): Buffer;
   decryptString(encrypted: Buffer): string;
+  /**
+   * Electron safeStorage 自 22 版本起暴露的 backend 探测。
+   * 已知值：'basic_text' | 'keychain' | 'libsecret' | 'dpapi' | 'unknown' | 'gnome_libsecret'。
+   * 'basic_text' 在 Linux 上代表无系统凭据存储、明文 XOR 加密——不得作为 keychain 信任。
+   */
+  getSelectedStorageBackend?(): string;
 }
 
 /**
@@ -41,7 +47,11 @@ class SafeStorageVault implements SecretVault {
 
   get available(): boolean {
     try {
-      return this.safeStorage.isEncryptionAvailable();
+      if (!this.safeStorage.isEncryptionAvailable()) return false;
+      // Linux 下 basic_text backend 等同于明文伪装加密，fail-closed。
+      const backend = this.safeStorage.getSelectedStorageBackend?.();
+      if (backend === 'basic_text') return false;
+      return true;
     } catch {
       return false;
     }

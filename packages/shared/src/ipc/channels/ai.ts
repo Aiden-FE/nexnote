@@ -30,6 +30,7 @@ export const AI_CHANNELS = [
   'ai:chat:stream:start',
   'ai:chat:stream:cancel',
   'ai:embed',
+  'ai:embedWithMetadata',
   'ai:export',
   'ai:import',
 ] as const;
@@ -96,6 +97,12 @@ export interface AiChannelMap {
   };
   'ai:embed': {
     request: { texts: string[] };
+    /** 公共口径：与规格 `embed(texts: string[]): Promise<number[][]>` 对齐。 */
+    response: Result<number[][]>;
+  };
+  'ai:embedWithMetadata': {
+    request: { texts: string[] };
+    /** 元数据通道：返回 dimensions/model/profileId，DEV-011 召回管道使用。 */
     response: Result<EmbedResult>;
   };
   'ai:export': {

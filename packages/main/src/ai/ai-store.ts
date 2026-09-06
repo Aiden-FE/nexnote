@@ -7,6 +7,7 @@ import type {
   AiProfileExportBundle,
   AiProfileInput,
   AiProfileView,
+  EmbeddingMetric,
 } from '@nexnote/shared';
 import { SecretStorageUnavailableError, type SecretVault } from './secret-store';
 
@@ -45,7 +46,7 @@ export function defaultAiStoreData(): AiStoreData {
   };
 }
 
-const EMBEDDING_METRIC = 'cosine';
+const DEFAULT_EMBEDDING_METRIC: EmbeddingMetric = 'cosine';
 
 function coerceParams(raw: unknown): AiStoredProfile['params'] {
   if (typeof raw !== 'object' || raw === null) return {};
@@ -56,14 +57,21 @@ function coerceParams(raw: unknown): AiStoredProfile['params'] {
   };
 }
 
+const EMBEDDING_METRICS: readonly EmbeddingMetric[] = ['cosine', 'dotProduct', 'euclidean'];
+
 function coerceAssignment(raw: unknown): AiFeatureAssignment | null {
   if (typeof raw !== 'object' || raw === null) return null;
   const a = raw as Record<string, unknown>;
   if (typeof a.profileId !== 'string' || typeof a.model !== 'string') return null;
+  const metric =
+    typeof a.metric === 'string' && EMBEDDING_METRICS.includes(a.metric as EmbeddingMetric)
+      ? (a.metric as EmbeddingMetric)
+      : undefined;
   return {
     profileId: a.profileId,
     model: a.model,
     ...(typeof a.dimensions === 'number' && { dimensions: a.dimensions }),
+    ...(metric && { metric }),
   };
 }
 
@@ -213,16 +221,35 @@ export class AiStore {
     };
   }
 
-  /** 当前 embedding 指纹（dimensions 已知时由 refreshEmbeddingFingerprint 更新）。 */
-  static fingerprintOf(assignment: AiFeatureAssignment | null): string | null {
-    if (!assignment) return null;
-    const dims = assignment.dimensions ?? 'auto';
-    return `${assignment.profileId}:${assignment.model}:${dims}:${EMBEDDING_METRIC}`;
+  /**
+   * 当前 embedding 指纹。assignment 优先；缺省时回退到「跟随默认 Profile」的虚拟源。
+   * metric 由 assignment 携带（缺省 cosine），绝不硬编码。dimensions 未知时标 'auto'。
+   */
+  static fingerprintOf(
+    assignment: AiFeatureAssignment | null,
+    fallback: { profileId: string; model: string } | null,
+  ): string | null {
+    const effective: { profileId: string; model: string; dimensions?: number | null; metric?: EmbeddingMetric } | null =
+      assignment ?? fallback;
+    if (!effective) return null;
+    const dims = effective.dimensions ?? 'auto';
+    const metric = effective.metric ?? DEFAULT_EMBEDDING_METRIC;
+    return `${effective.profileId}:${effective.model}:${dims}:${metric}`;
+  }
+
+  /** 跟随默认 Profile 的虚拟 embedding 源（无显式 assignment 时）。 */
+  private defaultEmbeddingFallback(): { profileId: string; model: string } | null {
+    const def = this.data.defaultProfileId ? this.getProfile(this.data.defaultProfileId) : undefined;
+    if (!def) return null;
+    return { profileId: def.id, model: def.defaultModel };
   }
 
   /** embedding 指纹变化检测：变更 → generation+1（DEV-011 消费：标记索引重建）。 */
   refreshEmbeddingFingerprint(): boolean {
-    const next = AiStore.fingerprintOf(this.data.features.embedding);
+    const next = AiStore.fingerprintOf(
+      this.data.features.embedding,
+      this.defaultEmbeddingFallback(),
+    );
     if (next === this.data.embeddingFingerprint) return false;
     this.data = {
       ...this.data,
@@ -269,6 +296,16 @@ export class AiStore {
     if (!profile.name) throw new Error('Profile 名称不能为空');
     if (!/^https?:\/\//i.test(profile.baseUrl)) throw new Error('base-url 必须以 http(s):// 开头');
     if (!profile.defaultModel) throw new Error('默认模型不能为空');
+    // 拒绝 URL 内嵌凭据（SEC-1：凭据应走 API Key 字段）
+    try {
+      const u = new URL(profile.baseUrl);
+      if (u.username || u.password) {
+        throw new Error('base-url 不得包含用户名/密码（请使用 API Key 字段）');
+      }
+    } catch (e) {
+      if (e instanceof Error && /不得包含用户名/.test(e.message)) throw e;
+      // URL 解析失败已被上面 ^https? 捕获
+    }
 
     const profiles = existing
       ? this.data.profiles.map((p) => (p.id === existing.id ? profile : p))
@@ -279,6 +316,8 @@ export class AiStore {
       this.data = { ...this.data, defaultProfileId: profile.id };
     }
     this.persist();
+    // 首个 Profile 自动成为默认，以及默认 Profile 的模型被编辑时，都会改变跟随默认的 embedding 源。
+    this.refreshEmbeddingFingerprint();
     return profile;
   }
 
@@ -303,6 +342,8 @@ export class AiStore {
     if (!this.getProfile(id)) throw new Error(`Profile 不存在: ${id}`);
     this.data = { ...this.data, defaultProfileId: id };
     this.persist();
+    // 默认 Profile 变化 → embedding「跟随默认」的虚拟源变 → 指纹刷新
+    this.refreshEmbeddingFingerprint();
   }
 
   setFeatureAssignment(feature: AiFeatureKey, assignment: AiFeatureAssignment | null): void {
@@ -321,18 +362,30 @@ export class AiStore {
   }
 
   /**
-   * embedding 维度探测回写（首次 embed 成功后调用）。
+   * embedding 维度/度量探测回写（首次 embed 成功后调用）。
    * 返回 true 表示 state 实际变更（调用方据此广播 ai:configChanged）。
+   * 无显式 assignment 时返回 false（调用方负责先提升为跟随默认的显式 assignment）。
    */
-  recordEmbeddingDimensions(dimensions: number): boolean {
+  recordEmbeddingDimensions(dimensions: number, metric: EmbeddingMetric = DEFAULT_EMBEDDING_METRIC): boolean {
     const assignment = this.data.features.embedding;
-    if (!assignment || assignment.dimensions === dimensions) return false;
+    const fallback = this.defaultEmbeddingFallback();
+    const effective = assignment ?? fallback;
+    if (!effective) return false;
+    const next: AiFeatureAssignment = {
+      profileId: effective.profileId,
+      model: effective.model,
+      dimensions,
+      metric,
+    };
+    const unchanged =
+      assignment?.profileId === next.profileId &&
+      assignment.model === next.model &&
+      assignment.dimensions === next.dimensions &&
+      (assignment.metric ?? DEFAULT_EMBEDDING_METRIC) === next.metric;
+    if (unchanged) return false;
     this.data = {
       ...this.data,
-      features: {
-        ...this.data.features,
-        embedding: { ...assignment, dimensions },
-      },
+      features: { ...this.data.features, embedding: next },
     };
     this.persist();
     this.refreshEmbeddingFingerprint();
@@ -366,7 +419,11 @@ export class AiStore {
           : null,
         chat: f.chat ? { name: nameOf(f.chat.profileId) ?? '', model: f.chat.model } : null,
         embedding: f.embedding
-          ? { name: nameOf(f.embedding.profileId) ?? '', model: f.embedding.model }
+          ? {
+              name: nameOf(f.embedding.profileId) ?? '',
+              model: f.embedding.model,
+              ...(f.embedding.metric && { metric: f.embedding.metric }),
+            }
           : null,
       },
       defaultProfileName: nameOf(this.data.defaultProfileId),
@@ -402,23 +459,29 @@ export class AiStore {
       }
     }
     // 恢复分功能指定与默认 Profile（按名称回查）
-    const resolve = (a: { name: string; model: string } | null): AiFeatureAssignment | null => {
+    const resolve = (
+      a: { name: string; model: string; metric?: EmbeddingMetric } | null,
+    ): AiFeatureAssignment | null => {
       if (!a || !a.name) return null;
       const p = this.data.profiles.find((x) => x.name === a.name);
-      return p ? { profileId: p.id, model: a.model } : null;
+      return p ? { profileId: p.id, model: a.model, ...(a.metric && { metric: a.metric }) } : null;
     };
     const features = {
       writing: resolve(bundle.features.writing),
       chat: resolve(bundle.features.chat),
       embedding: resolve(bundle.features.embedding),
     };
-    this.data = { ...this.data, features };
+    // 导入保持 bundle 声明的默认 Profile（SPEC-9：默认不能退化为首个）；无声明则不覆盖本地默认。
     const def = bundle.defaultProfileName
       ? this.data.profiles.find((x) => x.name === bundle.defaultProfileName)
       : undefined;
-    if (def && !this.data.defaultProfileId) {
-      this.data = { ...this.data, defaultProfileId: def.id };
+    let defaultProfileId = this.data.defaultProfileId;
+    if (def) defaultProfileId = def.id;
+    else if (!def && this.data.profiles.length > 0 && !defaultProfileId) {
+      // 仅当本地空置且 bundle 未声明时，才以首个作兜底
+      defaultProfileId = this.data.profiles[0]!.id;
     }
+    this.data = { ...this.data, features, defaultProfileId };
     this.persist();
     this.refreshEmbeddingFingerprint();
     return { imported, skipped };

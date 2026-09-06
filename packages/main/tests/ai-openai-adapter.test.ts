@@ -32,6 +32,25 @@ function collectStream(
 }
 
 describe('OpenAI 协议适配器', () => {
+  it('构造时拒绝 Base URL userinfo 与非 HTTP URL', () => {
+    expect(
+      () =>
+        new OpenAIProtocolAdapter({
+          baseUrl: 'https://user:password@example.com/v1',
+          apiKey: 'k',
+          kind: 'openai-compatible',
+        }),
+    ).toThrow(/不得包含用户名\/密码/);
+    expect(
+      () =>
+        new OpenAIProtocolAdapter({
+          baseUrl: 'file:///tmp/provider',
+          apiKey: 'k',
+          kind: 'openai-compatible',
+        }),
+    ).toThrow(/http/);
+  });
+
   it('chatCompletion（非流式）返回内容与 usage', async () => {
     const res = await adapter().chatCompletion({
       model: 'gpt-4o-mini',

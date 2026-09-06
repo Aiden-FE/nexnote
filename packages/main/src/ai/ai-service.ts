@@ -16,9 +16,13 @@ import type { ProviderAdapter } from './provider/types';
 import { ProviderError } from './provider/types';
 import type { AiStoredProfile, AiStore } from './ai-store';
 
-/** embedding 分批上限（保守：约 6k token/批 + 每批最多条目）。 */
-const EMBED_MAX_CHARS_PER_BATCH = 24_000;
-const EMBED_MAX_ITEMS_PER_BATCH = 64;
+/** embedding 分批默认：token 预算与每批条目上限（可用 tokenEstimator 覆盖）。 */
+export const EMBED_DEFAULT_MAX_TOKENS_PER_BATCH = 8_192;
+export const EMBED_MAX_ITEMS_PER_BATCH = 64;
+/** 4 char/token 的保守估算（无真实 tokenizer 时的默认）。 */
+export function defaultTokenEstimator(text: string): number {
+  return Math.ceil(text.length / 4);
+}
 
 export interface AiServiceDeps {
   store: AiStore;
@@ -26,6 +30,8 @@ export interface AiServiceDeps {
   sendEvent<C extends IpcEventChannel>(channel: C, payload: IpcEventMap[C]): void;
   /** 注入 fetch（mock 服务器测试）。缺省用全局 fetch。 */
   fetchImpl?: typeof fetch;
+  /** embedding token 估算器（按模型 token limit 分批；可注入真实 tokenizer）。 */
+  embedTokenEstimator?: (text: string) => number;
 }
 
 interface ResolvedTarget {
@@ -38,20 +44,23 @@ interface ResolvedTarget {
 /** embed 分批策略：顺序切块，批内不跨条目拆分。 */
 export function splitEmbedBatches(
   texts: string[],
-  maxChars = EMBED_MAX_CHARS_PER_BATCH,
+  maxTokens = EMBED_DEFAULT_MAX_TOKENS_PER_BATCH,
   maxItems = EMBED_MAX_ITEMS_PER_BATCH,
+  estimateTokens: (text: string) => number = defaultTokenEstimator,
 ): string[][] {
   const batches: string[][] = [];
   let current: string[] = [];
-  let chars = 0;
+  let tokens = 0;
   for (const text of texts) {
-    if (current.length >= maxItems || (chars + text.length > maxChars && current.length > 0)) {
+    // Never split an input: a single over-budget item occupies its own batch.
+    const itemTokens = Math.max(1, estimateTokens(text));
+    if (current.length >= maxItems || (tokens + itemTokens > maxTokens && current.length > 0)) {
       batches.push(current);
       current = [];
-      chars = 0;
+      tokens = 0;
     }
     current.push(text);
-    chars += text.length;
+    tokens += itemTokens;
   }
   if (current.length > 0) batches.push(current);
   return batches;
@@ -270,7 +279,12 @@ export class AiService {
     }
     const { profile, adapter, model } = this.resolve({ feature: 'embedding' });
 
-    const batches = splitEmbedBatches(texts);
+    const batches = splitEmbedBatches(
+      texts,
+      EMBED_DEFAULT_MAX_TOKENS_PER_BATCH,
+      EMBED_MAX_ITEMS_PER_BATCH,
+      this.deps.embedTokenEstimator ?? defaultTokenEstimator,
+    );
     const vectors: number[][] = [];
     for (const batch of batches) {
       const res = await adapter.embeddings({ model, inputs: batch });

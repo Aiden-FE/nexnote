@@ -53,6 +53,10 @@ export function registerAiHandlers(registrar: IpcRegistrar, ai: AiService): void
   });
 
   registrar.register('ai:embed', async (payload) => {
+    return ok(await ai.embed(payload.texts));
+  });
+
+  registrar.register('ai:embedWithMetadata', async (payload) => {
     return ok(await ai.embedWithMetadata(payload.texts));
   });
 

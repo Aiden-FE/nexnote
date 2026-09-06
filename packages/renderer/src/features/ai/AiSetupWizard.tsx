@@ -99,6 +99,12 @@ function WizardBody({
   const [kind, setKind] = useState<AiProviderKind>(editing?.kind ?? 'openai-compatible');
   const [apiKey, setApiKey] = useState('');
   const [model, setModel] = useState(editing?.defaultModel ?? '');
+  const [temperature, setTemperature] = useState(
+    editing?.params.temperature === undefined ? '' : String(editing.params.temperature),
+  );
+  const [maxTokens, setMaxTokens] = useState(
+    editing?.params.maxTokens === undefined ? '' : String(editing.params.maxTokens),
+  );
   const [testing, setTesting] = useState(false);
   const [testResult, setTestResult] = useState<ConnectionTestResult | null>(null);
   const [testError, setTestError] = useState<string | null>(null);
@@ -148,8 +154,11 @@ function WizardBody({
             kind,
             baseUrl,
             apiKey: apiKey || undefined,
-            // 编辑模式携带既有默认模型：模型列表不可用时仍能对已知模型做实测
-            defaultModel: (isEdit ? model.trim() || editing?.defaultModel : '') || undefined,
+            // Azure 无模型列表权限很常见，首次配置时 deployment 名也必须用于探测。
+            defaultModel:
+              (kind === 'azure-openai' || isEdit
+                ? model.trim() || editing?.defaultModel
+                : '') || undefined,
           },
         };
         const result = await invoke('ai:testConnection', target);
@@ -192,6 +201,10 @@ function WizardBody({
           kind,
           baseUrl: baseUrl.trim(),
           defaultModel: model.trim(),
+          params: {
+            ...(temperature.trim() !== '' && { temperature: Number(temperature) }),
+            ...(maxTokens.trim() !== '' && { maxTokens: Number(maxTokens) }),
+          },
           apiKey: apiKey ? apiKey : editing ? undefined : null,
         },
       });
@@ -239,7 +252,9 @@ function WizardBody({
   const stepIndex = steps.findIndex((s) => s.id === step);
   const canNext =
     step === 'connection'
-      ? name.trim().length > 0 && /^https?:\/\//i.test(baseUrl.trim())
+      ? name.trim().length > 0 &&
+        /^https?:\/\//i.test(baseUrl.trim()) &&
+        (kind !== 'azure-openai' || model.trim().length > 0)
       : step === 'test'
         ? testValid
         : step === 'model'
@@ -353,6 +368,20 @@ function WizardBody({
                   spellCheck={false}
                 />
               </Field>
+              {kind === 'azure-openai' && (
+                <Field label="Deployment 名称" hint="Azure 中部署名可能不同于基础模型名；用于首次连接测试">
+                  <Input
+                    data-testid="ai-wizard-azure-deployment"
+                    value={model}
+                    onChange={(e) => {
+                      setModel(e.target.value);
+                      invalidateTest();
+                    }}
+                    placeholder="如：gpt-4o-mini-deployment"
+                    spellCheck={false}
+                  />
+                </Field>
+              )}
               <Field
                 label="API Key"
                 hint={
@@ -472,6 +501,31 @@ function WizardBody({
                   ))}
                 </datalist>
               </Field>
+              <div className="grid grid-cols-2 gap-3">
+                <Field label="Temperature" hint="留空使用供应商默认">
+                  <Input
+                    data-testid="ai-wizard-temperature"
+                    type="number"
+                    min="0"
+                    max="2"
+                    step="0.1"
+                    value={temperature}
+                    onChange={(e) => setTemperature(e.target.value)}
+                    placeholder="默认"
+                  />
+                </Field>
+                <Field label="最大输出 Token" hint="留空使用供应商默认">
+                  <Input
+                    data-testid="ai-wizard-max-tokens"
+                    type="number"
+                    min="1"
+                    step="1"
+                    value={maxTokens}
+                    onChange={(e) => setMaxTokens(e.target.value)}
+                    placeholder="默认"
+                  />
+                </Field>
+              </div>
               {models.length > 0 && (
                 <div className="flex flex-wrap gap-1">
                   {models.slice(0, 12).map((m) => (
