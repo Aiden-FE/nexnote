@@ -15,6 +15,8 @@ export interface WikilinkReference {
   anchor: string | null;
   /** wikilink 在原始 markdown 字符串中的 UTF-16 code-unit 偏移（与 String.slice/indexOf 一致）。 */
   offset: number;
+  /** 同一位置的 UTF-8 byte offset，供文件/数据库字节定位使用。 */
+  byteOffset: number;
   /** wikilink 所在的 0-based 段落块序号（按空行切分）。 */
   blockIndex: number;
 }
@@ -35,6 +37,7 @@ export function parseWikilinkAtStart(src: string): WikilinkReference | null {
     alias: match[2]?.trim() || null,
     anchor: hash < 0 ? null : target.slice(hash).trim() || null,
     offset: 0,
+    byteOffset: 0,
     blockIndex: 0,
   };
 }
@@ -90,7 +93,9 @@ export function extractWikilinks(markdown: string): WikilinkReference[] {
     prevEmpty = false;
     const colStart = cursor;
     for (const item of scanLine(rawLine)) {
-      out.push({ ...item, offset: colStart + item.colStart, blockIndex });
+      const offset = colStart + item.colStart;
+      const byteOffset = new TextEncoder().encode(markdown.slice(0, offset)).byteLength;
+      out.push({ ...item, offset, byteOffset, blockIndex });
     }
     cursor += advance;
   }

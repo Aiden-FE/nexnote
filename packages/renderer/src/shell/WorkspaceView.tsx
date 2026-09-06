@@ -14,6 +14,8 @@ export function WorkspaceView({ vault }: { vault: VaultInfo }) {
 
   // vault 就绪：拉取页面树 + 绑定 fs:changed / index:statusChanged（幂等，进程内一次）
   useEffect(() => {
+    // A vault switch must invalidate all in-flight index/tag responses before loading the new session.
+    useIndexStore.getState().reset();
     bindVaultFsEvents();
     bindIndexEvents();
     void usePageTreeStore.getState().load();
