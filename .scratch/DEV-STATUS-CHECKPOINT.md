@@ -8,8 +8,8 @@
 
 ## 0. 最新状态（持续更新，优先于下方陈旧冻结段）
 
-- **真实进度：12 / 19** —— DEV-001~DEV-012 已全部合入 master。
-- master HEAD：`9829e4d`（merge DEV-012），clean；post-merge typecheck/eslint/423 tests(2 skipped)/build 全过。
+- **真实进度：13 / 19** —— DEV-001~DEV-013 已全部合入 master。
+- master HEAD：`5e9124e`（merge DEV-013），clean；post-merge typecheck/eslint/440 tests(2 skipped)/build 全过；Electron smoke 60/69 与环境基线逐名一致。
 - 子Agent 派发工具 `multi_agent_v1__spawn_agent` 在本环境返回 unsupported，按用户接管规则由主控直接在隔离 worktree 实现。
 - better-sqlite3 ABI：vitest 用 Node ABI；electron smoke 用 `runtime=electron target=44.2.0 arch=arm64`，smoke 后务必切回 Node ABI。
 - Electron smoke 当前环境基线 **60/69**：9 项失败为 DEV-003/004/006/007 既有环境基线（Git 状态栏 2、新笔记 frontmatter/面包屑 2、标签面板/过滤 2、重命名 wikilink 1、500 节点 FPS 1、时间线 1）；master 与候选失败集逐名一致，DEV-010 无新增回归。
@@ -36,9 +36,18 @@
 - 验收覆盖：main 14（format 往返/frontmatter 引号冒号/meta 附着/非 chat null/损坏 meta/CRLF；service 新建落盘/续聊来源/倒序忽略非 chat/越权拒绝/存为文档引用与注释/切目录/非法目录）+ renderer 7（上下文优先级截断/token、流式→来源→自动保存/标题取问题、双链标题打开、询问 AI 载荷）。
 - NOT_RUN：真实 provider 对话流式与 embedding 召回（mock bridge + fake retrieve 等价覆盖）、Electron 内人工点击三入口/历史切换/存为文档打开 tab/双链打开 dock 的端到端、右键「询问 AI」实际浮层点击（由 kernel 浮层测试 + requestAskAi 单测等价覆盖）。
 
-### 下一张：DEV-013 插件运行时（XL，依赖链关键；旧 WIP `.wt/DEV-013` @ `9f283f3` 需基于最新 master 重做）
-- 新建 worktree `.wt/DEV-013`（从 master）；票据 `issues/013-plugin-runtime*.md`。
-- 硬阻塞（checkpoint 旧段）：CSP Electron bootstrap、lifecycle/error ownership、RPC NOT_IMPLEMENTED、watchdog、plugin dispatch、同线程 hang 隔离、ZIP wrapper-dir；DEV-011 BuiltinRetrievalSkill 待 DEV-014 经插件扩展点接入。
+### DEV-013 · 插件系统基础：沙箱运行时与能力 RPC（已合并 `5e9124e`，候选 `74d1dd5`）
+- 旧过时 WIP `9f283f3` 已备份为 tag `wip/dev-013`（只读参考），基于 master 重写；第三方依赖 adm-zip/semver 全部替换为零依赖本地实现。
+- shared：`types/plugin.ts`（manifest/权限六档/贡献点/版本化 RPC envelope，`PLUGIN_API_VERSION='1.0.0'` 值导出）、`ipc/channels/plugins.ts`（plugins:* 20 通道，新增 `plugins:pickSource`）、`events.ts`（`plugins:changed`）。
+- main：`plugins/version-compat.ts`（零依赖 semver）、`manifest-validator.ts`、`authorization.ts`（一次性 challenge 授权门禁 + one-shot grant）、`zip-extract.ts`（inflateRaw，防 zip-slip/炸弹，wrapper-dir 归一化，method 0/8）、`artifact-intake.ts`（不可变 staging 快照 + sha256 复算防 TOCTOU；zip 分支复用解压只读产物、不回写——修复移植期 EACCES）、`plugin-service.ts`（生命周期加载/激活/停用/卸载/崩溃隔离、RPC dispatch command.register/transact/capability.call/permission.request、审计日志）、`ipc/plugin-handlers.ts`；bootstrap/services/validation/index 接线。
+- renderer：`features/plugins/*`（PluginSandboxFrame iframe `sandbox=allow-scripts` 无 allow-same-origin、MessageChannel RPC、2s heartbeat watchdog、崩溃上报移除帧、未授权权限弹窗重试；PluginHost 挂沙箱帧+注册 command/pluginContribution 注册表+权限弹窗+贡献插槽；PluginsSettingsPage 文件夹/zip 安装预览确认、详情、启停、逐项 revoke、审计）；`public/plugin-runtime/`（index.html 严格 CSP `default-src 'none'` + bootstrap.js：window.nexnotePlugin API、生命周期事件、心跳、crash 上报、blob 入口）；`bootstrap.ts` import + `WorkspaceView` 挂 `<PluginHost />`。iframe src 用相对路径 `plugin-runtime/index.html`（打包后 file:// 可用）。
+- 验收覆盖：main `plugin-service.test.ts` 10 例（manifest/semver 校验、票据确认、会话绑定与停用撤销、敏感能力门禁+授权后 NOT_IMPLEMENTED、one-shot grant 消费、staging 篡改拒绝、升级撤销会话、crash fixture 隔离不影响他插件、崩溃移除贡献、zip 解压+状态恢复；零依赖 zipFolder 测试助手写 method-8 deflate）；renderer sandbox/permission-flow/contributions 7 例（CSP/sandbox 字符串断言、生命周期顺序、版本化 RPC/超时/崩溃、权限弹窗重试、watchdog、贡献分发）。
+- NOT_RUN：真实第三方插件安装与 ECDSA 签名（签名框架预留，MVP 未启用）、QuickJS/WASM logic worker（V1 用 iframe UI 沙箱 + main-thread logic，stretch）、真实 network/filesystem/external-command 能力执行（capability.call 授权后返 NOT_IMPLEMENTED）、Electron 内人工安装/权限弹窗点击 E2E（由 service 10 测 + flow/sandbox 7 测等价覆盖）。
+
+### 下一张：DEV-014 插件扩展点 + Skill 系统（依赖 DEV-013；XL/P1）
+- 票据 `issues/014-*.md`；基于最新 master 新建 worktree `.wt/DEV-014`。
+- DEV-013 已落地贡献点注册表（commands/menus/views/blockTypes）与插件 RPC 骨架；DEV-014 在其上实现块/视图/菜单扩展点的宿主分发，并经扩展点接入 DEV-011 `BuiltinRetrievalSkill`（retrieval-service 已暴露 search）。
+- DEV-015 Mermaid+KaTeX 内置插件依赖 DEV-014；DEV-016/017/018 有旧 WIP（`.wt/DEV-016 @ aad90d6`、`.wt/DEV-017 @ 506e5f8`、`.wt/DEV-018 @ b86a6f2`），重做前先比对最新 master；DEV-019 整体 E2E 依赖全部。
 
 
 ## 1. 全局基线
