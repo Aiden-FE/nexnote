@@ -17,6 +17,7 @@ import type {
 } from '@nexnote/shared';
 import { dockPanelRegistry, statusBarRegistry } from '../../registries';
 import { invoke, onEvent } from '../../lib/ipc';
+import { invokeSyncOperation } from './operation';
 import { useVault } from '../../shell/vault-context';
 
 statusBarRegistry.register({ id: 'git', align: 'left', render: GitStatusItem });
@@ -60,7 +61,10 @@ function GitStatusItem() {
     setBusy(true);
     setError(null);
     try {
-      await invoke(confirm === 'pull' ? 'git:pull' : 'git:push');
+      await invokeSyncOperation(confirm, {
+        pull: () => invoke('git:pull', {}),
+        push: () => invoke('git:push'),
+      });
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : String(caught));
     } finally {

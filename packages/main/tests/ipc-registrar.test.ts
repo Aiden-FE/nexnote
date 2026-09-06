@@ -502,6 +502,23 @@ describe('IPC 集成（vault + fs，单一注册表）', () => {
     }
   });
 
+  it('git:pull accepts the renderer default empty object payload', async () => {
+    const ipc = new FakeIpcMain();
+    const { services } = makeServices();
+    registerAllIpcHandlers(ipc, services);
+    const created = (await ipc.invoke('vault:create', {
+      parentDir: tmp,
+      name: 'pull-default',
+    })) as {
+      ok: boolean;
+    };
+    expect(created.ok).toBe(true);
+
+    const result = (await ipc.invoke('git:pull', {})) as { ok: boolean; code?: string };
+    // No remote is expected, but the renderer's `{}` must pass validation and reach Git.
+    expect(result.code).toBe('NO_REMOTE');
+  });
+
   it('git:pull 在工作区 dirty 时拒绝（除非显式 force）', async () => {
     const ipc = new FakeIpcMain();
     const { services } = makeServices();
