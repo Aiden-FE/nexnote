@@ -20,6 +20,8 @@ const smoke = readFileSync(resolve(root, 'scripts/ci-smoke.mjs'), 'utf8');
 const appStore = readFileSync(resolve(root, 'packages/main/src/vault/app-store.ts'), 'utf8');
 const qaChecklist = readFileSync(resolve(root, 'docs/release/QA-CHECKLIST.md'), 'utf8');
 const dependabot = readFileSync(resolve(root, '.github/dependabot.yml'), 'utf8');
+const checkVersion = readFileSync(resolve(root, 'scripts/check-version.mjs'), 'utf8');
+const releaseEvidence = readFileSync(resolve(root, 'scripts/release-evidence.mjs'), 'utf8');
 
 // The git origin is the single source of truth for the publish repository.
 let originOwner = '';
@@ -139,21 +141,38 @@ check('平台密钥最小权限且仅 step 级引用', () => {
     if (stepStart < 0 || !build.slice(stepStart, index).includes(platformGuard)) throw new Error(`${secret} is not platform-scoped`);
   }
 });
-check('单个 publish job，经受保护 QA Environment 审批后才公开', () => {
+check('单个 publish job，经受保护 QA Environment 与 evidence gate 后才公开', () => {
   const wf = yaml.load(releaseWorkflow);
   const jobs = Object.keys(wf.jobs ?? {});
   if (!jobs.includes('publish')) throw new Error('no publish job');
   if (wf.jobs.publish.strategy) throw new Error('publish must not be a matrix');
   if (wf.jobs.build?.permissions?.contents === 'write') throw new Error('build must not have release write permission');
   if (wf.jobs.publish?.permissions?.contents !== 'write') throw new Error('publish must hold the only contents: write permission');
-  if (JSON.stringify(wf.jobs.publish?.needs) !== JSON.stringify(['build', 'smoke'])) throw new Error('publish must wait for build and smoke');
+  if (JSON.stringify(wf.jobs.publish?.needs) !== JSON.stringify(['prepare', 'smoke'])) throw new Error('publish must wait for prepare and smoke');
   if (wf.jobs.publish?.environment?.name !== 'release-qa') throw new Error('publish must require release-qa protected Environment approval');
-  if (wf.concurrency?.group !== 'nexnote-public-release' || wf.concurrency?.['cancel-in-progress'] !== false) {
-    throw new Error('all release refs must share the fixed non-cancelling nexnote-public-release lock');
-  }
-  if (/github\.ref|github\.ref_name|inputs\.channel/.test(String(wf.concurrency?.group))) throw new Error('publication lock must not vary by ref or channel');
+  if (wf.concurrency) throw new Error('GitHub concurrency drops older pending runs; durable publisher lease must be used instead');
   if (!/required reviewers/.test(releaseWorkflow) || !/QA checklist evidence/.test(releaseWorkflow)) throw new Error('workflow must document required-reviewer QA evidence approval');
-  if (!/Preflight complete signed release set/.test(releaseWorkflow) || !/softprops\/action-gh-release/.test(releaseWorkflow)) throw new Error('publish requires preflight then single uploader');
+  if (!/release-qa-evidence\.json/.test(releaseWorkflow) || !/release-evidence\.mjs validate/.test(releaseWorkflow)) throw new Error('publish must validate a machine-readable run-bound evidence manifest');
+  if (!/Preflight signed artifact set/.test(releaseWorkflow) || !/softprops\/action-gh-release/.test(releaseWorkflow)) throw new Error('publish requires preflight then single uploader');
+});
+check('workflow_dispatch 只能发布 existing immutable tag 且版本必须匹配', () => {
+  const wf = yaml.load(releaseWorkflow);
+  if (!wf.on?.workflow_dispatch || Object.keys(wf.on).some((event) => event !== 'workflow_dispatch')) throw new Error('public release must be dispatch-only');
+  const inputs = wf.on.workflow_dispatch.inputs ?? {};
+  for (const name of ['release-tag', 'qa-evidence-url', 'qa-evidence-sha256', 'qa-all-required-checks-passed']) {
+    if (inputs[name]?.required !== true) throw new Error(`required dispatch input missing: ${name}`);
+  }
+  if (!/refs\/tags\/\$RELEASE_TAG\^\{commit\}/.test(releaseWorkflow)) throw new Error('dispatch tag must resolve to an existing tag commit');
+  if (!/check-version\.mjs --require-tag/.test(releaseWorkflow) || !/--require-tag/.test(checkVersion)) throw new Error('release path must require explicit tag/version match');
+  if (/no tag provided[\s\S]*process\.exit\(0\)/.test(checkVersion) && !/if \(required\)/.test(checkVersion)) throw new Error('required release check may not pass without a tag');
+  if (!/tag_name:\s*\$\{\{ needs\.prepare\.outputs\.tag \}\}/.test(releaseWorkflow)) throw new Error('publisher must target resolved immutable tag');
+});
+check('publisher 使用不丢队列的 durable remote-ref lease 与幂等 tag release', () => {
+  if (!/release-publication-lock/.test(releaseWorkflow)) throw new Error('fixed publication lease ref missing');
+  if (!/--force-with-lease=refs\/heads\/release-publication-lock:/.test(releaseWorkflow)) throw new Error('atomic acquire/release lease guards missing');
+  if (!/for attempt in \$\(seq 1 180\)/.test(releaseWorkflow)) throw new Error('lease contenders must retry rather than be dropped');
+  if (!/run remains failed and rerunnable, never silently dropped/.test(releaseWorkflow)) throw new Error('lease timeout behavior must be explicit and rerunnable');
+  if (!/tag_name:/.test(releaseWorkflow)) throw new Error('release retries must be idempotent by immutable tag');
 });
 check('Linux GPG 在上传前签名，所有 .asc 均作为 Release asset', () => {
   if (!/Linux GPG private key is required/.test(releaseWorkflow)) throw new Error('Linux key may not be optional');
@@ -182,6 +201,7 @@ check('所有 GitHub Actions 使用 immutable SHA 并由 Dependabot 维护', () 
   }
   if (!/package-ecosystem:\s*github-actions/.test(dependabot)) throw new Error('Dependabot github-actions update strategy missing');
   if (!/softprops\/action-gh-release@[0-9a-f]{40}/.test(releaseWorkflow)) throw new Error('release publisher must be pinned by full SHA');
+  if (!/Aiden-FE\\\/nexnote/.test(releaseEvidence) || !/allRequiredChecksPassed/.test(releaseEvidence)) throw new Error('QA evidence validator must bind canonical repository and all-checks attestation');
 });
 check('PR 检查覆盖 lint/typecheck/test/build', () => {
   if (!/pnpm lint/.test(devWorkflow)) throw new Error('pr-check missing lint');

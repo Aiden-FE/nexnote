@@ -2,26 +2,33 @@
 
 > 每个签名 release 都必须附此清单的**执行记录**，逐项填写【证据】。CI 通过不替代人工安装验证。
 > 下述标 🔒 的项是**公开发布 gate**：在 GitHub Actions `release-qa` Environment 审批前必须全部完成、将证据链接粘贴到审批记录，并由该 Environment 的 required reviewers 批准。`publish` 是唯一创建公开 GitHub Release 的 job，必须等待此审批；审批后才上传 release assets 和生成 Release notes。
-> **环境配置是必需的：** 仓库管理员必须创建 `release-qa` Environment，配置 required reviewers，并限制其 secrets/branch policy。没有该保护规则不得触发公开发布。
+> **环境配置是实际的、阻断性发布 gate：** 仓库管理员必须在 GitHub repository settings 创建 `release-qa` Environment，配置 required reviewers，并限制其 secrets/branch policy。该环境不存在、未设 reviewers、或 reviewers 未批准时，**不得启动/批准 `publish`，不得公开发布**。Workflow 还要求 dispatch inputs 中提供 canonical repository QA evidence URL、其 SHA-256 和 `all-required-checks-passed=true`；publish 会把这些值与本次 run/tag/commit/channel 绑定为 `release-qa-evidence-<run-id>` artifact 后才获取 publication lease。
 > **事实边界：** 当前 DEV-018 环境未进行有真实证书/私钥的跨平台物理安装、OS 信任 UI 或 N-1 网络升级验证；这些项目绝不应被表述为已验收。自动流水线先完成签名、公证、Linux GPG `.asc`、产物 preflight 和打包 macOS smoke；随后由目标平台 QA 完成本清单、附证据并获得 Environment 审批，才可公开发布。
 
 ## Release record and approval evidence
 
 - Version/tag:
 - Channel (`stable` / `beta` / `alpha`):
-- Commit SHA:
+- Immutable existing release tag (`vX.Y.Z`, exactly matching `package.json`):
+- Tag commit SHA:
 - Candidate workflow URL (build + smoke):
 - `release-qa` approval URL, reviewer, and timestamp:
-- Completed checklist evidence location (issue/comment/document URL):
+- Completed checklist evidence URL under `https://github.com/Aiden-FE/nexnote/...`:
+- Evidence document SHA-256 (64 lowercase hex):
+- `qa-all-required-checks-passed=true` attestation recorded:
 
 ## Before `release-qa` approval (all platforms)
 
-- [ ] 版本满足 SemVer，tag 与 `package.json` 完全一致（`vX.Y.Z`）。
-  - 证据：`pnpm version:check` 输出 + `git tag`。
+- [ ] 仅通过 `workflow_dispatch` 选择远端已存在的 immutable `vX.Y.Z` tag；tag 与 `package.json` 完全一致，且 build/smoke/publish 均 checkout 该 tag commit（不是触发分支/SHA）。
+  - 证据：`node scripts/check-version.mjs --require-tag vX.Y.Z` 输出、tag commit SHA 与 workflow inputs。
 - [ ] `pnpm lint && pnpm typecheck && pnpm test && pnpm verify:release-config && pnpm build` 绿色。
   - 证据：各命令退出码与测试计数。
 - [ ] PR checks、三平台签名 jobs、打包 smoke 与完整产物 preflight 均通过。
   - 证据：GitHub Actions 运行 URL、job dependency graph 与 artifact checksums。
+- [ ] `release-qa-evidence-<run-id>` artifact 已生成并验证，其 repository/run/tag/commit/channel、canonical evidence URL、SHA-256 与 all-checks-passed attestation 都绑定本次发布。
+  - 证据：artifact URL 与 `release-evidence.mjs validate` 输出。
+- [ ] publication job 使用 fixed remote-ref lease；没有 GitHub Actions `concurrency` pending-run replacement。若 lease 超时，run 明确失败且可重跑，不会静默丢弃。
+  - 证据：lease acquire/release job log。
 - [ ] 仅非矩阵 `publish` job 具有 `contents: write`，并且 `needs: [build, smoke]`；矩阵 build 无发布权限且只使用 `--publish never`。
   - 证据：本次 workflow 文件 SHA 与 job dependency graph。
 - [ ] 所有 `uses:` action 都由完整 immutable commit SHA pin；Dependabot GitHub Actions 更新 PR 已审查。

@@ -1,44 +1,69 @@
 name: Release
 
+# Public release is intentionally dispatch-only. A human must select an existing
+# immutable tag and supply QA evidence; arbitrary branch/SHA publication is rejected.
 on:
-  push:
-    tags: ['v*.*.*']
   workflow_dispatch:
     inputs:
+      release-tag:
+        description: Immutable existing release tag (vX.Y.Z)
+        required: true
+        type: string
       channel:
         description: Release channel
         required: true
         default: stable
         type: choice
         options: [stable, beta, alpha]
+      qa-evidence-url:
+        description: HTTPS URL to the completed QA evidence record
+        required: true
+        type: string
+      qa-evidence-sha256:
+        description: SHA-256 hex digest of the QA evidence document
+        required: true
+        type: string
+      qa-all-required-checks-passed:
+        description: Confirm all mandatory QA checks passed
+        required: true
+        default: "false"
+        type: choice
+        options: ["false", "true"]
 
-# Default read-only token. Only the final, serialized publication job can write Releases.
 permissions:
   contents: read
 
-# One repository-wide lock prevents distinct tags/refs from publishing concurrently.
-# Do not add ref/channel expressions here: any differing value would permit a release race.
-concurrency:
-  group: nexnote-public-release
-  cancel-in-progress: false
+# GitHub concurrency is deliberately NOT used: GitHub replaces an older pending run
+# when a third run joins the same group, even with cancel-in-progress false. Every run
+# instead reaches publish and contends for an atomic repository ref lease, so no queued
+# dispatch is silently dropped. See Acquire/Release publication lease below.
 
 jobs:
   prepare:
     runs-on: ubuntu-latest
     outputs:
-      channel: ${{ steps.channel.outputs.value }}
+      tag: ${{ steps.release.outputs.tag }}
+      commit: ${{ steps.release.outputs.commit }}
+      channel: ${{ inputs.channel }}
     steps:
       # Pinned action SHAs are maintained by Dependabot (.github/dependabot.yml).
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
-      - id: channel
+        with:
+          fetch-depth: 0
+      - id: release
+        name: Resolve immutable tag and enforce package version
+        env:
+          RELEASE_TAG: ${{ inputs.release-tag }}
         run: |
-          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then echo "value=${{ inputs.channel }}" >> "$GITHUB_OUTPUT";
-          elif [[ "${{ github.ref_name }}" == *"-alpha"* ]]; then echo "value=alpha" >> "$GITHUB_OUTPUT";
-          elif [[ "${{ github.ref_name }}" == *"-beta"* ]]; then echo "value=beta" >> "$GITHUB_OUTPUT";
-          else echo "value=stable" >> "$GITHUB_OUTPUT"; fi
+          set -euo pipefail
+          git fetch --force --tags origin
+          git rev-parse --verify "refs/tags/$RELEASE_TAG^{commit}" >/dev/null 2>&1 || { echo '::error::release-tag must be an existing immutable tag'; exit 1; }
+          commit=$(git rev-list -n 1 "$RELEASE_TAG")
+          git checkout --detach "$commit"
+          node scripts/check-version.mjs --require-tag "$RELEASE_TAG"
+          echo "tag=$RELEASE_TAG" >> "$GITHUB_OUTPUT"
+          echo "commit=$commit" >> "$GITHUB_OUTPUT"
 
-  # Native package/sign jobs never publish. Secrets are scoped only to the platform
-  # command that consumes them; missing credentials are an error, never a skip.
   build:
     needs: prepare
     strategy:
@@ -63,13 +88,18 @@ jobs:
       NEXNOTE_UPDATE_CHANNEL: ${{ needs.prepare.outputs.channel }}
     steps:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          ref: ${{ needs.prepare.outputs.commit }}
       - uses: pnpm/action-setup@a7487c7e89a18df4991f7f222e4898a00d66ddda # v4.1.0
         with: { version: 10 }
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with: { node-version: 22, cache: pnpm }
       - run: pnpm install --frozen-lockfile
-      - run: pnpm lint && pnpm typecheck && pnpm test && pnpm verify:release-config && pnpm version:check
-      - run: pnpm build
+      - name: Validate immutable release version and configuration
+        run: |
+          node scripts/check-version.mjs --require-tag "${{ needs.prepare.outputs.tag }}"
+          pnpm verify:release-config
+      - run: pnpm lint && pnpm typecheck && pnpm test && pnpm build
 
       - name: Package signed and notarized macOS distributables
         if: runner.os == 'macOS'
@@ -145,12 +175,13 @@ jobs:
           path: release/*
           if-no-files-found: error
 
-  # The signed macOS artifact is tested before manual QA approval or public publication.
   smoke:
-    needs: build
+    needs: [prepare, build]
     runs-on: macos-14
     steps:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          ref: ${{ needs.prepare.outputs.commit }}
       - uses: pnpm/action-setup@a7487c7e89a18df4991f7f222e4898a00d66ddda # v4.1.0
         with: { version: 10 }
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
@@ -169,22 +200,27 @@ jobs:
         env:
           NEXNOTE_APP_PATH: release/smoke-app/NexNote.app/Contents/MacOS/NexNote
 
-  # Repository admins must configure the `release-qa` Environment with required reviewers.
-  # Approval must include the completed QA checklist evidence before this sole public publisher runs.
+  # `release-qa` MUST have required reviewers and completed QA checklist evidence.
+  # Approval is necessary but not sufficient:
+  # the machine-readable evidence manifest below must also bind URL+digest+attestation to
+  # this exact repository/run/tag/commit/channel before the publication lease is acquired.
   publish:
-    needs: [build, smoke]
+    needs: [prepare, smoke]
     runs-on: ubuntu-latest
     environment:
       name: release-qa
     permissions:
       contents: write
     steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          ref: ${{ needs.prepare.outputs.commit }}
       - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
         with:
           pattern: nexnote-*
           path: release
           merge-multiple: true
-      - name: Preflight complete signed release set
+      - name: Preflight signed artifact set and immutable version
         run: |
           shopt -s nullglob
           appimages=(release/*.AppImage)
@@ -194,8 +230,52 @@ jobs:
           windows=(release/*.exe)
           ((${#appimages[@]} && ${#debs[@]} && ${#maczips[@]} && ${#macdmg[@]} && ${#windows[@]})) || { echo '::error::incomplete cross-platform artifact set'; exit 1; }
           for artifact in "${appimages[@]}" "${debs[@]}"; do test -f "$artifact.asc" || { echo "::error::missing GPG signature for $artifact"; exit 1; }; done
+          node scripts/check-version.mjs --require-tag "${{ needs.prepare.outputs.tag }}"
+      - name: Create and validate run-bound QA evidence manifest
+        env:
+          RELEASE_CHANNEL: ${{ needs.prepare.outputs.channel }}
+          RELEASE_TAG: ${{ needs.prepare.outputs.tag }}
+          RELEASE_COMMIT: ${{ needs.prepare.outputs.commit }}
+          QA_EVIDENCE_URL: ${{ inputs.qa-evidence-url }}
+          QA_EVIDENCE_SHA256: ${{ inputs.qa-evidence-sha256 }}
+          QA_ALL_REQUIRED_CHECKS_PASSED: ${{ inputs.qa-all-required-checks-passed }}
+        run: |
+          GITHUB_REF_NAME="$RELEASE_TAG" GITHUB_SHA="$RELEASE_COMMIT" node scripts/release-evidence.mjs create release-qa-evidence.json
+          GITHUB_REF_NAME="$RELEASE_TAG" GITHUB_SHA="$RELEASE_COMMIT" node scripts/release-evidence.mjs validate release-qa-evidence.json
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: release-qa-evidence-${{ github.run_id }}
+          path: release-qa-evidence.json
+          if-no-files-found: error
+      - name: Acquire durable publication lease
+        env:
+          RELEASE_COMMIT: ${{ needs.prepare.outputs.commit }}
+        run: |
+          set -euo pipefail
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          # Each attempt owns a UNIQUE commit: pushing the same SHA twice would be
+          # reported as 'up-to-date' and is NOT mutual exclusion.
+          tree=$(git rev-parse "$RELEASE_COMMIT^{tree}")
+          owner=$(printf 'publication lease %s/%s/%s\n' "$GITHUB_RUN_ID" "$GITHUB_RUN_ATTEMPT" "$RANDOM" | git commit-tree "$tree")
+          echo "PUBLICATION_LEASE_OWNER=$owner" >> "$GITHUB_ENV"
+          # Empty expected old SHA means create-if-absent, never update an existing lease.
+          for attempt in $(seq 1 180); do
+            if git push --force-with-lease=refs/heads/release-publication-lock: origin "$owner:refs/heads/release-publication-lock" 2>/dev/null; then
+              echo "PUBLICATION_LEASE_ACQUIRED=true" >> "$GITHUB_ENV"
+              exit 0
+            fi
+            sleep 10
+          done
+          echo '::error::publication lease unavailable after 30 minutes; run remains failed and rerunnable, never silently dropped'
+          exit 1
+      # Same immutable tag resolves to the same GitHub Release, making explicit retries idempotent.
       - name: Attach artifacts to GitHub Release
         uses: softprops/action-gh-release@3bb12739c298aeb8a4eeaf626c5b8d85266b0e65 # v2
         with:
+          tag_name: ${{ needs.prepare.outputs.tag }}
           files: release/**/*
           generate_release_notes: true
+      - name: Release durable publication lease
+        if: always() && env.PUBLICATION_LEASE_ACQUIRED == 'true'
+        run: git push --force-with-lease=refs/heads/release-publication-lock:$PUBLICATION_LEASE_OWNER origin :refs/heads/release-publication-lock
