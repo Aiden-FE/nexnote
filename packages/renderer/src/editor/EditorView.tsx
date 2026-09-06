@@ -11,6 +11,7 @@ import {
   sanitizePageTitle,
   titleFromPath,
 } from './title-sync';
+import { registerAppSaveListener } from './app-save';
 
 interface EditorViewProps {
   paneId: PaneId;
@@ -18,9 +19,7 @@ interface EditorViewProps {
 }
 
 type LoadState =
-  | { phase: 'loading' }
-  | { phase: 'ready'; markdown: string }
-  | { phase: 'error'; message: string };
+  { phase: 'loading' } | { phase: 'ready'; markdown: string } | { phase: 'error'; message: string };
 
 type SaveState = 'saved' | 'saving' | 'error';
 
@@ -162,8 +161,10 @@ export function EditorView({ paneId, tab }: EditorViewProps) {
     kernelRef.current = kernel;
 
     const flush = () => void kernel.flushPendingSave();
+    const unregisterAppSave = registerAppSaveListener(window, () => kernel.flushPendingSave());
     window.addEventListener('blur', flush);
     return () => {
+      unregisterAppSave();
       window.removeEventListener('blur', flush);
       // 先 flush 再 destroy：destroy 会 cancel，不能颠倒。
       void kernel.flushPendingSave().finally(() => kernel.destroy());
@@ -173,8 +174,10 @@ export function EditorView({ paneId, tab }: EditorViewProps) {
   }, [load, paneId, save]);
 
   const status = useMemo(() => {
-    if (saveState === 'saving') return { icon: LoaderCircle, text: '保存中…', className: 'animate-spin' };
-    if (saveState === 'error') return { icon: AlertCircle, text: '保存失败', className: 'text-destructive' };
+    if (saveState === 'saving')
+      return { icon: LoaderCircle, text: '保存中…', className: 'animate-spin' };
+    if (saveState === 'error')
+      return { icon: AlertCircle, text: '保存失败', className: 'text-destructive' };
     return { icon: Check, text: '已保存', className: '' };
   }, [saveState]);
   const StatusIcon = status.icon;
@@ -199,7 +202,11 @@ export function EditorView({ paneId, tab }: EditorViewProps) {
   }
 
   return (
-    <div data-testid="editor-view" data-path={displayPath} className="nexnote-editor-view flex h-full min-h-0 flex-col">
+    <div
+      data-testid="editor-view"
+      data-path={displayPath}
+      className="nexnote-editor-view flex h-full min-h-0 flex-col"
+    >
       <div className="flex h-8 shrink-0 items-center gap-1.5 border-b px-3 text-[11px] text-muted-foreground">
         <Save className="size-3" />
         <span className="min-w-0 truncate">{displayPath}</span>

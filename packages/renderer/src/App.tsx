@@ -6,6 +6,7 @@ import { VaultContext } from './shell/vault-context';
 import { WorkspaceView } from './shell/WorkspaceView';
 import { OnboardingWizard } from './onboarding/OnboardingWizard';
 import { CommandPalette, useCommandPaletteHotkey } from './palette/CommandPalette';
+import { requestAppSave } from './editor/app-save';
 
 type StartupState =
   | { phase: 'loading' }
@@ -44,16 +45,7 @@ function App() {
         event.preventDefault();
         if (state.phase !== 'ready') return;
 
-        // This app-wide save event lets every mounted editor register its async
-        // persistence work. Commit starts only after all listeners settle, so
-        // Ctrl/Cmd+S is not limited to the timeline message input.
-        const saves: Promise<unknown>[] = [];
-        window.dispatchEvent(
-          new CustomEvent('nexnote:save', {
-            detail: { waitUntil: (save: Promise<unknown>) => saves.push(save) },
-          }),
-        );
-        void Promise.all(saves).then(() => invoke('git:commit', { message: '保存当前工作区' }));
+        void requestAppSave(window).then(() => invoke('git:commit', { message: '保存当前工作区' }));
       }
     };
     window.addEventListener('keydown', saveAndCommit);

@@ -11,6 +11,7 @@
  *   NEXNOTE_GIT_HTTPS_URL=https://host/org/private-repo.git
  *   NEXNOTE_GIT_SSH_URL=git@host:org/private-repo.git
  * Optional: NEXNOTE_GIT_ACCEPT_BRANCH=known-disposable-branch
+ *           NEXNOTE_GIT_KEEP_BRANCH=1 (diagnostics only; default cleanup deletes it)
  */
 import { execFileSync } from 'node:child_process';
 import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
@@ -64,5 +65,20 @@ try {
   git(sshDir, ['pull', '--ff-only', 'origin', branch]);
   console.log(`PASS: HTTPS and SSH push/pull succeeded on ${branch}`);
 } finally {
+  // The acceptance branch is always removed remotely, including after a partial
+  // failure once either clone exists. Keep NEXNOTE_GIT_KEEP_BRANCH=1 only for
+  // intentional diagnostics; the default leaves the credentialed repository clean.
+  if (process.env.NEXNOTE_GIT_KEEP_BRANCH !== '1') {
+    for (const cwd of [httpsDir, sshDir]) {
+      try {
+        git(cwd, ['push', 'origin', '--delete', branch]);
+        break;
+      } catch {
+        // Try the other protocol clone; neither existing means no branch was pushed.
+      }
+    }
+  } else {
+    console.log(`NEXNOTE_GIT_KEEP_BRANCH=1: retained remote branch ${branch}`);
+  }
   rmSync(root, { recursive: true, force: true });
 }
