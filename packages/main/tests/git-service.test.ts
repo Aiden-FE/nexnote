@@ -141,13 +141,27 @@ describe.runIf(runIfGit())('GitService（系统 Git，临时仓库）', () => {
     expect(log[0]!.message).toMatch(/保存 notes\/page\.md/);
   });
 
-  it('restore rejects root and lexical directory targets', async () => {
+  it('restore and preview reject root, lexical directory, and symlink escape targets', async () => {
     await service.initialize(root);
     const commit = (await service.timeline())[0]!.hash;
     await expect(service.restoreFile('.', commit)).rejects.toMatchObject({ code: 'INVALID_PATH' });
-    await expect(service.restoreFile('notes/.', commit)).rejects.toMatchObject({
+    await expect(service.previewRestore('notes/.', commit)).rejects.toMatchObject({
       code: 'INVALID_PATH',
     });
+
+    const outside = mkdtempSync(path.join(tmpdir(), 'nexnote-restore-outside-'));
+    try {
+      await fsp.writeFile(path.join(outside, 'secret.md'), 'secret');
+      await fsp.symlink(outside, path.join(root, 'escape'));
+      await expect(service.previewRestore('escape/secret.md', commit)).rejects.toMatchObject({
+        code: 'INVALID_PATH',
+      });
+      await expect(service.restoreFile('escape/secret.md', commit)).rejects.toMatchObject({
+        code: 'INVALID_PATH',
+      });
+    } finally {
+      rmSync(outside, { recursive: true, force: true });
+    }
   });
 
   it('auto commit refuses conflict marker files even without unmerged index state', async () => {

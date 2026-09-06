@@ -325,10 +325,11 @@ export class GitService {
 
   async previewRestore(file: string, commit: string): Promise<GitRestorePreview> {
     const root = this.requireRoot();
-    const relative = this.requireVaultPath(file);
+    const relative = await this.requireRestorableFile(root, file, commit);
     const git = this.git(root);
     const [target, current] = await Promise.all([
       git.show([`${commit}:${relative}`]),
+      // requireRestorableFile rejected symlink components, so this cannot follow outside root.
       fsp.readFile(path.join(root, relative), 'utf8').catch(() => null),
     ]);
     return { path: relative, commit, current, target };
@@ -336,7 +337,7 @@ export class GitService {
 
   async restoreFile(file: string, commit: string): Promise<GitOperationResult> {
     const root = this.requireRoot();
-    const relative = this.requireTrackedFilePath(file);
+    const relative = await this.requireRestorableFile(root, file, commit);
     const git = this.git(root);
     // checkout stages only this file. Commit with an explicit pathspec so unrelated
     // staged or unstaged edits can never hitchhike into the restore commit.
@@ -496,7 +497,7 @@ export class GitService {
     return file.replace(/\\/g, '/');
   }
 
-  private requireTrackedFilePath(file: string): string {
+  private async requireRestorableFile(root: string, file: string, commit: string): Promise<string> {
     const relative = this.requireVaultPath(file);
     const normalized = path.posix.normalize(relative);
     if (
@@ -507,6 +508,23 @@ export class GitService {
       relative.split('/').some((segment) => segment === '.')
     ) {
       throw new GitServiceError('恢复目标必须是 vault 内的已跟踪文件', 'INVALID_PATH');
+    }
+
+    // lstat every existing component: neither preview nor restore may follow a vault
+    // symlink to disclose or overwrite an external file.
+    let current = root;
+    for (const segment of normalized.split('/')) {
+      current = path.join(current, segment);
+      const stat = await fsp.lstat(current).catch(() => null);
+      if (stat?.isSymbolicLink()) {
+        throw new GitServiceError('恢复目标不能经过符号链接', 'INVALID_PATH');
+      }
+    }
+
+    const git = this.git(root);
+    const tracked = await git.raw(['ls-tree', '-r', '--name-only', commit, '--', normalized]);
+    if (!tracked.split(/\r?\n/).includes(normalized)) {
+      throw new GitServiceError('恢复目标必须是所选版本中的已跟踪文件', 'INVALID_PATH');
     }
     return normalized;
   }
