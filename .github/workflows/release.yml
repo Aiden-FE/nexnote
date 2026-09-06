@@ -237,7 +237,7 @@ jobs:
           ((${#appimages[@]} && ${#debs[@]} && ${#maczips[@]} && ${#macdmg[@]} && ${#windows[@]} && ${#blockmaps[@]} && ${#manifests[@]})) || { echo '::error::incomplete distributable or auto-update metadata set'; exit 1; }
           for artifact in "${appimages[@]}" "${debs[@]}"; do test -f "$artifact.asc" || { echo "::error::missing GPG signature for $artifact"; exit 1; }; done
           node scripts/check-version.mjs --require-tag "${{ needs.prepare.outputs.tag }}"
-      - name: Create and validate run-bound QA evidence manifest
+      - name: Fetch, verify, and bind immutable QA evidence
         env:
           RELEASE_CHANNEL: ${{ needs.prepare.outputs.channel }}
           RELEASE_TAG: ${{ needs.prepare.outputs.tag }}

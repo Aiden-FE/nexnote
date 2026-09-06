@@ -13,7 +13,7 @@
 - Tag commit SHA:
 - Candidate workflow URL (build + smoke):
 - `release-qa` approval URL, reviewer, and timestamp:
-- Completed checklist evidence URL under `https://github.com/Aiden-FE/nexnote/...`:
+- Immutable completed QA JSON URL: `https://raw.githubusercontent.com/Aiden-FE/nexnote/<40-char-commit>/path/to/qa.json`:
 - Evidence document SHA-256 (64 lowercase hex):
 - `qa-all-required-checks-passed=true` attestation recorded:
 
@@ -27,11 +27,11 @@
   - 证据：GitHub Actions 运行 URL、`build → smoke → preflight → publish(environment)` dependency graph 与 artifact checksums。
 - [ ] preflight 包含当前 channel 对应的 `latest*.yml` / `beta*.yml` / `alpha*.yml`、至少一个 `.blockmap`，以及每个 Linux AppImage/deb 的 `.asc`。
   - 证据：preflight log 与 artifact manifest。
-- [ ] `release-qa-evidence-<run-id>` artifact 已生成并验证，其 repository/run/tag/commit/channel、canonical evidence URL、SHA-256 与 all-checks-passed attestation 都绑定本次发布。
-  - 证据：artifact URL 与 `release-evidence.mjs validate` 输出。
+- [ ] `release-qa-evidence-<run-id>` artifact 已生成并验证：preflight 仅以无 redirect 的 HTTPS 请求 fetch canonical `raw.githubusercontent.com/Aiden-FE/nexnote/<40-char-commit>/...` JSON，限制 256 KiB/10 秒，计算 SHA-256 并匹配 dispatch digest；fetched JSON 的 repository/tag/commit/channel/attestation 与本次 immutable release 绑定。
+  - 证据：artifact URL、immutable evidence URL/commit 和 `release-evidence.mjs validate` 输出。
 - [ ] publication job 使用 fixed remote-ref lease；没有 GitHub Actions `concurrency` pending-run replacement。若 lease 超时，run 明确失败且可重跑，不会静默丢弃。
   - 证据：lease acquire/release job log。
-- [ ] 仅非矩阵 `publish` job 具有 `contents: write`，并且 `needs: [build, smoke]`；矩阵 build 无发布权限且只使用 `--publish never`。
+- [ ] 仅非矩阵 `publish` job 具有 `contents: write`，并且 `needs: [prepare, preflight]`；`preflight` 等待 signed build + smoke，无 Environment gate；矩阵 build 无发布权限且只使用 `--publish never`。
   - 证据：本次 workflow 文件 SHA 与 job dependency graph。
 - [ ] 所有 `uses:` action 都由完整 immutable commit SHA pin；Dependabot GitHub Actions 更新 PR 已审查。
   - 证据：workflow diff 和 Dependabot PR URL。

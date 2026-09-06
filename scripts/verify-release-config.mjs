@@ -217,7 +217,10 @@ check('所有 GitHub Actions 使用 immutable SHA 并由 Dependabot 维护', () 
   }
   if (!/package-ecosystem:\s*github-actions/.test(dependabot)) throw new Error('Dependabot github-actions update strategy missing');
   if (!/softprops\/action-gh-release@[0-9a-f]{40}/.test(releaseWorkflow)) throw new Error('release publisher must be pinned by full SHA');
-  if (!/Aiden-FE\\\/nexnote/.test(releaseEvidence) || !/allRequiredChecksPassed/.test(releaseEvidence)) throw new Error('QA evidence validator must bind canonical repository and all-checks attestation');
+  if (!/Aiden-FE/.test(releaseEvidence) || !/allRequiredChecksPassed/.test(releaseEvidence)) throw new Error('QA evidence validator must bind canonical repository and all-checks attestation');
+  for (const guard of ['raw.githubusercontent.com', "redirect: 'error'", 'MAX_EVIDENCE_BYTES', 'FETCH_TIMEOUT_MS', "createHash('sha256')", 'actualSha256 !== want.evidenceSha256']) {
+    if (!releaseEvidence.includes(guard)) throw new Error(`QA evidence fetch guard missing: ${guard}`);
+  }
 });
 check('updater 下载状态只在事件确认后允许安装且去重 available', () => {
   if (!/downloadedVersion !== availableVersion/.test(updater)) throw new Error('install must require confirmed downloaded version');

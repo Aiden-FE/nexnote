@@ -1,8 +1,10 @@
 import { execFileSync, spawnSync } from 'node:child_process';
-import { mkdtempSync, rmSync } from 'node:fs';
+import { createHash } from 'node:crypto';
+import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { resolve, join } from 'node:path';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
+import { create, parseImmutableEvidenceUrl, validate } from '../../../scripts/release-evidence.mjs';
 
 const root = resolve(import.meta.dirname, '../../..');
 const run = (script: string, args: string[], env = {}) => spawnSync(process.execPath, [resolve(root, 'scripts', script), ...args], { cwd: root, env: { ...process.env, ...env }, encoding: 'utf8' });
@@ -16,21 +18,39 @@ describe('release policy executable gates', () => {
     expect(run('check-version.mjs', ['--require-tag', 'v0.1.0']).status).toBe(0);
   });
 
-  it('fails closed for missing evidence and binds attestation to the run', () => {
+  it('rejects SSRF-prone and mutable evidence URLs before fetch', () => {
+    for (const url of [
+      'http://raw.githubusercontent.com/Aiden-FE/nexnote/' + 'a'.repeat(40) + '/qa.json',
+      'https://github.com/Aiden-FE/nexnote/issues/1',
+      'https://raw.githubusercontent.com/Aiden-FE/nexnote/main/qa.json',
+      'https://raw.githubusercontent.com.evil.test/Aiden-FE/nexnote/' + 'a'.repeat(40) + '/qa.json',
+      'https://raw.githubusercontent.com/Aiden-FE/nexnote/' + 'a'.repeat(40) + '/qa.json?redirect=x',
+    ]) expect(() => parseImmutableEvidenceUrl(url)).toThrow();
+  });
+
+  it('fetches only bounded immutable evidence and binds digest/run attestation', async () => {
     const dir = mkdtempSync(join(tmpdir(), 'release-evidence-'));
     const file = join(dir, 'evidence.json');
+    const previous = globalThis.fetch;
+    const body = JSON.stringify({ repository: 'Aiden-FE/nexnote', tag: 'v0.1.0', commit: 'a'.repeat(40), channel: 'stable', allRequiredChecksPassed: true });
+    const digest = createHash('sha256').update(body).digest('hex');
     const env = {
-      GITHUB_REPOSITORY: 'Aiden-FE/nexnote', GITHUB_RUN_ID: '123',
-      GITHUB_REF_NAME: 'v0.1.0', GITHUB_SHA: 'a'.repeat(40), RELEASE_CHANNEL: 'stable',
-      QA_EVIDENCE_URL: 'https://github.com/Aiden-FE/nexnote/issues/1',
-      QA_EVIDENCE_SHA256: 'b'.repeat(64), QA_ALL_REQUIRED_CHECKS_PASSED: 'true',
+      GITHUB_REPOSITORY: 'Aiden-FE/nexnote', GITHUB_RUN_ID: '123', GITHUB_REF_NAME: 'v0.1.0',
+      GITHUB_SHA: 'a'.repeat(40), RELEASE_CHANNEL: 'stable',
+      QA_EVIDENCE_URL: `https://raw.githubusercontent.com/Aiden-FE/nexnote/${'b'.repeat(40)}/qa.json`,
+      QA_EVIDENCE_SHA256: digest, QA_ALL_REQUIRED_CHECKS_PASSED: 'true',
     };
     try {
-      expect(run('release-evidence.mjs', ['create', file], { ...env, QA_ALL_REQUIRED_CHECKS_PASSED: 'false' }).status).not.toBe(0);
-      expect(run('release-evidence.mjs', ['create', file], env).status).toBe(0);
-      expect(run('release-evidence.mjs', ['validate', file], env).status).toBe(0);
-      expect(run('release-evidence.mjs', ['validate', file], { ...env, GITHUB_RUN_ID: '124' }).status).not.toBe(0);
-    } finally { rmSync(dir, { recursive: true, force: true }); }
+      Object.assign(process.env, env);
+      globalThis.fetch = vi.fn(async () => new Response(body, { status: 200, headers: { 'content-length': String(Buffer.byteLength(body)) } }));
+      await create(file);
+      expect(globalThis.fetch).toHaveBeenCalledWith(expect.any(URL), expect.objectContaining({ redirect: 'error' }));
+      validate(JSON.parse(readFileSync(file, 'utf8')));
+      expect(() => validate({ ...JSON.parse(readFileSync(file, 'utf8')), runId: 'other' })).toThrow();
+    } finally {
+      globalThis.fetch = previous;
+      rmSync(dir, { recursive: true, force: true });
+    }
   });
 
   it('remote ref create-if-absent rejects a second unique owner until release', () => {
