@@ -221,13 +221,16 @@ export function useJumpToInjection(): void {
       return;
     }
     let cancelled = false;
-    void invoke('index:jumpTo', { query, limit: 8 })
-      .then((results: PageJumpResult[]) => {
-        if (!cancelled) useUiStore.getState().setJumpResults(results);
-      })
-      .catch(() => undefined);
+    const timer = setTimeout(() => {
+      void invoke('index:jumpTo', { query, limit: 8 })
+        .then((results: PageJumpResult[]) => {
+          if (!cancelled) useUiStore.getState().setJumpResults(results);
+        })
+        .catch(() => undefined);
+    }, 120);
     return () => {
       cancelled = true;
+      clearTimeout(timer);
     };
   }, [query]);
 }

@@ -239,23 +239,26 @@ export class LinkIndexService {
     type RawHit = { path: string; title: string; aliases: string; tags: string; content: string; snippet: string; rank: number };
     // Tier ordering is application-level; fetch the complete match set before applying caller limit.
     let ftsRows: RawHit[] = [];
+    let ftsSucceeded = false;
     if (m) {
       try {
         ftsRows = db.prepare(`SELECT path,title,aliases,tags,content,snippet(page_fts,4,'','', ' … ',12) snippet,-bm25(page_fts) rank FROM page_fts WHERE page_fts MATCH ?`).all(m) as RawHit[];
+        ftsSucceeded = ftsRows.length > 0;
       } catch (e) {
-        // 记录但不丢弃：保留 LIKE 兜底结果
+        // Only an FTS failure needs the leading-wildcard LIKE compatibility fallback.
         this.onStatus({ ...this._status, phase: this._status.phase, error: `search fts: ${e instanceof Error ? e.message : String(e)}` });
       }
     }
     let likeRows: RawHit[] = [];
-    try {
-      // LIKE fallback mirrors FTS multi-term AND semantics, including Chinese substring terms.
-      const terms = needle.toLowerCase().split(/\s+/).filter(Boolean);
-      const clauses = terms.map(() => "(lower(title) LIKE ? ESCAPE '\\' OR lower(aliases) LIKE ? ESCAPE '\\' OR lower(tags) LIKE ? ESCAPE '\\' OR lower(content) LIKE ? ESCAPE '\\')").join(' AND ');
-      const values = terms.flatMap((term) => Array(4).fill(`%${escLike(term)}%`));
-      likeRows = db.prepare(`SELECT path,title,aliases,tags,content,'' snippet,0 rank FROM page_fts WHERE ${clauses}`).all(...values) as RawHit[];
-    } catch (e) {
-      this.onStatus({ ...this._status, phase: this._status.phase, error: `search like: ${e instanceof Error ? e.message : String(e)}` });
+    if (!ftsSucceeded) {
+      try {
+        const terms = needle.toLowerCase().split(/\s+/).filter(Boolean);
+        const clauses = terms.map(() => "(lower(title) LIKE ? ESCAPE '\\' OR lower(aliases) LIKE ? ESCAPE '\\' OR lower(tags) LIKE ? ESCAPE '\\' OR lower(content) LIKE ? ESCAPE '\\')").join(' AND ');
+        const values = terms.flatMap((term) => Array(4).fill(`%${escLike(term)}%`));
+        likeRows = db.prepare(`SELECT path,title,aliases,tags,content,'' snippet,0 rank FROM page_fts WHERE ${clauses}`).all(...values) as RawHit[];
+      } catch (e) {
+        this.onStatus({ ...this._status, phase: this._status.phase, error: `search like: ${e instanceof Error ? e.message : String(e)}` });
+      }
     }
     const merged = new Map<string, RawHit>(); for (const r of [...ftsRows, ...likeRows]) { if (!merged.has(r.path)) merged.set(r.path, r); }
     const q = needle.toLowerCase(); const order: Record<SearchHit['tier'], number> = { title: 0, tag: 1, alias: 2, content: 3 };
