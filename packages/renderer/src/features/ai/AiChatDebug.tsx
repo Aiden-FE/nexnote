@@ -27,9 +27,9 @@ export function AiChatDebug({ compact = false }: { compact?: boolean }) {
   const streamIdRef = useRef<string | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
 
-  // 订阅统一流事件协议（按 streamId 关联本会话）
+  // 订阅统一流事件协议（按 streamId 关联本会话）并在卸载时取消仍在运行的请求。
   useEffect(() => {
-    return onEvent('ai:streamEvent', ({ streamId, event }) => {
+    const unsubscribe = onEvent('ai:streamEvent', ({ streamId, event }) => {
       if (streamId !== streamIdRef.current) return;
       if (event.type === 'start') {
         setModelLabel(event.model);
@@ -37,7 +37,8 @@ export function AiChatDebug({ compact = false }: { compact?: boolean }) {
         setTurns((prev) => {
           const next = [...prev];
           const last = next[next.length - 1];
-          if (last?.role === 'assistant') next[next.length - 1] = { role: 'assistant', content: last.content + event.text };
+          if (last?.role === 'assistant')
+            next[next.length - 1] = { role: 'assistant', content: last.content + event.text };
           else next.push({ role: 'assistant', content: event.text });
           return next;
         });
@@ -52,6 +53,12 @@ export function AiChatDebug({ compact = false }: { compact?: boolean }) {
         streamIdRef.current = null;
       }
     });
+    return () => {
+      const streamId = streamIdRef.current;
+      streamIdRef.current = null;
+      if (streamId) void invoke('ai:chat:stream:cancel', { streamId }).catch(() => undefined);
+      unsubscribe();
+    };
   }, []);
 
   useEffect(() => {
@@ -66,7 +73,9 @@ export function AiChatDebug({ compact = false }: { compact?: boolean }) {
       setReasoning(null);
       const history: ChatMessage[] = [
         { role: 'system', content: '你是 NexNote 的内置调试助手，用一两句话回答。' },
-        ...turns.filter((t) => t.content).map((t) => ({ role: t.role, content: t.content }) as ChatMessage),
+        ...turns
+          .filter((t) => t.content)
+          .map((t) => ({ role: t.role, content: t.content }) as ChatMessage),
         { role: 'user', content },
       ];
       setTurns((prev) => [...prev, { role: 'user', content }]);
@@ -93,7 +102,10 @@ export function AiChatDebug({ compact = false }: { compact?: boolean }) {
   };
 
   const reset = () => {
-    if (streaming) void stop();
+    const streamId = streamIdRef.current;
+    streamIdRef.current = null;
+    if (streamId) void invoke('ai:chat:stream:cancel', { streamId }).catch(() => undefined);
+    setStreaming(false);
     setTurns([]);
     setError(null);
     setReasoning(null);
@@ -102,7 +114,10 @@ export function AiChatDebug({ compact = false }: { compact?: boolean }) {
 
   if (needsOnboarding(state)) {
     return (
-      <div data-testid="ai-debug-unconfigured" className="flex flex-col items-center gap-2 p-4 text-center text-xs text-muted-foreground">
+      <div
+        data-testid="ai-debug-unconfigured"
+        className="flex flex-col items-center gap-2 p-4 text-center text-xs text-muted-foreground"
+      >
         <span className="flex items-center gap-1 rounded-full border px-2 py-0.5 text-[11px]">
           🔐 密钥仅存系统钥匙串
         </span>
@@ -112,27 +127,52 @@ export function AiChatDebug({ compact = false }: { compact?: boolean }) {
   }
 
   return (
-    <div data-testid="ai-debug" className={cn('flex min-h-0 flex-col gap-2', compact ? 'h-full' : 'h-72 rounded-lg border p-3')}>
+    <div
+      data-testid="ai-debug"
+      className={cn(
+        'flex min-h-0 flex-col gap-2',
+        compact ? 'h-full' : 'h-72 rounded-lg border p-3',
+      )}
+    >
       <div className="flex items-center gap-2 text-[11px] text-muted-foreground">
         <Sparkles className="size-3.5 text-primary" />
         <span>流式调试{modelLabel ? ` · ${modelLabel}` : ''}</span>
         <span className="ml-auto flex items-center gap-1">
           {streaming && (
-            <Button data-testid="ai-debug-stop" variant="ghost" size="sm" className="h-6 px-2 text-[11px]" onClick={() => void stop()}>
+            <Button
+              data-testid="ai-debug-stop"
+              variant="ghost"
+              size="sm"
+              className="h-6 px-2 text-[11px]"
+              onClick={() => void stop()}
+            >
               <CircleStop className="size-3" />
               停止
             </Button>
           )}
-          <Button data-testid="ai-debug-reset" variant="ghost" size="sm" className="h-6 px-2 text-[11px]" onClick={reset} disabled={turns.length === 0 && !error}>
+          <Button
+            data-testid="ai-debug-reset"
+            variant="ghost"
+            size="sm"
+            className="h-6 px-2 text-[11px]"
+            onClick={reset}
+            disabled={turns.length === 0 && !error}
+          >
             <RotateCcw className="size-3" />
             清空
           </Button>
         </span>
       </div>
 
-      <div ref={scrollRef} data-testid="ai-debug-log" className="min-h-0 flex-1 space-y-2 overflow-auto rounded-md bg-muted/40 p-2 text-sm">
+      <div
+        ref={scrollRef}
+        data-testid="ai-debug-log"
+        className="min-h-0 flex-1 space-y-2 overflow-auto rounded-md bg-muted/40 p-2 text-sm"
+      >
         {turns.length === 0 && !reasoning && !error && (
-          <p className="p-2 text-xs text-muted-foreground">输入一句话测试流式补全（走已配置的对话模型）。</p>
+          <p className="p-2 text-xs text-muted-foreground">
+            输入一句话测试流式补全（走已配置的对话模型）。
+          </p>
         )}
         {turns.map((t, i) => (
           <div
@@ -149,12 +189,18 @@ export function AiChatDebug({ compact = false }: { compact?: boolean }) {
           </div>
         ))}
         {reasoning && (
-          <div data-testid="ai-debug-reasoning" className="whitespace-pre-wrap break-words rounded-lg border border-dashed px-2.5 py-1.5 text-[12px] text-muted-foreground">
+          <div
+            data-testid="ai-debug-reasoning"
+            className="whitespace-pre-wrap break-words rounded-lg border border-dashed px-2.5 py-1.5 text-[12px] text-muted-foreground"
+          >
             {reasoning}
           </div>
         )}
         {error && (
-          <div data-testid="ai-debug-error" className="rounded-md border border-destructive/40 bg-destructive/10 p-2 text-xs text-destructive">
+          <div
+            data-testid="ai-debug-error"
+            className="rounded-md border border-destructive/40 bg-destructive/10 p-2 text-xs text-destructive"
+          >
             {error}
             <Button
               data-testid="ai-debug-retry"
@@ -187,8 +233,19 @@ export function AiChatDebug({ compact = false }: { compact?: boolean }) {
           disabled={streaming}
           className="h-8 min-w-0 flex-1 rounded-md border bg-transparent px-2.5 text-[13px] placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/40 disabled:opacity-50"
         />
-        <Button data-testid="ai-debug-send" type="submit" size="sm" className="h-8 w-8 p-0" disabled={!input.trim() || streaming} aria-label="发送">
-          {streaming ? <Loader2 className="size-3.5 animate-spin" /> : <Send className="size-3.5" />}
+        <Button
+          data-testid="ai-debug-send"
+          type="submit"
+          size="sm"
+          className="h-8 w-8 p-0"
+          disabled={!input.trim() || streaming}
+          aria-label="发送"
+        >
+          {streaming ? (
+            <Loader2 className="size-3.5 animate-spin" />
+          ) : (
+            <Send className="size-3.5" />
+          )}
         </Button>
       </form>
     </div>

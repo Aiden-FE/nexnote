@@ -201,7 +201,7 @@ export class AiService {
   /**
    * 解析测试目标：
    * - candidate 可与 profileId 同时出现（编辑场景），使用候选 kind/baseUrl/model；
-   * - candidate.apiKey 省略时，仅在主进程内从 profileId 取已存密钥；
+   * - candidate 仅在 kind/baseUrl 与已保存 Profile 完全一致时可复用已存密钥；编辑 URL 必须提交新凭据；
    * - 纯 profileId 则测试完整已保存配置。
    */
   private targetAdapter(target: AiConnectionTarget): {
@@ -222,7 +222,11 @@ export class AiService {
                 baseUrl: c.baseUrl,
                 apiKey:
                   this.credential(c.credentialToken) ??
-                  (saved ? this.deps.store.getApiKey(saved.id) : ''),
+                  (saved &&
+                  saved.kind === c.kind &&
+                  saved.baseUrl === c.baseUrl.trim().replace(/\/+$/, '')
+                    ? this.deps.store.getApiKey(saved.id)
+                    : ''),
                 kind: c.kind,
                 fetchImpl: this.deps.fetchImpl,
               }),

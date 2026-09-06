@@ -461,6 +461,7 @@ export class AiStore {
       version: 1,
       exportedAt: new Date().toISOString(),
       profiles: this.data.profiles.map((p) => ({
+        id: p.id,
         name: p.name,
         providerKind: p.kind,
         baseUrl: p.baseUrl,
@@ -469,17 +470,29 @@ export class AiStore {
       })),
       features: {
         writing: f.writing
-          ? { name: nameOf(f.writing.profileId) ?? '', model: f.writing.model }
+          ? {
+              profileRef: f.writing.profileId,
+              name: nameOf(f.writing.profileId) ?? '',
+              model: f.writing.model,
+            }
           : null,
-        chat: f.chat ? { name: nameOf(f.chat.profileId) ?? '', model: f.chat.model } : null,
+        chat: f.chat
+          ? {
+              profileRef: f.chat.profileId,
+              name: nameOf(f.chat.profileId) ?? '',
+              model: f.chat.model,
+            }
+          : null,
         embedding: f.embedding
           ? {
+              profileRef: f.embedding.profileId,
               name: nameOf(f.embedding.profileId) ?? '',
               model: f.embedding.model,
               ...(f.embedding.metric && { metric: f.embedding.metric }),
             }
           : null,
       },
+      defaultProfileRef: this.data.defaultProfileId,
       defaultProfileName: nameOf(this.data.defaultProfileId),
     };
   }
@@ -491,6 +504,12 @@ export class AiStore {
   importBundle(bundle: AiProfileExportBundle): { imported: number; skipped: string[] } {
     const skipped: string[] = [];
     let imported = 0;
+    const importedRefs = new Map<string, string>();
+    const duplicateNames = new Set(
+      bundle.profiles
+        .map((profile) => profile.name)
+        .filter((name, index, names) => names.indexOf(name) !== index),
+    );
     for (const p of bundle.profiles) {
       if (!p.name || !p.baseUrl) {
         skipped.push(p.name || '(未命名)');
@@ -498,7 +517,7 @@ export class AiStore {
       }
       const existing = this.data.profiles.find((x) => x.name === p.name);
       try {
-        this.saveProfile(existing?.id, {
+        const saved = this.saveProfile(existing?.id, {
           name: p.name,
           kind: p.providerKind ?? 'openai-compatible',
           baseUrl: p.baseUrl,
@@ -507,17 +526,31 @@ export class AiStore {
           // Imported profiles never carry credential material.
           apiKey: existing ? undefined : null,
         });
+        if (p.id) importedRefs.set(p.id, saved.id);
         imported += 1;
       } catch {
         skipped.push(p.name);
       }
     }
-    // 恢复分功能指定与默认 Profile（按名称回查）
+    // Export-scoped references are authoritative. Legacy name-only bundles are accepted only
+    // when the name is unique; otherwise assignment/default resolution fails closed.
+    const resolveProfile = (
+      profileRef: string | undefined,
+      name: string,
+    ): AiStoredProfile | undefined => {
+      if (profileRef)
+        return importedRefs.get(profileRef)
+          ? this.getProfile(importedRefs.get(profileRef)!)
+          : undefined;
+      if (!name || duplicateNames.has(name)) return undefined;
+      const matches = this.data.profiles.filter((profile) => profile.name === name);
+      return matches.length === 1 ? matches[0] : undefined;
+    };
     const resolve = (
-      a: { name: string; model: string; metric?: EmbeddingMetric } | null,
+      a: { profileRef?: string; name: string; model: string; metric?: EmbeddingMetric } | null,
     ): AiFeatureAssignment | null => {
-      if (!a || !a.name) return null;
-      const p = this.data.profiles.find((x) => x.name === a.name);
+      if (!a) return null;
+      const p = resolveProfile(a.profileRef, a.name);
       return p ? { profileId: p.id, model: a.model, ...(a.metric && { metric: a.metric }) } : null;
     };
     const features = {
@@ -526,9 +559,7 @@ export class AiStore {
       embedding: resolve(bundle.features.embedding),
     };
     // 导入保持 bundle 声明的默认 Profile（SPEC-9：默认不能退化为首个）；无声明则不覆盖本地默认。
-    const def = bundle.defaultProfileName
-      ? this.data.profiles.find((x) => x.name === bundle.defaultProfileName)
-      : undefined;
+    const def = resolveProfile(bundle.defaultProfileRef ?? undefined, bundle.defaultProfileName ?? '');
     let defaultProfileId = this.data.defaultProfileId;
     if (def) defaultProfileId = def.id;
     else if (!def && this.data.profiles.length > 0 && !defaultProfileId) {

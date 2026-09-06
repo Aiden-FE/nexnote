@@ -145,6 +145,8 @@ export interface AiProfileExportBundle {
   version: 1;
   exportedAt: string;
   profiles: Array<{
+    /** Export-scoped stable reference for default/feature assignment restoration. */
+    id?: string;
     name: string;
     providerKind: AiProviderKind;
     baseUrl: string;
@@ -152,9 +154,15 @@ export interface AiProfileExportBundle {
     params: ChatParams;
   }>;
   features: {
-    writing: { name: string; model: string } | null;
-    chat: { name: string; model: string } | null;
-    embedding: { name: string; model: string; metric?: EmbeddingMetric } | null;
+    writing: { profileRef?: string; name: string; model: string } | null;
+    chat: { profileRef?: string; name: string; model: string } | null;
+    embedding: {
+      profileRef?: string;
+      name: string;
+      model: string;
+      metric?: EmbeddingMetric;
+    } | null;
   };
+  defaultProfileRef?: string | null;
   defaultProfileName: string | null;
 }

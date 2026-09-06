@@ -146,17 +146,21 @@ describe('AiStore（Profile 存储 + 密钥安全）', () => {
     });
     expect(local.baseUrl).toBe('local://embedding');
     expect(local.keyBlob).toBeNull();
-    expect(() => store.saveProfile(undefined, {
-      ...input,
-      kind: 'local-embedding',
-      baseUrl: 'local://other',
-      apiKey: null,
-    })).toThrow(/local:\/\/embedding/);
-    expect(() => store.saveProfile(undefined, {
-      ...input,
-      kind: 'local-embedding',
-      baseUrl: 'local://embedding',
-    })).toThrow(/不接受凭据/);
+    expect(() =>
+      store.saveProfile(undefined, {
+        ...input,
+        kind: 'local-embedding',
+        baseUrl: 'local://other',
+        apiKey: null,
+      }),
+    ).toThrow(/local:\/\/embedding/);
+    expect(() =>
+      store.saveProfile(undefined, {
+        ...input,
+        kind: 'local-embedding',
+        baseUrl: 'local://embedding',
+      }),
+    ).toThrow(/不接受凭据/);
   });
 
   it('网络 Profile 校验：非法 base-url / URL userinfo / 空名称 / 空模型拒绝', () => {
@@ -225,7 +229,11 @@ describe('AiStore（Profile 存储 + 密钥安全）', () => {
     expect(json).not.toContain('sk-very-secret-123');
     expect(json).not.toContain('keyBlob');
     expect(bundle.profiles[0]!.name).toBe('Mock 网关');
-    expect(bundle.features.chat).toEqual({ name: 'Mock 网关', model: 'gpt-4o-mini' });
+    expect(bundle.features.chat).toEqual({
+      profileRef: a.id,
+      name: 'Mock 网关',
+      model: 'gpt-4o-mini',
+    });
     expect(bundle.defaultProfileName).toBe('Mock 网关');
 
     // 落到新存储导入：同名覆盖（密钥不带入），分功能指定按名称恢复
@@ -252,6 +260,48 @@ describe('AiStore（Profile 存储 + 密钥安全）', () => {
     const r2 = fresh.importBundle(bundle);
     expect(r2.imported).toBe(1);
     expect(fresh.getState().profiles[0]!.hasApiKey).toBe(false);
+  });
+
+  it('重复 Profile 名称时，legacy name-only import 不恢复默认或功能指定', () => {
+    store.saveProfile(undefined, input);
+    store.saveProfile(undefined, {
+      ...input,
+      name: input.name,
+      baseUrl: 'https://second.example.com/v1',
+    });
+    const result = store.importBundle({
+      app: 'nexnote',
+      kind: 'ai-profiles',
+      version: 1,
+      exportedAt: new Date().toISOString(),
+      profiles: [],
+      features: {
+        chat: { name: input.name, model: 'gpt-4o-mini' },
+        writing: null,
+        embedding: null,
+      },
+      defaultProfileName: input.name,
+    });
+    expect(result.imported).toBe(0);
+    expect(store.getState().features.chat).toBeNull();
+    expect(store.getState().defaultProfileId).not.toBeNull(); // existing default remains untouched
+  });
+
+  it('export-scoped profile references restore duplicate-name assignments unambiguously', () => {
+    const first = store.saveProfile(undefined, input);
+    const second = store.saveProfile(undefined, {
+      ...input,
+      name: input.name,
+      baseUrl: 'https://second.example.com/v1',
+    });
+    store.setFeatureAssignment('chat', { profileId: second.id, model: 'gpt-4o' });
+    store.setDefaultProfile(second.id);
+    const bundle = store.exportBundle();
+    const target = new AiStore(path.join(tmp, 'ai-refs.json'), secrets);
+    target.importBundle(bundle);
+    expect(target.getState().features.chat?.model).toBe('gpt-4o');
+    expect(target.getState().defaultProfileId).toBeTruthy();
+    expect(first.id).not.toBe(second.id);
   });
 
   it('损坏 JSON 回退默认（不抛错）', async () => {

@@ -143,6 +143,27 @@ describe('AiService', () => {
     ).toBe(true);
   });
 
+  it('编辑 candidate URL 时绝不把已保存密钥发送到新 origin', async () => {
+    const { service } = makeService();
+    const id = saveMockProfile(service);
+    mock.requests.length = 0;
+
+    await service.testConnection({
+      profileId: id,
+      candidate: {
+        kind: 'openai-compatible',
+        baseUrl: `${mock.url}/different-v1`,
+        defaultModel: 'gpt-4o-mini',
+      },
+    });
+
+    expect(
+      mock.requests.some(
+        (request) => request.headers.authorization === 'Bearer sk-service-secret-xyz',
+      ),
+    ).toBe(false);
+  });
+
   it('testConnection：不可达端点 reachable=false + 错误信息', async () => {
     const { service } = makeService();
     const result = await service.testConnection({
@@ -351,10 +372,7 @@ describe('AiService', () => {
 describe('splitEmbedBatches（token 预算分批）', () => {
   it('按注入 token 估算器而不是字符数切块', () => {
     const texts = ['a', 'bb', 'ccc'];
-    expect(splitEmbedBatches(texts, 3, 10, (text) => text.length)).toEqual([
-      ['a', 'bb'],
-      ['ccc'],
-    ]);
+    expect(splitEmbedBatches(texts, 3, 10, (text) => text.length)).toEqual([['a', 'bb'], ['ccc']]);
   });
 
   it('按 token 预算与条目上限切块；空输入→空批', () => {
