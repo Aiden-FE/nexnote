@@ -70,6 +70,27 @@ describe('LinkIndexService', () => {
     svc.close();
   });
 
+  it('resolves a wikilink by filename basename when H1 title differs', async () => {
+    await page('nested/file-name.md', '', '# Different Heading\n');
+    await page('source.md', '', 'See [[file-name]]\n');
+    const svc = new LinkIndexService();
+    svc.setRoot(tmp);
+    expect(svc.backlinks('nested/file-name.md').map((item) => item.fromPath)).toEqual(['source.md']);
+    svc.close();
+  });
+
+  it('search applies title tier before the requested limit', async () => {
+    for (let i = 0; i < 30; i += 1) await page(`content-${i}.md`, '', `# Page ${i}\n\nneedle body\n`);
+    await page('title.md', '', '# Needle title\n');
+    const svc = new LinkIndexService();
+    svc.setRoot(tmp);
+    const hits = svc.search('needle', 1);
+    expect(hits).toHaveLength(1);
+    expect(hits[0]?.path).toBe('title.md');
+    expect(hits[0]?.tier).toBe('title');
+    svc.close();
+  });
+
   it('增量：新文件/改名后反链与索引正确更新（验收项 1、2）', async () => {
     await page('target.md', '', '# Target\n');
     await page('src.md', '', '链到 [[target]]\n');

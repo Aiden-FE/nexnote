@@ -45,7 +45,8 @@ export function parseWikilinkAtStart(src: string): WikilinkReference | null {
 /** 内部辅助：在单行 line 上抓取所有 wikilink，返回每条的 raw 长度以便 lastIndex 推进。 */
 function scanLine(line: string): { raw: string; inner: string; target: string; targetName: string; alias: string | null; anchor: string | null; colStart: number }[] {
   const out: { raw: string; inner: string; target: string; targetName: string; alias: string | null; anchor: string | null; colStart: number }[] = [];
-  const cleaned = line.replace(/`[^`]*`/g, ' ');
+  // Mask inline code without changing UTF-16 positions of following links.
+  const cleaned = line.replace(/`[^`]*`/g, (code) => ' '.repeat(code.length));
   const re = /!?\[\[/g;
   for (let m = re.exec(cleaned); m; m = re.exec(cleaned)) {
     const parsed = parseWikilinkAtStart(line.slice(m.index));
