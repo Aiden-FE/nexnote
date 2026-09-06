@@ -8,6 +8,7 @@ import type { WindowManager } from '../window';
 import type { AiService } from '../ai/ai-service';
 import type { LinkIndexService } from '../indexer/index-service';
 import type { ConfidenceService } from '../confidence/confidence-service';
+import type { RetrievalService } from '../retrieval/retrieval-service';
 
 /** 注入给所有 IPC handler 的服务集合（全部可替身，便于单测）。 */
 export interface IpcServices {
@@ -31,6 +32,8 @@ export interface IpcServices {
   /** SQLite 关系索引（DEV-004）。 */
   index: LinkIndexService;
   confidence?: ConfidenceService;
+  /** DEV-011 向量召回（可选：未打开 vault/无 embedding 时降级）。 */
+  retrieval?: RetrievalService;
   appInfo(): AppInfo;
   checkForUpdates(): Promise<UpdateCheckResult>;
 }

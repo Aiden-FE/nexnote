@@ -2,6 +2,7 @@ import { useEffect } from 'react';
 import { Bot, Sparkles } from 'lucide-react';
 import { useAiConfig, useAiWizard, needsOnboarding } from './ai-config';
 import { AiChatDebug } from './AiChatDebug';
+import { RetrievalTester } from './retrieval/RetrievalTester';
 import { openSettings } from '../../lib/open-settings';
 import { Button } from '../../components/ui/button';
 
@@ -42,6 +43,9 @@ export function AiDockPanel() {
       <p className="text-[11px] leading-relaxed text-muted-foreground">
         已连接 {state?.profiles.length} 个 Profile · 完整对话体验将在 DEV-012 接入，下方可先试用流式补全。
       </p>
+      <div data-testid="dock-retrieval" className="shrink-0 border-t pt-1.5">
+        <RetrievalTester />
+      </div>
       <div className="min-h-0 flex-1">
         <AiChatDebug compact />
       </div>

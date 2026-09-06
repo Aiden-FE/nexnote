@@ -2,6 +2,7 @@
 export type * from './types/vault';
 export type * from './types/ai';
 export type * from './types/index';
+export type * from './types/retrieval';
 export * from './markdown/wikilink';
 export * from './markdown/links';
 // IPC

@@ -12,6 +12,7 @@ import { checkForUpdates, initAutoUpdater } from './updater';
 import { SmokeController } from './smoke';
 import { AiStore } from './ai/ai-store';
 import { AiService } from './ai/ai-service';
+import { RetrievalService } from './retrieval/retrieval-service';
 import { createSecretVault } from './ai/secret-store';
 import { GitService } from './git/git-service';
 import { ConfidenceService } from './confidence/confidence-service';
@@ -53,10 +54,12 @@ async function bootstrap(): Promise<void> {
     },
   });
   let confidenceService: ConfidenceService | null = null;
+  let retrievalService: RetrievalService | null = null;
   const index = new LinkIndexService(
     (status) => windows?.sendToMainWindow('index:statusChanged', status),
     (paths) => {
       if (confidenceService) void confidenceService.refresh(paths === null ? undefined : paths);
+      retrievalService?.invalidate(paths);
     },
   );
   // 文件监视（DEV-003）：事件同时驱动树刷新与 DEV-004 的防抖单文件索引。
@@ -98,6 +101,13 @@ async function bootstrap(): Promise<void> {
   const winRef = windows;
   const ai = new AiService({ store: aiStore, sendEvent: (channel, payload) => winRef.sendToMainWindow(channel, payload) });
 
+  // DEV-011 向量索引 + 三阶段召回（embedding 走 ai 的 embedding feature，未配置时自动降级）。
+  retrievalService = new RetrievalService({
+    index,
+    embedder: ai,
+    onStatus: (status) => winRef.sendToMainWindow('ai:retrievalStatus', { status }),
+  });
+
   initAutoUpdater(log);
 
   registerAllIpcHandlers(ipcMain, {
@@ -129,6 +139,7 @@ async function bootstrap(): Promise<void> {
     watch,
     index,
     confidence,
+    retrieval: retrievalService,
     appInfo() {
       return {
         version: app.getVersion(),

@@ -12,6 +12,7 @@ import type {
   ConnectionTestResult,
   EmbedResult,
 } from '../../types/ai';
+import type { RetrievalOptions, RetrievalResponse } from '../../types/retrieval';
 
 /**
  * ai:* 命名空间（DEV-009 Provider Adapter 与配置系统；DEV-010/011/012 在此追加业务通道）。
@@ -32,6 +33,7 @@ export const AI_CHANNELS = [
   'ai:chat:stream:cancel',
   'ai:embed',
   'ai:embedWithMetadata',
+  'ai:retrieve',
   'ai:export',
   'ai:import',
 ] as const;
@@ -110,6 +112,10 @@ export interface AiChannelMap {
     request: { texts: string[] };
     /** 元数据通道：返回 dimensions/model/profileId，DEV-011 召回管道使用。 */
     response: Result<EmbedResult>;
+  };
+  'ai:retrieve': {
+    request: RetrievalOptions;
+    response: Result<RetrievalResponse>;
   };
   'ai:export': {
     request: void;

@@ -2,6 +2,7 @@ import type { GitStatus } from './channels/git';
 import type { VaultInfo } from '../types/vault';
 import type { ChatStreamEvent, AiConfigState } from '../types/ai';
 import type { IndexStatus } from '../types/index';
+import type { RetrievalIndexStatusPayload } from '../types/retrieval';
 
 /**
  * 主进程 → 渲染层推送事件契约。
@@ -14,6 +15,8 @@ export interface IpcEventMap {
   'fs:changed': FsChangeEvent;
   /** AI 对话流事件（统一内部协议，按 streamId 关联） */
   'ai:streamEvent': { streamId: string; event: ChatStreamEvent };
+  /** DEV-011 向量索引后台构建进度 */
+  'ai:retrievalStatus': { status: RetrievalIndexStatusPayload };
   /** AI 配置变化（Profile 增删改/分功能指定/embedding generation 变更） */
   'ai:configChanged': { state: AiConfigState };
   /** Git 工作区/上游状态变化；自动提交、pull/push 后推送。 */
@@ -33,6 +36,7 @@ export const IPC_EVENT_CHANNELS: readonly string[] = [
   'vault:changed',
   'fs:changed',
   'ai:streamEvent',
+  'ai:retrievalStatus',
   'ai:configChanged',
   'git:statusChanged',
   'index:statusChanged',
