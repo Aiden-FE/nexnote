@@ -7,7 +7,9 @@ onlyBuiltDependencies:
   - esbuild
   - electron-winstaller
   - electron-builder
+  - dugite
 allowBuilds:
+  dugite: true
   electron-winstaller: true
   esbuild: true
 minimumReleaseAgeExclude:

@@ -1,26 +1,26 @@
+import type { GitStatus } from './channels/git';
 import type { VaultInfo } from '../types/vault';
 
-/**
- * 主进程 → 渲染层推送事件契约。
- * preload 暴露类型化 on(channel, listener)，渲染层只监听这里声明的事件。
- */
+/** 主进程 → 渲染层推送事件契约。 */
 export interface IpcEventMap {
   /** 当前 vault 变化（打开/关闭/切换）。vault=null 表示回到向导 */
   'vault:changed': { vault: VaultInfo | null };
-  /**
-   * vault 文件系统变化（DEV-003，chokidar 驱动）。
-   * path 为 vault 相对路径；change 表示内容变化（同一路径重写）。
-   */
+  /** vault 文件系统变化（DEV-003，chokidar 驱动）。 */
   'fs:changed': FsChangeEvent;
+  /** Git 工作区/上游状态变化；自动提交、pull/push 后推送。 */
+  'git:statusChanged': GitStatus;
 }
 
 export interface FsChangeEvent {
   kind: 'add' | 'addDir' | 'unlink' | 'unlinkDir' | 'change';
-  /** vault 相对路径（目录时以相对路径表示，无尾斜杠） */
   path: string;
 }
 
-export const IPC_EVENT_CHANNELS: readonly string[] = ['vault:changed', 'fs:changed'];
+export const IPC_EVENT_CHANNELS: readonly string[] = [
+  'vault:changed',
+  'fs:changed',
+  'git:statusChanged',
+];
 
 export type IpcEventChannel = keyof IpcEventMap & string;
 

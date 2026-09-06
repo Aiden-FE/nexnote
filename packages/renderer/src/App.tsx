@@ -38,6 +38,28 @@ function App() {
 
   useCommandPaletteHotkey();
 
+  useEffect(() => {
+    const saveAndCommit = (event: KeyboardEvent): void => {
+      if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === 's') {
+        event.preventDefault();
+        if (state.phase !== 'ready') return;
+
+        // This app-wide save event lets every mounted editor register its async
+        // persistence work. Commit starts only after all listeners settle, so
+        // Ctrl/Cmd+S is not limited to the timeline message input.
+        const saves: Promise<unknown>[] = [];
+        window.dispatchEvent(
+          new CustomEvent('nexnote:save', {
+            detail: { waitUntil: (save: Promise<unknown>) => saves.push(save) },
+          }),
+        );
+        void Promise.all(saves).then(() => invoke('git:commit', { message: '保存当前工作区' }));
+      }
+    };
+    window.addEventListener('keydown', saveAndCommit);
+    return () => window.removeEventListener('keydown', saveAndCommit);
+  }, [state.phase]);
+
   return (
     <ThemeProvider>
       <VaultContext.Provider value={state.phase === 'ready' ? state.vault : null}>

@@ -1,6 +1,7 @@
 import type { ChannelRequest, ChannelResponse, IpcChannel, Result } from '@nexnote/shared';
 import { isIpcChannel } from '@nexnote/shared';
 import type { IpcServices } from './services';
+import { validatePayload } from './validation';
 
 /** 与 electron.ipcMain 兼容的最小接口（单测用假实现替换）。 */
 export interface IpcMainLike {
@@ -25,7 +26,10 @@ function toErrorResult(thrown: unknown): Result<never> {
 /**
  * 类型化 IPC 注册表：
  * - 编译期：handler 签名由 shared 契约推导（request/response 强制匹配）
- * - 运行期：拒绝未在契约中声明的通道、拒绝重复注册、统一错误→Result 信封
+ * - 运行期：拒绝未在契约中声明的通道、拒绝重复注册、运行时 payload schema 校验、统一错误→Result 信封
+ *
+ * payload schema 校验在 handler 之前完成；任何 malformed 输入都会以
+ * `{ ok:false, code:'IPC_PAYLOAD_INVALID', error }` 信封返回，handler 看不到污染数据。
  */
 export function createIpcRegistrar(ipcMain: IpcMainLike, services: IpcServices) {
   const registered = new Set<string>();
@@ -40,6 +44,14 @@ export function createIpcRegistrar(ipcMain: IpcMainLike, services: IpcServices) 
       }
       registered.add(channel);
       ipcMain.handle(channel, async (_event: unknown, payload: unknown) => {
+        const validation = validatePayload(channel, payload);
+        if (validation) {
+          return toErrorResult(
+            Object.assign(new Error(`${channel}: ${validation.message}`), {
+              code: validation.code,
+            }),
+          );
+        }
         try {
           return await handler(payload as ChannelRequest<C>, services);
         } catch (thrown) {

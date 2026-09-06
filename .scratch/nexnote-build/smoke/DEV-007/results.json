@@ -1,0 +1,166 @@
+{
+  "finishedAt": "2026-09-05T16:13:46.877Z",
+  "checks": [
+    {
+      "name": "首启动向导可见（新建/打开/克隆三选一）",
+      "passed": true
+    },
+    {
+      "name": "向导包含三选一入口",
+      "passed": true
+    },
+    {
+      "name": "vault:create 成功",
+      "passed": true,
+      "detail": "/var/folders/np/sd6hrwgj7gs9m5chdfpcycv00000gn/T/nexnote-smoke-vault-4WleWs/smoke-vault"
+    },
+    {
+      "name": "工作区出现（vault:changed 驱动）",
+      "passed": true
+    },
+    {
+      "name": "三面板布局（侧栏+主区+右侧 dock）",
+      "passed": true,
+      "detail": "sb=true main=true dock=true"
+    },
+    {
+      "name": "底部状态栏",
+      "passed": true
+    },
+    {
+      "name": "侧栏三个占位面板已注册",
+      "passed": true
+    },
+    {
+      "name": "Dock AI 占位面板已注册",
+      "passed": true
+    },
+    {
+      "name": "Dock Git 时间线面板已注册（DEV-007）",
+      "passed": true
+    },
+    {
+      "name": "状态栏 Git 状态项（分支可见）",
+      "passed": true
+    },
+    {
+      "name": "状态栏在 vault 创建后即显示分支与变更数",
+      "passed": true,
+      "detail": "master"
+    },
+    {
+      "name": "默认欢迎 Tab 激活",
+      "passed": true
+    },
+    {
+      "name": "Tab 可打开（左右 pane 各一）",
+      "passed": true,
+      "detail": "count=3"
+    },
+    {
+      "name": "右 pane 含新 Tab 内容",
+      "passed": true
+    },
+    {
+      "name": "Tab 可关闭",
+      "passed": true,
+      "detail": "count=2"
+    },
+    {
+      "name": "分屏比例可调（拖拽目标值生效）",
+      "passed": true,
+      "detail": "ratio=0.620"
+    },
+    {
+      "name": "分屏分隔线存在",
+      "passed": true
+    },
+    {
+      "name": "⌘K 唤起命令面板",
+      "passed": true
+    },
+    {
+      "name": "面板过滤命令",
+      "passed": true,
+      "detail": "items=1"
+    },
+    {
+      "name": "面板 Enter 执行命令（主题已切换）",
+      "passed": true,
+      "detail": "resolved=dark->light"
+    },
+    {
+      "name": "命令面板执行后关闭",
+      "passed": true
+    },
+    {
+      "name": "外部模块可注册新命令并执行",
+      "passed": true
+    },
+    {
+      "name": "暗色主题生效（CSS 变量切换）",
+      "passed": true
+    },
+    {
+      "name": "切回亮色主题",
+      "passed": true
+    },
+    {
+      "name": "侧栏可折叠",
+      "passed": true
+    },
+    {
+      "name": "fs:listDir 经 IPC 返回 vault 内容",
+      "passed": true,
+      "detail": ".gitdirectory .nexnotedirectory .gitignorefile"
+    },
+    {
+      "name": "editor:* 命名空间通道可用（占位）",
+      "passed": true
+    },
+    {
+      "name": "git:getStatus 报告真实仓库",
+      "passed": true
+    },
+    {
+      "name": "git:getTimeline 返回 ≥1 提交",
+      "passed": true
+    },
+    {
+      "name": "git:getTimeline 首条为 initial",
+      "passed": true
+    },
+    {
+      "name": "手动提交成功（commitManual）",
+      "passed": true
+    },
+    {
+      "name": "手动提交形成新 HEAD（kind=manual）",
+      "passed": true
+    },
+    {
+      "name": "版本时间线 dock 面板渲染 commit 列表",
+      "passed": true,
+      "detail": "版本时间线提交HEADcec9ace52026/9/6 00:13:45nexnote:manual: smoke manual commitAidenf366"
+    },
+    {
+      "name": "vault:close 后回到向导",
+      "passed": true
+    },
+    {
+      "name": "最近打开列表持久化并显示",
+      "passed": true
+    }
+  ],
+  "captures": [
+    "/Users/aiden/dev/aiden/nexnote-wt/DEV-007/.scratch/nexnote-build/smoke/DEV-007/01-onboarding.png",
+    "/Users/aiden/dev/aiden/nexnote-wt/DEV-007/.scratch/nexnote-build/smoke/DEV-007/02-workspace.png",
+    "/Users/aiden/dev/aiden/nexnote-wt/DEV-007/.scratch/nexnote-build/smoke/DEV-007/03-split.png",
+    "/Users/aiden/dev/aiden/nexnote-wt/DEV-007/.scratch/nexnote-build/smoke/DEV-007/04-palette.png",
+    "/Users/aiden/dev/aiden/nexnote-wt/DEV-007/.scratch/nexnote-build/smoke/DEV-007/05-dark.png",
+    "/Users/aiden/dev/aiden/nexnote-wt/DEV-007/.scratch/nexnote-build/smoke/DEV-007/06-light.png",
+    "/Users/aiden/dev/aiden/nexnote-wt/DEV-007/.scratch/nexnote-build/smoke/DEV-007/07-sidebar-collapsed.png",
+    "/Users/aiden/dev/aiden/nexnote-wt/DEV-007/.scratch/nexnote-build/smoke/DEV-007/09-git-timeline.png",
+    "/Users/aiden/dev/aiden/nexnote-wt/DEV-007/.scratch/nexnote-build/smoke/DEV-007/08-recent-list.png"
+  ]
+}
