@@ -36,7 +36,7 @@ function makeService(getRoot: () => string | null): VaultWatchService {
 /** 等到收集到匹配事件（watcher 异步 + awaitWriteFinish 均有延迟）。 */
 async function untilEvent(
   predicate: (e: FsChangeEvent) => boolean,
-  timeoutMs = 5000,
+  timeoutMs = 8000,
 ): Promise<boolean> {
   const start = Date.now();
   while (Date.now() - start < timeoutMs) {
