@@ -170,10 +170,26 @@ export const SelectionBubble = Extension.create<SelectionBubbleOptions, { visibl
             return false;
           },
           handleDOMEvents: {
-            blur(view) {
+            blur(view, event) {
+              // relatedTarget 在 bubble DOM 内：焦点移到工具栏按钮上，保持可见
+              const bubbleDom = view.dom.parentElement?.querySelector<HTMLElement>('[data-selection-bubble]');
+              const related = event.relatedTarget as Node | null;
+              if (bubbleDom && related && bubbleDom.contains(related)) return false;
               ext.storage.visible = false;
-              const dom = view.dom.parentElement?.querySelector<HTMLElement>('[data-selection-bubble]');
-              if (dom) dom.style.display = 'none';
+              if (bubbleDom) bubbleDom.style.display = 'none';
+              return false;
+            },
+            focusout(view, event) {
+              // 焦点完全离开编辑器+气泡（relatedTarget 不在编辑器内也不在气泡内），隐藏气泡
+              const bubbleDom = view.dom.parentElement?.querySelector<HTMLElement>('[data-selection-bubble]');
+              const related = event.relatedTarget as Node | null;
+              const leavingEditor = view.dom.contains(event.target as Node);
+              const goingIntoBubble = bubbleDom && related && bubbleDom.contains(related);
+              const goingIntoEditor = related && view.dom.contains(related);
+              if (leavingEditor && !goingIntoBubble && !goingIntoEditor) {
+                ext.storage.visible = false;
+                if (bubbleDom) bubbleDom.style.display = 'none';
+              }
               return false;
             },
           },

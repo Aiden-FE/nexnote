@@ -1,14 +1,15 @@
 import type { PluginCommandView, PluginContributionView } from '@nexnote/shared';
 import { BUILTIN_PLUGIN_IDS } from '@nexnote/shared';
 import type { ContextMenuItem } from '@nexnote/kernel';
+import type { SlashMenuItem } from '@nexnote/kernel';
 
 /**
- * 插件四类扩展点的宿主派生（DEV-014），纯逻辑、浏览器与单测共用。
+ * 插件四类扩展点的宿主派生（DEV-014 / DEV-017），纯逻辑、浏览器与单测共用。
  * 渲染层把这些派生物登记到对应注册表：
- * - commands → commandRegistry（⌘K 面板，按「插件」分组）
+ * - commands → commandRegistry（⌘K 面板，按「插件」分组）+ 斜杠菜单插件命令项
  * - menus    → 编辑器右键菜单（插件子菜单，点击 runCommand）
  * - views    → sidebarPanelRegistry（侧栏页签，渲染插件沙箱视图）
- * - blockTypes → commandRegistry（⌘K 插入插件块）+ 内核 pluginBlock 节点
+ * - blockTypes → commandRegistry（⌘K 插入插件块）+ 内核 pluginBlock 节点 + 斜杠菜单插件块项
  */
 
 export const PLUGIN_MENU_GROUP = 'plugin';
@@ -17,6 +18,12 @@ export const PLUGIN_MENU_GROUP = 'plugin';
 export const PLUGIN_MENU_ACTION_PREFIX = 'plugin-menu:';
 export function pluginMenuActionId(scopedId: string): string {
   return `${PLUGIN_MENU_ACTION_PREFIX}${scopedId}`;
+}
+
+/** 斜杠菜单插件命令 id 前缀：plugin-cmd:<scopedId>。 */
+export const PLUGIN_CMD_SLASH_PREFIX = 'plugin-cmd:';
+export function pluginCmdSlashId(scopedId: string): string {
+  return `${PLUGIN_CMD_SLASH_PREFIX}${scopedId}`;
 }
 
 /** ⌘K 命令 id（块类型插入）：plugin-block:<pluginId>:<blockType>。 */
@@ -78,6 +85,29 @@ export function buildDispatchableBlockCommands(
  */
 export function isBuiltinPlugin(id: string): boolean {
   return Object.values(BUILTIN_PLUGIN_IDS).includes(id as (typeof BUILTIN_PLUGIN_IDS)[keyof typeof BUILTIN_PLUGIN_IDS]);
+}
+
+/**
+ * 斜杠菜单插件命令项（DEV-017）：manifest 声明的 commands + 运行时 registerCommand 合并去重。
+ * 动作经 run 回调派发（EditorView 注入 plugins:runCommand IPC）；与块类型斜杠项用不同 prefix 避免 id 冲突。
+ */
+export function buildPluginCommandSlashItems(
+  contributions: PluginContributionView[],
+  runtimeCommands: PluginCommandView[],
+  run: (def: { pluginId: string; commandId: string }) => void,
+): SlashMenuItem[] {
+  const defs = buildPluginCommandDefs(contributions, runtimeCommands);
+  return defs.map((def) => ({
+    id: pluginCmdSlashId(def.id),
+    title: def.title,
+    hint: def.pluginId,
+    keywords: ['插件', 'plugin', 'command', ...(def.keywords ?? [])],
+    group: '插件',
+    action: () => {
+      run({ pluginId: def.pluginId, commandId: def.commandId });
+      return true;
+    },
+  }));
 }
 
 /** 由插件命令贡献 + 运行时注册命令派生 ⌘K 命令面板条目（去重，运行时优先）。 */

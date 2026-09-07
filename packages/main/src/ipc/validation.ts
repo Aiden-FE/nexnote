@@ -85,6 +85,21 @@ const createNote = object(
   ['parentDir', 'name', 'content'],
   [stringField('parentDir'), optionalField('name', 'string'), optionalField('content', 'string')],
 );
+const createTextFile = object(
+  ['path', 'content', 'createParentDirs'],
+  [stringField('path'), stringField('content'), optionalField('createParentDirs', 'boolean')],
+);
+const importBinaryFile = object(
+  ['path', 'data', 'suggestionName', 'mime', 'createParentDirs', 'overwrite'],
+  [
+    stringField('path'),
+    stringField('data'),
+    optionalField('suggestionName', 'string'),
+    optionalField('mime', 'string'),
+    optionalField('createParentDirs', 'boolean'),
+    optionalField('overwrite', 'boolean'),
+  ],
+);
 const listTree = object(['showAllFiles'], [optionalField('showAllFiles', 'boolean')]);
 
 const stringArrayField =
@@ -322,6 +337,8 @@ const VALIDATORS: Partial<Record<IpcChannel, PayloadValidator>> = {
   >,
   'fs:readTextFile': pathOnly,
   'fs:writeTextFile': write,
+  'fs:createTextFile': createTextFile,
+  'fs:importBinaryFile': importBinaryFile,
   'fs:exists': pathOnly,
   'fs:stat': pathOnly,
   'fs:listDir': pathOnly,

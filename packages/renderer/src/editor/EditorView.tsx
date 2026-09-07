@@ -1,7 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { AlertCircle, Check, LoaderCircle, Save } from 'lucide-react';
 import { createEditor } from '@nexnote/kernel';
-import type { EditorKernelInstance } from '@nexnote/kernel';
 import { invoke } from '../lib/ipc';
 import { useTabStore, type PaneId, type TabDescriptor } from '../stores/tab-store';
 import { FrontmatterPanel } from '../features/frontmatter/FrontmatterPanel';
@@ -30,8 +29,26 @@ import { CHAT_ASK_ACTION, requestAskAi } from '../features/ai/chat/ask-ai';
 import { openChatWikilinkOrNull } from '../features/ai/chat/chat-runtime';
 import { useUiStore } from '../stores/ui-store';
 import { pluginContributionRegistry } from '../registries';
-import { buildPluginMenuItems, PLUGIN_MENU_ACTION_PREFIX } from '../features/plugins/extension-points';
+import {
+  buildDispatchableBlockCommands,
+  buildPluginCommandSlashItems,
+  buildPluginMenuItems,
+  PLUGIN_MENU_ACTION_PREFIX,
+} from '../features/plugins/extension-points';
+import type { BlockMenuContext } from '@nexnote/kernel';
+import type { EditorKernelInstance, SlashMenuItem } from '@nexnote/kernel';
+import {
+  withUncreated,
+  filterTagCandidates,
+} from './interactions/suggestions';
+import {
+  buildBlockMenuItems,
+  runBlockMenuAction,
+  type BlockNeighbors,
+} from './interactions/block-menu';
+import { formatBubbleActions, runFormatAction } from './interactions/formatting';
 import { usePluginStore } from '../features/plugins/plugin-store';
+import { usePageTreeStore } from '../stores/page-tree-store';
 import {
   buildBuiltinSlashItems,
   buildBuiltinViewExtensions,
@@ -47,6 +64,181 @@ type LoadState =
   { phase: 'loading' } | { phase: 'ready'; markdown: string } | { phase: 'error'; message: string };
 
 type SaveState = 'saved' | 'saving' | 'error';
+
+
+/**
+ * 媒体插入（DEV-017 fresh 要求）：
+ * - 选择文件后真正导入当前 vault（经 main 进程 IPC 原子写入），再插入 vault 相对路径
+ * - 图片 → image 节点（src 为相对路径），附件 → Markdown 链接
+ * - 禁止 objectURL（blob）持久化；取消/卸载无隐藏 input / 悬挂 promise / editor use-after-destroy
+ */
+function pickFile(accept: string): { promise: Promise<File | null>; abort: () => void } {
+  let settled = false;
+  const input = document.createElement('input');
+  input.type = 'file';
+  input.accept = accept;
+  input.style.display = 'none';
+  const abort = () => {
+    if (settled) return;
+    settled = true;
+    input.remove();
+  };
+  const promise = new Promise<File | null>((resolve) => {
+    const done = (file: File | null) => {
+      if (settled) return;
+      settled = true;
+      input.remove();
+      resolve(file);
+    };
+    input.addEventListener('change', () => done(input.files?.[0] ?? null));
+    input.addEventListener('cancel', () => done(null));
+    document.body.append(input);
+    // 放在任务队列尾部触发 click，确保 DOM 已就绪（部分浏览器要求 input 已挂载）
+    queueMicrotask(() => {
+      if (settled) return;
+      try {
+        input.click();
+      } catch {
+        done(null);
+      }
+    });
+  });
+  return { promise, abort };
+}
+
+async function readFileAsBase64(file: File): Promise<string> {
+  // 渲染进程无 Node Buffer；分块转 binary string 避免大文件栈溢出
+  const bytes = new Uint8Array(await file.arrayBuffer());
+  let binary = '';
+  const CHUNK = 0x8000;
+  for (let i = 0; i < bytes.length; i += CHUNK) {
+    binary += String.fromCharCode(...bytes.subarray(i, i + CHUNK));
+  }
+  return btoa(binary);
+}
+
+function attachmentTargetPath(file: File, currentPagePath: string): string {
+  // 附件存到当前页面同级的 assets 目录；跨平台统一正斜杠，主进程再做 path.normalize 与沙箱校验
+  const dir = currentPagePath.includes('/')
+    ? currentPagePath.slice(0, currentPagePath.lastIndexOf('/'))
+    : '';
+  const folder = dir ? `${dir}/assets` : 'assets';
+  return `${folder}/${file.name}`;
+}
+
+function createMediaInsertSlashItems(options: {
+  getPagePath: () => string;
+  getEditor: () => EditorKernelInstance | null;
+  getDestroyed: () => boolean;
+  /** 登记挂起的文件选择 abort；返回反注册函数。编辑器卸载时统一取消。 */
+  trackAbort: (abort: () => void) => () => void;
+}): SlashMenuItem[] {
+  const runInsert = async (
+    accept: string,
+    insert: (kernel: EditorKernelInstance, relPath: string) => void,
+  ) => {
+    const { promise, abort } = pickFile(accept);
+    const untrack = options.trackAbort(abort);
+    // 页面切换/编辑器卸载时取消挂起的 input
+    const onUnload = () => abort();
+    window.addEventListener('beforeunload', onUnload);
+    try {
+      const file = await promise;
+      if (!file || options.getDestroyed()) return;
+      const kernel = options.getEditor();
+      if (!kernel) return;
+      const data = await readFileAsBase64(file);
+      const currentPage = options.getPagePath();
+      const target = attachmentTargetPath(file, currentPage);
+      const { path } = await invoke('fs:importBinaryFile', {
+        path: target,
+        data,
+        suggestionName: file.name,
+        mime: file.type || undefined,
+        createParentDirs: true,
+        overwrite: false,
+      });
+      // 确认仍在同一编辑器实例与未卸载
+      if (options.getDestroyed() || options.getEditor() !== kernel) return;
+      insert(kernel, path);
+    } catch (e) {
+      // 导入失败可见地报告（至少 console；UI 通知待后续票），不插入
+      console.error('[EditorView] 媒体导入失败', e);
+    } finally {
+      untrack();
+      window.removeEventListener('beforeunload', onUnload);
+    }
+  };
+
+  return [
+    {
+      id: 'image',
+      title: '图片',
+      hint: 'img',
+      keywords: ['image', 'img', 'picture', 'tupian'],
+      group: '媒体',
+      action: ({ view }) => {
+        void runInsert('image/*', (kernel, relPath) => {
+          const { schema } = view.state;
+          if (!schema.nodes.image) return;
+          view.dispatch(
+            view.state.tr
+              .replaceSelectionWith(schema.nodes.image.create({ src: relPath, alt: '' }))
+              .scrollIntoView(),
+          );
+          void kernel;
+        });
+        return true;
+      },
+    },
+    {
+      id: 'attachment',
+      title: '附件',
+      hint: 'file',
+      keywords: ['attachment', 'file', 'fujian'],
+      group: '媒体',
+      action: ({ view }) => {
+        void runInsert('*/*', (_kernel, relPath) => {
+          // 斜杠触发串已在 action 前被删除，直接在当前选区插入链接文本
+          view.dispatch(view.state.tr.insertText(`[附件](${relPath})`));
+        });
+        return true;
+      },
+    },
+  ];
+}
+
+function buildPluginBlockSlashItems(kernel: EditorKernelInstance): SlashMenuItem[] {
+  // PluginContributionDef 与 PluginContributionView 形状同源（scopedId/pluginId/kind/title/id）
+  const contributions = pluginContributionRegistry.all() as unknown as Parameters<typeof buildDispatchableBlockCommands>[0];
+  const defs = buildDispatchableBlockCommands(contributions);
+  return defs.map((d) => ({
+    id: d.id,
+    title: d.title,
+    hint: d.blockType,
+    keywords: ['插件', 'plugin', 'block', ...(d.keywords ?? []).map((k) => String(k))],
+    group: '插件',
+    action: () => {
+      kernel.editor.commands.insertPluginBlock?.({ pluginId: d.pluginId, blockType: d.blockType });
+      return true;
+    },
+  }));
+}
+
+/** 块菜单执行时的相邻块（供上移/下移）。 */
+function neighborsFor(kernel: EditorKernelInstance, blockId: string): BlockNeighbors {
+  const ids: string[] = [];
+  kernel.editor.state.doc.forEach((n) => {
+    const id = (n.attrs as { blockId?: string }).blockId;
+    if (typeof id === 'string' && id) ids.push(id);
+  });
+  const idx = ids.indexOf(blockId);
+  if (idx < 0) return { prevBlockId: null, nextBlockId: null };
+  return {
+    prevBlockId: idx > 0 ? ids[idx - 1] ?? null : null,
+    nextBlockId: idx < ids.length - 1 ? ids[idx + 1] ?? null : null,
+  };
+}
 
 /**
  * React → 框架无关 kernel 桥：
@@ -70,6 +262,8 @@ export function EditorView({ paneId, tab }: EditorViewProps) {
   const [fmLocked, setFmLocked] = useState(false);
   const [fmParseError, setFmParseError] = useState<string | null>(null);
   const [knownTags, setKnownTags] = useState<string[]>([]);
+  // 内核 hashtag 闭包经 ref 读取实时值，避免标签扫描完成后重挂编辑器
+  const knownTagsRef = useRef<string[]>([]);
   const indexTags = useIndexStore((s) => s.tags);
   const setDocument = useDocumentPropertiesStore((s) => s.setDocument);
 
@@ -197,6 +391,14 @@ export function EditorView({ paneId, tab }: EditorViewProps) {
     if (load.phase !== 'ready' || !hostRef.current) return;
     unmountedRef.current = false;
     const writingController = writingControllerRef.current;
+    // 挂起的文件选择器：编辑器卸载时统一 abort，避免隐藏 input / 悬挂 promise
+    const pendingFilePicks = new Set<() => void>();
+    const trackAbort = (abort: () => void) => {
+      pendingFilePicks.add(abort);
+      return () => {
+        pendingFilePicks.delete(abort);
+      };
+    };
     // DEV-015：内置插件（Mermaid/KaTeX）激活时叠加富预览 NodeView；
     // 斜杠项经函数式 extraSlashItems 在每次打开菜单时读取最新启停状态。
     const builtinFlags = flagsFromActivePlugins(usePluginStore.getState().plugins);
@@ -228,10 +430,12 @@ export function EditorView({ paneId, tab }: EditorViewProps) {
       },
       selectionBubble: {
         actions: [
+          ...formatBubbleActions(),
           ...writingBubbleActions(),
           { id: CHAT_ASK_ACTION, title: '询问 AI' },
         ],
         onAction: (id, ctx) => {
+          if (runFormatAction(id, kernelRef.current, ctx.text)) return;
           if (id === CHAT_ASK_ACTION) {
             requestAskAi(ctx.text, titleFromPath(pathRef.current), pathRef.current);
             return;
@@ -270,10 +474,85 @@ export function EditorView({ paneId, tab }: EditorViewProps) {
         },
       },
       extraExtensions: buildBuiltinViewExtensions(builtinFlags),
-      extraSlashItems: () => [
-        ...(writingController ? writingSlashItems(writingController) : []),
-        ...buildBuiltinSlashItems(flagsFromActivePlugins(usePluginStore.getState().plugins)),
-      ],
+      extraSlashItems: () => {
+        const pluginState = usePluginStore.getState();
+        return [
+          ...(writingController ? writingSlashItems(writingController) : []),
+          ...buildBuiltinSlashItems(flagsFromActivePlugins(pluginState.plugins)),
+          ...createMediaInsertSlashItems({
+            getPagePath: () => pathRef.current,
+            getEditor: () => kernelRef.current,
+            getDestroyed: () => unmountedRef.current,
+            trackAbort,
+          }),
+          ...buildPluginBlockSlashItems(kernel),
+          ...buildPluginCommandSlashItems(
+            pluginState.contributions,
+            pluginState.commands,
+            (def) => void invoke('plugins:runCommand', def),
+          ),
+        ];
+      },
+      wikilinkSuggestions: (query) => {
+        const summaries = useIndexStore.getState().pageSummaries;
+        const pages = usePageTreeStore.getState().entries
+          .filter((e) => e.kind === 'file' && e.path.toLowerCase().endsWith('.md'))
+          .map((e) => ({
+            path: e.path,
+            title: titleFromPath(e.path),
+            aliases: summaries[e.path]?.aliases ?? [],
+          }));
+        return withUncreated(pages, query);
+      },
+      // 红链回车创建：原子 create-if-absent 写入 `# 标题` 初始页；已存在则不动（不覆盖）
+      onWikilinkSuggestionPick: (item) => {
+        if (item.meta !== 'uncreated') return;
+        const target = item.insert?.target ?? item.id;
+        const pageName = target.split('#')[0] || target;
+        // 逐段清洗保留 folder/Page 嵌套路径（整体清洗会把 '/' 换成 '-'）
+        const segments = pageName.split('/').map((seg) => sanitizePageTitle(seg));
+        const nextPath = `${segments.join('/')}.md`;
+        void invoke('fs:createTextFile', {
+          path: nextPath,
+          content: `# ${segments.at(-1) ?? titleFromPath(nextPath)}\n\n`,
+          createParentDirs: true,
+        }).catch((e) => {
+          // 页面创建失败不阻塞插入（链接仍指向未来的页面），但真实错误需可见
+          console.error('[EditorView] 红链页面创建失败', e);
+        });
+      },
+      hashtagSuggestions: (query) =>
+        filterTagCandidates(
+          // 已知标签（索引 > 扫描）实时过滤，支持嵌套
+          useIndexStore.getState().tags.length > 0
+            ? useIndexStore.getState().tags.map((t) => t.tag)
+            : knownTagsRef.current,
+          query,
+        ),
+      blockMenu: {
+        build: (ctx: BlockMenuContext) =>
+          buildBlockMenuItems(ctx, {
+            getKernel: () => kernelRef.current,
+            buildAiSubmenu: (blockCtx) => writingContextMenu({ target: blockCtx.target }),
+            pluginItems: buildPluginMenuItems(pluginContributionRegistry.all()),
+            canFold: (blockCtx) => kernelRef.current?.canFoldBlock(blockCtx.blockId) ?? false,
+            isFolded: (blockCtx) => kernelRef.current?.isBlockFolded(blockCtx.blockId) ?? false,
+          }),
+        onAction: (id, ctx) => {
+          if (id.startsWith(PLUGIN_MENU_ACTION_PREFIX)) {
+            const scopedId = id.slice(PLUGIN_MENU_ACTION_PREFIX.length);
+            const sep = scopedId.indexOf(':');
+            void invoke('plugins:runCommand', {
+              pluginId: scopedId.slice(0, sep),
+              commandId: scopedId.slice(sep + 1),
+            });
+            return;
+          }
+          if (runBlockMenuAction(id, ctx, kernel, neighborsFor(kernel, ctx.blockId))) return;
+          // AI 写作（writeingContextMenu 的 ai-* id）与未知 id 交给写作控制器
+          writingController?.trigger(id, ctx);
+        },
+      },
     });
     kernelRef.current = kernel;
     const editorRegistration = registerEditor(kernel);
@@ -285,6 +564,9 @@ export function EditorView({ paneId, tab }: EditorViewProps) {
       unregisterAppSave();
       window.removeEventListener('blur', flush);
       editorRegistration.unregister();
+      // 卸载时取消所有挂起的文件选择器（隐藏 input / 悬挂 promise）
+      for (const abort of pendingFilePicks) abort();
+      pendingFilePicks.clear();
       // 先 flush 再 destroy：destroy 会 cancel，不能颠倒。
       void kernel.flushPendingSave().finally(() => kernel.destroy());
       kernelRef.current = null;
@@ -351,7 +633,10 @@ export function EditorView({ paneId, tab }: EditorViewProps) {
       readTextFile: (relativePath) => invoke('fs:readTextFile', { path: relativePath }),
     })
       .then((tags) => {
-        if (!cancelled) setKnownTags(tags);
+        if (!cancelled) {
+          knownTagsRef.current = tags;
+          setKnownTags(tags);
+        }
       })
       .catch(() => {
         // vault 未就绪等场景忽略
@@ -362,9 +647,11 @@ export function EditorView({ paneId, tab }: EditorViewProps) {
   }, [load]);
 
   // DEV-010：预加载当前页反链，供 AI 写作上下文组装（失败/无索引静默回退）。
+  // DEV-017：同时加载页面摘要（含别名），供双链建议匹配 alias。
   useEffect(() => {
     if (load.phase !== 'ready') return;
     void useIndexStore.getState().loadBacklinks(displayPath).catch(() => undefined);
+    void useIndexStore.getState().loadPageSummaries().catch(() => undefined);
   }, [load.phase, displayPath]);
 
   // DEV-004 索引标签为实时真值；索引未就绪时回退到全库扫描标签。

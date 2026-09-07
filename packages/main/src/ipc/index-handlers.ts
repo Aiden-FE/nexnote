@@ -12,6 +12,7 @@ export function registerIndexHandlers(registrar: IpcRegistrar): void {
   registrar.register('index:tags', ({ flat }, services) => ok(services.index.tags(flat)));
   registrar.register('index:tagPages', ({ tag }, services) => ok(services.index.tagPages(tag)));
   registrar.register('index:pageSummary', ({ path }, services) => ok(services.index.pageSummary(path)));
+  registrar.register('index:pageSummaries', (_payload, services) => ok(services.index.pageSummaries()));
   registrar.register('index:graph', (_payload, services): Result<GraphSnapshot> => ok(services.index.graph()));
   registrar.register('index:confidence', ({ pageId }, services): Result<ConfidenceResult | null> => ok(services.index.getConfidence(pageId)));
   registrar.register('index:confidenceSettings', async (_payload, services) => {
