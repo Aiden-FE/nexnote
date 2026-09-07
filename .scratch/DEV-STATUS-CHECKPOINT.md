@@ -8,8 +8,8 @@
 
 ## 0. 最新状态（持续更新，优先于下方陈旧冻结段）
 
-- **真实进度：14 / 19** —— DEV-001~DEV-014 已全部合入 master。
-- master HEAD：`a01f20e`（merge DEV-014），clean；post-merge typecheck(shared/kernel/renderer/plugin-api)/eslint/455 tests(2 skipped)/build 全过。
+- **真实进度：16 / 19** —— DEV-001~DEV-015 + DEV-017 已合入 master。
+- master HEAD：`39b239d`（merge DEV-017）；post-merge typecheck / main-tsc（仅 2 个基线错）/ 529 tests(2 skipped, 64 files) / eslint / build 全过。
 - 子Agent 派发工具 `multi_agent_v1__spawn_agent` 在本环境返回 unsupported，按用户接管规则由主控直接在隔离 worktree 实现。
 - better-sqlite3 ABI：vitest 用 Node ABI；electron smoke 用 `runtime=electron target=44.2.0 arch=arm64`，smoke 后务必切回 Node ABI。
 - Electron smoke 当前环境基线 **60/69**：9 项失败为 DEV-003/004/006/007 既有环境基线（Git 状态栏 2、新笔记 frontmatter/面包屑 2、标签面板/过滤 2、重命名 wikilink 1、500 节点 FPS 1、时间线 1）；master 与候选失败集逐名一致，DEV-010 无新增回归。
@@ -255,3 +255,13 @@ DEV-006 ← DEV-004；DEV-008 ← DEV-004+007；DEV-010 ← DEV-002+009；DEV-01
 - NOT_RUN：无外部 provider/签名安装项；行内公式 smoke 中落入 H1 为脚本插入顺序伪影（用户经斜杠菜单在光标处插入）。
 - post-merge master `e07d65a`：typecheck / 484 tests / eslint / build 全绿。
 - 进度：**15 / 19**。剩余 DEV-016（设置/向导 WIP aad90d6）、DEV-017（编辑器交互 WIP 506e5f8）、DEV-018（打包发布 WIP b86a6f2）、DEV-019（E2E，最后）。
+
+### DEV-017 — 已完成合并（2026-09-07）
+
+- Merge commit `39b239d`；候选 `dev/DEV-017-fresh@f0b2b8a`（40 files，+3199/−42；含原 agent `a8343dd` + 主控接管修复）；旧 `.wt/DEV-017`（`506e5f8`）废弃勿用。
+- 实现：媒体导入（renderer 分块 base64 → `fs:importBinaryFile` 原子写 + 碰撞去重，卸载 abort 挂起文件选择）、标题折叠（Decoration + 选区迁移 + 按钮键盘/去重）、块操作（删除/移动/转换/插入/按 blockId 删除，单事务可 undo + fail-closed）、块菜单（复制/剪切/删除/复制 ID/转换/上下移/折叠/插入 + AI 子菜单 + 插件项）、上下文/斜杠菜单键盘导航 + 焦点归还、选区浮栏 blur 保持、链接 ⌘K、wikilink/hashtag 建议合并索引别名、插件命令 ⌘K/斜杠入口（plugin-store setRuntime）。
+- 主控闸门 @f0b2b8a（worktree）：typecheck PASS / 529 tests PASS（2 skipped）/ eslint PASS / build PASS / diff-check PASS；main 包 tsc 仅 master 基线 2 错。
+- fresh fixed-SHA 双轴审查 @f0b2b8a：Standards PASS（5 minor：缩进不一致、测试 never 断言、mouseleave 栈同步冗余、destroy 未入 finally 等，无 blocker/major）+ Spec PASS（2 minor：链接按钮点击路径未测、媒体导入失败仅 console.error）。
+- post-merge master `39b239d`：typecheck / 529 tests（2 skipped，64 files）/ eslint / build 全绿（main-tsc = 2 基线错）。
+- NOT_RUN：无外部不可验证项（无真实 provider/签名/安装项）；媒体导入与红链创建由真实 kernel + mock IPC 单测覆盖。
+- 进度：**16 / 19**。剩余 DEV-016（fresh worktree 实现中）、DEV-018（候选 `8680d39` 重审中）、DEV-019（E2E，最后）。
