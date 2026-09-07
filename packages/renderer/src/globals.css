@@ -421,3 +421,89 @@
 .hljs-section { color: color-mix(in oklch, var(--editor-link) 72%, var(--foreground)); }
 .hljs-comment,
 .hljs-quote { color: var(--editor-muted-foreground); font-style: italic; }
+
+/* DEV-015 内置插件块：Mermaid / KaTeX */
+.nexnote-mermaid-block,
+.nexnote-math-block {
+  margin: 0.6rem 0;
+  border: 1px solid var(--border);
+  border-radius: 0.6rem;
+  background: var(--card, var(--popover));
+  overflow: hidden;
+}
+.nexnote-mermaid-source,
+.nexnote-math-source {
+  margin: 0;
+  padding: 0.6rem 0.8rem;
+  font-family: var(--mono, ui-monospace, monospace);
+  font-size: 0.8rem;
+  white-space: pre-wrap;
+  color: var(--muted-foreground);
+}
+.nexnote-mermaid-view,
+.nexnote-math-view {
+  margin: 0.6rem 0;
+  border: 1px solid var(--border);
+  border-radius: 0.6rem;
+  background: var(--card, var(--popover));
+}
+.nexnote-mermaid-preview,
+.nexnote-math-preview {
+  display: flex;
+  justify-content: center;
+  padding: 0.8rem;
+  overflow-x: auto;
+  cursor: default;
+}
+.nexnote-mermaid-preview.is-loading,
+.nexnote-math-preview {
+  color: var(--muted-foreground);
+  font-size: 0.8rem;
+}
+.nexnote-mermaid-preview.is-error {
+  color: var(--destructive, #dc2626);
+  font-size: 0.75rem;
+  white-space: pre-wrap;
+  justify-content: flex-start;
+}
+.nexnote-mermaid-preview svg { max-width: 100%; height: auto; }
+.nexnote-mermaid-editor,
+.nexnote-math-editor {
+  display: block;
+  width: 100%;
+  box-sizing: border-box;
+  padding: 0.6rem 0.8rem;
+  border: 0;
+  border-top: 1px solid var(--border);
+  background: transparent;
+  color: var(--foreground);
+  font-family: var(--mono, ui-monospace, monospace);
+  font-size: 0.8rem;
+  resize: vertical;
+  outline: none;
+}
+.nexnote-math-inline-view {
+  display: inline-flex;
+  align-items: center;
+  border-radius: 0.3rem;
+  cursor: default;
+}
+.nexnote-math-inline-view .nexnote-math-preview { padding: 0 0.2rem; display: inline-flex; }
+.nexnote-math-inline-view .nexnote-math-editor {
+  display: inline-block;
+  width: 8rem;
+  border: 1px solid var(--border);
+  border-radius: 0.3rem;
+  padding: 0 0.3rem;
+  resize: none;
+  white-space: pre;
+}
+.nexnote-builtin-hint {
+  padding: 0.3rem 0.8rem 0;
+  color: var(--muted-foreground);
+  font-size: 0.68rem;
+}
+.nexnote-math-inline {
+  font-family: var(--mono, ui-monospace, monospace);
+  font-size: 0.9em;
+}

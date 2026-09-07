@@ -158,7 +158,17 @@ export function PluginsSettingsPage() {
                     plugin.id === selectedId ? 'bg-accent' : 'hover:bg-accent/50',
                   )}
                 >
-                  <span className="block truncate text-sm">{plugin.name}</span>
+                  <span className="flex items-center gap-1.5 text-sm">
+                    <span className="truncate">{plugin.name}</span>
+                    {plugin.builtin && (
+                      <span
+                        className="shrink-0 rounded bg-primary/10 px-1 py-0.5 text-[10px] text-primary"
+                        data-testid="plugin-builtin-badge"
+                      >
+                        内置
+                      </span>
+                    )}
+                  </span>
                   <span className="block text-[11px] text-muted-foreground">
                     v{plugin.version} · {stateLabel(plugin.state)}
                   </span>
@@ -171,6 +181,11 @@ export function PluginsSettingsPage() {
               <div className="flex items-center gap-2">
                 <p className="font-medium">{selected.name}</p>
                 <span className="text-xs text-muted-foreground">v{selected.version}</span>
+                {selected.builtin && (
+                  <span className="rounded bg-primary/10 px-1.5 py-0.5 text-[10px] text-primary">
+                    内置插件
+                  </span>
+                )}
                 <label className="ml-auto flex items-center gap-1.5 text-xs">
                   <input
                     type="checkbox"
@@ -180,16 +195,23 @@ export function PluginsSettingsPage() {
                   />
                   启用
                 </label>
-                <button
-                  type="button"
-                  onClick={() => void uninstall(selected.id)}
-                  data-testid="plugin-uninstall"
-                  title="卸载"
-                  className="rounded p-1 text-muted-foreground hover:bg-accent hover:text-destructive"
-                >
-                  <Trash2 className="size-3.5" />
-                </button>
+                {!selected.builtin && (
+                  <button
+                    type="button"
+                    onClick={() => void uninstall(selected.id)}
+                    data-testid="plugin-uninstall"
+                    title="卸载"
+                    className="rounded p-1 text-muted-foreground hover:bg-accent hover:text-destructive"
+                  >
+                    <Trash2 className="size-3.5" />
+                  </button>
+                )}
               </div>
+              {selected.builtin && (
+                <p className="mt-1 text-[11px] text-muted-foreground">
+                  随应用内置的示范插件，可禁用但不可卸载；禁用后对应块类型从斜杠菜单移除，已有笔记内容保留为纯文本源码。
+                </p>
+              )}
               <p className="mt-1 text-xs text-muted-foreground">
                 {selected.description ?? '（无描述）'}
               </p>
@@ -217,14 +239,16 @@ export function PluginsSettingsPage() {
                     >
                       {grant.granted ? (grant.alwaysAllow ? '始终允许' : '已允许') : '未授权'}
                     </span>
-                    <button
-                      type="button"
-                      onClick={() => void prepareRevoke(selected.id, grant.permission)}
-                      data-testid={`plugin-revoke-${grant.permission}`}
-                      className="ml-auto text-muted-foreground hover:text-foreground hover:underline"
-                    >
-                      revoke
-                    </button>
+                    {!selected.builtin && (
+                      <button
+                        type="button"
+                        onClick={() => void prepareRevoke(selected.id, grant.permission)}
+                        data-testid={`plugin-revoke-${grant.permission}`}
+                        className="ml-auto text-muted-foreground hover:text-foreground hover:underline"
+                      >
+                        revoke
+                      </button>
+                    )}
                   </li>
                 ))}
               </ul>

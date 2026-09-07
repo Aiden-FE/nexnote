@@ -42,6 +42,18 @@ export { ContextMenu, contextMenuPluginKey } from './extensions/context-menu';
 export type { ContextMenuItem, ContextMenuOptions } from './extensions/context-menu';
 export { PluginBlock, PLUGIN_BLOCK_FENCE } from './extensions/plugin-block';
 export type { PluginBlockAttributes } from './extensions/plugin-block';
+export {
+  MermaidBlock,
+  MERMAID_BLOCK_NAME,
+  MERMAID_LANGUAGE,
+  MERMAID_DEFAULT_SOURCE,
+} from './extensions/mermaid';
+export {
+  MathBlock,
+  MathInline,
+  MATH_BLOCK_NAME,
+  MATH_INLINE_NAME,
+} from './extensions/math';
 export { computeEditorActionContext } from './extensions/action-context';
 export type { EditorActionContext, EditorActionTarget } from './extensions/action-context';
 export { generateBlockId } from './extensions/block-id';

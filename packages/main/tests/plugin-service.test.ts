@@ -12,8 +12,13 @@ import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { deflateRawSync } from 'node:zlib';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { PLUGIN_API_VERSION, type PluginRpcRequest } from '@nexnote/shared';
+import {
+  BUILTIN_PLUGIN_IDS,
+  PLUGIN_API_VERSION,
+  type PluginRpcRequest,
+} from '@nexnote/shared';
 import { PluginService } from '../src/plugins/plugin-service';
+import { BUILTIN_PLUGIN_MANIFESTS } from '../src/plugins/builtin/builtin-manifests';
 
 const fixture = join(dirname(fileURLToPath(import.meta.url)), 'fixtures/demo-plugin');
 const crashFixture = join(dirname(fileURLToPath(import.meta.url)), 'fixtures/crash-plugin');
@@ -345,5 +350,64 @@ describe('PluginService secure runtime', () => {
     expect(skills[0]?.params?.disableVector).toBe(true);
     service.setEnabled('com.nexnote.demo', false);
     expect(service.listPluginSkillContributions()).toEqual([]);
+  });
+});
+
+describe('内置示范插件（DEV-015）', () => {
+  it('seedBuiltins 预置 Mermaid/KaTeX 并走 manifest 校验，贡献点随激活状态生效', () => {
+    const service = makeService();
+    service.seedBuiltins(BUILTIN_PLUGIN_MANIFESTS);
+
+    const views = service.list();
+    const ids = views.map((p) => p.id);
+    expect(ids).toContain(BUILTIN_PLUGIN_IDS.mermaid);
+    expect(ids).toContain(BUILTIN_PLUGIN_IDS.katex);
+    for (const view of views) {
+      expect(view.builtin).toBe(true);
+      expect(view.state).toBe('active');
+      // 纯 UI 插件：仅声明 read，不需要 network/filesystem 等高危权限。
+      expect(view.permissions).toEqual(['read']);
+    }
+
+    const contributions = service.listContributions();
+    const blockKinds = contributions.filter((c) => c.kind === 'blockTypes');
+    expect(blockKinds.some((c) => c.pluginId === BUILTIN_PLUGIN_IDS.mermaid && c.blockType === 'mermaid')).toBe(true);
+    expect(blockKinds.some((c) => c.pluginId === BUILTIN_PLUGIN_IDS.katex && c.blockType === 'math')).toBe(true);
+    expect(blockKinds.some((c) => c.pluginId === BUILTIN_PLUGIN_IDS.katex && c.blockType === 'math-inline')).toBe(true);
+  });
+
+  it('内置插件可禁用但不可卸载；禁用后贡献点消失，重启后保持禁用', () => {
+    const stateFile = join(tmp, 'plugins-builtin.json');
+    const first = new PluginService({ stateFile, pluginsRoot: join(tmp, 'installed') });
+    first.seedBuiltins(BUILTIN_PLUGIN_MANIFESTS);
+    first.setEnabled(BUILTIN_PLUGIN_IDS.mermaid, false);
+    expect(
+      first.listContributions().some((c) => c.pluginId === BUILTIN_PLUGIN_IDS.mermaid),
+    ).toBe(false);
+    expect(() => first.uninstall(BUILTIN_PLUGIN_IDS.mermaid)).toThrow(/不可卸载/);
+
+    // 重启（同一 stateFile）：内置 manifest 随包重新预置，禁用状态持久化。
+    const second = new PluginService({ stateFile, pluginsRoot: join(tmp, 'installed') });
+    second.seedBuiltins(BUILTIN_PLUGIN_MANIFESTS);
+    const mermaid = second.list().find((p) => p.id === BUILTIN_PLUGIN_IDS.mermaid);
+    expect(mermaid?.state).toBe('disabled');
+    expect(
+      second.listContributions().some((c) => c.pluginId === BUILTIN_PLUGIN_IDS.mermaid),
+    ).toBe(false);
+    // KaTeX 仍激活。
+    const katex = second.list().find((p) => p.id === BUILTIN_PLUGIN_IDS.katex);
+    expect(katex?.state).toBe('active');
+
+    // 重新启用后贡献点恢复。
+    second.setEnabled(BUILTIN_PLUGIN_IDS.mermaid, true);
+    expect(
+      second.listContributions().some((c) => c.pluginId === BUILTIN_PLUGIN_IDS.mermaid),
+    ).toBe(true);
+  });
+
+  it('内置插件不产生沙箱会话命令，也不进入第三方安装清单', () => {
+    const service = makeService();
+    service.seedBuiltins(BUILTIN_PLUGIN_MANIFESTS);
+    expect(service.listCommands()).toEqual([]);
   });
 });

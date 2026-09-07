@@ -19,7 +19,19 @@ export interface PluginManifest {
   description?: string;
   /** DEV-014：插件贡献的检索 Skill（受约束，仅 retrieval 能力；params 由宿主安全执行）。 */
   skills?: PluginSkillContribution[];
+  /** DEV-015：随包内置插件（预置清单激活，可禁用但不可卸载，不启动沙箱帧）。 */
+  builtin?: boolean;
 }
+
+/**
+ * DEV-015 内置示范插件 ID（Mermaid 图表 / KaTeX 公式）。
+ * 纯 UI 插件：manifest 随包内置，宿主（kernel + renderer）负责块渲染，
+ * 不启动沙箱帧；主进程与渲染层共用此常量判断内置贡献点的原生派发。
+ */
+export const BUILTIN_PLUGIN_IDS = {
+  mermaid: 'com.nexnote.mermaid',
+  katex: 'com.nexnote.katex',
+} as const;
 
 /** 插件声明的检索 Skill：参数化策略由宿主执行（等价于一次带参数召回），沙箱 RPC 策略为 stretch。 */
 export interface PluginSkillContribution {
@@ -90,6 +102,8 @@ export interface PluginView {
   name: string;
   version: string;
   description?: string;
+  /** DEV-015：内置插件（不可卸载）。 */
+  builtin?: boolean;
   state: PluginRuntimeState;
   permissions: PluginPermission[];
   grants: PluginPermissionGrant[];

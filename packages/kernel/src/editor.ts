@@ -90,6 +90,7 @@ export function createEditor(
     extraSlashItems: options.extraSlashItems,
     selectionBubble: options.selectionBubble,
     contextMenu: options.contextMenu,
+    extraExtensions: options.extraExtensions,
   });
 
   const manager = createMarkdownManager(extensions);

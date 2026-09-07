@@ -19,6 +19,8 @@ import { ContextMenu } from './context-menu';
 import type { ContextMenuItem } from './context-menu';
 import type { EditorActionContext } from './action-context';
 import { PluginBlock } from './plugin-block';
+import { MermaidBlock } from './mermaid';
+import { MathBlock, MathInline } from './math';
 import { createObsidianMarked } from '../markdown/pipeline';
 
 export interface KernelExtensionsOptions {
@@ -31,7 +33,12 @@ export interface KernelExtensionsOptions {
   /** wikilink Ctrl/Cmd+点击回调 */
   onWikilinkActivate?: (target: string) => void;
   /** 斜杠菜单追加项（渲染层注入 AI 动作等），与默认结构块项合并、同口径过滤。 */
-  extraSlashItems?: SlashMenuItem[];
+  extraSlashItems?: SlashMenuItem[] | (() => SlashMenuItem[]);
+  /**
+   * 渲染层追加扩展（DEV-015 内置插件 NodeView 等）：同名扩展后注册者覆盖
+   * addNodeView 等字段，内核始终保留 schema/Markdown 往返能力。
+   */
+  extraExtensions?: Extensions;
   /** 选区浮动工具栏（false/缺省关闭）。 */
   selectionBubble?:
     | false
@@ -72,17 +79,25 @@ export function buildKernelExtensions(options: KernelExtensionsOptions = {}): Ex
     Wikilink.configure({ onActivate: options.onWikilinkActivate }),
     Hashtag,
     PluginBlock,
+    // DEV-015：Obsidian 方言内置块（Mermaid/KaTeX），往返能力始终在线，
+    // 富预览 NodeView 由渲染层经 extraExtensions 叠加。
+    MermaidBlock,
+    MathBlock,
+    MathInline,
     ...createBlockIdExtensions(),
     Markdown.configure({ marked: createObsidianMarked() }),
   ];
 
+  if (options.extraExtensions) extensions.push(...options.extraExtensions);
+
   if (options.slashMenu !== false) {
     const extra = options.extraSlashItems ?? [];
+    const extraItems = typeof extra === 'function' ? extra() : extra;
     extensions.push(
       SlashMenu.configure({
         items: (query: string) => {
           const q = query.trim().toLowerCase();
-          const merged = [...defaultSlashMenuItems(query), ...extra];
+          const merged = [...defaultSlashMenuItems(query), ...extraItems];
           if (!q) return merged;
           return merged.filter(
             (it) =>
