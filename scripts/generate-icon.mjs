@@ -10,7 +10,6 @@ import { deflateSync } from 'node:zlib';
 import { mkdirSync, writeFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { createHash } from 'node:crypto';
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const outDir = resolve(root, 'build');
@@ -99,9 +98,6 @@ writeFileSync(resolve(outDir, 'icon.icns'), icns);
 
 const files = ['icon.png', 'linux-icon.png', 'icon.ico', 'icon.icns'];
 for (const f of files) {
-  const p = resolve(outDir, f);
-  console.log(
-    `${f}: ${createHash('sha256').update(makePng(512, color)).digest('hex').slice(0, 0)}written ${p}`,
-  );
+  console.log(`${f}: written ${resolve(outDir, f)}`);
 }
 console.log('placeholder icons generated (512px + 256px PNG)');

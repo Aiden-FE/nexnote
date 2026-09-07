@@ -79,6 +79,27 @@ export function UpdateSettingsSection() {
     try {
       const result = await invoke('app:setUpdateSettings', patch);
       setSettings(result);
+    } catch (e) {
+      setStatus({
+        status: 'error',
+        message: e instanceof Error ? e.message : String(e),
+        channel: settings.channel,
+      });
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const handleInstall = async (): Promise<void> => {
+    setBusy(true);
+    try {
+      await invoke('app:installUpdate');
+    } catch (e) {
+      setStatus({
+        status: 'error',
+        message: e instanceof Error ? e.message : String(e),
+        channel: settings.channel,
+      });
     } finally {
       setBusy(false);
     }
@@ -170,8 +191,9 @@ export function UpdateSettingsSection() {
         {status.status === 'downloaded' && (
           <button
             type="button"
-            onClick={() => void invoke('app:installUpdate')}
-            className="inline-flex items-center gap-1 rounded bg-primary px-3 py-1.5 text-primary-foreground"
+            disabled={busy}
+            onClick={() => void handleInstall()}
+            className="inline-flex items-center gap-1 rounded bg-primary px-3 py-1.5 text-primary-foreground disabled:opacity-50"
           >
             <Rocket className="size-3.5" /> 重启并安装
           </button>
