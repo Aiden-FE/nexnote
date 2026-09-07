@@ -148,6 +148,8 @@ importers:
         specifier: ^7.6.13
         version: 7.6.13
 
+  packages/plugin-api: {}
+
   packages/renderer:
     dependencies:
       '@nexnote/kernel':
