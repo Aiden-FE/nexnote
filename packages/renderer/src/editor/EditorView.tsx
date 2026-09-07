@@ -29,6 +29,8 @@ import {
 import { CHAT_ASK_ACTION, requestAskAi } from '../features/ai/chat/ask-ai';
 import { openChatWikilinkOrNull } from '../features/ai/chat/chat-runtime';
 import { useUiStore } from '../stores/ui-store';
+import { pluginContributionRegistry } from '../registries';
+import { buildPluginMenuItems, PLUGIN_MENU_ACTION_PREFIX } from '../features/plugins/extension-points';
 
 interface EditorViewProps {
   paneId: PaneId;
@@ -236,10 +238,23 @@ export function EditorView({ paneId, tab }: EditorViewProps) {
             title: '💬 询问 AI（送入对话）',
             disabled: !ctx.text.trim(),
           },
+          // DEV-014：插件菜单扩展点（每次右键读取最新注册表）。
+          ...buildPluginMenuItems(pluginContributionRegistry.all()),
         ],
         onAction: (id, ctx) => {
           if (id === CHAT_ASK_ACTION) {
             requestAskAi(ctx.text, titleFromPath(pathRef.current), pathRef.current);
+            return;
+          }
+          if (id.startsWith('plugin-menu:')) {
+            const scopedId = id.slice(PLUGIN_MENU_ACTION_PREFIX.length);
+            const separator = scopedId.indexOf(':');
+            const pluginId = scopedId.slice(0, separator);
+            const commandId = scopedId.slice(separator + 1);
+            void invoke('plugins:runCommand', {
+              pluginId,
+              commandId,
+            });
             return;
           }
           writingController?.trigger(id, ctx);

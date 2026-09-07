@@ -23,6 +23,8 @@ export interface IpcEventMap {
   'git:statusChanged': GitStatus;
   /** 插件安装/启停/授权/崩溃/命令注册变化（DEV-013）。 */
   'plugins:changed': { reason: string };
+  /** 检索 Skill 启停/排序/参数变化（DEV-014）。 */
+  'skills:changed': { reason: string };
   /** 关系索引状态变化（扫描进度、ready、error）。DEV-004。 */
   'index:statusChanged': IndexStatus;
   /** 置信度全量/增量计算完成。DEV-008。 */
@@ -42,6 +44,7 @@ export const IPC_EVENT_CHANNELS: readonly string[] = [
   'ai:configChanged',
   'git:statusChanged',
   'plugins:changed',
+  'skills:changed',
   'index:statusChanged',
   'index:confidenceChanged',
 ];

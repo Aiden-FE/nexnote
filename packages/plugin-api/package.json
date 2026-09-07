@@ -1,0 +1,13 @@
+{
+  "name": "@nexnote/plugin-api",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "NexNote 插件公共 API 类型定义（DEV-014）。插件作者基于此包 + starter 模板开发插件。",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit -p tsconfig.json"
+  }
+}

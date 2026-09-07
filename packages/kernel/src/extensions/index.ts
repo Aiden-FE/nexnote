@@ -18,6 +18,7 @@ import type { BubbleAction } from './selection-bubble';
 import { ContextMenu } from './context-menu';
 import type { ContextMenuItem } from './context-menu';
 import type { EditorActionContext } from './action-context';
+import { PluginBlock } from './plugin-block';
 import { createObsidianMarked } from '../markdown/pipeline';
 
 export interface KernelExtensionsOptions {
@@ -70,6 +71,7 @@ export function buildKernelExtensions(options: KernelExtensionsOptions = {}): Ex
     Callout,
     Wikilink.configure({ onActivate: options.onWikilinkActivate }),
     Hashtag,
+    PluginBlock,
     ...createBlockIdExtensions(),
     Markdown.configure({ marked: createObsidianMarked() }),
   ];

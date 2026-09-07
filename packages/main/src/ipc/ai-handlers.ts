@@ -65,6 +65,24 @@ export function registerAiHandlers(registrar: IpcRegistrar, ai: AiService): void
   });
 
   registrar.register('ai:retrieve', async (payload, services) => {
+    if (services.skills) {
+      const merged = await services.skills.retrieve({
+        query: payload.query,
+        skillIds: payload.skillIds,
+        topK: payload.topK,
+        budgetChars: payload.budgetChars,
+        confidenceWeight: payload.confidenceWeight,
+        disableVector: payload.disableVector,
+      });
+      return ok({
+        query: merged.query,
+        degraded: merged.degraded,
+        model: null,
+        contextText: merged.contextText,
+        sources: merged.sources,
+        stages: [],
+      });
+    }
     if (!services.retrieval) {
       return ok({
         query: payload.query,

@@ -33,5 +33,13 @@
         "title": "Demo widget"
       }
     ]
-  }
+  },
+  "skills": [
+    {
+      "id": "quick",
+      "name": "Demo 快速检索",
+      "description": "关闭向量的关键词召回（插件参数化 Skill）。",
+      "params": { "disableVector": true, "topK": 5 }
+    }
+  ]
 }

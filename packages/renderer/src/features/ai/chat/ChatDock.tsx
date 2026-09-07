@@ -28,6 +28,7 @@ import {
   stopStream,
 } from './chat-runtime';
 import { addSelectionContext, refreshAutoDocumentChip } from './chat-context-bridge';
+import { ChatSkillPicker } from '../../skills/ChatSkillPicker';
 
 function sourcesResponse(turn: ChatTurn): RetrievalResponse | null {
   const meta = turn.meta;
@@ -214,6 +215,7 @@ export function ChatDock() {
         >
           <FileDown className="size-3.5" /> 存为文档
         </Button>
+        <ChatSkillPicker />
         <Button
           variant="ghost"
           size="sm"

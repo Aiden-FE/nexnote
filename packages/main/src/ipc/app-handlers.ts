@@ -33,4 +33,11 @@ export function registerNamespacePingHandlers(registrar: IpcRegistrar): void {
       implementedBy: 'DEV-013' as const,
     }),
   );
+  registrar.register('skills:ping', async () =>
+    ok({
+      pong: true as const,
+      namespace: 'skills' as const,
+      implementedBy: 'DEV-014' as const,
+    }),
+  );
 }

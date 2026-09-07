@@ -5,6 +5,7 @@ export type * from './types/index';
 export type * from './types/retrieval';
 export type * from './types/chat';
 export type * from './types/plugin';
+export type * from './types/skill';
 export * from './markdown/wikilink';
 export * from './markdown/links';
 // IPC

@@ -4,6 +4,7 @@ import type {
   PluginContributionKind,
   PluginManifest,
   PluginPermission,
+  PluginSkillContribution,
 } from '@nexnote/shared';
 import { isValidSemver, semverGte } from './version-compat';
 
@@ -96,8 +97,37 @@ export function validateManifest(raw: unknown): PluginManifest {
         item.keywords.every((k: unknown) => typeof k === 'string')
           ? { keywords: item.keywords as string[] }
           : {}),
+        ...(kind === 'views' &&
+        (item.placement === 'sidebar' || item.placement === 'main' || item.placement === 'settings')
+          ? { placement: item.placement }
+          : {}),
+        ...(kind === 'menus' &&
+        (item.anchor === 'editor/context' || item.anchor === 'block/handle' || item.anchor === 'app')
+          ? { anchor: item.anchor }
+          : {}),
+        ...(kind === 'menus' && isRecord(item.when)
+          ? { when: item.when as PluginContribution['when'] }
+          : {}),
+        ...(kind === 'blockTypes' && typeof item.blockType === 'string'
+          ? { blockType: String(item.blockType) }
+          : {}),
       }));
     }
+  }
+  let skills: PluginManifest['skills'];
+  if (raw.skills !== undefined) {
+    if (
+      !Array.isArray(raw.skills) ||
+      raw.skills.some((skill) => !isRecord(skill) || typeof skill.id !== 'string')
+    ) {
+      throw new ManifestError('manifest.skills 格式无效（需要 {id,...} 数组）', 'INVALID_MANIFEST');
+    }
+    skills = raw.skills.map((skill) => ({
+      id: String(skill.id),
+      ...(typeof skill.name === 'string' ? { name: skill.name } : {}),
+      ...(typeof skill.description === 'string' ? { description: skill.description } : {}),
+      ...(isRecord(skill.params) ? { params: skill.params as PluginSkillContribution['params'] } : {}),
+    }));
   }
   return {
     id: String(raw.id),
@@ -108,6 +138,7 @@ export function validateManifest(raw: unknown): PluginManifest {
     capabilities: declared,
     permissions,
     contributions,
+    ...(skills ? { skills } : {}),
     ...(typeof raw.description === 'string' ? { description: raw.description } : {}),
   };
 }

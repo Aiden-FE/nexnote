@@ -12,6 +12,7 @@ import './commands/builtin';
 import './settings';
 import './ai';
 import './plugins';
+import './skills';
 import './frontmatter/registry';
 import './search';
 import './search/commands';

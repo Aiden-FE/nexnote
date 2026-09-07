@@ -14,6 +14,8 @@ import type {
   PluginRpcResponse,
   PluginSessionToken,
   PluginView,
+  PluginSkillContribution,
+  SkillParams,
 } from '@nexnote/shared';
 import { PLUGIN_API_VERSION } from '@nexnote/shared';
 import { AuthorizationManager } from './authorization';
@@ -151,6 +153,27 @@ export class PluginService {
 
   listAudit(pluginId?: string): PluginAuditRecord[] {
     return pluginId ? this.audit.filter((r) => r.pluginId === pluginId) : [...this.audit];
+  }
+
+  /** DEV-014：活跃插件声明的检索 Skill（受约束的参数化策略，由宿主安全执行）。 */
+  listPluginSkillContributions(): Array<{
+    id: string;
+    name: string;
+    description?: string;
+    pluginId: string;
+    params?: SkillParams;
+  }> {
+    return [...this.plugins.values()]
+      .filter((plugin) => plugin.state === 'active')
+      .flatMap((plugin) =>
+        (plugin.manifest.skills ?? []).map((skill: PluginSkillContribution) => ({
+          id: `${plugin.manifest.id}:${skill.id}`,
+          name: skill.name ?? skill.id,
+          ...(skill.description ? { description: skill.description } : {}),
+          pluginId: plugin.manifest.id,
+          params: skill.params as SkillParams | undefined,
+        })),
+      );
   }
 
   previewInstall(source: 'directory' | 'zip', path: string): PluginInstallTicket {

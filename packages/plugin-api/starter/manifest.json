@@ -1,0 +1,19 @@
+{
+  "id": "com.example.hello-plugin",
+  "name": "Hello NexNote Plugin",
+  "version": "1.0.0",
+  "minAppVersion": "0.1.0",
+  "main": "main.js",
+  "description": "最小 NexNote 插件模板：注册一个命令、贡献一个视图/块，并声明一个检索 Skill。",
+  "capabilities": ["read"],
+  "permissions": ["read"],
+  "contributions": {
+    "commands": [{ "id": "hello", "title": "示例：打招呼", "keywords": ["hello", "示例"] }],
+    "views": [{ "id": "hello-panel", "title": "示例视图", "placement": "sidebar" }],
+    "menus": [{ "id": "hello-menu", "title": "示例菜单动作" }],
+    "blockTypes": [{ "id": "hello-card", "title": "示例卡片", "blockType": "hello-card" }]
+  },
+  "skills": [
+    { "id": "quick", "name": "示例快速检索", "description": "仅关键词（关闭向量）。", "params": { "disableVector": true, "topK": 5 } }
+  ]
+}

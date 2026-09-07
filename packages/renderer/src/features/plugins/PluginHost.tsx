@@ -1,10 +1,17 @@
 import { useCallback, useEffect, useState } from 'react';
+import { Puzzle } from 'lucide-react';
 import type { PluginCommandView, PluginContributionView, PluginView } from '@nexnote/shared';
 import { invoke, onEvent } from '../../lib/ipc';
-import { commandRegistry, pluginContributionRegistry } from '../../registries';
+import { commandRegistry, pluginContributionRegistry, sidebarPanelRegistry } from '../../registries';
 import { PluginSandboxFrame } from './PluginSandboxFrame';
 import type { PermissionPrompt } from './sandbox-protocol';
 import { consumePluginContributions } from './contribution-consumers';
+import {
+  buildPluginBlockCommands,
+  buildPluginCommandDefs,
+  buildPluginViewPanels,
+} from './extension-points';
+import { getActiveEditor } from '../../editor/active-editor';
 
 export function PluginHost() {
   const [plugins, setPlugins] = useState<PluginView[]>([]);
@@ -42,22 +49,63 @@ export function PluginHost() {
     return () => unregisters.forEach((unregister) => unregister());
   }, [contributions]);
 
+  // 命令扩展点：manifest 声明 + 运行时 registerCommand 合并去重 → ⌘K 面板（按「插件」分组）。
   useEffect(() => {
-    const unregisters = commands.map((command) =>
+    const defs = buildPluginCommandDefs(contributions, commands);
+    const unregisters = defs.map((def) =>
       commandRegistry.register({
-        id: command.id,
-        title: command.title,
+        id: def.id,
+        title: def.title,
         category: '插件',
-        keywords: command.keywords,
+        keywords: def.keywords,
         run: () =>
           invoke('plugins:runCommand', {
-            pluginId: command.pluginId,
-            commandId: command.id,
+            pluginId: def.pluginId,
+            commandId: def.commandId,
           }).then(() => undefined),
       }),
     );
     return () => unregisters.forEach((unregister) => unregister());
-  }, [commands]);
+  }, [contributions, commands]);
+
+  // 块类型扩展点：⌘K 插入插件块（插入后宿主 NodeView 委托给插件渲染）。
+  useEffect(() => {
+    const blocks = buildPluginBlockCommands(contributions);
+    const unregisters = blocks.map((block) =>
+      commandRegistry.register({
+        id: block.id,
+        title: block.title,
+        category: '插件',
+        keywords: block.keywords,
+        run: () => {
+          getActiveEditor()?.editor.commands.insertPluginBlock({
+            pluginId: block.pluginId,
+            blockType: block.blockType,
+          });
+        },
+      }),
+    );
+    return () => unregisters.forEach((unregister) => unregister());
+  }, [contributions]);
+
+  // 视图扩展点：插件视图贡献注册为侧栏页签（可见沙箱 iframe）。
+  useEffect(() => {
+    const panels = buildPluginViewPanels(contributions);
+    const unregisters = panels.map((panel) =>
+      sidebarPanelRegistry.register({
+        id: panel.id,
+        title: panel.title,
+        icon: Puzzle,
+        render: () => {
+          const plugin = plugins.find((item) => item.id === panel.pluginId);
+          return plugin ? (
+            <PluginSandboxFrame plugin={plugin} visible onPermissionRequired={setPrompt} />
+          ) : null;
+        },
+      }),
+    );
+    return () => unregisters.forEach((unregister) => unregister());
+  }, [contributions, plugins]);
 
   return (
     <>

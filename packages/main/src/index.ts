@@ -17,6 +17,7 @@ import { createSecretVault } from './ai/secret-store';
 import { GitService } from './git/git-service';
 import { ConfidenceService } from './confidence/confidence-service';
 import { PluginService } from './plugins/plugin-service';
+import { SkillService } from './skills/skill-service';
 
 const isSmokeMode = process.env.NEXNOTE_SMOKE === '1';
 
@@ -116,6 +117,13 @@ async function bootstrap(): Promise<void> {
     hostVersion: app.getVersion(),
   });
 
+  // DEV-014 检索 Skill 系统：内置三阶段检索 + 插件参数化 Skill，多 Skill 合并重排。
+  const skills = new SkillService({
+    stateFile: join(app.getPath('userData'), 'nexnote-skills.json'),
+    retrieve: (options) => retrievalService.retrieve(options),
+    plugins,
+  });
+
   initAutoUpdater(log);
 
   registerAllIpcHandlers(ipcMain, {
@@ -161,6 +169,7 @@ async function bootstrap(): Promise<void> {
     confidence,
     retrieval: retrievalService,
     plugins,
+    skills,
     appInfo() {
       return {
         version: app.getVersion(),
