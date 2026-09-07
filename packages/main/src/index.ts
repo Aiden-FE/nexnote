@@ -18,6 +18,9 @@ import { GitService } from './git/git-service';
 import { ConfidenceService } from './confidence/confidence-service';
 import { PluginService } from './plugins/plugin-service';
 import { SkillService } from './skills/skill-service';
+import { SettingsService } from './settings/settings-service';
+import { VaultOperationsController } from './vault/vault-operations-controller';
+import { VaultCloneController } from './vault/vault-clone-controller';
 import { BUILTIN_PLUGIN_MANIFESTS } from './plugins/builtin/builtin-manifests';
 
 const isSmokeMode = process.env.NEXNOTE_SMOKE === '1';
@@ -127,6 +130,15 @@ async function bootstrap(): Promise<void> {
     plugins,
   });
 
+  // DEV-016：全局设置单一权威（替代 AppStore 中的零散字段 + localStorage 主题）。
+  const settings = new SettingsService(join(app.getPath('userData'), 'nexnote-settings.json'));
+
+  // DEV-016：向导操作取消控制器（sender scoped AbortController）。
+  const vaultOperations = new VaultOperationsController();
+
+  // DEV-016：一次性 clone 授权（sender 绑定 + TTL + bounded）。
+  const vaultClones = new VaultCloneController();
+
   initAutoUpdater(log);
 
   registerAllIpcHandlers(ipcMain, {
@@ -173,6 +185,9 @@ async function bootstrap(): Promise<void> {
     retrieval: retrievalService,
     plugins,
     skills,
+    settings,
+    vaultOperations,
+    vaultClones,
     appInfo() {
       return {
         version: app.getVersion(),

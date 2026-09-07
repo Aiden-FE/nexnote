@@ -10,6 +10,7 @@ import { registerChatHandlers } from './chat-handlers';
 import { registerIndexHandlers } from './index-handlers';
 import { registerPluginHandlers } from './plugin-handlers';
 import { registerSkillHandlers } from './skill-handlers';
+import { registerSettingsHandlers } from './settings-handlers';
 
 /** 注册全部命名空间 handler。新增命名空间 = 新增文件 + 在这里追加一行。 */
 export function registerAllIpcHandlers(ipcMain: IpcMainLike, services: IpcServices) {
@@ -27,6 +28,7 @@ export function registerAllIpcHandlers(ipcMain: IpcMainLike, services: IpcServic
   registerIndexHandlers(registrar);
   registerPluginHandlers(registrar);
   registerSkillHandlers(registrar);
+  registerSettingsHandlers(registrar);
   registerNamespacePingHandlers(registrar);
   return registrar;
 }

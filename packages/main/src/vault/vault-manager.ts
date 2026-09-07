@@ -2,9 +2,13 @@ import { promises as fsp } from 'node:fs';
 import * as path from 'node:path';
 import {
   defaultVaultConfig,
+  defaultVaultSettings,
+  mergeVaultPatch,
   type VaultConfig,
   type VaultInfo,
   type VaultLayout,
+  type VaultSettings,
+  type VaultSettingsPatch,
 } from '@nexnote/shared';
 
 export class VaultError extends Error {
@@ -92,12 +96,38 @@ export async function readVaultConfig(root: string): Promise<VaultConfig> {
         confidenceFrontmatter: parsed?.features?.confidenceFrontmatter === true,
       },
       chatFolder: sanitizeChatFolder(parsed?.chatFolder) ?? fallback.chatFolder,
+      settings: mergeVaultSettings(parsed?.settings),
       layout: { ...fallback.layout, ...(parsed?.layout ?? {}) },
       lastSession: { ...fallback.lastSession, ...(parsed?.lastSession ?? {}) },
     };
   } catch {
     return defaultVaultConfig();
   }
+}
+
+/** 读取 vault 独立设置（编辑器 + Git 行为）；损坏/缺失时逐字段回退默认。 */
+export function mergeVaultSettings(raw: unknown): VaultSettings {
+  const base = defaultVaultSettings();
+  if (typeof raw !== 'object' || raw === null || Array.isArray(raw)) return base;
+  const value = raw as VaultSettings;
+  return mergeVaultPatch(base, { editor: value.editor, git: value.git });
+}
+
+/** 持久化 vault 设置补丁：只改 settings 字段，保留其余配置。 */
+export async function saveVaultSettings(
+  root: string,
+  patch: VaultSettingsPatch,
+): Promise<VaultSettings> {
+  const config = await readVaultConfig(root);
+  const merged = mergeVaultPatch(config.settings, patch);
+  await writeVaultConfig(root, { ...config, settings: merged });
+  return merged;
+}
+
+/** 读取当前 vault 设置；无 vault 时返回默认（非 vault-scoped 写入应在 handler 处拒绝）。 */
+export async function readVaultSettings(root: string): Promise<VaultSettings> {
+  const config = await readVaultConfig(root);
+  return config.settings;
 }
 
 /** 原子写 vault 配置（tmp + rename）。 */
@@ -133,6 +163,12 @@ export async function createVault(parentDir: string, name: string): Promise<Vaul
     throw new VaultError(sanitized.reason, 'INVALID_NAME');
   }
   const root = path.join(parentDir, sanitized.value);
+  // 防 symlink substitution：相对 parentDir 解析必须仍是其直接子路径，
+  // 且 root 本身绝不能是符号链接（防止被替换为指向外部目录的链接）。
+  const rel = path.relative(parentDir, root);
+  if (rel === '' || rel.startsWith('..') || path.isAbsolute(rel)) {
+    throw new VaultError(`vault 名称必须为 ${parentDir} 的直接子目录`, 'INVALID_NAME');
+  }
   let exists = false;
   try {
     await fsp.access(root);
@@ -141,7 +177,12 @@ export async function createVault(parentDir: string, name: string): Promise<Vaul
     /* 不存在 → 走新建分支 */
   }
   if (exists) {
-    const stat = await fsp.stat(root);
+    // lstat 而非 stat：拒绝通过符号链接指向外部目录的写入目标，防止被替换为外部空目录后写入。
+    const stat = await fsp.lstat(root).catch(() => null);
+    if (!stat) throw new VaultError(`无法访问: ${root}`, 'VAULT_EXISTS_FILE');
+    if (stat.isSymbolicLink()) {
+      throw new VaultError(`目标位置是符号链接，拒绝创建 vault: ${root}`, 'VAULT_TARGET_SYMLINK');
+    }
     if (!stat.isDirectory()) {
       throw new VaultError(`目标位置存在同名文件: ${root}`, 'VAULT_EXISTS_FILE');
     }
@@ -149,9 +190,27 @@ export async function createVault(parentDir: string, name: string): Promise<Vaul
     if (entries.length > 0) {
       throw new VaultError(`目录已存在且非空: ${root}`, 'VAULT_EXISTS_NON_EMPTY');
     }
+    // 空目录已存在 → 直接原地初始化，不重复 mkdir
+    return ensureVault(root);
   }
-  await fsp.mkdir(root, { recursive: true });
+  await fsp.mkdir(root, { recursive: false });
   return ensureVault(root);
+}
+
+/**
+ * 校验一个已存在路径的每个组件都不是符号链接（lstat），
+ * 防止 ``parentDir/..`` 或嵌套 symlink 把写入导向 vault 外。任何组件是链接即拒绝。
+ */
+export async function assertNoSymlinkComponent(absPath: string): Promise<void> {
+  const segments = absPath.split(path.sep).filter((segment) => segment.length > 0);
+  let current = path.parse(absPath).root;
+  for (const segment of segments) {
+    current = path.join(current, segment);
+    const stat = await fsp.lstat(current).catch(() => null);
+    if (stat?.isSymbolicLink()) {
+      throw new VaultError(`路径经过符号链接，拒绝操作: ${current}`, 'SYMLINK_COMPONENT');
+    }
+  }
 }
 
 /** 保存布局（仅更新 layout 字段，保留其余配置）。 */

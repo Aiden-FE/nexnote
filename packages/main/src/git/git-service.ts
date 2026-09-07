@@ -435,6 +435,14 @@ export class GitService {
     return this.notified({ message: '克隆完成', root: targetDir });
   }
 
+  /** 轻量探测：ls-remote --heads，仅验证远端可达（不下载仓库内容）。 */
+  async lsRemote(url: string): Promise<void> {
+    if (!url.trim()) throw new GitServiceError('远程地址不能为空', 'INVALID_REMOTE');
+    // 使用 /tmp 作为工作目录——ls-remote 不需要本地仓库
+    const tmp = process.env.TMPDIR || '/tmp';
+    await this.git(tmp).raw(['ls-remote', '--heads', '--exit-code', url]);
+  }
+
   async previewRestore(file: string, commit: string): Promise<GitRestorePreview> {
     const root = this.requireRoot();
     const relative = await this.requireRestorableFile(root, file, commit);

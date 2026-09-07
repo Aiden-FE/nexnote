@@ -17,6 +17,9 @@ import type { IpcServices } from '../src/ipc/services';
 import { AiStore } from '../src/ai/ai-store';
 import { AiService } from '../src/ai/ai-service';
 import type { SecretVault } from '../src/ai/secret-store';
+import { SettingsService } from '../src/settings/settings-service';
+import { VaultOperationsController } from '../src/vault/vault-operations-controller';
+import { VaultCloneController } from '../src/vault/vault-clone-controller';
 
 /** 测试用内存 credential vault（模拟系统凭据库）。 */
 function plainFakeVault(): SecretVault {
@@ -103,6 +106,9 @@ function makeServices(): {
     revealItem: async (absPath: string) => { reveals.push(absPath); },
     watch: new VaultWatchService({ getRoot: () => null, emit: () => undefined }),
     index: new LinkIndexService(),
+    settings: new SettingsService(path.join(tmp, 'settings.json')),
+    vaultOperations: new VaultOperationsController(),
+    vaultClones: new VaultCloneController(),
     appInfo: () => ({
       version: '0.1.0',
       platform: 'test',
@@ -208,6 +214,7 @@ describe('IPC 集成（vault + fs，单一注册表）', () => {
     const created = (await ipc.invoke('vault:create', {
       parentDir: tmp,
       name: 'smoke-vault',
+      initGit: true,
     })) as { ok: boolean; data: { root: string; name: string } };
     expect(created.ok).toBe(true);
     expect(created.data.name).toBe('smoke-vault');
@@ -350,6 +357,7 @@ describe('IPC 集成（vault + fs，单一注册表）', () => {
     const created = (await ipc.invoke('vault:create', {
       parentDir: tmp,
       name: 'close-vault',
+      initGit: true,
     })) as { ok: boolean; data: { root: string } };
     expect(created.ok).toBe(true);
     const root = created.data.root;
@@ -372,7 +380,7 @@ describe('IPC 集成（vault + fs，单一注册表）', () => {
     const ipc = new FakeIpcMain();
     const { services } = makeServices();
     registerAllIpcHandlers(ipc, services);
-    await ipc.invoke('vault:create', { parentDir: tmp, name: 'all-mutations' });
+    await ipc.invoke('vault:create', { parentDir: tmp, name: 'all-mutations', initGit: true });
     const git = services.git as unknown as { autoTimer: ReturnType<typeof setTimeout> | null };
 
     await ipc.invoke('fs:createNote', { parentDir: '', name: 'One' });
@@ -406,6 +414,7 @@ describe('IPC 集成（vault + fs，单一注册表）', () => {
     const created = (await ipc.invoke('vault:create', {
       parentDir: tmp,
       name: 'status-events',
+      initGit: true,
     })) as { ok: boolean; data: { root: string } };
     expect(created.ok).toBe(true);
     const win = services.windows as unknown as { sent: Array<{ channel: string }> };
@@ -465,6 +474,7 @@ describe('IPC 集成（vault + fs，单一注册表）', () => {
     const created = (await ipc.invoke('vault:create', {
       parentDir: tmp,
       name: 'system-git',
+      initGit: true,
     })) as { ok: boolean };
     expect(created.ok).toBe(true);
     const before = (await ipc.invoke('git:getStatus')) as {
@@ -596,6 +606,7 @@ describe('IPC 集成（vault + fs，单一注册表）', () => {
     const created = (await ipc.invoke('vault:create', {
       parentDir: tmp,
       name: 'pull-default',
+      initGit: true,
     })) as {
       ok: boolean;
     };
@@ -613,6 +624,7 @@ describe('IPC 集成（vault + fs，单一注册表）', () => {
     const created = (await ipc.invoke('vault:create', {
       parentDir: tmp,
       name: 'dirty-pull',
+      initGit: true,
     })) as { ok: boolean; data: { root: string } };
     expect(created.ok).toBe(true);
     // 留一个未提交的脏变更

@@ -3,6 +3,7 @@ import type { VaultInfo } from '../types/vault';
 import type { ChatStreamEvent, AiConfigState } from '../types/ai';
 import type { IndexStatus } from '../types/index';
 import type { RetrievalIndexStatusPayload } from '../types/retrieval';
+import type { GlobalSettings, VaultSettings } from '../types/settings';
 
 /**
  * 主进程 → 渲染层推送事件契约。
@@ -29,6 +30,8 @@ export interface IpcEventMap {
   'index:statusChanged': IndexStatus;
   /** 置信度全量/增量计算完成。DEV-008。 */
   'index:confidenceChanged': { paths: string[] | null };
+  /** Settings authoritative state changed. Vault is null when no vault is open. */
+  'settings:changed': { global: GlobalSettings; vault: VaultSettings | null };
 }
 
 export interface FsChangeEvent {
@@ -47,6 +50,7 @@ export const IPC_EVENT_CHANNELS: readonly string[] = [
   'skills:changed',
   'index:statusChanged',
   'index:confidenceChanged',
+  'settings:changed',
 ];
 
 export type IpcEventChannel = keyof IpcEventMap & string;

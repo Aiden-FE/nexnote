@@ -1,11 +1,21 @@
 import { useEffect, useState } from 'react';
-import { Settings as SettingsIcon, Sparkles, Folder, Keyboard, GitBranch } from 'lucide-react';
+import {
+  Settings as SettingsIcon,
+  FileText,
+  Keyboard,
+  GitBranch,
+  Info,
+} from 'lucide-react';
 import { settingsSectionRegistry } from '../../registries';
+import { useSettingsStore } from '../../stores/settings-store';
 import { invoke } from '../../lib/ipc';
+import { useVaultSettingsEffects } from '../../hooks/use-settings-effects';
+import type { StartupBehavior, ThemePreference, UpdateChannel, CodeTheme } from '@nexnote/shared';
 
 /**
- * 设置占位分区（DEV-016 完整设置系统前的最小可视结构）。
- * 模式同其他 registry：注册表 = 接入面；后续票直接 add 真实分区，不动 Sidebar。
+ * DEV-016：设置分区实现。
+ * 分区注册走 registry，各功能域（AI/插件/Skill）在自己模块注册。
+ * 这里注册核心分区：常规、编辑器、Git、快捷键、关于。
  */
 
 settingsSectionRegistry.register({
@@ -17,26 +27,18 @@ settingsSectionRegistry.register({
 });
 
 settingsSectionRegistry.register({
-  id: 'appearance',
-  title: '外观',
-  icon: Sparkles,
+  id: 'editor',
+  title: '编辑器',
+  icon: FileText,
   order: 20,
-  render: () => <AppearanceSection />,
-});
-
-settingsSectionRegistry.register({
-  id: 'vault',
-  title: '知识库',
-  icon: Folder,
-  order: 30,
-  render: () => <VaultSection />,
+  render: () => <EditorSection />,
 });
 
 settingsSectionRegistry.register({
   id: 'git',
   title: 'Git',
   icon: GitBranch,
-  order: 35,
+  order: 30,
   render: () => <GitSection />,
 });
 
@@ -48,121 +50,443 @@ settingsSectionRegistry.register({
   render: () => <ShortcutsSection />,
 });
 
+settingsSectionRegistry.register({
+  id: 'about',
+  title: '关于',
+  icon: Info,
+  order: 100,
+  render: () => <AboutSection />,
+});
+
+function useGlobalSettings() {
+  const global = useSettingsStore((s) => s.global);
+  const setGlobal = useSettingsStore((s) => s.setGlobal);
+  const loadGlobal = useSettingsStore((s) => s.loadGlobal);
+  useEffect(() => {
+    void loadGlobal();
+  }, [loadGlobal]);
+  return { global, setGlobal };
+}
+
+function SectionHeader({ title, description }: { title: string; description?: string }) {
+  return (
+    <div className="mb-4">
+      <h2 className="text-base font-semibold">{title}</h2>
+      {description && <p className="mt-1 text-xs text-muted-foreground">{description}</p>}
+    </div>
+  );
+}
+
+function Row({ label, description, children }: { label: string; description?: string; children: React.ReactNode }) {
+  return (
+    <div className="flex items-start justify-between gap-4 py-3">
+      <div className="min-w-0 flex-1">
+        <div className="text-sm font-medium">{label}</div>
+        {description && <div className="mt-0.5 text-xs text-muted-foreground">{description}</div>}
+      </div>
+      <div className="shrink-0">{children}</div>
+    </div>
+  );
+}
+
+function Select({
+  value,
+  onChange,
+  options,
+}: {
+  value: string;
+  onChange: (v: string) => void;
+  options: Array<{ value: string; label: string }>;
+}) {
+  return (
+    <select
+      value={value}
+      onChange={(e) => onChange(e.target.value)}
+      className="h-8 rounded-md border bg-background px-2 text-sm"
+    >
+      {options.map((opt) => (
+        <option key={opt.value} value={opt.value}>
+          {opt.label}
+        </option>
+      ))}
+    </select>
+  );
+}
+
+function Toggle({ checked, onChange }: { checked: boolean; onChange: (v: boolean) => void }) {
+  return (
+    <button
+      type="button"
+      role="switch"
+      aria-checked={checked}
+      onClick={() => onChange(!checked)}
+      className={`relative h-5 w-9 rounded-full transition-colors ${
+        checked ? 'bg-primary' : 'bg-muted'
+      }`}
+    >
+      <span
+        className={`absolute top-0.5 h-4 w-4 rounded-full bg-white shadow transition-transform ${
+          checked ? 'translate-x-4' : 'translate-x-0.5'
+        }`}
+      />
+    </button>
+  );
+}
+
 function GeneralSection() {
+  const { global, setGlobal } = useGlobalSettings();
+  const [appVersion, setAppVersion] = useState<string>('');
+
+  useEffect(() => {
+    void invoke('app:getInfo').then((info) => setAppVersion(info.version));
+  }, []);
+
+  if (!global) return <div className="text-sm text-muted-foreground">加载中…</div>;
+
   return (
-    <div className="space-y-2 text-sm">
-      <h3 className="text-base font-medium">常规</h3>
-      <p className="text-muted-foreground">语言、启动、托盘等基础行为（完整面板在 DEV-016）。</p>
-      <ul className="ml-4 list-disc text-muted-foreground">
-        <li>语言：跟随系统（占位）</li>
-        <li>启动时恢复上次知识库：是</li>
-        <li>后台保留窗口：不</li>
-      </ul>
+    <div className="space-y-6">
+      <SectionHeader title="外观" description="主题、字体与语言" />
+      <Row label="主题" description="浅色、深色或跟随系统">
+        <Select
+          value={global.appearance.theme}
+          onChange={(v) => void setGlobal({ appearance: { theme: v as ThemePreference } })}
+          options={[
+            { value: 'system', label: '跟随系统' },
+            { value: 'light', label: '浅色' },
+            { value: 'dark', label: '深色' },
+          ]}
+        />
+      </Row>
+      <Row label="语言" description="界面显示语言">
+        <Select
+          value={global.appearance.language}
+          onChange={(v) => void setGlobal({ appearance: { language: v as 'zh-CN' | 'en-US' } })}
+          options={[
+            { value: 'zh-CN', label: '简体中文' },
+            { value: 'en-US', label: 'English' },
+          ]}
+        />
+      </Row>
+      <Row label="UI 字号" description={`${global.appearance.uiFontSize}px`}>
+        <input
+          type="range"
+          min={10}
+          max={24}
+          value={global.appearance.uiFontSize}
+          onChange={(e) =>
+            void setGlobal({ appearance: { uiFontSize: Number(e.target.value) } })
+          }
+          className="w-32"
+        />
+      </Row>
+      <Row label="编辑器字号" description={`${global.appearance.editorFontSize}px`}>
+        <input
+          type="range"
+          min={10}
+          max={32}
+          value={global.appearance.editorFontSize}
+          onChange={(e) =>
+            void setGlobal({ appearance: { editorFontSize: Number(e.target.value) } })
+          }
+          className="w-32"
+        />
+      </Row>
+
+      <div className="border-t pt-6">
+        <SectionHeader title="启动" description="应用打开时的行为" />
+        <Row label="启动时" description="打开上次知识库、走向导或打开特定 vault">
+          <Select
+            value={global.startup.behavior}
+            onChange={(v) =>
+              void setGlobal({ startup: { behavior: v as StartupBehavior } })
+            }
+            options={[
+              { value: 'restore', label: '恢复上次 vault' },
+              { value: 'welcome', label: '显示欢迎页' },
+              { value: 'specific-vault', label: '打开特定 vault' },
+            ]}
+          />
+        </Row>
+      </div>
+
+      <div className="border-t pt-6">
+        <SectionHeader title="更新" description="自动检查与下载更新" />
+        <Row label="启动时检查更新">
+          <Toggle
+            checked={global.updates.checkOnLaunch}
+            onChange={(v) => void setGlobal({ updates: { checkOnLaunch: v } })}
+          />
+        </Row>
+        <Row label="自动下载更新">
+          <Toggle
+            checked={global.updates.autoDownload}
+            onChange={(v) => void setGlobal({ updates: { autoDownload: v } })}
+          />
+        </Row>
+        <Row label="更新通道">
+          <Select
+            value={global.updates.channel}
+            onChange={(v) => void setGlobal({ updates: { channel: v as UpdateChannel } })}
+            options={[
+              { value: 'stable', label: '稳定版' },
+              { value: 'beta', label: 'Beta' },
+              { value: 'alpha', label: 'Alpha' },
+            ]}
+          />
+        </Row>
+      </div>
+
+      <div className="border-t pt-6">
+        <SectionHeader title="Git" description="全局 Git 行为（每 vault 可单独设置）" />
+        <Row label="使用系统 Git" description="默认使用 NexNote 内置 Git">
+          <Toggle
+            checked={global.git.useSystemGit}
+            onChange={(v) => void setGlobal({ git: { useSystemGit: v } })}
+          />
+        </Row>
+      </div>
+
+      <p className="text-[11px] text-muted-foreground/70">NexNote v{appVersion}</p>
     </div>
   );
 }
 
-function AppearanceSection() {
-  return (
-    <div className="space-y-2 text-sm">
-      <h3 className="text-base font-medium">外观</h3>
-      <p className="text-muted-foreground">
-        主题、字体、间距。主题切换在 ⌘K 命令面板「切换亮/暗主题」。
-      </p>
-    </div>
-  );
-}
+function EditorSection() {
+  const { vault } = useVaultSettingsEffects();
+  const setVault = useSettingsStore((s) => s.setVault);
 
-function VaultSection() {
+  if (!vault) {
+    return (
+      <div className="text-sm text-muted-foreground">
+        未打开 vault。打开知识库后可配置编辑器行为。
+      </div>
+    );
+  }
+
   return (
-    <div className="space-y-2 text-sm">
-      <h3 className="text-base font-medium">知识库</h3>
-      <p className="text-muted-foreground">
-        最近打开列表、默认 vault 路径、Git 凭证（DEV-007/014 接入）。
-      </p>
+    <div className="space-y-6">
+      <SectionHeader title="编辑器" description="当前知识库的编辑器行为" />
+      <Row label="自动保存间隔" description={`${vault.editor.autoSaveMs}ms（100ms–10s）`}>
+        <input
+          type="range"
+          min={100}
+          max={10000}
+          step={100}
+          value={vault.editor.autoSaveMs}
+          onChange={(e) =>
+            void setVault({ editor: { autoSaveMs: Number(e.target.value) } })
+          }
+          className="w-32"
+        />
+      </Row>
+      <Row label="文件名与 H1 标题联动" description="修改标题自动重命名文件">
+        <Toggle
+          checked={vault.editor.bindFileNameToTitle}
+          onChange={(v) => void setVault({ editor: { bindFileNameToTitle: v } })}
+        />
+      </Row>
+      <Row label="代码块主题">
+        <Select
+          value={vault.editor.codeTheme}
+          onChange={(v) => void setVault({ editor: { codeTheme: v as CodeTheme } })}
+          options={[
+            { value: 'github', label: 'GitHub' },
+            { value: 'dracula', label: 'Dracula' },
+            { value: 'nord', label: 'Nord' },
+          ]}
+        />
+      </Row>
+      <Row label="Vim 模式" description="实验性，重启后生效（占位）">
+        <Toggle
+          checked={vault.editor.vimMode}
+          onChange={(v) => void setVault({ editor: { vimMode: v } })}
+        />
+      </Row>
     </div>
   );
 }
 
 function GitSection() {
-  const [milliseconds, setMilliseconds] = useState(30_000);
-  const [confidenceFrontmatter, setConfidenceFrontmatter] = useState(false);
+  const { vault } = useVaultSettingsEffects();
+  const setVault = useSettingsStore((s) => s.setVault);
   const [message, setMessage] = useState<string | null>(null);
 
-  useEffect(() => {
-    void invoke('git:getAutoCommitDebounce')
-      .then(({ milliseconds: stored }) => setMilliseconds(stored))
-      .catch((error) => setMessage(error instanceof Error ? error.message : String(error)));
-    void invoke('index:confidenceSettings')
-      .then(({ writeFrontmatter }) => setConfidenceFrontmatter(writeFrontmatter))
-      .catch((error) => setMessage(error instanceof Error ? error.message : String(error)));
-  }, []);
+  if (!vault) {
+    return (
+      <div className="text-sm text-muted-foreground">
+        未打开 vault。打开知识库后可配置 Git 行为。
+      </div>
+    );
+  }
 
-  const save = async (): Promise<void> => {
+  const saveDebounce = async (ms: number): Promise<void> => {
     try {
-      const result = await invoke('git:setAutoCommitDebounce', { milliseconds });
-      setMilliseconds(result.milliseconds);
-      const confidenceResult = await invoke('index:setConfidenceFrontmatter', {
-        enabled: confidenceFrontmatter,
-      });
-      setConfidenceFrontmatter(confidenceResult.writeFrontmatter);
-      setMessage(
-        `已保存 Git 设置：自动提交防抖 ${result.milliseconds}ms；frontmatter 同步 ${confidenceResult.writeFrontmatter ? '开启' : '关闭'}`,
-      );
+      const result = await invoke('git:setAutoCommitDebounce', { milliseconds: ms });
+      setMessage(`已保存：自动提交防抖 ${result.milliseconds}ms`);
+      setTimeout(() => setMessage(null), 3000);
     } catch (error) {
       setMessage(error instanceof Error ? error.message : String(error));
     }
   };
 
   return (
-    <div className="space-y-3 text-sm">
-      <h3 className="text-base font-medium">Git</h3>
-      <label className="block space-y-1">
-        <span>自动提交防抖（毫秒）</span>
-        <input
-          type="number"
-          min={500}
-          max={600_000}
-          step={500}
-          value={milliseconds}
-          onChange={(event) => setMilliseconds(Number(event.target.value))}
-          className="h-8 w-40 rounded border bg-background px-2 text-xs"
+    <div className="space-y-6">
+      <SectionHeader title="Git（当前知识库）" description="版本控制行为" />
+      <Row label="自动提交">
+        <Toggle
+          checked={vault.git.autoCommit}
+          onChange={(v) => void setVault({ git: { autoCommit: v } })}
         />
-      </label>
-      <p className="text-xs text-muted-foreground">
-        编辑停止后自动提交；有效范围为 500ms 到 10 分钟。
-      </p>
-      <label className="flex items-center gap-2 text-xs" data-testid="confidence-frontmatter-setting">
-        <input
-          type="checkbox"
-          checked={confidenceFrontmatter}
-          onChange={(event) => setConfidenceFrontmatter(event.target.checked)}
-          className="size-3.5"
-        />
-        将置信度总分同步到 Markdown frontmatter
-      </label>
-      <button
-        type="button"
-        onClick={() => void save()}
-        className="rounded border px-3 py-1.5 text-xs hover:bg-accent"
+      </Row>
+      <Row
+        label="自动提交间隔"
+        description={`${vault.git.autoCommitIntervalMs}ms（2s–10min）`}
       >
-        保存 Git 设置
-      </button>
-      {message && <p className="text-xs text-muted-foreground">{message}</p>}
+        <input
+          type="range"
+          min={2000}
+          max={600000}
+          step={1000}
+          value={vault.git.autoCommitIntervalMs}
+          onChange={(e) => {
+            const val = Number(e.target.value);
+            void setVault({ git: { autoCommitIntervalMs: val } });
+            void saveDebounce(val);
+          }}
+          className="w-32"
+        />
+      </Row>
+      <Row label="提交消息模板" description="{summary} 会被替换为变更摘要">
+        <input
+          type="text"
+          value={vault.git.commitMessageTemplate}
+          onChange={(e) =>
+            void setVault({ git: { commitMessageTemplate: e.target.value } })
+          }
+          className="h-8 w-56 rounded-md border bg-background px-2 text-sm"
+        />
+      </Row>
+      <Row label="默认分支名" description="新建 vault 时使用">
+        <input
+          type="text"
+          value={vault.git.defaultBranch}
+          onChange={(e) => void setVault({ git: { defaultBranch: e.target.value } })}
+          className="h-8 w-40 rounded-md border bg-background px-2 text-sm"
+        />
+      </Row>
+      {message && (
+        <p className="text-xs text-muted-foreground">{message}</p>
+      )}
     </div>
   );
 }
 
 function ShortcutsSection() {
+  const { global } = useGlobalSettings();
+
+  if (!global) return <div className="text-sm text-muted-foreground">加载中…</div>;
+
+  const shortcuts = global.shortcuts;
+
+  const handleImport = async (): Promise<void> => {
+    try {
+      const result = await invoke('settings:pickImportFile');
+      if (result) {
+        const { imported } = await invoke('settings:importShortcuts', { json: result });
+        alert(`已导入 ${imported} 条快捷键`);
+      }
+    } catch (e) {
+      alert(e instanceof Error ? e.message : String(e));
+    }
+  };
+
+  const handleExport = async (): Promise<void> => {
+    try {
+      const result = await invoke('settings:exportShortcuts');
+      await invoke('settings:saveExportFile', {
+        suggestedName: 'nexnote-shortcuts.json',
+        contents: result.json,
+      });
+    } catch (e) {
+      alert(e instanceof Error ? e.message : String(e));
+    }
+  };
+
   return (
-    <div className="space-y-2 text-sm">
-      <h3 className="text-base font-medium">快捷键</h3>
-      <p className="text-muted-foreground">键位自定义与冲突检测在 DEV-017 接入。</p>
-      <ul className="ml-4 list-disc text-muted-foreground">
-        <li>⌘K · 命令面板</li>
-        <li>⌘T · 新建标签页（占位）</li>
-        <li>⌘/ · 切换侧栏折叠</li>
-      </ul>
+    <div className="space-y-4">
+      <SectionHeader
+        title="快捷键"
+        description="当前快捷键列表。完整自定义（录制、碰撞检测）在 DEV-017 中完善。"
+      />
+      <div className="mb-3 flex gap-2">
+        <button
+          type="button"
+          onClick={() => void handleImport()}
+          className="h-7 rounded-md border px-3 text-xs hover:bg-accent"
+        >
+          导入…
+        </button>
+        <button
+          type="button"
+          onClick={() => void handleExport()}
+          className="h-7 rounded-md border px-3 text-xs hover:bg-accent"
+        >
+          导出…
+        </button>
+      </div>
+      <div className="divide-y rounded-md border">
+        {shortcuts.map((sc) => (
+          <div
+            key={sc.commandId}
+            className="flex items-center justify-between px-3 py-2 text-sm"
+          >
+            <span className="text-muted-foreground">{sc.commandId}</span>
+            <span
+              className={`rounded border px-2 py-0.5 font-mono text-xs ${
+                sc.disabled ? 'text-muted-foreground/50' : ''
+              }`}
+            >
+              {sc.disabled ? '已禁用' : sc.key || '未设置'}
+            </span>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function AboutSection() {
+  const [info, setInfo] = useState<{ version: string; platform: string; arch: string; electronVersion: string } | null>(null);
+
+  useEffect(() => {
+    void invoke('app:getInfo').then(setInfo);
+  }, []);
+
+  return (
+    <div className="space-y-4">
+      <SectionHeader title="关于 NexNote" />
+      <div className="space-y-2 text-sm">
+        <div className="flex justify-between">
+          <span className="text-muted-foreground">版本</span>
+          <span className="font-mono">{info?.version ?? '…'}</span>
+        </div>
+        <div className="flex justify-between">
+          <span className="text-muted-foreground">平台</span>
+          <span className="font-mono">{info?.platform ?? '…'}</span>
+        </div>
+        <div className="flex justify-between">
+          <span className="text-muted-foreground">架构</span>
+          <span className="font-mono">{info?.arch ?? '…'}</span>
+        </div>
+        <div className="flex justify-between">
+          <span className="text-muted-foreground">Electron</span>
+          <span className="font-mono">{info?.electronVersion ?? '…'}</span>
+        </div>
+      </div>
+      <div className="pt-4 text-xs text-muted-foreground">
+        <p>NexNote — 面向 AI 原生工作流的本地知识库。</p>
+        <p className="mt-2">所有数据保存在本地 vault 目录中。</p>
+      </div>
     </div>
   );
 }

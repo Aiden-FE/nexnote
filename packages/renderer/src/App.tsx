@@ -5,10 +5,11 @@ import { ThemeProvider } from './theme/ThemeProvider';
 import { VaultContext } from './shell/vault-context';
 import { WorkspaceView } from './shell/WorkspaceView';
 import { OnboardingWizard } from './onboarding/OnboardingWizard';
-import { CommandPalette, useCommandPaletteHotkey } from './palette/CommandPalette';
+import { CommandPalette } from './palette/CommandPalette';
 import { AiGlobalLayer } from './features/ai';
-import { requestAppSave } from './editor/app-save';
-import { SearchPanel, useSearchHotkey, useJumpToInjection } from './features/search';
+import { SearchPanel, useJumpToInjection } from './features/search';
+import { useSettingsBootstrap } from './hooks/use-settings-effects';
+import { useShortcutRuntime } from './shortcuts/use-shortcut-runtime';
 
 type StartupState =
   | { phase: 'loading' }
@@ -39,28 +40,11 @@ function App() {
     return onEvent('vault:changed', () => void refresh());
   }, [refresh]);
 
-  useCommandPaletteHotkey();
-  useSearchHotkey();
+  // DEV-016：设置系统启动（全局设置加载 + 主题迁移 + 视觉效果应用）
+  useSettingsBootstrap();
+  // DEV-016：全局快捷键运行时（替代硬编码 ⌘K/⌘S/⌘⇧F）
+  useShortcutRuntime();
   useJumpToInjection();
-
-  useEffect(() => {
-    const saveAndCommit = (event: KeyboardEvent): void => {
-      if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === 's') {
-        event.preventDefault();
-        if (state.phase !== 'ready') return;
-
-        void requestAppSave(window)
-          .then(() => invoke('git:commit', { message: '保存当前工作区' }))
-          .catch((error) => {
-            // Fail closed: a failed save must never create a Git commit, and the
-            // editor surfaces the per-file error while we log the app-level cause.
-            console.error('[app] 保存失败，跳过本次 Git 提交', error);
-          });
-      }
-    };
-    window.addEventListener('keydown', saveAndCommit);
-    return () => window.removeEventListener('keydown', saveAndCommit);
-  }, [state.phase]);
 
   return (
     <ThemeProvider>

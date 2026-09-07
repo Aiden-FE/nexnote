@@ -6,8 +6,11 @@ export type * from './types/retrieval';
 export type * from './types/chat';
 export type * from './types/plugin';
 export type * from './types/skill';
+export type * from './types/settings';
 export * from './markdown/wikilink';
 export * from './markdown/links';
+// Settings utils（纯函数，主/渲染共用）
+export { mergeGlobalPatch, mergeVaultPatch, normalizeShortcut } from './settings/settings-utils';
 // IPC
 export type * from './ipc/result';
 export type * from './ipc/contract';
@@ -20,6 +23,7 @@ export type * from './ipc/channels/git';
 export type * from './ipc/channels/ai';
 export type * from './ipc/channels/plugins';
 export type * from './ipc/channels/index';
+export type * from './ipc/channels/settings';
 // 运行时值
 export {
   ok,
@@ -31,6 +35,9 @@ export {
   isIpcEventChannel,
   defaultVaultConfig,
   defaultVaultLayout,
+  defaultGlobalSettings,
+  defaultVaultSettings,
+  DEFAULT_SHORTCUTS,
   sanitizeEntryName,
 } from './ipc/reexports';
 

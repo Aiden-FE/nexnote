@@ -18,6 +18,8 @@ import type { SkillsChannelMap } from './channels/skills';
 import { SKILLS_CHANNELS } from './channels/skills';
 import type { IndexChannelMap } from './channels/index';
 import { INDEX_CHANNELS } from './channels/index';
+import type { SettingsChannelMap } from './channels/settings';
+import { SETTINGS_CHANNELS } from './channels/settings';
 
 /**
  * 全量 IPC 契约：主进程 handler 与渲染层 client 共用的单一事实来源。
@@ -35,7 +37,8 @@ export interface IpcContract
     ChatChannelMap,
     PluginsChannelMap,
     SkillsChannelMap,
-    IndexChannelMap {}
+    IndexChannelMap,
+    SettingsChannelMap {}
 
 /** 运行时已知的全部通道名（preload 侧做白名单校验用）。 */
 export const IPC_CHANNELS: readonly string[] = [
@@ -49,6 +52,7 @@ export const IPC_CHANNELS: readonly string[] = [
   ...PLUGINS_CHANNELS,
   ...SKILLS_CHANNELS,
   ...INDEX_CHANNELS,
+  ...SETTINGS_CHANNELS,
 ];
 
 export type IpcChannel = keyof IpcContract & string;

@@ -1,13 +1,15 @@
-import { mkdtemp, mkdir, readdir, rm, stat, writeFile } from 'node:fs/promises';
+import { mkdtemp, mkdir, readdir, rm, stat, symlink, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import * as path from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import {
   createVault,
   ensureVault,
+  mergeVaultSettings,
   readVaultConfig,
   sanitizeVaultName,
   saveVaultLayout,
+  saveVaultSettings,
   validateVaultRoot,
   vaultInfoFor,
   writeVaultConfig,
@@ -15,7 +17,7 @@ import {
   NEXNOTE_DIR,
   VaultError,
 } from '../src/vault/vault-manager';
-import { defaultVaultConfig, defaultVaultLayout } from '@nexnote/shared';
+import { defaultVaultConfig, defaultVaultLayout, defaultVaultSettings } from '@nexnote/shared';
 
 let tmp: string;
 
@@ -132,5 +134,63 @@ describe('createVault（新建空 vault）', () => {
 
   it('父目录不存在时报错', async () => {
     await expect(createVault(path.join(tmp, 'nope'), 'v')).rejects.toMatchObject({ code: 'NOT_FOUND' });
+  });
+
+  it('目标存在符号链接时拒绝（VAULT_TARGET_SYMLINK）', async () => {
+    // 在外部建一个真实目录，然后把 vault 目标位置指向它的符号链接
+    const outside = path.join(tmp, 'outside-target');
+    await mkdir(outside);
+    await symlink(outside, path.join(tmp, 'linked-vault'));
+    await expect(createVault(tmp, 'linked-vault')).rejects.toMatchObject({
+      code: 'VAULT_TARGET_SYMLINK',
+    });
+  });
+});
+
+describe('vault 设置持久化（DEV-016）', () => {
+  it('mergeVaultSettings 对缺失字段逐字段回退默认', () => {
+    const merged = mergeVaultSettings({ editor: { autoSaveMs: 1200 } });
+    expect(merged.editor.autoSaveMs).toBe(1200);
+    expect(merged.editor.bindFileNameToTitle).toBe(defaultVaultSettings().editor.bindFileNameToTitle);
+    expect(merged.git.autoCommitIntervalMs).toBe(defaultVaultSettings().git.autoCommitIntervalMs);
+  });
+
+  it('mergeVaultSettings 对裸/非法输入返回默认', () => {
+    expect(mergeVaultSettings(null)).toEqual(defaultVaultSettings());
+    expect(mergeVaultSettings('oops')).toEqual(defaultVaultSettings());
+    expect(mergeVaultSettings({ git: { defaultBranch: 'main branch!' } }).git.defaultBranch).toBe(
+      defaultVaultSettings().git.defaultBranch,
+    );
+  });
+
+  it('saveVaultSettings 持久化并 clamp 边界值', async () => {
+    const root = path.join(tmp, 'setvault');
+    await createVault(tmp, 'setvault');
+    // autoSaveMs 超上限 → clamp 到 10000
+    const saved = await saveVaultSettings(root, { editor: { autoSaveMs: 99_999 } });
+    expect(saved.editor.autoSaveMs).toBe(10_000);
+    // git interval 超上限 → clamp
+    const saved2 = await saveVaultSettings(root, {
+      git: { autoCommitIntervalMs: 0 },
+    });
+    expect(saved2.git.autoCommitIntervalMs).toBe(2_000);
+    // 重新读取持久化结果
+    const reread = await readVaultConfig(root);
+    expect(reread.settings.editor.autoSaveMs).toBe(10_000);
+  });
+
+  it('读取损坏的 vault 设置时回退默认', async () => {
+    const root = path.join(tmp, 'corrupt-set');
+    await createVault(tmp, 'corrupt-set');
+    const configPath = path.join(root, NEXNOTE_DIR, CONFIG_FILENAME);
+    const cfg = JSON.parse(await (await import('node:fs/promises')).readFile(configPath, 'utf8'));
+    cfg.settings = null;
+    await (await import('node:fs/promises')).writeFile(
+      configPath,
+      `${JSON.stringify(cfg, null, 2)}\n`,
+      'utf8',
+    );
+    const reread = await readVaultConfig(root);
+    expect(reread.settings).toEqual(defaultVaultSettings());
   });
 });

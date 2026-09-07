@@ -1,5 +1,8 @@
 import type { AppInfo, UpdateCheckResult } from '@nexnote/shared';
 import type { AppStore } from '../vault/app-store';
+import type { SettingsService } from '../settings/settings-service';
+import type { VaultCloneController } from '../vault/vault-clone-controller';
+import type { VaultOperationsController } from '../vault/vault-operations-controller';
 import type { VaultSession } from '../vault/vault-session';
 import type { VaultFsService } from '../fs/fs-service';
 import type { VaultWatchService } from '../fs/watch-service';
@@ -41,6 +44,12 @@ export interface IpcServices {
   plugins: PluginService;
   /** DEV-014 检索 Skill 系统（多 Skill 合并重排）。 */
   skills?: SkillService;
+  /** DEV-016：全局设置唯一真值（AppStore 之外，设置页全部接入）。 */
+  settings: SettingsService;
+  /** DEV-016：vault 向导操作控制器（create/open/clone），sender/controller scoped，可取消。 */
+  vaultOperations: VaultOperationsController;
+  /** DEV-016：一次性 clone 授权（sender scoped + TTL + bounded + revoke）。 */
+  vaultClones: VaultCloneController;
   appInfo(): AppInfo;
   checkForUpdates(): Promise<UpdateCheckResult>;
 }

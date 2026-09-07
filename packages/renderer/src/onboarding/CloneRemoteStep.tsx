@@ -35,7 +35,20 @@ export function CloneRemoteStep({ onSuccess, onBack }: CloneStepProps) {
     setError(null);
     const gen = ++runGen.current;
     try {
-      await invoke('vault:clone', { url: url.trim(), parentDir: target });
+      // 预检查远端可达性，获取一次性授权 token（sender 绑定 + TTL）
+      const preflight = await invoke('vault:clonePreflight', {
+        url: url.trim(),
+        parentDir: target,
+      });
+      if (gen !== runGen.current) return;
+      if (!preflight.reachable || !preflight.preflightToken) {
+        throw new Error(preflight.error ?? '远端不可达');
+      }
+      await invoke('vault:clone', {
+        url: url.trim(),
+        parentDir: target,
+        preflightToken: preflight.preflightToken,
+      });
       if (gen === runGen.current) onSuccess();
     } catch (e) {
       if (gen !== runGen.current) return; // user already navigated away

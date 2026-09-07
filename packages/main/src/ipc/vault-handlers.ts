@@ -1,6 +1,7 @@
-import { ok, type Result } from '@nexnote/shared';
+import { ok, err, type Result } from '@nexnote/shared';
 import type { IpcRegistrar } from './registrar';
 import * as pathUtil from 'node:path';
+import { promises as fsp } from 'node:fs';
 import {
   createVault,
   readVaultConfig,
@@ -8,37 +9,13 @@ import {
   saveVaultLayout,
   validateVaultRoot,
 } from '../vault/vault-manager';
-
-/**
- * 校验 vault:clone 的 target 名称：仅允许作为 parentDir 的直接子目录存在。
- * 拒绝空字符串、`.`、`..`、包含路径分隔符或解析后逃出 parentDir 的任意输入。
- * 此举与 vault-manager 的 sanitizeVaultName 语义一致，但额外做 resolve-time 检查。
- */
-function cloneNameError(message: string): Error & { code: string } {
-  return Object.assign(new Error(message), { code: 'INVALID_NAME' });
-}
-
-/**
- * 校验 vault:clone 的 target 名称：仅允许作为 parentDir 的直接子目录存在。
- * 拒绝空字符串、`.`、`..`、包含路径分隔符或解析后逃出 parentDir 的任意输入。
- * 此举与 vault-manager 的 sanitizeVaultName 语义一致，但额外做 resolve-time 检查。
- */
-function ensureSafeCloneName(parentDir: string, name: string): string {
-  const sanitized = sanitizeVaultName(name);
-  if (!sanitized.ok) {
-    throw cloneNameError(`克隆目录名称不合法：${sanitized.reason}`);
-  }
-  if (sanitized.value !== name.trim()) {
-    throw cloneNameError(`克隆目录名称含非法字符：${name}`);
-  }
-  const target = pathUtil.join(parentDir, sanitized.value);
-  const rel = pathUtil.relative(parentDir, target);
-  if (rel === '' || rel.startsWith('..') || pathUtil.isAbsolute(rel)) {
-    throw cloneNameError(`克隆目录名称必须为 ${parentDir} 的直接子目录`);
-  }
-  return target;
-}
-import type { RecentVaultEntry, VaultInfo, VaultLayout, VaultStartupState } from '@nexnote/shared';
+import type {
+  RecentVaultEntry,
+  VaultInfo,
+  VaultInspection,
+  VaultLayout,
+  VaultStartupState,
+} from '@nexnote/shared';
 
 /** 启动状态查询只做一次恢复（懒执行，避免在模块加载期做 IO）。 */
 let restoreAttempted = false;
@@ -65,7 +42,7 @@ export function registerVaultHandlers(registrar: IpcRegistrar): void {
           current = null;
         }
       }
-      if (current) return ok({ mode: 'ready', vault: current });
+      if (current) return ok({ mode: 'ready', vault: current, showWelcome: false });
       return ok({ mode: 'onboarding', recent: services.appStore.existingRecents() });
     },
   );
@@ -79,48 +56,138 @@ export function registerVaultHandlers(registrar: IpcRegistrar): void {
 
   registrar.register(
     'vault:create',
-    async ({ parentDir, name }, services): Promise<Result<VaultInfo>> => {
+    async ({ parentDir, name, initGit }, services): Promise<Result<VaultInfo>> => {
       const info = await createVault(parentDir, name);
-      await services.git.initialize(info.root);
+      if (initGit) {
+        await services.git.initialize(info.root);
+      }
       const opened = await services.vaultSession.open(info.root);
+      if (initGit) {
+        services.git.setRoot(opened.root);
+        services.windows.sendToMainWindow('git:statusChanged', await services.git.status());
+      }
+      return ok(opened);
+    },
+  );
+
+  registrar.register(
+    'vault:open',
+    async ({ path, initGit }, services): Promise<Result<VaultInfo>> => {
+      await validateVaultRoot(path);
+      if (!(await services.git.isRepository(path))) {
+        if (initGit) {
+          services.git.setRoot(path);
+          await services.git.initialize(path);
+        } else {
+          return {
+            ok: false,
+            error: '此文件夹尚未初始化 Git。请确认后使用”初始化 Git”操作。',
+            code: 'GIT_INITIALIZATION_REQUIRED',
+          };
+        }
+      }
+      const opened = await services.vaultSession.open(path);
       services.git.setRoot(opened.root);
       services.windows.sendToMainWindow('git:statusChanged', await services.git.status());
       return ok(opened);
     },
   );
 
-  registrar.register('vault:open', async ({ path }, services): Promise<Result<VaultInfo>> => {
-    await validateVaultRoot(path);
-    if (!(await services.git.isRepository(path))) {
-      return {
-        ok: false,
-        error: '此文件夹尚未初始化 Git。请确认后使用“初始化 Git”操作。',
-        code: 'GIT_INITIALIZATION_REQUIRED',
-      };
-    }
-    const opened = await services.vaultSession.open(path);
-    services.git.setRoot(opened.root);
-    services.windows.sendToMainWindow('git:statusChanged', await services.git.status());
-    return ok(opened);
+  registrar.register(
+    'vault:clone',
+    async ({ url, parentDir, name, preflightToken }, services, context) => {
+      await validateVaultRoot(parentDir);
+      const fallbackName =
+        url
+          .trim()
+          .replace(/\/$/, '')
+          .split('/')
+          .pop()
+          ?.replace(/\.git$/, '') || 'vault';
+      const targetName = sanitizeVaultName(name?.trim() || fallbackName);
+      if (!targetName.ok) {
+        return err(`克隆目录名称不合法：${targetName.reason}`, 'INVALID_NAME');
+      }
+      const targetDir = pathUtil.join(parentDir, targetName.value);
+      // 消费一次性 preflight token：sender 绑定 + TTL + url/targetDir 逐项匹配
+      const consume = services.vaultClones.consume(
+        preflightToken,
+        context.senderId,
+        url,
+        targetDir,
+      );
+      if (!consume.ok) {
+        return err(`克隆授权无效：${consume.reason}`, 'CLONE_TOKEN_INVALID');
+      }
+      // 原子克隆：先到 exclusively-owned 临时目录，成功后 move（no-replace）
+      const tmpDir = `${targetDir}.nexnote-clone-${Date.now()}.tmp`;
+      try {
+        await fsp.mkdir(tmpDir, { recursive: false });
+        await services.git.cloneInto(url, tmpDir, targetName.value);
+        // 原子 no-replace move：若目标目录已存在则失败，绝不覆盖
+        await fsp.rename(pathUtil.join(tmpDir, targetName.value), targetDir);
+      } catch (error) {
+        // 失败只删自有临时目录
+        await fsp.rm(tmpDir, { recursive: true, force: true }).catch(() => {});
+        throw error;
+      } finally {
+        // 确保临时目录被清理（clone 把仓库放在 tmpDir/name 里，成功后 name 被 move）
+        await fsp.rm(tmpDir, { recursive: true, force: true }).catch(() => {});
+      }
+      const opened = await services.vaultSession.open(targetDir);
+      services.git.setRoot(opened.root);
+      services.windows.sendToMainWindow('git:statusChanged', await services.git.status());
+      return ok({ vault: opened, status: { repository: true, branch: 'main', changed: 0, ahead: 0, behind: 0, remote: null, usingSystemGit: false, conflict: false } });
+    },
+  );
+
+  registrar.register('vault:inspect', async ({ path }, services): Promise<Result<VaultInspection>> => {
+    const result: VaultInspection = {
+      path,
+      exists: false,
+      isDirectory: false,
+      hasNexnote: false,
+      isGitRepo: false,
+      isObsidian: false,
+      entryCount: 0,
+    };
+    const stat = await fsp.stat(path).catch(() => null);
+    if (!stat) return ok(result);
+    result.exists = true;
+    if (!stat.isDirectory()) return ok(result);
+    result.isDirectory = true;
+    const entries = await fsp.readdir(path).catch(() => []);
+    result.entryCount = entries.length;
+    const entrySet = new Set(entries);
+    result.hasNexnote = entrySet.has('.nexnote');
+    result.isGitRepo = entrySet.has('.git');
+    result.isObsidian = entrySet.has('.obsidian');
+    void services;
+    return ok(result);
   });
 
-  registrar.register('vault:clone', async ({ url, parentDir, name }, services) => {
-    await validateVaultRoot(parentDir);
-    const fallbackName =
-      url
-        .trim()
-        .replace(/\/$/, '')
-        .split('/')
-        .pop()
-        ?.replace(/\.git$/, '') || 'vault';
-    const target = ensureSafeCloneName(parentDir, name?.trim() || fallbackName);
-    const targetName = pathUtil.basename(target);
-    const cloned = await services.git.cloneInto(url, parentDir, targetName);
-    const opened = await services.vaultSession.open(target);
-    services.git.setRoot(opened.root);
-    services.windows.sendToMainWindow('git:statusChanged', await services.git.status());
-    return ok({ vault: opened, status: cloned.status });
-  });
+  registrar.register(
+    'vault:clonePreflight',
+    async ({ url, parentDir }, services, context): Promise<Result<{ reachable: boolean; preflightToken?: string; error?: string }>> => {
+      await validateVaultRoot(parentDir);
+      // 尝试 ls-remote 来验证远端可达（轻量探测，不下载内容）
+      try {
+        await services.git.lsRemote(url);
+      } catch (e) {
+        return ok({ reachable: false, error: e instanceof Error ? e.message : '远端不可达' });
+      }
+      const token = services.vaultClones.createToken(context.senderId, url, parentDir);
+      return ok({ reachable: true, preflightToken: token });
+    },
+  );
+
+  registrar.register(
+    'vault:cancelOperation',
+    async ({ operationId }, services, context): Promise<Result<void>> => {
+      services.vaultOperations.cancel(context.senderId, operationId);
+      return ok(undefined);
+    },
+  );
 
   registrar.register('vault:initGit', async ({ path }, services): Promise<Result<VaultInfo>> => {
     // This is deliberately a separate, user-confirmed IPC path. vault:open never
@@ -147,6 +214,7 @@ export function registerVaultHandlers(registrar: IpcRegistrar): void {
       behind: 0,
       remote: null,
       usingSystemGit: services.appStore.getUseSystemGit(),
+      conflict: false,
     });
     return ok(undefined);
   });

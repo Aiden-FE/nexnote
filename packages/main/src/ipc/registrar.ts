@@ -11,7 +11,12 @@ export interface IpcMainLike {
 export type IpcHandler<C extends IpcChannel> = (
   payload: ChannelRequest<C>,
   services: IpcServices,
+  context: IpcHandlerContext,
 ) => Promise<ChannelResponse<C>> | ChannelResponse<C>;
+
+export interface IpcHandlerContext {
+  senderId: number;
+}
 
 function toErrorResult(thrown: unknown): Result<never> {
   const error =
@@ -21,6 +26,21 @@ function toErrorResult(thrown: unknown): Result<never> {
       ? thrown.code
       : 'INTERNAL';
   return { ok: false, error, code };
+}
+
+function extractSenderId(event: unknown): number {
+  if (
+    event &&
+    typeof event === 'object' &&
+    'sender' in event &&
+    event.sender &&
+    typeof event.sender === 'object' &&
+    'id' in event.sender &&
+    typeof event.sender.id === 'number'
+  ) {
+    return event.sender.id;
+  }
+  return 0;
 }
 
 /**
@@ -43,7 +63,7 @@ export function createIpcRegistrar(ipcMain: IpcMainLike, services: IpcServices) 
         throw new Error(`IPC 通道重复注册: ${channel}`);
       }
       registered.add(channel);
-      ipcMain.handle(channel, async (_event: unknown, payload: unknown) => {
+      ipcMain.handle(channel, async (event: unknown, payload: unknown) => {
         const validation = validatePayload(channel, payload);
         if (validation) {
           return toErrorResult(
@@ -52,8 +72,10 @@ export function createIpcRegistrar(ipcMain: IpcMainLike, services: IpcServices) 
             }),
           );
         }
+        const senderId = extractSenderId(event);
+        const context: IpcHandlerContext = { senderId };
         try {
-          return await handler(payload as ChannelRequest<C>, services);
+          return await handler(payload as ChannelRequest<C>, services, context);
         } catch (thrown) {
           return toErrorResult(thrown);
         }
