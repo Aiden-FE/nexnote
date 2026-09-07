@@ -76,7 +76,7 @@ function coerce(raw: unknown): AppStoreData {
         : null,
     useSystemGit: data.useSystemGit === true,
     autoCommitDebounceMs: coerceDebounceMs(data.autoCommitDebounceMs),
-    updateAutoDownload: data.updateAutoDownload === true,
+    updateAutoDownload: data.updateAutoDownload !== false,
     updateCheckOnLaunch: data.updateCheckOnLaunch !== false,
   };
 }

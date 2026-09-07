@@ -16,6 +16,7 @@ export type UpdateCheckStatus =
   | 'checking'
   | 'downloading'
   | 'downloaded'
+  | 'channel-switched'
   | 'error';
 
 export interface UpdateCheckResult {

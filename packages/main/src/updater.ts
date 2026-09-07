@@ -231,7 +231,7 @@ export function setUpdateChannel(channel: UpdateChannel): UpdateCheckResult {
     // and resolves electron-updater's generated latest*.yml metadata.
     a.setFeedURL(feedConfig(channel));
   }
-  return emit('not-configured', `已切换至 ${channel} 更新通道`);
+  return emit('channel-switched', `已切换至 ${channel} 更新通道`);
 }
 
 export function getUpdateSettings(): UpdateSettings {

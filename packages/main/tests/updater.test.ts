@@ -84,7 +84,10 @@ describe('channel resolution', () => {
     const { adapter } = makeAdapter();
     restore = setUpdaterAdapterForTests(adapter, { isPackaged: false, getVersion: () => '0.1.0' });
     initAutoUpdater(() => {});
-    expect(setUpdateChannel('alpha')).toMatchObject({ status: 'not-configured', channel: 'alpha' });
+    expect(setUpdateChannel('alpha')).toMatchObject({
+      status: 'channel-switched',
+      channel: 'alpha',
+    });
   });
 
   it('rejects unsupported channel on setUpdateChannel', () => {

@@ -53,6 +53,15 @@ let windows: WindowManager | null = null;
 
 async function bootstrap(): Promise<void> {
   const appStore = new AppStore(join(app.getPath('userData'), 'nexnote-app.json'));
+  // 返回主进程 AppStore + updater 合并后的权威状态，renderer 不做本地存储。
+  const readUpdateSettings = () => {
+    const fromUpdater = getUpdateSettings();
+    return {
+      channel: appStore.get().updateChannel ?? fromUpdater.channel,
+      autoDownload: appStore.getUpdateAutoDownload(),
+      checkOnLaunch: appStore.getUpdateCheckOnLaunch(),
+    };
+  };
   windows = new WindowManager({
     getAppStore: () => appStore,
     devTools: !!process.env.NEXNOTE_DEVTOOLS,
@@ -209,13 +218,7 @@ async function bootstrap(): Promise<void> {
       return result;
     },
     getUpdateSettings() {
-      // 返回主进程 AppStore + updater 合并后的权威状态，renderer 不做本地存储。
-      const fromUpdater = getUpdateSettings();
-      return {
-        channel: appStore.get().updateChannel ?? fromUpdater.channel,
-        autoDownload: appStore.getUpdateAutoDownload(),
-        checkOnLaunch: appStore.getUpdateCheckOnLaunch(),
-      };
+      return readUpdateSettings();
     },
     setUpdateSettings(patch) {
       const result = setUpdateSettings(patch);
@@ -228,11 +231,7 @@ async function bootstrap(): Promise<void> {
       if (patch.checkOnLaunch !== undefined) {
         appStore.setUpdateCheckOnLaunch(patch.checkOnLaunch);
       }
-      return {
-        channel: appStore.get().updateChannel ?? result.channel,
-        autoDownload: appStore.getUpdateAutoDownload(),
-        checkOnLaunch: appStore.getUpdateCheckOnLaunch(),
-      };
+      return readUpdateSettings();
     },
   });
 
