@@ -128,11 +128,14 @@ export function runBlockMenuAction(
 /** 块类型转换（setBlockType / 包一层节点）。 */
 export function convertBlock(kind: string, ctx: BlockMenuContext, kernel: EditorKernelInstance | null): boolean {
   if (!kernel) return false;
-  const { schema, selection, tr } = kernel.editor.state;
-  const nodeType = schema.nodes[kind === 'h1' ? 'heading' : kind === 'h2' ? 'heading' : kind === 'h3' ? 'heading' : kind];
+  const { schema, tr } = kernel.editor.state;
+  const isHeading = kind === 'h1' || kind === 'h2' || kind === 'h3';
+  const nodeType = schema.nodes[isHeading ? 'heading' : kind];
   if (!nodeType) return false;
-  if (kind === 'h1' || kind === 'h2' || kind === 'h3') {
-    kernel.editor.view.dispatch(tr.setBlockType(ctx.from, ctx.to, nodeType, { level: Number(kind.slice(1)) }));
+  if (isHeading) {
+    kernel.editor.view.dispatch(
+      tr.setBlockType(ctx.from, ctx.to, nodeType, { level: Number(kind.slice(1)) }),
+    );
     return true;
   }
   if (kind === 'paragraph') {
@@ -140,21 +143,22 @@ export function convertBlock(kind: string, ctx: BlockMenuContext, kernel: Editor
     return true;
   }
   if (kind === 'taskList') {
-    const item = schema.nodes.taskList!.create(null, [schema.nodes.taskItem!.create(null, schema.nodes.paragraph!.create())]);
-    kernel.editor.view.dispatch(tr.replaceRangeWith(ctx.from, ctx.to, item));
+    const { taskList, taskItem } = schema.nodes;
+    if (!taskList || !taskItem) return false;
+    // 选择整体替换为「任务列表 > 任务项 > 原内容段落」
+    const slice = kernel.editor.state.doc.slice(ctx.from, ctx.to);
+    const item = taskItem.create(null, slice.content);
+    kernel.editor.view.dispatch(tr.replaceRangeWith(ctx.from, ctx.to, taskList.create(null, [item])));
     return true;
   }
-  if (kind === 'callout' || kind === 'blockquote' || kind === 'codeBlock') {
-    void selection;
-    const $from = kernel.editor.state.doc.resolve(ctx.from);
-    const range = $from.blockRange(kernel.editor.state.doc.resolve(ctx.to));
-    if (!range) return false;
-    const wrapOk = kernel.editor.view.state.tr.wrap(range, [{ type: nodeType }]);
-    if (wrapOk) {
-      kernel.editor.view.dispatch(wrapOk);
-      return true;
-    }
-    return false;
+  // 包一层（callout/blockquote/codeBlock）：对顶层块 wrap
+  const $from = kernel.editor.state.doc.resolve(ctx.from);
+  const range = $from.blockRange(kernel.editor.state.doc.resolve(ctx.to));
+  if (!range) return false;
+  const wrapOk = kernel.editor.view.state.tr.wrap(range, [{ type: nodeType }]);
+  if (wrapOk) {
+    kernel.editor.view.dispatch(wrapOk);
+    return true;
   }
   return false;
 }
