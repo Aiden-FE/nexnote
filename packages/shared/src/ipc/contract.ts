@@ -10,8 +10,14 @@ import type { GitChannelMap } from './channels/git';
 import { GIT_CHANNELS } from './channels/git';
 import type { AiChannelMap } from './channels/ai';
 import { AI_CHANNELS } from './channels/ai';
+import type { ChatChannelMap } from './channels/chat';
+import { CHAT_CHANNELS } from './channels/chat';
 import type { PluginsChannelMap } from './channels/plugins';
 import { PLUGINS_CHANNELS } from './channels/plugins';
+import type { SkillsChannelMap } from './channels/skills';
+import { SKILLS_CHANNELS } from './channels/skills';
+import type { IndexChannelMap } from './channels/index';
+import { INDEX_CHANNELS } from './channels/index';
 
 /**
  * 全量 IPC 契约：主进程 handler 与渲染层 client 共用的单一事实来源。
@@ -26,7 +32,10 @@ export interface IpcContract
     EditorChannelMap,
     GitChannelMap,
     AiChannelMap,
-    PluginsChannelMap {}
+    ChatChannelMap,
+    PluginsChannelMap,
+    SkillsChannelMap,
+    IndexChannelMap {}
 
 /** 运行时已知的全部通道名（preload 侧做白名单校验用）。 */
 export const IPC_CHANNELS: readonly string[] = [
@@ -36,7 +45,10 @@ export const IPC_CHANNELS: readonly string[] = [
   ...EDITOR_CHANNELS,
   ...GIT_CHANNELS,
   ...AI_CHANNELS,
+  ...CHAT_CHANNELS,
   ...PLUGINS_CHANNELS,
+  ...SKILLS_CHANNELS,
+  ...INDEX_CHANNELS,
 ];
 
 export type IpcChannel = keyof IpcContract & string;

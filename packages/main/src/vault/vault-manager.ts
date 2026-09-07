@@ -37,6 +37,24 @@ export function sanitizeVaultName(
   return { ok: true, value };
 }
 
+/**
+ * 校验对话会话存储目录（vault 相对路径）：仅允许单层/多层普通目录名，
+ * 拒绝绝对路径、.. 逃逸、前导点目录与非法文件名字符；非法时返回 null（回退默认）。
+ */
+export function sanitizeChatFolder(raw: unknown): string | null {
+  if (typeof raw !== 'string') return null;
+  const value = raw.trim().replaceAll('\\', '/').replace(/^\/+|\/+$/g, '');
+  if (value.length === 0) return null;
+  const parts = value.split('/').filter(Boolean);
+  if (parts.length === 0) return null;
+  for (const part of parts) {
+    if (part === '.' || part === '..' || part.startsWith('.')) return null;
+    // eslint-disable-next-line no-control-regex
+    if (/[\\/:*?"<>|\u0000-\u001f]/.test(part)) return null;
+  }
+  return parts.join('/');
+}
+
 /** 校验目录是否可作为 vault 根（存在且为目录）。 */
 export async function validateVaultRoot(root: string): Promise<void> {
   if (!path.isAbsolute(root)) {
@@ -70,6 +88,10 @@ export async function readVaultConfig(root: string): Promise<VaultConfig> {
     const fallback = defaultVaultConfig();
     return {
       version: 1,
+      features: {
+        confidenceFrontmatter: parsed?.features?.confidenceFrontmatter === true,
+      },
+      chatFolder: sanitizeChatFolder(parsed?.chatFolder) ?? fallback.chatFolder,
       layout: { ...fallback.layout, ...(parsed?.layout ?? {}) },
       lastSession: { ...fallback.lastSession, ...(parsed?.lastSession ?? {}) },
     };

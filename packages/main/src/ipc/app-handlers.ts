@@ -12,8 +12,27 @@ export function registerAppHandlers(registrar: IpcRegistrar): void {
 
 /** 命名空间占位 ping（editor/git/ai/plugins）。 */
 export function registerNamespacePingHandlers(registrar: IpcRegistrar): void {
-  registrar.register('editor:ping', async () => ok({ pong: true as const, namespace: 'editor' as const, implementedBy: 'DEV-002' as const }));
-  registrar.register('git:ping', async () => ok({ pong: true as const, namespace: 'git' as const, implementedBy: 'DEV-007' as const }));
-  registrar.register('ai:ping', async () => ok({ pong: true as const, namespace: 'ai' as const, implementedBy: 'DEV-009' as const }));
-  registrar.register('plugins:ping', async () => ok({ pong: true as const, namespace: 'plugins' as const, implementedBy: 'DEV-013' as const }));
+  registrar.register('editor:ping', async () =>
+    ok({ pong: true as const, namespace: 'editor' as const, implementedBy: 'DEV-002' as const }),
+  );
+  registrar.register('git:ping', async () =>
+    ok({ pong: true as const, namespace: 'git' as const, implementedBy: 'DEV-007' as const }),
+  );
+  registrar.register('ai:ping', async () =>
+    ok({ pong: true as const, namespace: 'ai' as const, implementedBy: 'DEV-009' as const }),
+  );
+  registrar.register('plugins:ping', async () =>
+    ok({
+      pong: true as const,
+      namespace: 'plugins' as const,
+      implementedBy: 'DEV-013' as const,
+    }),
+  );
+  registrar.register('skills:ping', async () =>
+    ok({
+      pong: true as const,
+      namespace: 'skills' as const,
+      implementedBy: 'DEV-014' as const,
+    }),
+  );
 }

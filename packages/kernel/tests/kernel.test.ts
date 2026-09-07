@@ -210,7 +210,9 @@ describe('Editor kernel 事务与保存', () => {
     });
     const blocks = reopened.getJSON().content ?? [];
     expect(blocks.map((b) => b.attrs?.blockId)).toEqual(['c3', 'a1', 'b2']);
-    expect(normalizeForCompare(reopened.getMarkdown())).toBe(normalizeForCompare(saved.at(-1) ?? ''));
+    expect(normalizeForCompare(reopened.getMarkdown())).toBe(
+      normalizeForCompare(saved.at(-1) ?? ''),
+    );
 
     reopened.destroy();
     kernel.destroy();
@@ -250,6 +252,21 @@ describe('Editor kernel 事务与保存', () => {
     scheduler.schedule('v3');
     await scheduler.flush();
     expect(saved).toEqual(['v2', 'v3']);
+    let release!: () => void;
+    const inFlight = createSaveScheduler({
+      delayMs: 1,
+      onSave: () => new Promise<void>((resolve) => (release = resolve)),
+    });
+    inFlight.schedule('slow');
+    await vi.advanceTimersByTimeAsync(1);
+    let flushed = false;
+    const flush = inFlight.flush().then(() => (flushed = true));
+    await Promise.resolve();
+    expect(flushed).toBe(false);
+    release();
+    await flush;
+    expect(flushed).toBe(true);
+
     scheduler.schedule('v4');
     scheduler.cancel();
     await vi.runAllTimersAsync();
@@ -260,7 +277,9 @@ describe('Editor kernel 事务与保存', () => {
 
 describe('文件名 ↔ H1 标题绑定纯函数', () => {
   it('文件名生成初始 H1，并保留 frontmatter 在首部', async () => {
-    const title = (await import('../../renderer/src/stores/tab-store')).titleFromPath('folder/My Page.md');
+    const title = (await import('../../renderer/src/stores/tab-store')).titleFromPath(
+      'folder/My Page.md',
+    );
     const { bindH1ToTitle, firstH1 } = await import('../../renderer/src/stores/tab-store');
     const output = bindH1ToTitle('---\ntags: [x]\n---\n\n正文', title);
     expect(output).toBe('---\ntags: [x]\n---\n\n# My Page\n\n正文');
@@ -268,7 +287,8 @@ describe('文件名 ↔ H1 标题绑定纯函数', () => {
   });
 
   it('修改 H1 推导同目录新路径，并清理非法文件名字符', async () => {
-    const { pagePathForTitle, sanitizePageTitle } = await import('../../renderer/src/stores/tab-store');
+    const { pagePathForTitle, sanitizePageTitle } =
+      await import('../../renderer/src/stores/tab-store');
     expect(sanitizePageTitle(' 新/标题:*? ')).toBe('新-标题---');
     expect(pagePathForTitle('notes/旧标题.md', '新标题')).toBe('notes/新标题.md');
   });

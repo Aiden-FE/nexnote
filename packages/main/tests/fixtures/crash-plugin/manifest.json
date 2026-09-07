@@ -1,0 +1,10 @@
+{
+  "id": "com.nexnote.crash",
+  "name": "Crash Plugin",
+  "version": "1.0.0",
+  "minAppVersion": "0.1.0",
+  "main": "main.js",
+  "capabilities": ["read"],
+  "permissions": ["read"],
+  "contributions": { "commands": [{ "id": "before-crash", "title": "Before Crash" }] }
+}

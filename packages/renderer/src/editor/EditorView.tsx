@@ -4,6 +4,12 @@ import { createEditor } from '@nexnote/kernel';
 import type { EditorKernelInstance } from '@nexnote/kernel';
 import { invoke } from '../lib/ipc';
 import { useTabStore, type PaneId, type TabDescriptor } from '../stores/tab-store';
+import { FrontmatterPanel } from '../features/frontmatter/FrontmatterPanel';
+import { useDocumentPropertiesStore } from '../features/frontmatter/document-properties-store';
+import { useIndexStore } from '../stores/index-store';
+import type { FrontmatterData } from '@nexnote/kernel';
+import { parseFrontmatterYaml, serializeFrontmatterYaml, splitFrontmatter } from '@nexnote/kernel';
+import { collectVaultTags, inspectFrontmatter } from '../features/frontmatter/frontmatter-utils';
 import {
   bindH1ToTitle,
   firstH1,
@@ -11,6 +17,26 @@ import {
   sanitizePageTitle,
   titleFromPath,
 } from './title-sync';
+import { registerAppSaveListener } from './app-save';
+import { registerEditor } from './active-editor';
+import {
+  createWritingController,
+  writingBubbleActions,
+  type WritingController,
+  writingContextMenu,
+  writingSlashItems,
+} from '../features/ai/writing';
+import { CHAT_ASK_ACTION, requestAskAi } from '../features/ai/chat/ask-ai';
+import { openChatWikilinkOrNull } from '../features/ai/chat/chat-runtime';
+import { useUiStore } from '../stores/ui-store';
+import { pluginContributionRegistry } from '../registries';
+import { buildPluginMenuItems, PLUGIN_MENU_ACTION_PREFIX } from '../features/plugins/extension-points';
+import { usePluginStore } from '../features/plugins/plugin-store';
+import {
+  buildBuiltinSlashItems,
+  buildBuiltinViewExtensions,
+  flagsFromActivePlugins,
+} from '../features/plugins/builtin/builtin-extensions';
 
 interface EditorViewProps {
   paneId: PaneId;
@@ -18,9 +44,7 @@ interface EditorViewProps {
 }
 
 type LoadState =
-  | { phase: 'loading' }
-  | { phase: 'ready'; markdown: string }
-  | { phase: 'error'; message: string };
+  { phase: 'loading' } | { phase: 'ready'; markdown: string } | { phase: 'error'; message: string };
 
 type SaveState = 'saved' | 'saving' | 'error';
 
@@ -41,6 +65,34 @@ export function EditorView({ paneId, tab }: EditorViewProps) {
   const pathRef = useRef(path);
   const saveChainRef = useRef<Promise<void>>(Promise.resolve());
   const unmountedRef = useRef(false);
+  const [fmData, setFmData] = useState<FrontmatterData>({});
+  const [fmSource, setFmSource] = useState('');
+  const [fmLocked, setFmLocked] = useState(false);
+  const [fmParseError, setFmParseError] = useState<string | null>(null);
+  const [knownTags, setKnownTags] = useState<string[]>([]);
+  const indexTags = useIndexStore((s) => s.tags);
+  const setDocument = useDocumentPropertiesStore((s) => s.setDocument);
+
+  // 写作辅助编排器（DEV-010）：在 mount effect 中创建（effect 内读取 ref 合法），
+  // getter 在事件触发时才经 ref 读取实时 kernel/路径；控制器本身稳定。
+  const writingControllerRef = useRef<WritingController | null>(null);
+  useEffect(() => {
+    writingControllerRef.current = createWritingController({
+      getKernel: () => kernelRef.current,
+      getContext: () => {
+        const markdown = kernelRef.current?.getMarkdown() ?? '';
+        const idx = useIndexStore.getState();
+        const backlinks =
+          idx.backlinksFor === pathRef.current
+            ? idx.backlinks.map((b) => ({ title: b.fromTitle, snippet: b.snippet }))
+            : [];
+        return { markdown, backlinks };
+      },
+    });
+    return () => {
+      writingControllerRef.current = null;
+    };
+  }, []);
 
   useEffect(() => {
     pathRef.current = path;
@@ -73,6 +125,11 @@ export function EditorView({ paneId, tab }: EditorViewProps) {
         if (!firstH1(markdown)) markdown = bindH1ToTitle(markdown, titleFromPath(path));
         if (!cancelled) {
           pathRef.current = path;
+          const inspected = inspectFrontmatter(markdown);
+          setFmData(inspected.data);
+          setFmSource(inspected.source);
+          setFmLocked(inspected.locked);
+          setFmParseError(inspected.parseError);
           setLoad({ phase: 'ready', markdown });
         }
       } catch (e) {
@@ -139,6 +196,10 @@ export function EditorView({ paneId, tab }: EditorViewProps) {
   useEffect(() => {
     if (load.phase !== 'ready' || !hostRef.current) return;
     unmountedRef.current = false;
+    const writingController = writingControllerRef.current;
+    // DEV-015：内置插件（Mermaid/KaTeX）激活时叠加富预览 NodeView；
+    // 斜杠项经函数式 extraSlashItems 在每次打开菜单时读取最新启停状态。
+    const builtinFlags = flagsFromActivePlugins(usePluginStore.getState().plugins);
     const kernel = createEditor(hostRef.current, {
       initialMarkdown: load.markdown,
       saveDelayMs: 500,
@@ -151,20 +212,79 @@ export function EditorView({ paneId, tab }: EditorViewProps) {
       },
       onWikilinkActivate: (target) => {
         const pageName = target.split('#')[0] || target;
-        const nextPath = `${sanitizePageTitle(pageName)}.md`;
-        useTabStore.getState().openTab(paneId, {
-          kind: 'page',
-          title: titleFromPath(nextPath),
-          pagePath: nextPath,
+        // DEV-012：双链指向会话（type: chat）时打开对话 dock 并加载该会话。
+        void openChatWikilinkOrNull(pageName).then((hit) => {
+          if (hit) {
+            useUiStore.getState().setActiveDockPanel('ai-chat');
+            return;
+          }
+          const nextPath = `${sanitizePageTitle(pageName)}.md`;
+          useTabStore.getState().openTab(paneId, {
+            kind: 'page',
+            title: titleFromPath(nextPath),
+            pagePath: nextPath,
+          });
         });
       },
+      selectionBubble: {
+        actions: [
+          ...writingBubbleActions(),
+          { id: CHAT_ASK_ACTION, title: '询问 AI' },
+        ],
+        onAction: (id, ctx) => {
+          if (id === CHAT_ASK_ACTION) {
+            requestAskAi(ctx.text, titleFromPath(pathRef.current), pathRef.current);
+            return;
+          }
+          writingController?.trigger(id, ctx);
+        },
+      },
+      contextMenu: {
+        build: (ctx) => [
+          ...writingContextMenu(ctx),
+          {
+            id: CHAT_ASK_ACTION,
+            title: '💬 询问 AI（送入对话）',
+            disabled: !ctx.text.trim(),
+          },
+          // DEV-014：插件菜单扩展点（每次右键读取最新注册表）。
+          ...buildPluginMenuItems(pluginContributionRegistry.all()),
+        ],
+        onAction: (id, ctx) => {
+          if (id === CHAT_ASK_ACTION) {
+            requestAskAi(ctx.text, titleFromPath(pathRef.current), pathRef.current);
+            return;
+          }
+          if (id.startsWith('plugin-menu:')) {
+            const scopedId = id.slice(PLUGIN_MENU_ACTION_PREFIX.length);
+            const separator = scopedId.indexOf(':');
+            const pluginId = scopedId.slice(0, separator);
+            const commandId = scopedId.slice(separator + 1);
+            void invoke('plugins:runCommand', {
+              pluginId,
+              commandId,
+            });
+            return;
+          }
+          writingController?.trigger(id, ctx);
+        },
+      },
+      extraExtensions: buildBuiltinViewExtensions(builtinFlags),
+      extraSlashItems: () => [
+        ...(writingController ? writingSlashItems(writingController) : []),
+        ...buildBuiltinSlashItems(flagsFromActivePlugins(usePluginStore.getState().plugins)),
+      ],
     });
     kernelRef.current = kernel;
+    const editorRegistration = registerEditor(kernel);
 
     const flush = () => void kernel.flushPendingSave();
+    const unregisterAppSave = registerAppSaveListener(window, () => kernel.flushPendingSave());
     window.addEventListener('blur', flush);
     return () => {
+      unregisterAppSave();
       window.removeEventListener('blur', flush);
+      editorRegistration.unregister();
       // 先 flush 再 destroy：destroy 会 cancel，不能颠倒。
       void kernel.flushPendingSave().finally(() => kernel.destroy());
       kernelRef.current = null;
@@ -172,9 +292,92 @@ export function EditorView({ paneId, tab }: EditorViewProps) {
     };
   }, [load, paneId, save]);
 
+  // 仅替换 ProseMirror 文档首部 frontmatter 节点，保留正文选择与撤销映射。
+  const applyFrontmatter = useCallback((next: FrontmatterData, sourceOverride?: string) => {
+    const kernel = kernelRef.current;
+    if (!kernel) return;
+    const editor = kernel.editor;
+    const first = editor.state.doc.firstChild;
+    const type = editor.state.schema.nodes.frontmatter;
+    if (!type) return;
+    const yaml = sourceOverride ?? serializeFrontmatterYaml(next);
+
+    if (first?.type.name === 'frontmatter') {
+      if (first.textContent !== yaml) {
+        const tr =
+          yaml.length > 0
+            ? editor.state.tr.replaceWith(
+                0,
+                first.nodeSize,
+                type.create(null, editor.state.schema.text(yaml)),
+              )
+            : editor.state.tr.delete(0, first.nodeSize);
+        editor.view.dispatch(tr);
+      }
+    } else if (yaml.length > 0) {
+      editor.view.dispatch(
+        editor.state.tr.insert(0, type.create(null, editor.state.schema.text(yaml))),
+      );
+    }
+    setFmData(next);
+    setFmSource(yaml);
+    setFmLocked(false);
+    setFmParseError(null);
+  }, []);
+
+  // 属性面板数据源：编辑内容变化时刷新。
+  useEffect(() => {
+    if (load.phase !== 'ready') return;
+    const kernel = kernelRef.current;
+    const markdown = kernel?.getMarkdown() ?? load.markdown;
+    const { yaml } = splitFrontmatter(markdown);
+    let parsed: FrontmatterData = fmData;
+    if (yaml !== null) {
+      try {
+        parsed = parseFrontmatterYaml(yaml);
+      } catch {
+        // 保持之前的结构化数据
+      }
+    }
+    setDocument({ filePath: displayPath, markdown, data: parsed });
+  }, [load, displayPath, saveState, setDocument, fmData]);
+
+  // 已知标签：递归扫描 vault 全部 Markdown，接口与 DEV-004 索引替换 seam 一致。
+  useEffect(() => {
+    if (load.phase !== 'ready') return;
+    let cancelled = false;
+    void collectVaultTags({
+      listDir: (relativePath) => invoke('fs:listDir', { path: relativePath }),
+      readTextFile: (relativePath) => invoke('fs:readTextFile', { path: relativePath }),
+    })
+      .then((tags) => {
+        if (!cancelled) setKnownTags(tags);
+      })
+      .catch(() => {
+        // vault 未就绪等场景忽略
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [load]);
+
+  // DEV-010：预加载当前页反链，供 AI 写作上下文组装（失败/无索引静默回退）。
+  useEffect(() => {
+    if (load.phase !== 'ready') return;
+    void useIndexStore.getState().loadBacklinks(displayPath).catch(() => undefined);
+  }, [load.phase, displayPath]);
+
+  // DEV-004 索引标签为实时真值；索引未就绪时回退到全库扫描标签。
+  const effectiveKnownTags = useMemo(
+    () => (indexTags.length > 0 ? indexTags.map((t) => t.tag) : knownTags),
+    [indexTags, knownTags],
+  );
+
   const status = useMemo(() => {
-    if (saveState === 'saving') return { icon: LoaderCircle, text: '保存中…', className: 'animate-spin' };
-    if (saveState === 'error') return { icon: AlertCircle, text: '保存失败', className: 'text-destructive' };
+    if (saveState === 'saving')
+      return { icon: LoaderCircle, text: '保存中…', className: 'animate-spin' };
+    if (saveState === 'error')
+      return { icon: AlertCircle, text: '保存失败', className: 'text-destructive' };
     return { icon: Check, text: '已保存', className: '' };
   }, [saveState]);
   const StatusIcon = status.icon;
@@ -199,7 +402,11 @@ export function EditorView({ paneId, tab }: EditorViewProps) {
   }
 
   return (
-    <div data-testid="editor-view" data-path={displayPath} className="nexnote-editor-view flex h-full min-h-0 flex-col">
+    <div
+      data-testid="editor-view"
+      data-path={displayPath}
+      className="nexnote-editor-view flex h-full min-h-0 flex-col"
+    >
       <div className="flex h-8 shrink-0 items-center gap-1.5 border-b px-3 text-[11px] text-muted-foreground">
         <Save className="size-3" />
         <span className="min-w-0 truncate">{displayPath}</span>
@@ -210,6 +417,19 @@ export function EditorView({ paneId, tab }: EditorViewProps) {
       </div>
       <div className="nexnote-editor-scroll min-h-0 flex-1 overflow-auto">
         <div className="nexnote-editor-relative relative mx-auto max-w-[var(--editor-content-width)] px-10 py-10">
+          <FrontmatterPanel
+            data={fmData}
+            source={fmSource}
+            knownTags={effectiveKnownTags}
+            locked={fmLocked}
+            parseError={fmParseError}
+            onChange={(next) => {
+              applyFrontmatter(next);
+            }}
+            onYamlChange={(source, next) => {
+              applyFrontmatter(next, source);
+            }}
+          />
           <div ref={hostRef} data-testid="editor-host" className="nexnote-editor-host" />
         </div>
       </div>

@@ -11,6 +11,16 @@ export interface VaultInfo {
 /** vault 内配置文件 .nexnote/config.json 的结构。 */
 export interface VaultConfig {
   version: 1;
+  /** 可选实验/功能开关；缺省值由 defaultVaultConfig 提供。 */
+  features: {
+    /** DEV-008：默认只写 SQLite confidence 缓存；显式开启才同步 frontmatter。 */
+    confidenceFrontmatter: boolean;
+  };
+  /**
+   * AI 对话会话存储目录（vault 相对，DEV-012）。默认 `AI Chats`。
+   * 放在普通目录（而非 .nexnote/）以便会话可被双链引用与语义索引。
+   */
+  chatFolder: string;
   /** 窗口/布局状态（由渲染层经 vault:saveLayout 持久化） */
   layout: VaultLayout;
   /** 上次打开的页面（DEV-002/003 接入真实页面后使用，本票仅占位） */
@@ -52,6 +62,8 @@ export function defaultVaultLayout(): VaultLayout {
 export function defaultVaultConfig(): VaultConfig {
   return {
     version: 1,
+    features: { confidenceFrontmatter: false },
+    chatFolder: 'AI Chats',
     layout: defaultVaultLayout(),
     lastSession: { tabs: [], activePane: 'left' },
   };

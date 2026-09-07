@@ -58,6 +58,16 @@ export interface EditorKernelInstance {
    * target 边界 before/after；成功后可 undo/redo，保存后顺序持久化。
    */
   moveBlock(blockId: string, targetBlockId: string, side?: 'before' | 'after'): boolean;
+  /**
+   * 用 Markdown 片段替换 [from,to]（走 parse 管道；可 undo/redo）。
+   * 单块内联内容用 insertText 保留块结构；多块/整块内容替换为解析出的顶层块。
+   */
+  replaceRangeWithMarkdown(from: number, to: number, markdown: string): boolean;
+  /**
+   * 将 Markdown 片段插入为顶层块（可 undo/redo）。at 为文档任意位置，
+   * 内核自动吸附到顶层块边界；side 决定插入到目标块之前/之后。
+   */
+  insertMarkdownBlocks(markdown: string, at: number, side?: 'before' | 'after'): boolean;
   /** 撤销 */
   undo(): boolean;
   /** 重做 */
@@ -77,6 +87,10 @@ export function createEditor(
     dragHandle: options.dragHandle,
     allowBase64: options.allowBase64,
     onWikilinkActivate: options.onWikilinkActivate,
+    extraSlashItems: options.extraSlashItems,
+    selectionBubble: options.selectionBubble,
+    contextMenu: options.contextMenu,
+    extraExtensions: options.extraExtensions,
   });
 
   const manager = createMarkdownManager(extensions);
@@ -158,6 +172,52 @@ export function createEditor(
           .replaceWith(0, editor.state.doc.content.size, Fragment.fromArray(nodes))
           .scrollIntoView(),
       );
+      return true;
+    },
+    replaceRangeWithMarkdown(from: number, to: number, markdown: string) {
+      const size = editor.state.doc.content.size;
+      const f = Math.max(0, Math.min(from, size));
+      const t = Math.max(f, Math.min(to, size));
+      const json = parseMarkdown(manager, markdown);
+      const nodes = (json.content ?? [])
+        .filter((n) => n.type !== 'frontmatter')
+        .map((n) => editor.schema.nodeFromJSON(n));
+      if (nodes.length === 0) {
+        editor.view.dispatch(editor.state.tr.delete(f, t).scrollIntoView());
+        return true;
+      }
+      const $from = editor.state.doc.resolve(f);
+      const partialInline =
+        nodes.length === 1 &&
+        nodes[0]!.isTextblock &&
+        $from.depth >= 1 &&
+        !(f === $from.start() && t === $from.end());
+      if (partialInline) {
+        const text = nodes[0]!.textContent;
+        editor.view.dispatch(editor.state.tr.insertText(text, f, t).scrollIntoView());
+        return true;
+      }
+      let blockFrom = f;
+      let blockTo = t;
+      if ($from.depth >= 1) blockFrom = $from.before(1);
+      const $to = editor.state.doc.resolve(t);
+      if ($to.depth >= 1) blockTo = $to.after(1);
+      editor.view.dispatch(
+        editor.state.tr.replaceWith(blockFrom, blockTo, Fragment.fromArray(nodes)).scrollIntoView(),
+      );
+      return true;
+    },
+    insertMarkdownBlocks(markdown: string, at: number, side = 'after') {
+      const json = parseMarkdown(manager, markdown);
+      const nodes = (json.content ?? [])
+        .filter((n) => n.type !== 'frontmatter')
+        .map((n) => editor.schema.nodeFromJSON(n));
+      if (nodes.length === 0) return false;
+      const size = editor.state.doc.content.size;
+      let pos = Math.max(0, Math.min(at, size));
+      const $p = editor.state.doc.resolve(pos);
+      if ($p.depth >= 1) pos = side === 'after' ? $p.after(1) : $p.before(1);
+      editor.view.dispatch(editor.state.tr.insert(pos, Fragment.fromArray(nodes)).scrollIntoView());
       return true;
     },
     undo() {

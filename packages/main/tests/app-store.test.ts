@@ -2,7 +2,11 @@ import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import * as path from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { AppStore, MAX_RECENT_VAULTS } from '../src/vault/app-store';
+import {
+  AppStore,
+  DEFAULT_AUTO_COMMIT_DEBOUNCE_MS,
+  MAX_RECENT_VAULTS,
+} from '../src/vault/app-store';
 import { mkdir } from 'node:fs/promises';
 
 let tmp: string;
@@ -26,6 +30,8 @@ describe('AppStore', () => {
       recentVaults: [],
       windowBounds: null,
       updateChannel: null,
+      useSystemGit: false,
+      autoCommitDebounceMs: DEFAULT_AUTO_COMMIT_DEBOUNCE_MS,
     });
   });
 
@@ -48,7 +54,9 @@ describe('AppStore', () => {
       store.touchRecent(`/v/extra-${i}`);
     }
     expect(store.get().recentVaults).toHaveLength(MAX_RECENT_VAULTS);
-    expect(store.get().recentVaults[0]).toMatchObject({ path: `/v/extra-${MAX_RECENT_VAULTS + 4}` });
+    expect(store.get().recentVaults[0]).toMatchObject({
+      path: `/v/extra-${MAX_RECENT_VAULTS + 4}`,
+    });
   });
 
   it('removeRecent 移除指定条目', () => {
@@ -64,13 +72,19 @@ describe('AppStore', () => {
     store.setLastVault('/v/keep');
     store.setWindowBounds({ x: 1, y: 2, width: 1200, height: 800 });
     store.setUpdateChannel('beta');
+    store.setUseSystemGit(true);
+    store.setAutoCommitDebounceMs(12_345);
     const raw = JSON.parse(await readFile(storeFile, 'utf8'));
     expect(raw.lastVaultPath).toBe('/v/keep');
     expect(raw.updateChannel).toBe('beta');
+    expect(raw.useSystemGit).toBe(true);
+    expect(raw.autoCommitDebounceMs).toBe(12_345);
     const reopened = new AppStore(storeFile);
     expect(reopened.get().lastVaultPath).toBe('/v/keep');
     expect(reopened.get().windowBounds).toMatchObject({ width: 1200 });
     expect(reopened.get().updateChannel).toBe('beta');
+    expect(reopened.getUseSystemGit()).toBe(true);
+    expect(reopened.getAutoCommitDebounceMs()).toBe(12_345);
   });
 
   it('existingRecents 只保留磁盘上存在的目录', async () => {

@@ -71,7 +71,7 @@ export function DockHost() {
           </div>
         )}
 
-        <div className="min-h-0 flex-1 overflow-auto p-3 text-sm">
+        <div data-testid={`dock-panel-${active?.id ?? 'empty'}`} className="min-h-0 flex-1 overflow-auto p-3 text-sm">
           {ActiveContent ? <ActiveContent /> : <p className="text-muted-foreground">暂无 Dock 面板</p>}
         </div>
       </aside>

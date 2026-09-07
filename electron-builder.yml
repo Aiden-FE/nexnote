@@ -16,6 +16,9 @@ asarUnpack:
   # dugite-native 捆绑的 git 二进制必须落在真实文件系统上才能执行
   - node_modules/dugite/**
   - node_modules/dugite-core/**
+  # @napi-rs/keyring 的平台原生二进制不能从 app.asar 中 dlopen。
+  - node_modules/@napi-rs/keyring/**
+  - node_modules/@napi-rs/keyring-*/**
 compression: normal
 removePackageScripts: true
 afterSign: scripts/notarize.cjs

@@ -12,6 +12,7 @@ import {
   renameWithLinks,
   rewriteWikilinks,
   scanTags,
+  setFrontmatterNumber,
   splitFrontmatter,
 } from '../src/fs/page-ops';
 
@@ -164,6 +165,13 @@ describe('renameWithLinks 重命名/移动 + 全库链接更新（真实临时�
     expect(await service.readTextFile('index.md')).toBe('链接 [[c]] 与 [[c|别名]]');
   });
 
+  it('页面重命名同时更新普通 Markdown 链接', async () => {
+    await service.writeTextFile('index.md', '[短名](b.md#part) 与 [路径](./b.md)');
+    const r = await renameWithLinks(service, 'b.md', 'renamed.md');
+    expect(r.updatedFiles).toContain('index.md');
+    expect(await service.readTextFile('index.md')).toBe('[短名](renamed.md#part) 与 [路径](./renamed.md)');
+  });
+
   it('目录重命名更新其内页面的路径引用', async () => {
     await service.writeTextFile('dir/b.md', '目录页面');
     await service.writeTextFile('index.md', '[[dir/b]]');
@@ -254,6 +262,13 @@ describe('标签扫描', () => {
     const plain = splitFrontmatter('只是正文');
     expect(plain.frontmatter).toBeNull();
     expect(plain.body).toBe('只是正文');
+  });
+
+  it('setFrontmatterNumber creates, updates, and preserves frontmatter', () => {
+    expect(setFrontmatterNumber('# Body', 'confidence', 42)).toBe('---\nconfidence: 42\n---\n\n# Body');
+    expect(setFrontmatterNumber('---\ntags: [a]\nconfidence: 41\n---\n# Body', 'confidence', 42)).toBe('---\ntags: [a]\nconfidence: 42\n---\n# Body');
+    expect(setFrontmatterNumber('---\ntags: [a]\n---\n# Body', 'confidence', 42)).toBe('---\ntags: [a]\nconfidence: 42\n---\n# Body');
+    expect(setFrontmatterNumber('---\nconfidence: 42\n---\n# Body', 'confidence', 42)).toBeNull();
   });
 
   it('scanTags 聚合全库标签（frontmatter + 内联，含文件归属）', async () => {

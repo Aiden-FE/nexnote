@@ -40,7 +40,14 @@ if (process.env.NEXNOTE_SMOKE === '1') {
       content: string,
     ): Promise<{ ok: boolean; path?: string; error?: string }> =>
       ipcRenderer.invoke('smoke:writeFile', { root, rel, content }),
+    seedGraph: (
+      root: string,
+    ): Promise<{ ok: boolean; pages?: number; links?: number; error?: string }> =>
+      ipcRenderer.invoke('smoke:seedGraph', root),
     finish: (report: unknown): Promise<{ ok: boolean; error?: string }> =>
       ipcRenderer.invoke('smoke:finish', report),
+    // DEV-009：AI 冒烟场景用的内嵌 mock OpenAI 服务器地址
+    aiMock: (): Promise<{ ok: boolean; url?: string; error?: string }> =>
+      ipcRenderer.invoke('smoke:aiMock'),
   });
 }

@@ -1,4 +1,9 @@
 import { create } from 'zustand';
+import type { PageJumpResult } from '@nexnote/shared';
+
+export type SearchRoute =
+  | { kind: 'fulltext' }
+  | { kind: 'tag'; tag: string; paths: string[] };
 
 export const SIDEBAR_MIN_WIDTH = 180;
 export const SIDEBAR_MAX_WIDTH = 480;
@@ -16,6 +21,12 @@ interface UiState {
   treeCollapsedDirs: string[];
   /** 页面树显示非 .md 文件（默认隐藏，DEV-003） */
   treeShowAllFiles: boolean;
+  /** ⌘⇧F 全文搜索面板开关（DEV-004） */
+  searchOpen: boolean;
+  /** 当前搜索结果视图；标签点击可直接进入标签搜索结果页。 */
+  searchRoute: SearchRoute;
+  /** ⌘K 命令面板注入的页面跳转结果（DEV-004 index:jumpTo） */
+  jumpResults: PageJumpResult[];
   toggleSidebar(): void;
   setSidebarWidth(width: number): void;
   setSidebarCollapsed(collapsed: boolean): void;
@@ -27,6 +38,10 @@ interface UiState {
   toggleTreeDir(path: string): void;
   setTreeCollapsedDirs(dirs: string[]): void;
   setTreeShowAllFiles(show: boolean): void;
+  setSearchOpen(open: boolean): void;
+  showFulltextSearch(): void;
+  showTagSearch(tag: string, paths: string[]): void;
+  setJumpResults(results: PageJumpResult[]): void;
 }
 
 const clamp = (v: number, min: number, max: number) => Math.min(max, Math.max(min, v));
@@ -40,6 +55,9 @@ export const useUiStore = create<UiState>((set) => ({
   activeDockPanelId: null,
   treeCollapsedDirs: [],
   treeShowAllFiles: false,
+  searchOpen: false,
+  searchRoute: { kind: 'fulltext' },
+  jumpResults: [],
 
   toggleSidebar() {
     set((s) => ({ sidebarCollapsed: !s.sidebarCollapsed }));
@@ -77,5 +95,17 @@ export const useUiStore = create<UiState>((set) => ({
   },
   setTreeShowAllFiles(show) {
     set(() => ({ treeShowAllFiles: show }));
+  },
+  setSearchOpen(open) {
+    set(() => ({ searchOpen: open }));
+  },
+  showFulltextSearch() {
+    set(() => ({ searchOpen: true, searchRoute: { kind: 'fulltext' } }));
+  },
+  showTagSearch(tag, paths) {
+    set(() => ({ searchOpen: true, searchRoute: { kind: 'tag', tag, paths } }));
+  },
+  setJumpResults(results) {
+    set(() => ({ jumpResults: results }));
   },
 }));

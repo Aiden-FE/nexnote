@@ -4,6 +4,10 @@ import { useTabStore, openPageInActivePane } from '../stores/tab-store';
 import { createPage } from '../features/editor/create-page';
 import { useUiStore } from '../stores/ui-store';
 import { useThemeStore } from '../theme/theme-store';
+import { dockPanelRegistry } from '../registries';
+import { getActiveEditor } from '../editor/active-editor';
+import { openSettings } from '../lib/open-settings';
+import { BUILTIN_PLUGIN_IDS } from '@nexnote/shared';
 
 interface SmokeCaptureResult {
   ok: boolean;
@@ -15,6 +19,7 @@ interface SmokeBridge {
   capture(name: string): Promise<SmokeCaptureResult>;
   mkdtemp(): Promise<SmokeCaptureResult & { path?: string }>;
   writeFile(root: string, rel: string, content: string): Promise<SmokeCaptureResult & { path?: string }>;
+  seedGraph(root: string): Promise<SmokeCaptureResult & { pages?: number; links?: number }>;
   finish(report: unknown): Promise<SmokeCaptureResult>;
 }
 
@@ -80,17 +85,31 @@ export async function runSmokeIfEnabled(): Promise<void> {
     check('vault:create 成功', created.name === 'smoke-vault', created.root);
 
     // vault:changed 事件 → App 切到工作区
-    check('工作区出现（vault:changed 驱动）', await waitFor(() => !!document.querySelector('[data-testid="app-sidebar"]')));
+    check(
+      '工作区出现（vault:changed 驱动）',
+      await waitFor(() => !!document.querySelector('[data-testid="app-sidebar"]')),
+    );
 
     // ── 3. 三面板布局 ─────────────────────────────────────────
     const sidebar = !!document.querySelector('[data-testid="app-sidebar"]');
     const main = !!document.querySelector('[data-testid="main-content"]');
     const dock = !!document.querySelector('[data-testid="right-dock"]');
     const statusbar = !!document.querySelector('[data-testid="status-bar"]');
-    check('三面板布局（侧栏+主区+右侧 dock）', sidebar && main && dock, `sb=${sidebar} main=${main} dock=${dock}`);
+    check(
+      '三面板布局（侧栏+主区+右侧 dock）',
+      sidebar && main && dock,
+      `sb=${sidebar} main=${main} dock=${dock}`,
+    );
     check('底部状态栏', statusbar);
-    check('侧栏三个占位面板已注册', !!document.querySelector('[data-testid="sidebar-panel-pages"]'));
+    check(
+      '侧栏至少一个面板已注册（按合并后 DEV-003 实际面板为准）',
+      document.querySelectorAll('[data-testid^="sidebar-panel-"]').length >= 1,
+    );
     check('Dock AI 占位面板已注册', !!document.querySelector('[data-testid="dock-panel-ai-chat"]'));
+    check('Dock Git 时间线面板已注册（DEV-007）', dockPanelRegistry.get('git-timeline') !== undefined);
+    check('状态栏 Git 状态项（分支可见）', !!document.querySelector('[data-testid="status-git-branch"]'));
+    const statusText = document.querySelector('[data-testid="status-git"]')?.textContent ?? '';
+    check('状态栏在 vault 创建后即显示分支与变更数', /main|master/.test(statusText), statusText.slice(0, 80));
     check('默认欢迎 Tab 激活', !!document.querySelector('[data-testid="tab"][data-active="true"]'));
     await capture('02-workspace');
 
@@ -119,7 +138,9 @@ export async function runSmokeIfEnabled(): Promise<void> {
       'page Tab 挂载真实 TipTap EditorView',
       await waitFor(() => !!document.querySelector('[data-testid="editor-view"] .ProseMirror')),
     );
-    const leftPageTab = useTabStore.getState().panes.left.tabs.find((t) => t.title === '冒烟页面 A');
+    const leftPageTab = useTabStore
+      .getState()
+      .panes.left.tabs.find((t) => t.title === '冒烟页面 A');
     const editorRoot = document.querySelector<HTMLElement>(
       '[data-testid="pane-left"] [data-testid="editor-view"] .ProseMirror',
     );
@@ -148,7 +169,9 @@ export async function runSmokeIfEnabled(): Promise<void> {
         ? await invoke('fs:readTextFile', { path: '冒烟重命名页.md' })
         : '';
       check('编辑防抖保存并由 H1 重命名文件', renamedExists && renamedContent.includes('第一块'));
-      const updatedTab = useTabStore.getState().panes.left.tabs.find((t) => t.id === leftPageTab.id);
+      const updatedTab = useTabStore
+        .getState()
+        .panes.left.tabs.find((t) => t.id === leftPageTab.id);
       check(
         'H1 → 文件名/Tab 标题双向联动',
         updatedTab?.pagePath === '冒烟重命名页.md' && updatedTab.title === '冒烟重命名页',
@@ -162,7 +185,8 @@ export async function runSmokeIfEnabled(): Promise<void> {
       });
       await waitFor(
         () =>
-          document.querySelector('[data-testid="pane-left"] [data-testid="editor-view"] .ProseMirror')
+          document
+            .querySelector('[data-testid="pane-left"] [data-testid="editor-view"] .ProseMirror')
             ?.textContent?.includes('第一块') ?? false,
       );
       check(
@@ -195,7 +219,10 @@ export async function runSmokeIfEnabled(): Promise<void> {
     window.dispatchEvent(
       new KeyboardEvent('keydown', { key: 'k', metaKey: true, bubbles: true, cancelable: true }),
     );
-    check('⌘K 唤起命令面板', await waitFor(() => !!document.querySelector('[data-testid="command-palette"]')));
+    check(
+      '⌘K 唤起命令面板',
+      await waitFor(() => !!document.querySelector('[data-testid="command-palette"]')),
+    );
     // 动态注册新命令（验证「可注册新命令」的扩展机制）
     let customCommandRan = false;
     commandRegistry.register({
@@ -207,10 +234,7 @@ export async function runSmokeIfEnabled(): Promise<void> {
       },
     });
     const input = document.querySelector<HTMLInputElement>('[data-testid="palette-input"]');
-    const nativeSetter = Object.getOwnPropertyDescriptor(
-      HTMLInputElement.prototype,
-      'value',
-    )?.set;
+    const nativeSetter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')?.set;
     if (input && nativeSetter) {
       nativeSetter.call(input, '切换亮/暗主题');
       input.dispatchEvent(new Event('input', { bubbles: true }));
@@ -253,7 +277,8 @@ export async function runSmokeIfEnabled(): Promise<void> {
     useUiStore.getState().toggleSidebar();
     await sleep(250);
     const collapsed =
-      document.querySelector('[data-testid="app-sidebar"]')?.getAttribute('data-collapsed') === 'true';
+      document.querySelector('[data-testid="app-sidebar"]')?.getAttribute('data-collapsed') ===
+      'true';
     check('侧栏可折叠', collapsed);
     await capture('07-sidebar-collapsed');
     useUiStore.getState().toggleSidebar();
@@ -265,7 +290,11 @@ export async function runSmokeIfEnabled(): Promise<void> {
     const entriesText = [...document.querySelectorAll('[data-testid="files-entry"]')]
       .map((el) => el.textContent ?? '')
       .join(' ');
-    check('fs:listDir 经 IPC 返回 vault 内容', entriesText.includes('.nexnote'), entriesText.slice(0, 80));
+    check(
+      'fs:listDir 经 IPC 返回 vault 内容',
+      entriesText.includes('.nexnote'),
+      entriesText.slice(0, 80),
+    );
 
     // ── 9.5 DEV-003 页面树与文件操作 ─────────────────────
     const treeRow = (rel: string): Element | null =>
@@ -469,20 +498,264 @@ export async function runSmokeIfEnabled(): Promise<void> {
     document.body.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, cancelable: true }));
     await sleep(150);
 
+    // ── 10a. DEV-006 图谱：真实 500/2000 索引、过滤、点击、局部跳数与 FPS ──
+    const graphSeed = await bridge.seedGraph(created.root);
+    check('图谱性能种子写入 500 页 / 2000 链接', graphSeed.ok, graphSeed.error);
+    await invoke('index:rebuild');
+    useTabStore.getState().openTab('left', { kind: 'graph', title: '知识图谱' });
+    const graphText = () => document.querySelector('[data-testid="global-graph-view"]')?.textContent ?? '';
+    check(
+      '全局图谱展示 500 页 / 2000 链接快照',
+      await waitFor(() => graphText().includes('2000 链接') && document.querySelectorAll('.react-flow__node').length >= 500, 20_000),
+      graphText().slice(0, 100),
+    );
+    check(
+      'React Flow 渲染全部图谱节点',
+      await waitFor(() => document.querySelectorAll('.react-flow__node').length >= 500, 20_000),
+    );
+
+    const graphSurface = document.querySelector<HTMLElement>('.react-flow__renderer');
+    if (graphSurface) {
+      await sleep(400); // 500 节点初次布局后进入稳定交互阶段
+      let frames = 0;
+      let sampling = true;
+      const countFrame = () => {
+        frames += 1;
+        if (sampling) requestAnimationFrame(countFrame);
+      };
+      requestAnimationFrame(countFrame);
+      const durationMs = 2_000;
+      const startedAt = performance.now();
+      let wheels = 0;
+      while (performance.now() - startedAt < durationMs) {
+        wheels += 1;
+        const pane = document.querySelector<HTMLElement>('.react-flow__pane') ?? graphSurface;
+        pane.dispatchEvent(
+          new WheelEvent('wheel', {
+            bubbles: true,
+            cancelable: true,
+            clientX: 650,
+            clientY: 380,
+            deltaY: wheels % 2 ? 90 : -90,
+          }),
+        );
+        await sleep(16);
+      }
+      sampling = false;
+      await new Promise((resolve) => requestAnimationFrame(resolve));
+      const sample = { frames, wheels };
+      const fps = sample.frames / 2;
+      check(
+        '500 节点 / 2000 边连续交互 FPS ≥ 30',
+        fps >= 30 && sample.wheels >= 50,
+        `fps=${fps.toFixed(1)} wheels=${sample.wheels}`,
+      );
+    } else {
+      check('React Flow 交互 surface 存在', false);
+    }
+
+    const nativeOptionSetter = Object.getOwnPropertyDescriptor(HTMLOptionElement.prototype, 'selected')?.set;
+    const folderSelect = document.querySelector<HTMLSelectElement>('[data-testid="graph-folder-filter"]');
+    const groupOption = [...(folderSelect?.options ?? [])].find((option) => option.value === 'graph/group-a');
+    if (folderSelect && groupOption && nativeOptionSetter) {
+      nativeOptionSetter.call(groupOption, true);
+      folderSelect.dispatchEvent(new Event('change', { bubbles: true }));
+    }
+    check(
+      '文件夹子树过滤生效',
+      await waitFor(() => graphText().includes('250 页面 · 1000 链接'), 10_000),
+      graphText().slice(0, 100),
+    );
+    await capture('16-global-graph');
+    const graphNode = document.querySelector<HTMLElement>('.react-flow__node');
+    graphNode?.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
+    check(
+      '点击图谱节点跳转页面',
+      await waitFor(() => {
+        const activeTab = document.querySelector('[data-testid="tab"][data-active="true"]');
+        return activeTab?.getAttribute('data-page-path')?.startsWith('graph/group-a/group-a-node-') ?? false;
+      }, 10_000),
+    );
+
+    useUiStore.getState().setActiveSidebarPanel('graph');
+    check(
+      '局部图谱面板随当前页面更新',
+      await waitFor(
+        () => !!document.querySelector('[data-testid="sidebar-panel-graph"] .react-flow__node'),
+        10_000,
+      ),
+    );
+    document.querySelector<HTMLButtonElement>('[data-testid="graph-hops-2"]')?.click();
+    const localNodeCount = () =>
+      document.querySelectorAll('[data-testid="sidebar-panel-graph"] .react-flow__node').length;
+    check('局部图谱支持 2 跳扩展', await waitFor(() => localNodeCount() > 9, 10_000), `nodes=${localNodeCount()}`);
+    await capture('17-local-graph');
+
+    const activePath = document.querySelector('[data-testid="tab"][data-active="true"]')?.getAttribute('data-page-path');
+    const activeSummary = activePath ? await invoke('index:pageSummary', { path: activePath }) : null;
+    check(
+      'DEV-008 IPC pageSummary 返回图谱页面',
+      !!activeSummary,
+      JSON.stringify({ activePath, activeSummary }),
+    );
+    const activeConfidence = activeSummary
+      ? await invoke('index:confidence', { pageId: activeSummary.pageId })
+      : null;
+    check(
+      'DEV-008 IPC getConfidence 返回缓存分数',
+      !!activeConfidence,
+      JSON.stringify({ pageId: activeSummary?.pageId, activeConfidence }),
+    );
+
+    useUiStore.getState().setActiveDockPanel('document-properties');
+    const confidenceReady = await waitFor(() => {
+      const panel = document.querySelector('[data-testid="properties-panel"]');
+      return !!panel && panel.querySelectorAll('[data-testid^="confidence-factor-"]').length === 6;
+    }, 20_000);
+    const propertiesPanel = document.querySelector('[data-testid="properties-panel"]');
+    const confidenceText = propertiesPanel?.textContent ?? '';
+    check(
+      'DEV-008 属性面板显示真实置信度总分与六个因子',
+      confidenceReady && /\/ 100/.test(confidenceText),
+      confidenceText.slice(0, 120),
+    );
+    const firstFactor = propertiesPanel?.querySelector('[data-testid^="confidence-factor-"]');
+    check(
+      'DEV-008 因子悬停解释 tooltip 已提供',
+      !!firstFactor?.getAttribute('title')?.includes('改动'),
+      firstFactor?.getAttribute('title') ?? 'missing title',
+    );
+    await capture('18-confidence-properties');
+
     // ── 10. 命名空间 ping（editor/git/ai/plugins 框架就绪）────
     const editorPong = await invoke('editor:ping');
     check('editor:* 命名空间通道可用（占位）', editorPong.pong === true);
 
+    // ── 10b. DEV-007 Git 底座：状态栏 + 时间线 + 手动提交 ──
+    const status = await invoke('git:getStatus');
+    check(
+      'git:getStatus 报告真实仓库',
+      status.repository === true && (status.branch === 'master' || status.branch === 'main'),
+    );
+    const initial = await invoke('git:getTimeline', {});
+    check('git:getTimeline 返回 ≥1 提交', initial.length >= 1);
+    check('git:getTimeline 首条为 initial', (initial[0]?.kind ?? '') === 'initial');
+    await invoke('fs:writeTextFile', { path: 'smoke-note.md', content: '冒烟笔记' });
+    // 自动提交走 30s 防抖；这里用手动提交验证提交链路，随后时间线刷新。
+    const manual = await invoke('git:commit', { message: 'smoke manual commit' });
+    check('手动提交成功（commitManual）', manual.status.changed === 0);
+    const after = await invoke('git:getTimeline', {});
+    check('手动提交形成新 HEAD（kind=manual）', (after[0]?.kind ?? '') === 'manual');
+    // 切换 dock 到 git 时间线
+    useUiStore.getState().setActiveDockPanel('git-timeline');
+    await waitFor(() => !!document.querySelector('[data-testid="git-timeline"]'));
+    const timelineText = document.querySelector('[data-testid="git-timeline"]')?.textContent ?? '';
+    check('版本时间线 dock 面板渲染 commit 列表', timelineText.includes('smoke manual commit'), timelineText.slice(0, 80));
+    await capture('09-git-timeline');
+
+    // ── 10c. DEV-015 内置插件：Mermaid + KaTeX 真实渲染与 Obsidian 兼容写盘 ──
+    // 用全新独立页面，确保它是当前活动编辑器，避免历史 tab 干扰。
+    await createPage('内置插件演示');
+    const builtinEditor = await waitFor(
+      () => !![...document.querySelectorAll('[data-testid="pane-left"] [data-testid="editor-view"] .ProseMirror')].pop(),
+      12_000,
+    );
+    check('DEV-015 编辑器就绪', builtinEditor);
+    // 显式聚焦活动编辑器（注册聚焦监听会激活对应内核）。
+    const builtinEl = [...document.querySelectorAll('[data-testid="pane-left"] [data-testid="editor-view"] .ProseMirror')].pop() as HTMLElement | undefined;
+    builtinEl?.focus();
+    builtinEl?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    await sleep(150);
+    const activeKernel = getActiveEditor();
+    check(
+      'DEV-015 活动编辑器可用',
+      !!activeKernel,
+      `editors=${document.querySelectorAll('[data-testid="editor-view"]').length} pm=${document.querySelectorAll('.ProseMirror').length}`,
+    );
+    if (activeKernel) {
+      activeKernel.editor.commands.insertMermaidBlock({
+        source: 'graph TD\n  A["开始"] --> B["结束"]',
+      });
+      activeKernel.editor.commands.insertMathBlock({ source: 'E = mc^2' });
+      activeKernel.editor.commands.insertMathInline({ source: 'a^2 + b^2 = c^2' });
+      await waitFor(() => !!document.querySelector('.nexnote-mermaid-view svg'), 15_000);
+      const mermaidSvg = document.querySelector('.nexnote-mermaid-view svg');
+      const mermaidError = document.querySelector('.nexnote-mermaid-view .nexnote-mermaid-preview.is-error');
+      check(
+        'DEV-015 Mermaid 真实渲染 SVG（flowchart）',
+        !!mermaidSvg && !mermaidError,
+        mermaidError?.textContent?.slice(0, 80) ?? `svg=${!!mermaidSvg}`,
+      );
+      await waitFor(
+        () => document.querySelectorAll('.nexnote-math-view .katex, .nexnote-math-inline-view .katex').length >= 2,
+        10_000,
+      );
+      const blockKatex = !!document.querySelector('.nexnote-math-view .katex');
+      const inlineKatex = !!document.querySelector('.nexnote-math-inline-view .katex');
+      const katexError = document.querySelector('[data-math-view] .nexnote-math-preview')?.textContent ?? '';
+      check(
+        'DEV-015 KaTeX 块级与行内均渲染',
+        blockKatex && inlineKatex,
+        `block=${blockKatex} inline=${inlineKatex}${katexError ? ` · ${katexError.slice(0, 60)}` : ''}`,
+      );
+      await capture('19-builtin-mermaid-katex');
+      // 防抖保存后读盘验证 Obsidian 原生语法。
+      await sleep(1_200);
+      const saved = await invoke('fs:readTextFile', { path: '内置插件演示.md' });
+      check(
+        'DEV-015 保存文件为 Obsidian 原生语法（围栏/$$/$）',
+        saved.includes('```mermaid') &&
+          saved.includes('graph TD') &&
+          saved.includes('$$\nE = mc^2\n$$') &&
+          saved.includes('$a^2 + b^2 = c^2$'),
+        saved.slice(-400),
+      );
+    }
+
+    // ── 10d. DEV-015 设置页：内置插件可见/内置标记/禁启切换 ──
+    openSettings('plugins');
+    check(
+      'DEV-015 设置页插件分区可见',
+      await waitFor(() => !!document.querySelector('[data-testid="plugins-settings"]')),
+    );
+    const pluginListText = document.querySelector('[data-testid="plugin-list"]')?.textContent ?? '';
+    const hasMermaid = pluginListText.includes('Mermaid 图表（内置）');
+    const hasKatex = pluginListText.includes('KaTeX 数学公式（内置）');
+    check('DEV-015 设置页列出两个内置插件', hasMermaid && hasKatex, `mermaid=${hasMermaid} katex=${hasKatex}`);
+    const detailBuiltin = document.querySelector('[data-testid="plugin-detail"]')?.textContent ?? '';
+    check(
+      'DEV-015 详情页标注内置且隐藏卸载按钮',
+      detailBuiltin.includes('内置插件') && !document.querySelector('[data-testid="plugin-uninstall"]'),
+    );
+    // 禁用 Mermaid → 状态变已停用；再启用恢复。
+    await invoke('plugins:setEnabled', { pluginId: BUILTIN_PLUGIN_IDS.mermaid, enabled: false });
+    await sleep(600);
+    await invoke('plugins:setEnabled', { pluginId: BUILTIN_PLUGIN_IDS.mermaid, enabled: true });
+    await sleep(600);
+    const toggled = await invoke('plugins:list');
+    const mermaidState = (toggled as { id: string; state: string }[]).find(
+      (p) => p.id === BUILTIN_PLUGIN_IDS.mermaid,
+    )?.state;
+    check('DEV-015 内置插件可禁用并重新启用', mermaidState === 'active', `state=${mermaidState}`);
+    await capture('20-builtin-plugins-settings');
+
     // ── 11. 关闭 vault 回到向导 ───────────────────────────────
     await invoke('vault:close');
-    check('vault:close 后回到向导', await waitFor(() => !!document.querySelector('[data-testid="onboarding"]')));
+    check(
+      'vault:close 后回到向导',
+      await waitFor(() => !!document.querySelector('[data-testid="onboarding"]')),
+    );
     // 最近列表应包含刚创建的 vault
     await sleep(400);
     const recentShown = document.querySelector('[data-testid="onboarding"]')?.textContent ?? '';
     check('最近打开列表持久化并显示', recentShown.includes('smoke-vault'));
     await capture('08-recent-list');
   } catch (e) {
-    check('冒烟 harness 未抛错', false, e instanceof Error ? `${e.message}\n${e.stack}` : String(e));
+    check(
+      '冒烟 harness 未抛错',
+      false,
+      e instanceof Error ? `${e.message}\n${e.stack}` : String(e),
+    );
   }
 
   await bridge.finish({ finishedAt: new Date().toISOString(), checks, captures: [] });

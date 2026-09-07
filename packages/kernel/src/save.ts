@@ -29,19 +29,32 @@ export function createSaveScheduler(options: SaveSchedulerOptions): SaveSchedule
   let timer: ReturnType<typeof setTimeout> | null = null;
   let pending: string | null = null;
   let saving = false;
+  let inFlight: Promise<void> | null = null;
 
   const run = async () => {
-    if (pending === null || saving) return;
+    if (pending === null) {
+      if (inFlight) await inFlight;
+      return;
+    }
+    if (saving) {
+      if (inFlight) await inFlight;
+      if (pending !== null) await run();
+      return;
+    }
     const content = pending;
     pending = null;
     saving = true;
-    try {
-      await options.onSave(content);
-    } catch (e) {
-      options.onError?.(e);
-    } finally {
-      saving = false;
-    }
+    inFlight = (async () => {
+      try {
+        await options.onSave(content);
+      } catch (e) {
+        options.onError?.(e);
+      } finally {
+        saving = false;
+        inFlight = null;
+      }
+    })();
+    await inFlight;
     // flush 期间若有新内容到达，继续执行
     if (pending !== null && timer === null) {
       timer = setTimeout(() => {

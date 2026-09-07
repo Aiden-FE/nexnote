@@ -4,6 +4,7 @@ import { useUiStore } from '../../stores/ui-store';
 import { useThemeStore } from '../../theme/theme-store';
 import { usePaletteStore } from '../../stores/palette-store';
 import { invoke } from '../../lib/ipc';
+import { openSettings } from '../../lib/open-settings';
 import { createPage } from '../editor/create-page';
 
 /**
@@ -41,6 +42,17 @@ commandRegistry.register({
   keywords: ['files', 'fs', '文件', '浏览'],
   run: () => {
     openTabInActivePane('files', 'Vault 文件');
+  },
+});
+
+commandRegistry.register({
+  id: 'view.graph',
+  title: '打开全局知识图谱',
+  category: '视图',
+  keywords: ['graph', 'knowledge', '图谱', '知识'],
+  shortcut: '⌘K',
+  run: () => {
+    openTabInActivePane('graph', '知识图谱');
   },
 });
 
@@ -93,6 +105,15 @@ commandRegistry.register({
   category: '知识库',
   keywords: ['vault', 'switch', '切换', '向导'],
   run: () => void invoke('vault:close').catch(() => undefined),
+});
+
+commandRegistry.register({
+  id: 'app.settings',
+  title: '打开设置',
+  category: '应用',
+  keywords: ['settings', 'preferences', '设置', '首选项'],
+  shortcut: '⌘,（UI 快捷键 DEV-017）',
+  run: () => openSettings(),
 });
 
 commandRegistry.register({
