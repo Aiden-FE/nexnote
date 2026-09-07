@@ -3,6 +3,7 @@ import type {
   Backlink,
   IndexStatus,
   PageIndexSummary,
+  PageSummaryLite,
   PageJumpResult,
   SearchHit,
   TagIndexEntry,
@@ -20,6 +21,7 @@ export const INDEX_CHANNELS = [
   'index:tags',
   'index:tagPages',
   'index:pageSummary',
+  'index:pageSummaries',
   'index:graph',
   'index:confidence',
   'index:confidenceSettings',
@@ -37,6 +39,8 @@ export interface IndexChannelMap {
   'index:tags': { request: { flat?: boolean }; response: Result<TagIndexEntry[]> };
   'index:tagPages': { request: { tag: string }; response: Result<string[]> };
   'index:pageSummary': { request: { path: string }; response: Result<PageIndexSummary | null> };
+  /** 全量轻量页面摘要（路径/标题/别名），供 wikilink 补全同步缓存（DEV-017）。 */
+  'index:pageSummaries': { request: void; response: Result<PageSummaryLite[]> };
   'index:graph': { request: void; response: Result<GraphSnapshot> };
   'index:confidence': { request: { pageId: number }; response: Result<ConfidenceResult | null> };
   'index:confidenceSettings': { request: void; response: Result<{ writeFrontmatter: boolean }> };

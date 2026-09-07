@@ -71,6 +71,7 @@ export function buildBuiltinSlashItems(flags: BuiltinBlockFlags): SlashMenuItem[
       id: 'builtin:mermaid',
       title: 'Mermaid 图表',
       hint: '```mermaid',
+      group: '高级',
       keywords: ['mermaid', '图', 'flow', 'chart', '时序', '甘特'],
       action: ({ view }) => {
         const node = view.state.schema.nodes[MERMAID_BLOCK_NAME]?.create({
@@ -88,6 +89,7 @@ export function buildBuiltinSlashItems(flags: BuiltinBlockFlags): SlashMenuItem[
         id: 'builtin:math-block',
         title: '公式（块级）',
         hint: '$$',
+        group: '高级',
         keywords: ['math', '公式', 'latex', 'katex', '块级'],
         action: ({ view }) => {
           const node = view.state.schema.nodes[MATH_BLOCK_NAME]?.create({ source: '' });
@@ -100,6 +102,7 @@ export function buildBuiltinSlashItems(flags: BuiltinBlockFlags): SlashMenuItem[
         id: 'builtin:math-inline',
         title: '公式（行内）',
         hint: '$',
+        group: '高级',
         keywords: ['math', '公式', 'latex', 'katex', '行内', 'inline'],
         action: ({ view }) => {
           const node = view.state.schema.nodes[MATH_INLINE_NAME]?.create({ source: '' });

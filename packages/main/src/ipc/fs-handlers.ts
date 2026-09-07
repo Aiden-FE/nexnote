@@ -28,6 +28,38 @@ export function registerFsHandlers(registrar: IpcRegistrar): void {
       return ok(result);
     },
   );
+  registrar.register(
+    'fs:createTextFile',
+    async ({ path, content, createParentDirs }, services): Promise<Result<{ file: FileInfo | null; created: boolean }>> => {
+      const result = await services.fs.createTextFile(path, content, createParentDirs ?? true);
+      if (result.created) await recordWrite(services, `创建 ${path}`);
+      return ok(result);
+    },
+  );
+  registrar.register(
+    'fs:importBinaryFile',
+    async ({ path, data, suggestionName, mime, createParentDirs, overwrite }, services): Promise<Result<{ path: string }>> => {
+      // renderer 传 base64，这里解码成 Buffer 再交给 fs 服务；不接受 node Buffer 类型，
+      // 避免类型穿越 IPC 边界。mime 仅校验语义，不用于写入。
+      if (typeof data !== 'string' || data.length === 0) {
+        return { ok: false, error: 'data 不能为空', code: 'IPC_PAYLOAD_INVALID' };
+      }
+      let buffer;
+      try {
+        buffer = Buffer.from(data, 'base64');
+      } catch (e) {
+        return { ok: false, error: `data 不是合法 base64（${(e as Error).message}）`, code: 'IPC_PAYLOAD_INVALID' };
+      }
+      const target = suggestionName ?? path;
+      const result = await services.fs.importBinaryFile(target, buffer, {
+        createParentDirs: createParentDirs ?? true,
+        overwrite: overwrite ?? false,
+      });
+      await recordWrite(services, `导入附件 ${result}`);
+      void mime;
+      return ok({ path: result });
+    },
+  );
   registrar.register('fs:exists', async ({ path }, services): Promise<Result<boolean>> =>
     ok(await services.fs.exists(path)),
   );

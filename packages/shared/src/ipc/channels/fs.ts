@@ -57,6 +57,8 @@ export function sanitizeEntryName(raw: string): { ok: true; value: string } | { 
 export const FS_CHANNELS = [
   'fs:readTextFile',
   'fs:writeTextFile',
+  'fs:createTextFile',
+  'fs:importBinaryFile',
   'fs:exists',
   'fs:stat',
   'fs:listDir',
@@ -77,6 +79,33 @@ export interface FsChannelMap {
   'fs:writeTextFile': {
     request: { path: string; content: string; createParentDirs?: boolean };
     response: Result<FileInfo>;
+  };
+  /**
+   * 原子创建文本文件（DEV-017 红链页面等 create-if-absent 语义）：
+   * 仅在目标不存在时创建；目标已存在视为成功但不覆盖。安全校验同 writeTextFile。
+   */
+  'fs:createTextFile': {
+    request: { path: string; content: string; createParentDirs?: boolean };
+    response: Result<{ file: FileInfo | null; created: boolean }>;
+  };
+  /**
+   * 导入二进制文件（DEV-017 图片/附件持久化）：
+   * - data: base64（非空）编码的文件内容；renderer 永不直接触碰 node fs
+   * - path: vault 内相对目标路径（附件目录下，主进程还执行碰撞/去抖处理）
+   * - createParentDirs / overwrite 语义与原子性由 main fs 服务保证
+   */
+  'fs:importBinaryFile': {
+    request: {
+      path: string;
+      /** base64 编码的字节内容（经 shared 契约校验字符串） */
+      data: string;
+      /** 建议文件名（可改动，供去重碰撞时改名保留扩展名） */
+      suggestionName?: string;
+      mime?: string;
+      createParentDirs?: boolean;
+      overwrite?: boolean;
+    };
+    response: Result<{ path: string }>;
   };
   'fs:exists': { request: { path: string }; response: Result<boolean> };
   'fs:stat': { request: { path: string }; response: Result<FileInfo | null> };

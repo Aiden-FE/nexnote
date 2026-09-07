@@ -2,9 +2,12 @@ import { Editor } from '@tiptap/core';
 import type { Extensions, JSONContent } from '@tiptap/core';
 import { Fragment } from '@tiptap/pm/model';
 import type { Node as ProseMirrorNode } from '@tiptap/pm/model';
+import { TextSelection } from '@tiptap/pm/state';
+import { findWrapping } from '@tiptap/pm/transform';
 
 import { buildKernelExtensions } from './extensions';
 import type { KernelExtensionsOptions } from './extensions';
+import { canFoldBlock, isBlockFolded, toggleBlockFold } from './extensions/fold';
 import { createMarkdownManager, parseMarkdown, serializeMarkdown } from './markdown/pipeline';
 import { createSaveScheduler } from './save';
 import type { SaveScheduler } from './save';
@@ -59,6 +62,10 @@ export interface EditorKernelInstance {
    */
   moveBlock(blockId: string, targetBlockId: string, side?: 'before' | 'after'): boolean;
   /**
+   * 取出文档区间 [from,to] 的 Obsidian Markdown（块菜单复制/剪切用；会包含 ^id 锚点）。
+   */
+  getBlockMarkdown(from: number, to: number): string;
+  /**
    * 用 Markdown 片段替换 [from,to]（走 parse 管道；可 undo/redo）。
    * 单块内联内容用 insertText 保留块结构；多块/整块内容替换为解析出的顶层块。
    */
@@ -68,6 +75,23 @@ export interface EditorKernelInstance {
    * 内核自动吸附到顶层块边界；side 决定插入到目标块之前/之后。
    */
   insertMarkdownBlocks(markdown: string, at: number, side?: 'before' | 'after'): boolean;
+  /** 块是否可折叠（顶层标题块） */
+  canFoldBlock(blockId: string): boolean;
+  /** 块当前是否已折叠 */
+  isBlockFolded(blockId: string): boolean;
+  /** 切换标题折叠（视图层状态，不写 Markdown）；不可折叠返回 false */
+  toggleBlockFold(blockId: string): boolean;
+  /**
+   * 块类型转换（块菜单「转换为」）：作用于 [from,to] 顶层块。
+   * 支持 h1/h2/h3/paragraph/codeBlock（setBlockType）、taskList（保留文本内容
+   * 包裹为 taskList > taskItem > paragraph）、callout/blockquote（合法 wrap）。
+   * 结构不合法或类型未知返回 false，不改动文档。
+   */
+  convertBlock(kind: string, from: number, to: number): boolean;
+  /** 在 at 所在顶层块 before/after 插入空段落并把光标移入；可 undo。 */
+  insertEmptyBlock(at: number, side: 'before' | 'after'): boolean;
+  /** 按 blockId 删除顶层块（先重解析当前位置，避免异步后旧坐标误删）。 */
+  deleteBlockById(blockId: string): boolean;
   /** 撤销 */
   undo(): boolean;
   /** 重做 */
@@ -90,7 +114,11 @@ export function createEditor(
     extraSlashItems: options.extraSlashItems,
     selectionBubble: options.selectionBubble,
     contextMenu: options.contextMenu,
+    blockMenu: options.blockMenu,
     extraExtensions: options.extraExtensions,
+    wikilinkSuggestions: options.wikilinkSuggestions,
+    onWikilinkSuggestionPick: options.onWikilinkSuggestionPick,
+    hashtagSuggestions: options.hashtagSuggestions,
   });
 
   const manager = createMarkdownManager(extensions);
@@ -174,6 +202,15 @@ export function createEditor(
       );
       return true;
     },
+    getBlockMarkdown(from: number, to: number) {
+      const size = editor.state.doc.content.size;
+      const f = Math.max(0, Math.min(from, size));
+      const t = Math.max(f, Math.min(to, size));
+      const nodes: JSONContent[] = [];
+      editor.state.doc.slice(f, t).content.forEach((n) => nodes.push(n.toJSON()));
+      if (nodes.length === 0) return '';
+      return serializeMarkdown(manager, { type: 'doc', content: nodes });
+    },
     replaceRangeWithMarkdown(from: number, to: number, markdown: string) {
       const size = editor.state.doc.content.size;
       const f = Math.max(0, Math.min(from, size));
@@ -222,6 +259,88 @@ export function createEditor(
     },
     undo() {
       return editor.chain().focus('end').undo().run();
+    },
+    canFoldBlock(blockId: string) {
+      return canFoldBlock(editor.state, blockId);
+    },
+    isBlockFolded(blockId: string) {
+      return isBlockFolded(editor.state, blockId);
+    },
+    toggleBlockFold(blockId: string) {
+      return toggleBlockFold(editor.view, blockId);
+    },
+    convertBlock(kind: string, from: number, to: number) {
+      const { schema } = editor.state;
+      const size = editor.state.doc.content.size;
+      const f = Math.max(0, Math.min(from, size));
+      const t = Math.max(f, Math.min(to, size));
+      const isHeading = kind === 'h1' || kind === 'h2' || kind === 'h3';
+      const nodeType = schema.nodes[isHeading ? 'heading' : kind];
+      if (!nodeType) return false;
+      if (isHeading) {
+        editor.view.dispatch(
+          editor.state.tr.setBlockType(f, t, nodeType, { level: Number(kind.slice(1)) }),
+        );
+        return true;
+      }
+      if (kind === 'paragraph' || kind === 'codeBlock') {
+        // textblock → textblock：setBlockType 保留文本（不允许的 mark 由 schema 丢弃）
+        const attrs = kind === 'codeBlock' ? { language: 'plaintext' } : {};
+        editor.view.dispatch(editor.state.tr.setBlockType(f, t, nodeType, attrs));
+        return true;
+      }
+      if (kind === 'taskList') {
+        const { taskList, taskItem, paragraph } = schema.nodes;
+        if (!taskList || !taskItem || !paragraph) return false;
+        // 保留原块内容：textblock 内容转段落（去标题级别、留内联）；
+        // 非 textblock 原样保留，taskItem 首子块必须是 paragraph。
+        const content: ProseMirrorNode[] = [];
+        editor.state.doc.slice(f, t).content.forEach((n) => {
+          content.push(n.isTextblock ? paragraph.create(null, n.content) : n);
+        });
+        if (content.length === 0) content.push(paragraph.create());
+        if (content[0]!.type !== paragraph) content.unshift(paragraph.create());
+        editor.view.dispatch(
+          editor.state.tr.replaceWith(f, t, taskList.create(null, [taskItem.create(null, content)])),
+        );
+        return true;
+      }
+      // 包一层（callout/blockquote）：先 findWrapping 预检，非法结构 fail closed
+      const $from = editor.state.doc.resolve(f);
+      const range = $from.blockRange(editor.state.doc.resolve(t));
+      if (!range) return false;
+      const wrapping = findWrapping(range, nodeType);
+      if (!wrapping) return false;
+      editor.view.dispatch(editor.state.tr.wrap(range, wrapping));
+      return true;
+    },
+    insertEmptyBlock(at: number, side: 'before' | 'after') {
+      const { schema } = editor.state;
+      const paragraph = schema.nodes.paragraph;
+      if (!paragraph) return false;
+      const size = editor.state.doc.content.size;
+      let pos = Math.max(0, Math.min(at, size));
+      const $p = editor.state.doc.resolve(pos);
+      if ($p.depth >= 1) pos = side === 'after' ? $p.after(1) : $p.before(1);
+      else pos = side === 'after' ? size : 0;
+      const tr = editor.state.tr.insert(pos, paragraph.create());
+      tr.setSelection(TextSelection.create(tr.doc, pos + 1)).scrollIntoView();
+      editor.view.dispatch(tr);
+      return true;
+    },
+    deleteBlockById(blockId: string) {
+      let from = -1;
+      let to = -1;
+      editor.state.doc.forEach((node, offset) => {
+        if (from >= 0) return;
+        if ((node.attrs as { blockId?: string }).blockId === blockId) {
+          from = offset;
+          to = offset + node.nodeSize;
+        }
+      });
+      if (from < 0) return false;
+      editor.view.dispatch(editor.state.tr.delete(from, to));
+      return true;
     },
     redo() {
       return editor.chain().focus('end').redo().run();

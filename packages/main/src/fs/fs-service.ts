@@ -112,6 +112,108 @@ export class VaultFsService {
     return toFileInfo(relPath, st);
   }
 
+  /**
+   * 原子创建文本文件（create-if-absent）：目标已存在时不覆盖并报告 created:false。
+   * 使用 open 的排他创建（wx）保证无 exists+write 的 TOCTOU 窗口；父目录需先存在。
+   */
+  async createTextFile(
+    relPath: string,
+    content: string,
+    createParentDirs = true,
+  ): Promise<{ file: FileInfo | null; created: boolean }> {
+    const { abs } = await this.resolve(relPath);
+    const dir = path.dirname(abs);
+    if (createParentDirs) await fsp.mkdir(dir, { recursive: true });
+    let handle;
+    try {
+      handle = await fsp.open(abs, 'wx', 0o666);
+    } catch (e) {
+      const code = (e as { code?: string }).code;
+      if (code === 'EEXIST') return { file: await this.stat(relPath), created: false };
+      throw new FsError(`创建文件失败: ${relPath}（${(e as Error).message}）`, 'CREATE_FAILED');
+    }
+    try {
+      await handle.writeFile(content, 'utf8');
+    } finally {
+      await handle.close();
+    }
+    return { file: await this.stat(relPath), created: true };
+  }
+
+  /**
+   * 导入二进制文件（图片/附件）。
+   * - 安全校验与碰撞处理：parentDir 内不存在的 basename 优先；存在则追加序号避免覆盖。
+   * - overwrite=true 时允许原子覆盖（tmp 写入后 rename）。
+   * - 返回实际写入的 vault 相对路径。
+   */
+  async importBinaryFile(
+    relPath: string,
+    data: Buffer,
+    opts: { createParentDirs?: boolean; overwrite?: boolean } = {},
+  ): Promise<string> {
+    await this.resolve(relPath); // 校验路径属于 vault（越权抛错）
+    const dir = path.dirname(relPath);
+    const ext = path.extname(relPath);
+    const stemBase = path.basename(relPath, ext);
+
+    const tryWrite = async (target: string): Promise<string> => {
+      const { abs } = await this.resolve(target);
+      await fsp.mkdir(path.dirname(abs), { recursive: opts.createParentDirs !== false });
+      try {
+        const handle = await fsp.open(abs, 'wx', 0o666);
+        try {
+          await handle.writeFile(data);
+        } finally {
+          await handle.close();
+        }
+        return target;
+      } catch (e) {
+        if ((e as { code?: string }).code === 'EEXIST') return '';
+        throw new FsError(`导入文件失败: ${target}（${(e as Error).message}）`, 'IMPORT_FAILED');
+      }
+    };
+
+    if (opts.overwrite) {
+      const { abs } = await this.resolve(relPath);
+      await fsp.mkdir(path.dirname(abs), { recursive: opts.createParentDirs !== false });
+      const tmp = `${abs}.tmp-${process.pid}-${Date.now()}`;
+      await fsp.writeFile(tmp, data);
+      try {
+        await fsp.rename(tmp, abs);
+      } catch (e) {
+        try {
+          await fsp.rm(tmp, { force: true });
+        } catch {
+          /* 清理临时文件失败可忽略 */
+        }
+        throw new FsError(`导入文件失败: ${relPath}（${(e as Error).message}）`, 'IMPORT_FAILED');
+      }
+      return relPath;
+    }
+
+    // creates = first : overwrite denied
+    let target = relPath;
+    if (await this.exists(target)) {
+      if (!opts.createParentDirs) throw new FsError(`目标已存在: ${relPath}`, 'TARGET_EXISTS');
+      // 碰撞去抖：`name.ext`、`name 2.ext`、`name 3.ext`…
+      let seq = 2;
+      for (;;) {
+        target = dir ? `${dir}/${stemBase} ${seq}${ext}` : `${stemBase} ${seq}${ext}`;
+        if (!(await this.exists(target))) break;
+        seq += 1;
+      }
+    }
+    const done = await tryWrite(target);
+    if (done) return done;
+    // 极端并发窗口：目标被并发占用，继续去重
+    for (let seq = 2; seq < 10_000; seq++) {
+      const candidate = dir ? `${dir}/${stemBase} ${seq}${ext}` : `${stemBase} ${seq}${ext}`;
+      const ok = await tryWrite(candidate);
+      if (ok) return ok;
+    }
+    throw new FsError(`无法为 ${path.basename(relPath)} 分配可用文件名`, 'IMPORT_FAILED');
+  }
+
   async listDir(relPath: string): Promise<DirEntry[]> {
     const { abs } = await this.resolve(relPath);
     let dirents;

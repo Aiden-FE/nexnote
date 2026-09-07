@@ -1,7 +1,7 @@
 import Database from 'better-sqlite3';
 import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync } from 'node:fs';
 import * as path from 'node:path';
-import type { Backlink, ConfidenceResult, GraphSnapshot, IndexStatus, PageIndexSummary, PageJumpResult, SearchHit, TagIndexEntry } from '@nexnote/shared';
+import type { Backlink, ConfidenceResult, GraphSnapshot, IndexStatus, PageIndexSummary, PageJumpResult, PageSummaryLite, SearchHit, TagIndexEntry } from '@nexnote/shared';
 import { parsePageMarkdown, type ParsedPage } from './markdown-indexer';
 
 export interface CandidateBlock {
@@ -512,6 +512,16 @@ export class LinkIndexService {
     const inboundLinks = (this.db!.prepare('SELECT COUNT(DISTINCT source_page_id) c FROM links WHERE target_page_id=?').get(row.id) as { c: number }).c;
     const outboundLinks = (this.db!.prepare('SELECT COUNT(DISTINCT target_page_id) c FROM links WHERE source_page_id=? AND target_page_id IS NOT NULL').get(row.id) as { c: number }).c;
     return { pageId: row.id, path: row.path, title: row.title, aliases: JSON.parse(row.aliases) as string[], tags, updatedAt: row.updated_at ?? '', wordCount: row.wordCount, blockCount: row.blockCount, inboundLinks, outboundLinks };
+  }
+
+  /** 全量轻量摘要（路径/标题/别名）：wikilink 补全同步缓存用（DEV-017）。 */
+  pageSummaries(): PageSummaryLite[] {
+    const rows = this.db!.prepare('SELECT path, title, aliases FROM pages ORDER BY path').all() as Array<{ path: string; title: string; aliases: string }>;
+    return rows.map((row) => ({
+      path: row.path,
+      title: row.title,
+      aliases: JSON.parse(row.aliases) as string[],
+    }));
   }
 
   confidencePages(paths?: string[]): Array<{ id: number; path: string; createdAt: string | null; confidenceBoost: number | null }> {

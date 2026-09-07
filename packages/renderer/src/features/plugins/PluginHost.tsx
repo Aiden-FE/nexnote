@@ -27,9 +27,10 @@ export function PluginHost() {
       invoke('plugins:listContributions'),
     ]);
     setPlugins(nextPlugins);
-    usePluginStore.getState().setPlugins(nextPlugins);
     setCommands(nextCommands);
     setContributions(nextContributions);
+    usePluginStore.getState().setPlugins(nextPlugins);
+    usePluginStore.getState().setRuntime(nextCommands, nextContributions);
   }, []);
 
   useEffect(() => {
