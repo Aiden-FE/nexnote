@@ -1,0 +1,119 @@
+import { Node, mergeAttributes } from '@tiptap/core';
+import type { MarkdownToken } from '@tiptap/core';
+
+/**
+ * Mermaid 图表块（DEV-015 内置插件）。
+ *
+ * Obsidian 兼容：Markdown 形态为带 `mermaid` 语言标记的围栏代码块
+ * （```mermaid … ```），因此不引入私有围栏约定，第三方工具可直接识别。
+ *
+ * 内核只负责承载与 Markdown 往返；编辑/预览 NodeView 由渲染层
+ * （内置 Mermaid 插件启用时）挂载。插件禁用时回退为 renderHTML 源码视图，
+ * 磁盘往返始终可用（Obsidian 方言能力归内核，不受插件启停影响）。
+ */
+
+export const MERMAID_BLOCK_NAME = 'mermaidBlock';
+export const MERMAID_LANGUAGE = 'mermaid';
+
+/** 新插入块的示例源码（首次即进入可预览状态，双击可改）。 */
+export const MERMAID_DEFAULT_SOURCE = 'graph TD\n  A --> B';
+
+const FENCE_RE = new RegExp('^```' + MERMAID_LANGUAGE + '[ \\t]*\\n([\\s\\S]*?)\\n?```');
+
+declare module '@tiptap/core' {
+  interface Commands<ReturnType> {
+    mermaidBlock: {
+      /** 在光标处插入 Mermaid 图表块（缺省带示例源码）。 */
+      insertMermaidBlock: (attributes?: { source?: string }) => ReturnType;
+      /** 更新当前 Mermaid 块源码。 */
+      setMermaidSource: (attributes: { source: string }) => ReturnType;
+    };
+  }
+}
+
+export const MermaidBlock = Node.create({
+  name: MERMAID_BLOCK_NAME,
+
+  group: 'block',
+  atom: true,
+  selectable: true,
+  draggable: true,
+
+  addAttributes() {
+    return {
+      source: {
+        default: '' as string,
+        parseHTML: (el) => el.getAttribute('data-mermaid-source') ?? '',
+        renderHTML: (attrs) => ({ 'data-mermaid-source': String(attrs.source ?? '') }),
+      },
+    };
+  },
+
+  parseHTML() {
+    return [{ tag: 'div[data-mermaid-block]' }];
+  },
+
+  renderHTML({ HTMLAttributes }) {
+    const source = String(HTMLAttributes['data-mermaid-source'] ?? '');
+    return [
+      'div',
+      mergeAttributes(HTMLAttributes, {
+        'data-mermaid-block': '',
+        class: 'nexnote-mermaid-block',
+      }),
+      ['pre', { class: 'nexnote-mermaid-source' }, source],
+    ];
+  },
+
+  addCommands() {
+    return {
+      insertMermaidBlock:
+        (attributes) =>
+        ({ chain }) =>
+          chain()
+            .insertContent({
+              type: this.name,
+              attrs: { source: attributes?.source ?? MERMAID_DEFAULT_SOURCE },
+            })
+            .run(),
+      setMermaidSource:
+        (attributes) =>
+        ({ commands }) =>
+          commands.updateAttributes(this.name, attributes),
+    };
+  },
+
+  markdownTokenizer: {
+    name: MERMAID_BLOCK_NAME,
+    level: 'block',
+
+    start(src: string) {
+      if (FENCE_RE.test(src)) return 0;
+      const idx = src.search(new RegExp('\\n```' + MERMAID_LANGUAGE + '[ \\t]*\\n'));
+      return idx < 0 ? -1 : idx + 1;
+    },
+
+    tokenize(src: string) {
+      const m = FENCE_RE.exec(src);
+      if (!m) return undefined;
+      return {
+        type: MERMAID_BLOCK_NAME,
+        raw: m[0],
+        mermaidSource: (m[1] ?? '').replace(/\n+$/, ''),
+      } as MarkdownToken;
+    },
+  },
+
+  parseMarkdown(token: MarkdownToken) {
+    const t = token as MarkdownToken & { mermaidSource?: string };
+    return {
+      type: MERMAID_BLOCK_NAME,
+      attrs: { source: t.mermaidSource ?? '' },
+    };
+  },
+
+  renderMarkdown(node) {
+    const source = String(node.attrs?.source ?? '');
+    return '```' + `${MERMAID_LANGUAGE}\n${source}\n` + '```';
+  },
+});

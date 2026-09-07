@@ -31,6 +31,12 @@ import { openChatWikilinkOrNull } from '../features/ai/chat/chat-runtime';
 import { useUiStore } from '../stores/ui-store';
 import { pluginContributionRegistry } from '../registries';
 import { buildPluginMenuItems, PLUGIN_MENU_ACTION_PREFIX } from '../features/plugins/extension-points';
+import { usePluginStore } from '../features/plugins/plugin-store';
+import {
+  buildBuiltinSlashItems,
+  buildBuiltinViewExtensions,
+  flagsFromActivePlugins,
+} from '../features/plugins/builtin/builtin-extensions';
 
 interface EditorViewProps {
   paneId: PaneId;
@@ -191,6 +197,9 @@ export function EditorView({ paneId, tab }: EditorViewProps) {
     if (load.phase !== 'ready' || !hostRef.current) return;
     unmountedRef.current = false;
     const writingController = writingControllerRef.current;
+    // DEV-015：内置插件（Mermaid/KaTeX）激活时叠加富预览 NodeView；
+    // 斜杠项经函数式 extraSlashItems 在每次打开菜单时读取最新启停状态。
+    const builtinFlags = flagsFromActivePlugins(usePluginStore.getState().plugins);
     const kernel = createEditor(hostRef.current, {
       initialMarkdown: load.markdown,
       saveDelayMs: 500,
@@ -260,7 +269,11 @@ export function EditorView({ paneId, tab }: EditorViewProps) {
           writingController?.trigger(id, ctx);
         },
       },
-      extraSlashItems: writingController ? writingSlashItems(writingController) : [],
+      extraExtensions: buildBuiltinViewExtensions(builtinFlags),
+      extraSlashItems: () => [
+        ...(writingController ? writingSlashItems(writingController) : []),
+        ...buildBuiltinSlashItems(flagsFromActivePlugins(usePluginStore.getState().plugins)),
+      ],
     });
     kernelRef.current = kernel;
     const editorRegistration = registerEditor(kernel);

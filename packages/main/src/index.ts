@@ -18,6 +18,7 @@ import { GitService } from './git/git-service';
 import { ConfidenceService } from './confidence/confidence-service';
 import { PluginService } from './plugins/plugin-service';
 import { SkillService } from './skills/skill-service';
+import { BUILTIN_PLUGIN_MANIFESTS } from './plugins/builtin/builtin-manifests';
 
 const isSmokeMode = process.env.NEXNOTE_SMOKE === '1';
 
@@ -116,6 +117,8 @@ async function bootstrap(): Promise<void> {
     pluginsRoot: join(app.getPath('userData'), 'plugins'),
     hostVersion: app.getVersion(),
   });
+  // DEV-015：随包内置示范插件（Mermaid/KaTeX）预置激活（可禁用、不可卸载）。
+  plugins.seedBuiltins(BUILTIN_PLUGIN_MANIFESTS);
 
   // DEV-014 检索 Skill 系统：内置三阶段检索 + 插件参数化 Skill，多 Skill 合并重排。
   const skills = new SkillService({

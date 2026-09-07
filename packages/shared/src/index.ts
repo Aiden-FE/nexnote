@@ -34,4 +34,4 @@ export {
   sanitizeEntryName,
 } from './ipc/reexports';
 
-export { PLUGIN_API_VERSION } from './types/plugin';
+export { PLUGIN_API_VERSION, BUILTIN_PLUGIN_IDS } from './types/plugin';

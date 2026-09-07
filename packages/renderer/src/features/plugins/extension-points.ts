@@ -1,4 +1,5 @@
 import type { PluginCommandView, PluginContributionView } from '@nexnote/shared';
+import { BUILTIN_PLUGIN_IDS } from '@nexnote/shared';
 import type { ContextMenuItem } from '@nexnote/kernel';
 
 /**
@@ -59,6 +60,24 @@ export function buildPluginBlockCommands(
       pluginId: item.pluginId,
       blockType: item.blockType ?? item.id,
     }));
+}
+
+/**
+ * DEV-015：块类型插入命令的实际分发集合——排除内置插件（内核原生节点处理），
+ * 仅第三方插件走通用 pluginBlock 插入。
+ */
+export function buildDispatchableBlockCommands(
+  contributions: PluginContributionView[],
+): PluginBlockCommandDef[] {
+  return buildPluginBlockCommands(contributions).filter((block) => !isBuiltinPlugin(block.pluginId));
+}
+
+/**
+ * DEV-015：内置插件的块类型由内核原生节点 + 内置 NodeView 处理，
+ * 不走通用 pluginBlock 插入命令（否则会生成私有 fence 而非 Obsidian 原生语法）。
+ */
+export function isBuiltinPlugin(id: string): boolean {
+  return Object.values(BUILTIN_PLUGIN_IDS).includes(id as (typeof BUILTIN_PLUGIN_IDS)[keyof typeof BUILTIN_PLUGIN_IDS]);
 }
 
 /** 由插件命令贡献 + 运行时注册命令派生 ⌘K 命令面板条目（去重，运行时优先）。 */

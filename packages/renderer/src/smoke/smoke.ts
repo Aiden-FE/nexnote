@@ -5,6 +5,9 @@ import { createPage } from '../features/editor/create-page';
 import { useUiStore } from '../stores/ui-store';
 import { useThemeStore } from '../theme/theme-store';
 import { dockPanelRegistry } from '../registries';
+import { getActiveEditor } from '../editor/active-editor';
+import { openSettings } from '../lib/open-settings';
+import { BUILTIN_PLUGIN_IDS } from '@nexnote/shared';
 
 interface SmokeCaptureResult {
   ok: boolean;
@@ -649,6 +652,92 @@ export async function runSmokeIfEnabled(): Promise<void> {
     const timelineText = document.querySelector('[data-testid="git-timeline"]')?.textContent ?? '';
     check('版本时间线 dock 面板渲染 commit 列表', timelineText.includes('smoke manual commit'), timelineText.slice(0, 80));
     await capture('09-git-timeline');
+
+    // ── 10c. DEV-015 内置插件：Mermaid + KaTeX 真实渲染与 Obsidian 兼容写盘 ──
+    // 用全新独立页面，确保它是当前活动编辑器，避免历史 tab 干扰。
+    await createPage('内置插件演示');
+    const builtinEditor = await waitFor(
+      () => !![...document.querySelectorAll('[data-testid="pane-left"] [data-testid="editor-view"] .ProseMirror')].pop(),
+      12_000,
+    );
+    check('DEV-015 编辑器就绪', builtinEditor);
+    // 显式聚焦活动编辑器（注册聚焦监听会激活对应内核）。
+    const builtinEl = [...document.querySelectorAll('[data-testid="pane-left"] [data-testid="editor-view"] .ProseMirror')].pop() as HTMLElement | undefined;
+    builtinEl?.focus();
+    builtinEl?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    await sleep(150);
+    const activeKernel = getActiveEditor();
+    check(
+      'DEV-015 活动编辑器可用',
+      !!activeKernel,
+      `editors=${document.querySelectorAll('[data-testid="editor-view"]').length} pm=${document.querySelectorAll('.ProseMirror').length}`,
+    );
+    if (activeKernel) {
+      activeKernel.editor.commands.insertMermaidBlock({
+        source: 'graph TD\n  A["开始"] --> B["结束"]',
+      });
+      activeKernel.editor.commands.insertMathBlock({ source: 'E = mc^2' });
+      activeKernel.editor.commands.insertMathInline({ source: 'a^2 + b^2 = c^2' });
+      await waitFor(() => !!document.querySelector('.nexnote-mermaid-view svg'), 15_000);
+      const mermaidSvg = document.querySelector('.nexnote-mermaid-view svg');
+      const mermaidError = document.querySelector('.nexnote-mermaid-view .nexnote-mermaid-preview.is-error');
+      check(
+        'DEV-015 Mermaid 真实渲染 SVG（flowchart）',
+        !!mermaidSvg && !mermaidError,
+        mermaidError?.textContent?.slice(0, 80) ?? `svg=${!!mermaidSvg}`,
+      );
+      await waitFor(
+        () => document.querySelectorAll('.nexnote-math-view .katex, .nexnote-math-inline-view .katex').length >= 2,
+        10_000,
+      );
+      const blockKatex = !!document.querySelector('.nexnote-math-view .katex');
+      const inlineKatex = !!document.querySelector('.nexnote-math-inline-view .katex');
+      const katexError = document.querySelector('[data-math-view] .nexnote-math-preview')?.textContent ?? '';
+      check(
+        'DEV-015 KaTeX 块级与行内均渲染',
+        blockKatex && inlineKatex,
+        `block=${blockKatex} inline=${inlineKatex}${katexError ? ` · ${katexError.slice(0, 60)}` : ''}`,
+      );
+      await capture('19-builtin-mermaid-katex');
+      // 防抖保存后读盘验证 Obsidian 原生语法。
+      await sleep(1_200);
+      const saved = await invoke('fs:readTextFile', { path: '内置插件演示.md' });
+      check(
+        'DEV-015 保存文件为 Obsidian 原生语法（围栏/$$/$）',
+        saved.includes('```mermaid') &&
+          saved.includes('graph TD') &&
+          saved.includes('$$\nE = mc^2\n$$') &&
+          saved.includes('$a^2 + b^2 = c^2$'),
+        saved.slice(-400),
+      );
+    }
+
+    // ── 10d. DEV-015 设置页：内置插件可见/内置标记/禁启切换 ──
+    openSettings('plugins');
+    check(
+      'DEV-015 设置页插件分区可见',
+      await waitFor(() => !!document.querySelector('[data-testid="plugins-settings"]')),
+    );
+    const pluginListText = document.querySelector('[data-testid="plugin-list"]')?.textContent ?? '';
+    const hasMermaid = pluginListText.includes('Mermaid 图表（内置）');
+    const hasKatex = pluginListText.includes('KaTeX 数学公式（内置）');
+    check('DEV-015 设置页列出两个内置插件', hasMermaid && hasKatex, `mermaid=${hasMermaid} katex=${hasKatex}`);
+    const detailBuiltin = document.querySelector('[data-testid="plugin-detail"]')?.textContent ?? '';
+    check(
+      'DEV-015 详情页标注内置且隐藏卸载按钮',
+      detailBuiltin.includes('内置插件') && !document.querySelector('[data-testid="plugin-uninstall"]'),
+    );
+    // 禁用 Mermaid → 状态变已停用；再启用恢复。
+    await invoke('plugins:setEnabled', { pluginId: BUILTIN_PLUGIN_IDS.mermaid, enabled: false });
+    await sleep(600);
+    await invoke('plugins:setEnabled', { pluginId: BUILTIN_PLUGIN_IDS.mermaid, enabled: true });
+    await sleep(600);
+    const toggled = await invoke('plugins:list');
+    const mermaidState = (toggled as { id: string; state: string }[]).find(
+      (p) => p.id === BUILTIN_PLUGIN_IDS.mermaid,
+    )?.state;
+    check('DEV-015 内置插件可禁用并重新启用', mermaidState === 'active', `state=${mermaidState}`);
+    await capture('20-builtin-plugins-settings');
 
     // ── 11. 关闭 vault 回到向导 ───────────────────────────────
     await invoke('vault:close');

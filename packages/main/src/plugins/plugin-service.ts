@@ -74,6 +74,8 @@ interface PersistedPlugin {
 interface PersistedState {
   version: 1;
   plugins: PersistedPlugin[];
+  /** 内置插件的启用状态（manifest 随版本内置，仅存用户启停）。 */
+  builtins?: { id: string; enabled: boolean }[];
 }
 
 interface StageCache {
@@ -109,6 +111,8 @@ export class PluginService {
   private readonly hostVersion: string;
   private readonly auth: AuthorizationManager;
   private readonly tickets = new Map<string, StageCache>();
+  /** 内置插件启用状态（restore 时填充，供 seedBuiltins 消费）。 */
+  private builtinEnabled: Record<string, boolean> = {};
   revision = 0;
   private seq = 0;
 
@@ -208,6 +212,9 @@ export class PluginService {
 
   uninstall(pluginId: string): void {
     const plugin = this.require(pluginId);
+    if (plugin.manifest.builtin) {
+      throw new PluginError('内置插件不可卸载（可在设置页禁用）', 'BUILTIN_NOT_UNINSTALLABLE');
+    }
     this.auth.revokeAllForPlugin(pluginId);
     this.deactivate(plugin);
     this.unload(plugin);
@@ -572,6 +579,7 @@ export class PluginService {
       id: plugin.manifest.id,
       name: plugin.manifest.name,
       version: plugin.manifest.version,
+      ...(plugin.manifest.builtin ? { builtin: true } : {}),
       ...(plugin.manifest.description ? { description: plugin.manifest.description } : {}),
       state: plugin.state,
       permissions: plugin.manifest.permissions,
@@ -583,15 +591,47 @@ export class PluginService {
 
   private persist(): void {
     if (!this.stateFile) return;
+    const builtins = [...this.plugins.values()]
+      .filter((plugin) => plugin.manifest.builtin)
+      .map((plugin) => ({ id: plugin.manifest.id, enabled: plugin.enabled }));
     const persisted: PersistedState = {
       version: 1,
-      plugins: [...this.plugins.values()].map((plugin) => ({
+      plugins: [...this.plugins.values()]
+        .filter((plugin) => !plugin.manifest.builtin)
+        .map((plugin) => ({
         source: plugin.source,
         enabled: plugin.enabled,
         grants: Object.fromEntries(plugin.grants),
-      })),
+        })),
+      ...(builtins.length > 0 ? { builtins } : {}),
     };
     writeFileSync(this.stateFile, JSON.stringify(persisted, null, 2));
+  }
+
+  /**
+   * 预置内置插件（DEV-015）：纯 UI 插件无沙箱源码，不启动 iframe；
+   * 仅登记 manifest + 启停状态，贡献点（blockTypes）随 active 状态生效。
+   * 每次启动调用；已存在则刷新 manifest（升级），启用状态跨重启持久化。
+   */
+  seedBuiltins(manifests: PluginManifest[]): void {
+    for (const manifest of manifests) {
+      // 与第三方插件同一套 manifest 校验（结构 / semver / 权限白名单）。
+      validateManifest(manifest);
+      const existing = this.plugins.get(manifest.id);
+      if (existing) {
+        existing.manifest = manifest;
+        continue;
+      }
+      const enabled = this.builtinEnabled[manifest.id] ?? true;
+      const plugin = this.emptyPlugin(manifest, { type: 'directory', path: '' });
+      // 内置插件无入口源码：标记已初始化，activate() 不再 readSource。
+      plugin.lifecycle = { initialized: true, active: enabled };
+      plugin.enabled = enabled;
+      plugin.state = enabled ? 'active' : 'disabled';
+      this.plugins.set(manifest.id, plugin);
+      this.record(manifest.id, 'install.builtin', true);
+    }
+    this.persist();
   }
 
   private restore(): void {
@@ -599,6 +639,9 @@ export class PluginService {
     try {
       const data = JSON.parse(readFileSync(this.stateFile, 'utf8')) as PersistedState;
       if (data.version !== 1) return;
+      for (const builtin of data.builtins ?? []) {
+        this.builtinEnabled[builtin.id] = builtin.enabled;
+      }
       for (const saved of data.plugins) {
         if (!existsSync(saved.source.path)) continue;
         const manifest = this.loadManifestFromSource(saved.source.path);

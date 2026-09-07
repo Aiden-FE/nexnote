@@ -7,11 +7,12 @@ import { PluginSandboxFrame } from './PluginSandboxFrame';
 import type { PermissionPrompt } from './sandbox-protocol';
 import { consumePluginContributions } from './contribution-consumers';
 import {
-  buildPluginBlockCommands,
+  buildDispatchableBlockCommands,
   buildPluginCommandDefs,
   buildPluginViewPanels,
 } from './extension-points';
 import { getActiveEditor } from '../../editor/active-editor';
+import { usePluginStore } from './plugin-store';
 
 export function PluginHost() {
   const [plugins, setPlugins] = useState<PluginView[]>([]);
@@ -26,6 +27,7 @@ export function PluginHost() {
       invoke('plugins:listContributions'),
     ]);
     setPlugins(nextPlugins);
+    usePluginStore.getState().setPlugins(nextPlugins);
     setCommands(nextCommands);
     setContributions(nextContributions);
   }, []);
@@ -69,8 +71,9 @@ export function PluginHost() {
   }, [contributions, commands]);
 
   // 块类型扩展点：⌘K 插入插件块（插入后宿主 NodeView 委托给插件渲染）。
+  // DEV-015：内置插件的块类型由内核原生节点 + 内置 NodeView 处理，不走通用 pluginBlock。
   useEffect(() => {
-    const blocks = buildPluginBlockCommands(contributions);
+    const blocks = buildDispatchableBlockCommands(contributions);
     const unregisters = blocks.map((block) =>
       commandRegistry.register({
         id: block.id,
@@ -112,7 +115,8 @@ export function PluginHost() {
       <PluginContributionSlots contributions={contributions} />
       <div data-testid="plugin-host" className="hidden">
         {plugins
-          .filter((plugin) => plugin.state === 'active')
+          // DEV-015：内置插件无沙箱源码（纯 UI，由宿主渲染），不挂沙箱帧。
+          .filter((plugin) => plugin.state === 'active' && !plugin.builtin)
           .map((plugin) => (
             <PluginSandboxFrame key={plugin.id} plugin={plugin} onPermissionRequired={setPrompt} />
           ))}
