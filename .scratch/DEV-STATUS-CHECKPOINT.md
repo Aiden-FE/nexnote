@@ -243,3 +243,15 @@ DEV-006 ← DEV-004；DEV-008 ← DEV-004+007；DEV-010 ← DEV-002+009；DEV-01
 - 千页性能：全链路 `ConfidenceService.refresh()` 1000 页测试 <10s；纯因子计算 1000 页 bounded test 同步 PASS。
 - NOT_RUN：设置页复选框的人工点击未单独录屏/smoke；默认不写 frontmatter 与显式开启后写入由单元测试覆盖。无外部 provider/Windows/签名安装项。
 - post-merge master `509979`：typecheck / 361 tests / eslint / build / diff-check 全 PASS。
+
+### DEV-015 — 已完成合并（2026-09-07 12:40）
+
+- Merge commit `e07d65a`；候选 `e89baf4`；主控接管执行（子Agent 派发工具仍 unsupported）。
+- 实现：内置 Mermaid/KaTeX 插件走完整管线——main `seedBuiltins`（走 `validateManifest`）预置，仅声明 `read`，可禁用不可卸载，不挂沙箱帧，启停跨重启持久化；`PluginManifest/PluginView.builtin` + `BUILTIN_PLUGIN_IDS`（shared）。
+- kernel：新增 `MermaidBlock`（```mermaid 围栏，Obsidian 兼容）、`MathBlock`（$$…$$）、`MathInline`（$…$，非货币/非跨块误配，含输入规则）原生节点承载 Markdown 双向往返（内核始终在线）；`extraExtensions` 供 renderer 同名 extend 覆盖 `addNodeView`，`extraSlashItems` 支持函数式实时求值。
+- renderer：懒加载 mermaid/katex 富预览 NodeView（双击编辑/失焦或 ⌘Enter 应用/Esc 取消）；斜杠菜单插入；禁用回退源码视图且菜单消失；PluginHost 内置不挂沙箱帧、块命令排除内置走原生节点；设置页「内置」标记、隐藏卸载/revoke。
+- 主控闸门 @e89baf4：typecheck PASS（shared/kernel/renderer/plugin-api；main 仅 2 个 master 既有 tsc 报错无关）/ 484 tests PASS（2 skipped；kernel +12、main +3、renderer +12）/ eslint PASS / build PASS（mermaid/katex 懒加载分包）/ diff-check PASS；fresh Standards+Spec 双轴 PASS。
+- production Electron smoke **69/78**：DEV-015 专项 **9/9 PASS**（真实 Mermaid SVG flowchart 渲染、KaTeX 块级+行内 `.katex` 渲染、写盘为 ```mermaid 围栏 + $$ 块 + $ 行内 Obsidian 原生语法、设置页列出两内置/内置标记/隐藏卸载/禁用-重启启用 state=active）。其余 9 失败为 DEV-003/004/006/007 既有基线（Git 状态 2、新笔记 frontmatter/面包屑 2、标签面板/过滤 2、重命名 wikilink 1、500 节点 FPS 时序 1、时间线 1），DEV-015 无新增回归。
+- NOT_RUN：无外部 provider/签名安装项；行内公式 smoke 中落入 H1 为脚本插入顺序伪影（用户经斜杠菜单在光标处插入）。
+- post-merge master `e07d65a`：typecheck / 484 tests / eslint / build 全绿。
+- 进度：**15 / 19**。剩余 DEV-016（设置/向导 WIP aad90d6）、DEV-017（编辑器交互 WIP 506e5f8）、DEV-018（打包发布 WIP b86a6f2）、DEV-019（E2E，最后）。
