@@ -1,5 +1,5 @@
 import { Extension } from '@tiptap/core';
-import { Plugin, PluginKey } from '@tiptap/pm/state';
+import { Plugin, PluginKey, TextSelection } from '@tiptap/pm/state';
 import type { EditorState, Transaction } from '@tiptap/pm/state';
 import { Decoration, DecorationSet } from '@tiptap/pm/view';
 import type { EditorView } from '@tiptap/pm/view';
@@ -56,9 +56,31 @@ export function isBlockFolded(state: EditorState, blockId: string): boolean {
 
 /** 切换折叠；不可折叠（非标题 / 不存在）返回 false。 */
 export function toggleBlockFold(view: EditorView, blockId: string): boolean {
-  if (!canFoldBlock(view.state, blockId)) return false;
-  const meta: FoldMeta = { type: 'toggle', blockId };
-  view.dispatch(view.state.tr.setMeta(foldPluginKey, meta));
+  const state = view.state;
+  if (!canFoldBlock(state, blockId)) return false;
+  const tr = state.tr;
+  if (!isBlockFolded(state, blockId)) {
+    // 折叠前把落在隐藏区间内的选区移回标题行末，避免选区指向不可见内容
+    const blocks = listTopLevelBlocks(state);
+    const idx = blocks.findIndex((b) => b.blockId === blockId && b.level != null);
+    if (idx >= 0) {
+      const heading = blocks[idx]!;
+      const level = heading.level as number;
+      let hiddenEnd = -1;
+      for (let j = idx + 1; j < blocks.length; j++) {
+        const next = blocks[j]!;
+        if (next.level != null && next.level <= level) break;
+        hiddenEnd = next.to;
+      }
+      const { from, to } = state.selection;
+      if (hiddenEnd > 0 && from < hiddenEnd && to > heading.to) {
+        const anchor = Math.min(heading.to - 1, tr.doc.content.size);
+        tr.setSelection(TextSelection.create(tr.doc, anchor));
+      }
+    }
+  }
+  tr.setMeta(foldPluginKey, { type: 'toggle', blockId } as FoldMeta);
+  view.dispatch(tr);
   return true;
 }
 
@@ -88,10 +110,30 @@ function buildDecorations(
           btn.textContent = '▸';
           btn.title = '展开';
           btn.contentEditable = 'false';
+          btn.setAttribute('role', 'button');
+          btn.tabIndex = -1;
+          let lastKeyToggleAt = 0;
+          const toggle = () => {
+            const v = getView();
+            if (v) toggleBlockFold(v, blockId);
+          };
           btn.addEventListener('mousedown', (e) => {
+            // 不抢占编辑器焦点/选区；激活统一走 click/keydown
             e.preventDefault();
-            const view = getView();
-            if (view) toggleBlockFold(view, blockId);
+          });
+          btn.addEventListener('keydown', (e) => {
+            if (e.key !== 'Enter' && e.key !== ' ') return;
+            // 阻止 PM 键映射（Enter 分块/Space 输入）抢占
+            e.preventDefault();
+            e.stopPropagation();
+            lastKeyToggleAt = Date.now();
+            toggle();
+          });
+          btn.addEventListener('click', (e) => {
+            // 键盘原生激活可能仍派发 detail=0 的 click：与 keydown 去重，
+            // 同时保留 AT/辅助技术的零 detail 点击（无近期 keydown 时生效）
+            if (e.detail === 0 && Date.now() - lastKeyToggleAt < 500) return;
+            toggle();
           });
           return btn;
         },

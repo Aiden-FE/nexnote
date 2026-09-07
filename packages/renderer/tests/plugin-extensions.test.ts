@@ -4,8 +4,10 @@ import {
   buildPluginBlockCommands,
   buildPluginBlockCommands as blocks,
   buildPluginCommandDefs,
+  buildPluginCommandSlashItems,
   buildPluginMenuItems,
   buildPluginViewPanels,
+  PLUGIN_CMD_SLASH_PREFIX,
   PLUGIN_MENU_ACTION_PREFIX,
 } from '../src/features/plugins/extension-points';
 
@@ -49,6 +51,26 @@ describe('插件扩展点宿主派生（DEV-014）', () => {
     expect(defs.map((d) => d.id).sort()).toEqual(['com.demo:hello', 'com.demo:runtime-cmd']);
     // 运行时标题优先（合并去重后保留）。
     expect(defs.find((d) => d.id === 'com.demo:hello')?.title).toBe('Hello Runtime');
+  });
+
+  it('斜杠菜单插件命令项：manifest + 运行时合并去重，id 带 plugin-cmd 前缀，action 派发 run', () => {
+    const runtime: PluginCommandView[] = [
+      { id: 'com.demo:hello', pluginId: 'com.demo', title: 'Hello Runtime' },
+      { id: 'com.demo:runtime-cmd', pluginId: 'com.demo', title: 'Runtime Cmd' },
+    ];
+    const runCalls: Array<{ pluginId: string; commandId: string }> = [];
+    const items = buildPluginCommandSlashItems(contributions, runtime, (def) => runCalls.push(def));
+    expect(items.length).toBeGreaterThanOrEqual(2);
+    const ids = items.map((i) => i.id);
+    expect(ids.every((id) => id.startsWith(PLUGIN_CMD_SLASH_PREFIX))).toBe(true);
+    expect(ids).toContain(`${PLUGIN_CMD_SLASH_PREFIX}com.demo:hello`);
+    expect(ids).toContain(`${PLUGIN_CMD_SLASH_PREFIX}com.demo:runtime-cmd`);
+    // 运行时优先级（同 id 去重保留 runtime 的标题）
+    const hello = items.find((i) => i.id === `${PLUGIN_CMD_SLASH_PREFIX}com.demo:hello`);
+    expect(hello?.title).toBe('Hello Runtime');
+    expect(hello?.group).toBe('插件');
+    expect(hello?.action({ view: {} as never })).toBe(true);
+    expect(runCalls).toEqual([{ pluginId: 'com.demo', commandId: 'hello' }]);
   });
 
   it('视图贡献只把 sidebar 放置派生为侧栏面板', () => {

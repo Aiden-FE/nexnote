@@ -11,6 +11,8 @@ import type { SuggestionItem } from '@nexnote/kernel';
 export interface PageCandidate {
   path: string;
   title: string;
+  /** frontmatter aliases（可空）；用于 wikilink 补全的别名匹配与显示 */
+  aliases?: string[];
 }
 
 /** `[[` 查询词解析：支持 `[[标题|别名]]` 与 `[[标题#锚点]]` 语法（`|` 优先）。 */
@@ -51,32 +53,49 @@ export function filterPageCandidates(pages: PageCandidate[], query: string): Sug
   const parsed = parseWikilinkQuery(query);
   const q = normalize(parsed.title);
   const pool: PageCandidate[] = [];
+  const seenPaths = new Set<string>();
   for (const p of pages) {
     if (!p.path.toLowerCase().endsWith('.md')) continue;
     const title = p.title.trim();
     if (!title) continue;
-    // 标题首选项；同一标题去重（保留首个）
-    if (!pool.some((x) => x.title === title)) pool.push({ path: p.path, title });
+    // 按路径去重：同名不同路径的页面都保留（不要按 title 去重丢失同名页面）
+    if (seenPaths.has(p.path)) continue;
+    seenPaths.add(p.path);
+    pool.push(p);
   }
-  const matches = pool.filter(
-    (p) =>
-      !q || p.title.toLowerCase().includes(q) || p.path.toLowerCase().includes(q),
-  );
+  const matches = pool.filter((p) => {
+    if (!q) return true;
+    const titleOk = p.title.toLowerCase().includes(q);
+    const pathOk = p.path.toLowerCase().includes(q);
+    const aliasOk = (p.aliases ?? []).some((a) => a.toLowerCase().includes(q));
+    return titleOk || pathOk || aliasOk;
+  });
   // 精确/前缀优先，其次包含
   const scored = matches
     .map((p) => {
       const t = p.title.toLowerCase();
       const exact = t === q;
       const prefix = t.startsWith(q);
-      return { p, exact, prefix };
+      const aliasExact = (p.aliases ?? []).some((a) => a.toLowerCase() === q);
+      const aliasPrefix = (p.aliases ?? []).some((a) => a.toLowerCase().startsWith(q));
+      return { p, exact, prefix, aliasExact, aliasPrefix };
     })
-    .sort((a, b) => Number(b.exact) - Number(a.exact) || Number(b.prefix) - Number(a.prefix) || a.p.title.localeCompare(b.p.title));
-  return scored.map(({ p }) => ({
-    id: p.path.replace(/\.md$/i, '').replace(/\\/g, '/'),
-    title: p.title,
-    hint: p.path.slice(0, -3),
-    insert: insertPayload(p.path, parsed),
-  }));
+    .sort((a, b) =>
+      Number(b.exact) - Number(a.exact)
+      || Number(b.aliasExact) - Number(a.aliasExact)
+      || Number(b.prefix) - Number(a.prefix)
+      || Number(b.aliasPrefix) - Number(a.aliasPrefix)
+      || a.p.title.localeCompare(b.p.title),
+    );
+  return scored.map(({ p }) => {
+    const aliases = p.aliases ?? [];
+    return {
+      id: p.path.replace(/\.md$/i, '').replace(/\\/g, '/'),
+      title: p.title,
+      hint: aliases.length > 0 ? `${aliases[0]} · ${p.path.slice(0, -3)}` : p.path.slice(0, -3),
+      insert: insertPayload(p.path, parsed),
+    };
+  });
 }
 
 /** 把「query 未命中任何页面」也加入红链项（回车创建页面并插入链接）。 */
@@ -93,6 +112,7 @@ export function withUncreated(pages: PageCandidate[], query: string): Suggestion
       insert: insertPayload(`${titlePart}.md`, parsed) ?? { target: titlePart },
     });
   }
+  // 最终按 id 去重（id 是路径去重后的标识；红链以标题为 id）
   const seen = new Set<string>();
   return items.filter((it) => {
     if (seen.has(it.id)) return false;

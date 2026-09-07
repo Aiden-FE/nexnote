@@ -28,8 +28,9 @@ type DragHandleClick = (
 ) => void;
 
 export function createKernelDragHandle(onClick?: DragHandleClick): typeof DragHandle {
-  // onNodeChange 提供 hovered 节点与 editor 的引用；点击时经 posAtCoords 反查块位置。
-  let hoveredEditor: Editor | null = null;
+  // onNodeChange 是手柄真实命中块的单一事实来源；手柄本身位于正文外侧，
+  // 点击坐标不能再用 posAtCoords 反查（会命中相邻块或返回 null）。
+  let hovered: { editor: Editor; pos: number; blockId: string | null } | null = null;
   return DragHandle.configure({
     render() {
       const handle = document.createElement('div');
@@ -45,17 +46,21 @@ export function createKernelDragHandle(onClick?: DragHandleClick): typeof DragHa
         handle.addEventListener('click', (e) => {
           e.preventDefault();
           e.stopPropagation();
-          const editor = hoveredEditor;
-          if (!editor) return;
-          const at = editor.view.posAtCoords({ left: e.clientX, top: e.clientY });
-          if (!at) return;
-          onClick(e, at.pos, topLevelBlockIdAt(editor, at.pos), editor);
+          const current = hovered;
+          if (!current) return;
+          onClick(e, current.pos, current.blockId, current.editor);
         });
       }
       return handle;
     },
-    onNodeChange({ editor }) {
-      hoveredEditor = editor;
+    onNodeChange(payload) {
+      // 扩展层类型声明漏了 pos（运行时插件确实传入 { editor, node, pos }），显式收窄。
+      const { editor, node } = payload;
+      const pos = (payload as { pos?: number }).pos;
+      hovered =
+        node && typeof pos === 'number' && pos >= 0
+          ? { editor, pos, blockId: topLevelBlockIdAt(editor, pos) }
+          : null;
     },
     computePositionConfig: {
       placement: 'left-start',

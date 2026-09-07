@@ -83,7 +83,10 @@ export function defaultSlashMenuItems(query: string): SlashMenuItem[] {
       group: '基础块',
       keywords: ['heading', 'h1', 'biaoti'],
       action: ({ view }) => {
-        view.dispatch(view.state.tr.setBlockType(0, view.state.doc.content.size, view.state.schema.nodes.heading!, { level: 1 }));
+        const { heading } = view.state.schema.nodes;
+        if (!heading) return false;
+        const { from, to } = view.state.selection;
+        view.dispatch(view.state.tr.setBlockType(from, to, heading, { level: 1 }).scrollIntoView());
         return true;
       },
     },
@@ -94,7 +97,10 @@ export function defaultSlashMenuItems(query: string): SlashMenuItem[] {
       group: '基础块',
       keywords: ['heading', 'h2'],
       action: ({ view }) => {
-        view.dispatch(view.state.tr.setBlockType(0, view.state.doc.content.size, view.state.schema.nodes.heading!, { level: 2 }));
+        const { heading } = view.state.schema.nodes;
+        if (!heading) return false;
+        const { from, to } = view.state.selection;
+        view.dispatch(view.state.tr.setBlockType(from, to, heading, { level: 2 }).scrollIntoView());
         return true;
       },
     },
@@ -105,7 +111,10 @@ export function defaultSlashMenuItems(query: string): SlashMenuItem[] {
       group: '基础块',
       keywords: ['heading', 'h3'],
       action: ({ view }) => {
-        view.dispatch(view.state.tr.setBlockType(0, view.state.doc.content.size, view.state.schema.nodes.heading!, { level: 3 }));
+        const { heading } = view.state.schema.nodes;
+        if (!heading) return false;
+        const { from, to } = view.state.selection;
+        view.dispatch(view.state.tr.setBlockType(from, to, heading, { level: 3 }).scrollIntoView());
         return true;
       },
     },
@@ -211,8 +220,14 @@ export function defaultSlashMenuItems(query: string): SlashMenuItem[] {
       group: '基础块',
       keywords: ['code', 'daima'],
       action: ({ view }) => {
-        const { schema } = view.state;
-        view.dispatch(view.state.tr.setBlockType(0, view.state.doc.content.size, schema.nodes.codeBlock!, { language: 'plaintext' }));
+        const { schema, selection } = view.state;
+        const { codeBlock } = schema.nodes;
+        if (!codeBlock) return false;
+        view.dispatch(
+          view.state.tr
+            .setBlockType(selection.from, selection.to, codeBlock, { language: 'plaintext' })
+            .scrollIntoView(),
+        );
         return true;
       },
     },

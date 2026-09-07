@@ -18,7 +18,7 @@ export function formatBubbleActions(): BubbleAction[] {
     { id: FORMAT_ITALIC, title: 'I', hint: '斜体', shortcut: { mod: true, key: 'i' }, shortcutLabel: '⌘I' },
     { id: FORMAT_STRIKE, title: 'S', hint: '删除线', shortcut: { mod: true, shift: true, key: 'x' }, shortcutLabel: '⌘⇧X' },
     { id: FORMAT_CODE, title: '`</>', hint: '行内代码', shortcut: { mod: true, key: 'e' }, shortcutLabel: '⌘E' },
-    { id: FORMAT_LINK, title: '🔗', hint: '链接' },
+    { id: FORMAT_LINK, title: '🔗', hint: '链接', shortcut: { mod: true, key: 'k' }, shortcutLabel: '⌘K' },
   ];
 }
 

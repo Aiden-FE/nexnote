@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import type { Backlink, GraphSnapshot, IndexStatus, SearchHit, TagIndexEntry } from '@nexnote/shared';
+import type { Backlink, GraphSnapshot, IndexStatus, PageSummaryLite, SearchHit, TagIndexEntry } from '@nexnote/shared';
 import { invoke, onEvent } from '../lib/ipc';
 
 /**
@@ -20,11 +20,14 @@ interface IndexState {
   tagsStatus: 'idle' | 'loading' | 'ready' | 'error';
   graph: GraphSnapshot;
   graphStatus: 'idle' | 'loading' | 'ready' | 'stale' | 'error';
+  /** 全量轻量页面摘要（wikilink 补全别名匹配；DEV-017），按 path 索引 */
+  pageSummaries: Record<string, PageSummaryLite>;
   loadStatus(): Promise<void>;
   loadBacklinks(pagePath: string): Promise<void>;
   clearBacklinks(): void;
   loadTags(): Promise<void>;
   loadGraph(): Promise<void>;
+  loadPageSummaries(): Promise<void>;
   search(query: string, limit?: number): Promise<SearchHit[]>;
   rebuild(): Promise<void>;
   applyStatusEvent(status: IndexStatus): void;
@@ -33,6 +36,7 @@ interface IndexState {
 
 let eventsBound = false;
 let tagLoadGeneration = 0;
+let summaryLoadGeneration = 0;
 let backlinkGeneration = 0;
 let graphLoadGeneration = 0;
 
@@ -51,6 +55,7 @@ export function bindIndexEvents(): void {
       const store = useIndexStore.getState();
       if (store.backlinksFor) void store.loadBacklinks(store.backlinksFor);
       void store.loadTags();
+      void store.loadPageSummaries();
     }
   });
 }
@@ -65,6 +70,7 @@ export const useIndexStore = create<IndexState>((set, get) => ({
   tagsStatus: 'idle',
   graph: { pages: [], links: [] },
   graphStatus: 'idle',
+  pageSummaries: {},
 
   async loadStatus() {
     try {
@@ -112,6 +118,20 @@ export const useIndexStore = create<IndexState>((set, get) => ({
     return invoke('index:search', { query, limit });
   },
 
+  async loadPageSummaries() {
+    const generation = ++summaryLoadGeneration;
+    try {
+      const list = await invoke('index:pageSummaries');
+      if (generation !== summaryLoadGeneration) return;
+      const pageSummaries: Record<string, PageSummaryLite> = {};
+      for (const item of list) pageSummaries[item.path] = item;
+      set({ pageSummaries });
+    } catch {
+      if (generation !== summaryLoadGeneration) return;
+      // 索引未就绪/失败时保留旧缓存；候选回退为无别名
+    }
+  },
+
   async loadGraph() {
     const generation = ++graphLoadGeneration;
     set({ graphStatus: 'loading' });
@@ -145,6 +165,7 @@ export const useIndexStore = create<IndexState>((set, get) => ({
     tagLoadGeneration += 1;
     backlinkGeneration += 1;
     graphLoadGeneration += 1;
+    summaryLoadGeneration += 1;
     set({
       status: { phase: 'idle', pagesTotal: 0, pagesIndexed: 0, mode: 'full' },
       backlinks: [],
@@ -155,6 +176,7 @@ export const useIndexStore = create<IndexState>((set, get) => ({
       tagsStatus: 'idle',
       graph: { pages: [], links: [] },
       graphStatus: 'idle',
+      pageSummaries: {},
     });
   },
 }));

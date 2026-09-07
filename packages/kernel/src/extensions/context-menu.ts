@@ -102,9 +102,26 @@ export function buildMenuDom(
         parentRowBySub.set(sub, row);
         wrap.addEventListener('mouseenter', () => {
           sub.style.display = 'block';
+          // 鼠标悬停打开的子菜单也入栈，供键盘导航与鼠标离开时栈同步
+          if (!levelStack.includes(sub)) levelStack.push(sub);
         });
         wrap.addEventListener('mouseleave', () => {
           sub.style.display = 'none';
+          // 鼠标离开时弹出该子菜单及其所有更深子菜单（栈顶是最深），
+          // 保持 levelStack 与实际可见子菜单一致，避免键盘导航操作隐藏层级
+          while (true) {
+            const top = levelStack[levelStack.length - 1];
+            if (!top || top === root || top === sub) break;
+            top.style.display = 'none';
+            levelStack.pop();
+          }
+          const idx = levelStack.indexOf(sub);
+          if (idx >= 0) {
+            for (let i = levelStack.length - 1; i >= idx; i--) {
+              levelStack[i]!.style.display = 'none';
+              levelStack.pop();
+            }
+          }
         });
         row.addEventListener('click', (e) => {
           e.preventDefault();
@@ -165,11 +182,16 @@ export function buildMenuDom(
   renderItems(root, items, 0);
   document.body.append(root);
   levelStack.push(root);
+  // 记录打开前的焦点，Escape 关闭菜单时归还，维持外部选区与锚点
+  let previouslyFocused: Element | null = null;
+  if (document.activeElement && document.body.contains(document.activeElement)) {
+    previouslyFocused = document.activeElement;
+  }
   // 打开即聚焦首项，键盘用户无需先 Tab
   focusRow(currentRows()[0]);
 
   let closed = false;
-  /** 全量拆除（移除 document 监听 + 根节点）；幂等。 */
+  /** 全量拆除（移除 document 监听 + 根节点 + 还原焦点）；幂等。 */
   const close = () => {
     if (closed) return;
     closed = true;
@@ -177,11 +199,21 @@ export function buildMenuDom(
     document.removeEventListener('keydown', onKey);
     document.removeEventListener('scroll', onScroll, true);
     root.remove();
+    // 归还焦点到打开前元素（若仍在 DOM 且可聚焦）
+    if (previouslyFocused && 'focus' in previouslyFocused) {
+      try {
+        (previouslyFocused as HTMLElement).focus();
+      } catch {
+        /* 元素被移除/不可聚焦时静默 */
+      }
+    }
   };
   const onDocClick = (e: MouseEvent) => {
     if (!root.contains(e.target as Node)) close();
   };
   const onKey = (e: KeyboardEvent) => {
+    // 仅在焦点位于菜单内部时处理键盘导航，避免干扰编辑器常规输入
+    if (!root.contains(document.activeElement)) return;
     switch (e.key) {
       case 'ArrowDown':
         e.preventDefault();
@@ -215,6 +247,7 @@ export function buildMenuDom(
       }
       case 'Escape':
         e.preventDefault();
+        e.stopPropagation();
         if (!closeSubmenu()) close();
         return;
       default:

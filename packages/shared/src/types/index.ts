@@ -68,6 +68,13 @@ export interface PageIndexSummary {
   outboundLinks: number;
 }
 
+/** 轻量页面摘要（wikilink 补全别名匹配用；DEV-017 批量拉取）。 */
+export interface PageSummaryLite {
+  path: string;
+  title: string;
+  aliases: string[];
+}
+
 /** ⌘K 页面跳转结果（标题/别名模糊匹配）。 */
 export interface PageJumpResult {
   path: string;

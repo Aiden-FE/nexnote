@@ -1,7 +1,6 @@
 import type { ContextMenuItem } from '@nexnote/kernel';
 import type { BlockMenuContext } from '@nexnote/kernel';
 import type { EditorKernelInstance } from '@nexnote/kernel';
-import { findWrapping } from '@tiptap/pm/transform';
 
 /**
  * DEV-017 块菜单（渲染层构建）：
@@ -87,7 +86,6 @@ export function runBlockMenuAction(
   neighbors: BlockNeighbors,
 ): boolean {
   if (!kernel) return false;
-  const editor = kernel.editor;
   switch (id) {
     case blockMenuActionId('copy'): {
       const md = kernel.getBlockMarkdown(ctx.from, ctx.to);
@@ -96,13 +94,17 @@ export function runBlockMenuAction(
     }
     case blockMenuActionId('cut'): {
       const md = kernel.getBlockMarkdown(ctx.from, ctx.to);
-      void navigator.clipboard?.writeText(md);
-      editor.view.dispatch(editor.state.tr.delete(ctx.from, ctx.to));
+      const write = navigator.clipboard?.writeText(md);
+      if (!write) return false; // 剪贴板不可用：不删除，避免「剪切变删除」
+      // 写成功后才删除；按 blockId 重解析位置，防止异步窗口内文档变化误删
+      void write.then(
+        () => kernel.deleteBlockById(ctx.blockId),
+        () => undefined,
+      );
       return true;
     }
     case blockMenuActionId('delete'): {
-      editor.view.dispatch(editor.state.tr.delete(ctx.from, ctx.to));
-      return true;
+      return kernel.deleteBlockById(ctx.blockId);
     }
     case blockMenuActionId('copy-id'): {
       void navigator.clipboard?.writeText(ctx.blockId);
@@ -121,49 +123,13 @@ export function runBlockMenuAction(
       return kernel.toggleBlockFold(ctx.blockId);
     }
     case blockMenuActionId('insert-before'):
-      return kernel.insertMarkdownBlocks('\n', ctx.from, 'before');
+      return kernel.insertEmptyBlock(ctx.from, 'before');
     case blockMenuActionId('insert-after'):
-      return kernel.insertMarkdownBlocks('\n', ctx.to, 'after');
+      return kernel.insertEmptyBlock(ctx.to, 'after');
     default:
       if (id.startsWith(BLOCK_MENU_CONVERT_PREFIX)) {
-        return convertBlock(id.slice(BLOCK_MENU_CONVERT_PREFIX.length), ctx, kernel);
+        return kernel.convertBlock(id.slice(BLOCK_MENU_CONVERT_PREFIX.length), ctx.from, ctx.to);
       }
       return false;
   }
-}
-
-/** 块类型转换（setBlockType / 包一层节点）。 */
-export function convertBlock(kind: string, ctx: BlockMenuContext, kernel: EditorKernelInstance | null): boolean {
-  if (!kernel) return false;
-  const { schema, tr } = kernel.editor.state;
-  const isHeading = kind === 'h1' || kind === 'h2' || kind === 'h3';
-  const nodeType = schema.nodes[isHeading ? 'heading' : kind];
-  if (!nodeType) return false;
-  if (isHeading) {
-    kernel.editor.view.dispatch(
-      tr.setBlockType(ctx.from, ctx.to, nodeType, { level: Number(kind.slice(1)) }),
-    );
-    return true;
-  }
-  if (kind === 'paragraph') {
-    kernel.editor.view.dispatch(tr.setBlockType(ctx.from, ctx.to, schema.nodes.paragraph!, {}));
-    return true;
-  }
-  if (kind === 'taskList') {
-    const { taskList, taskItem } = schema.nodes;
-    if (!taskList || !taskItem) return false;
-    // 选择整体替换为「任务列表 > 任务项 > 原内容段落」
-    const slice = kernel.editor.state.doc.slice(ctx.from, ctx.to);
-    const item = taskItem.create(null, slice.content);
-    kernel.editor.view.dispatch(tr.replaceRangeWith(ctx.from, ctx.to, taskList.create(null, [item])));
-    return true;
-  }
-  // 包一层（callout/blockquote/codeBlock）：对顶层块 wrap
-  const $from = kernel.editor.state.doc.resolve(ctx.from);
-  const range = $from.blockRange(kernel.editor.state.doc.resolve(ctx.to));
-  if (!range) return false;
-  const wrapping = findWrapping(range, nodeType);
-  if (!wrapping) return false;
-  kernel.editor.view.dispatch(kernel.editor.view.state.tr.wrap(range, wrapping));
-  return true;
 }

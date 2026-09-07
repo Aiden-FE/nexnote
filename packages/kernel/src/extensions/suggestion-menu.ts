@@ -41,6 +41,8 @@ export interface SuggestionTrigger {
   /** 选中项插入后的回调（渲染层借此创建红链页面等副作用） */
   onPick?: (item: SuggestionItem) => void;
   className: string;
+  /** modifier class 加在 root 上（如 `nexnote-suggestion--wikilink`），不污染 __item 等子类 */
+  modifierClassName?: string;
 }
 
 interface ActiveMenu {
@@ -74,8 +76,10 @@ function createMenu(
   hide: () => void;
   destroy: () => void;
 } {
-  const dom = document.createElement('div');
-  dom.className = trigger.className;
+const dom = document.createElement('div');
+    dom.className = [trigger.className, trigger.modifierClassName ?? '']
+      .filter(Boolean)
+      .join(' ');
   dom.style.display = 'none';
   dom.style.position = 'absolute';
   dom.style.zIndex = '46';

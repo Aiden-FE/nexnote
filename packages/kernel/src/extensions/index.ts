@@ -119,25 +119,27 @@ export function buildKernelExtensions(options: KernelExtensionsOptions = {}): Ex
   // DEV-017：wikilink（[[）/ 标签（#）补全菜单。候选由渲染层注入，节点插入由内核负责。
   const triggers: SuggestionTrigger[] = [];
   if (options.wikilinkSuggestions) {
-    triggers.push({
-      name: 'wikilink',
-      kind: 'wikilink',
-      trigger: '[[',
-      className: 'nexnote-suggestion nexnote-suggestion--wikilink',
-      suggestions: options.wikilinkSuggestions,
-      onPick: options.onWikilinkSuggestionPick,
-    });
-  }
-  if (options.hashtagSuggestions) {
-    triggers.push({
-      name: 'hashtag',
-      kind: 'hashtag',
-      trigger: '#',
-      requireWhitespaceBefore: true,
-      className: 'nexnote-suggestion nexnote-suggestion--hashtag',
-      suggestions: options.hashtagSuggestions,
-    });
-  }
+      triggers.push({
+        name: 'wikilink',
+        kind: 'wikilink',
+        trigger: '[[',
+        className: 'nexnote-suggestion',
+        modifierClassName: 'nexnote-suggestion--wikilink',
+        suggestions: options.wikilinkSuggestions,
+        onPick: options.onWikilinkSuggestionPick,
+      });
+    }
+    if (options.hashtagSuggestions) {
+      triggers.push({
+        name: 'hashtag',
+        kind: 'hashtag',
+        trigger: '#',
+        requireWhitespaceBefore: true,
+        className: 'nexnote-suggestion',
+        modifierClassName: 'nexnote-suggestion--hashtag',
+        suggestions: options.hashtagSuggestions,
+      });
+    }
   if (triggers.length > 0) extensions.push(SuggestionMenu.configure({ triggers }));
 
   if (options.slashMenu !== false) {
