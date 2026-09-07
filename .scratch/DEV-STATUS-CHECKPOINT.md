@@ -8,8 +8,8 @@
 
 ## 0. 最新状态（持续更新，优先于下方陈旧冻结段）
 
-- **真实进度：13 / 19** —— DEV-001~DEV-013 已全部合入 master。
-- master HEAD：`5e9124e`（merge DEV-013），clean；post-merge typecheck/eslint/440 tests(2 skipped)/build 全过；Electron smoke 60/69 与环境基线逐名一致。
+- **真实进度：14 / 19** —— DEV-001~DEV-014 已全部合入 master。
+- master HEAD：`a01f20e`（merge DEV-014），clean；post-merge typecheck(shared/kernel/renderer/plugin-api)/eslint/455 tests(2 skipped)/build 全过。
 - 子Agent 派发工具 `multi_agent_v1__spawn_agent` 在本环境返回 unsupported，按用户接管规则由主控直接在隔离 worktree 实现。
 - better-sqlite3 ABI：vitest 用 Node ABI；electron smoke 用 `runtime=electron target=44.2.0 arch=arm64`，smoke 后务必切回 Node ABI。
 - Electron smoke 当前环境基线 **60/69**：9 项失败为 DEV-003/004/006/007 既有环境基线（Git 状态栏 2、新笔记 frontmatter/面包屑 2、标签面板/过滤 2、重命名 wikilink 1、500 节点 FPS 1、时间线 1）；master 与候选失败集逐名一致，DEV-010 无新增回归。
@@ -44,10 +44,16 @@
 - 验收覆盖：main `plugin-service.test.ts` 10 例（manifest/semver 校验、票据确认、会话绑定与停用撤销、敏感能力门禁+授权后 NOT_IMPLEMENTED、one-shot grant 消费、staging 篡改拒绝、升级撤销会话、crash fixture 隔离不影响他插件、崩溃移除贡献、zip 解压+状态恢复；零依赖 zipFolder 测试助手写 method-8 deflate）；renderer sandbox/permission-flow/contributions 7 例（CSP/sandbox 字符串断言、生命周期顺序、版本化 RPC/超时/崩溃、权限弹窗重试、watchdog、贡献分发）。
 - NOT_RUN：真实第三方插件安装与 ECDSA 签名（签名框架预留，MVP 未启用）、QuickJS/WASM logic worker（V1 用 iframe UI 沙箱 + main-thread logic，stretch）、真实 network/filesystem/external-command 能力执行（capability.call 授权后返 NOT_IMPLEMENTED）、Electron 内人工安装/权限弹窗点击 E2E（由 service 10 测 + flow/sandbox 7 测等价覆盖）。
 
-### 下一张：DEV-014 插件扩展点 + Skill 系统（依赖 DEV-013；XL/P1）
-- 票据 `issues/014-*.md`；基于最新 master 新建 worktree `.wt/DEV-014`。
-- DEV-013 已落地贡献点注册表（commands/menus/views/blockTypes）与插件 RPC 骨架；DEV-014 在其上实现块/视图/菜单扩展点的宿主分发，并经扩展点接入 DEV-011 `BuiltinRetrievalSkill`（retrieval-service 已暴露 search）。
-- DEV-015 Mermaid+KaTeX 内置插件依赖 DEV-014；DEV-016/017/018 有旧 WIP（`.wt/DEV-016 @ aad90d6`、`.wt/DEV-017 @ 506e5f8`、`.wt/DEV-018 @ b86a6f2`），重做前先比对最新 master；DEV-019 整体 E2E 依赖全部。
+### DEV-014 · 插件扩展点（块/视图/命令/菜单）+ 检索 Skill（已合并 `a01f20e`，候选 `43a8c80`）
+- 扩展点：kernel `pluginBlock` 原子 TipTap 节点（attrs pluginId/blockType/data，` ```nexnote-plugin:<id>:<type>` 围栏 Markdown 往返，insert/setData 命令）。renderer `features/plugins/extension-points.ts` 纯派生：命令合并去重入 ⌘K、菜单注入编辑器右键「插件」子菜单（注册表 scopedId → runCommand）、视图注册侧栏页签（visible 沙箱 iframe）、块类型派生 ⌘K 插入（`getActiveEditor().insertPluginBlock`）。manifest 贡献点增 placement/anchor/when/blockType，validator 保留。
+- Skill 系统：`types/skill.ts` + `skills:*` 6 通道 + `skills:changed`；RetrievalSource.skillId 溯源、RetrievalOptions.skillIds。main `SkillService`（内置三阶段 + 快速关键词 FTS；活跃插件 manifest.skills 自动发现；启停/排序/参数持久化 nexnote-skills.json；多 Skill 各自召回 → `mergeSkillResults` min-max 归一化/同 path+blockId 去重/并列退绝对分重排 + packContextText）。`ai:retrieve` 改经 SkillService（默认仅内置，行为同 DEV-011/012；无 retrieval 优雅降级；插件 skill 由宿主安全参数化执行）。renderer 设置页「检索 Skill」(order 62) + ChatDock Skill 组合选择器（空=全部启用）。
+- `@nexnote/plugin-api` 类型包 + starter 模板（manifest/main/README）+ versions.json 兼容矩阵（新 workspace 包，pnpm-lock 已登记 importer）。
+- 验收覆盖：+15 测试（kernel plugin-block 3、renderer plugin-extensions 4、main skill-service 7、plugin-service 技能发现 1）；demo fixture 补检索 Skill。NOT_RUN：插件沙箱内自定义块/视图实时渲染与 QuickJS worker、插件自定义检索 iframe RPC（走宿主参数化执行）、Electron 人工装 Skill/右键/视图 E2E。
+
+### 下一张：DEV-015 内置示范插件 Mermaid + KaTeX（依赖 DEV-014；M）
+- 票据 `issues/015-builtin-plugins-mermaid-katex.md`；基于最新 master 新建 worktree `.wt/DEV-015`。
+- 复用 DEV-013 插件运行时 + DEV-014 pluginBlock 节点/扩展点：Mermaid 走 pluginBlock（图代码 → 渲染），KaTeX 走内联/块数学；作为内置（bundled）插件或宿主内置扩展。
+- DEV-016/017/018 有旧 WIP（`.wt/DEV-016 @ aad90d6`、`.wt/DEV-017 @ 506e5f8`、`.wt/DEV-018 @ b86a6f2`），重做前先比对最新 master；DEV-019 整体 E2E 依赖全部。
 
 
 ## 1. 全局基线
