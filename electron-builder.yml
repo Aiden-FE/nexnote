@@ -23,6 +23,13 @@ compression: normal
 removePackageScripts: true
 afterSign: scripts/notarize.cjs
 
+extraResources:
+  # 捆绑 dugite-native Git（GPLv2）：随附许可证文本 + 源码 offer（GPLv2 §3 义务）。
+  - from: licenses
+    to: licenses
+    filter:
+      - '**/*'
+
 # ── 图标 ───────────────────────────────────────────────
 # 多格式图标：各平台 build 目录下对应命名
 #   macOS: build/icon.icns (必) + build/icon.png (可选，备份)
@@ -59,6 +66,9 @@ mac:
   target:
     - dmg
     - zip
+  # arm64/x64 同名产物（dmg/zip）必须在 basename 上区分为不同文件，
+  # 否则 preflight flatten 会发现 basename 冲突而失败。
+  artifactName: ${productName}-${version}-${arch}.${ext}
   category: public.app-category.productivity
   hardenedRuntime: true
   gatekeeperAssess: false

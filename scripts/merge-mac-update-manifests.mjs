@@ -14,12 +14,18 @@ for (const dir of readdirSync(root, { withFileTypes: true })) {
   const file = join(root, dir.name, manifestName);
   if (existsSync(file)) manifests.push({ file, doc: yaml.load(readFileSync(file, 'utf8')) });
 }
-if (manifests.length !== 2) throw new Error(`expected arm64 and x64 ${manifestName}, found ${manifests.length}`);
+if (manifests.length !== 2)
+  throw new Error(`expected arm64 and x64 ${manifestName}, found ${manifests.length}`);
 const [first, ...rest] = manifests.map((entry) => entry.doc);
-if (!first?.version || rest.some((doc) => doc?.version !== first.version)) throw new Error('mac update manifest versions differ');
+if (!first?.version || rest.some((doc) => doc?.version !== first.version))
+  throw new Error('mac update manifest versions differ');
 const files = manifests.flatMap(({ doc }) => doc.files ?? []);
 const urls = new Set(files.map((file) => file.url));
-if (urls.size !== files.length || ![...urls].some((url) => /arm64/.test(url)) || ![...urls].some((url) => /x64/.test(url))) {
+if (
+  urls.size !== files.length ||
+  ![...urls].some((url) => /arm64/.test(url)) ||
+  ![...urls].some((url) => /x64/.test(url))
+) {
   throw new Error('merged mac manifest must contain distinct arm64 and x64 files');
 }
 writeFileSync(join(root, manifestName), yaml.dump({ ...first, files }), 'utf8');

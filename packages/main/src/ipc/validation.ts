@@ -273,6 +273,28 @@ const skillsObjectChannels = [
   'skills:retrieve',
 ] as const;
 
+const updateChannel: PayloadValidator = (payload) => {
+  if (!isPlainObject(payload)) return invalid('payload 必须是普通对象');
+  const channel = (payload as Record<string, unknown>).channel;
+  if (channel !== 'stable' && channel !== 'beta' && channel !== 'alpha') return invalid('channel 必须是 stable/beta/alpha');
+  return null;
+};
+
+const updateSettingsPatch: PayloadValidator = (payload) => {
+  if (!isPlainObject(payload)) return invalid('payload 必须是普通对象');
+  const allowed = ['channel', 'autoDownload', 'checkOnLaunch'] as const;
+  for (const key of Object.keys(payload)) {
+    if (!allowed.includes(key as (typeof allowed)[number])) return invalid(`未知字段 ${key}`);
+  }
+  const p = payload as Record<string, unknown>;
+  if (p.channel !== undefined && p.channel !== 'stable' && p.channel !== 'beta' && p.channel !== 'alpha') {
+    return invalid('channel 必须是 stable/beta/alpha');
+  }
+  if (p.autoDownload !== undefined && typeof p.autoDownload !== 'boolean') return invalid('autoDownload 必须是布尔值');
+  if (p.checkOnLaunch !== undefined && typeof p.checkOnLaunch !== 'boolean') return invalid('checkOnLaunch 必须是布尔值');
+  return null;
+};
+
 const VALIDATORS: Partial<Record<IpcChannel, PayloadValidator>> = {
   'ai:credential:submit': aiCredentialSubmit,
   'ai:profile:save': aiProfileSave,
@@ -334,6 +356,8 @@ const VALIDATORS: Partial<Record<IpcChannel, PayloadValidator>> = {
   'vault:removeRecent': pathOnly,
   'vault:reveal': pathOnly,
   'vault:saveLayout': saveLayout,
+  'app:setUpdateChannel': updateChannel,
+  'app:setUpdateSettings': updateSettingsPatch,
 };
 
 /** Reject malformed input with a stable code before executing the registered handler. */

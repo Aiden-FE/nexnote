@@ -1,7 +1,14 @@
-import type { UpdateChannel, UpdateCheckResult } from '@nexnote/shared';
+import type {
+  UpdateChannel,
+  UpdateCheckResult,
+  UpdateSettings,
+  UpdateSettingsPatch,
+} from '@nexnote/shared';
 
 type Log = (...args: unknown[]) => void;
-type SendStatus = (status: UpdateCheckResult & { progress?: number; channel: UpdateChannel }) => void;
+type SendStatus = (
+  status: UpdateCheckResult & { progress?: number; channel: UpdateChannel },
+) => void;
 
 /** Minimal Electron-like surface the updater needs, kept narrow for testability. */
 export interface ElectronAppLike {
@@ -59,7 +66,9 @@ function readBakedChannel(): UpdateChannel | undefined {
     const fs = require('node:fs') as { readFileSync(p: string, e: string): string };
     // eslint-disable-next-line @typescript-eslint/no-require-imports
     const yaml = require('js-yaml') as { load(s: string): unknown };
-    const doc = yaml.load(fs.readFileSync(`${resources}/app-update.yml`, 'utf8')) as { channel?: unknown };
+    const doc = yaml.load(fs.readFileSync(`${resources}/app-update.yml`, 'utf8')) as {
+      channel?: unknown;
+    };
     return normalizeChannel(doc?.channel);
   } catch {
     return undefined;
@@ -76,15 +85,26 @@ function resolveStartupChannel(persisted: UpdateChannel | undefined): UpdateChan
   return resolveChannelFromEnv();
 }
 
-export const updaterChannel = (channel: UpdateChannel): string => (channel === 'stable' ? 'latest' : channel);
+export const updaterChannel = (channel: UpdateChannel): string =>
+  channel === 'stable' ? 'latest' : channel;
 
 const feedConfig = (channel: UpdateChannel): UpdateFeedConfig => {
   if (!VALID_CHANNELS.includes(channel)) {
     throw new Error(`非法更新通道: ${channel}（必须是 stable/beta/alpha）`);
   }
   const genericBase = process.env.NEXNOTE_UPDATE_URL?.replace(/\/+$/, '');
-  if (genericBase) return { provider: 'generic', url: `${genericBase}/${channel}`, channel: updaterChannel(channel) };
-  return { provider: 'github', owner: REPO_OWNER, repo: REPO_NAME, ...(channel === 'stable' ? {} : { channel }) };
+  if (genericBase)
+    return {
+      provider: 'generic',
+      url: `${genericBase}/${channel}`,
+      channel: updaterChannel(channel),
+    };
+  return {
+    provider: 'github',
+    owner: REPO_OWNER,
+    repo: REPO_NAME,
+    ...(channel === 'stable' ? {} : { channel }),
+  };
 };
 
 /** electron-updater 的 autoUpdater 在 import 时即读取 Electron app（Node 环境会崩），按需懒加载。 */
@@ -100,6 +120,8 @@ let activeChannel: UpdateChannel = resolveChannelFromEnv();
 let availableVersion: string | undefined;
 let downloadedVersion: string | undefined;
 let downloadInFlight = false;
+let autoDownloadSetting = true;
+let checkOnLaunchSetting = true;
 let electronApp: ElectronAppLike = (() => {
   try {
     // eslint-disable-next-line @typescript-eslint/no-require-imports
@@ -111,7 +133,11 @@ let electronApp: ElectronAppLike = (() => {
   return { isPackaged: false, getVersion: () => '0.0.0-test' };
 })();
 
-function emit(status: UpdateCheckResult['status'], message?: string, progress?: number): UpdateCheckResult {
+function emit(
+  status: UpdateCheckResult['status'],
+  message?: string,
+  progress?: number,
+): UpdateCheckResult {
   const result: UpdateCheckResult & { channel: UpdateChannel } = {
     status,
     ...(message ? { message } : {}),
@@ -122,16 +148,19 @@ function emit(status: UpdateCheckResult['status'], message?: string, progress?: 
   return result;
 }
 
-/** Production policy: silent startup check/download, explicit user-confirmed restart/install. */
+/** Production policy: silent startup check when enabled, automatic download when enabled,
+ * explicit user-confirmed restart/install. */
 export function initAutoUpdater(
   log: Log,
   statusSender: SendStatus = () => {},
-  persistedChannel?: UpdateChannel,
+  settings: UpdateSettingsPatch & { channel?: UpdateChannel } = {},
 ): void {
+  const persistedChannel = settings.channel;
   if (persistedChannel && !VALID_CHANNELS.includes(persistedChannel)) {
     log(`[updater] 非法持久化通道 ${persistedChannel}，使用打包默认值`);
-    persistedChannel = undefined;
   }
+  autoDownloadSetting = settings.autoDownload ?? true;
+  checkOnLaunchSetting = settings.checkOnLaunch ?? true;
   logger = log;
   sendStatus = statusSender;
   activeChannel = resolveStartupChannel(persistedChannel);
@@ -144,9 +173,9 @@ export function initAutoUpdater(
   }
 
   const a = getAdapter();
-  // electron-updater owns automatic transfer; update-downloaded remains the sole
-  // authority that enables the renderer's explicit restart/install prompt.
-  a.autoDownload = true;
+  // electron-updater owns automatic transfer when enabled; update-downloaded
+  // remains the sole authority that enables the renderer's restart prompt.
+  a.autoDownload = autoDownloadSetting;
   a.autoInstallOnAppQuit = true;
   // electron-updater's stable metadata is latest*.yml, never stable*.yml.
   a.channel = updaterChannel(activeChannel);
@@ -166,7 +195,9 @@ export function initAutoUpdater(
     downloadedVersion = undefined;
     emit('available', info?.version ? `发现新版本 ${info.version}` : '发现新版本');
   });
-  a.on('update-not-available', () => emit('up-to-date', `当前 ${electronApp.getVersion()} 已是最新`));
+  a.on('update-not-available', () =>
+    emit('up-to-date', `当前 ${electronApp.getVersion()} 已是最新`),
+  );
   a.on('download-progress', (...args: unknown[]) => {
     const progress = args[0] as { percent?: number } | undefined;
     emit('downloading', '正在下载更新…', progress?.percent ?? 0);
@@ -180,7 +211,9 @@ export function initAutoUpdater(
   });
 
   // Do not block startup; errors are surfaced as update status events.
-  setTimeout(() => void checkForUpdates(), 5_000);
+  if (checkOnLaunchSetting) {
+    setTimeout(() => void checkForUpdates(), 5_000);
+  }
 }
 
 export function setUpdateChannel(channel: UpdateChannel): UpdateCheckResult {
@@ -201,8 +234,35 @@ export function setUpdateChannel(channel: UpdateChannel): UpdateCheckResult {
   return emit('not-configured', `已切换至 ${channel} 更新通道`);
 }
 
+export function getUpdateSettings(): UpdateSettings {
+  return {
+    channel: activeChannel,
+    autoDownload: autoDownloadSetting,
+    checkOnLaunch: checkOnLaunchSetting,
+  };
+}
+
+export function setUpdateSettings(patch: UpdateSettingsPatch): UpdateSettings {
+  if (patch.channel !== undefined) setUpdateChannel(patch.channel);
+  if (patch.autoDownload !== undefined) {
+    autoDownloadSetting = patch.autoDownload;
+    if (electronApp.isPackaged) {
+      getAdapter().autoDownload = patch.autoDownload;
+    }
+  }
+  if (patch.checkOnLaunch !== undefined) {
+    checkOnLaunchSetting = patch.checkOnLaunch;
+  }
+  return getUpdateSettings();
+}
+
 export async function checkForUpdates(): Promise<UpdateCheckResult> {
-  if (!electronApp.isPackaged) return { status: 'not-configured', message: '开发模式下更新通道未启用', channel: activeChannel };
+  if (!electronApp.isPackaged)
+    return {
+      status: 'not-configured',
+      message: '开发模式下更新通道未启用',
+      channel: activeChannel,
+    };
   try {
     emit('checking', '正在检查更新…');
     const result = await getAdapter().checkForUpdates();
@@ -219,8 +279,14 @@ export async function checkForUpdates(): Promise<UpdateCheckResult> {
 }
 
 export async function downloadUpdate(): Promise<UpdateCheckResult> {
-  if (!electronApp.isPackaged) return { status: 'not-configured', message: '开发模式不能下载发布更新', channel: activeChannel };
-  if (!availableVersion) return { status: 'error', message: '没有可下载的更新，请先检查更新', channel: activeChannel };
+  if (!electronApp.isPackaged)
+    return {
+      status: 'not-configured',
+      message: '开发模式不能下载发布更新',
+      channel: activeChannel,
+    };
+  if (!availableVersion)
+    return { status: 'error', message: '没有可下载的更新，请先检查更新', channel: activeChannel };
   if (downloadedVersion === availableVersion) return emit('downloaded', '更新已下载，可重启安装');
   if (downloadInFlight) return emit('downloading', '更新正在下载…');
   try {
@@ -238,7 +304,8 @@ export async function downloadUpdate(): Promise<UpdateCheckResult> {
 }
 
 export function installUpdate(): { willRestart: true } {
-  if (!electronApp.isPackaged || !availableVersion || downloadedVersion !== availableVersion) throw new Error('没有已下载的更新可安装');
+  if (!electronApp.isPackaged || !availableVersion || downloadedVersion !== availableVersion)
+    throw new Error('没有已下载的更新可安装');
   logger('[updater] quitAndInstall');
   getAdapter().quitAndInstall(false, true);
   return { willRestart: true };

@@ -14,7 +14,7 @@ jobs:
     timeout-minutes: 25
     env:
       NEXNOTE_UPDATE_CHANNEL: alpha
-      CSC_IDENTITY_AUTO_DISCOVERY: "false"
+      CSC_IDENTITY_AUTO_DISCOVERY: 'false'
       # Nightlies are internal, unsigned, non-publishable artifacts; public release stays required.
       NEXNOTE_NOTARIZE_MODE: disabled
     steps:
@@ -28,7 +28,7 @@ jobs:
       - run: pnpm lint && pnpm typecheck && pnpm test
       - run: pnpm dist:mac -- --arm64 --publish never
         env:
-          ELECTRON_NO_ASAR: "1"
+          ELECTRON_NO_ASAR: '1'
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: nexnote-nightly-macos

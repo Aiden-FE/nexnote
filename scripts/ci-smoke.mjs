@@ -11,7 +11,8 @@ import { existsSync, mkdtempSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 
-const appPath = process.env.NEXNOTE_APP_PATH ?? resolve('release/mac/NexNote.app/Contents/MacOS/NexNote');
+const appPath =
+  process.env.NEXNOTE_APP_PATH ?? resolve('release/mac/NexNote.app/Contents/MacOS/NexNote');
 
 if (!existsSync(appPath)) {
   console.error(`[smoke:ci] app binary not found at ${appPath}`);
@@ -19,10 +20,16 @@ if (!existsSync(appPath)) {
   process.exit(1);
 }
 
-const outputDir = process.env.NEXNOTE_SMOKE_OUTPUT_DIR ?? mkdtempSync(join(tmpdir(), 'nexnote-smoke-results-'));
+const outputDir =
+  process.env.NEXNOTE_SMOKE_OUTPUT_DIR ?? mkdtempSync(join(tmpdir(), 'nexnote-smoke-results-'));
 console.log(`[smoke:ci] writable evidence directory: ${outputDir}`);
 const child = spawn(appPath, [], {
-  env: { ...process.env, NEXNOTE_SMOKE: '1', NEXNOTE_SMOKE_EXIT_AFTER: '1', NEXNOTE_SMOKE_OUTPUT_DIR: outputDir },
+  env: {
+    ...process.env,
+    NEXNOTE_SMOKE: '1',
+    NEXNOTE_SMOKE_EXIT_AFTER: '1',
+    NEXNOTE_SMOKE_OUTPUT_DIR: outputDir,
+  },
   stdio: ['ignore', 'inherit', 'inherit'],
 });
 const timer = setTimeout(() => {

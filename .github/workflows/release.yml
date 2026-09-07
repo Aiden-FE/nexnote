@@ -28,9 +28,9 @@ on:
       qa-all-required-checks-passed:
         description: Confirm all mandatory QA checks passed
         required: true
-        default: "false"
+        default: 'false'
         type: choice
-        options: ["false", "true"]
+        options: ['false', 'true']
 
 permissions:
   contents: read
@@ -260,12 +260,26 @@ jobs:
           pattern: nexnote-*
           path: release
           merge-multiple: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with: { node-version: 22 }
+      - name: Install preflight script dependencies
+        run: |
+          corepack enable
+          corepack prepare pnpm@10 --activate
+          pnpm install --frozen-lockfile
       - name: Merge native macOS update manifests and flatten artifacts
         run: |
           node scripts/merge-mac-update-manifests.mjs release "${{ needs.prepare.outputs.channel }}"
-          # Keep the newly merged root mac manifest; flatten all other artifacts only
-          # after native manifests were read from their isolated artifact directories.
-          find release -mindepth 2 -type f ! -name '*-mac.yml' -exec mv -n {} release/ \;
+          # Remove redundant per-arch native mac manifests; the merged root manifest
+          # is the single source of truth for macOS auto-update feed.
+          find release -mindepth 2 -type f -name '*-mac.yml' -delete
+          # Fail on any duplicate basename BEFORE flattening; find/mv must never
+          # silently pick one file over a same-named peer (e.g. matching mac zips).
+          dup=$(find release -type f | while read -r f; do basename "$f"; done | sort | uniq -d)
+          test -z "$dup" || { echo "::error::duplicate artifact basenames would collide: $dup"; exit 1; }
+          # Flatten distributables/metadata into a single release dir for a single
+          # upload + checksum set (collisions already rejected above).
+          find release -mindepth 2 -type f -exec mv {} release/ \;
       - name: Preflight signed artifact set and immutable version
         run: |
           shopt -s nullglob
@@ -320,6 +334,7 @@ jobs:
       name: release-qa
     permissions:
       contents: write
+      actions: read
     steps:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
         with:
@@ -330,6 +345,7 @@ jobs:
           path: release
       - name: Acquire durable publication lease
         env:
+          GITHUB_TOKEN: ${{ github.token }}
           RELEASE_COMMIT: ${{ needs.prepare.outputs.commit }}
         run: |
           set -euo pipefail
@@ -352,7 +368,9 @@ jobs:
             git fetch --no-tags origin +refs/heads/release-publication-lock:refs/remotes/origin/release-publication-lock 2>/dev/null || { sleep 10; continue; }
             old=$(git rev-parse refs/remotes/origin/release-publication-lock)
             message=$(git log -1 --format=%B "$old")
-            case "$message" in publication\ lease\ *\/\*\/\*) ;; *) sleep 10; continue ;; esac
+            # Lease message must match the exact anchored numeric pattern; anything
+            # else (tampering, non-lease commits) cannot be taken over.
+            if ! printf '%s' "$message" | grep -Eq '^publication lease ([0-9]+)/([0-9]+)/([0-9]+)$'; then sleep 10; continue; fi
             owner_run=$(printf '%s' "$message" | sed -E 's#^publication lease ([0-9]+)/([0-9]+)/.*#\1#')
             owner_time=$(git log -1 --format=%ct "$old")
             now=$(date +%s)

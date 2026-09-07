@@ -13,7 +13,7 @@ const pkg = JSON.parse(readFileSync(resolve(root, 'package.json'), 'utf8'));
 const args = process.argv.slice(2);
 const requireIndex = args.indexOf('--require-tag');
 const required = requireIndex >= 0;
-const tag = required ? args[requireIndex + 1] : process.env.GITHUB_REF_NAME ?? args[0];
+const tag = required ? args[requireIndex + 1] : (process.env.GITHUB_REF_NAME ?? args[0]);
 
 const semverRe = /^\d+\.\d+\.\d+(-[a-z]+\.\d+)?$/;
 const pkgVersion = pkg.version;

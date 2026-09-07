@@ -23,7 +23,9 @@ const REPO_NAME = 'nexnote';
 // Only insert the override when building distributables; `--dir`/prepackaged don't need it.
 const args = [...process.argv.slice(2)];
 if (channel !== 'stable') {
-  const publish = JSON.stringify([{ provider: 'github', owner: REPO_OWNER, repo: REPO_NAME, channel }]);
+  const publish = JSON.stringify([
+    { provider: 'github', owner: REPO_OWNER, repo: REPO_NAME, channel },
+  ]);
   args.push(`-c.publish=${publish}`);
 }
 process.argv = [process.argv[0], ...args];

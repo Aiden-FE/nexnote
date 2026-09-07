@@ -7,10 +7,12 @@ import {
   REPO_OWNER,
   checkForUpdates,
   downloadUpdate,
+  getUpdateSettings,
   initAutoUpdater,
   installUpdate,
   normalizeChannel,
   setUpdateChannel,
+  setUpdateSettings,
   setUpdaterAdapterForTests,
   type UpdaterAdapter,
 } from '../src/updater';
@@ -35,7 +37,10 @@ function makeAdapter() {
 /** Create a fake package resources dir containing the given app-update.yml. */
 function bakeChannel(channel: string): string {
   const dir = mkdtempSync(join(tmpdir(), 'nexnote-resources-'));
-  writeFileSync(join(dir, 'app-update.yml'), `provider: github\nowner: Aiden-FE\nrepo: nexnote\nchannel: ${channel}\n`);
+  writeFileSync(
+    join(dir, 'app-update.yml'),
+    `provider: github\nowner: Aiden-FE\nrepo: nexnote\nchannel: ${channel}\n`,
+  );
   return dir;
 }
 
@@ -61,7 +66,11 @@ describe('channel resolution', () => {
     envBackup = { ...process.env };
     const resourcesPath = bakeChannel('beta');
     const { adapter } = makeAdapter();
-    restore = setUpdaterAdapterForTests(adapter, { isPackaged: true, getVersion: () => '0.1.0' }, resourcesPath);
+    restore = setUpdaterAdapterForTests(
+      adapter,
+      { isPackaged: true, getVersion: () => '0.1.0' },
+      resourcesPath,
+    );
     initAutoUpdater(() => {});
     expect(adapter.channel).toBe('beta');
     // GitHub default: no feed override, electron-updater reads the baked app-update.yml.
@@ -91,7 +100,11 @@ describe('channel resolution', () => {
     envBackup = { ...process.env };
     const { adapter } = makeAdapter();
     restore = setUpdaterAdapterForTests(adapter, { isPackaged: true, getVersion: () => '0.1.0' });
-    initAutoUpdater(() => {}, () => {}, 'stable');
+    initAutoUpdater(
+      () => {},
+      () => {},
+      { channel: 'stable' },
+    );
     expect(adapter.channel).toBe('latest');
     // GitHub provider must omit channel for stable so electron-updater reads latest*.yml.
     expect(adapter.setFeedURL).not.toHaveBeenCalled();
@@ -117,7 +130,11 @@ describe('updater policy', () => {
     envBackup = { ...process.env };
     const { adapter } = makeAdapter();
     restore = setUpdaterAdapterForTests(adapter, { isPackaged: false, getVersion: () => '0.1.0' });
-    initAutoUpdater(() => {}, () => {}, 'stable'); // reset module-level activeChannel
+    initAutoUpdater(
+      () => {},
+      () => {},
+      { channel: 'stable' },
+    ); // reset module-level activeChannel
     expect(await checkForUpdates()).toMatchObject({ status: 'not-configured', channel: 'stable' });
   });
 
@@ -127,11 +144,21 @@ describe('updater policy', () => {
     const { adapter } = makeAdapter();
     restore = setUpdaterAdapterForTests(adapter, { isPackaged: true, getVersion: () => '0.1.0' });
     const statuses: unknown[] = [];
-    initAutoUpdater(() => {}, (status) => statuses.push(status), 'beta');
+    initAutoUpdater(
+      () => {},
+      (status) => statuses.push(status),
+      { channel: 'beta' },
+    );
     expect(adapter.channel).toBe('beta');
     expect(adapter.autoDownload).toBe(true);
-    expect(await checkForUpdates()).toMatchObject({ status: 'available', version: '9.9.9', channel: 'beta' });
-    expect(statuses).toContainEqual(expect.objectContaining({ status: 'available', version: '9.9.9' }));
+    expect(await checkForUpdates()).toMatchObject({
+      status: 'available',
+      version: '9.9.9',
+      channel: 'beta',
+    });
+    expect(statuses).toContainEqual(
+      expect.objectContaining({ status: 'available', version: '9.9.9' }),
+    );
   });
 
   it('emits progress, downloads, and explicitly installs', async () => {
@@ -140,7 +167,10 @@ describe('updater policy', () => {
     const { adapter, listeners } = makeAdapter();
     restore = setUpdaterAdapterForTests(adapter, { isPackaged: true, getVersion: () => '0.1.0' });
     const statuses: Array<{ status: string; progress?: number }> = [];
-    initAutoUpdater(() => {}, (status) => statuses.push(status));
+    initAutoUpdater(
+      () => {},
+      (status) => statuses.push(status),
+    );
     await checkForUpdates();
     listeners.get('download-progress')?.({ percent: 42 });
     expect(statuses.at(-1)).toMatchObject({ status: 'downloading', progress: 42 });
@@ -157,7 +187,10 @@ describe('updater policy', () => {
     const { adapter, listeners } = makeAdapter();
     restore = setUpdaterAdapterForTests(adapter, { isPackaged: true, getVersion: () => '0.1.0' });
     const statuses: Array<{ status: string }> = [];
-    initAutoUpdater(() => {}, (status) => statuses.push(status));
+    initAutoUpdater(
+      () => {},
+      (status) => statuses.push(status),
+    );
     listeners.get('update-available')?.({ version: '9.9.9' });
     listeners.get('update-available')?.({ version: '9.9.9' });
     expect(statuses.filter((s) => s.status === 'available')).toHaveLength(1);
@@ -178,5 +211,55 @@ describe('updater policy', () => {
     const { adapter } = makeAdapter();
     restore = setUpdaterAdapterForTests(adapter, { isPackaged: false, getVersion: () => '0.1.0' });
     expect(() => installUpdate()).toThrow(/没有已下载/);
+  });
+
+  it('autoDownload setting comes from init options and can be toggled via setUpdateSettings', async () => {
+    delete process.env.NEXNOTE_UPDATE_CHANNEL;
+    envBackup = { ...process.env };
+    const { adapter } = makeAdapter();
+    restore = setUpdaterAdapterForTests(adapter, { isPackaged: true, getVersion: () => '0.1.0' });
+    initAutoUpdater(
+      () => {},
+      () => {},
+      { channel: 'stable', autoDownload: false },
+    );
+    expect(adapter.autoDownload).toBe(false);
+    const updated = setUpdateSettings({ autoDownload: true });
+    expect(updated.autoDownload).toBe(true);
+    expect(adapter.autoDownload).toBe(true);
+  });
+
+  it('checkOnLaunch setting controls whether startup check is scheduled', () => {
+    delete process.env.NEXNOTE_UPDATE_CHANNEL;
+    envBackup = { ...process.env };
+    const { adapter } = makeAdapter();
+    restore = setUpdaterAdapterForTests(adapter, { isPackaged: true, getVersion: () => '0.1.0' });
+    vi.useFakeTimers();
+    try {
+      initAutoUpdater(
+        () => {},
+        () => {},
+        { channel: 'stable', checkOnLaunch: false },
+      );
+      vi.advanceTimersByTime(10_000);
+      // checkOnLaunch=false → 启动时不调度检查
+      expect(adapter.checkForUpdates).not.toHaveBeenCalled();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('getUpdateSettings reflects the current authoritative state', () => {
+    delete process.env.NEXNOTE_UPDATE_CHANNEL;
+    envBackup = { ...process.env };
+    const { adapter } = makeAdapter();
+    restore = setUpdaterAdapterForTests(adapter, { isPackaged: false, getVersion: () => '0.1.0' });
+    initAutoUpdater(
+      () => {},
+      () => {},
+      { channel: 'alpha', autoDownload: false, checkOnLaunch: true },
+    );
+    const settings = getUpdateSettings();
+    expect(settings).toMatchObject({ channel: 'alpha', autoDownload: false, checkOnLaunch: true });
   });
 });
