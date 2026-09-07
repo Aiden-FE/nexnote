@@ -8,9 +8,12 @@ import { PLUGIN_HEARTBEAT_TIMEOUT_MS } from './sandbox-watchdog';
 export function PluginSandboxFrame({
   plugin,
   onPermissionRequired,
+  visible = false,
 }: {
   plugin: PluginView;
   onPermissionRequired: (prompt: PermissionPrompt) => void;
+  /** true = 视图扩展点（侧栏可见 iframe）；false = 命令类插件的隐藏生命周期帧。 */
+  visible?: boolean;
 }) {
   const iframeRef = useRef<HTMLIFrameElement>(null);
   const [source, setSource] = useState<{ pluginId: string; source: string } | null>(null);
@@ -214,7 +217,11 @@ export function PluginSandboxFrame({
       data-testid={`plugin-sandbox-${source.pluginId}`}
       sandbox="allow-scripts"
       src={runtimeUrl}
-      className="hidden h-0 w-0 border-0"
+      className={
+        visible
+          ? 'h-full min-h-[180px] w-full rounded border bg-card'
+          : 'hidden h-0 w-0 border-0'
+      }
     />
   );
 }

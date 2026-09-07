@@ -329,4 +329,21 @@ describe('PluginService secure runtime', () => {
     const second = makeService();
     expect(second.listCommands()).toHaveLength(1);
   });
+
+  it('surfaces plugin-contributed retrieval skills for active plugins (DEV-014)', () => {
+    const service = makeService();
+    expect(service.listPluginSkillContributions()).toEqual([]);
+    install(service);
+    const skills = service.listPluginSkillContributions();
+    expect(skills).toEqual([
+      expect.objectContaining({
+        id: 'com.nexnote.demo:quick',
+        pluginId: 'com.nexnote.demo',
+        name: 'Demo 快速检索',
+      }),
+    ]);
+    expect(skills[0]?.params?.disableVector).toBe(true);
+    service.setEnabled('com.nexnote.demo', false);
+    expect(service.listPluginSkillContributions()).toEqual([]);
+  });
 });

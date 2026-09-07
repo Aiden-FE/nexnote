@@ -266,6 +266,13 @@ const pluginObjectChannels = [
 const pluginObject: PayloadValidator = (payload) =>
   isPlainObject(payload) ? null : invalid('payload 必须是对象');
 
+const skillsObjectChannels = [
+  'skills:setEnabled',
+  'skills:setOrder',
+  'skills:setParams',
+  'skills:retrieve',
+] as const;
+
 const VALIDATORS: Partial<Record<IpcChannel, PayloadValidator>> = {
   'ai:credential:submit': aiCredentialSubmit,
   'ai:profile:save': aiProfileSave,
@@ -286,6 +293,9 @@ const VALIDATORS: Partial<Record<IpcChannel, PayloadValidator>> = {
   'chat:saveAsDoc': chatSaveAsDoc,
   'chat:folder:set': chatFolderSet,
   ...Object.fromEntries(pluginObjectChannels.map((c) => [c, pluginObject])) as Partial<
+    Record<IpcChannel, PayloadValidator>
+  >,
+  ...Object.fromEntries(skillsObjectChannels.map((c) => [c, pluginObject])) as Partial<
     Record<IpcChannel, PayloadValidator>
   >,
   'fs:readTextFile': pathOnly,

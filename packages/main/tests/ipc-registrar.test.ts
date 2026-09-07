@@ -9,6 +9,7 @@ import { VaultSession } from '../src/vault/vault-session';
 import { VaultFsService } from '../src/fs/fs-service';
 import { VaultWatchService } from '../src/fs/watch-service';
 import { PluginService } from '../src/plugins/plugin-service';
+import { SkillService } from '../src/skills/skill-service';
 import { GitService } from '../src/git/git-service';
 import { LinkIndexService } from '../src/indexer/index-service';
 import { IPC_CHANNELS } from '@nexnote/shared';
@@ -88,6 +89,16 @@ function makeServices(): {
     git,
     dialogs: { pickDirectory: async () => null, pickFile: async () => null },
     plugins: new PluginService({ hostVersion: '0.1.0' }),
+    skills: new SkillService({
+      retrieve: async () => ({
+        query: '',
+        degraded: false,
+        model: null,
+        contextText: '',
+        sources: [],
+        stages: [],
+      }),
+    }),
     trash: async () => {},
     revealItem: async (absPath: string) => { reveals.push(absPath); },
     watch: new VaultWatchService({ getRoot: () => null, emit: () => undefined }),
@@ -418,11 +429,11 @@ describe('IPC 集成（vault + fs，单一注册表）', () => {
     expect(afterManual).toBeGreaterThan(afterAuto);
   });
 
-  it('命名空间 ping 通道可用（editor/ai/plugins + git 真实通道）', async () => {
+  it('命名空间 ping 通道可用（editor/ai/plugins/skills + git 真实通道）', async () => {
     const ipc = new FakeIpcMain();
     const { services } = makeServices();
     registerAllIpcHandlers(ipc, services);
-    for (const ns of ['editor', 'ai', 'plugins']) {
+    for (const ns of ['editor', 'ai', 'plugins', 'skills']) {
       const pong = (await ipc.invoke(`${ns}:ping`)) as {
         ok: boolean;
         data: { pong: boolean; namespace: string };

@@ -10,6 +10,7 @@ import type { LinkIndexService } from '../indexer/index-service';
 import type { ConfidenceService } from '../confidence/confidence-service';
 import type { RetrievalService } from '../retrieval/retrieval-service';
 import type { PluginService } from '../plugins/plugin-service';
+import type { SkillService } from '../skills/skill-service';
 
 /** 注入给所有 IPC handler 的服务集合（全部可替身，便于单测）。 */
 export interface IpcServices {
@@ -38,6 +39,8 @@ export interface IpcServices {
   retrieval?: RetrievalService;
   /** DEV-013 插件沙箱运行时与能力 RPC。 */
   plugins: PluginService;
+  /** DEV-014 检索 Skill 系统（多 Skill 合并重排）。 */
+  skills?: SkillService;
   appInfo(): AppInfo;
   checkForUpdates(): Promise<UpdateCheckResult>;
 }

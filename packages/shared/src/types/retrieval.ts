@@ -33,6 +33,8 @@ export interface RetrievalSource {
   confidenceScore: number | null;
   /** 该来源主要由哪个阶段命中。 */
   via: RetrievalStageName;
+  /** DEV-014：该来源由哪个检索 Skill 召回（跨 Skill 合并重排溯源）。 */
+  skillId?: string;
 }
 
 export interface RetrievalOptions {
@@ -47,6 +49,8 @@ export interface RetrievalOptions {
   confidenceWeight?: number;
   /** 显式关闭向量重排（测试/调试）。 */
   disableVector?: boolean;
+  /** DEV-014：限定参与召回的 Skill；缺省 = 所有已启用 Skill。 */
+  skillIds?: string[];
 }
 
 export interface RetrievalResponse {

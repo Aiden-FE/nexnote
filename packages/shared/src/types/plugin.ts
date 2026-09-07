@@ -17,6 +17,18 @@ export interface PluginManifest {
   capabilities: PluginPermission[];
   permissions: PluginPermission[];
   description?: string;
+  /** DEV-014：插件贡献的检索 Skill（受约束，仅 retrieval 能力；params 由宿主安全执行）。 */
+  skills?: PluginSkillContribution[];
+}
+
+/** 插件声明的检索 Skill：参数化策略由宿主执行（等价于一次带参数召回），沙箱 RPC 策略为 stretch。 */
+export interface PluginSkillContribution {
+  /** Skill 短 id；完整 id 为 `<pluginId>:<id>`。 */
+  id: string;
+  name?: string;
+  description?: string;
+  /** 召回参数（宿主以这些参数执行 RetrievalService）。 */
+  params?: Record<string, number | boolean | undefined>;
 }
 
 export interface PluginContribution {
@@ -24,6 +36,14 @@ export interface PluginContribution {
   title: string;
   /** command contribution 可选的搜索关键字。 */
   keywords?: string[];
+  /** views 贡献：挂载位置（sidebar 页签 / main 主视图 / settings 设置分区）。 */
+  placement?: 'sidebar' | 'main' | 'settings';
+  /** menus 贡献：右键菜单锚点，缺省归入「插件」分组（editor/context 编辑器右键）。 */
+  anchor?: 'editor/context' | 'block/handle' | 'app';
+  /** menus 贡献：可见性条件（如选中某类块时显示）；缺省始终显示。 */
+  when?: { blockType?: string; requiresSelection?: boolean };
+  /** blockTypes 贡献：块类型标识（序列化进 plugin_block 节点）。 */
+  blockType?: string;
 }
 
 export interface PluginPermissionGrant {

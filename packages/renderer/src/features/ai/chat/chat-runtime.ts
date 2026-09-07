@@ -9,6 +9,7 @@ import type {
 } from '@nexnote/shared';
 import { invoke, onEvent } from '../../../lib/ipc';
 import { retrieve } from '../retrieval/retrieval-client';
+import { getSelectedSkillIds } from '../../skills/chat-skill-store';
 import { useChatStore } from './chat-store';
 import { assembleChatContext } from './context';
 import { refreshAutoDocumentChip } from './chat-context-bridge';
@@ -206,7 +207,11 @@ export async function sendMessage(rawText: string): Promise<void> {
   const { contextBlock } = assembleChatContext(useChatStore.getState().chips);
   let retrieval: RetrievalResponse | null = null;
   try {
-    retrieval = await retrieve({ query: content, budgetChars: 2000 });
+    retrieval = await retrieve({
+      query: content,
+      budgetChars: 2000,
+      skillIds: getSelectedSkillIds(),
+    });
   } catch {
     retrieval = null;
   }
