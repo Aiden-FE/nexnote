@@ -239,6 +239,7 @@ check('updater 下载状态只在事件确认后允许安装且去重 available'
   if (!/downloadedVersion !== availableVersion/.test(updater)) throw new Error('install must require confirmed downloaded version');
   if (!/info\.version === availableVersion\) return/.test(updater)) throw new Error('duplicate update-available events must be suppressed');
   if (!/downloadInFlight/.test(updater)) throw new Error('concurrent download requests must be deduplicated');
+  if (!/a\.autoDownload = true/.test(updater)) throw new Error('available updates must download automatically before prompting installation');
 });
 check('PR 检查覆盖 lint/typecheck/test/build', () => {
   if (!/pnpm lint/.test(devWorkflow)) throw new Error('pr-check missing lint');

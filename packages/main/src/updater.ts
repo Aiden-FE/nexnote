@@ -122,7 +122,7 @@ function emit(status: UpdateCheckResult['status'], message?: string, progress?: 
   return result;
 }
 
-/** Production policy: silent startup check, user-driven download/install confirmation. */
+/** Production policy: silent startup check/download, explicit user-confirmed restart/install. */
 export function initAutoUpdater(
   log: Log,
   statusSender: SendStatus = () => {},
@@ -144,7 +144,9 @@ export function initAutoUpdater(
   }
 
   const a = getAdapter();
-  a.autoDownload = false;
+  // electron-updater owns automatic transfer; update-downloaded remains the sole
+  // authority that enables the renderer's explicit restart/install prompt.
+  a.autoDownload = true;
   a.autoInstallOnAppQuit = true;
   // electron-updater's stable metadata is latest*.yml, never stable*.yml.
   a.channel = updaterChannel(activeChannel);

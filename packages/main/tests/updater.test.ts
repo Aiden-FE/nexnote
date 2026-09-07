@@ -129,6 +129,7 @@ describe('updater policy', () => {
     const statuses: unknown[] = [];
     initAutoUpdater(() => {}, (status) => statuses.push(status), 'beta');
     expect(adapter.channel).toBe('beta');
+    expect(adapter.autoDownload).toBe(true);
     expect(await checkForUpdates()).toMatchObject({ status: 'available', version: '9.9.9', channel: 'beta' });
     expect(statuses).toContainEqual(expect.objectContaining({ status: 'available', version: '9.9.9' }));
   });
@@ -160,9 +161,15 @@ describe('updater policy', () => {
     listeners.get('update-available')?.({ version: '9.9.9' });
     listeners.get('update-available')?.({ version: '9.9.9' });
     expect(statuses.filter((s) => s.status === 'available')).toHaveLength(1);
+    // autoDownload is enabled, but manual duplicate calls still dedupe through
+    // the in-flight guard rather than starting parallel downloads.
     await downloadUpdate();
     await downloadUpdate();
     expect(adapter.downloadUpdate).toHaveBeenCalledTimes(1);
+    // After explicit download confirmation event, a second call returns cached.
+    listeners.get('update-downloaded')?.({ version: '9.9.9' });
+    const cached = await downloadUpdate();
+    expect(cached.status).toBe('downloaded');
   });
 
   it('does not install before a packaged update is downloaded', () => {
