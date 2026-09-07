@@ -600,3 +600,29 @@
   box-shadow: 0 12px 28px rgb(0 0 0 / 15%);
   z-index: 52;
 }
+
+/* ── DEV-017 标题折叠 ── */
+.nexnote-fold-toggle {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1em;
+  height: 1em;
+  margin-right: 0.15em;
+  border: none;
+  background: transparent;
+  color: var(--muted-foreground);
+  font-size: 0.7em;
+  vertical-align: middle;
+  cursor: pointer;
+}
+.nexnote-fold-toggle:hover { color: var(--foreground); }
+.nexnote-folded { opacity: 0.85; }
+.nexnote-fold-hidden { display: none; }
+
+/* 菜单项键盘焦点与悬停同样式（无障碍基础） */
+.nexnote-block-menu__item:focus-visible,
+.nexnote-context-menu__item:focus-visible {
+  background: var(--accent);
+  outline: none;
+}

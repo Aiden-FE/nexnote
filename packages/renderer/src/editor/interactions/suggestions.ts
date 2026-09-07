@@ -13,12 +13,43 @@ export interface PageCandidate {
   title: string;
 }
 
+/** `[[` 查询词解析：支持 `[[标题|别名]]` 与 `[[标题#锚点]]` 语法（`|` 优先）。 */
+export interface WikilinkQuery {
+  /** 页面标题部分（候选过滤、红链创建目标） */
+  title: string;
+  /** 已输入别名（选择候选后随插入载荷保留） */
+  alias: string | null;
+  /** 已输入锚点（选择候选后随插入载荷保留） */
+  heading: string | null;
+}
+
+export function parseWikilinkQuery(query: string): WikilinkQuery {
+  const pipe = query.indexOf('|');
+  if (pipe >= 0) {
+    return { title: query.slice(0, pipe), alias: query.slice(pipe + 1) || null, heading: null };
+  }
+  const hash = query.indexOf('#');
+  if (hash >= 0) {
+    return { title: query.slice(0, hash), alias: null, heading: query.slice(hash + 1) || null };
+  }
+  return { title: query, alias: null, heading: null };
+}
+
 function normalize(q: string): string {
   return q.trim().toLowerCase();
 }
 
+/** 组合插入载荷：目标 = 页面路径（去扩展名）；用户已输入别名/锚点时随选择保留。 */
+function insertPayload(path: string, parsed: WikilinkQuery): SuggestionItem['insert'] {
+  const base = path.replace(/\.md$/i, '').replace(/\\/g, '/');
+  if (parsed.alias != null) return { target: base, alias: parsed.alias };
+  if (parsed.heading != null) return { target: `${base}#${parsed.heading}` };
+  return undefined;
+}
+
 export function filterPageCandidates(pages: PageCandidate[], query: string): SuggestionItem[] {
-  const q = normalize(query);
+  const parsed = parseWikilinkQuery(query);
+  const q = normalize(parsed.title);
   const pool: PageCandidate[] = [];
   for (const p of pages) {
     if (!p.path.toLowerCase().endsWith('.md')) continue;
@@ -44,15 +75,23 @@ export function filterPageCandidates(pages: PageCandidate[], query: string): Sug
     id: p.path.replace(/\.md$/i, '').replace(/\\/g, '/'),
     title: p.title,
     hint: p.path.slice(0, -3),
+    insert: insertPayload(p.path, parsed),
   }));
 }
 
-/** 把「query 未命中任何页面」也加入红链项（回车可创建）。 */
+/** 把「query 未命中任何页面」也加入红链项（回车创建页面并插入链接）。 */
 export function withUncreated(pages: PageCandidate[], query: string): SuggestionItem[] {
   const items = filterPageCandidates(pages, query);
-  const q = normalize(query);
-  if (q && !items.some((it) => it.title.toLowerCase() === q)) {
-    items.push({ id: query.trim(), title: query.trim(), hint: '创建新页面', meta: 'uncreated' });
+  const parsed = parseWikilinkQuery(query);
+  const titlePart = parsed.title.trim();
+  if (titlePart && !items.some((it) => it.title.toLowerCase() === titlePart.toLowerCase())) {
+    items.push({
+      id: titlePart,
+      title: titlePart,
+      hint: '创建新页面',
+      meta: 'uncreated',
+      insert: insertPayload(`${titlePart}.md`, parsed) ?? { target: titlePart },
+    });
   }
   const seen = new Set<string>();
   return items.filter((it) => {

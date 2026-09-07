@@ -1,6 +1,7 @@
 import type { ContextMenuItem } from '@nexnote/kernel';
 import type { BlockMenuContext } from '@nexnote/kernel';
 import type { EditorKernelInstance } from '@nexnote/kernel';
+import { findWrapping } from '@tiptap/pm/transform';
 
 /**
  * DEV-017 块菜单（渲染层构建）：
@@ -34,6 +35,8 @@ export interface BlockMenuDeps {
   pluginItems?: ContextMenuItem[];
   /** 上移/下移/折叠/插入是否可用（由渲染层按编辑器状态提供） */
   canFold?: (ctx: BlockMenuContext) => boolean;
+  /** 当前块是否已折叠（决定菜单项标题为「折叠」还是「展开」） */
+  isFolded?: (ctx: BlockMenuContext) => boolean;
 }
 
 /** 块菜单条目：分隔线用空 title 标记（ContextMenuItem 语义兼容）。 */
@@ -62,7 +65,11 @@ export function buildBlockMenuItems(ctx: BlockMenuContext, deps: BlockMenuDeps):
     { separator: true, title: '' },
     { id: blockMenuActionId('move-up'), title: '上移', hint: '⌥↑' },
     { id: blockMenuActionId('move-down'), title: '下移', hint: '⌥↓' },
-    { id: blockMenuActionId('fold'), title: '折叠', disabled: !deps.canFold?.(ctx) },
+    {
+      id: blockMenuActionId('fold'),
+      title: deps.isFolded?.(ctx) ? '展开' : '折叠',
+      disabled: !deps.canFold?.(ctx),
+    },
     { separator: true, title: '' },
     { id: blockMenuActionId('insert-before'), title: '在上方插入' },
     { id: blockMenuActionId('insert-after'), title: '在下方插入' },
@@ -110,8 +117,8 @@ export function runBlockMenuAction(
         ? kernel.moveBlock(ctx.blockId, neighbors.nextBlockId, 'after')
         : false;
     case blockMenuActionId('fold'): {
-      // MVP：折叠归渲染层 CSS（data-folded）；内核仅占位
-      return true;
+      // 标题折叠：视图层装饰状态（内核 Fold 扩展），不写 Markdown
+      return kernel.toggleBlockFold(ctx.blockId);
     }
     case blockMenuActionId('insert-before'):
       return kernel.insertMarkdownBlocks('\n', ctx.from, 'before');
@@ -155,10 +162,8 @@ export function convertBlock(kind: string, ctx: BlockMenuContext, kernel: Editor
   const $from = kernel.editor.state.doc.resolve(ctx.from);
   const range = $from.blockRange(kernel.editor.state.doc.resolve(ctx.to));
   if (!range) return false;
-  const wrapOk = kernel.editor.view.state.tr.wrap(range, [{ type: nodeType }]);
-  if (wrapOk) {
-    kernel.editor.view.dispatch(wrapOk);
-    return true;
-  }
-  return false;
+  const wrapping = findWrapping(range, nodeType);
+  if (!wrapping) return false;
+  kernel.editor.view.dispatch(kernel.editor.view.state.tr.wrap(range, wrapping));
+  return true;
 }

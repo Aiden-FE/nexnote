@@ -33,6 +33,7 @@ export function writingSlashItems(controller: WritingController): SlashMenuItem[
     id: `ai-${action.id}`,
     title: `AI · ${action.label}`,
     hint: '/ai',
+    group: 'AI',
     keywords: ['ai', '✨', ...action.keywords],
     action: ({ view }) => {
       const target = view.state.selection.empty ? 'cursor' : 'selection';

@@ -11,9 +11,10 @@ import { Hashtag } from './hashtag';
 import { Frontmatter } from './frontmatter';
 import { KernelCodeBlock, KernelTable, KernelTableCell, KernelTableHeader, KernelTableRow } from './code-table';
 import { createBlockIdExtensions } from './block-id';
-import { SlashMenu, defaultSlashMenuItems } from './slash-menu';
+import { SlashMenu, defaultSlashMenuItems, dedupeSlashItems, sortSlashItemsByGroup } from './slash-menu';
 import type { SlashMenuItem } from './slash-menu';
 import { createKernelDragHandle } from './drag-handle';
+import { Fold } from './fold';
 import { SelectionBubble } from './selection-bubble';
 import type { BubbleAction } from './selection-bubble';
 import { ContextMenu } from './context-menu';
@@ -56,6 +57,8 @@ export interface KernelExtensionsOptions {
       };
   /** DEV-017 wikilink 补全候选（query=已输入；渲染层注入 vault 页面）。 */
   wikilinkSuggestions?: (query: string) => SuggestionItem[];
+  /** DEV-017 wikilink 补全选中后的回调（红链创建页面等副作用由渲染层执行）。 */
+  onWikilinkSuggestionPick?: (item: SuggestionItem) => void;
   /** DEV-017 标签补全候选（query=已输入；渲染层注入已知标签）。 */
   hashtagSuggestions?: (query: string) => SuggestionItem[];
   /** DEV-017 块菜单（点击块拖拽手柄弹出；false/缺省关闭）。 */
@@ -106,6 +109,7 @@ export function buildKernelExtensions(options: KernelExtensionsOptions = {}): Ex
     MermaidBlock,
     MathBlock,
     MathInline,
+    Fold,
     ...createBlockIdExtensions(),
     Markdown.configure({ marked: createObsidianMarked() }),
   ];
@@ -121,6 +125,7 @@ export function buildKernelExtensions(options: KernelExtensionsOptions = {}): Ex
       trigger: '[[',
       className: 'nexnote-suggestion nexnote-suggestion--wikilink',
       suggestions: options.wikilinkSuggestions,
+      onPick: options.onWikilinkSuggestionPick,
     });
   }
   if (options.hashtagSuggestions) {
@@ -137,12 +142,16 @@ export function buildKernelExtensions(options: KernelExtensionsOptions = {}): Ex
 
   if (options.slashMenu !== false) {
     const extra = options.extraSlashItems ?? [];
-    const extraItems = typeof extra === 'function' ? extra() : extra;
     extensions.push(
       SlashMenu.configure({
         items: (query: string) => {
           const q = query.trim().toLowerCase();
-          const merged = [...defaultSlashMenuItems(query), ...extraItems];
+          // 函数式 extraSlashItems 在每次打开菜单时实时求值（跟踪插件启停）
+          const extraItems = typeof extra === 'function' ? extra() : extra;
+          // 合并后按 id 去重（渲染层/插件覆盖同名内核默认项）并按分组排序（同组连续）
+          const merged = sortSlashItemsByGroup(
+            dedupeSlashItems([...defaultSlashMenuItems(query), ...extraItems]),
+          );
           if (!q) return merged;
           return merged.filter(
             (it) =>

@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   filterPageCandidates,
   filterTagCandidates,
+  parseWikilinkQuery,
   withUncreated,
 } from '../src/editor/interactions/suggestions';
 import {
@@ -37,6 +38,40 @@ describe('DEV-017 wikilink 候选（纯逻辑）', () => {
   it('精确命中优先排序', () => {
     const items = filterPageCandidates(pages, '计划');
     expect(items[0]?.id).toBe('项目/计划');
+  });
+});
+
+describe('DEV-017 wikilink 别名/锚点语法（[[title|alias]] / [[title#heading]]）', () => {
+  const pages = [
+    { path: '项目/计划.md', title: '计划' },
+    { path: '随笔.md', title: '随笔' },
+  ];
+  it('parseWikilinkQuery 拆分标题/别名/锚点', () => {
+    expect(parseWikilinkQuery('计划')).toEqual({ title: '计划', alias: null, heading: null });
+    expect(parseWikilinkQuery('计划|日程')).toEqual({ title: '计划', alias: '日程', heading: null });
+    expect(parseWikilinkQuery('计划#目标')).toEqual({ title: '计划', alias: null, heading: '目标' });
+    expect(parseWikilinkQuery('计划|')).toEqual({ title: '计划', alias: null, heading: null });
+  });
+  it('输入别名后仍按标题过滤候选，选择保留别名', () => {
+    const items = filterPageCandidates(pages, '计划|日程');
+    expect(items.length).toBe(1);
+    expect(items[0]?.insert).toEqual({ target: '项目/计划', alias: '日程' });
+  });
+  it('输入锚点后选择保留锚点', () => {
+    const items = filterPageCandidates(pages, '随笔#第二节');
+    expect(items[0]?.insert).toEqual({ target: '随笔#第二节' });
+  });
+  it('无修饰语法时无 insert 载荷（内核回退默认别名推导）', () => {
+    const items = filterPageCandidates(pages, '计划');
+    expect(items[0]?.insert).toBeUndefined();
+  });
+  it('红链项以标题部分为创建目标，并携带已输入别名/锚点', () => {
+    const items = withUncreated(pages, '新页|备注');
+    const create = items.find((i) => i.meta === 'uncreated');
+    expect(create?.id).toBe('新页');
+    expect(create?.insert).toEqual({ target: '新页', alias: '备注' });
+    const anchored = withUncreated(pages, '新页#引言').find((i) => i.meta === 'uncreated');
+    expect(anchored?.insert).toEqual({ target: '新页#引言' });
   });
 });
 
@@ -89,5 +124,17 @@ describe('DEV-017 块菜单构建', () => {
     expect(items.some((i) => i.id === 'ai-x')).toBe(true); // AI 项直接纳入
     expect(items.some((i) => i.title === '插件项')).toBe(true);
     expect(items.some((i) => i.separator)).toBe(true);
+  });
+  it('折叠项：不可折叠禁用；已折叠显示「展开」', () => {
+    const foldedItems = buildBlockMenuItems(ctx, {
+      getKernel: () => null,
+      canFold: () => true,
+      isFolded: () => true,
+    });
+    const foldItem = foldedItems.find((i) => i.id === `${BLOCK_MENU_PREFIX}fold`);
+    expect(foldItem?.title).toBe('展开');
+    expect(foldItem?.disabled).toBeFalsy();
+    const disabledItems = buildBlockMenuItems(ctx, { getKernel: () => null, canFold: () => false });
+    expect(disabledItems.find((i) => i.id === `${BLOCK_MENU_PREFIX}fold`)?.disabled).toBe(true);
   });
 });

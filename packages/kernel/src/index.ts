@@ -35,6 +35,7 @@ export type { FrontmatterData, FrontmatterValue } from './frontmatter/model';
 export { KernelCodeBlock, KernelTable } from './extensions/code-table';
 export { SlashMenu, defaultSlashMenuItems, slashMenuPluginKey } from './extensions/slash-menu';
 export type { SlashMenuItem, SlashMenuOptions, SlashMenuState } from './extensions/slash-menu';
+export { Fold, foldPluginKey, canFoldBlock, isBlockFolded, toggleBlockFold } from './extensions/fold';
 export { createKernelDragHandle } from './extensions/drag-handle';
 export { SelectionBubble, selectionBubblePluginKey } from './extensions/selection-bubble';
 export type { BubbleAction, SelectionBubbleOptions } from './extensions/selection-bubble';

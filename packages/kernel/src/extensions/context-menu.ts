@@ -47,11 +47,21 @@ export function buildMenuDom(
   root.style.top = `${coords.y}px`;
   root.style.left = `${coords.x}px`;
 
+  // ── 键盘导航状态（DEV-017：↑↓ 移动 / Enter 执行 / → 进子菜单 / ← 返回 / Esc 关闭）──
+  /** 每个容器（root 或 submenu）内可聚焦的启用按钮，按文档序 */
+  const rowsByContainer = new Map<HTMLElement, HTMLButtonElement[]>();
+  /** 有子菜单的行 → 子菜单元素 */
+  const subByRow = new Map<HTMLButtonElement, HTMLElement>();
+  /** 子菜单容器 → 其父级行（返回时恢复焦点） */
+  const parentRowBySub = new Map<HTMLElement, HTMLButtonElement>();
+
   const renderItems = (
     container: HTMLElement,
     list: ContextMenuItem[],
     depth: number,
   ): void => {
+    const rows: HTMLButtonElement[] = [];
+    rowsByContainer.set(container, rows);
     for (const item of list) {
       if (item.separator) {
         const sep = document.createElement('div');
@@ -88,11 +98,17 @@ export function buildMenuDom(
         sub.className = `${className}__sub`;
         sub.style.display = 'none';
         renderItems(sub, item.submenu, depth + 1);
+        subByRow.set(row, sub);
+        parentRowBySub.set(sub, row);
         wrap.addEventListener('mouseenter', () => {
           sub.style.display = 'block';
         });
         wrap.addEventListener('mouseleave', () => {
           sub.style.display = 'none';
+        });
+        row.addEventListener('click', (e) => {
+          e.preventDefault();
+          openSubmenu(row);
         });
         wrap.append(row);
         wrap.append(sub);
@@ -106,17 +122,103 @@ export function buildMenuDom(
       } else {
         container.append(row);
       }
+      if (!row.disabled) rows.push(row);
     }
   };
+
+  /** 键盘焦点所在的菜单层级栈（栈底是 root） */
+  const levelStack: HTMLElement[] = [];
+  const currentRows = (): HTMLButtonElement[] => {
+    const top = levelStack[levelStack.length - 1];
+    return (top && rowsByContainer.get(top)) ?? [];
+  };
+
+  const focusRow = (row: HTMLButtonElement | undefined) => row?.focus();
+
+  const moveFocus = (dir: 1 | -1) => {
+    const rows = currentRows();
+    if (rows.length === 0) return;
+    const idx = rows.findIndex((r) => r === document.activeElement);
+    const next = idx < 0 ? (dir === 1 ? 0 : rows.length - 1) : (idx + dir + rows.length) % rows.length;
+    focusRow(rows[next]);
+  };
+
+  const openSubmenu = (row: HTMLButtonElement) => {
+    const sub = subByRow.get(row);
+    if (!sub) return;
+    sub.style.display = 'block';
+    levelStack.push(sub);
+    focusRow(rowsByContainer.get(sub)?.[0]);
+  };
+
+  const closeSubmenu = (): boolean => {
+    const sub = levelStack.pop();
+    if (!sub || levelStack.length === 0) {
+      if (sub) levelStack.push(sub);
+      return false;
+    }
+    sub.style.display = 'none';
+    focusRow(parentRowBySub.get(sub));
+    return true;
+  };
+
   renderItems(root, items, 0);
   document.body.append(root);
+  levelStack.push(root);
+  // 打开即聚焦首项，键盘用户无需先 Tab
+  focusRow(currentRows()[0]);
 
-  const close = () => root.remove();
+  let closed = false;
+  /** 全量拆除（移除 document 监听 + 根节点）；幂等。 */
+  const close = () => {
+    if (closed) return;
+    closed = true;
+    document.removeEventListener('mousedown', onDocClick);
+    document.removeEventListener('keydown', onKey);
+    document.removeEventListener('scroll', onScroll, true);
+    root.remove();
+  };
   const onDocClick = (e: MouseEvent) => {
     if (!root.contains(e.target as Node)) close();
   };
   const onKey = (e: KeyboardEvent) => {
-    if (e.key === 'Escape') close();
+    switch (e.key) {
+      case 'ArrowDown':
+        e.preventDefault();
+        moveFocus(1);
+        return;
+      case 'ArrowUp':
+        e.preventDefault();
+        moveFocus(-1);
+        return;
+      case 'ArrowRight': {
+        const active = document.activeElement as HTMLButtonElement | null;
+        if (active && subByRow.has(active)) {
+          e.preventDefault();
+          openSubmenu(active);
+        }
+        return;
+      }
+      case 'ArrowLeft':
+        e.preventDefault();
+        closeSubmenu();
+        return;
+      case 'Enter':
+      case ' ': {
+        const active = document.activeElement as HTMLButtonElement | null;
+        if (active && root.contains(active)) {
+          e.preventDefault();
+          if (subByRow.has(active)) openSubmenu(active);
+          else active.click();
+        }
+        return;
+      }
+      case 'Escape':
+        e.preventDefault();
+        if (!closeSubmenu()) close();
+        return;
+      default:
+    }
   };
   const onScroll = () => close();
   // contextmenu 之前的右键 mousedown 已派发完毕，此处立即绑定不会误关。
@@ -126,10 +228,7 @@ export function buildMenuDom(
 
   return {
     destroy() {
-      document.removeEventListener('mousedown', onDocClick);
-      document.removeEventListener('keydown', onKey);
-      document.removeEventListener('scroll', onScroll, true);
-      root.remove();
+      close();
     },
   };
 }

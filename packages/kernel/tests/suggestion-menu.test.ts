@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest';
 import { TextSelection } from '@tiptap/pm/state';
 import { createEditor } from '../src/editor';
 import type { EditorKernelInstance } from '../src/editor';
+import type { SuggestionItem } from '../src/extensions/suggestion-menu';
 
 function typeText(view: Parameters<never>[0] | never, text: string): void {
   // 逐字符驱动 handleTextInput（与真实输入同路径），未处理则默认插入。
@@ -71,6 +72,20 @@ function make() {
   return { container, kernel };
 }
 
+/** 自定义 wikilink 候选（含 insert 载荷）的编辑器。 */
+function make2(wikilinkItems: SuggestionItem[]) {
+  const container = document.createElement('div');
+  document.body.append(container);
+  const kernel = createEditor(container, {
+    initialMarkdown: '占位\n',
+    slashMenu: false,
+    dragHandle: false,
+    wikilinkSuggestions: () => wikilinkItems,
+  });
+  placeCursorAtEnd(kernel);
+  return { container, kernel };
+}
+
 describe('wikilink 补全（DEV-017）', () => {
   it('输入 [[ 弹出候选，Enter 插入 wikilink 节点', () => {
     const { kernel, container } = make();
@@ -123,6 +138,65 @@ describe('wikilink 补全（DEV-017）', () => {
     pressKey(kernel.editor.view as never, 'Escape');
     const menu = container.parentElement?.querySelector('.nexnote-suggestion--wikilink') as HTMLElement;
     expect(menu.style.display).toBe('none');
+    kernel.destroy();
+    container.remove();
+  });
+
+  it('insert 载荷：带别名选择插入 [[target|alias]]，带锚点插入 [[target#heading]]', () => {
+    const { kernel, container } = make2([
+      { id: '项目计划', title: '项目计划', insert: { target: '项目计划', alias: '别名' } },
+      { id: '锚点页', title: '锚点页', insert: { target: '锚点页#章节一' } },
+    ]);
+    typeText(kernel.editor.view as never, '[[');
+    pressKey(kernel.editor.view as never, 'Enter'); // 第一项：别名
+    expect(kernel.getMarkdown()).toContain('[[项目计划|别名]]');
+    // 第二次：锚点（候选不过滤，↓ 选中第二项）
+    placeCursorAtEnd(kernel);
+    typeText(kernel.editor.view as never, '[[');
+    pressKey(kernel.editor.view as never, 'ArrowDown');
+    pressKey(kernel.editor.view as never, 'Enter');
+    expect(kernel.getMarkdown()).toContain('[[锚点页#章节一]]');
+    kernel.destroy();
+    container.remove();
+  });
+
+  it('插入是单事务：一次 undo 还原触发串文本', async () => {
+    const { kernel, container } = make();
+    typeText(kernel.editor.view as never, '[[');
+    typeText(kernel.editor.view as never, '项目');
+    // 越过 undo 分组窗口（newGroupDelay 400ms），让选择动作成为独立撤销组
+    await new Promise((r) => setTimeout(r, 450));
+    pressKey(kernel.editor.view as never, 'Enter');
+    expect(kernel.getMarkdown()).toContain('[[项目计划]]');
+    kernel.undo();
+    const json = kernel.getJSON();
+    const links = json.content!.flatMap((n) => n.content ?? []).filter((n) => n.type === 'wikilink');
+    expect(links.length).toBe(0); // wikilink 节点被撤销
+    // 触发串与查询词随单事务一并还原（序列化时 [[ 会被转义，故断言 JSON 文本）
+    const text = json.content!.map((n) => (n.content ?? []).map((c) => c.text ?? '').join('')).join('\n');
+    expect(text).toContain('[[项目');
+    kernel.destroy();
+    container.remove();
+  });
+
+  it('onPick 回调在红链项插入后触发（渲染层借此建页）', () => {
+    const picked: string[] = [];
+    const container = document.createElement('div');
+    document.body.append(container);
+    const kernel = createEditor(container, {
+      initialMarkdown: '占位\n',
+      slashMenu: false,
+      dragHandle: false,
+      wikilinkSuggestions: () => [
+        { id: '新页面', title: '新页面', hint: '创建新页面', meta: 'uncreated' },
+      ],
+      onWikilinkSuggestionPick: (item) => picked.push(item.id),
+    });
+    placeCursorAtEnd(kernel);
+    typeText(kernel.editor.view as never, '[[');
+    pressKey(kernel.editor.view as never, 'Enter');
+    expect(picked).toEqual(['新页面']);
+    expect(kernel.getMarkdown()).toContain('[[新页面]]');
     kernel.destroy();
     container.remove();
   });

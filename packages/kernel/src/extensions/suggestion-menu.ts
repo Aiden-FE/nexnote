@@ -1,5 +1,4 @@
 import { Extension } from '@tiptap/core';
-import type { Editor } from '@tiptap/core';
 import { Plugin, PluginKey } from '@tiptap/pm/state';
 import type { EditorView } from '@tiptap/pm/view';
 
@@ -19,6 +18,11 @@ export interface SuggestionItem {
   title: string;
   hint?: string;
   meta?: 'uncreated';
+  /**
+   * wikilink 插入载荷（DEV-017）：用户已输入 `|别名` / `#锚点` 时由渲染层给出，
+   * 内核原样写入节点 attrs；缺省回退为 id/target 与「title≠id 则 title 作别名」。
+   */
+  insert?: { target: string; alias?: string | null };
 }
 
 export type SuggestionKind = 'wikilink' | 'hashtag';
@@ -34,6 +38,8 @@ export interface SuggestionTrigger {
   requireWhitespaceBefore?: boolean;
   /** 取候选（query = 已输入查询词，同步返回；内核截断前 8 项） */
   suggestions: (query: string) => SuggestionItem[];
+  /** 选中项插入后的回调（渲染层借此创建红链页面等副作用） */
+  onPick?: (item: SuggestionItem) => void;
   className: string;
 }
 
@@ -115,7 +121,7 @@ function createMenu(
   return { dom, render, hide, destroy };
 }
 
-function createSuggestionPlugin(trigger: SuggestionTrigger, editorRef: Editor): Plugin {
+function createSuggestionPlugin(trigger: SuggestionTrigger): Plugin {
   const key = new PluginKey(`nexnoteSuggestion-${trigger.name}`);
   let menu: ReturnType<typeof createMenu> | null = null;
   let active: ActiveMenu | null = null;
@@ -136,6 +142,16 @@ function createSuggestionPlugin(trigger: SuggestionTrigger, editorRef: Editor): 
     return { offset: idx, query: after };
   }
 
+  /** 把菜单渲染到 active.from 对应的光标位置（recompute 与键盘导航共用）。 */
+  function syncMenu(view: EditorView): void {
+    if (!menu || !active) return;
+    const host = view.dom.parentElement;
+    if (host && !menu.dom.isConnected) host.append(menu.dom);
+    const coords = caretCoords(view, active.from);
+    if (coords) menu.render(active, coords);
+    else menu.hide();
+  }
+
   /**
    * 文档驱动重算：从当前光标所在段落解析触发串，重建候选与菜单位置。
    * 每个 update 都执行（菜单开启时随输入实时过滤；关闭时开销可忽略）。
@@ -143,7 +159,7 @@ function createSuggestionPlugin(trigger: SuggestionTrigger, editorRef: Editor): 
   function recompute(view: EditorView): boolean {
     const { from: selFrom } = view.state.selection;
     const $from = view.state.doc.resolve(selFrom);
-    const textBefore = $from.parent.textBetween(0, $from.parentOffset, undefined, '\ufffc');
+    const textBefore = $from.parent.textBetween(0, $from.parentOffset, undefined, '￼');
     const found = findTrigger(textBefore);
     if (!found || found.query.includes(trigger.trigger)) {
       active = null;
@@ -171,12 +187,7 @@ function createSuggestionPlugin(trigger: SuggestionTrigger, editorRef: Editor): 
     } else {
       active = { trigger, from: docFrom, query: found.query, items, activeIndex: 0 };
     }
-    if (!menu) return true;
-    const host = view.dom.parentElement;
-    if (host && !menu.dom.isConnected) host.append(menu.dom);
-    const coords = caretCoords(view, docFrom);
-    if (coords) menu.render(active, coords);
-    else menu.hide();
+    syncMenu(view);
     return true;
   }
 
@@ -189,17 +200,23 @@ function createSuggestionPlugin(trigger: SuggestionTrigger, editorRef: Editor): 
     if (!active) return;
     const from = active.from;
     const to = view.state.selection.from;
-    // 先删除触发串+查询词，再插入对应内联原子节点（单事务，可撤销）。
-    view.dispatch(view.state.tr.delete(from, to));
-    if (trigger.kind === 'wikilink') {
-      const target = item.id;
-      const alias = item.title !== item.id ? item.title : null;
-      editorRef.commands.insertWikilink?.({ target, alias });
-    } else {
-      editorRef.commands.insertHashtag?.({ tag: item.id });
-    }
+    const { schema } = view.state;
+    // 单事务删除「触发串+查询词」并插入内联原子节点（一次 undo 即还原）。
+    const node =
+      trigger.kind === 'wikilink'
+        ? schema.nodes.wikilink?.create({
+            target: item.insert?.target ?? item.id,
+            alias: item.insert
+              ? (item.insert.alias ?? null)
+              : item.title !== item.id
+                ? item.title
+                : null,
+          })
+        : schema.nodes.hashtag?.create({ tag: item.id });
+    if (node) view.dispatch(view.state.tr.replaceWith(from, to, node));
     active = null;
     menu?.hide();
+    trigger.onPick?.(item);
     view.focus();
   }
 
@@ -235,11 +252,7 @@ function createSuggestionPlugin(trigger: SuggestionTrigger, editorRef: Editor): 
           if (count === 0) return true;
           const dir = event.key === 'ArrowDown' ? 1 : -1;
           active.activeIndex = (active.activeIndex + dir + count) % count;
-          if (!menu) return true;
-          const host = view.dom.parentElement;
-          if (host && !menu.dom.isConnected) host.append(menu.dom);
-          const coords = caretCoords(view, active.from);
-          if (coords) menu.render(active, coords);
+          syncMenu(view);
           return true;
         }
         if (event.key === 'Enter' || event.key === 'Tab') {
@@ -267,9 +280,6 @@ export const SuggestionMenu = Extension.create<SuggestionMenuOptions>({
   },
 
   addProseMirrorPlugins() {
-    const editorRef = this.editor;
-    return this.options.triggers.map((trigger) =>
-      createSuggestionPlugin(trigger, editorRef),
-    );
+    return this.options.triggers.map((trigger) => createSuggestionPlugin(trigger));
   },
 });

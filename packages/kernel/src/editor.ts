@@ -5,6 +5,7 @@ import type { Node as ProseMirrorNode } from '@tiptap/pm/model';
 
 import { buildKernelExtensions } from './extensions';
 import type { KernelExtensionsOptions } from './extensions';
+import { canFoldBlock, isBlockFolded, toggleBlockFold } from './extensions/fold';
 import { createMarkdownManager, parseMarkdown, serializeMarkdown } from './markdown/pipeline';
 import { createSaveScheduler } from './save';
 import type { SaveScheduler } from './save';
@@ -72,6 +73,12 @@ export interface EditorKernelInstance {
    * 内核自动吸附到顶层块边界；side 决定插入到目标块之前/之后。
    */
   insertMarkdownBlocks(markdown: string, at: number, side?: 'before' | 'after'): boolean;
+  /** 块是否可折叠（顶层标题块） */
+  canFoldBlock(blockId: string): boolean;
+  /** 块当前是否已折叠 */
+  isBlockFolded(blockId: string): boolean;
+  /** 切换标题折叠（视图层状态，不写 Markdown）；不可折叠返回 false */
+  toggleBlockFold(blockId: string): boolean;
   /** 撤销 */
   undo(): boolean;
   /** 重做 */
@@ -97,6 +104,7 @@ export function createEditor(
     blockMenu: options.blockMenu,
     extraExtensions: options.extraExtensions,
     wikilinkSuggestions: options.wikilinkSuggestions,
+    onWikilinkSuggestionPick: options.onWikilinkSuggestionPick,
     hashtagSuggestions: options.hashtagSuggestions,
   });
 
@@ -238,6 +246,15 @@ export function createEditor(
     },
     undo() {
       return editor.chain().focus('end').undo().run();
+    },
+    canFoldBlock(blockId: string) {
+      return canFoldBlock(editor.state, blockId);
+    },
+    isBlockFolded(blockId: string) {
+      return isBlockFolded(editor.state, blockId);
+    },
+    toggleBlockFold(blockId: string) {
+      return toggleBlockFold(editor.view, blockId);
     },
     redo() {
       return editor.chain().focus('end').redo().run();

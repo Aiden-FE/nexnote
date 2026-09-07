@@ -29,7 +29,11 @@ import { CHAT_ASK_ACTION, requestAskAi } from '../features/ai/chat/ask-ai';
 import { openChatWikilinkOrNull } from '../features/ai/chat/chat-runtime';
 import { useUiStore } from '../stores/ui-store';
 import { pluginContributionRegistry } from '../registries';
-import { buildPluginMenuItems, PLUGIN_MENU_ACTION_PREFIX } from '../features/plugins/extension-points';
+import {
+  buildDispatchableBlockCommands,
+  buildPluginMenuItems,
+  PLUGIN_MENU_ACTION_PREFIX,
+} from '../features/plugins/extension-points';
 import type { BlockMenuContext } from '@nexnote/kernel';
 import type { EditorKernelInstance, SlashMenuItem } from '@nexnote/kernel';
 import {
@@ -44,9 +48,6 @@ import {
 import { formatBubbleActions, runFormatAction } from './interactions/formatting';
 import { usePluginStore } from '../features/plugins/plugin-store';
 import { usePageTreeStore } from '../stores/page-tree-store';
-import {
-  buildDispatchableBlockCommands,
-} from '../features/plugins/extension-points';
 import {
   buildBuiltinSlashItems,
   buildBuiltinViewExtensions,
@@ -74,11 +75,16 @@ function createMediaInsertSlashItems(): SlashMenuItem[] {
       input.accept = accept;
       input.style.display = 'none';
       document.body.append(input);
-      input.addEventListener('change', () => {
-        const file = input.files?.[0] ?? null;
+      let settled = false;
+      const done = (file: File | null) => {
+        if (settled) return;
+        settled = true;
         input.remove();
         resolve(file ? URL.createObjectURL(file) : null);
-      });
+      };
+      input.addEventListener('change', () => done(input.files?.[0] ?? null));
+      // 取消选择（Esc/点空白）也要清掉隐藏 input，否则节点泄漏
+      input.addEventListener('cancel', () => done(null));
       input.click();
     });
   };
@@ -115,8 +121,8 @@ function createMediaInsertSlashItems(): SlashMenuItem[] {
         void (async () => {
           const url = await pick('*/*');
           if (!url) return;
-          const text = `[附件](${url})`;
-          view.dispatch(view.state.tr.insertText(text, view.state.selection.from - 1));
+          // 斜杠触发串已在 action 前被删除，直接在当前选区插入链接文本
+          view.dispatch(view.state.tr.insertText(`[附件](${url})`));
         })();
         return true;
       },
@@ -392,6 +398,26 @@ export function EditorView({ paneId, tab }: EditorViewProps) {
           .map((e) => ({ path: e.path, title: titleFromPath(e.path) }));
         return withUncreated(pages, query);
       },
+      // 红链回车创建：写入 `# 标题` 初始页（与新建页/激活链接同约定），已存在则不动
+      onWikilinkSuggestionPick: (item) => {
+        if (item.meta !== 'uncreated') return;
+        const target = item.insert?.target ?? item.id;
+        const pageName = target.split('#')[0] || target;
+        const nextPath = `${sanitizePageTitle(pageName)}.md`;
+        void (async () => {
+          try {
+            const exists = await invoke('fs:exists', { path: nextPath });
+            if (exists) return;
+            await invoke('fs:writeTextFile', {
+              path: nextPath,
+              content: `# ${titleFromPath(nextPath)}\n\n`,
+              createParentDirs: true,
+            });
+          } catch {
+            // 页面创建失败不阻塞插入（链接仍指向未来的页面）
+          }
+        })();
+      },
       hashtagSuggestions: (query) =>
         filterTagCandidates(
           // 已知标签（索引 > 扫描）实时过滤，支持嵌套
@@ -406,7 +432,8 @@ export function EditorView({ paneId, tab }: EditorViewProps) {
             getKernel: () => kernelRef.current,
             buildAiSubmenu: (blockCtx) => writingContextMenu({ target: blockCtx.target }),
             pluginItems: buildPluginMenuItems(pluginContributionRegistry.all()),
-            canFold: () => false,
+            canFold: (blockCtx) => kernelRef.current?.canFoldBlock(blockCtx.blockId) ?? false,
+            isFolded: (blockCtx) => kernelRef.current?.isBlockFolded(blockCtx.blockId) ?? false,
           }),
         onAction: (id, ctx) => {
           if (id.startsWith(PLUGIN_MENU_ACTION_PREFIX)) {

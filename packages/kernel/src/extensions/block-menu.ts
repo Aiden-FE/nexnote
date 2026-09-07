@@ -39,12 +39,11 @@ function blockRangeById(
   blockId: string,
 ): { from: number; to: number; text: string } | null {
   const { doc } = view.state;
-  const pos = 0;
   let hitStart = -1;
   let hitEnd = -1;
   doc.forEach((node, offset) => {
     if (hitStart >= 0) return;
-    const start = pos + offset;
+    const start = offset;
     const end = start + node.nodeSize;
     if ((node.attrs as { blockId?: string }).blockId === blockId) {
       hitStart = start;
@@ -69,6 +68,25 @@ export const BlockMenu = Extension.create<BlockMenuOptions>({
       build: () => [],
       onAction: () => undefined,
       className: 'nexnote-block-menu',
+    };
+  },
+
+  addKeyboardShortcuts() {
+    return {
+      // 键盘入口：为光标所在顶层块打开块菜单（无障碍基础；手柄点击是鼠标入口）
+      'Mod-Shift-m': () => {
+        const { state, view } = this.editor;
+        const $from = state.selection.$from;
+        if ($from.depth < 1) return false;
+        const node = state.doc.child($from.index(0));
+        const blockId = (node.attrs as { blockId?: string }).blockId;
+        if (!blockId) return false;
+        const menu = blockMenuPluginKey.getState(state);
+        if (!menu) return false;
+        const coords = view.coordsAtPos($from.before(1));
+        menu.showAt(view, coords.left, coords.bottom + 4, blockId);
+        return true;
+      },
     };
   },
 
@@ -113,7 +131,7 @@ export const BlockMenu = Extension.create<BlockMenuOptions>({
         key: blockMenuPluginKey,
         state: {
           init: () => state,
-          apply: (tr, old) => (tr.docChanged ? old : old),
+          apply: (_tr, old) => old,
         },
         view() {
           return {

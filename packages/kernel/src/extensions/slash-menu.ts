@@ -36,6 +36,42 @@ export interface SlashMenuOptions {
 
 export const slashMenuPluginKey = new PluginKey<SlashMenuState>('nexnoteSlashMenu');
 
+/** 分组展示顺序（渲染按首次出现顺序抬头，需先按此排序保证同组连续）。 */
+export const SLASH_GROUP_ORDER = ['基础块', '媒体', '高级', 'AI', '插件'] as const;
+
+/**
+ * 按分组稳定排序（同组保持原有相对顺序），未分组项排最后。
+ * 渲染层只在 group 变化时插分组头，非连续同组会出现重复分组头，故合并后必须排序。
+ */
+export function sortSlashItemsByGroup(items: SlashMenuItem[]): SlashMenuItem[] {
+  const rank = (g: string | undefined): number => {
+    if (!g) return SLASH_GROUP_ORDER.length;
+    const i = (SLASH_GROUP_ORDER as readonly string[]).indexOf(g);
+    return i < 0 ? SLASH_GROUP_ORDER.length : i;
+  };
+  return items
+    .map((item, index) => ({ item, index }))
+    .sort((a, b) => rank(a.item.group) - rank(b.item.group) || a.index - b.index)
+    .map(({ item }) => item);
+}
+
+/**
+ * 按 id 去重：后出现者覆盖先出现者（渲染层/插件可覆盖内核默认项），
+ * 保留首次出现位置以维持分组排序稳定。
+ */
+export function dedupeSlashItems(items: SlashMenuItem[]): SlashMenuItem[] {
+  const lastWins = new Map<string, SlashMenuItem>();
+  for (const item of items) lastWins.set(item.id, item);
+  const seen = new Set<string>();
+  const out: SlashMenuItem[] = [];
+  for (const item of items) {
+    if (seen.has(item.id)) continue;
+    seen.add(item.id);
+    out.push(lastWins.get(item.id)!);
+  }
+  return out;
+}
+
 /** 默认项集：结构块插入（动作全部用 TipTap 命令语义，经 view.dispatch 执行）。 */
 export function defaultSlashMenuItems(query: string): SlashMenuItem[] {
   const q = query.trim().toLowerCase();
@@ -84,6 +120,63 @@ export function defaultSlashMenuItems(query: string): SlashMenuItem[] {
         const current = selection.$from.parent;
         if (current.type.name === 'paragraph') return false;
         view.dispatch(view.state.tr.setBlockType(selection.from, selection.to, schema.nodes.paragraph!, {}));
+        return true;
+      },
+    },
+    {
+      id: 'bulletList',
+      title: '无序列表',
+      hint: '- ',
+      group: '基础块',
+      keywords: ['list', 'bullet', 'ul', 'liebiao', 'wuxu'],
+      action: ({ view }) => {
+        const { bulletList, listItem, paragraph } = view.state.schema.nodes;
+        if (!bulletList || !listItem || !paragraph) return false;
+        view.dispatch(
+          view.state.tr
+            .replaceSelectionWith(bulletList.create(null, [listItem.create(null, paragraph.create())]))
+            .scrollIntoView(),
+        );
+        return true;
+      },
+    },
+    {
+      id: 'orderedList',
+      title: '有序列表',
+      hint: '1. ',
+      group: '基础块',
+      keywords: ['list', 'ordered', 'ol', 'number', 'youxu'],
+      action: ({ view }) => {
+        const { orderedList, listItem, paragraph } = view.state.schema.nodes;
+        if (!orderedList || !listItem || !paragraph) return false;
+        view.dispatch(
+          view.state.tr
+            .replaceSelectionWith(orderedList.create(null, [listItem.create(null, paragraph.create())]))
+            .scrollIntoView(),
+        );
+        return true;
+      },
+    },
+    {
+      id: 'table',
+      title: '表格',
+      hint: '| … |',
+      group: '基础块',
+      keywords: ['table', 'grid', 'biaoge'],
+      action: ({ view }) => {
+        const { table, tableRow, tableHeader, tableCell, paragraph } = view.state.schema.nodes;
+        if (!table || !tableRow || !tableHeader || !tableCell || !paragraph) return false;
+        const header = tableRow.create(null, [
+          tableHeader.create(null, paragraph.create()),
+          tableHeader.create(null, paragraph.create()),
+        ]);
+        const row = tableRow.create(null, [
+          tableCell.create(null, paragraph.create()),
+          tableCell.create(null, paragraph.create()),
+        ]);
+        view.dispatch(
+          view.state.tr.replaceSelectionWith(table.create(null, [header, row])).scrollIntoView(),
+        );
         return true;
       },
     },
@@ -140,22 +233,6 @@ export function defaultSlashMenuItems(query: string): SlashMenuItem[] {
       },
     },
     {
-      id: 'image',
-      title: '图片',
-      hint: 'img',
-      keywords: ['image', 'img', 'picture', 'tupian'],
-      group: '媒体',
-      action: () => false,
-    },
-    {
-      id: 'attachment',
-      title: '附件',
-      hint: 'file',
-      keywords: ['attachment', 'file', 'fujian'],
-      group: '媒体',
-      action: () => false,
-    },
-    {
       id: 'horizontalRule',
       title: '分隔线',
       hint: '---',
@@ -168,9 +245,11 @@ export function defaultSlashMenuItems(query: string): SlashMenuItem[] {
       },
     },
   ];
-  if (!q) return items;
-  return items.filter(
-    (it) => it.title.toLowerCase().includes(q) || (it.keywords ?? []).some((k) => k.includes(q)),
+  if (!q) return sortSlashItemsByGroup(items);
+  return sortSlashItemsByGroup(
+    items.filter(
+      (it) => it.title.toLowerCase().includes(q) || (it.keywords ?? []).some((k) => k.includes(q)),
+    ),
   );
 }
 
