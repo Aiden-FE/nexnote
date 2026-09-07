@@ -29,11 +29,11 @@ export interface ContextMenuOptions {
 
 export const contextMenuPluginKey = new PluginKey<{ open: boolean }>('nexnoteContextMenu');
 
-interface MenuHandle {
+export interface MenuHandle {
   destroy(): void;
 }
 
-function buildMenuDom(
+export function buildMenuDom(
   className: string,
   items: ContextMenuItem[],
   coords: { x: number; y: number },

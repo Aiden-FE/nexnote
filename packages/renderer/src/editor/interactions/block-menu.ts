@@ -1,0 +1,160 @@
+import type { ContextMenuItem } from '@nexnote/kernel';
+import type { BlockMenuContext } from '@nexnote/kernel';
+import type { EditorKernelInstance } from '@nexnote/kernel';
+
+/**
+ * DEV-017 块菜单（渲染层构建）：
+ * - 基础：复制 / 剪切 / 删除 / 复制块 ID / 转换为子菜单 / 上移 / 下移 / 折叠 / 上下插入
+ * - AI 子菜单（DEV-010 六动作，经 writingController）
+ * - 插件菜单项（DEV-014 注册表）
+ *
+ * 动作经 onAction 分发给 kernel 命令（事务式、可撤销）。
+ */
+
+export const BLOCK_MENU_PREFIX = 'block-menu:';
+
+/** 块菜单执行时所需的块序上下文（相邻块 id 供上移/下移）。 */
+export interface BlockNeighbors {
+  prevBlockId: string | null;
+  nextBlockId: string | null;
+}
+export const BLOCK_MENU_AI_PREFIX = 'block-menu-ai:';
+export const BLOCK_MENU_PLUGIN_PREFIX = 'block-menu-plugin:';
+export const BLOCK_MENU_CONVERT_PREFIX = 'block-menu-convert:';
+
+export function blockMenuActionId(id: string): string {
+  return `${BLOCK_MENU_PREFIX}${id}`;
+}
+
+export interface BlockMenuDeps {
+  getKernel: () => EditorKernelInstance | null;
+  /** AI 写作条目构建（可注入 writingContextMenu 的扩展版） */
+  buildAiSubmenu?: (ctx: BlockMenuContext) => ContextMenuItem[];
+  /** 插件菜单条目（可注入 buildPluginMenuItems 结果） */
+  pluginItems?: ContextMenuItem[];
+  /** 上移/下移/折叠/插入是否可用（由渲染层按编辑器状态提供） */
+  canFold?: (ctx: BlockMenuContext) => boolean;
+}
+
+/** 块菜单条目：分隔线用空 title 标记（ContextMenuItem 语义兼容）。 */
+export type BlockMenuEntry = ContextMenuItem;
+
+export function buildBlockMenuItems(ctx: BlockMenuContext, deps: BlockMenuDeps): BlockMenuEntry[] {
+  const ai = deps.buildAiSubmenu?.(ctx) ?? [];
+  const items: BlockMenuEntry[] = [
+    { id: blockMenuActionId('copy'), title: '复制' },
+    { id: blockMenuActionId('cut'), title: '剪切' },
+    { id: blockMenuActionId('delete'), title: '删除' },
+    { id: blockMenuActionId('copy-id'), title: '复制块 ID' },
+    {
+      title: '转换为',
+      submenu: [
+        { id: `${BLOCK_MENU_CONVERT_PREFIX}paragraph`, title: '段落' },
+        { id: `${BLOCK_MENU_CONVERT_PREFIX}h1`, title: '标题 1' },
+        { id: `${BLOCK_MENU_CONVERT_PREFIX}h2`, title: '标题 2' },
+        { id: `${BLOCK_MENU_CONVERT_PREFIX}h3`, title: '标题 3' },
+        { id: `${BLOCK_MENU_CONVERT_PREFIX}taskList`, title: '任务列表' },
+        { id: `${BLOCK_MENU_CONVERT_PREFIX}blockquote`, title: '引用' },
+        { id: `${BLOCK_MENU_CONVERT_PREFIX}callout`, title: '标注块' },
+        { id: `${BLOCK_MENU_CONVERT_PREFIX}codeBlock`, title: '代码块' },
+      ],
+    },
+    { separator: true, title: '' },
+    { id: blockMenuActionId('move-up'), title: '上移', hint: '⌥↑' },
+    { id: blockMenuActionId('move-down'), title: '下移', hint: '⌥↓' },
+    { id: blockMenuActionId('fold'), title: '折叠', disabled: !deps.canFold?.(ctx) },
+    { separator: true, title: '' },
+    { id: blockMenuActionId('insert-before'), title: '在上方插入' },
+    { id: blockMenuActionId('insert-after'), title: '在下方插入' },
+    ...(ai.length > 0 ? [{ separator: true as const, title: '' }, ...ai] : []),
+    ...(deps.pluginItems?.length ? [{ separator: true as const, title: '' }, ...deps.pluginItems] : []),
+  ];
+  return items;
+}
+
+/** 块菜单动作执行（内核事务）。返回是否已处理。 */
+export function runBlockMenuAction(
+  id: string,
+  ctx: BlockMenuContext,
+  kernel: EditorKernelInstance | null,
+  neighbors: BlockNeighbors,
+): boolean {
+  if (!kernel) return false;
+  const editor = kernel.editor;
+  switch (id) {
+    case blockMenuActionId('copy'): {
+      const md = kernel.getBlockMarkdown(ctx.from, ctx.to);
+      void navigator.clipboard?.writeText(md);
+      return true;
+    }
+    case blockMenuActionId('cut'): {
+      const md = kernel.getBlockMarkdown(ctx.from, ctx.to);
+      void navigator.clipboard?.writeText(md);
+      editor.view.dispatch(editor.state.tr.delete(ctx.from, ctx.to));
+      return true;
+    }
+    case blockMenuActionId('delete'): {
+      editor.view.dispatch(editor.state.tr.delete(ctx.from, ctx.to));
+      return true;
+    }
+    case blockMenuActionId('copy-id'): {
+      void navigator.clipboard?.writeText(ctx.blockId);
+      return true;
+    }
+    case blockMenuActionId('move-up'):
+      return neighbors.prevBlockId
+        ? kernel.moveBlock(ctx.blockId, neighbors.prevBlockId, 'before')
+        : false;
+    case blockMenuActionId('move-down'):
+      return neighbors.nextBlockId
+        ? kernel.moveBlock(ctx.blockId, neighbors.nextBlockId, 'after')
+        : false;
+    case blockMenuActionId('fold'): {
+      // MVP：折叠归渲染层 CSS（data-folded）；内核仅占位
+      return true;
+    }
+    case blockMenuActionId('insert-before'):
+      return kernel.insertMarkdownBlocks('\n', ctx.from, 'before');
+    case blockMenuActionId('insert-after'):
+      return kernel.insertMarkdownBlocks('\n', ctx.to, 'after');
+    default:
+      if (id.startsWith(BLOCK_MENU_CONVERT_PREFIX)) {
+        return convertBlock(id.slice(BLOCK_MENU_CONVERT_PREFIX.length), ctx, kernel);
+      }
+      return false;
+  }
+}
+
+/** 块类型转换（setBlockType / 包一层节点）。 */
+export function convertBlock(kind: string, ctx: BlockMenuContext, kernel: EditorKernelInstance | null): boolean {
+  if (!kernel) return false;
+  const { schema, selection, tr } = kernel.editor.state;
+  const nodeType = schema.nodes[kind === 'h1' ? 'heading' : kind === 'h2' ? 'heading' : kind === 'h3' ? 'heading' : kind];
+  if (!nodeType) return false;
+  if (kind === 'h1' || kind === 'h2' || kind === 'h3') {
+    kernel.editor.view.dispatch(tr.setBlockType(ctx.from, ctx.to, nodeType, { level: Number(kind.slice(1)) }));
+    return true;
+  }
+  if (kind === 'paragraph') {
+    kernel.editor.view.dispatch(tr.setBlockType(ctx.from, ctx.to, schema.nodes.paragraph!, {}));
+    return true;
+  }
+  if (kind === 'taskList') {
+    const item = schema.nodes.taskList!.create(null, [schema.nodes.taskItem!.create(null, schema.nodes.paragraph!.create())]);
+    kernel.editor.view.dispatch(tr.replaceRangeWith(ctx.from, ctx.to, item));
+    return true;
+  }
+  if (kind === 'callout' || kind === 'blockquote' || kind === 'codeBlock') {
+    void selection;
+    const $from = kernel.editor.state.doc.resolve(ctx.from);
+    const range = $from.blockRange(kernel.editor.state.doc.resolve(ctx.to));
+    if (!range) return false;
+    const wrapOk = kernel.editor.view.state.tr.wrap(range, [{ type: nodeType }]);
+    if (wrapOk) {
+      kernel.editor.view.dispatch(wrapOk);
+      return true;
+    }
+    return false;
+  }
+  return false;
+}

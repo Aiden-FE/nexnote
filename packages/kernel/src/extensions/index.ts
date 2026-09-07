@@ -1,4 +1,5 @@
 import StarterKit from '@tiptap/starter-kit';
+import { Link } from '@tiptap/extension-link';
 import { TaskList, TaskItem } from '@tiptap/extension-list';
 import Image from '@tiptap/extension-image';
 import { Markdown } from '@tiptap/markdown';
@@ -17,10 +18,13 @@ import { SelectionBubble } from './selection-bubble';
 import type { BubbleAction } from './selection-bubble';
 import { ContextMenu } from './context-menu';
 import type { ContextMenuItem } from './context-menu';
+import { BlockMenu, blockMenuPluginKey } from './block-menu';
+import type { BlockMenuContext, BlockMenuState } from './block-menu';
 import type { EditorActionContext } from './action-context';
 import { PluginBlock } from './plugin-block';
 import { MermaidBlock } from './mermaid';
 import { MathBlock, MathInline } from './math';
+import { SuggestionMenu, type SuggestionItem, type SuggestionTrigger } from './suggestion-menu';
 import { createObsidianMarked } from '../markdown/pipeline';
 
 export interface KernelExtensionsOptions {
@@ -50,6 +54,17 @@ export interface KernelExtensionsOptions {
         build: (ctx: EditorActionContext) => ContextMenuItem[];
         onAction: (id: string, ctx: EditorActionContext) => void;
       };
+  /** DEV-017 wikilink 补全候选（query=已输入；渲染层注入 vault 页面）。 */
+  wikilinkSuggestions?: (query: string) => SuggestionItem[];
+  /** DEV-017 标签补全候选（query=已输入；渲染层注入已知标签）。 */
+  hashtagSuggestions?: (query: string) => SuggestionItem[];
+  /** DEV-017 块菜单（点击块拖拽手柄弹出；false/缺省关闭）。 */
+  blockMenu?:
+    | false
+    | {
+        build: (ctx: BlockMenuContext) => ContextMenuItem[];
+        onAction: (id: string, ctx: BlockMenuContext) => void;
+      };
 }
 
 /**
@@ -63,8 +78,15 @@ export function buildKernelExtensions(options: KernelExtensionsOptions = {}): Ex
   const extensions: Extensions = [
     StarterKit.configure({
       codeBlock: false, // 由 CodeBlockLowlight 替代
+      link: false, // 由下方独立 Link 配置（支持 setLink/unsetLink 命令）
       trailingNode: {},
       undoRedo: { depth: 200, newGroupDelay: 400 },
+    }),
+    Link.configure({
+      openOnClick: false,
+      autolink: true,
+      defaultProtocol: 'https',
+      HTMLAttributes: { rel: 'noopener noreferrer', target: '_blank' },
     }),
     KernelCodeBlock,
     TaskList,
@@ -90,6 +112,29 @@ export function buildKernelExtensions(options: KernelExtensionsOptions = {}): Ex
 
   if (options.extraExtensions) extensions.push(...options.extraExtensions);
 
+  // DEV-017：wikilink（[[）/ 标签（#）补全菜单。候选由渲染层注入，节点插入由内核负责。
+  const triggers: SuggestionTrigger[] = [];
+  if (options.wikilinkSuggestions) {
+    triggers.push({
+      name: 'wikilink',
+      kind: 'wikilink',
+      trigger: '[[',
+      className: 'nexnote-suggestion nexnote-suggestion--wikilink',
+      suggestions: options.wikilinkSuggestions,
+    });
+  }
+  if (options.hashtagSuggestions) {
+    triggers.push({
+      name: 'hashtag',
+      kind: 'hashtag',
+      trigger: '#',
+      requireWhitespaceBefore: true,
+      className: 'nexnote-suggestion nexnote-suggestion--hashtag',
+      suggestions: options.hashtagSuggestions,
+    });
+  }
+  if (triggers.length > 0) extensions.push(SuggestionMenu.configure({ triggers }));
+
   if (options.slashMenu !== false) {
     const extra = options.extraSlashItems ?? [];
     const extraItems = typeof extra === 'function' ? extra() : extra;
@@ -109,7 +154,18 @@ export function buildKernelExtensions(options: KernelExtensionsOptions = {}): Ex
       }),
     );
   }
-  if (options.dragHandle !== false) extensions.push(createKernelDragHandle());
+  if (options.dragHandle !== false) {
+    extensions.push(
+      createKernelDragHandle((_e, pos, blockId, editor) => {
+        // 点击手柄 → 打开块菜单（存储 showAt 经扩展名取，菜单配置由渲染层注入）
+        if (!options.blockMenu || !blockId) return;
+        const menu = blockMenuPluginKey.getState(editor.state) as BlockMenuState | undefined;
+        const view = editor.view;
+        const coords = view.coordsAtPos(pos);
+        menu?.showAt(view, coords.left, coords.bottom, blockId);
+      }),
+    );
+  }
   if (options.selectionBubble) {
     extensions.push(
       SelectionBubble.configure({
@@ -123,6 +179,15 @@ export function buildKernelExtensions(options: KernelExtensionsOptions = {}): Ex
       ContextMenu.configure({
         build: options.contextMenu.build,
         onAction: options.contextMenu.onAction,
+      }),
+    );
+  }
+  if (options.blockMenu) {
+    extensions.push(
+      BlockMenu.configure({
+        build: options.blockMenu.build,
+        onAction: options.blockMenu.onAction,
+        className: 'nexnote-block-menu',
       }),
     );
   }

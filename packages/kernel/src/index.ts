@@ -42,6 +42,10 @@ export { ContextMenu, contextMenuPluginKey } from './extensions/context-menu';
 export type { ContextMenuItem, ContextMenuOptions } from './extensions/context-menu';
 export { PluginBlock, PLUGIN_BLOCK_FENCE } from './extensions/plugin-block';
 export type { PluginBlockAttributes } from './extensions/plugin-block';
+export { SuggestionMenu } from './extensions/suggestion-menu';
+export type { SuggestionItem, SuggestionKind, SuggestionTrigger } from './extensions/suggestion-menu';
+export { BlockMenu } from './extensions/block-menu';
+export type { BlockMenuContext, BlockMenuState } from './extensions/block-menu';
 export {
   MermaidBlock,
   MERMAID_BLOCK_NAME,

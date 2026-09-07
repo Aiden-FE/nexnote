@@ -15,6 +15,8 @@ export interface SlashMenuItem {
   title: string;
   hint?: string;
   keywords?: string[];
+  /** 分组标题（DEV-017：基础块 / 媒体 / 高级 / AI）；缺省按追加顺序归组 */
+  group?: string;
   /** 执行插入；返回 false 表示当前上下文不可用 */
   action: (ctx: { view: EditorView }) => boolean;
 }
@@ -42,6 +44,7 @@ export function defaultSlashMenuItems(query: string): SlashMenuItem[] {
       id: 'heading1',
       title: '标题 1',
       hint: '# ',
+      group: '基础块',
       keywords: ['heading', 'h1', 'biaoti'],
       action: ({ view }) => {
         view.dispatch(view.state.tr.setBlockType(0, view.state.doc.content.size, view.state.schema.nodes.heading!, { level: 1 }));
@@ -52,6 +55,7 @@ export function defaultSlashMenuItems(query: string): SlashMenuItem[] {
       id: 'heading2',
       title: '标题 2',
       hint: '## ',
+      group: '基础块',
       keywords: ['heading', 'h2'],
       action: ({ view }) => {
         view.dispatch(view.state.tr.setBlockType(0, view.state.doc.content.size, view.state.schema.nodes.heading!, { level: 2 }));
@@ -62,6 +66,7 @@ export function defaultSlashMenuItems(query: string): SlashMenuItem[] {
       id: 'heading3',
       title: '标题 3',
       hint: '### ',
+      group: '基础块',
       keywords: ['heading', 'h3'],
       action: ({ view }) => {
         view.dispatch(view.state.tr.setBlockType(0, view.state.doc.content.size, view.state.schema.nodes.heading!, { level: 3 }));
@@ -69,9 +74,24 @@ export function defaultSlashMenuItems(query: string): SlashMenuItem[] {
       },
     },
     {
+      id: 'paragraph',
+      title: '段落',
+      hint: 'p',
+      keywords: ['text', 'paragraph', 'duanluo'],
+      group: '基础块',
+      action: ({ view }) => {
+        const { schema, selection } = view.state;
+        const current = selection.$from.parent;
+        if (current.type.name === 'paragraph') return false;
+        view.dispatch(view.state.tr.setBlockType(selection.from, selection.to, schema.nodes.paragraph!, {}));
+        return true;
+      },
+    },
+    {
       id: 'taskList',
       title: '任务列表',
       hint: '- [ ]',
+      group: '基础块',
       keywords: ['task', 'todo', 'checkbox'],
       action: ({ view }) => {
         const { schema } = view.state;
@@ -83,6 +103,7 @@ export function defaultSlashMenuItems(query: string): SlashMenuItem[] {
       id: 'callout',
       title: '标注块',
       hint: '> [!note]',
+      group: '高级',
       keywords: ['callout', 'admonition', 'biaozhu'],
       action: ({ view }) => {
         const { schema } = view.state;
@@ -94,6 +115,7 @@ export function defaultSlashMenuItems(query: string): SlashMenuItem[] {
       id: 'codeBlock',
       title: '代码块',
       hint: '```',
+      group: '基础块',
       keywords: ['code', 'daima'],
       action: ({ view }) => {
         const { schema } = view.state;
@@ -105,6 +127,7 @@ export function defaultSlashMenuItems(query: string): SlashMenuItem[] {
       id: 'blockquote',
       title: '引用',
       hint: '> ',
+      group: '基础块',
       keywords: ['quote', 'yinyong'],
       action: ({ view }) => {
         const { schema, selection } = view.state;
@@ -117,9 +140,26 @@ export function defaultSlashMenuItems(query: string): SlashMenuItem[] {
       },
     },
     {
+      id: 'image',
+      title: '图片',
+      hint: 'img',
+      keywords: ['image', 'img', 'picture', 'tupian'],
+      group: '媒体',
+      action: () => false,
+    },
+    {
+      id: 'attachment',
+      title: '附件',
+      hint: 'file',
+      keywords: ['attachment', 'file', 'fujian'],
+      group: '媒体',
+      action: () => false,
+    },
+    {
       id: 'horizontalRule',
       title: '分隔线',
       hint: '---',
+      group: '基础块',
       keywords: ['hr', 'rule', 'fenge'],
       action: ({ view }) => {
         const { schema } = view.state;
@@ -150,7 +190,18 @@ function createMenuDom(className: string): MenuView {
   dom.style.zIndex = '40';
   const render = (state: SlashMenuState, coords: { top: number; left: number }) => {
     dom.innerHTML = '';
+    let lastGroup: string | null = null;
     state.items.forEach((item, i) => {
+      const group = item.group ?? null;
+      if (group !== lastGroup) {
+        lastGroup = group;
+        if (group) {
+          const header = document.createElement('div');
+          header.className = `${className}__group`;
+          header.textContent = group;
+          dom.append(header);
+        }
+      }
       const row = document.createElement('div');
       row.className = `${className}__item`;
       row.dataset.slashItem = item.id;

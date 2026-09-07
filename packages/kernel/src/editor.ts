@@ -59,6 +59,10 @@ export interface EditorKernelInstance {
    */
   moveBlock(blockId: string, targetBlockId: string, side?: 'before' | 'after'): boolean;
   /**
+   * 取出文档区间 [from,to] 的 Obsidian Markdown（块菜单复制/剪切用；会包含 ^id 锚点）。
+   */
+  getBlockMarkdown(from: number, to: number): string;
+  /**
    * 用 Markdown 片段替换 [from,to]（走 parse 管道；可 undo/redo）。
    * 单块内联内容用 insertText 保留块结构；多块/整块内容替换为解析出的顶层块。
    */
@@ -90,7 +94,10 @@ export function createEditor(
     extraSlashItems: options.extraSlashItems,
     selectionBubble: options.selectionBubble,
     contextMenu: options.contextMenu,
+    blockMenu: options.blockMenu,
     extraExtensions: options.extraExtensions,
+    wikilinkSuggestions: options.wikilinkSuggestions,
+    hashtagSuggestions: options.hashtagSuggestions,
   });
 
   const manager = createMarkdownManager(extensions);
@@ -173,6 +180,15 @@ export function createEditor(
           .scrollIntoView(),
       );
       return true;
+    },
+    getBlockMarkdown(from: number, to: number) {
+      const size = editor.state.doc.content.size;
+      const f = Math.max(0, Math.min(from, size));
+      const t = Math.max(f, Math.min(to, size));
+      const nodes: JSONContent[] = [];
+      editor.state.doc.slice(f, t).content.forEach((n) => nodes.push(n.toJSON()));
+      if (nodes.length === 0) return '';
+      return serializeMarkdown(manager, { type: 'doc', content: nodes });
     },
     replaceRangeWithMarkdown(from: number, to: number, markdown: string) {
       const size = editor.state.doc.content.size;

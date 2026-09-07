@@ -1,7 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { AlertCircle, Check, LoaderCircle, Save } from 'lucide-react';
 import { createEditor } from '@nexnote/kernel';
-import type { EditorKernelInstance } from '@nexnote/kernel';
 import { invoke } from '../lib/ipc';
 import { useTabStore, type PaneId, type TabDescriptor } from '../stores/tab-store';
 import { FrontmatterPanel } from '../features/frontmatter/FrontmatterPanel';
@@ -31,7 +30,23 @@ import { openChatWikilinkOrNull } from '../features/ai/chat/chat-runtime';
 import { useUiStore } from '../stores/ui-store';
 import { pluginContributionRegistry } from '../registries';
 import { buildPluginMenuItems, PLUGIN_MENU_ACTION_PREFIX } from '../features/plugins/extension-points';
+import type { BlockMenuContext } from '@nexnote/kernel';
+import type { EditorKernelInstance, SlashMenuItem } from '@nexnote/kernel';
+import {
+  withUncreated,
+  filterTagCandidates,
+} from './interactions/suggestions';
+import {
+  buildBlockMenuItems,
+  runBlockMenuAction,
+  type BlockNeighbors,
+} from './interactions/block-menu';
+import { formatBubbleActions, runFormatAction } from './interactions/formatting';
 import { usePluginStore } from '../features/plugins/plugin-store';
+import { usePageTreeStore } from '../stores/page-tree-store';
+import {
+  buildDispatchableBlockCommands,
+} from '../features/plugins/extension-points';
 import {
   buildBuiltinSlashItems,
   buildBuiltinViewExtensions,
@@ -47,6 +62,99 @@ type LoadState =
   { phase: 'loading' } | { phase: 'ready'; markdown: string } | { phase: 'error'; message: string };
 
 type SaveState = 'saved' | 'saving' | 'error';
+
+
+/** 斜杠菜单的插件块项（DEV-017：插件注册的块类型出现在斜杠菜单）。 */
+/** 媒体插入（DEV-017）：hidden file input 选择图片/附件，插入 Markdown 语法。 */
+function createMediaInsertSlashItems(): SlashMenuItem[] {
+  const pick = async (accept: string): Promise<string | null> => {
+    return new Promise((resolve) => {
+      const input = document.createElement('input');
+      input.type = 'file';
+      input.accept = accept;
+      input.style.display = 'none';
+      document.body.append(input);
+      input.addEventListener('change', () => {
+        const file = input.files?.[0] ?? null;
+        input.remove();
+        resolve(file ? URL.createObjectURL(file) : null);
+      });
+      input.click();
+    });
+  };
+  return [
+    {
+      id: 'image',
+      title: '图片',
+      hint: 'img',
+      keywords: ['image', 'img', 'picture', 'tupian'],
+      group: '媒体',
+      action: ({ view }) => {
+        void (async () => {
+          const url = await pick('image/*');
+          if (!url) return;
+          // MVP：插入带 objectURL 的图片节点（保存时由外层解析持久化）
+          view.dispatch(
+            view.state.tr
+              .replaceSelectionWith(
+                view.state.schema.nodes.image!.create({ src: url, alt: '' }),
+              )
+              .scrollIntoView(),
+          );
+        })();
+        return true;
+      },
+    },
+    {
+      id: 'attachment',
+      title: '附件',
+      hint: 'file',
+      keywords: ['attachment', 'file', 'fujian'],
+      group: '媒体',
+      action: ({ view }) => {
+        void (async () => {
+          const url = await pick('*/*');
+          if (!url) return;
+          const text = `[附件](${url})`;
+          view.dispatch(view.state.tr.insertText(text, view.state.selection.from - 1));
+        })();
+        return true;
+      },
+    },
+  ];
+}
+
+function buildPluginSlashItems(kernel: EditorKernelInstance): SlashMenuItem[] {
+  // PluginContributionDef 与 PluginContributionView 形状同源（scopedId/pluginId/kind/title/id）
+  const contributions = pluginContributionRegistry.all() as unknown as Parameters<typeof buildDispatchableBlockCommands>[0];
+  const defs = buildDispatchableBlockCommands(contributions);
+  return defs.map((d) => ({
+    id: d.id,
+    title: d.title,
+    hint: d.blockType,
+    keywords: ['插件', 'plugin', 'block', ...(d.keywords ?? []).map((k) => String(k))],
+    group: '插件',
+    action: () => {
+      kernel.editor.commands.insertPluginBlock?.({ pluginId: d.pluginId, blockType: d.blockType });
+      return true;
+    },
+  }));
+}
+
+/** 块菜单执行时的相邻块（供上移/下移）。 */
+function neighborsFor(kernel: EditorKernelInstance, blockId: string): BlockNeighbors {
+  const ids: string[] = [];
+  kernel.editor.state.doc.forEach((n) => {
+    const id = (n.attrs as { blockId?: string }).blockId;
+    if (typeof id === 'string' && id) ids.push(id);
+  });
+  const idx = ids.indexOf(blockId);
+  if (idx < 0) return { prevBlockId: null, nextBlockId: null };
+  return {
+    prevBlockId: idx > 0 ? ids[idx - 1] ?? null : null,
+    nextBlockId: idx < ids.length - 1 ? ids[idx + 1] ?? null : null,
+  };
+}
 
 /**
  * React → 框架无关 kernel 桥：
@@ -228,10 +336,12 @@ export function EditorView({ paneId, tab }: EditorViewProps) {
       },
       selectionBubble: {
         actions: [
+          ...formatBubbleActions(),
           ...writingBubbleActions(),
           { id: CHAT_ASK_ACTION, title: '询问 AI' },
         ],
         onAction: (id, ctx) => {
+          if (runFormatAction(id, kernelRef.current, ctx.text)) return;
           if (id === CHAT_ASK_ACTION) {
             requestAskAi(ctx.text, titleFromPath(pathRef.current), pathRef.current);
             return;
@@ -273,7 +383,46 @@ export function EditorView({ paneId, tab }: EditorViewProps) {
       extraSlashItems: () => [
         ...(writingController ? writingSlashItems(writingController) : []),
         ...buildBuiltinSlashItems(flagsFromActivePlugins(usePluginStore.getState().plugins)),
+        ...createMediaInsertSlashItems(),
+        ...buildPluginSlashItems(kernel),
       ],
+      wikilinkSuggestions: (query) => {
+        const pages = usePageTreeStore.getState().entries
+          .filter((e) => e.kind === 'file' && e.path.toLowerCase().endsWith('.md'))
+          .map((e) => ({ path: e.path, title: titleFromPath(e.path) }));
+        return withUncreated(pages, query);
+      },
+      hashtagSuggestions: (query) =>
+        filterTagCandidates(
+          // 已知标签（索引 > 扫描）实时过滤，支持嵌套
+          useIndexStore.getState().tags.length > 0
+            ? useIndexStore.getState().tags.map((t) => t.tag)
+            : knownTags,
+          query,
+        ),
+      blockMenu: {
+        build: (ctx: BlockMenuContext) =>
+          buildBlockMenuItems(ctx, {
+            getKernel: () => kernelRef.current,
+            buildAiSubmenu: (blockCtx) => writingContextMenu({ target: blockCtx.target }),
+            pluginItems: buildPluginMenuItems(pluginContributionRegistry.all()),
+            canFold: () => false,
+          }),
+        onAction: (id, ctx) => {
+          if (id.startsWith(PLUGIN_MENU_ACTION_PREFIX)) {
+            const scopedId = id.slice(PLUGIN_MENU_ACTION_PREFIX.length);
+            const sep = scopedId.indexOf(':');
+            void invoke('plugins:runCommand', {
+              pluginId: scopedId.slice(0, sep),
+              commandId: scopedId.slice(sep + 1),
+            });
+            return;
+          }
+          if (runBlockMenuAction(id, ctx, kernel, neighborsFor(kernel, ctx.blockId))) return;
+          // AI 写作（writeingContextMenu 的 ai-* id）与未知 id 交给写作控制器
+          writingController?.trigger(id, ctx);
+        },
+      },
     });
     kernelRef.current = kernel;
     const editorRegistration = registerEditor(kernel);
@@ -290,7 +439,7 @@ export function EditorView({ paneId, tab }: EditorViewProps) {
       kernelRef.current = null;
       unmountedRef.current = true;
     };
-  }, [load, paneId, save]);
+  }, [load, paneId, save, knownTags]);
 
   // 仅替换 ProseMirror 文档首部 frontmatter 节点，保留正文选择与撤销映射。
   const applyFrontmatter = useCallback((next: FrontmatterData, sourceOverride?: string) => {
