@@ -118,7 +118,11 @@ const aiCredentialSubmit = object(
 );
 const aiProfileSave = object(
   ['id', 'profile'],
-  [optionalField('id', 'string'), (p) => (isPlainObject((p as Record<string, unknown>).profile) ? null : invalid('profile 必须是对象'))],
+  [
+    optionalField('id', 'string'),
+    (p) =>
+      isPlainObject((p as Record<string, unknown>).profile) ? null : invalid('profile 必须是对象'),
+  ],
 );
 const idOnly = object(['id'], [stringField('id')]);
 const aiFeaturesSet = object(
@@ -127,7 +131,9 @@ const aiFeaturesSet = object(
     stringField('feature'),
     (p) => {
       const assignment = (p as Record<string, unknown>).assignment;
-      return assignment === null || isPlainObject(assignment) ? null : invalid('assignment 必须是对象或 null');
+      return assignment === null || isPlainObject(assignment)
+        ? null
+        : invalid('assignment 必须是对象或 null');
     },
   ],
 );
@@ -136,7 +142,9 @@ const aiChatRequest = object(
   [
     (p) => {
       const messages = (p as Record<string, unknown>).messages;
-      return Array.isArray(messages) && messages.every(isPlainObject) ? null : invalid('messages 必须是消息对象数组');
+      return Array.isArray(messages) && messages.every(isPlainObject)
+        ? null
+        : invalid('messages 必须是消息对象数组');
     },
     optionalField('profileId', 'string'),
     optionalField('feature', 'string'),
@@ -150,19 +158,29 @@ const aiChatRequest = object(
 const aiConnectionTarget: PayloadValidator = (payload) => {
   const error = object(
     ['profileId', 'candidate'],
-    [optionalField('profileId', 'string'), (p) => {
-      const candidate = (p as Record<string, unknown>).candidate;
-      if (candidate === undefined) return null;
-      if (!isPlainObject(candidate)) return invalid('candidate 必须是对象');
-      return object(
-        ['kind', 'baseUrl', 'credentialToken', 'defaultModel'],
-        [stringField('kind'), stringField('baseUrl'), optionalField('credentialToken', 'string'), optionalField('defaultModel', 'string')],
-      )(candidate);
-    }],
+    [
+      optionalField('profileId', 'string'),
+      (p) => {
+        const candidate = (p as Record<string, unknown>).candidate;
+        if (candidate === undefined) return null;
+        if (!isPlainObject(candidate)) return invalid('candidate 必须是对象');
+        return object(
+          ['kind', 'baseUrl', 'credentialToken', 'defaultModel'],
+          [
+            stringField('kind'),
+            stringField('baseUrl'),
+            optionalField('credentialToken', 'string'),
+            optionalField('defaultModel', 'string'),
+          ],
+        )(candidate);
+      },
+    ],
   )(payload);
   if (error) return error;
   const target = payload as Record<string, unknown>;
-  return target.profileId !== undefined || target.candidate !== undefined ? null : invalid('必须提供 profileId 或 candidate');
+  return target.profileId !== undefined || target.candidate !== undefined
+    ? null
+    : invalid('必须提供 profileId 或 candidate');
 };
 const streamIdOnly = object(['streamId'], [stringField('streamId')]);
 const aiEmbed = object(['texts'], [stringArrayField('texts')]);
@@ -193,14 +211,17 @@ const restore = object(['path', 'commit'], [stringField('path'), stringField('co
 const pull = object(['force'], [optionalField('force', 'boolean')]);
 const useSystemGit = object(['enabled'], [booleanField('enabled')]);
 const autoCommitDebounce = object(['milliseconds'], [finiteNumberField('milliseconds')]);
-const confidence = object(['pageId'], [
-  (payload) => {
-    const pageId = (payload as Record<string, unknown>).pageId;
-    return typeof pageId === 'number' && Number.isInteger(pageId) && pageId > 0
-      ? null
-      : invalid('pageId 必须是正整数');
-  },
-]);
+const confidence = object(
+  ['pageId'],
+  [
+    (payload) => {
+      const pageId = (payload as Record<string, unknown>).pageId;
+      return typeof pageId === 'number' && Number.isInteger(pageId) && pageId > 0
+        ? null
+        : invalid('pageId 必须是正整数');
+    },
+  ],
+);
 const confidenceFrontmatter = object(['enabled'], [booleanField('enabled')]);
 const indexBacklinks = object(['pagePath'], [stringField('pagePath')]);
 const indexQuery = object(
@@ -251,9 +272,13 @@ const saveLayout: PayloadValidator = (payload) => {
 };
 
 const chatNew = object(['title'], [optionalField('title', 'string')]);
-const chatSave = object(['session'], [
-  (p) => (isPlainObject((p as Record<string, unknown>).session) ? null : invalid('session 必须是对象')),
-]);
+const chatSave = object(
+  ['session'],
+  [
+    (p) =>
+      isPlainObject((p as Record<string, unknown>).session) ? null : invalid('session 必须是对象'),
+  ],
+);
 const chatSaveAsDoc = object(
   ['path', 'userAsQuote'],
   [stringField('path'), optionalField('userAsQuote', 'boolean')],
@@ -291,7 +316,8 @@ const skillsObjectChannels = [
 const updateChannel: PayloadValidator = (payload) => {
   if (!isPlainObject(payload)) return invalid('payload 必须是普通对象');
   const channel = (payload as Record<string, unknown>).channel;
-  if (channel !== 'stable' && channel !== 'beta' && channel !== 'alpha') return invalid('channel 必须是 stable/beta/alpha');
+  if (channel !== 'stable' && channel !== 'beta' && channel !== 'alpha')
+    return invalid('channel 必须是 stable/beta/alpha');
   return null;
 };
 
@@ -302,11 +328,18 @@ const updateSettingsPatch: PayloadValidator = (payload) => {
     if (!allowed.includes(key as (typeof allowed)[number])) return invalid(`未知字段 ${key}`);
   }
   const p = payload as Record<string, unknown>;
-  if (p.channel !== undefined && p.channel !== 'stable' && p.channel !== 'beta' && p.channel !== 'alpha') {
+  if (
+    p.channel !== undefined &&
+    p.channel !== 'stable' &&
+    p.channel !== 'beta' &&
+    p.channel !== 'alpha'
+  ) {
     return invalid('channel 必须是 stable/beta/alpha');
   }
-  if (p.autoDownload !== undefined && typeof p.autoDownload !== 'boolean') return invalid('autoDownload 必须是布尔值');
-  if (p.checkOnLaunch !== undefined && typeof p.checkOnLaunch !== 'boolean') return invalid('checkOnLaunch 必须是布尔值');
+  if (p.autoDownload !== undefined && typeof p.autoDownload !== 'boolean')
+    return invalid('autoDownload 必须是布尔值');
+  if (p.checkOnLaunch !== undefined && typeof p.checkOnLaunch !== 'boolean')
+    return invalid('checkOnLaunch 必须是布尔值');
   return null;
 };
 
@@ -329,12 +362,12 @@ const VALIDATORS: Partial<Record<IpcChannel, PayloadValidator>> = {
   'chat:save': chatSave,
   'chat:saveAsDoc': chatSaveAsDoc,
   'chat:folder:set': chatFolderSet,
-  ...Object.fromEntries(pluginObjectChannels.map((c) => [c, pluginObject])) as Partial<
+  ...(Object.fromEntries(pluginObjectChannels.map((c) => [c, pluginObject])) as Partial<
     Record<IpcChannel, PayloadValidator>
-  >,
-  ...Object.fromEntries(skillsObjectChannels.map((c) => [c, pluginObject])) as Partial<
+  >),
+  ...(Object.fromEntries(skillsObjectChannels.map((c) => [c, pluginObject])) as Partial<
     Record<IpcChannel, PayloadValidator>
-  >,
+  >),
   'fs:readTextFile': pathOnly,
   'fs:writeTextFile': write,
   'fs:createTextFile': createTextFile,
