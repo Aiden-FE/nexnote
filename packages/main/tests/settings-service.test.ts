@@ -84,9 +84,9 @@ describe('SettingsService', () => {
     const result = service.setShortcuts([
       { commandId: 'search.open', key: 'ctrl+shift+f', disabled: false },
     ]);
-    expect(result[0].key).toBe('Ctrl+Shift+F');
+    expect(result[0]?.key).toBe('Ctrl+Shift+F');
     const reloaded = new SettingsService(filePath);
-    expect(reloaded.get().shortcuts[0].key).toBe('Ctrl+Shift+F');
+    expect(reloaded.get().shortcuts[0]?.key).toBe('Ctrl+Shift+F');
   });
 
   it('导出/导入快捷键 JSON 往返', () => {

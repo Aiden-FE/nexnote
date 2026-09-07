@@ -97,9 +97,9 @@ describe('VaultCloneController', () => {
     }
     expect(c._size()).toBeLessThanOrEqual(8);
     // 最旧的几个已被驱逐，最新的可消费
-    const oldest = tokens[0];
+    const oldest = tokens[0]!;
     expect(c.consume(oldest, 1, 'url-0', '/dir-0')).toEqual({ ok: false, reason: 'INVALID_TOKEN' });
-    const newest = tokens[tokens.length - 1];
+    const newest = tokens[tokens.length - 1]!;
     expect(c.consume(newest, 1, `url-${tokens.length - 1}`, `/dir-${tokens.length - 1}`)).toEqual({
       ok: true,
     });
