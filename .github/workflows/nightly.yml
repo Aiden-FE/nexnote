@@ -1,0 +1,36 @@
+name: Nightly build
+
+on:
+  schedule:
+    - cron: '30 2 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  nightly:
+    runs-on: macos-14
+    timeout-minutes: 25
+    env:
+      NEXNOTE_UPDATE_CHANNEL: alpha
+      CSC_IDENTITY_AUTO_DISCOVERY: 'false'
+      # Nightlies are internal, unsigned, non-publishable artifacts; public release stays required.
+      NEXNOTE_NOTARIZE_MODE: disabled
+    steps:
+      # Immutable pins are maintained by Dependabot (.github/dependabot.yml).
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+      - uses: pnpm/action-setup@a7487c7e89a18df4991f7f222e4898a00d66ddda # v4.1.0
+        with: { version: 10 }
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with: { node-version: 22, cache: pnpm }
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm lint && pnpm typecheck && pnpm test
+      - run: pnpm dist:mac -- --arm64 --publish never
+        env:
+          ELECTRON_NO_ASAR: '1'
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: nexnote-nightly-macos
+          path: release/*
+          retention-days: 14

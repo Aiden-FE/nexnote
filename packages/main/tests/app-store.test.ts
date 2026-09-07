@@ -29,8 +29,11 @@ describe('AppStore', () => {
       lastVaultPath: null,
       recentVaults: [],
       windowBounds: null,
+      updateChannel: null,
       useSystemGit: false,
       autoCommitDebounceMs: DEFAULT_AUTO_COMMIT_DEBOUNCE_MS,
+      updateAutoDownload: true,
+      updateCheckOnLaunch: true,
     });
   });
 
@@ -70,17 +73,26 @@ describe('AppStore', () => {
     const store = new AppStore(storeFile);
     store.setLastVault('/v/keep');
     store.setWindowBounds({ x: 1, y: 2, width: 1200, height: 800 });
+    store.setUpdateChannel('beta');
     store.setUseSystemGit(true);
     store.setAutoCommitDebounceMs(12_345);
+    store.setUpdateAutoDownload(false);
+    store.setUpdateCheckOnLaunch(false);
     const raw = JSON.parse(await readFile(storeFile, 'utf8'));
     expect(raw.lastVaultPath).toBe('/v/keep');
+    expect(raw.updateChannel).toBe('beta');
     expect(raw.useSystemGit).toBe(true);
     expect(raw.autoCommitDebounceMs).toBe(12_345);
+    expect(raw.updateAutoDownload).toBe(false);
+    expect(raw.updateCheckOnLaunch).toBe(false);
     const reopened = new AppStore(storeFile);
     expect(reopened.get().lastVaultPath).toBe('/v/keep');
     expect(reopened.get().windowBounds).toMatchObject({ width: 1200 });
+    expect(reopened.get().updateChannel).toBe('beta');
     expect(reopened.getUseSystemGit()).toBe(true);
     expect(reopened.getAutoCommitDebounceMs()).toBe(12_345);
+    expect(reopened.getUpdateAutoDownload()).toBe(false);
+    expect(reopened.getUpdateCheckOnLaunch()).toBe(false);
   });
 
   it('existingRecents 只保留磁盘上存在的目录', async () => {

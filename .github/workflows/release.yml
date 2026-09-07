@@ -1,0 +1,414 @@
+name: Release
+
+# Tags automatically start the signed candidate pipeline. `prepare` binds every job
+# to that immutable tag; protected QA approval remains required before publication.
+on:
+  push:
+    tags: ['v*.*.*']
+  workflow_dispatch:
+    inputs:
+      release-tag:
+        description: Immutable existing release tag (vX.Y.Z)
+        required: true
+        type: string
+      channel:
+        description: Release channel
+        required: true
+        default: stable
+        type: choice
+        options: [stable, beta, alpha]
+      qa-evidence-url:
+        description: HTTPS URL to the completed QA evidence record
+        required: true
+        type: string
+      qa-evidence-sha256:
+        description: SHA-256 hex digest of the QA evidence document
+        required: true
+        type: string
+      qa-all-required-checks-passed:
+        description: Confirm all mandatory QA checks passed
+        required: true
+        default: 'false'
+        type: choice
+        options: ['false', 'true']
+
+permissions:
+  contents: read
+
+# GitHub concurrency is deliberately NOT used: GitHub replaces an older pending run
+# when a third run joins the same group, even with cancel-in-progress false. Every run
+# instead reaches publish and contends for an atomic repository ref lease, so no queued
+# dispatch is silently dropped. See Acquire/Release publication lease below.
+
+jobs:
+  prepare:
+    runs-on: ubuntu-latest
+    outputs:
+      tag: ${{ steps.release.outputs.tag }}
+      commit: ${{ steps.release.outputs.commit }}
+      channel: ${{ steps.release.outputs.channel }}
+      evidence_url: ${{ steps.release.outputs.evidence_url }}
+      evidence_sha256: ${{ steps.release.outputs.evidence_sha256 }}
+      evidence_attested: ${{ steps.release.outputs.evidence_attested }}
+    steps:
+      # Pinned action SHAs are maintained by Dependabot (.github/dependabot.yml).
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          fetch-depth: 0
+      - id: release
+        name: Resolve immutable tag and enforce package version
+        env:
+          DISPATCH_TAG: ${{ inputs.release-tag }}
+          DISPATCH_CHANNEL: ${{ inputs.channel }}
+          DISPATCH_EVIDENCE_URL: ${{ inputs.qa-evidence-url }}
+          DISPATCH_EVIDENCE_SHA256: ${{ inputs.qa-evidence-sha256 }}
+          DISPATCH_EVIDENCE_ATTESTED: ${{ inputs.qa-all-required-checks-passed }}
+          TAG_EVIDENCE_URL: ${{ vars.RELEASE_QA_EVIDENCE_URL }}
+          TAG_EVIDENCE_SHA256: ${{ vars.RELEASE_QA_EVIDENCE_SHA256 }}
+        run: |
+          set -euo pipefail
+          if [ "$GITHUB_EVENT_NAME" = push ]; then
+            RELEASE_TAG="$GITHUB_REF_NAME"
+            RELEASE_CHANNEL=stable
+            [[ "$RELEASE_TAG" == *-beta.* ]] && RELEASE_CHANNEL=beta
+            [[ "$RELEASE_TAG" == *-alpha.* ]] && RELEASE_CHANNEL=alpha
+            EVIDENCE_URL="$TAG_EVIDENCE_URL"
+            EVIDENCE_SHA256="$TAG_EVIDENCE_SHA256"
+            EVIDENCE_ATTESTED=true
+          else
+            RELEASE_TAG="$DISPATCH_TAG"
+            RELEASE_CHANNEL="$DISPATCH_CHANNEL"
+            EVIDENCE_URL="$DISPATCH_EVIDENCE_URL"
+            EVIDENCE_SHA256="$DISPATCH_EVIDENCE_SHA256"
+            EVIDENCE_ATTESTED="$DISPATCH_EVIDENCE_ATTESTED"
+          fi
+          [[ "$RELEASE_TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+(-[a-z]+\.[0-9]+)?$ ]] || exit 1
+          test "$GITHUB_REF" = "refs/tags/$RELEASE_TAG" || { echo '::error::release ref must be the exact tag, never a branch'; exit 1; }
+          git fetch --force --tags origin
+          git rev-parse --verify "refs/tags/$RELEASE_TAG^{commit}" >/dev/null 2>&1 || { echo '::error::release-tag must be an existing immutable tag'; exit 1; }
+          commit=$(git rev-parse "refs/tags/$RELEASE_TAG^{commit}")
+          test "$commit" = "$GITHUB_SHA" || { echo '::error::release tag moved since dispatch'; exit 1; }
+          git checkout --detach "$commit"
+          node scripts/check-version.mjs --require-tag "$RELEASE_TAG"
+          test -n "$EVIDENCE_URL" && test -n "$EVIDENCE_SHA256" || { echo '::error::immutable QA evidence variables are required for automatic tag releases'; exit 1; }
+          echo "tag=$RELEASE_TAG" >> "$GITHUB_OUTPUT"
+          echo "commit=$commit" >> "$GITHUB_OUTPUT"
+          echo "channel=$RELEASE_CHANNEL" >> "$GITHUB_OUTPUT"
+          echo "evidence_url=$EVIDENCE_URL" >> "$GITHUB_OUTPUT"
+          echo "evidence_sha256=$EVIDENCE_SHA256" >> "$GITHUB_OUTPUT"
+          echo "evidence_attested=$EVIDENCE_ATTESTED" >> "$GITHUB_OUTPUT"
+
+  build:
+    needs: prepare
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: macos-14
+            target: --mac --arm64
+            artifact: macos-arm64
+          - os: macos-15-intel
+            target: --mac --x64
+            artifact: macos-x64
+          - os: windows-2022
+            target: --win --x64
+            artifact: windows-x64
+          - os: ubuntu-22.04
+            target: --linux --x64
+            artifact: linux-x64
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 45
+    env:
+      NEXNOTE_UPDATE_CHANNEL: ${{ needs.prepare.outputs.channel }}
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          ref: ${{ needs.prepare.outputs.commit }}
+      - uses: pnpm/action-setup@a7487c7e89a18df4991f7f222e4898a00d66ddda # v4.1.0
+        with: { version: 10 }
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with: { node-version: 22, cache: pnpm }
+      - run: pnpm install --frozen-lockfile
+      - name: Rebuild bundled Git for runner target architecture
+        if: runner.os == 'macOS'
+        run: |
+          rm -rf node_modules/.pnpm/dugite@*/node_modules/dugite/git
+          pnpm rebuild dugite
+          gitbin=$(find node_modules -path '*/dugite/git/bin/git' -print -quit)
+          test -x "$gitbin" || { echo '::error::dugite Git missing'; exit 1; }
+          file "$gitbin" | grep -q "${{ runner.arch == 'ARM64' && 'arm64' || 'x86_64' }}" || { echo '::error::dugite Git architecture mismatch'; exit 1; }
+      - name: Validate immutable release version and configuration
+        run: |
+          node scripts/check-version.mjs --require-tag "${{ needs.prepare.outputs.tag }}"
+          pnpm verify:release-config
+      - run: pnpm lint && pnpm typecheck && pnpm test && pnpm build
+
+      - name: Package signed and notarized macOS distributables
+        if: runner.os == 'macOS'
+        env:
+          NEXNOTE_NOTARIZE_MODE: required
+          MACOS_CERTIFICATE: ${{ secrets.MACOS_CERTIFICATE }}
+          MACOS_CERTIFICATE_PASSWORD: ${{ secrets.MACOS_CERTIFICATE_PASSWORD }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+        run: |
+          test -n "$MACOS_CERTIFICATE" && test -n "$MACOS_CERTIFICATE_PASSWORD" && test -n "$APPLE_ID" && test -n "$APPLE_APP_SPECIFIC_PASSWORD" && test -n "$APPLE_TEAM_ID" || { echo '::error::macOS signing and notarization credentials are required'; exit 1; }
+          python3 -c 'import base64, os, pathlib; pathlib.Path(os.environ["RUNNER_TEMP"], "nexnote.p12").write_bytes(base64.b64decode(os.environ["MACOS_CERTIFICATE"]))'
+          export CSC_LINK="$RUNNER_TEMP/nexnote.p12"
+          export CSC_KEY_PASSWORD="$MACOS_CERTIFICATE_PASSWORD"
+          node scripts/run-builder.mjs ${{ matrix.target }} --publish never
+
+      - name: Package signed Windows distributables
+        if: runner.os == 'Windows'
+        shell: pwsh
+        env:
+          WINDOWS_CERTIFICATE: ${{ secrets.WINDOWS_CERTIFICATE }}
+          WINDOWS_CERTIFICATE_PASSWORD: ${{ secrets.WINDOWS_CERTIFICATE_PASSWORD }}
+        run: |
+          if (-not $env:WINDOWS_CERTIFICATE -or -not $env:WINDOWS_CERTIFICATE_PASSWORD) { throw 'Windows Authenticode certificate and password are required' }
+          [IO.File]::WriteAllBytes("$env:RUNNER_TEMP/nexnote.pfx", [Convert]::FromBase64String($env:WINDOWS_CERTIFICATE))
+          $env:CSC_LINK = "$env:RUNNER_TEMP/nexnote.pfx"
+          $env:CSC_KEY_PASSWORD = $env:WINDOWS_CERTIFICATE_PASSWORD
+          node scripts/run-builder.mjs ${{ matrix.target }} --publish never
+
+      - name: Package Linux distributables
+        if: runner.os == 'Linux'
+        run: node scripts/run-builder.mjs ${{ matrix.target }} --publish never
+
+      - name: Verify macOS signature and notarization staple
+        if: runner.os == 'macOS'
+        run: |
+          app=$(find release -maxdepth 3 -name 'NexNote.app' -print -quit)
+          test -n "$app" || { echo '::error::no NexNote.app produced'; exit 1; }
+          codesign --verify --deep --strict "$app"
+          xcrun stapler validate "$app"
+          spctl --assess --type execute --verbose=4 "$app"
+
+      - name: Verify Windows Authenticode signature
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $executables = Get-ChildItem release -Filter '*.exe'
+          if (-not $executables) { throw 'no .exe produced' }
+          foreach ($artifact in $executables) {
+            $sig = Get-AuthenticodeSignature $artifact.FullName
+            if ($sig.Status -ne 'Valid') { throw "Not Authenticode-signed: $($artifact.Name) ($($sig.Status))" }
+          }
+
+      - name: Sign and verify Linux release artifacts before upload
+        if: runner.os == 'Linux'
+        env:
+          LINUX_GPG_PRIVATE_KEY: ${{ secrets.LINUX_GPG_PRIVATE_KEY }}
+        run: |
+          test -n "$LINUX_GPG_PRIVATE_KEY" || { echo '::error::Linux GPG private key is required'; exit 1; }
+          printf '%s' "$LINUX_GPG_PRIVATE_KEY" | base64 --decode > "$RUNNER_TEMP/nexnote.gpg"
+          gpg --batch --import "$RUNNER_TEMP/nexnote.gpg"
+          shopt -s nullglob
+          artifacts=(release/*.AppImage release/*.deb)
+          ((${#artifacts[@]})) || { echo '::error::no Linux distributables produced'; exit 1; }
+          for artifact in "${artifacts[@]}"; do
+            gpg --batch --yes --armor --detach-sign "$artifact"
+            gpg --verify "$artifact.asc" "$artifact"
+          done
+
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: nexnote-${{ matrix.artifact }}
+          # Preserve each native builder output directory: latest-mac.yml from one
+          # architecture must never overwrite the other before preflight aggregation.
+          path: release
+          if-no-files-found: error
+
+  smoke:
+    needs: [prepare, build]
+    runs-on: macos-14
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          ref: ${{ needs.prepare.outputs.commit }}
+      - uses: pnpm/action-setup@a7487c7e89a18df4991f7f222e4898a00d66ddda # v4.1.0
+        with: { version: 10 }
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with: { node-version: 22, cache: pnpm }
+      - run: pnpm install --frozen-lockfile
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          name: nexnote-macos-arm64
+          path: release
+      - name: Extract packaged app for smoke
+        run: |
+          archive=$(find release -name '*arm64-mac.zip' -print -quit)
+          test -n "$archive" || { echo '::error::macOS zip missing'; exit 1; }
+          unzip -q "$archive" -d release/smoke-app
+      - run: pnpm smoke:ci
+        env:
+          NEXNOTE_APP_PATH: release/smoke-app/NexNote.app/Contents/MacOS/NexNote
+
+  # All machine-checkable artifact/evidence gates complete BEFORE protected approval.
+  preflight:
+    needs: [prepare, build, smoke]
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          ref: ${{ needs.prepare.outputs.commit }}
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          pattern: nexnote-*
+          path: release
+          merge-multiple: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with: { node-version: 22 }
+      - name: Install preflight script dependencies
+        run: |
+          corepack enable
+          corepack prepare pnpm@10 --activate
+          pnpm install --frozen-lockfile
+      - name: Merge native macOS update manifests and flatten artifacts
+        run: |
+          node scripts/merge-mac-update-manifests.mjs release "${{ needs.prepare.outputs.channel }}"
+          # Remove redundant per-arch native mac manifests; the merged root manifest
+          # is the single source of truth for macOS auto-update feed.
+          find release -mindepth 2 -type f -name '*-mac.yml' -delete
+          # Fail on any duplicate basename BEFORE flattening; find/mv must never
+          # silently pick one file over a same-named peer (e.g. matching mac zips).
+          dup=$(find release -type f | while read -r f; do basename "$f"; done | sort | uniq -d)
+          test -z "$dup" || { echo "::error::duplicate artifact basenames would collide: $dup"; exit 1; }
+          # Flatten distributables/metadata into a single release dir for a single
+          # upload + checksum set (collisions already rejected above).
+          find release -mindepth 2 -type f -exec mv {} release/ \;
+      - name: Preflight signed artifact set and immutable version
+        run: |
+          shopt -s nullglob
+          appimages=(release/*.AppImage)
+          debs=(release/*.deb)
+          maczips=(release/*-mac.zip)
+          macdmg=(release/*.dmg)
+          windows=(release/*.exe)
+          blockmaps=(release/*.blockmap)
+          case "${{ needs.prepare.outputs.channel }}" in
+            stable) manifests=(release/latest*.yml) ;;
+            beta) manifests=(release/beta*.yml release/*beta*.yml) ;;
+            alpha) manifests=(release/alpha*.yml release/*alpha*.yml) ;;
+            *) echo '::error::invalid update channel'; exit 1 ;;
+          esac
+          ((${#appimages[@]} && ${#debs[@]} && ${#maczips[@]} && ${#macdmg[@]} && ${#windows[@]} && ${#blockmaps[@]} && ${#manifests[@]})) || { echo '::error::incomplete distributable or auto-update metadata set'; exit 1; }
+          for artifact in "${appimages[@]}" "${debs[@]}"; do test -f "$artifact.asc" || { echo "::error::missing GPG signature for $artifact"; exit 1; }; done
+          node scripts/check-version.mjs --require-tag "${{ needs.prepare.outputs.tag }}"
+          # Bind the exact preflighted bytes; publish verifies this again immediately before upload.
+          (cd release && find . -type f ! -name SHA256SUMS -print0 | sort -z | xargs -0 sha256sum > SHA256SUMS)
+          test -s release/SHA256SUMS
+      - name: Fetch, verify, and bind immutable QA evidence
+        env:
+          RELEASE_CHANNEL: ${{ needs.prepare.outputs.channel }}
+          RELEASE_TAG: ${{ needs.prepare.outputs.tag }}
+          RELEASE_COMMIT: ${{ needs.prepare.outputs.commit }}
+          QA_EVIDENCE_URL: ${{ needs.prepare.outputs.evidence_url }}
+          QA_EVIDENCE_SHA256: ${{ needs.prepare.outputs.evidence_sha256 }}
+          QA_ALL_REQUIRED_CHECKS_PASSED: ${{ needs.prepare.outputs.evidence_attested }}
+        run: |
+          GITHUB_REF_NAME="$RELEASE_TAG" GITHUB_SHA="$RELEASE_COMMIT" node scripts/release-evidence.mjs create release-qa-evidence.json
+          GITHUB_REF_NAME="$RELEASE_TAG" GITHUB_SHA="$RELEASE_COMMIT" node scripts/release-evidence.mjs validate release-qa-evidence.json
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: release-qa-evidence-${{ github.run_id }}
+          path: release-qa-evidence.json
+          if-no-files-found: error
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: release-preflight-${{ github.run_id }}
+          path: release/**/*
+          if-no-files-found: error
+
+  # Protected Environment approval by required reviewers occurs only after signed build,
+  # smoke, metadata preflight, and completed QA checklist evidence validation succeeded.
+  publish:
+    needs: [prepare, preflight]
+    runs-on: ubuntu-latest
+    # Bounds lease wait plus the privileged publisher action.
+    timeout-minutes: 45
+    environment:
+      name: release-qa
+    permissions:
+      contents: write
+      actions: read
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          ref: ${{ needs.prepare.outputs.commit }}
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          name: release-preflight-${{ github.run_id }}
+          path: release
+      - name: Acquire durable publication lease
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          RELEASE_COMMIT: ${{ needs.prepare.outputs.commit }}
+        run: |
+          set -euo pipefail
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          # Each attempt owns a UNIQUE commit: pushing the same SHA twice would be
+          # reported as 'up-to-date' and is NOT mutual exclusion.
+          tree=$(git rev-parse "$RELEASE_COMMIT^{tree}")
+          owner=$(printf 'publication lease %s/%s/%s\n' "$GITHUB_RUN_ID" "$GITHUB_RUN_ATTEMPT" "$RANDOM" | git commit-tree "$tree")
+          echo "PUBLICATION_LEASE_OWNER=$owner" >> "$GITHUB_ENV"
+          # Empty expected old SHA means create-if-absent, never update an existing lease.
+          for attempt in $(seq 1 180); do
+            if git push --force-with-lease=refs/heads/release-publication-lock: origin "$owner:refs/heads/release-publication-lock" 2>/dev/null; then
+              echo "PUBLICATION_LEASE_ACQUIRED=true" >> "$GITHUB_ENV"
+              exit 0
+            fi
+
+            # Stale takeover is fail-closed: read exact remote owner SHA/message, require
+            # an old lease AND a terminal owner run via canonical GitHub API, then CAS it.
+            git fetch --no-tags origin +refs/heads/release-publication-lock:refs/remotes/origin/release-publication-lock 2>/dev/null || { sleep 10; continue; }
+            old=$(git rev-parse refs/remotes/origin/release-publication-lock)
+            message=$(git log -1 --format=%B "$old")
+            # Lease message must match the exact anchored numeric pattern; anything
+            # else (tampering, non-lease commits) cannot be taken over.
+            if ! printf '%s' "$message" | grep -Eq '^publication lease ([0-9]+)/([0-9]+)/([0-9]+)$'; then sleep 10; continue; fi
+            owner_run=$(printf '%s' "$message" | sed -E 's#^publication lease ([0-9]+)/([0-9]+)/.*#\1#')
+            owner_time=$(git log -1 --format=%ct "$old")
+            now=$(date +%s)
+            if [ "$((now - owner_time))" -ge 2700 ]; then
+              response=$(curl --fail-with-body --silent --show-error --max-time 10 \
+                -H "Authorization: Bearer $GITHUB_TOKEN" -H 'Accept: application/vnd.github+json' \
+                "https://api.github.com/repos/$GITHUB_REPOSITORY/actions/runs/$owner_run") || { sleep 10; continue; }
+              status=$(printf '%s' "$response" | python3 -c 'import json,sys; print(json.load(sys.stdin).get("status", ""))')
+              if [ "$status" = completed ] && git push --force-with-lease=refs/heads/release-publication-lock:$old origin "$owner:refs/heads/release-publication-lock"; then
+                echo "PUBLICATION_LEASE_ACQUIRED=true" >> "$GITHUB_ENV"
+                exit 0
+              fi
+            fi
+            sleep 10
+          done
+          echo '::error::publication lease unavailable after 30 minutes; run remains failed and rerunnable, never silently dropped'
+          exit 1
+      - name: Revalidate lease ownership, remote tag, commit, and artifact digests
+        env:
+          RELEASE_TAG: ${{ needs.prepare.outputs.tag }}
+          RELEASE_COMMIT: ${{ needs.prepare.outputs.commit }}
+        run: |
+          set -euo pipefail
+          test "$PUBLICATION_LEASE_ACQUIRED" = true
+          git fetch --force --tags origin
+          test "$(git rev-parse refs/remotes/origin/release-publication-lock)" = "$PUBLICATION_LEASE_OWNER" || { echo '::error::lost publication lease ownership'; exit 1; }
+          test "$(git rev-parse "refs/tags/$RELEASE_TAG^{commit}")" = "$RELEASE_COMMIT" || { echo '::error::remote release tag no longer resolves to approved commit'; exit 1; }
+          test "$(git rev-parse HEAD)" = "$RELEASE_COMMIT" || { echo '::error::publisher checkout differs from approved commit'; exit 1; }
+          (cd release && sha256sum --check SHA256SUMS)
+      # Same immutable tag resolves to the same GitHub Release, making explicit retries idempotent.
+      - name: Attach artifacts to GitHub Release
+        uses: softprops/action-gh-release@3bb12739c298aeb8a4eeaf626c5b8d85266b0e65 # v2
+        with:
+          tag_name: ${{ needs.prepare.outputs.tag }}
+          files: release/**/*
+          generate_release_notes: true
+      - name: Release durable publication lease
+        if: always() && env.PUBLICATION_LEASE_ACQUIRED == 'true'
+        run: git push --force-with-lease=refs/heads/release-publication-lock:$PUBLICATION_LEASE_OWNER origin :refs/heads/release-publication-lock

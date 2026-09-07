@@ -1,0 +1,25 @@
+Third-Party Software Notice: Bundled Git (dugite)
+
+NexNote distributes the Git version-control executable from the `dugite`
+package (desktop/dugite-native) inside the installed application so that
+Git-powered features work offline without requiring a separate system Git.
+
+Git is licensed under the GNU General Public License version 2 (GPLv2).
+The full GPLv2 license text is provided in this directory as COPYING.
+
+Bundling and redistributing this GPLv2 binary in the NexNote installer is a
+"conveyance" of a GPL-covered work, and NexNote accordingly:
+  - includes the complete GPLv2 license text with the application, and
+  - makes a written offer to provide the corresponding source code, as
+    required by GPLv2 section 3 (see SOURCE_OFFER.txt in this directory).
+
+NexNote invokes Git only as a separate OS process and does not link against it;
+the GPL obligations apply to the distributed Git binary itself and do not alter
+the license of the NexNote application code.
+
+Git source code is published at https://github.com/git/git (canonical upstream)
+and, for the Windows/MinGW distribution bundled on Windows, at
+https://github.com/git-for-windows/git.
+
+Upstream license and provenance:
+  - dugite / dugite-native: https://github.com/desktop/dugite-native (LICENSE.md)

@@ -13,6 +13,7 @@ export default tseslint.config(
       '.scratch/**',
       '.wt/**',
       'build/**',
+      'scripts/**',
     ],
   },
   js.configs.recommended,

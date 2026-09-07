@@ -100,7 +100,9 @@ function makeServices(): {
       }),
     }),
     trash: async () => {},
-    revealItem: async (absPath: string) => { reveals.push(absPath); },
+    revealItem: async (absPath: string) => {
+      reveals.push(absPath);
+    },
     watch: new VaultWatchService({ getRoot: () => null, emit: () => undefined }),
     index: new LinkIndexService(),
     appInfo: () => ({
@@ -110,7 +112,24 @@ function makeServices(): {
       isPackaged: false,
       electronVersion: 'test',
     }),
-    checkForUpdates: async () => ({ status: 'not-configured' as const }),
+    checkForUpdates: async () => ({
+      status: 'not-configured' as const,
+      channel: 'stable' as const,
+    }),
+    downloadUpdate: async () => ({ status: 'not-configured' as const, channel: 'stable' as const }),
+    installUpdate: () => ({ willRestart: true as const }),
+    setUpdateChannel: (channel) => ({ status: 'not-configured' as const, channel }),
+    getUpdateSettings: () => ({
+      channel: 'stable' as const,
+      autoDownload: true,
+      checkOnLaunch: true,
+    }),
+    setUpdateSettings: (patch) => ({
+      channel: 'stable' as const,
+      autoDownload: true,
+      checkOnLaunch: true,
+      ...patch,
+    }),
   };
   return { services, session, store, reveals };
 }

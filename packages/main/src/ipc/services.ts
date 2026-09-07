@@ -1,4 +1,10 @@
-import type { AppInfo, UpdateCheckResult } from '@nexnote/shared';
+import type {
+  AppInfo,
+  UpdateChannel,
+  UpdateCheckResult,
+  UpdateSettings,
+  UpdateSettingsPatch,
+} from '@nexnote/shared';
 import type { AppStore } from '../vault/app-store';
 import type { VaultSession } from '../vault/vault-session';
 import type { VaultFsService } from '../fs/fs-service';
@@ -43,4 +49,9 @@ export interface IpcServices {
   skills?: SkillService;
   appInfo(): AppInfo;
   checkForUpdates(): Promise<UpdateCheckResult>;
+  downloadUpdate(): Promise<UpdateCheckResult>;
+  installUpdate(): { willRestart: true };
+  setUpdateChannel(channel: UpdateChannel): UpdateCheckResult;
+  getUpdateSettings(): UpdateSettings;
+  setUpdateSettings(patch: UpdateSettingsPatch): UpdateSettings;
 }

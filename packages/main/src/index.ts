@@ -8,7 +8,15 @@ import { VaultWatchService } from './fs/watch-service';
 import { LinkIndexService } from './indexer/index-service';
 import { WindowManager } from './window';
 import { registerAllIpcHandlers } from './ipc';
-import { checkForUpdates, initAutoUpdater } from './updater';
+import {
+  checkForUpdates,
+  downloadUpdate,
+  getUpdateSettings,
+  initAutoUpdater,
+  installUpdate,
+  setUpdateChannel,
+  setUpdateSettings,
+} from './updater';
 import { SmokeController } from './smoke';
 import { AiStore } from './ai/ai-store';
 import { AiService } from './ai/ai-service';
@@ -45,7 +53,19 @@ let windows: WindowManager | null = null;
 
 async function bootstrap(): Promise<void> {
   const appStore = new AppStore(join(app.getPath('userData'), 'nexnote-app.json'));
-  windows = new WindowManager({ getAppStore: () => appStore, devTools: !!process.env.NEXNOTE_DEVTOOLS });
+  // 返回主进程 AppStore + updater 合并后的权威状态，renderer 不做本地存储。
+  const readUpdateSettings = () => {
+    const fromUpdater = getUpdateSettings();
+    return {
+      channel: appStore.get().updateChannel ?? fromUpdater.channel,
+      autoDownload: appStore.getUpdateAutoDownload(),
+      checkOnLaunch: appStore.getUpdateCheckOnLaunch(),
+    };
+  };
+  windows = new WindowManager({
+    getAppStore: () => appStore,
+    devTools: !!process.env.NEXNOTE_DEVTOOLS,
+  });
   const vaultSession = new VaultSession({
     appStore,
     windows,
@@ -102,7 +122,10 @@ async function bootstrap(): Promise<void> {
     safeStorage,
   });
   const winRef = windows;
-  const ai = new AiService({ store: aiStore, sendEvent: (channel, payload) => winRef.sendToMainWindow(channel, payload) });
+  const ai = new AiService({
+    store: aiStore,
+    sendEvent: (channel, payload) => winRef.sendToMainWindow(channel, payload),
+  });
 
   // DEV-011 向量索引 + 三阶段召回（embedding 走 ai 的 embedding feature，未配置时自动降级）。
   retrievalService = new RetrievalService({
@@ -127,7 +150,11 @@ async function bootstrap(): Promise<void> {
     plugins,
   });
 
-  initAutoUpdater(log);
+  initAutoUpdater(log, (status) => windows?.sendToMainWindow('app:updateStatus', status), {
+    channel: appStore.get().updateChannel ?? undefined,
+    autoDownload: appStore.getUpdateAutoDownload(),
+    checkOnLaunch: appStore.getUpdateCheckOnLaunch(),
+  });
 
   registerAllIpcHandlers(ipcMain, {
     windows,
@@ -182,8 +209,29 @@ async function bootstrap(): Promise<void> {
         electronVersion: process.versions.electron ?? 'unknown',
       };
     },
-    checkForUpdates() {
-      return checkForUpdates();
+    checkForUpdates,
+    downloadUpdate,
+    installUpdate,
+    setUpdateChannel(channel) {
+      const result = setUpdateChannel(channel);
+      if (result.status !== 'error') appStore.setUpdateChannel(channel);
+      return result;
+    },
+    getUpdateSettings() {
+      return readUpdateSettings();
+    },
+    setUpdateSettings(patch) {
+      const result = setUpdateSettings(patch);
+      if (patch.channel !== undefined && result.channel === patch.channel) {
+        appStore.setUpdateChannel(patch.channel);
+      }
+      if (patch.autoDownload !== undefined) {
+        appStore.setUpdateAutoDownload(patch.autoDownload);
+      }
+      if (patch.checkOnLaunch !== undefined) {
+        appStore.setUpdateCheckOnLaunch(patch.checkOnLaunch);
+      }
+      return readUpdateSettings();
     },
   });
 
@@ -193,9 +241,11 @@ async function bootstrap(): Promise<void> {
   if (isSmokeMode) {
     const smoke = new SmokeController({
       windows,
-      outputDir: process.env.NEXNOTE_SMOKE_DIR
-        ? process.env.NEXNOTE_SMOKE_DIR
-        : join(__dirname, '../../.scratch/nexnote-build/smoke/DEV-007'),
+      // Packaged resources/ASAR are read-only; smoke evidence must use writable temp storage.
+      outputDir:
+        process.env.NEXNOTE_SMOKE_OUTPUT_DIR ??
+        process.env.NEXNOTE_SMOKE_DIR ??
+        join(app.getPath('temp'), `nexnote-smoke-results-${Date.now()}`),
     });
     void smoke.init();
   }
