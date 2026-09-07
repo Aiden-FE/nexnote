@@ -506,11 +506,16 @@ check('PR 检查覆盖 lint/typecheck/test/build', () => {
   if (!/pnpm build/.test(devWorkflow)) throw new Error('pr-check missing build');
 });
 
-check('PR 检查含 changed-file formatting gate（diff-filter=AM + prettier）', () => {
-  if (!/diff-filter=AM/.test(devWorkflow))
-    throw new Error('pr-check must have a changed-file formatting gate using diff-filter=AM');
-  if (!/prettier --check/.test(devWorkflow))
-    throw new Error('pr-check formatting gate must use prettier --check');
+check('PR 检查含 NUL-safe changed-file formatting gate', () => {
+  if (!/scripts\/check-changed-format\.sh/.test(devWorkflow))
+    throw new Error('pr-check must invoke the changed-file formatting script');
+  const formatGate = readFileSync(resolve(root, 'scripts/check-changed-format.sh'), 'utf8');
+  if (!/git diff --name-only -z --diff-filter=AM/.test(formatGate))
+    throw new Error('format gate must use a NUL-delimited added/modified file diff');
+  if (!/prettier --check --ignore-unknown --/.test(formatGate))
+    throw new Error('format gate must terminate Prettier options before file paths');
+  if (!/files\+=\("\.\/\$file"\)/.test(formatGate))
+    throw new Error('format gate must prefix relative file paths with ./');
   if (!/fetch-depth:\s*0/.test(devWorkflow))
     throw new Error('pr-check must fetch full history for diff against base');
 });

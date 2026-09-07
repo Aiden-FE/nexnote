@@ -27,16 +27,7 @@ jobs:
           cache: pnpm
       - run: pnpm install --frozen-lockfile
       - name: Check formatting of changed files
-        run: |
-          set -euo pipefail
-          base="${GITHUB_BASE_REF:-master}"
-          # Read into an array so each filename is an independent argument and is never
-          # re-split; a PR-controlled filename starting with '-' or containing spaces
-          # must not be parsed as Prettier flags or split into multiple arguments.
-          mapfile -t files < <(git diff --name-only --diff-filter=AM "origin/$base...HEAD")
-          if [ "${#files[@]}" -eq 0 ]; then echo 'No changed files to check'; exit 0; fi
-          # Prettier returns 0 when all files are formatted, non-zero otherwise.
-          npx --no-install prettier --check "${files[@]}"
+        run: scripts/check-changed-format.sh
       - run: pnpm lint
       - run: pnpm typecheck
       - run: pnpm test
