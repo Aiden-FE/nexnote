@@ -320,8 +320,6 @@ const saveLayout: PayloadValidator = (payload) => {
     activeSidebarPanelId: 'nullable-string',
     dockVisible: 'boolean',
     dockWidth: 'number',
-    splitEnabled: 'boolean',
-    splitRatio: 'number',
     treeCollapsedDirs: 'string-array',
     treeShowAllFiles: 'boolean',
   };

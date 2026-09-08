@@ -280,17 +280,15 @@ describe('IPC 集成（vault + fs，单一注册表）', () => {
         activeSidebarPanelId: null,
         dockVisible: true,
         dockWidth: 320,
-        splitEnabled: true,
-        splitRatio: 0.62,
       },
     })) as { ok: boolean };
     expect(saved.ok).toBe(true);
     const layout = (await ipc.invoke('vault:getLayout')) as {
       ok: boolean;
-      data: { sidebarWidth: number; splitRatio: number };
+      data: { sidebarWidth: number; dockWidth: number };
     };
     expect(layout.data.sidebarWidth).toBe(300);
-    expect(layout.data.splitRatio).toBe(0.62);
+    expect(layout.data.dockWidth).toBe(320);
 
     // 关闭 → 回到向导；fs 拒绝
     const closed = (await ipc.invoke('vault:close')) as { ok: boolean };
@@ -417,8 +415,6 @@ describe('IPC 集成（vault + fs，单一注册表）', () => {
         activeSidebarPanelId: null,
         dockVisible: true,
         dockWidth: 320,
-        splitEnabled: false,
-        splitRatio: 0.5,
       },
     });
     expect(git.autoTimer).not.toBeNull();

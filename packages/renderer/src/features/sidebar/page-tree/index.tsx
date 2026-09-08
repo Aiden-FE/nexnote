@@ -15,9 +15,15 @@ import {
 import { ContextMenu, type ContextMenuItem } from '../../../components/ContextMenu';
 import { usePageTreeStore } from '../../../stores/page-tree-store';
 import { useUiStore } from '../../../stores/ui-store';
-import { openPageInActivePane } from '../../../stores/tab-store';
+import { openPage } from '../../../stores/tab-store';
 import { cn } from '../../../lib/utils';
-import { buildTree, displayName, filterTree, isMarkdown, type TreeNode } from '../../../page-tree/tree-utils';
+import {
+  buildTree,
+  displayName,
+  filterTree,
+  isMarkdown,
+  type TreeNode,
+} from '../../../page-tree/tree-utils';
 import * as ops from './ops';
 import { sidebarPanelRegistry } from '../../../registries';
 
@@ -67,10 +73,7 @@ function PageTreePanel() {
   };
 
   const visibleEntries = useMemo(
-    () =>
-      entries.filter(
-        (e) => showAllFiles || e.kind === 'directory' || isMarkdown(e.name),
-      ),
+    () => entries.filter((e) => showAllFiles || e.kind === 'directory' || isMarkdown(e.name)),
     [entries, showAllFiles],
   );
   const tree = useMemo(() => buildTree(visibleEntries), [visibleEntries]);
@@ -157,7 +160,7 @@ function PageTreePanel() {
         onClick={() => {
           usePageTreeStore.getState().setSelected(node.path);
           if (node.kind === 'file' && (isMarkdown(node.name) || showAllFiles)) {
-            if (isMarkdown(node.name)) openPageInActivePane(node.path);
+            if (isMarkdown(node.name)) openPage(node.path);
           }
         }}
         onContextMenu={(e) => openMenuFor(e, node)}
@@ -305,7 +308,9 @@ function PageTreePanel() {
         )}
         {status === 'ready' && rows.length === 0 && (
           <p className="p-3 text-xs leading-relaxed text-muted-foreground">
-            {filtering ? '没有匹配的页面' : '此知识库还没有页面。点击上方按钮或右键新建第一篇笔记。'}
+            {filtering
+              ? '没有匹配的页面'
+              : '此知识库还没有页面。点击上方按钮或右键新建第一篇笔记。'}
           </p>
         )}
         {rows}
@@ -394,14 +399,18 @@ function TreeRow(p: TreeRowProps) {
             className="shrink-0 rounded p-0.5 text-muted-foreground hover:bg-accent"
             aria-label={p.expanded ? '折叠' : '展开'}
           >
-            <ChevronRight className={cn('size-3 transition-transform', p.expanded && 'rotate-90')} />
+            <ChevronRight
+              className={cn('size-3 transition-transform', p.expanded && 'rotate-90')}
+            />
           </button>
           <Folder className="size-3.5 shrink-0 text-primary/70" />
         </>
       ) : (
         <span className="w-[17px] shrink-0" />
       )}
-      {!isDir && isMarkdown(p.node.name) && <FileText className="size-3.5 shrink-0 text-muted-foreground" />}
+      {!isDir && isMarkdown(p.node.name) && (
+        <FileText className="size-3.5 shrink-0 text-muted-foreground" />
+      )}
       {!isDir && !isMarkdown(p.node.name) && (
         <FileText className="size-3.5 shrink-0 text-muted-foreground/50" />
       )}

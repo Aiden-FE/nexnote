@@ -18,7 +18,8 @@ export const MERMAID_LANGUAGE = 'mermaid';
 /** 新插入块的示例源码（首次即进入可预览状态，双击可改）。 */
 export const MERMAID_DEFAULT_SOURCE = 'graph TD\n  A --> B';
 
-const FENCE_RE = new RegExp('^```' + MERMAID_LANGUAGE + '[ \\t]*\\n([\\s\\S]*?)\\n?```');
+// CommonMark 与 Obsidian 都允许 ``` / ~~~ 围栏；开闭标记必须相同。
+const FENCE_RE = new RegExp('^(?:(```|~~~)' + MERMAID_LANGUAGE + '[ \\t]*\\n([\\s\\S]*?)\\n?\\1)');
 
 declare module '@tiptap/core' {
   interface Commands<ReturnType> {
@@ -89,7 +90,7 @@ export const MermaidBlock = Node.create({
 
     start(src: string) {
       if (FENCE_RE.test(src)) return 0;
-      const idx = src.search(new RegExp('\\n```' + MERMAID_LANGUAGE + '[ \\t]*\\n'));
+      const idx = src.search(new RegExp('\\n(?:```|~~~)' + MERMAID_LANGUAGE + '[ \\t]*\\n'));
       return idx < 0 ? -1 : idx + 1;
     },
 
@@ -99,7 +100,7 @@ export const MermaidBlock = Node.create({
       return {
         type: MERMAID_BLOCK_NAME,
         raw: m[0],
-        mermaidSource: (m[1] ?? '').replace(/\n+$/, ''),
+        mermaidSource: (m[2] ?? '').replace(/\n+$/, ''),
       } as MarkdownToken;
     },
   },

@@ -30,7 +30,6 @@ export interface VaultConfig {
   /** 上次打开的页面（DEV-002/003 接入真实页面后使用，本票仅占位） */
   lastSession: {
     tabs: Array<{ kind: string; title: string }>;
-    activePane: 'left' | 'right';
   };
 }
 
@@ -41,8 +40,6 @@ export interface VaultLayout {
   activeSidebarPanelId: string | null;
   dockVisible: boolean;
   dockWidth: number;
-  splitEnabled: boolean;
-  splitRatio: number;
   /** 页面树折叠的目录（vault 相对路径，DEV-003） */
   treeCollapsedDirs: string[];
   /** 页面树显示非 .md 文件（默认隐藏，DEV-003） */
@@ -54,11 +51,9 @@ export function defaultVaultLayout(): VaultLayout {
     sidebarWidth: 260,
     sidebarCollapsed: false,
     activeSidebarPanelId: null,
-    // 首次打开保持「侧栏 + 单栏主区」：AI Dock 与分屏都按需手动开启
+    // 首次打开保持「侧栏 + 单栏主区」：AI Dock 按需手动开启
     dockVisible: false,
     dockWidth: 320,
-    splitEnabled: false,
-    splitRatio: 0.5,
     treeCollapsedDirs: [],
     treeShowAllFiles: false,
   };
@@ -71,7 +66,7 @@ export function defaultVaultConfig(): VaultConfig {
     chatFolder: 'AI Chats',
     settings: defaultVaultSettings(),
     layout: defaultVaultLayout(),
-    lastSession: { tabs: [], activePane: 'left' },
+    lastSession: { tabs: [] },
   };
 }
 

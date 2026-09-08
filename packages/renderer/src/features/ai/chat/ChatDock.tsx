@@ -13,7 +13,7 @@ import { useChatStore } from './chat-store';
 import { ContextChips } from './ContextChips';
 import { RetrievalSources } from '../retrieval/RetrievalSources';
 import { insertIntoActiveEditor } from '../../../editor/active-editor';
-import { openPageInActivePane, useTabStore } from '../../../stores/tab-store';
+import { openPage, useTabStore } from '../../../stores/tab-store';
 import { openSettings } from '../../../lib/open-settings';
 import { cn } from '../../../lib/utils';
 import { Button } from '../../../components/ui/button';
@@ -52,9 +52,7 @@ function TurnView({ turn }: { turn: ChatTurn }) {
         data-testid={isUser ? 'chat-turn-user' : 'chat-turn-assistant'}
         className={cn(
           'max-w-[92%] whitespace-pre-wrap break-words rounded-lg px-2.5 py-1.5 text-[13px] leading-relaxed',
-          isUser
-            ? 'bg-primary text-primary-foreground'
-            : 'border bg-background text-foreground',
+          isUser ? 'bg-primary text-primary-foreground' : 'border bg-background text-foreground',
         )}
       >
         {turn.content || <Loader2 className="size-3.5 animate-spin text-muted-foreground" />}
@@ -73,8 +71,13 @@ function TurnView({ turn }: { turn: ChatTurn }) {
             </button>
           </div>
           {sources && (
-            <details data-testid="chat-sources" className="rounded-md border bg-muted/30 px-2 py-1 text-[11px]">
-              <summary className="cursor-pointer select-none text-muted-foreground">参考来源</summary>
+            <details
+              data-testid="chat-sources"
+              className="rounded-md border bg-muted/30 px-2 py-1 text-[11px]"
+            >
+              <summary className="cursor-pointer select-none text-muted-foreground">
+                参考来源
+              </summary>
               <div className="mt-1.5">
                 <RetrievalSources response={sources} testId="chat-retrieval-sources" />
               </div>
@@ -105,7 +108,9 @@ function HistoryMenu() {
           data-testid="chat-history-menu"
           className="absolute right-0 top-full z-30 mt-1 max-h-72 w-60 overflow-auto rounded-md border bg-popover p-1 text-[12px] text-popover-foreground shadow-md"
         >
-          {summaries.length === 0 && <p className="px-2 py-2 text-muted-foreground">暂无历史会话</p>}
+          {summaries.length === 0 && (
+            <p className="px-2 py-2 text-muted-foreground">暂无历史会话</p>
+          )}
           {summaries.map((s) => (
             <button
               key={s.path}
@@ -179,7 +184,7 @@ export function ChatDock() {
 
   const saveAsDoc = useCallback(async () => {
     const path = await saveActiveAsDocument(true);
-    if (path) openPageInActivePane(path);
+    if (path) openPage(path);
   }, []);
 
   const hasTurns = (active?.turns.length ?? 0) > 0;
@@ -228,7 +233,10 @@ export function ChatDock() {
       </div>
 
       {!active ? (
-        <div data-testid="chat-empty" className="flex min-h-0 flex-1 flex-col items-center justify-center gap-2 p-4 text-center">
+        <div
+          data-testid="chat-empty"
+          className="flex min-h-0 flex-1 flex-col items-center justify-center gap-2 p-4 text-center"
+        >
           <div className="flex size-11 items-center justify-center rounded-full bg-muted">
             <Sparkles className="size-5 text-primary" />
           </div>
@@ -256,7 +264,10 @@ export function ChatDock() {
               <TurnView key={i} turn={turn} />
             ))}
             {error && (
-              <div data-testid="chat-error" className="rounded-md border border-destructive/40 bg-destructive/10 p-2 text-[11px] text-destructive">
+              <div
+                data-testid="chat-error"
+                className="rounded-md border border-destructive/40 bg-destructive/10 p-2 text-[11px] text-destructive"
+              >
                 {error}
               </div>
             )}

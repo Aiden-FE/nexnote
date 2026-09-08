@@ -21,19 +21,18 @@ function BacklinksPanel() {
   const status = useIndexStore((s) => s.backlinksStatus);
   const forPath = useIndexStore((s) => s.backlinksFor);
   const load = useIndexStore((s) => s.loadBacklinks);
-  const panes = useTabStore((s) => s.panes);
-  const activePaneId = useTabStore((s) => s.activePaneId);
+  const tabs = useTabStore((s) => s.tabs);
+  const activeTabId = useTabStore((s) => s.activeTabId);
 
-  // 激活页面变化 → 加载反链（panes 订阅保证 tab 切换触发重渲）
+  // 激活页面变化 → 加载反链（tabs 订阅保证 tab 切换触发重渲）
   useEffect(() => {
-    const pane = panes[activePaneId];
-    const tab = pane?.tabs.find((t) => t.id === pane.activeTabId);
+    const tab = tabs.find((t) => t.id === activeTabId);
     if (tab?.pagePath) void load(tab.pagePath);
     else useIndexStore.getState().clearBacklinks();
-  }, [panes, activePaneId, load]);
+  }, [tabs, activeTabId, load]);
 
   const open = (b: Backlink): void => {
-    useTabStore.getState().openPageTab(activePaneId, b.fromPath);
+    useTabStore.getState().openPageTab(b.fromPath);
   };
 
   return (

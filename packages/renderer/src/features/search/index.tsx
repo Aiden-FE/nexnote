@@ -1,4 +1,3 @@
-
 import { useEffect, useRef, useState } from 'react';
 import { Search } from 'lucide-react';
 import type { PageJumpResult, SearchHit } from '@nexnote/shared';
@@ -38,24 +37,50 @@ export function SearchPanel() {
   const open = useUiStore((s) => s.searchOpen);
   const route = useUiStore((s) => s.searchRoute);
   if (!open) return null;
-  return route.kind === 'tag' ? <TagSearchResults tag={route.tag} paths={route.paths} /> : <SearchPanelInner />;
+  return route.kind === 'tag' ? (
+    <TagSearchResults tag={route.tag} paths={route.paths} />
+  ) : (
+    <SearchPanelInner />
+  );
 }
 
 function TagSearchResults({ tag, paths }: { tag: string; paths: string[] }) {
   const setOpen = useUiStore((s) => s.setSearchOpen);
-  const activePaneId = useTabStore((s) => s.activePaneId);
   const go = (path: string): void => {
     setOpen(false);
-    useTabStore.getState().openPageTab(activePaneId, path);
+    useTabStore.getState().openPageTab(path);
   };
   return (
-    <div data-testid="tag-search-results" className="fixed inset-0 z-50 flex items-start justify-center bg-black/40 pt-[14vh]" onClick={(e) => { if (e.target === e.currentTarget) setOpen(false); }}>
+    <div
+      data-testid="tag-search-results"
+      className="fixed inset-0 z-50 flex items-start justify-center bg-black/40 pt-[14vh]"
+      onClick={(e) => {
+        if (e.target === e.currentTarget) setOpen(false);
+      }}
+    >
       <div className="w-[620px] max-w-[90vw] overflow-hidden rounded-xl border bg-popover text-popover-foreground shadow-2xl">
-        <div className="flex items-center gap-2 border-b px-3.5 py-3"><Search className="size-4 text-muted-foreground" /><span className="text-sm font-medium">标签搜索：#{tag}</span></div>
+        <div className="flex items-center gap-2 border-b px-3.5 py-3">
+          <Search className="size-4 text-muted-foreground" />
+          <span className="text-sm font-medium">标签搜索：#{tag}</span>
+        </div>
         <div className="max-h-96 overflow-auto p-1.5">
-          {paths.length === 0 ? <p className="px-3 py-8 text-center text-sm text-muted-foreground">未找到含该标签的页面</p> : paths.map((path) => (
-            <button key={path} type="button" data-testid="tag-search-hit" onClick={() => go(path)} className="flex w-full rounded-lg px-3 py-2 text-left text-sm hover:bg-accent/60">{path}</button>
-          ))}
+          {paths.length === 0 ? (
+            <p className="px-3 py-8 text-center text-sm text-muted-foreground">
+              未找到含该标签的页面
+            </p>
+          ) : (
+            paths.map((path) => (
+              <button
+                key={path}
+                type="button"
+                data-testid="tag-search-hit"
+                onClick={() => go(path)}
+                className="flex w-full rounded-lg px-3 py-2 text-left text-sm hover:bg-accent/60"
+              >
+                {path}
+              </button>
+            ))
+          )}
         </div>
       </div>
     </div>
@@ -101,30 +126,37 @@ function SearchPanelInner() {
   useEffect(() => {
     if (timer.current) clearTimeout(timer.current);
     const generation = ++requestGeneration.current;
-    timer.current = setTimeout(() => {
-      if (!query.trim()) {
-        if (generation === requestGeneration.current) { setHits([]); setStatus('idle'); }
-        return;
-      }
-      setStatus('loading');
-      void search(query)
-        .then((results) => {
-          if (generation !== requestGeneration.current) return;
-          setHits(results);
-          setStatus('done');
-        })
-        .catch(() => { if (generation === requestGeneration.current) setStatus('done'); });
-    }, query.trim() ? 120 : 0);
+    timer.current = setTimeout(
+      () => {
+        if (!query.trim()) {
+          if (generation === requestGeneration.current) {
+            setHits([]);
+            setStatus('idle');
+          }
+          return;
+        }
+        setStatus('loading');
+        void search(query)
+          .then((results) => {
+            if (generation !== requestGeneration.current) return;
+            setHits(results);
+            setStatus('done');
+          })
+          .catch(() => {
+            if (generation === requestGeneration.current) setStatus('done');
+          });
+      },
+      query.trim() ? 120 : 0,
+    );
     return () => {
       if (timer.current) clearTimeout(timer.current);
       requestGeneration.current += 1;
     };
   }, [query, search]);
 
-  const activePaneId = useTabStore((s) => s.activePaneId);
   const go = (path: string): void => {
     setOpen(false);
-    useTabStore.getState().openPageTab(activePaneId, path);
+    useTabStore.getState().openPageTab(path);
   };
 
   return (

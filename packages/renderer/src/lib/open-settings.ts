@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import { useTabStore, openTabInActivePane } from '../stores/tab-store';
+import { useTabStore, openWorkspaceTab } from '../stores/tab-store';
 
 /**
  * 设置页导航状态：openSettings(section) 指定初始分区（跨模块跳转，如 dock → AI 设置）。
@@ -19,13 +19,10 @@ export const useSettingsNav = create<SettingsNavStore>((set) => ({
 export function openSettings(sectionId?: string): void {
   useSettingsNav.setState({ activeId: sectionId ?? null });
   const st = useTabStore.getState();
-  for (const pane of [st.panes.left, st.panes.right]) {
-    if (!pane) continue;
-    const tab = pane.tabs.find((t) => t.kind === 'settings');
-    if (tab) {
-      st.setActiveTab(pane.id, tab.id);
-      return;
-    }
+  const tab = st.tabs.find((t) => t.kind === 'settings');
+  if (tab) {
+    st.setActiveTab(tab.id);
+    return;
   }
-  openTabInActivePane('settings', '设置');
+  openWorkspaceTab('settings', '设置');
 }

@@ -10,13 +10,7 @@ import {
 import '@xyflow/react/dist/style.css';
 import { useIndexStore } from '../../stores/index-store';
 import { useTabStore } from '../../stores/tab-store';
-import {
-  filterGraph,
-  graphElements,
-  layoutGraph,
-  uniqueFolders,
-  uniqueTags,
-} from './model';
+import { filterGraph, graphElements, layoutGraph, uniqueFolders, uniqueTags } from './model';
 import { graphNodeTypes } from './GraphPageNode';
 
 export function GlobalGraphView() {
@@ -36,11 +30,11 @@ export function GlobalGraphView() {
     () => filterGraph(graph, { tag, folder, showIsolated }),
     [graph, tag, folder, showIsolated],
   );
-  const positions = useMemo(
-    () => layoutGraph(filtered, { width: 1200, height: 760 }),
-    [filtered],
+  const positions = useMemo(() => layoutGraph(filtered, { width: 1200, height: 760 }), [filtered]);
+  const elements = useMemo(
+    () => graphElements(filtered, positions, hoverPath),
+    [filtered, positions, hoverPath],
   );
-  const elements = useMemo(() => graphElements(filtered, positions, hoverPath), [filtered, positions, hoverPath]);
   const [nodes, setNodes, onNodesChange] = useNodesState(elements.nodes);
   const [edges, setEdges, onEdgesChange] = useEdgesState(elements.edges);
 
@@ -54,7 +48,9 @@ export function GlobalGraphView() {
       <div className="flex flex-wrap items-center gap-2 border-b border-border/60 px-4 py-2">
         <strong className="text-sm">知识图谱</strong>
         <span className="text-xs text-muted-foreground">
-          {status === 'loading' ? '索引更新中…' : `${filtered.pages.length} 页面 · ${filtered.links.length} 链接`}
+          {status === 'loading'
+            ? '索引更新中…'
+            : `${filtered.pages.length} 页面 · ${filtered.links.length} 链接`}
         </span>
         <label className="ml-auto flex items-center gap-1 text-xs text-muted-foreground">
           标签
@@ -66,7 +62,9 @@ export function GlobalGraphView() {
           >
             <option value="">全部</option>
             {uniqueTags(graph).map((item) => (
-              <option key={item} value={item}>{item}</option>
+              <option key={item} value={item}>
+                {item}
+              </option>
             ))}
           </select>
         </label>
@@ -80,7 +78,9 @@ export function GlobalGraphView() {
           >
             <option value="">全部</option>
             {uniqueFolders(graph).map((item) => (
-              <option key={item} value={item}>{item}</option>
+              <option key={item} value={item}>
+                {item}
+              </option>
             ))}
           </select>
         </label>
@@ -103,7 +103,7 @@ export function GlobalGraphView() {
           nodeTypes={graphNodeTypes}
           onNodeMouseEnter={(_, node) => setHoverPath(node.id)}
           onNodeMouseLeave={() => setHoverPath(null)}
-          onNodeClick={(_, node) => useTabStore.getState().openPageTab(useTabStore.getState().activePaneId, node.id)}
+          onNodeClick={(_, node) => useTabStore.getState().openPageTab(node.id)}
           minZoom={0.08}
           maxZoom={2}
           fitView
