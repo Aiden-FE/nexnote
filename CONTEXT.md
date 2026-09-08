@@ -57,6 +57,18 @@ _Avoid_: demo、mockup（泛指）
 ⌘K 模糊入口，聚合页面跳转、命令与 AI 动作。
 _Avoid_: 快速打开、launcher
 
+**块编辑模式（Block Editing Mode）**:
+页面的默认编辑模式，以所见即所得的结构化块呈现 Markdown，不显示大部分源语法。
+_Avoid_: 预览模式、富文本文件
+
+**源码模式（Source Mode）**:
+页面 tab 的临时编辑模式；左侧编辑完整 Markdown 原文，右侧显示同一页面的只读实时预览，关闭 tab 后恢复块编辑模式。
+_Avoid_: 分屏、Split Pane、双编辑器
+
+**实时预览（Live Preview）**:
+源码模式中对当前 Markdown 原文的只读富渲染视图，完整呈现 NexNote 支持的块、公式、图表和链接。
+_Avoid_: 右侧 Pane、第二编辑器
+
 **反向链接面板（Linked Mentions）**:
 侧栏中列出引用当前页面（含经别名）的位置。
 _Avoid_: 回链区、底部引用
