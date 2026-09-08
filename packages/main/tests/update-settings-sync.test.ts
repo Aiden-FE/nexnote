@@ -200,11 +200,11 @@ describe('syncUpdaterSettings', () => {
 
       const unsubscribe = syncUpdaterSettings(settings, appStore);
 
-      const setFeedBefore = adapter.setFeedURL.mock.calls.length;
+      const setFeedBefore = vi.mocked(adapter.setFeedURL).mock.calls.length;
       // 用当前值再 update 一次（即 no-op patch）
       settings.update({ updates: { channel: 'stable' } });
       // 因为 channel 没变，setFeedURL 不应被再次调用（diff-check 跳过）
-      expect(adapter.setFeedURL.mock.calls.length).toBe(setFeedBefore);
+      expect(vi.mocked(adapter.setFeedURL).mock.calls.length).toBe(setFeedBefore);
 
       unsubscribe();
     } finally {

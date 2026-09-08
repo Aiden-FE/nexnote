@@ -269,7 +269,7 @@ async function bootstrap(): Promise<void> {
         runtimeSetUpdateChannel(after);
       }
       return {
-        status: (after === channel ? 'channel-switched' : 'error') as const,
+        status: (after === channel ? 'channel-switched' : 'error') as 'channel-switched' | 'error',
         message:
           after === channel ? `已切换至 ${channel} 更新通道` : `不支持的更新通道: ${channel}`,
         channel: after,
