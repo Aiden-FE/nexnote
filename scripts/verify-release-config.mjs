@@ -171,10 +171,14 @@ check('channel 接线：build env → 打包发布 → updater 烘焙通道', ()
   if (!/VALID_CHANNELS/.test(updater)) throw new Error('updater has no channel validation');
   if (!/updateChannel/.test(appStore) || !/setUpdateChannel\(channel/.test(appStore))
     throw new Error('selected update channel is not persisted in AppStore');
+  const indexTs = readFileSync(resolve(root, 'packages/main/src/index.ts'), 'utf8');
+  // DEV-016：持久化通道从 AppStore 迁移到 SettingsService.updates（单一权威）。
+  // 任一模式均代表启动时恢复了持久化通道：
+  // - 旧模式：appStore.get().updateChannel 直接传给 initAutoUpdater
+  // - 新模式：extractUpdateSettings 从 SettingsService.updates 提取 channel
   if (
-    !/appStore\.get\(\)\.updateChannel/.test(
-      readFileSync(resolve(root, 'packages/main/src/index.ts'), 'utf8'),
-    )
+    !/appStore\.get\(\)\.updateChannel/.test(indexTs) &&
+    !/extractUpdateSettings/.test(indexTs)
   )
     throw new Error('main updater does not restore persisted channel');
 });

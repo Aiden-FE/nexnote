@@ -11,11 +11,9 @@ import { registerAllIpcHandlers } from './ipc';
 import {
   checkForUpdates,
   downloadUpdate,
-  getUpdateSettings,
   initAutoUpdater,
   installUpdate,
-  setUpdateChannel,
-  setUpdateSettings,
+  setUpdateChannel as runtimeSetUpdateChannel,
 } from './updater';
 import { SmokeController } from './smoke';
 import { AiStore } from './ai/ai-store';
@@ -27,6 +25,7 @@ import { ConfidenceService } from './confidence/confidence-service';
 import { PluginService } from './plugins/plugin-service';
 import { SkillService } from './skills/skill-service';
 import { SettingsService } from './settings/settings-service';
+import { extractUpdateSettings, syncUpdaterSettings } from './settings/update-settings-sync';
 import { VaultOperationsController } from './vault/vault-operations-controller';
 import { VaultCloneController } from './vault/vault-clone-controller';
 import { BUILTIN_PLUGIN_MANIFESTS } from './plugins/builtin/builtin-manifests';
@@ -56,15 +55,6 @@ let windows: WindowManager | null = null;
 
 async function bootstrap(): Promise<void> {
   const appStore = new AppStore(join(app.getPath('userData'), 'nexnote-app.json'));
-  // 返回主进程 AppStore + updater 合并后的权威状态，renderer 不做本地存储。
-  const readUpdateSettings = () => {
-    const fromUpdater = getUpdateSettings();
-    return {
-      channel: appStore.get().updateChannel ?? fromUpdater.channel,
-      autoDownload: appStore.getUpdateAutoDownload(),
-      checkOnLaunch: appStore.getUpdateCheckOnLaunch(),
-    };
-  };
   windows = new WindowManager({
     getAppStore: () => appStore,
     devTools: !!process.env.NEXNOTE_DEVTOOLS,
@@ -163,6 +153,9 @@ async function bootstrap(): Promise<void> {
     }
   };
   applyGlobalSettings(settings.get());
+  // DEV-016：updater 设置以 SettingsService.updates 为唯一权威，
+  // 启动时同步到 updater 运行态 + AppStore 镜像；onChange 持续 diff-apply。
+  syncUpdaterSettings(settings, appStore);
   settings.onChange((global) => {
     applyGlobalSettings(global);
     void (async () => {
@@ -189,11 +182,21 @@ async function bootstrap(): Promise<void> {
   // DEV-016：一次性 clone 授权（sender 绑定 + TTL + bounded）。
   const vaultClones = new VaultCloneController();
 
-  // DEV-018：自动更新（配置仍源自 AppStore；与 SettingsService 的统一留待 DEV-019 / 后续）。
+  // DEV-016：sender 生命周期回收。webContents 销毁时同步释放其 token/operation，
+  // 防止关闭向导窗口后 AbortController / 令牌泄露。
+  app.on('web-contents-created', (_event, contents) => {
+    contents.on('destroyed', () => {
+      vaultOperations.disposeSender(contents.id);
+      vaultClones.disposeSender(contents.id);
+    });
+  });
+
+  // DEV-018：自动更新。配置以 SettingsService.updates 为单一权威（DEV-016）；
+  // syncUpdaterSettings 已将其同步到 updater 运行态，initAutoUpdater 据此初始化。
   initAutoUpdater(log, (status) => windows?.sendToMainWindow('app:updateStatus', status), {
-    channel: appStore.get().updateChannel ?? undefined,
-    autoDownload: appStore.getUpdateAutoDownload(),
-    checkOnLaunch: appStore.getUpdateCheckOnLaunch(),
+    channel: extractUpdateSettings(settings).channel,
+    autoDownload: extractUpdateSettings(settings).autoDownload,
+    checkOnLaunch: extractUpdateSettings(settings).checkOnLaunch,
   });
 
   registerAllIpcHandlers(ipcMain, {
@@ -256,25 +259,30 @@ async function bootstrap(): Promise<void> {
     downloadUpdate,
     installUpdate,
     setUpdateChannel(channel) {
-      const result = setUpdateChannel(channel);
-      if (result.status !== 'error') appStore.setUpdateChannel(channel);
-      return result;
+      // 单一权威：SettingsService.updates。onChange 中 diff-apply 到 updater 并镜像 AppStore。
+      const before = extractUpdateSettings(settings).channel;
+      settings.update({ updates: { channel } });
+      const after = extractUpdateSettings(settings).channel;
+      // channel 切换成功与否由 SettingsService 规范化结果决定
+      if (after !== before) {
+        // 触发 updater 运行态切换 + channel-switched 状态事件
+        runtimeSetUpdateChannel(after);
+      }
+      return {
+        status: (after === channel ? 'channel-switched' : 'error') as const,
+        message:
+          after === channel ? `已切换至 ${channel} 更新通道` : `不支持的更新通道: ${channel}`,
+        channel: after,
+      };
     },
     getUpdateSettings() {
-      return readUpdateSettings();
+      // 单一权威：SettingsService.updates
+      return extractUpdateSettings(settings);
     },
     setUpdateSettings(patch) {
-      const result = setUpdateSettings(patch);
-      if (patch.channel !== undefined && result.channel === patch.channel) {
-        appStore.setUpdateChannel(patch.channel);
-      }
-      if (patch.autoDownload !== undefined) {
-        appStore.setUpdateAutoDownload(patch.autoDownload);
-      }
-      if (patch.checkOnLaunch !== undefined) {
-        appStore.setUpdateCheckOnLaunch(patch.checkOnLaunch);
-      }
-      return readUpdateSettings();
+      // 单一权威：SettingsService.updates。onChange diff-apply 到 updater/AppStore。
+      settings.update({ updates: patch });
+      return extractUpdateSettings(settings);
     },
   });
 

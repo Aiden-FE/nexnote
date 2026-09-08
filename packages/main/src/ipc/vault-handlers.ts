@@ -152,7 +152,6 @@ export function registerVaultHandlers(registrar: IpcRegistrar): void {
       // 登记操作（如提供 operationId），支持取消与生命周期追踪
       const op = operationId ? services.vaultOperations.start(context.senderId, 'clone') : null;
       const signal = op?.signal;
-      let finished = false;
 
       try {
         // 消费一次性 preflight token：sender 绑定 + TTL + url/targetDir 逐项匹配
@@ -187,7 +186,6 @@ export function registerVaultHandlers(registrar: IpcRegistrar): void {
           await fsp.rm(tmpDir, { recursive: true, force: true }).catch(() => {});
         }
 
-        finished = true;
         const opened = await services.vaultSession.open(targetDir);
         services.git.setRoot(opened.root);
         // 真实 post-clone status：从 GitService 查询，包含 branch/ahead/behind/remote 等
@@ -196,7 +194,6 @@ export function registerVaultHandlers(registrar: IpcRegistrar): void {
         return ok({ vault: opened, status });
       } finally {
         if (op) services.vaultOperations.finish(context.senderId, op.operationId);
-        void finished;
       }
     },
   );

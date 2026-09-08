@@ -67,7 +67,8 @@ export class SettingsService {
       ...(patch.startup ? { startup: patch.startup } : {}),
       ...(patch.git ? { git: patch.git } : {}),
     };
-    this.data = mergeGlobalPatch(this.data, sanitized);
+    // 合并后再 normalize 一次，prune 未知子字段，防止 IPC payload 带的多余字段污染持久化。
+    this.data = normalizeStoredGlobal(mergeGlobalPatch(this.data, sanitized));
     this.persist();
     return this.data;
   }

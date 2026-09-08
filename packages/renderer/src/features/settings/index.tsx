@@ -340,10 +340,10 @@ function GitSection() {
     );
   }
 
-  const saveDebounce = async (ms: number): Promise<void> => {
+  const saveInterval = async (ms: number): Promise<void> => {
     try {
-      const result = await invoke('git:setAutoCommitDebounce', { milliseconds: ms });
-      setMessage(`已保存：自动提交防抖 ${result.milliseconds}ms`);
+      await setVault({ git: { autoCommitIntervalMs: ms } });
+      setMessage(`已保存：自动提交防抖 ${ms}ms`);
       setTimeout(() => setMessage(null), 3000);
     } catch (error) {
       setMessage(error instanceof Error ? error.message : String(error));
@@ -367,9 +367,7 @@ function GitSection() {
           step={1000}
           value={vault.git.autoCommitIntervalMs}
           onChange={(e) => {
-            const val = Number(e.target.value);
-            void setVault({ git: { autoCommitIntervalMs: val } });
-            void saveDebounce(val);
+            void saveInterval(Number(e.target.value));
           }}
           className="w-32"
         />
@@ -394,7 +392,6 @@ function GitSection() {
     </div>
   );
 }
-
 function ShortcutsSection() {
   const { global } = useGlobalSettings();
   const setShortcuts = useSettingsStore((s) => s.setShortcuts);
