@@ -2,10 +2,13 @@ import { useCallback, useEffect, useState } from 'react';
 import { Puzzle } from 'lucide-react';
 import type { PluginCommandView, PluginContributionView, PluginView } from '@nexnote/shared';
 import { invoke, onEvent } from '../../lib/ipc';
-import { commandRegistry, pluginContributionRegistry, sidebarPanelRegistry } from '../../registries';
+import {
+  commandRegistry,
+  pluginContributionRegistry,
+  sidebarPanelRegistry,
+} from '../../registries';
 import { PluginSandboxFrame } from './PluginSandboxFrame';
 import type { PermissionPrompt } from './sandbox-protocol';
-import { consumePluginContributions } from './contribution-consumers';
 import {
   buildDispatchableBlockCommands,
   buildPluginCommandDefs,
@@ -113,7 +116,6 @@ export function PluginHost() {
 
   return (
     <>
-      <PluginContributionSlots contributions={contributions} />
       <div data-testid="plugin-host" className="hidden">
         {plugins
           // DEV-015：内置插件无沙箱源码（纯 UI，由宿主渲染），不挂沙箱帧。
@@ -168,40 +170,5 @@ export function PluginHost() {
         </div>
       )}
     </>
-  );
-}
-
-/** Host dispatch seam for non-command contributions. Their rendered slots vanish
- * when the active contribution list changes after plugin disable or uninstall. */
-export function PluginContributionSlots({
-  contributions,
-}: {
-  contributions: PluginContributionView[];
-}) {
-  const consumed = consumePluginContributions(contributions);
-  return (
-    <aside aria-label="插件贡献" data-testid="plugin-contribution-surfaces">
-      <nav aria-label="插件菜单" data-testid="plugin-menus">
-        {consumed.menuItems.map((item) => (
-          <button key={item.scopedId} type="button" data-plugin-id={item.pluginId}>
-            {item.title}
-          </button>
-        ))}
-      </nav>
-      <div aria-label="插件视图" data-testid="plugin-views">
-        {consumed.views.map((item) => (
-          <section key={item.scopedId} data-plugin-id={item.pluginId}>
-            <h2>{item.title}</h2>
-          </section>
-        ))}
-      </div>
-      <div aria-label="插件块类型" data-testid="plugin-block-types">
-        {consumed.blockTypes.map((item) => (
-          <button key={item.scopedId} type="button" data-plugin-id={item.pluginId}>
-            插入 {item.title}
-          </button>
-        ))}
-      </div>
-    </aside>
   );
 }

@@ -54,9 +54,10 @@ export function defaultVaultLayout(): VaultLayout {
     sidebarWidth: 260,
     sidebarCollapsed: false,
     activeSidebarPanelId: null,
-    dockVisible: true,
+    // 首次打开保持「侧栏 + 单栏主区」：AI Dock 与分屏都按需手动开启
+    dockVisible: false,
     dockWidth: 320,
-    splitEnabled: true,
+    splitEnabled: false,
     splitRatio: 0.5,
     treeCollapsedDirs: [],
     treeShowAllFiles: false,

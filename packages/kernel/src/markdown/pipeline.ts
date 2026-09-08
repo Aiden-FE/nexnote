@@ -1,13 +1,19 @@
 import { marked } from 'marked';
 import { MarkdownManager } from '@tiptap/markdown';
+import type { Slice } from '@tiptap/pm/model';
 import type { AnyExtension, JSONContent } from '@tiptap/core';
 
-import { Frontmatter, splitFrontmatter, renderFrontmatterMarkdown } from '../extensions/frontmatter';
+import {
+  Frontmatter,
+  splitFrontmatter,
+  renderFrontmatterMarkdown,
+} from '../extensions/frontmatter';
 import {
   replaceAnchorsWithPlaceholders,
   finalizeAnchors,
   liftPlaceholdersToBlockIds,
   injectPlaceholderForBlockIds,
+  stripBlockAnchors,
 } from './block-id';
 
 /**
@@ -58,7 +64,11 @@ export function parseMarkdown(manager: MarkdownManager, markdown: string): JSONC
 
 /** 收集文档中带 code 标记且包含反引号的文本。 */
 function collectCodeSpans(node: JSONContent, out: string[]): void {
-  if (node.type === 'text' && node.marks?.some((m) => m.type === 'code') && node.text?.includes('`')) {
+  if (
+    node.type === 'text' &&
+    node.marks?.some((m) => m.type === 'code') &&
+    node.text?.includes('`')
+  ) {
     out.push(node.text);
   }
   node.content?.forEach((c) => collectCodeSpans(c, out));
@@ -91,6 +101,21 @@ export function fixInlineCodeFences(markdown: string, codeTexts: string[]): stri
     .join('\n');
 }
 
+/**
+ * 原生复制的 text/plain：沿用 Markdown 的结构分隔（列表项紧凑、段落留一空行），
+ * 不携带 vault frontmatter 和内部 ^block-id 锚点。
+ */
+export function serializeClipboardText(manager: MarkdownManager, slice: Slice): string {
+  const content = (slice.content.toJSON() ?? []).filter(
+    (node: JSONContent) => node.type !== Frontmatter.name,
+  );
+  if (content.length === 0) return '';
+  return stripBlockAnchors(serializeMarkdown(manager, { type: 'doc', content })).replace(
+    /\n+$/,
+    '',
+  );
+}
+
 export function serializeMarkdown(manager: MarkdownManager, doc: JSONContent): string {
   const children = doc.content ?? [];
   const first = children[0];
@@ -98,7 +123,7 @@ export function serializeMarkdown(manager: MarkdownManager, doc: JSONContent): s
   let head = '';
   if (first?.type === Frontmatter.name) {
     const yaml = (first.content ?? [])
-      .map((n) => (n.type === 'text' ? n.text ?? '' : ''))
+      .map((n) => (n.type === 'text' ? (n.text ?? '') : ''))
       .join('');
     head = renderFrontmatterMarkdown(yaml);
     rest = children.slice(1);
@@ -140,5 +165,9 @@ export function normalizeForCompare(markdown: string): string {
       }
       return l;
     });
-  return lines.join('\n').replace(/\n{3,}/g, '\n\n').replace(/^\n+/, '').replace(/\n+$/, '');
+  return lines
+    .join('\n')
+    .replace(/\n{3,}/g, '\n\n')
+    .replace(/^\n+/, '')
+    .replace(/\n+$/, '');
 }
