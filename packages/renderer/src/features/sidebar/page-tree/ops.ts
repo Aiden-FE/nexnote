@@ -2,7 +2,7 @@ import { sanitizeEntryName } from '@nexnote/shared';
 import type { DirEntry } from '@nexnote/shared';
 import { invoke } from '../../../lib/ipc';
 import { requestAppSave } from '../../../editor/app-save';
-import { getTabStore, openPageInActivePane } from '../../../stores/tab-store';
+import { getTabStore, openPage } from '../../../stores/tab-store';
 import { usePageTreeStore } from '../../../stores/page-tree-store';
 import { displayName, isMarkdown } from '../../../page-tree/tree-utils';
 
@@ -13,7 +13,7 @@ import { displayName, isMarkdown } from '../../../page-tree/tree-utils';
 
 export async function createNoteIn(parentDir: string): Promise<string> {
   const info = await invoke('fs:createNote', { parentDir });
-  openPageInActivePane(info.path, displayName({ name: info.name, kind: 'file' }));
+  openPage(info.path, displayName({ name: info.name, kind: 'file' }));
   return info.path;
 }
 

@@ -18,8 +18,28 @@ const response: RetrievalResponse = {
   model: 'fake-1',
   contextText: '上下文',
   sources: [
-    { path: 'coffee.md', title: '咖啡', blockId: 'b1', blockType: 'paragraph', snippet: '咖啡风味', score: 5, vectorSim: 0.82, confidenceScore: 78, via: 'vector' },
-    { path: 'tea.md', title: '茶', blockId: null, blockType: 'paragraph', snippet: '茶也有风味', score: 1, vectorSim: null, confidenceScore: null, via: 'links' },
+    {
+      path: 'coffee.md',
+      title: '咖啡',
+      blockId: 'b1',
+      blockType: 'paragraph',
+      snippet: '咖啡风味',
+      score: 5,
+      vectorSim: 0.82,
+      confidenceScore: 78,
+      via: 'vector',
+    },
+    {
+      path: 'tea.md',
+      title: '茶',
+      blockId: null,
+      blockType: 'paragraph',
+      snippet: '茶也有风味',
+      score: 1,
+      vectorSim: null,
+      confidenceScore: null,
+      via: 'links',
+    },
   ],
   stages: [
     { stage: 'fts', candidates: 12, elapsedMs: 3, enabled: true },
@@ -37,7 +57,9 @@ describe('RetrievalSources 召回透明 UI', () => {
       root.render(<RetrievalSources response={response} />);
       await flush();
     });
-    expect(container.querySelector('[data-testid="retrieval-model"]')?.textContent).toContain('fake-1');
+    expect(container.querySelector('[data-testid="retrieval-model"]')?.textContent).toContain(
+      'fake-1',
+    );
     expect(container.querySelectorAll('[data-testid="retrieval-source"]')).toHaveLength(2);
     expect(container.textContent).toContain('相似度 0.82');
     expect(container.textContent).toContain('置信度 78');
@@ -45,13 +67,15 @@ describe('RetrievalSources 召回透明 UI', () => {
     expect(stages).toHaveLength(3);
 
     // 点击来源打开对应页面 tab
-    const before = useTabStore.getState().panes.left.tabs.length;
-    const btn = container.querySelector<HTMLButtonElement>('[data-testid="retrieval-source"] button');
+    const before = useTabStore.getState().tabs.length;
+    const btn = container.querySelector<HTMLButtonElement>(
+      '[data-testid="retrieval-source"] button',
+    );
     await act(async () => {
       btn?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
       await flush();
     });
-    const after = useTabStore.getState().panes.left.tabs;
+    const after = useTabStore.getState().tabs;
     expect(after.length).toBe(before + 1);
     expect(after[after.length - 1]?.pagePath).toBe('coffee.md');
   });
@@ -74,7 +98,9 @@ describe('RetrievalSources 召回透明 UI', () => {
       root.render(<RetrievalSources response={degraded} />);
       await flush();
     });
-    expect(container.querySelector('[data-testid="retrieval-degraded"]')?.textContent).toContain('向量不可用');
+    expect(container.querySelector('[data-testid="retrieval-degraded"]')?.textContent).toContain(
+      '向量不可用',
+    );
     const vectorStage = container.querySelector('[data-stage="vector"]');
     expect(vectorStage?.getAttribute('data-enabled')).toBe('0');
   });

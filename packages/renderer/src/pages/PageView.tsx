@@ -30,7 +30,7 @@ function segments(pagePath: string, vaultName: string): string[] {
   return [vaultName, ...parts, leaf];
 }
 
-export function PageView({ tab, paneId }: { tab: TabDescriptor; paneId: 'left' | 'right' }) {
+export function PageView({ tab }: { tab: TabDescriptor }) {
   const vault = useVault();
   const pagePath = tab.pagePath ?? null;
   const [content, setContent] = useState<string | null>(null);
@@ -46,7 +46,7 @@ export function PageView({ tab, paneId }: { tab: TabDescriptor; paneId: 'left' |
         setContent(text);
         const h1 = extractH1(text);
         if (h1) {
-          useTabStore.getState().setTabTitle(paneId, tab.id, h1);
+          useTabStore.getState().setTabTitle(tab.id, h1);
         }
       })
       .catch((e: unknown) => {
@@ -55,7 +55,7 @@ export function PageView({ tab, paneId }: { tab: TabDescriptor; paneId: 'left' |
     return () => {
       cancelled = true;
     };
-  }, [pagePath, tab.id, paneId]);
+  }, [pagePath, tab.id]);
 
   if (!pagePath) {
     return (

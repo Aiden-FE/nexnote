@@ -1,6 +1,12 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Network } from 'lucide-react';
-import { ReactFlow, Background, BackgroundVariant, useEdgesState, useNodesState } from '@xyflow/react';
+import {
+  ReactFlow,
+  Background,
+  BackgroundVariant,
+  useEdgesState,
+  useNodesState,
+} from '@xyflow/react';
 import '@xyflow/react/dist/style.css';
 import { sidebarPanelRegistry } from '../../registries';
 import { useIndexStore } from '../../stores/index-store';
@@ -19,12 +25,11 @@ function LocalGraphPanel() {
   const graph = useIndexStore((state) => state.graph);
   const status = useIndexStore((state) => state.graphStatus);
   const loadGraph = useIndexStore((state) => state.loadGraph);
-  const panes = useTabStore((state) => state.panes);
-  const activePaneId = useTabStore((state) => state.activePaneId);
+  const tabs = useTabStore((state) => state.tabs);
+  const activeTabId = useTabStore((state) => state.activeTabId);
   const [hops, setHops] = useState<1 | 2>(1);
   const [hoverPath, setHoverPath] = useState<string | null>(null);
-  const activePane = panes[activePaneId];
-  const activeTab = activePane?.tabs.find((tab) => tab.id === activePane.activeTabId);
+  const activeTab = tabs.find((tab) => tab.id === activeTabId);
   const center = activeTab?.pagePath ?? null;
 
   useEffect(() => {
@@ -32,8 +37,14 @@ function LocalGraphPanel() {
   }, [status, loadGraph]);
 
   const local = useMemo(() => localGraph(graph, center, hops), [graph, center, hops]);
-  const positions = useMemo(() => layoutGraph(local, { width: 560, height: 420, iterations: 90 }), [local]);
-  const elements = useMemo(() => graphElements(local, positions, hoverPath), [local, positions, hoverPath]);
+  const positions = useMemo(
+    () => layoutGraph(local, { width: 560, height: 420, iterations: 90 }),
+    [local],
+  );
+  const elements = useMemo(
+    () => graphElements(local, positions, hoverPath),
+    [local, positions, hoverPath],
+  );
   const [nodes, setNodes, onNodesChange] = useNodesState(elements.nodes);
   const [edges, setEdges, onEdgesChange] = useEdgesState(elements.edges);
 
@@ -68,7 +79,7 @@ function LocalGraphPanel() {
             nodeTypes={graphNodeTypes}
             onNodeMouseEnter={(_, node) => setHoverPath(node.id)}
             onNodeMouseLeave={() => setHoverPath(null)}
-            onNodeClick={(_, node) => useTabStore.getState().openPageTab(activePaneId, node.id)}
+            onNodeClick={(_, node) => useTabStore.getState().openPageTab(node.id)}
             fitView
             fitViewOptions={{ padding: 0.2, maxZoom: 1 }}
             nodesDraggable
@@ -79,7 +90,9 @@ function LocalGraphPanel() {
             <Background variant={BackgroundVariant.Dots} gap={18} size={1} />
           </ReactFlow>
         ) : (
-          <p className="p-3 text-xs leading-relaxed text-muted-foreground">打开一个页面后显示 1-2 跳邻居。</p>
+          <p className="p-3 text-xs leading-relaxed text-muted-foreground">
+            打开一个页面后显示 1-2 跳邻居。
+          </p>
         )}
       </div>
     </div>

@@ -1,5 +1,5 @@
 import { invoke } from '../../lib/ipc';
-import { openPageInActivePane } from '../../stores/tab-store';
+import { openPage } from '../../stores/tab-store';
 import { usePageTreeStore } from '../../stores/page-tree-store';
 import { sanitizePageTitle, titleFromPath } from '../../editor/title-sync';
 
@@ -20,5 +20,5 @@ export async function createPage(title = '未命名页面') {
   });
   // 应用自身已确认写入成功：立即更新树，避免依赖异步 watcher 回流造成可见滞后。
   usePageTreeStore.getState().applyEvent({ kind: 'add', path });
-  return openPageInActivePane(path, actualTitle);
+  return openPage(path, actualTitle);
 }

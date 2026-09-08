@@ -63,7 +63,7 @@ function PaletteInner() {
         title: r.title,
         category: '页面',
         run: () => {
-          useTabStore.getState().openPageTab(useTabStore.getState().activePaneId, r.path);
+          useTabStore.getState().openPageTab(r.path);
         },
       })) as CommandDef[],
     [jumpResults],

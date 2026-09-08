@@ -1,8 +1,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { AlertCircle, Check, LoaderCircle, Save } from 'lucide-react';
+import { AlertCircle, Check, FileCode2, LoaderCircle, Save } from 'lucide-react';
 import { createEditor } from '@nexnote/kernel';
 import { invoke } from '../lib/ipc';
-import { useTabStore, type PaneId, type TabDescriptor } from '../stores/tab-store';
+import { useTabStore, type TabDescriptor } from '../stores/tab-store';
 import { FrontmatterPanel } from '../features/frontmatter/FrontmatterPanel';
 import { useDocumentPropertiesStore } from '../features/frontmatter/document-properties-store';
 import { useIndexStore } from '../stores/index-store';
@@ -18,6 +18,7 @@ import {
 } from './title-sync';
 import { registerAppSaveListener } from './app-save';
 import { registerEditor } from './active-editor';
+import { registerModeSwitchHandler, requestSourceModeToggle } from './source/source-mode-toggle';
 import {
   createWritingController,
   writingBubbleActions,
@@ -53,7 +54,6 @@ import {
 } from '../features/plugins/builtin/builtin-extensions';
 
 interface EditorViewProps {
-  paneId: PaneId;
   tab: TabDescriptor;
 }
 
@@ -244,10 +244,11 @@ function neighborsFor(kernel: EditorKernelInstance, blockId: string): BlockNeigh
  * - 编辑防抖保存；卸载/窗口 blur 时 flush
  * - 默认文件名 ↔ 首 H1 绑定：文件名初始补 H1，H1 修改后原子 rename
  */
-export function EditorView({ paneId, tab }: EditorViewProps) {
+export function EditorView({ tab }: EditorViewProps) {
   const path = tab.pagePath ?? `${sanitizePageTitle(tab.title)}.md`;
   const [load, setLoad] = useState<LoadState>({ phase: 'loading' });
   const [saveState, setSaveState] = useState<SaveState>('saved');
+  const saveStateRef = useRef<SaveState>('saved');
   const [saveError, setSaveError] = useState<string | null>(null);
   const [displayPath, setDisplayPath] = useState(path);
   const hostRef = useRef<HTMLDivElement>(null);
@@ -339,6 +340,7 @@ export function EditorView({ paneId, tab }: EditorViewProps) {
   const save = useCallback(
     async (markdown: string) => {
       if (unmountedRef.current) return;
+      saveStateRef.current = 'saving';
       setSaveState('saving');
       setSaveError(null);
 
@@ -360,7 +362,7 @@ export function EditorView({ paneId, tab }: EditorViewProps) {
             currentPath = desiredPath;
             pathRef.current = desiredPath;
             setDisplayPath(desiredPath);
-            useTabStore.getState().updateTab(paneId, tab.id, {
+            useTabStore.getState().updateTab(tab.id, {
               title: desiredTitle,
               pagePath: desiredPath,
             });
@@ -375,17 +377,19 @@ export function EditorView({ paneId, tab }: EditorViewProps) {
 
       try {
         await saveChainRef.current;
+        saveStateRef.current = 'saved';
         if (!unmountedRef.current) setSaveState('saved');
       } catch (e) {
         if (!unmountedRef.current) {
           const message = e instanceof Error ? e.message : String(e);
+          saveStateRef.current = 'error';
           setSaveState('error');
           setSaveError(message);
         }
         throw e;
       }
     },
-    [paneId, tab.id],
+    [tab.id],
   );
 
   // load ready 后挂载 kernel；path 变化来自标题 rename 时不重挂（load.markdown 不变）。
@@ -410,6 +414,7 @@ export function EditorView({ paneId, tab }: EditorViewProps) {
       onContentChange: save,
       onSaveError: (e) => {
         if (!unmountedRef.current) {
+          saveStateRef.current = 'error';
           setSaveState('error');
           setSaveError(e instanceof Error ? e.message : String(e));
         }
@@ -423,11 +428,7 @@ export function EditorView({ paneId, tab }: EditorViewProps) {
             return;
           }
           const nextPath = `${sanitizePageTitle(pageName)}.md`;
-          useTabStore.getState().openTab(paneId, {
-            kind: 'page',
-            title: titleFromPath(nextPath),
-            pagePath: nextPath,
-          });
+          useTabStore.getState().openPageTab(nextPath, titleFromPath(nextPath));
         });
       },
       selectionBubble: {
@@ -559,12 +560,18 @@ export function EditorView({ paneId, tab }: EditorViewProps) {
     });
     kernelRef.current = kernel;
     const editorRegistration = registerEditor(kernel);
+    const unregisterModeSwitch = registerModeSwitchHandler(tab.id, async () => {
+      await kernel.flushPendingSave();
+      await saveChainRef.current;
+      return saveStateRef.current !== 'error';
+    });
 
     const flush = () => void kernel.flushPendingSave();
     const unregisterAppSave = registerAppSaveListener(window, () => kernel.flushPendingSave());
     window.addEventListener('blur', flush);
     return () => {
       unregisterAppSave();
+      unregisterModeSwitch();
       window.removeEventListener('blur', flush);
       editorRegistration.unregister();
       // 卸载时取消所有挂起的文件选择器（隐藏 input / 悬挂 promise）
@@ -575,7 +582,7 @@ export function EditorView({ paneId, tab }: EditorViewProps) {
       kernelRef.current = null;
       unmountedRef.current = true;
     };
-  }, [load, paneId, save]);
+  }, [load, save, tab.id]);
 
   // 仅替换 ProseMirror 文档首部 frontmatter 节点，保留正文选择与撤销映射。
   const applyFrontmatter = useCallback((next: FrontmatterData, sourceOverride?: string) => {
@@ -710,6 +717,15 @@ export function EditorView({ paneId, tab }: EditorViewProps) {
           <StatusIcon className={`size-3 ${status.className}`} />
           {status.text}
         </span>
+        <button
+          type="button"
+          data-testid="source-mode-toggle"
+          title="打开源码模式（⌘/Ctrl+E）"
+          className="flex shrink-0 items-center gap-1 rounded px-1.5 py-0.5 hover:bg-accent"
+          onClick={() => void requestSourceModeToggle(tab.id)}
+        >
+          <FileCode2 className="size-3" /> 源码
+        </button>
       </div>
       <div className="nexnote-editor-scroll min-h-0 flex-1 overflow-auto">
         <div className="nexnote-editor-relative relative mx-auto max-w-[var(--editor-content-width)] px-10 py-10">

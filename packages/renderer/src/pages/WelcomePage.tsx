@@ -1,8 +1,8 @@
 import { useEffect, useState } from 'react';
 import { invoke } from '../lib/ipc';
 import type { AppInfo } from '@nexnote/shared';
-import { Command, FolderOpen, Moon, PanelLeft, Sparkles, SplitSquareHorizontal } from 'lucide-react';
-import { openTabInActivePane } from '../stores/tab-store';
+import { Command, FolderOpen, Moon, PanelLeft, Sparkles, FileCode2 } from 'lucide-react';
+import { openWorkspaceTab } from '../stores/tab-store';
 import { usePaletteStore } from '../stores/palette-store';
 import { useUiStore } from '../stores/ui-store';
 import { useThemeStore } from '../theme/theme-store';
@@ -10,7 +10,7 @@ import { useVault } from '../shell/vault-context';
 
 const hints = [
   { icon: Command, text: '⌘K / Ctrl+K 唤起命令面板' },
-  { icon: SplitSquareHorizontal, text: '拖动中间分隔线调整分屏，双击收起' },
+  { icon: FileCode2, text: 'Markdown 页面可随时切换源码模式与实时预览' },
   { icon: PanelLeft, text: '拖动侧栏边缘调整宽度，双击折叠' },
   { icon: Moon, text: '命令面板或状态栏可切换亮/暗主题' },
   { icon: Sparkles, text: '右侧 AI 对话 Dock 将在 DEV-012 接入' },
@@ -26,7 +26,9 @@ export function WelcomePage() {
   const [appInfo, setAppInfo] = useState<AppInfo | null>(null);
 
   useEffect(() => {
-    void invoke('app:getInfo').then(setAppInfo).catch(() => undefined);
+    void invoke('app:getInfo')
+      .then(setAppInfo)
+      .catch(() => undefined);
   }, []);
 
   return (
@@ -44,7 +46,10 @@ export function WelcomePage() {
 
       <div className="grid w-full grid-cols-1 gap-2 text-left sm:grid-cols-2">
         {hints.map(({ icon: Icon, text }) => (
-          <div key={text} className="flex items-center gap-2.5 rounded-lg border bg-card px-3 py-2.5 text-xs text-muted-foreground">
+          <div
+            key={text}
+            className="flex items-center gap-2.5 rounded-lg border bg-card px-3 py-2.5 text-xs text-muted-foreground"
+          >
             <Icon className="size-4 shrink-0" />
             {text}
           </div>
@@ -54,7 +59,7 @@ export function WelcomePage() {
       <div className="flex flex-wrap items-center justify-center gap-2">
         <button
           type="button"
-          onClick={() => openTabInActivePane('files', 'Vault 文件')}
+          onClick={() => openWorkspaceTab('files', 'Vault 文件')}
           className="flex items-center gap-1.5 rounded-md bg-primary px-3.5 py-1.5 text-xs font-medium text-primary-foreground hover:bg-primary/90"
         >
           <FolderOpen className="size-3.5" />

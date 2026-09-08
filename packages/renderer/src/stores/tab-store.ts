@@ -8,6 +8,7 @@ import {
 } from '../editor/title-sync';
 
 export type TabKind = 'welcome' | 'page' | 'files' | 'graph' | 'settings';
+export type EditorMode = 'block' | 'source';
 
 export interface TabDescriptor {
   id: string;
@@ -15,42 +16,27 @@ export interface TabDescriptor {
   title: string;
   /** 页面 tab 的 vault 相对 Markdown 路径；welcome/files 无此字段。 */
   pagePath?: string;
+  /** 仅存在于当前 tab 生命周期；关闭 tab 后不会持久化。 */
+  editorMode?: EditorMode;
   createdAt: number;
 }
 
-export type PaneId = 'left' | 'right';
-
-export interface PaneState {
-  id: PaneId;
+export interface WorkspaceState {
   tabs: TabDescriptor[];
   activeTabId: string | null;
-}
-
-interface WorkspaceState {
-  panes: { left: PaneState; right: PaneState | null };
-  activePaneId: PaneId;
-  splitEnabled: boolean;
-  splitRatio: number;
-  /** 打开标签（默认进当前激活 pane）。 */
-  openTab(paneId: PaneId, tab: { kind: TabKind; title: string; pagePath?: string }): TabDescriptor;
-  /** 打开页面：同 pane 已有同路径 tab 则激活，否则新建（DEV-003 页面树点击）。 */
-  openPageTab(paneId: PaneId, pagePath: string, title?: string): TabDescriptor;
-  /** 更新标签标题，并可更新页面路径（DEV-002 H1 文件名联动）。 */
-  updateTab(paneId: PaneId, tabId: string, patch: { title?: string; pagePath?: string }): void;
-  closeTab(paneId: PaneId, tabId: string): void;
-  /** 关闭除指定 tab 外的全部（tab 右键菜单，DEV-003） */
-  closeOtherTabs(paneId: PaneId, tabId: string): void;
-  /** 关闭指定 tab 右侧的全部（tab 右键菜单，DEV-003） */
-  closeTabsToRight(paneId: PaneId, tabId: string): void;
-  setActiveTab(paneId: PaneId, tabId: string): void;
-  setActivePane(paneId: PaneId): void;
-  toggleSplit(enabled?: boolean): void;
-  setSplitRatio(ratio: number): void;
-  /** 更新 tab 标题（页面 H1 读取后回写，DEV-003） */
-  setTabTitle(paneId: PaneId, tabId: string, title: string): void;
-  /** 文件重命名/移动后联动更新已打开 tab 的 pagePath 与标题（DEV-003）。 */
+  openTab(tab: { kind: TabKind; title: string; pagePath?: string }): TabDescriptor;
+  openPageTab(pagePath: string, title?: string): TabDescriptor;
+  updateTab(
+    tabId: string,
+    patch: { title?: string; pagePath?: string; editorMode?: EditorMode },
+  ): void;
+  closeTab(tabId: string): void;
+  closeOtherTabs(tabId: string): void;
+  closeTabsToRight(tabId: string): void;
+  setActiveTab(tabId: string): void;
+  setTabTitle(tabId: string, title: string): void;
+  toggleSourceMode(tabId: string, enabled?: boolean): void;
   retargetTabs(fromPath: string, toPath: string, title: string): void;
-  /** 文件删除后关闭指向它的 tab（目录删除时按前缀匹配，DEV-003） */
   closeTabsForPath(removedPath: string): void;
 }
 
@@ -60,246 +46,122 @@ function nextTabId(): string {
   return `tab-${Date.now().toString(36)}-${tabSeq}`;
 }
 
-function initialLeftPane(): PaneState {
+function initialTabs(): { tabs: TabDescriptor[]; activeTabId: string } {
   const welcome: TabDescriptor = {
     id: nextTabId(),
     kind: 'welcome',
     title: '欢迎',
     createdAt: Date.now(),
   };
-  return { id: 'left', tabs: [welcome], activeTabId: welcome.id };
+  return { tabs: [welcome], activeTabId: welcome.id };
 }
 
-export const useTabStore = create<WorkspaceState>()((set, get) => ({
-  panes: {
-    left: initialLeftPane(),
-    right: { id: 'right', tabs: [], activeTabId: null },
-  },
-  activePaneId: 'left',
-  // 与 defaultVaultLayout 一致：默认单栏，右侧空 pane 不占位
-  splitEnabled: false,
-  splitRatio: 0.5,
+const initial = initialTabs();
 
-  openTab(paneId, { kind, title, pagePath }) {
+export const useTabStore = create<WorkspaceState>()((set, get) => ({
+  ...initial,
+
+  openTab({ kind, title, pagePath }) {
     const tab: TabDescriptor = { id: nextTabId(), kind, title, createdAt: Date.now(), pagePath };
-    set((state) => {
-      // 目标 pane 不存在（如分屏关着）时落回 left
-      const target: PaneId = paneId === 'right' && !state.panes.right ? 'left' : paneId;
-      const pane = state.panes[target] ?? state.panes.left;
-      const updated: PaneState = { ...pane, tabs: [...pane.tabs, tab], activeTabId: tab.id };
-      return {
-        panes:
-          target === 'left'
-            ? { ...state.panes, left: updated }
-            : { ...state.panes, right: updated },
-        activePaneId: target,
-      };
-    });
+    set((state) => ({ tabs: [...state.tabs, tab], activeTabId: tab.id }));
     return tab;
   },
 
-  openPageTab(paneId, pagePath, title) {
-    const state = get();
-    const target: PaneId = paneId === 'right' && !state.panes.right ? 'left' : paneId;
-    const pane = state.panes[target] ?? state.panes.left;
-    const existing = pane.tabs.find((t) => t.kind === 'page' && t.pagePath === pagePath);
+  openPageTab(pagePath, title) {
+    const existing = get().tabs.find((tab) => tab.kind === 'page' && tab.pagePath === pagePath);
     if (existing) {
-      get().setActiveTab(target, existing.id);
+      get().setActiveTab(existing.id);
       return existing;
     }
     const fallbackTitle =
       title ?? pagePath.slice(pagePath.lastIndexOf('/') + 1).replace(/\.md$/i, '');
-    return get().openTab(target, { kind: 'page', title: fallbackTitle, pagePath });
+    return get().openTab({ kind: 'page', title: fallbackTitle, pagePath });
   },
 
-  updateTab(paneId, tabId, patch) {
+  updateTab(tabId, patch) {
+    set((state) => ({
+      tabs: state.tabs.map((tab) => (tab.id === tabId ? { ...tab, ...patch } : tab)),
+    }));
+  },
+
+  closeTab(tabId) {
     set((state) => {
-      const pane = state.panes[paneId];
-      if (!pane) return state;
-      const tabs = pane.tabs.map((tab) => (tab.id === tabId ? { ...tab, ...patch } : tab));
-      const updated: PaneState = { ...pane, tabs };
-      return {
-        panes:
-          paneId === 'left'
-            ? { ...state.panes, left: updated }
-            : { ...state.panes, right: updated },
-      };
+      const index = state.tabs.findIndex((tab) => tab.id === tabId);
+      if (index < 0) return state;
+      const tabs = state.tabs.filter((tab) => tab.id !== tabId);
+      const activeTabId =
+        state.activeTabId === tabId
+          ? (tabs[index]?.id ?? tabs[index - 1]?.id ?? null)
+          : state.activeTabId;
+      return { tabs, activeTabId };
     });
   },
 
-  closeTab(paneId, tabId) {
+  closeOtherTabs(tabId) {
     set((state) => {
-      const pane = state.panes[paneId];
-      if (!pane) return state;
-      const idx = pane.tabs.findIndex((t) => t.id === tabId);
-      if (idx === -1) return state;
-      const tabs = pane.tabs.filter((t) => t.id !== tabId);
-      let activeTabId = pane.activeTabId;
-      if (activeTabId === tabId) {
-        const next = tabs[idx] ?? tabs[idx - 1];
-        activeTabId = next ? next.id : null;
-      }
-      const updated: PaneState = { ...pane, tabs, activeTabId };
-      return {
-        panes:
-          paneId === 'left'
-            ? { ...state.panes, left: updated }
-            : { ...state.panes, right: updated },
-      };
+      const tab = state.tabs.find((candidate) => candidate.id === tabId);
+      return tab ? { tabs: [tab], activeTabId: tabId } : state;
     });
   },
 
-  closeOtherTabs(paneId, tabId) {
+  closeTabsToRight(tabId) {
     set((state) => {
-      const pane = state.panes[paneId];
-      if (!pane || !pane.tabs.some((t) => t.id === tabId)) return state;
-      const updated: PaneState = {
-        ...pane,
-        tabs: pane.tabs.filter((t) => t.id === tabId),
-        activeTabId: tabId,
-      };
-      return {
-        panes:
-          paneId === 'left'
-            ? { ...state.panes, left: updated }
-            : { ...state.panes, right: updated },
-      };
+      const index = state.tabs.findIndex((tab) => tab.id === tabId);
+      if (index < 0) return state;
+      const tabs = state.tabs.slice(0, index + 1);
+      const activeTabId = tabs.some((tab) => tab.id === state.activeTabId)
+        ? state.activeTabId
+        : tabId;
+      return { tabs, activeTabId };
     });
   },
 
-  closeTabsToRight(paneId, tabId) {
-    set((state) => {
-      const pane = state.panes[paneId];
-      if (!pane) return state;
-      const idx = pane.tabs.findIndex((t) => t.id === tabId);
-      if (idx === -1) return state;
-      const updated: PaneState = {
-        ...pane,
-        tabs: pane.tabs.slice(0, idx + 1),
-        activeTabId: pane.activeTabId ?? tabId,
-      };
-      if (updated.tabs.some((t) => t.id === updated.activeTabId) === false) {
-        updated.activeTabId = tabId;
-      }
-      return {
-        panes:
-          paneId === 'left'
-            ? { ...state.panes, left: updated }
-            : { ...state.panes, right: updated },
-      };
-    });
+  setActiveTab(tabId) {
+    set((state) => (state.tabs.some((tab) => tab.id === tabId) ? { activeTabId: tabId } : state));
   },
 
-  setActiveTab(paneId, tabId) {
-    set((state) => {
-      const pane = state.panes[paneId];
-      if (!pane || !pane.tabs.some((t) => t.id === tabId)) return state;
-      const updated: PaneState = { ...pane, activeTabId: tabId };
-      return {
-        panes:
-          paneId === 'left'
-            ? { ...state.panes, left: updated }
-            : { ...state.panes, right: updated },
-        activePaneId: paneId,
-      };
-    });
+  setTabTitle(tabId, title) {
+    get().updateTab(tabId, { title });
   },
 
-  setActivePane(paneId) {
-    set(() => ({ activePaneId: paneId }));
-  },
-
-  toggleSplit(enabled) {
-    set((state) => {
-      const next = enabled ?? !state.splitEnabled;
-      if (next && !state.panes.right) {
-        const right: PaneState = { id: 'right', tabs: [], activeTabId: null };
-        return { splitEnabled: true, panes: { ...state.panes, right } };
-      }
-      if (!next) return { splitEnabled: false };
-      return { splitEnabled: true };
-    });
-  },
-
-  setSplitRatio(ratio) {
-    const clamped = Math.min(0.85, Math.max(0.15, ratio));
-    set(() => ({ splitRatio: clamped }));
-  },
-
-  setTabTitle(paneId, tabId, title) {
-    set((state) => {
-      const pane = state.panes[paneId];
-      if (!pane) return state;
-      if (!pane.tabs.some((t) => t.id === tabId && t.title !== title)) return state;
-      const updated: PaneState = {
-        ...pane,
-        tabs: pane.tabs.map((t) => (t.id === tabId ? { ...t, title } : t)),
-      };
-      return {
-        panes:
-          paneId === 'left'
-            ? { ...state.panes, left: updated }
-            : { ...state.panes, right: updated },
-      };
-    });
+  toggleSourceMode(tabId, enabled) {
+    set((state) => ({
+      tabs: state.tabs.map((tab) => {
+        if (tab.id !== tabId || tab.kind !== 'page') return tab;
+        const next = enabled ?? tab.editorMode !== 'source';
+        return { ...tab, editorMode: next ? 'source' : 'block' };
+      }),
+    }));
   },
 
   retargetTabs(fromPath, toPath, title) {
-    set((state) => {
-      const mapPane = (pane: PaneState | null): PaneState | null =>
-        pane && pane.tabs.some((t) => t.pagePath === fromPath)
-          ? {
-              ...pane,
-              tabs: pane.tabs.map((t) =>
-                t.pagePath === fromPath ? { ...t, pagePath: toPath, title } : t,
-              ),
-            }
-          : pane;
-      return { panes: { left: mapPane(state.panes.left)!, right: mapPane(state.panes.right) } };
-    });
+    set((state) => ({
+      tabs: state.tabs.map((tab) =>
+        tab.pagePath === fromPath ? { ...tab, pagePath: toPath, title } : tab,
+      ),
+    }));
   },
 
   closeTabsForPath(removedPath) {
-    const hit = (p: string | undefined): boolean =>
-      !!p && (p === removedPath || p.startsWith(`${removedPath}/`));
+    const hit = (path: string | undefined): boolean =>
+      !!path && (path === removedPath || path.startsWith(`${removedPath}/`));
     set((state) => {
-      let changed = false;
-      const mapPane = (pane: PaneState | null): PaneState | null => {
-        if (!pane) return pane;
-        const tabs = pane.tabs.filter((t) => !hit(t.pagePath));
-        if (tabs.length === pane.tabs.length) return pane;
-        changed = true;
-        const active =
-          pane.activeTabId && tabs.some((t) => t.id === pane.activeTabId)
-            ? pane.activeTabId
-            : (tabs[tabs.length - 1]?.id ?? null);
-        return { ...pane, tabs, activeTabId: active };
-      };
-      const panes = { left: mapPane(state.panes.left)!, right: mapPane(state.panes.right) };
-      return changed ? { panes } : state;
+      const tabs = state.tabs.filter((tab) => !hit(tab.pagePath));
+      if (tabs.length === state.tabs.length) return state;
+      const activeTabId = tabs.some((tab) => tab.id === state.activeTabId)
+        ? state.activeTabId
+        : (tabs.at(-1)?.id ?? null);
+      return { tabs, activeTabId };
     });
   },
 }));
 
-/** 便捷读取：当前激活 pane。 */
-export function activePane(state: WorkspaceState): PaneState {
-  return state.panes[state.activePaneId] ?? state.panes.left;
+export function openWorkspaceTab(kind: TabKind, title: string, pagePath?: string): TabDescriptor {
+  return useTabStore.getState().openTab({ kind, title, pagePath });
 }
 
-/** 冒烟/命令面板使用：在当前激活 pane 打开。 */
-export function openTabInActivePane(
-  kind: TabKind,
-  title: string,
-  pagePath?: string,
-): TabDescriptor {
-  return useTabStore
-    .getState()
-    .openTab(useTabStore.getState().activePaneId, { kind, title, pagePath });
-}
-
-/** 页面树使用：在当前激活 pane 打开页面（同路径复用 tab）。 */
-export function openPageInActivePane(pagePath: string, title?: string): TabDescriptor {
-  return useTabStore.getState().openPageTab(useTabStore.getState().activePaneId, pagePath, title);
+export function openPage(pagePath: string, title?: string): TabDescriptor {
+  return useTabStore.getState().openPageTab(pagePath, title);
 }
 
 export function getTabStore() {
@@ -307,6 +169,4 @@ export function getTabStore() {
 }
 
 export { getTabStore as __getTabStoreForSmoke };
-
-/** title-sync 纯函数统一从 store 包对外导出，便于 renderer 测试与后续模块复用。 */
 export { bindH1ToTitle, firstH1, pagePathForTitle, sanitizePageTitle, titleFromPath };

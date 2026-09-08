@@ -93,6 +93,9 @@ export class ShortcutRuntime {
     if (isEditableTarget(e.target as HTMLElement)) {
       // 仅全局命令（如保存、命令面板）在编辑框中也生效
     }
+    // 更深层 handler 已处理并 preventDefault（如块编辑器选中态 ⌘E 行内代码）：
+    // 全局命令不得重复触发，否则会同时格式化并切走源码模式。
+    if (e.defaultPrevented) return;
     const key = this.eventToCanonical(e);
     if (!key) return;
     for (const [cmd, bound] of this.bindings) {

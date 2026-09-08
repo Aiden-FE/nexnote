@@ -1,6 +1,6 @@
 import { invoke } from '../lib/ipc';
 import { commandRegistry } from '../registries';
-import { useTabStore, openPageInActivePane } from '../stores/tab-store';
+import { useTabStore, openPage } from '../stores/tab-store';
 import { createPage } from '../features/editor/create-page';
 import { useUiStore } from '../stores/ui-store';
 import { useTagStore } from '../stores/tag-store';
@@ -113,8 +113,10 @@ export async function runSmokeIfEnabled(): Promise<void> {
       `sb=${sidebar} main=${main} dock=${dock}`,
     );
     check(
-      '首次工作区不显示空的右侧 pane',
-      !document.querySelector('[data-testid="split-divider"]'),
+      '主区只有一个 tab 栈（无分隔线 / 无第二 Pane）',
+      !document.querySelector('[data-testid="split-divider"]') &&
+        !document.querySelector('[data-testid="pane-right"]') &&
+        document.querySelectorAll('[data-testid="workspace-tabs"]').length === 1,
     );
     check('底部状态栏', statusbar);
     check(
@@ -145,17 +147,16 @@ export async function runSmokeIfEnabled(): Promise<void> {
     const before = tabCount();
     await createPage('冒烟页面 A');
     check('tab-bar 新建页面后页面树立即出现', await waitFor(() => !!treeRow('冒烟页面 A.md')));
-    // 默认单 pane：新页均落在 left tab stack，分屏测试在第 5 节显式开启。
-    const pageB = useTabStore.getState().openTab('left', {
+    const pageB = useTabStore.getState().openTab({
       kind: 'page',
       title: '冒烟页面 B',
       pagePath: '冒烟页面 B.md',
     });
     await waitFor(() => tabCount() >= before + 2);
-    check('Tab 可打开（同 pane 多 tab）', tabCount() === before + 2, `count=${tabCount()}`);
-    const tabAText = document.querySelector('[data-testid="pane-left"]')?.textContent ?? '';
-    check('主 pane 含新 Tab 内容', tabAText.includes('冒烟页面 B'));
-    useTabStore.getState().closeTab('left', pageB.id);
+    check('Tab 可打开（单栈多 tab）', tabCount() === before + 2, `count=${tabCount()}`);
+    const tabAText = document.querySelector('[data-testid="workspace-tabs"]')?.textContent ?? '';
+    check('主区含新 Tab 内容', tabAText.includes('冒烟页面 B'));
+    useTabStore.getState().closeTab(pageB.id);
     await waitFor(() => tabCount() === before + 1);
     check('Tab 可关闭', tabCount() === before + 1, `count=${tabCount()}`);
 
@@ -164,11 +165,9 @@ export async function runSmokeIfEnabled(): Promise<void> {
       'page Tab 挂载真实 TipTap EditorView',
       await waitFor(() => !!document.querySelector('[data-testid="editor-view"] .ProseMirror')),
     );
-    const leftPageTab = useTabStore
-      .getState()
-      .panes.left.tabs.find((t) => t.title === '冒烟页面 A');
+    const leftPageTab = useTabStore.getState().tabs.find((t) => t.title === '冒烟页面 A');
     const editorRoot = document.querySelector<HTMLElement>(
-      '[data-testid="pane-left"] [data-testid="editor-view"] .ProseMirror',
+      '[data-testid="editor-view"] .ProseMirror',
     );
     if (editorRoot && leftPageTab) {
       editorRoot.focus();
@@ -195,9 +194,7 @@ export async function runSmokeIfEnabled(): Promise<void> {
         ? await invoke('fs:readTextFile', { path: '冒烟重命名页.md' })
         : '';
       check('编辑防抖保存并由 H1 重命名文件', renamedExists && renamedContent.includes('第一块'));
-      const updatedTab = useTabStore
-        .getState()
-        .panes.left.tabs.find((t) => t.id === leftPageTab.id);
+      const updatedTab = useTabStore.getState().tabs.find((t) => t.id === leftPageTab.id);
       check(
         'H1 → 文件名/Tab 标题双向联动',
         updatedTab?.pagePath === '冒烟重命名页.md' && updatedTab.title === '冒烟重命名页',
@@ -207,8 +204,8 @@ export async function runSmokeIfEnabled(): Promise<void> {
         await waitFor(() => !!treeRow('冒烟重命名页.md') && !treeRow('冒烟页面 A.md')),
       );
       // 关闭后重开同一文件，验证保存内容可恢复
-      useTabStore.getState().closeTab('left', leftPageTab.id);
-      useTabStore.getState().openTab('left', {
+      useTabStore.getState().closeTab(leftPageTab.id);
+      useTabStore.getState().openTab({
         kind: 'page',
         title: '冒烟重命名页',
         pagePath: '冒烟重命名页.md',
@@ -216,13 +213,13 @@ export async function runSmokeIfEnabled(): Promise<void> {
       await waitFor(
         () =>
           document
-            .querySelector('[data-testid="pane-left"] [data-testid="editor-view"] .ProseMirror')
+            .querySelector('[data-testid="editor-view"] .ProseMirror')
             ?.textContent?.includes('第一块') ?? false,
       );
       check(
         '关闭并重新打开 Markdown 页面内容一致',
         document
-          .querySelector('[data-testid="pane-left"] [data-testid="editor-view"] .ProseMirror')
+          .querySelector('[data-testid="editor-view"] .ProseMirror')
           ?.textContent?.includes('第二块') ?? false,
       );
     } else {
@@ -230,21 +227,196 @@ export async function runSmokeIfEnabled(): Promise<void> {
     }
     await capture('02b-editor');
 
-    // ── 5. 按需打开分屏后调整分隔线 ──────────────────────────
-    useTabStore.getState().toggleSplit(true);
-    useTabStore.getState().setSplitRatio(0.62);
-    await sleep(200);
-    const split = document.querySelector('[data-testid="split-view"]') as HTMLElement | null;
-    const leftPane = document.querySelector('[data-testid="pane-left"]') as HTMLElement | null;
-    const divider = !!document.querySelector('[data-testid="split-divider"]');
-    let ratioOk = false;
-    if (split && leftPane) {
-      const r = leftPane.getBoundingClientRect().width / split.getBoundingClientRect().width;
-      ratioOk = Math.abs(r - 0.62) < 0.04;
-      check('分屏比例可调（拖拽目标值生效）', ratioOk, `ratio=${r.toFixed(3)}`);
+    // ── 5. DEV-020 源码模式：三入口 / 只读富预览 / 原文保真 / H1 改名 / 导航 / 重置 ──
+    // 准备一份带「非常规排版」的页面：宽列表标记、行尾空格、非规范代码围栏、双链、Mermaid、KaTeX。
+    const quirkyRaw =
+      '---\n' +
+      'title: 源码模式冒烟\n' +
+      '---\n\n' +
+      '# 源码模式冒烟\n\n' +
+      '*  宽列表标记\n\n' +
+      '行尾双空格   \n' +
+      '硬换行后一行\n\n' +
+      '~~~mermaid\ngraph TD\n  A --> B\n~~~\n\n' +
+      '$$\nE = mc^2\n$$\n\n' +
+      '链接到[[源码模式跳转目标]]\n\n';
+    await bridge.writeFile(
+      created.root,
+      '源码模式跳转目标.md',
+      '# 源码模式跳转目标\n\n目标页正文\n',
+    );
+    await bridge.writeFile(created.root, '源码模式冒烟.md', quirkyRaw);
+    check('源码模式冒烟页写入', await waitFor(() => !!treeRow('源码模式冒烟.md')));
+    openPage('源码模式冒烟.md');
+    check(
+      '块编辑模式为默认（无源码视图）',
+      (await waitFor(() => !!document.querySelector('[data-testid="editor-view"] .ProseMirror'))) &&
+        !document.querySelector('[data-testid="source-mode-view"]'),
+    );
+
+    // 入口 1：编辑器头部按钮
+    document
+      .querySelector<HTMLElement>('[data-testid="editor-view"] [data-testid="source-mode-toggle"]')
+      ?.click();
+    check(
+      '入口 1（头部按钮）进入源码模式',
+      await waitFor(() => !!document.querySelector('[data-testid="source-mode-view"]')),
+    );
+    check(
+      '源码左侧为 CodeMirror（行号 + .cm-content）',
+      !!document.querySelector('[data-testid="source-editor-pane"] .cm-editor') &&
+        !!document.querySelector('[data-testid="source-editor-pane"] .cm-content'),
+      `cm=${!!document.querySelector('[data-testid="source-editor-pane"] .cm-editor')}`,
+    );
+    check(
+      '源码包含原始 YAML frontmatter 且属性面板隐藏',
+      (document.querySelector('[data-testid="source-editor-pane"]')?.textContent ?? '').includes(
+        'title: 源码模式冒烟',
+      ) && !document.querySelector('[data-testid="frontmatter-panel"]'),
+    );
+    check(
+      '源码模式无块编辑交互（斜杠/浮栏/块菜单/拖拽手柄 DOM 不存在）',
+      !document.querySelector('[data-testid="slash-menu"]') &&
+        !document.querySelector('[data-testid="selection-bubble"]') &&
+        !document.querySelector('[data-testid="block-menu"]') &&
+        !document.querySelector('[data-testid="drag-handle"]'),
+    );
+    await waitFor(
+      () => !!document.querySelector('[data-testid="live-preview"] .ProseMirror'),
+      12_000,
+    );
+    check(
+      '右侧只读 Live Preview 复用内核（ProseMirror 不可编辑）',
+      (() => {
+        const pm = document.querySelector<HTMLElement>('[data-testid="live-preview"] .ProseMirror');
+        return !!pm && pm.getAttribute('contenteditable') === 'false';
+      })(),
+    );
+    check(
+      '预览渲染 Mermaid SVG 与 KaTeX',
+      (await waitFor(() => !!document.querySelector('[data-testid="live-preview"] svg'), 15_000)) &&
+        (await waitFor(
+          () =>
+            document.querySelectorAll(
+              '[data-testid="live-preview"] .katex, [data-testid="live-preview"] .nexnote-math-view',
+            ).length >= 1,
+          15_000,
+        )),
+      `katex=${document.querySelectorAll('[data-testid="live-preview"] .katex').length}`,
+    );
+    check(
+      '预览渲染 Wikilink',
+      !!document.querySelector('[data-testid="live-preview"] [data-wikilink-target]'),
+    );
+    // 无编辑：读盘字节应与写入完全一致。
+    await sleep(300);
+    const untouched = await invoke('fs:readTextFile', { path: '源码模式冒烟.md' });
+    check('打开源码模式不写盘（字节不变）', untouched === quirkyRaw, untouched.slice(0, 60));
+    await capture('03-source-mode');
+
+    // 入口 2：⌘/Ctrl+E 快捷键（先退出再进入，验证双向）
+    const isMac = /Mac|iPhone|iPad/.test(navigator.platform);
+    window.dispatchEvent(
+      new KeyboardEvent('keydown', {
+        key: 'e',
+        [isMac ? 'metaKey' : 'ctrlKey']: true,
+        bubbles: true,
+        cancelable: true,
+      }),
+    );
+    check(
+      '入口 2（⌘/Ctrl+E）切回块编辑模式',
+      (await waitFor(() => !!document.querySelector('[data-testid="editor-view"] .ProseMirror'))) &&
+        !document.querySelector('[data-testid="source-mode-view"]'),
+    );
+    window.dispatchEvent(
+      new KeyboardEvent('keydown', {
+        key: 'e',
+        [isMac ? 'metaKey' : 'ctrlKey']: true,
+        bubbles: true,
+        cancelable: true,
+      }),
+    );
+    check(
+      '入口 2（⌘/Ctrl+E）再次进入源码模式',
+      await waitFor(() => !!document.querySelector('[data-testid="source-mode-view"]')),
+    );
+
+    // 入口 3：Command Palette 命令
+    const toggleCommand = commandRegistry.get('editor.toggleSourceMode');
+    check('入口 3（命令面板）注册「切换源码模式」', !!toggleCommand?.run);
+    toggleCommand?.run();
+    check(
+      '入口 3（命令面板执行）切回块编辑模式',
+      await waitFor(() => !!document.querySelector('[data-testid="editor-view"] .ProseMirror')),
+    );
+    toggleCommand?.run();
+    check(
+      '入口 3（命令面板执行）再次进入源码模式',
+      await waitFor(() => !!document.querySelector('[data-testid="source-mode-view"]')),
+    );
+
+    // 源码编辑 → H1 改名 + 逐字节保真写盘
+    const cmContent = document.querySelector<HTMLElement>(
+      '[data-testid="source-editor-pane"] .cm-content',
+    );
+    check('CodeMirror 可聚焦', !!cmContent);
+    if (cmContent) {
+      cmContent.focus();
+      document.execCommand('selectAll');
+      document.execCommand('insertText', false, '# 源码模式改名页\n\n链接到[[源码模式跳转目标]]\n');
+      await sleep(900); // 500ms 防抖 + IPC 写盘
+      const renamedSaved = await invoke('fs:readTextFile', { path: '源码模式改名页.md' });
+      check(
+        '源码保存逐字节写回（编辑框文本原样落盘）',
+        renamedSaved === '# 源码模式改名页\n\n链接到[[源码模式跳转目标]]\n',
+        renamedSaved.slice(0, 60),
+      );
+      check(
+        'H1 改名同步页面树（新名出现、旧名消失）',
+        await waitFor(() => !!treeRow('源码模式改名页.md') && !treeRow('源码模式冒烟.md')),
+      );
+      const renamedTab = useTabStore
+        .getState()
+        .tabs.find((t) => t.pagePath === '源码模式改名页.md');
+      check(
+        'H1 改名同步 Tab 标题',
+        renamedTab?.title === '源码模式改名页',
+        `title=${renamedTab?.title}`,
+      );
+
+      // 预览内 Wikilink 导航：先保存，同一 tab 内导航且保持源码模式
+      await waitFor(
+        () => !!document.querySelector('[data-testid="live-preview"] [data-wikilink-target]'),
+        8_000,
+      );
+      document
+        .querySelector<HTMLElement>('[data-testid="live-preview"] [data-wikilink-target]')
+        ?.click();
+      check(
+        '预览 Wikilink 同一 tab 导航且保持源码模式',
+        await waitFor(() => {
+          const active = useTabStore
+            .getState()
+            .tabs.find((t) => t.id === useTabStore.getState().activeTabId);
+          return (
+            active?.pagePath === '源码模式跳转目标.md' &&
+            active.editorMode === 'source' &&
+            !!document.querySelector('[data-testid="source-mode-view"]')
+          );
+        }),
+      );
     }
-    check('分屏分隔线存在', divider && ratioOk);
-    await capture('03-split');
+
+    // 关闭并重开：临时源码模式重置为块编辑模式
+    const targetTab = useTabStore.getState().tabs.find((t) => t.pagePath === '源码模式跳转目标.md');
+    if (targetTab) useTabStore.getState().closeTab(targetTab.id);
+    openPage('源码模式改名页.md');
+    check(
+      '关闭重开后回到块编辑模式（默认）',
+      await waitFor(() => !!document.querySelector('[data-testid="editor-view"] .ProseMirror')),
+    );
+    await capture('04-source-mode-reset');
 
     // ── 6. ⌘K 命令面板：唤起 + 过滤 + 键盘执行 ────────────────
     window.dispatchEvent(
@@ -316,7 +488,7 @@ export async function runSmokeIfEnabled(): Promise<void> {
     await sleep(250);
 
     // ── 9. IPC 文件能力（fs:listDir 真实数据进 UI）──────────
-    useTabStore.getState().openTab('left', { kind: 'files', title: 'Vault 文件' });
+    useTabStore.getState().openTab({ kind: 'files', title: 'Vault 文件' });
     await waitFor(() => document.querySelectorAll('[data-testid="files-entry"]').length > 0);
     const entriesText = [...document.querySelectorAll('[data-testid="files-entry"]')]
       .map((el) => el.textContent ?? '')
@@ -342,20 +514,13 @@ export async function runSmokeIfEnabled(): Promise<void> {
       void leftPane;
     }
     {
-      const state = (
-        useTabStore as unknown as {
-          getState: () => {
-            panes: { left: { tabs: { id: string; title: string; kind: string }[] } };
-          };
-        }
-      ).getState();
-      const fileTab = state.panes.left.tabs.find((t) => t.title === 'Vault 文件');
-      if (fileTab) useTabStore.getState().closeTab('left', fileTab.id);
+      const fileTab = useTabStore.getState().tabs.find((t) => t.title === 'Vault 文件');
+      if (fileTab) useTabStore.getState().closeTab(fileTab.id);
     }
 
     // 新建笔记（IPC）→ fs:changed 事件回流 → 树出现 + tab 打开（带 frontmatter）
     await invoke('fs:createNote', { parentDir: '', name: '冒烟首页' });
-    openPageInActivePane('冒烟首页.md');
+    openPage('冒烟首页.md');
     check('新建笔记：树实时出现（fs:changed 驱动）', await waitFor(() => !!treeRow('冒烟首页.md')));
     check(
       '新建笔记：打开 tab，编辑器头显示页面路径',
@@ -473,7 +638,7 @@ export async function runSmokeIfEnabled(): Promise<void> {
     await invoke('fs:createNote', { parentDir: '', name: '链接源', content: '看 [[外部笔记]]' });
     await waitFor(() => !!treeRow('链接源.md'));
     // 先打开「外部笔记」tab，再经真实 UI 入口重命名：flush 所有编辑器 → renameLinked → 树即时联动。
-    openPageInActivePane('研究/外部笔记.md');
+    openPage('研究/外部笔记.md');
     await sleep(300);
     await renameEntry('研究/外部笔记.md', 'file', '改名后');
     const renamedLinkSource = await invoke('fs:readTextFile', { path: '链接源.md' });
@@ -536,7 +701,7 @@ export async function runSmokeIfEnabled(): Promise<void> {
     await capture('11-tree-final');
 
     // tab 右键菜单——先确保至少有一个 page tab 可被选中（不依赖默认 welcome 标签）
-    openPageInActivePane('冒烟首页.md');
+    openPage('冒烟首页.md');
     await sleep(200);
     const pageTab = document.querySelector(
       '[data-testid="tab"][data-page-path]',
@@ -568,7 +733,7 @@ export async function runSmokeIfEnabled(): Promise<void> {
     const graphSeed = await bridge.seedGraph(created.root);
     check('图谱性能种子写入 500 页 / 2000 链接', graphSeed.ok, graphSeed.error);
     await invoke('index:rebuild');
-    useTabStore.getState().openTab('left', { kind: 'graph', title: '知识图谱' });
+    useTabStore.getState().openTab({ kind: 'graph', title: '知识图谱' });
     const graphText = () =>
       document.querySelector('[data-testid="global-graph-view"]')?.textContent ?? '';
     check(
@@ -754,20 +919,13 @@ export async function runSmokeIfEnabled(): Promise<void> {
     // 用全新独立页面，确保它是当前活动编辑器，避免历史 tab 干扰。
     await createPage('内置插件演示');
     const builtinEditor = await waitFor(
-      () =>
-        !![
-          ...document.querySelectorAll(
-            '[data-testid="pane-left"] [data-testid="editor-view"] .ProseMirror',
-          ),
-        ].pop(),
+      () => !![...document.querySelectorAll('[data-testid="editor-view"] .ProseMirror')].pop(),
       12_000,
     );
     check('DEV-015 编辑器就绪', builtinEditor);
     // 显式聚焦活动编辑器（注册聚焦监听会激活对应内核）。
     const builtinEl = [
-      ...document.querySelectorAll(
-        '[data-testid="pane-left"] [data-testid="editor-view"] .ProseMirror',
-      ),
+      ...document.querySelectorAll('[data-testid="editor-view"] .ProseMirror'),
     ].pop() as HTMLElement | undefined;
     builtinEl?.focus();
     builtinEl?.dispatchEvent(new MouseEvent('click', { bubbles: true }));

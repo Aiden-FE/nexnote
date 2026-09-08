@@ -42,15 +42,7 @@ function resetStores(): void {
     tagFiles: null,
     selectedPath: null,
   });
-  useTabStore.setState({
-    panes: {
-      left: { id: 'left', tabs: [], activeTabId: null },
-      right: { id: 'right', tabs: [], activeTabId: null },
-    },
-    activePaneId: 'left',
-    splitEnabled: false,
-    splitRatio: 0.5,
-  });
+  useTabStore.setState({ tabs: [], activeTabId: null });
 }
 
 describe('页面树的应用内文件操作同步', () => {

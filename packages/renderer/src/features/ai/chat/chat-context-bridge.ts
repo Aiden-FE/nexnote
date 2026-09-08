@@ -5,11 +5,10 @@ import { useTabStore } from '../../../stores/tab-store';
 import { titleFromPath } from '../../../editor/title-sync';
 import { useChatStore, nextChipId, type AskPayload } from './chat-store';
 
-/** 当前激活 pane 中打开的页面（无则 null）。 */
+/** 当前激活 tab 中打开的页面（无则 null）。 */
 export function activePageRef(): { path: string; title: string } | null {
-  const { panes, activePaneId } = useTabStore.getState();
-  const pane = panes[activePaneId] ?? panes.left;
-  const tab = pane.tabs.find((t) => t.id === pane.activeTabId) ?? pane.tabs[pane.tabs.length - 1];
+  const { tabs, activeTabId } = useTabStore.getState();
+  const tab = tabs.find((t) => t.id === activeTabId) ?? tabs.at(-1);
   if (!tab || tab.kind !== 'page' || !tab.pagePath) return null;
   return { path: tab.pagePath, title: tab.title || titleFromPath(tab.pagePath) };
 }

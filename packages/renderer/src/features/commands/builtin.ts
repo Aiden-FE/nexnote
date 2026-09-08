@@ -1,11 +1,12 @@
 import { commandRegistry } from '../../registries';
-import { openTabInActivePane, useTabStore } from '../../stores/tab-store';
+import { openWorkspaceTab, useTabStore } from '../../stores/tab-store';
 import { useUiStore } from '../../stores/ui-store';
 import { useThemeStore } from '../../theme/theme-store';
 import { usePaletteStore } from '../../stores/palette-store';
 import { invoke } from '../../lib/ipc';
 import { openSettings } from '../../lib/open-settings';
 import { createPage } from '../editor/create-page';
+import { requestActiveSourceModeToggle } from '../../editor/source/source-mode-toggle';
 
 /**
  * 内置命令（⌘K 面板）。后续票据的命令：
@@ -30,8 +31,7 @@ commandRegistry.register({
   keywords: ['close', 'tab'],
   run: () => {
     const state = tabs.getState();
-    const pane = state.panes[state.activePaneId] ?? state.panes.left;
-    if (pane.activeTabId) state.closeTab(pane.id, pane.activeTabId);
+    if (state.activeTabId) state.closeTab(state.activeTabId);
   },
 });
 
@@ -41,8 +41,17 @@ commandRegistry.register({
   category: '标签页',
   keywords: ['files', 'fs', '文件', '浏览'],
   run: () => {
-    openTabInActivePane('files', 'Vault 文件');
+    openWorkspaceTab('files', 'Vault 文件');
   },
+});
+
+commandRegistry.register({
+  id: 'editor.toggleSourceMode',
+  title: '切换源码模式',
+  category: '编辑器',
+  keywords: ['source', 'markdown', '源码', '预览', '编辑器'],
+  shortcut: '⌘/Ctrl+E',
+  run: requestActiveSourceModeToggle,
 });
 
 commandRegistry.register({
@@ -52,16 +61,8 @@ commandRegistry.register({
   keywords: ['graph', 'knowledge', '图谱', '知识'],
   shortcut: '⌘K',
   run: () => {
-    openTabInActivePane('graph', '知识图谱');
+    openWorkspaceTab('graph', '知识图谱');
   },
-});
-
-commandRegistry.register({
-  id: 'view.toggleSplit',
-  title: '切换左右分屏',
-  category: '视图',
-  keywords: ['split', '分屏', 'pane'],
-  run: () => tabs.getState().toggleSplit(),
 });
 
 commandRegistry.register({

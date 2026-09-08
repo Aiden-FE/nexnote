@@ -3,7 +3,7 @@ import { FileText, Folder, Plus, RefreshCw } from 'lucide-react';
 import { invoke } from '../lib/ipc';
 import type { DirEntry } from '@nexnote/shared';
 import { createPage } from '../features/editor/create-page';
-import { openPageInActivePane } from '../stores/tab-store';
+import { openPage } from '../stores/tab-store';
 import { titleFromPath } from '../editor/title-sync';
 
 /**
@@ -49,7 +49,9 @@ export function FilesPage() {
         >
           <RefreshCw className="size-3.5" />
         </button>
-        <span className="ml-auto text-[11px] text-muted-foreground">数据来自主进程 fs:listDir（IPC）</span>
+        <span className="ml-auto text-[11px] text-muted-foreground">
+          数据来自主进程 fs:listDir（IPC）
+        </span>
       </div>
 
       {error && (
@@ -71,7 +73,7 @@ export function FilesPage() {
                 data-testid="files-entry"
                 onDoubleClick={() => {
                   if (entry.kind === 'file' && entry.name.toLowerCase().endsWith('.md')) {
-                    openPageInActivePane(entry.path, titleFromPath(entry.path));
+                    openPage(entry.path, titleFromPath(entry.path));
                   }
                 }}
                 className="flex cursor-default items-center gap-2 border-b px-3 py-2 text-sm last:border-b-0 hover:bg-accent/40"

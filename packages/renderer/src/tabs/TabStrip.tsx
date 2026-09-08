@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { FileText, FolderOpen, Home, Network, Plus, Settings, X } from 'lucide-react';
-import { useTabStore, type PaneId, type TabKind } from '../stores/tab-store';
+import { useTabStore, type TabKind } from '../stores/tab-store';
 import { ContextMenu, type ContextMenuItem } from '../components/ContextMenu';
 import { invoke } from '../lib/ipc';
 import { useVault } from '../shell/vault-context';
@@ -14,45 +14,37 @@ const kindIcon: Record<TabKind, typeof Home> = {
   settings: Settings,
 };
 
-interface TabStripProps {
-  paneId: PaneId;
-}
-
-/** 单个 pane 的标签栏：打开/关闭/激活/中键关闭/新建 + 右键菜单（DEV-003）。 */
-export function TabStrip({ paneId }: TabStripProps) {
-  const pane = useTabStore((s) => s.panes[paneId]);
-  const activePaneId = useTabStore((s) => s.activePaneId);
+/** 单 tab 栈的标签栏：打开/关闭/激活/中键关闭/新建 + 右键菜单（DEV-003）。 */
+export function TabStrip() {
+  const tabs = useTabStore((s) => s.tabs);
+  const activeTabId = useTabStore((s) => s.activeTabId);
   const vault = useVault();
-  const { setActiveTab, closeTab, openTab, setActivePane } = useTabStore.getState();
+  const { setActiveTab, closeTab, openTab } = useTabStore.getState();
   const [menu, setMenu] = useState<{
     x: number;
     y: number;
     items: ContextMenuItem[];
   } | null>(null);
-  if (!pane) return null;
-
-  const isFocused = activePaneId === paneId;
-  const isActivePanePopulated = pane.tabs.length > 0;
 
   const openTabMenu = (e: React.MouseEvent, tabId: string): void => {
     e.preventDefault();
-    const tab = pane.tabs.find((t) => t.id === tabId);
+    const tab = tabs.find((t) => t.id === tabId);
     if (!tab) return;
     const store = useTabStore.getState();
-    const idx = pane.tabs.findIndex((t) => t.id === tabId);
+    const idx = tabs.findIndex((t) => t.id === tabId);
     const pagePath = tab.pagePath ?? null;
     const absPath = pagePath && vault ? `${vault.root}/${pagePath}` : null;
     const items: ContextMenuItem[] = [
-      { label: '关闭', hint: '⌘W', onSelect: () => store.closeTab(paneId, tabId) },
+      { label: '关闭', hint: '⌘W', onSelect: () => store.closeTab(tabId) },
       {
         label: '关闭其他',
-        disabled: pane.tabs.length <= 1,
-        onSelect: () => store.closeOtherTabs(paneId, tabId),
+        disabled: tabs.length <= 1,
+        onSelect: () => store.closeOtherTabs(tabId),
       },
       {
         label: '关闭右侧',
-        disabled: idx >= pane.tabs.length - 1,
-        onSelect: () => store.closeTabsToRight(paneId, tabId),
+        disabled: idx >= tabs.length - 1,
+        onSelect: () => store.closeTabsToRight(tabId),
       },
     ];
     if (pagePath) {
@@ -78,35 +70,31 @@ export function TabStrip({ paneId }: TabStripProps) {
   return (
     <div
       data-testid="tabstrip"
-      data-pane={paneId}
-      onPointerDown={() => setActivePane(paneId)}
-      className={cn(
-        'flex h-9 shrink-0 items-stretch gap-px border-b px-1 pt-1',
-        isFocused ? 'bg-muted/50' : 'bg-muted/25',
-      )}
+      className="flex h-9 shrink-0 items-stretch gap-px border-b px-1 pt-1"
     >
-      {pane.tabs.map((tab) => {
+      {tabs.map((tab) => {
         const Icon = kindIcon[tab.kind] ?? FileText;
-        const isActive = pane.activeTabId === tab.id;
+        const isActive = activeTabId === tab.id;
         return (
           <div
             key={tab.id}
             data-testid="tab"
             data-active={isActive}
             data-page-path={tab.pagePath ?? undefined}
+            data-editor-mode={tab.editorMode ?? 'block'}
             role="tab"
             aria-selected={isActive}
             tabIndex={0}
-            onClick={() => setActiveTab(paneId, tab.id)}
+            onClick={() => setActiveTab(tab.id)}
             onContextMenu={(e) => openTabMenu(e, tab.id)}
             onMouseDown={(e) => {
               if (e.button === 1) {
                 e.preventDefault();
-                closeTab(paneId, tab.id);
+                closeTab(tab.id);
               }
             }}
             onKeyDown={(e) => {
-              if (e.key === 'Enter' || e.key === ' ') setActiveTab(paneId, tab.id);
+              if (e.key === 'Enter' || e.key === ' ') setActiveTab(tab.id);
             }}
             className={cn(
               'group flex min-w-0 max-w-[200px] cursor-pointer items-center gap-1.5 rounded-t-md border border-b-0 px-2.5 py-1 text-xs',
@@ -123,7 +111,7 @@ export function TabStrip({ paneId }: TabStripProps) {
               aria-label={`关闭 ${tab.title}`}
               onClick={(e) => {
                 e.stopPropagation();
-                closeTab(paneId, tab.id);
+                closeTab(tab.id);
               }}
               className="ml-0.5 hidden rounded p-0.5 hover:bg-accent group-hover:block"
             >
@@ -138,15 +126,11 @@ export function TabStrip({ paneId }: TabStripProps) {
         data-testid="new-tab"
         aria-label="新建标签页"
         title="新建标签页"
-        onClick={() => openTab(paneId, { kind: 'page', title: `未命名页面` })}
+        onClick={() => openTab({ kind: 'page', title: '未命名页面' })}
         className="my-auto ml-1 flex size-6 items-center justify-center rounded text-muted-foreground hover:bg-accent hover:text-foreground"
       >
         <Plus className="size-3.5" />
       </button>
-
-      {!isActivePanePopulated && (
-        <span className="my-auto ml-2 text-[11px] text-muted-foreground/70">空 pane — 点击 + 新建</span>
-      )}
 
       <ContextMenu
         open={menu !== null}

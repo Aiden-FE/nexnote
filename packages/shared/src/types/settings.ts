@@ -88,6 +88,7 @@ export const DEFAULT_SHORTCUTS: readonly ShortcutOverride[] = [
   { commandId: 'app.palette', key: 'Mod+K', disabled: false },
   { commandId: 'search.open', key: 'Mod+Shift+F', disabled: false },
   { commandId: 'app.save', key: 'Mod+S', disabled: false },
+  { commandId: 'editor.toggleSourceMode', key: 'Mod+E', disabled: false },
   { commandId: 'tab.new', key: 'Mod+T', disabled: false },
   { commandId: 'app.settings', key: 'Mod+,', disabled: false },
 ];
