@@ -7,7 +7,7 @@
 ## 当前状态（2026-09-08）
 
 - 顶层 Goal：**✅ 已完成**；全局进度：**19 / 19**（DEV-001 ～ DEV-019 全部验收并合入 `master`）。
-- `master` 当前基线：`d95fb9e`（`merge: DEV-019 端到端验收与打磨`）。
+- `master` 当前基线：`2af0166`（`merge: DEV-019 GUI 验收修复`；候选 `dev/DEV-019-gui@849fa83`）。
 - 全部票据已合入；双轴审查（Standards + Spec）均 PASS；未验证项按协议标注 **NOT_RUN** 并附人工步骤（见 [RELEASE-NOTES](./RELEASE-NOTES.md) 与 [release-checklist](./release-checklist.md) 第 6 节）。
 - 本文件是续接入口；历史执行细节、闸门命令与审查证据见 [`.scratch/DEV-STATUS-CHECKPOINT.md`](../DEV-STATUS-CHECKPOINT.md)。票据需求与验收标准以各 `issues/*.md` 为准。
 
@@ -62,7 +62,7 @@
 
 | # | 标题 | 模块 | 工作量 | 依赖 | 状态 |
 |---|---|---|---|---|---|
-| **DEV-019** | [端到端验收与打磨](issues/019-e2e-polish.md) | integration | L | 全部 P0 + P1 主要票 | ✅ 已合并（`d95fb9e`，候选 `dev/DEV-019@9c77dba`，双轴审查 PASS） |
+| **DEV-019** | [端到端验收与打磨](issues/019-e2e-polish.md) | integration | L | 全部 P0 + P1 主要票 | ✅ 已合并（原交付 `d95fb9e`；GUI follow-up `2af0166`，候选 `849fa83`，双轴审查 PASS） |
 
 ## 依赖图
 
@@ -103,10 +103,10 @@ DEV-008 (置信度) ← DEV-004 + DEV-007
 
 ## 🏁 终局状态（2026-09-08）
 
-- **19 / 19 全部完成并合入 `master`（`d95fb9e`）**。
-- 最终 master 门禁：typecheck 5/5 包、74 测试文件（1 skip）/ 616 测试（2 skip）通过、eslint、build、verify-release-config 28/28、changed-format、diff --check 全绿；main 包 tsc 仅 `secret-store.ts` 基线 `Entry` TS2304（基线问题，未随票据修复）。
-- 剩余 NOT_RUN（需人工，完整清单见 [release-checklist 第 6 节](./release-checklist.md)）：三平台签名/公证/物理安装、真实 Obsidian vault 导入、kill -9 崩溃恢复、打包后冷启动 <3s 实测、GUI 视觉走查、大文档流畅度、自动更新端到端、P0/P1 人工复核。
-- 基线遗留（非本次票据范围）：`secret-store.ts Entry TS2304`；chokidar watch flaky。
+- **19 / 19 全部完成并合入 `master`；GUI follow-up 已合入（`2af0166`）**。
+- 最终 master 门禁（含 GUI follow-up）：typecheck 5/5 包、78 测试文件通过（1 文件 skip）/ 633 测试通过（2 skip）、eslint、build、verify-release-config 28/28、changed-format、diff --check 全绿；Electron smoke **83/83** 全绿。
+- GUI follow-up 已完成真实 Electron smoke：默认单栏、Dock 默认关闭、页面树同步、插件裸露 UI 移除、复制 Markdown 排版等 **83/83**。剩余 NOT_RUN 仅为跨平台/外部环境项（完整清单见 [release-checklist 第 6 节](./release-checklist.md)）：三平台签名/公证/物理安装、真实 Obsidian vault 导入、kill -9 崩溃恢复、打包后冷启动 <3s 实测、大文档流畅度、自动更新端到端等。
+- 本次 GUI follow-up 无遗留 smoke 失败；`better-sqlite3` 在 Node/Electron ABI 间切换后需按环境 rebuild（已在 post-merge 恢复 Node ABI）。
 
 ## 统一验收与合并协议
 

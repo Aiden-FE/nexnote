@@ -277,6 +277,18 @@ DEV-006 ← DEV-004；DEV-008 ← DEV-004+007；DEV-010 ← DEV-002+009；DEV-01
 - 进度：**19 / 19 — 顶层 Goal 达成**。master 终局基线 `d95fb9e`。
 
 
+### DEV-019 GUI 验收 follow-up — 已完成合并（2026-09-08）
+
+- 用户人工 GUI 验收报告 6 项：首次四竖栏/AI Dock 默认打开/空 Pane 抢空间/页面树不同步/插件贡献裸露文案/复制 Markdown 多空行；按“不留遗留问题”扩展为 smoke 全量收敛。
+- 候选 `dev/DEV-019-gui@849fa83`；merge commit `2af0166`（`merge --no-ff`）。
+- 实现：首次布局默认 `dockVisible=false` + `splitEnabled=false`（旧 vault 持久化 layout 仍覆盖默认，不强制迁移）；删除 `PluginContributionSlots` 裸露调试 surface（registry effects 保留）；createPage/rename/move/mkdir/delete/H1 改名成功后立即幂等 `applyEvent`；rename/move/delete 前 `requestAppSave(window)` 排空防抖保存，防止旧路径复活；原生 Copy 使用结构化 Markdown serializer，段落/列表间距正常，剥离 frontmatter 与块锚点，代码围栏及围栏内连续空行保真。
+- smoke 修复：`vault:create` 补 `initGit:true`；断言对齐当前 `EditorView`/`FrontmatterPanel`/`tag-node` DOM；rename/move/delete 改走真实 UI helper；最终 Electron smoke **83/83 PASS**（证据：`nexnote-build/smoke/DEV-019-gui/results.json`）。
+- 主控门禁 @`849fa83`：typecheck PASS / 78 test files PASS（1 skipped，633 tests PASS / 2 skipped）/ eslint PASS / build PASS / release-config 28/28 PASS / changed-format PASS / diff-check PASS。一次全量运行出现 1 条瞬时失败，verbose 复跑与 post-merge 复跑均 633/633 PASS，未稳定复现。
+- 双轴审查 @`849fa83`：fresh Standards **PASS**（4 minor，无 blocker/major）；fresh Spec **PASS**（1 minor，无 blocker/major）。首轮共同 minor（`stripBlockAnchors` 全局压缩会改变围栏内连续空行）已修复并补回归测试，按新 SHA 完整重审。
+- post-merge master `2af0166`：typecheck / 633 tests（2 skipped）/ eslint / build / release-config / diff-check 全绿；Electron smoke 首跑 80/83（ABI rebuild 切换时序），立即重跑 **83/83 PASS**；随后恢复 Node ABI 并再次 633/633 PASS。
+- 仍为 NOT_RUN 的仅是原 release checklist 中跨平台签名/公证/物理安装、真实网络自动更新、真实 Obsidian vault 导入等外部环境项目；本次 6 项 GUI 反馈与 smoke 存量失败均已收敛。
+
+
 ### DEV-018 — 已完成合并（2026-09-08）
 
 - Merge commit `abf52c0`；候选 `dev/DEV-018@ef905ed`（44 files，+3572/−109；含原 agent 多轮修复 + 主控格式修复 + sync to master merge）；旧 `.wt/DEV-018`（`b86a6f2`）是历史 WIP 勿用。
