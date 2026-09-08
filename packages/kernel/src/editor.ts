@@ -8,7 +8,12 @@ import { findWrapping } from '@tiptap/pm/transform';
 import { buildKernelExtensions } from './extensions';
 import type { KernelExtensionsOptions } from './extensions';
 import { canFoldBlock, isBlockFolded, toggleBlockFold } from './extensions/fold';
-import { createMarkdownManager, parseMarkdown, serializeMarkdown } from './markdown/pipeline';
+import {
+  createMarkdownManager,
+  parseMarkdown,
+  serializeClipboardText,
+  serializeMarkdown,
+} from './markdown/pipeline';
 import { createSaveScheduler } from './save';
 import type { SaveScheduler } from './save';
 import { Frontmatter } from './extensions/frontmatter';
@@ -144,6 +149,9 @@ export function createEditor(
     content: initialJson,
     editable: options.editable ?? true,
     enableContentCheck: false,
+    editorProps: {
+      clipboardTextSerializer: (slice) => serializeClipboardText(manager, slice),
+    },
     onUpdate() {
       revision += 1;
       scheduler.schedule(kernel.getMarkdown());
@@ -301,7 +309,11 @@ export function createEditor(
         if (content.length === 0) content.push(paragraph.create());
         if (content[0]!.type !== paragraph) content.unshift(paragraph.create());
         editor.view.dispatch(
-          editor.state.tr.replaceWith(f, t, taskList.create(null, [taskItem.create(null, content)])),
+          editor.state.tr.replaceWith(
+            f,
+            t,
+            taskList.create(null, [taskItem.create(null, content)]),
+          ),
         );
         return true;
       }

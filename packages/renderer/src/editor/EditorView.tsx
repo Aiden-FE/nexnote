@@ -37,10 +37,7 @@ import {
 } from '../features/plugins/extension-points';
 import type { BlockMenuContext } from '@nexnote/kernel';
 import type { EditorKernelInstance, SlashMenuItem } from '@nexnote/kernel';
-import {
-  withUncreated,
-  filterTagCandidates,
-} from './interactions/suggestions';
+import { withUncreated, filterTagCandidates } from './interactions/suggestions';
 import {
   buildBlockMenuItems,
   runBlockMenuAction,
@@ -64,7 +61,6 @@ type LoadState =
   { phase: 'loading' } | { phase: 'ready'; markdown: string } | { phase: 'error'; message: string };
 
 type SaveState = 'saved' | 'saving' | 'error';
-
 
 /**
  * 媒体插入（DEV-017 fresh 要求）：
@@ -210,7 +206,9 @@ function createMediaInsertSlashItems(options: {
 
 function buildPluginBlockSlashItems(kernel: EditorKernelInstance): SlashMenuItem[] {
   // PluginContributionDef 与 PluginContributionView 形状同源（scopedId/pluginId/kind/title/id）
-  const contributions = pluginContributionRegistry.all() as unknown as Parameters<typeof buildDispatchableBlockCommands>[0];
+  const contributions = pluginContributionRegistry.all() as unknown as Parameters<
+    typeof buildDispatchableBlockCommands
+  >[0];
   const defs = buildDispatchableBlockCommands(contributions);
   return defs.map((d) => ({
     id: d.id,
@@ -235,8 +233,8 @@ function neighborsFor(kernel: EditorKernelInstance, blockId: string): BlockNeigh
   const idx = ids.indexOf(blockId);
   if (idx < 0) return { prevBlockId: null, nextBlockId: null };
   return {
-    prevBlockId: idx > 0 ? ids[idx - 1] ?? null : null,
-    nextBlockId: idx < ids.length - 1 ? ids[idx + 1] ?? null : null,
+    prevBlockId: idx > 0 ? (ids[idx - 1] ?? null) : null,
+    nextBlockId: idx < ids.length - 1 ? (ids[idx + 1] ?? null) : null,
   };
 }
 
@@ -355,6 +353,10 @@ export function EditorView({ paneId, tab }: EditorViewProps) {
             const collision = await invoke('fs:exists', { path: desiredPath });
             if (collision) throw new Error(`无法重命名：${desiredPath} 已存在`);
             await invoke('fs:renameLinked', { from: currentPath, to: desiredPath });
+            // 应用自身 rename 已确认：立即同步页面树，不等 chokidar 事件回流。
+            const tree = usePageTreeStore.getState();
+            tree.applyEvent({ kind: 'unlink', path: currentPath });
+            tree.applyEvent({ kind: 'add', path: desiredPath });
             currentPath = desiredPath;
             pathRef.current = desiredPath;
             setDisplayPath(desiredPath);
@@ -495,8 +497,9 @@ export function EditorView({ paneId, tab }: EditorViewProps) {
       },
       wikilinkSuggestions: (query) => {
         const summaries = useIndexStore.getState().pageSummaries;
-        const pages = usePageTreeStore.getState().entries
-          .filter((e) => e.kind === 'file' && e.path.toLowerCase().endsWith('.md'))
+        const pages = usePageTreeStore
+          .getState()
+          .entries.filter((e) => e.kind === 'file' && e.path.toLowerCase().endsWith('.md'))
           .map((e) => ({
             path: e.path,
             title: titleFromPath(e.path),
@@ -650,8 +653,14 @@ export function EditorView({ paneId, tab }: EditorViewProps) {
   // DEV-017：同时加载页面摘要（含别名），供双链建议匹配 alias。
   useEffect(() => {
     if (load.phase !== 'ready') return;
-    void useIndexStore.getState().loadBacklinks(displayPath).catch(() => undefined);
-    void useIndexStore.getState().loadPageSummaries().catch(() => undefined);
+    void useIndexStore
+      .getState()
+      .loadBacklinks(displayPath)
+      .catch(() => undefined);
+    void useIndexStore
+      .getState()
+      .loadPageSummaries()
+      .catch(() => undefined);
   }, [load.phase, displayPath]);
 
   // DEV-004 索引标签为实时真值；索引未就绪时回退到全库扫描标签。

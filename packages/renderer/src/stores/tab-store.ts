@@ -76,7 +76,8 @@ export const useTabStore = create<WorkspaceState>()((set, get) => ({
     right: { id: 'right', tabs: [], activeTabId: null },
   },
   activePaneId: 'left',
-  splitEnabled: true,
+  // 与 defaultVaultLayout 一致：默认单栏，右侧空 pane 不占位
+  splitEnabled: false,
   splitRatio: 0.5,
 
   openTab(paneId, { kind, title, pagePath }) {
@@ -106,7 +107,8 @@ export const useTabStore = create<WorkspaceState>()((set, get) => ({
       get().setActiveTab(target, existing.id);
       return existing;
     }
-    const fallbackTitle = title ?? pagePath.slice(pagePath.lastIndexOf('/') + 1).replace(/\.md$/i, '');
+    const fallbackTitle =
+      title ?? pagePath.slice(pagePath.lastIndexOf('/') + 1).replace(/\.md$/i, '');
     return get().openTab(target, { kind: 'page', title: fallbackTitle, pagePath });
   },
 
@@ -290,7 +292,9 @@ export function openTabInActivePane(
   title: string,
   pagePath?: string,
 ): TabDescriptor {
-  return useTabStore.getState().openTab(useTabStore.getState().activePaneId, { kind, title, pagePath });
+  return useTabStore
+    .getState()
+    .openTab(useTabStore.getState().activePaneId, { kind, title, pagePath });
 }
 
 /** 页面树使用：在当前激活 pane 打开页面（同路径复用 tab）。 */
@@ -305,10 +309,4 @@ export function getTabStore() {
 export { getTabStore as __getTabStoreForSmoke };
 
 /** title-sync 纯函数统一从 store 包对外导出，便于 renderer 测试与后续模块复用。 */
-export {
-  bindH1ToTitle,
-  firstH1,
-  pagePathForTitle,
-  sanitizePageTitle,
-  titleFromPath,
-};
+export { bindH1ToTitle, firstH1, pagePathForTitle, sanitizePageTitle, titleFromPath };

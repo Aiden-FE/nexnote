@@ -1,9 +1,7 @@
 import { create } from 'zustand';
 import type { PageJumpResult } from '@nexnote/shared';
 
-export type SearchRoute =
-  | { kind: 'fulltext' }
-  | { kind: 'tag'; tag: string; paths: string[] };
+export type SearchRoute = { kind: 'fulltext' } | { kind: 'tag'; tag: string; paths: string[] };
 
 export const SIDEBAR_MIN_WIDTH = 180;
 export const SIDEBAR_MAX_WIDTH = 480;
@@ -50,7 +48,8 @@ export const useUiStore = create<UiState>((set) => ({
   sidebarWidth: 260,
   sidebarCollapsed: false,
   activeSidebarPanelId: null,
-  dockVisible: true,
+  // 与 defaultVaultLayout 一致：AI Dock 默认收起，状态栏/命令入口手动展开
+  dockVisible: false,
   dockWidth: 320,
   activeDockPanelId: null,
   treeCollapsedDirs: [],
