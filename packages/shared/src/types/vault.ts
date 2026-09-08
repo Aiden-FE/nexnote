@@ -8,6 +8,8 @@ export interface VaultInfo {
   configPath: string;
 }
 
+import { defaultVaultSettings, type VaultSettings } from './settings';
+
 /** vault 内配置文件 .nexnote/config.json 的结构。 */
 export interface VaultConfig {
   version: 1;
@@ -21,6 +23,8 @@ export interface VaultConfig {
    * 放在普通目录（而非 .nexnote/）以便会话可被双链引用与语义索引。
    */
   chatFolder: string;
+  /** DEV-016：每个 vault 独立的编辑器与 Git 行为设置。 */
+  settings: VaultSettings;
   /** 窗口/布局状态（由渲染层经 vault:saveLayout 持久化） */
   layout: VaultLayout;
   /** 上次打开的页面（DEV-002/003 接入真实页面后使用，本票仅占位） */
@@ -64,6 +68,7 @@ export function defaultVaultConfig(): VaultConfig {
     version: 1,
     features: { confidenceFrontmatter: false },
     chatFolder: 'AI Chats',
+    settings: defaultVaultSettings(),
     layout: defaultVaultLayout(),
     lastSession: { tabs: [], activePane: 'left' },
   };
@@ -79,4 +84,14 @@ export interface RecentVaultEntry {
 /** 应用启动状态：首启动向导 or 直接进入 vault 工作区。 */
 export type VaultStartupState =
   | { mode: 'onboarding'; recent: RecentVaultEntry[] }
-  | { mode: 'ready'; vault: VaultInfo };
+  | { mode: 'ready'; vault: VaultInfo; showWelcome: boolean };
+
+export interface VaultInspection {
+  path: string;
+  exists: boolean;
+  isDirectory: boolean;
+  hasNexnote: boolean;
+  isGitRepo: boolean;
+  isObsidian: boolean;
+  entryCount: number;
+}

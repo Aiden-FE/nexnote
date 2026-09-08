@@ -230,11 +230,85 @@ const indexQuery = object(
 );
 const indexTags = object(['flat'], [optionalField('flat', 'boolean')]);
 const indexTagPages = object(['tag'], [stringField('tag')]);
-const vaultCreate = object(['parentDir', 'name'], [stringField('parentDir'), stringField('name')]);
+const vaultCreate = object(
+  ['parentDir', 'name', 'initGit', 'operationId'],
+  [
+    stringField('parentDir'),
+    stringField('name'),
+    optionalField('initGit', 'boolean'),
+    optionalField('operationId', 'string'),
+  ],
+);
+const vaultOpen = object(
+  ['path', 'initGit'],
+  [stringField('path'), optionalField('initGit', 'boolean')],
+);
 const vaultClone = object(
+  ['url', 'parentDir', 'preflightToken', 'name', 'operationId'],
+  [
+    stringField('url'),
+    stringField('parentDir'),
+    stringField('preflightToken'),
+    optionalField('name', 'string'),
+    optionalField('operationId', 'string'),
+  ],
+);
+const vaultClonePreflight = object(
   ['url', 'parentDir', 'name'],
   [stringField('url'), stringField('parentDir'), optionalField('name', 'string')],
 );
+const vaultCancelOperation = object(['operationId'], [stringField('operationId')]);
+
+// Settings validators（DEV-016）：浅校验（类型+结构），深度校验交给 merge 函数。
+const settingsSetGlobal: PayloadValidator = (payload) => {
+  if (!isPlainObject(payload)) return invalid('payload 必须是普通对象');
+  if (typeof payload.patch !== 'object' || payload.patch === null || Array.isArray(payload.patch)) {
+    return invalid('patch 必须是对象');
+  }
+  const allowedTop = ['appearance', 'updates', 'startup', 'git'];
+  for (const key of Object.keys(payload.patch as Record<string, unknown>)) {
+    if (!allowedTop.includes(key)) return invalid(`patch 未知字段 ${key}`);
+  }
+  return null;
+};
+
+const settingsSetVault: PayloadValidator = (payload) => {
+  if (!isPlainObject(payload)) return invalid('payload 必须是普通对象');
+  if (typeof payload.patch !== 'object' || payload.patch === null || Array.isArray(payload.patch)) {
+    return invalid('patch 必须是对象');
+  }
+  const allowedTop = ['editor', 'git'];
+  for (const key of Object.keys(payload.patch as Record<string, unknown>)) {
+    if (!allowedTop.includes(key)) return invalid(`patch 未知字段 ${key}`);
+  }
+  return null;
+};
+
+const settingsSetShortcuts: PayloadValidator = (payload) => {
+  if (!isPlainObject(payload)) return invalid('payload 必须是普通对象');
+  if (!Array.isArray(payload.shortcuts)) return invalid('shortcuts 必须是数组');
+  for (const item of payload.shortcuts as unknown[]) {
+    if (!isPlainObject(item)) return invalid('shortcuts 每项必须是对象');
+    const entry = item as Record<string, unknown>;
+    if (typeof entry.commandId !== 'string') return invalid('shortcuts[*].commandId 必须是字符串');
+    if (typeof entry.key !== 'string') return invalid('shortcuts[*].key 必须是字符串');
+    if (entry.disabled !== undefined && typeof entry.disabled !== 'boolean') {
+      return invalid('shortcuts[*].disabled 必须是布尔值');
+    }
+  }
+  return null;
+};
+
+const settingsImportShortcuts = object(['json'], [stringField('json')]);
+
+const settingsSearch = object(['query'], [stringField('query')]);
+
+const settingsSaveExportFile: PayloadValidator = (payload) => {
+  if (!isPlainObject(payload)) return invalid('payload 必须是普通对象');
+  if (typeof payload.suggestedName !== 'string') return invalid('suggestedName 必须是字符串');
+  if (typeof payload.contents !== 'string') return invalid('contents 必须是字符串');
+  return null;
+};
 const saveLayout: PayloadValidator = (payload) => {
   if (!isPlainObject(payload)) return invalid('payload 必须是普通对象');
   if (Object.keys(payload).some((key) => key !== 'layout')) return invalid('未知字段');
@@ -400,12 +474,22 @@ const VALIDATORS: Partial<Record<IpcChannel, PayloadValidator>> = {
   'index:confidence': confidence,
   'index:setConfidenceFrontmatter': confidenceFrontmatter,
   'vault:create': vaultCreate,
-  'vault:open': pathOnly,
+  'vault:open': vaultOpen,
   'vault:initGit': pathOnly,
   'vault:clone': vaultClone,
+  'vault:inspect': pathOnly,
+  'vault:clonePreflight': vaultClonePreflight,
+  'vault:cancelOperation': vaultCancelOperation,
   'vault:removeRecent': pathOnly,
   'vault:reveal': pathOnly,
   'vault:saveLayout': saveLayout,
+  // Settings（DEV-016）
+  'settings:setGlobal': settingsSetGlobal,
+  'settings:setVault': settingsSetVault,
+  'settings:setShortcuts': settingsSetShortcuts,
+  'settings:importShortcuts': settingsImportShortcuts,
+  'settings:search': settingsSearch,
+  'settings:saveExportFile': settingsSaveExportFile,
   'app:setUpdateChannel': updateChannel,
   'app:setUpdateSettings': updateSettingsPatch,
 };

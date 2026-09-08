@@ -148,3 +148,20 @@ commandRegistry.register({
     );
   },
 });
+
+commandRegistry.register({
+  id: 'app.save',
+  title: '保存当前工作区',
+  category: '应用',
+  keywords: ['save', '保存', 'commit', '提交'],
+  shortcut: '⌘S',
+  run: async () => {
+    const { requestAppSave } = await import('../../editor/app-save');
+    try {
+      await requestAppSave(window);
+      await invoke('git:commit', { message: '保存当前工作区' });
+    } catch (error) {
+      console.error('[app] 保存失败，跳过本次 Git 提交', error);
+    }
+  },
+});

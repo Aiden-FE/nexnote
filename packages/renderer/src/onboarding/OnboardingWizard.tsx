@@ -29,6 +29,14 @@ export function OnboardingWizard({ recent, onRecentsChanged }: OnboardingWizardP
   const [name, setName] = useState('我的知识库');
   const [parentDir, setParentDir] = useState<string | null>(null);
   const [pendingGitInitPath, setPendingGitInitPath] = useState<string | null>(null);
+  const [createWithGit, setCreateWithGit] = useState(true);
+  const [inspecting, setInspecting] = useState<string | null>(null);
+  const [inspectResult, setInspectResult] = useState<{
+    path: string;
+    isObsidian: boolean;
+    isGitRepo: boolean;
+    entryCount: number;
+  } | null>(null);
 
   useEffect(() => {
     if (step === 'create' && !parentDir) {
@@ -48,9 +56,25 @@ export function OnboardingWizard({ recent, onRecentsChanged }: OnboardingWizardP
   const runOpen = async (path: string) => {
     setBusy(true);
     setError(null);
+    setInspectResult(null);
+    setInspecting(path);
     try {
-      await invoke('vault:open', { path });
-      // 成功后主进程广播 vault:changed → App 切到工作区
+      // 先检查目录类型（是否为 Obsidian、是否已有 Git）
+      const inspection = await invoke('vault:inspect', { path });
+      setInspectResult({
+        path: inspection.path,
+        isObsidian: inspection.isObsidian,
+        isGitRepo: inspection.isGitRepo,
+        entryCount: inspection.entryCount,
+      });
+      // 已有 Git → 直接打开
+      if (inspection.isGitRepo) {
+        await invoke('vault:open', { path });
+        return;
+      }
+      // 无 Git → 显示确认对话框（pendingGitInitPath 触发 UI）
+      setPendingGitInitPath(path);
+      setBusy(false);
     } catch (e) {
       const message = e instanceof Error ? e.message : String(e);
       if (
@@ -63,6 +87,8 @@ export function OnboardingWizard({ recent, onRecentsChanged }: OnboardingWizardP
         setError(message);
       }
       setBusy(false);
+    } finally {
+      setInspecting(null);
     }
   };
 
@@ -71,8 +97,9 @@ export function OnboardingWizard({ recent, onRecentsChanged }: OnboardingWizardP
     setBusy(true);
     setError(null);
     try {
-      await invoke('vault:initGit', { path: pendingGitInitPath });
+      await invoke('vault:open', { path: pendingGitInitPath, initGit: true });
       setPendingGitInitPath(null);
+      setInspectResult(null);
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
       setBusy(false);
@@ -87,7 +114,7 @@ export function OnboardingWizard({ recent, onRecentsChanged }: OnboardingWizardP
     setBusy(true);
     setError(null);
     try {
-      await invoke('vault:create', { parentDir, name });
+      await invoke('vault:create', { parentDir, name, initGit: createWithGit });
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
       setBusy(false);
@@ -130,6 +157,16 @@ export function OnboardingWizard({ recent, onRecentsChanged }: OnboardingWizardP
           </p>
         </div>
 
+        {inspecting && (
+          <p
+            data-testid="onboarding-inspecting"
+            className="mb-4 flex items-center gap-2 rounded-md border bg-muted/50 px-3 py-2 text-xs text-muted-foreground"
+          >
+            <Loader2 className="size-3.5 animate-spin" />
+            正在检测 {inspecting} …
+          </p>
+        )}
+
         {error && (
           <p
             data-testid="onboarding-error"
@@ -144,12 +181,16 @@ export function OnboardingWizard({ recent, onRecentsChanged }: OnboardingWizardP
             data-testid="git-init-confirmation"
             className="mb-4 rounded-md border border-amber-500/40 bg-amber-500/10 p-3 text-sm"
           >
-            <p>
-              此文件夹还不是 Git 仓库。是否在{' '}
-              <code className="break-all">{pendingGitInitPath}</code> 中初始化 Git？
-            </p>
+            <p className="font-medium">此文件夹还不是 Git 仓库</p>
+            {inspectResult?.isObsidian && (
+              <p className="mt-1 text-xs text-muted-foreground">
+                检测到 Obsidian vault（.obsidian 目录）。NexNote 不会修改你的 Obsidian 配置， 仅添加
+                .nexnote/ 和 .git。
+              </p>
+            )}
             <p className="mt-1 text-xs text-muted-foreground">
-              这会创建 .git、.gitignore 和初始提交；仅在你确认后执行。
+              是否在 <code className="break-all">{pendingGitInitPath}</code> 中初始化 Git？ 这会创建
+              .git、.gitignore 和初始提交；仅在你确认后执行。
             </p>
             <div className="mt-3 flex gap-2">
               <button
@@ -163,7 +204,10 @@ export function OnboardingWizard({ recent, onRecentsChanged }: OnboardingWizardP
               <button
                 type="button"
                 disabled={busy}
-                onClick={() => setPendingGitInitPath(null)}
+                onClick={() => {
+                  setPendingGitInitPath(null);
+                  setInspectResult(null);
+                }}
                 className="rounded border px-3 py-1.5 text-xs hover:bg-accent"
               >
                 取消
@@ -285,6 +329,16 @@ export function OnboardingWizard({ recent, onRecentsChanged }: OnboardingWizardP
               </button>
             </div>
 
+            <label className="mb-5 flex items-center gap-2 text-xs">
+              <input
+                type="checkbox"
+                checked={createWithGit}
+                onChange={(e) => setCreateWithGit(e.target.checked)}
+                className="size-3.5"
+              />
+              同时初始化 Git（推荐：自动版本跟踪）
+            </label>
+
             <button
               type="button"
               data-testid="create-vault-button"
@@ -299,8 +353,8 @@ export function OnboardingWizard({ recent, onRecentsChanged }: OnboardingWizardP
               {busy ? '创建中…' : '创建知识库'}
             </button>
             <p className="mt-3 text-[11px] leading-relaxed text-muted-foreground">
-              将在所选位置创建同名文件夹与 .nexnote/ 配置目录；Git 初始化（自动 git init +
-              首次提交）由 DEV-007 接入。
+              将在所选位置创建同名文件夹与 .nexnote/ 配置目录
+              {createWithGit ? '，并初始化 Git（首次提交）。' : '，暂不初始化 Git。'}
             </p>
           </div>
         )}

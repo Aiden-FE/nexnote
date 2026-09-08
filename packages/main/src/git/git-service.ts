@@ -1,6 +1,7 @@
-import { existsSync } from 'node:fs';
+import { existsSync, mkdirSync } from 'node:fs';
 import { promises as fsp } from 'node:fs';
 import * as path from 'node:path';
+import { tmpdir } from 'node:os';
 import { simpleGit, type SimpleGit } from 'simple-git';
 import { resolveGitBinary, setupEnvironment } from 'dugite';
 import type {
@@ -227,7 +228,7 @@ export class GitService {
 
   async statusFor(root: string): Promise<GitStatus> {
     const git = this.git(root);
-      if (!(await this.isRepository(root))) {
+    if (!(await this.isRepository(root))) {
       return {
         repository: false,
         branch: null,
@@ -240,8 +241,7 @@ export class GitService {
       };
     }
     const status = await git.status();
-    const remote =
-      status.current ? await this.branchRemote(git, status.current) : null;
+    const remote = status.current ? await this.branchRemote(git, status.current) : null;
     const conflict =
       this.hasUnresolvedConflict(status) || (await this.hasConflictMarkers(root, status));
     return {
@@ -297,7 +297,9 @@ export class GitService {
     for (const line of output.split(/\r?\n/)) {
       if (line.startsWith('\u001e')) {
         const [hash, date, authorName, authorEmail] = line.slice(1).split('\u001f');
-        commit = hash ? { hash, date: date ?? '', author: `${authorName ?? ''} <${authorEmail ?? ''}>` } : null;
+        commit = hash
+          ? { hash, date: date ?? '', author: `${authorName ?? ''} <${authorEmail ?? ''}>` }
+          : null;
         continue;
       }
       const match = /^(\d+|-)\t(\d+|-)\t(.+)$/.exec(line);
@@ -325,7 +327,9 @@ export class GitService {
     }
     const result: GitFileHistoryIndex = new Map();
     for (const [filePath, history] of histories) {
-      const events = [...history.events].sort((left, right) => Date.parse(right.date) - Date.parse(left.date));
+      const events = [...history.events].sort(
+        (left, right) => Date.parse(right.date) - Date.parse(left.date),
+      );
       result.set(filePath, {
         commits: events.length,
         authors: history.authorSet.size,
@@ -433,6 +437,16 @@ export class GitService {
     await this.git(parentDir).clone(url, targetDir);
     this.setRoot(targetDir);
     return this.notified({ message: '克隆完成', root: targetDir });
+  }
+
+  /** 轻量探测：ls-remote --heads，仅验证远端可达（不下载仓库内容）。 */
+  async lsRemote(url: string): Promise<void> {
+    if (!url.trim()) throw new GitServiceError('远程地址不能为空', 'INVALID_REMOTE');
+    // ls-remote 不需要本地仓库，但 simple-git 的 baseDir 必须存在。
+    // 使用 Node 的跨平台临时目录，避免 Windows 上不存在 `/tmp` 导致预检恒失败。
+    const baseDir = tmpdir();
+    mkdirSync(baseDir, { recursive: true });
+    await this.git(baseDir).raw(['ls-remote', '--heads', '--exit-code', url]);
   }
 
   async previewRestore(file: string, commit: string): Promise<GitRestorePreview> {
@@ -667,7 +681,8 @@ function normalizeNumstatPath(rawPath: string): string {
   if (value.length > 1 && value.startsWith('"') && value.endsWith('"')) value = value.slice(1, -1);
   const renamed = value.match(/^(.*)\{(.*) => (.*)\}(.*)$/) ?? value.match(/^(.*) => (.*)$/);
   if (renamed) {
-    if (renamed[3] !== undefined) value = `${renamed[1] ?? ''}${renamed[3] ?? ''}${renamed[4] ?? ''}`;
+    if (renamed[3] !== undefined)
+      value = `${renamed[1] ?? ''}${renamed[3] ?? ''}${renamed[4] ?? ''}`;
     else value = renamed[2] ?? value;
   }
   return value.replace(/\\/g, '/').replace(/\/+/g, '/');

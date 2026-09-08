@@ -89,9 +89,13 @@ export function registerGitHandlers(registrar: IpcRegistrar): void {
   registrar.register(
     'git:setUseSystemGit',
     async ({ enabled }, services): Promise<Result<void>> => {
+      // DEV-016：统一以 SettingsService 为唯一权威；update 触发 onChange
+      // 进而广播 settings:changed + git:statusChanged。
+      services.settings.update({ git: { useSystemGit: enabled } });
+      // 立即同步到运行时服务（onChange 中的同步是广播路径；这里是直接路径，
+      // 确保在测试环境/无 bootstrap listener 时仍然生效）。
       services.git.setUseSystemGit(enabled);
       services.appStore.setUseSystemGit(enabled);
-      services.windows.sendToMainWindow('git:statusChanged', await services.git.status());
       return ok(undefined);
     },
   );
@@ -101,8 +105,20 @@ export function registerGitHandlers(registrar: IpcRegistrar): void {
   });
 
   registrar.register('git:setAutoCommitDebounce', async ({ milliseconds }, services) => {
-    const accepted = services.git.setDebounceMs(milliseconds);
-    services.appStore.setAutoCommitDebounceMs(accepted);
+    const root = services.vaultSession.getCurrent()?.root;
+    if (!root) {
+      throw new GitServiceError('尚未打开任何 vault', 'NO_VAULT');
+    }
+    // legacy channel 仍可用，但写入 vault config 这一唯一权威，再回灌 GitService。
+    const { saveVaultSettings } = await import('../vault/vault-manager');
+    const updated = await saveVaultSettings(root, {
+      git: { autoCommitIntervalMs: milliseconds },
+    });
+    const accepted = services.git.setDebounceMs(updated.git.autoCommitIntervalMs);
+    services.windows.sendToMainWindow('settings:changed', {
+      global: services.settings.get(),
+      vault: updated,
+    });
     return ok({ milliseconds: accepted });
   });
 }
