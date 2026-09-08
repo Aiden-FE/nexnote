@@ -8,8 +8,8 @@
 
 ## 0. 最新状态（持续更新，优先于下方陈旧冻结段）
 
-- **真实进度：17 / 19** —— DEV-001~DEV-015 + DEV-017 + DEV-018 已合入 master。
-- master HEAD：`abf52c0`（merge DEV-018）；post-merge typecheck / main-tsc（仅 2 个基线错）/ 66 test files passed(1 skipped) / eslint / build / release-config / changed-format 回归 全过。
+- **真实进度：18 / 19** —— DEV-001~DEV-015 + DEV-016 + DEV-017 + DEV-018 已合入 master。
+- master HEAD：`68604c4`（DEV-016 merge + 集成 tsc 修复）；post-merge typecheck / main-tsc（仅 1 个基线错 Entry）/ 71 test files passed(1 skipped, 603 tests) / eslint / build / release-config / changed-format 全过。
 - 子Agent 派发工具 `multi_agent_v1__spawn_agent` 在本环境返回 unsupported，按用户接管规则由主控直接在隔离 worktree 实现。
 - better-sqlite3 ABI：vitest 用 Node ABI；electron smoke 用 `runtime=electron target=44.2.0 arch=arm64`，smoke 后务必切回 Node ABI。
 - Electron smoke 当前环境基线 **60/69**：9 项失败为 DEV-003/004/006/007 既有环境基线（Git 状态栏 2、新笔记 frontmatter/面包屑 2、标签面板/过滤 2、重命名 wikilink 1、500 节点 FPS 1、时间线 1）；master 与候选失败集逐名一致，DEV-010 无新增回归。
@@ -276,3 +276,14 @@ DEV-006 ← DEV-004；DEV-008 ← DEV-004+007；DEV-010 ← DEV-002+009；DEV-01
 - post-merge master `abf52c0`：typecheck / 66 test files(1 skipped) / eslint / build / release-config / changed-format 回归 全绿（main-tsc = 2 基线错）。
 - NOT_RUN：真实 GitHub Actions 流水线端到端、macOS Developer ID 签名+公证+Gatekeeper、Windows Authenticode+SmartScreen、Linux GPG/deb 物理安装、三平台物理 smoke、N-1 真实网络自动更新；均按规格允许标注，并逐项给出人工验证步骤。
 - 进度：**17 / 19**。剩余 DEV-016（修复 blocker/major 中）、DEV-019（E2E，最后）。
+
+### DEV-016 — 已完成合并（2026-09-08）
+
+- Merge commit `b7c6583`；候选 `dev/DEV-016-fresh@e9e4f04`（41 files，+4087/−276；含修复 agent 多轮迭代 + 主控 merge sync + UpdateChannel 去重 + Prettier 格式化）；旧 `.wt/DEV-016`（`aad90d6`）是历史 WIP 勿用。
+- 实现：SettingsService（8 分类设置，全局/vault 两级持久化，normalizeStoredGlobal 写入时 prune 未知子字段，onChange 事件），settings-handlers IPC（setGlobal/setVault/setShortcuts/importShortcuts/search/saveExportFile），update-settings-sync（SettingsService.updates 单一权威 → diff-apply updater 运行态 + AppStore 镜像，app:setUpdate* 全部路由 SettingsService），vault-clone-controller（sender-scoped + TTL + one-shot + bounded 8/sender + resolveCloneTarget canonical 共享函数），vault-operations-controller（AbortController 生命周期注册，web-contents-created destroyed 接线 disposeSender），SettingsPage 8 分类 UI（GeneralSection 字体族/字号/主题/语言、GitSection、ShortcutsSection 可编辑+禁用+导入导出、UpdateSettingsSection、搜索输入框+结果跳转），首启动向导三路径（新建/打开含 Obsidian 检测+Git init opt-in/克隆授权预检+真实 status 返回），renderer shortcut-runtime（normalize/冲突检测/全局注册）。
+- 主控闸门 @e9e4f04（worktree，已 sync master 106e1f7）：typecheck PASS / 71 test files passed（1 skipped，603 测通过）/ eslint PASS / build PASS / release-config 28/28 PASS / changed-format PASS / diff-check PASS；main 包 tsc 仅 master 基线 1 错（Entry；GitStatus.conflict 已由本票顺带修复）。
+- fresh fixed-SHA 双轴审查 @e9e4f04：Standards PASS（1 minor：update-section.tsx 过时注释，无 blocker/major）+ Spec PASS（真实 Electron 对话框/网络克隆/重启保持/快捷键运行时生效 NOT_RUN 并附人工步骤，本地可验证项全部满足）。
+- 修复迭代：aad90d6 WIP → 重建 fresh worktree 实现 → 842e445（strict-null 测试修复）→ 8980aed → Standards FAIL（blocker: clone token targetDir 不一致；major: Windows lsRemote /tmp、假 status、取消死代码、useSystemGit 双源、autoCommit 不回灌）+ Spec FAIL（blocker: clone token；major: 设置搜索无 UI、快捷键只读）→ 修复 agent 一轮修复全部 blocker/major → 8155972 → 合并 master 后 typecheck FAIL（UpdateChannel 重复导出）+ changed-format FAIL（19 文件未格式化）→ 主控修复（类型统一 + Prettier）→ 6ea04b0 → Standards FAIL（major: 更新设置双权威、sender 销毁未回收、GitSection 双写）→ 修复 agent 二轮修复 → 0129e35 → changed-format FAIL（3 文件未格式化）→ 主控格式化 → e9e4f04 双轴 PASS。
+- post-merge master `b7c6583` + 集成修复 `68604c4`：typecheck / 71 test files(1 skipped, 603 tests) / eslint / build / release-config / changed-format 全绿（main-tsc = 1 基线错 Entry）。
+- NOT_RUN：真实 Electron 对话框（新建/打开/克隆路径选择、Git 初始化确认）、真实网络克隆（ls-remote 授权预检 + 完整 clone）、重启后设置保持、快捷键运行时生效（真实 Electron 环境）、设置搜索 UI 人工验证；均按规格允许标注，并逐项给出人工验证步骤。
+- 进度：**18 / 19**。剩余 DEV-019（E2E 验收与打磨，最后）。
