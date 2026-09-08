@@ -102,7 +102,13 @@ describe('DEV-019 千级页面性能时间盒', () => {
       histories: new Map(
         graph.pages.map((p) => [
           p.path,
-          { events: [], commits: 2, authors: 1, firstCommitAt: '2025-01-01T00:00:00.000Z' },
+          {
+            events: [],
+            commits: 2,
+            authors: 1,
+            firstCommitAt: '2025-01-01T00:00:00.000Z',
+            lastCommitAt: '2025-01-02T00:00:00.000Z',
+          },
         ]),
       ),
     });

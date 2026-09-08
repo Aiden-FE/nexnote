@@ -169,6 +169,7 @@ describe('DEV-019 端到端纯逻辑集成', () => {
             commits: 2,
             authors: 1,
             firstCommitAt: '2025-01-01T00:00:00.000Z',
+            lastCommitAt: '2025-01-02T00:00:00.000Z',
           },
         ]),
       ),
