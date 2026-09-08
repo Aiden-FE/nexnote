@@ -1,7 +1,7 @@
 import { mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import * as path from 'node:path';
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { registerAllIpcHandlers } from '../src/ipc';
 import { createIpcRegistrar, type IpcMainLike } from '../src/ipc/registrar';
 import { AppStore } from '../src/vault/app-store';
@@ -494,8 +494,14 @@ describe('IPC 集成（vault + fs，单一注册表）', () => {
 
   it('git debounce IPC clamps, applies, and persists the configured value', async () => {
     const ipc = new FakeIpcMain();
-    const { services, store } = makeServices();
+    const { services } = makeServices();
     registerAllIpcHandlers(ipc, services);
+    const created = (await ipc.invoke('vault:create', {
+      parentDir: tmp,
+      name: 'debounce-vault',
+      initGit: true,
+    })) as { ok: boolean };
+    expect(created.ok).toBe(true);
 
     const initial = (await ipc.invoke('git:getAutoCommitDebounce')) as {
       ok: boolean;
@@ -507,9 +513,14 @@ describe('IPC 集成（vault + fs，单一注册表）', () => {
       milliseconds: 1,
     })) as { ok: boolean; data: { milliseconds: number } };
     expect(clamped.ok).toBe(true);
-    expect(clamped.data.milliseconds).toBe(500);
-    expect(services.git.getDebounceMs()).toBe(500);
-    expect(store.getAutoCommitDebounceMs()).toBe(500);
+    // vault config clamp 到 2000ms（vault 设置范围），GitService 取该值
+    expect(clamped.data.milliseconds).toBe(2_000);
+    expect(services.git.getDebounceMs()).toBe(2_000);
+    const vaultSettings = (await ipc.invoke('settings:getVault')) as {
+      ok: boolean;
+      data: { git: { autoCommitIntervalMs: number } };
+    };
+    expect(vaultSettings.data.git.autoCommitIntervalMs).toBe(2_000);
 
     const rejected = (await ipc.invoke('git:setAutoCommitDebounce', {
       milliseconds: '500',
@@ -565,6 +576,74 @@ describe('IPC 集成（vault + fs，单一注册表）', () => {
       expect(result.ok, `${label} should reject`).toBe(false);
       expect(result.code, `${label} should be IPC_PAYLOAD_INVALID`).toBe('IPC_PAYLOAD_INVALID');
     }
+  });
+
+  it('clone preflight token 可被相同 canonical target 消费，改变目标仍失败', async () => {
+    const ipc = new FakeIpcMain();
+    const { services } = makeServices();
+    registerAllIpcHandlers(ipc, services);
+    const url = 'https://example.invalid/owner/repo.git';
+    const parentDir = await mkdtemp(path.join(tmpdir(), 'nexnote-clone-token-'));
+    const status = {
+      repository: true,
+      branch: 'trunk',
+      changed: 1,
+      ahead: 2,
+      behind: 3,
+      remote: 'origin',
+      usingSystemGit: true,
+      conflict: false,
+    };
+    vi.spyOn(services.git, 'lsRemote').mockResolvedValue();
+    vi.spyOn(services.git, 'cloneInto').mockImplementation(async (_url, temporaryParent, name) => {
+      await import('node:fs/promises').then(({ mkdir }) =>
+        mkdir(path.join(temporaryParent, name), { recursive: true }),
+      );
+      return { message: '克隆完成', status };
+    });
+    vi.spyOn(services.git, 'status').mockResolvedValue(status);
+    try {
+      const preflight = (await ipc.invoke('vault:clonePreflight', {
+        url,
+        parentDir,
+        name: 'repo',
+      })) as { ok: boolean; data: { reachable: boolean; preflightToken?: string } };
+      expect(preflight).toMatchObject({ ok: true, data: { reachable: true } });
+
+      const cloned = (await ipc.invoke('vault:clone', {
+        url,
+        parentDir,
+        name: 'repo',
+        preflightToken: preflight.data.preflightToken,
+      })) as { ok: boolean; data: { status: typeof status } };
+      expect(cloned.ok).toBe(true);
+      expect(cloned.data.status).toEqual(status);
+
+      const secondPreflight = (await ipc.invoke('vault:clonePreflight', {
+        url,
+        parentDir,
+        name: 'repo-two',
+      })) as { ok: boolean; data: { preflightToken?: string } };
+      const mismatch = (await ipc.invoke('vault:clone', {
+        url,
+        parentDir,
+        name: 'different-target',
+        preflightToken: secondPreflight.data.preflightToken,
+      })) as { ok: boolean; code?: string };
+      expect(mismatch).toMatchObject({ ok: false, code: 'CLONE_TOKEN_INVALID' });
+    } finally {
+      await rm(parentDir, { recursive: true, force: true });
+    }
+  });
+
+  it('vault:cancelOperation 对未知 operationId 明确报错', async () => {
+    const ipc = new FakeIpcMain();
+    const { services } = makeServices();
+    registerAllIpcHandlers(ipc, services);
+    const result = (await ipc.invoke('vault:cancelOperation', {
+      operationId: 'does-not-exist',
+    })) as { ok: boolean; code?: string };
+    expect(result).toMatchObject({ ok: false, code: 'OPERATION_NOT_FOUND' });
   });
 
   it('vault:clone 拒绝逃逸 parentDir 的目录名（traversal hardening）', async () => {

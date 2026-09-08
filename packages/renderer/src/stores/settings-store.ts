@@ -106,11 +106,8 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
 /** 订阅主进程推送的设置变化（跨窗口同步预留）。 */
 export function subscribeSettingsChanges(): () => void {
   return onEvent('settings:changed', (payload) => {
-    if (payload.global) {
-      useSettingsStore.setState({ global: payload.global });
-    }
-    if (payload.vault) {
-      useSettingsStore.setState({ vault: payload.vault });
-    }
+    // 主进程是唯一权威；一次原子替换避免跨窗口更新丢失。
+    // vault=null 也必须写入，否则关闭 vault 后会残留旧设置。
+    useSettingsStore.setState({ global: payload.global, vault: payload.vault });
   });
 }

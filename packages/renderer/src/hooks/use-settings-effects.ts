@@ -1,5 +1,5 @@
 import { useEffect } from 'react';
-import { useSettingsStore } from '../stores/settings-store';
+import { useSettingsStore, subscribeSettingsChanges } from '../stores/settings-store';
 import type { GlobalSettings, VaultSettings } from '@nexnote/shared';
 
 const LS_THEME_KEY = 'nexnote:theme-preference';
@@ -18,6 +18,8 @@ export function useSettingsBootstrap(): void {
   // 启动时加载
   useEffect(() => {
     void loadGlobal();
+    const unsubscribe = subscribeSettingsChanges();
+    return unsubscribe;
   }, [loadGlobal]);
 
   // 首次加载后：从 localStorage 迁移旧主题（仅一次）

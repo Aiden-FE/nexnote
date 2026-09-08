@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   Settings as SettingsIcon,
   FileText,
@@ -10,7 +10,14 @@ import { settingsSectionRegistry } from '../../registries';
 import { useSettingsStore } from '../../stores/settings-store';
 import { invoke } from '../../lib/ipc';
 import { useVaultSettingsEffects } from '../../hooks/use-settings-effects';
-import type { StartupBehavior, ThemePreference, UpdateChannel, CodeTheme } from '@nexnote/shared';
+import type {
+  StartupBehavior,
+  ThemePreference,
+  UpdateChannel,
+  CodeTheme,
+  ShortcutOverride,
+} from '@nexnote/shared';
+import { normalizeShortcut } from '@nexnote/shared';
 
 /**
  * DEV-016：设置分区实现。
@@ -165,6 +172,24 @@ function GeneralSection() {
             { value: 'zh-CN', label: '简体中文' },
             { value: 'en-US', label: 'English' },
           ]}
+        />
+      </Row>
+      <Row label="UI 字体" description="CSS 字体族列表">
+        <input
+          aria-label="UI 字体"
+          type="text"
+          value={global.appearance.uiFontFamily}
+          onChange={(e) => void setGlobal({ appearance: { uiFontFamily: e.target.value } })}
+          className="h-8 w-64 rounded-md border bg-background px-2 text-sm"
+        />
+      </Row>
+      <Row label="编辑器字体" description="编辑器与等宽文本字体族">
+        <input
+          aria-label="编辑器字体"
+          type="text"
+          value={global.appearance.editorFontFamily}
+          onChange={(e) => void setGlobal({ appearance: { editorFontFamily: e.target.value } })}
+          className="h-8 w-64 rounded-md border bg-background px-2 text-sm"
         />
       </Row>
       <Row label="UI 字号" description={`${global.appearance.uiFontSize}px`}>
@@ -383,20 +408,64 @@ function GitSection() {
 
 function ShortcutsSection() {
   const { global } = useGlobalSettings();
+  const setShortcuts = useSettingsStore((s) => s.setShortcuts);
+  const shortcuts = useMemo(() => global?.shortcuts ?? [], [global?.shortcuts]);
+  const [drafts, setDrafts] = useState<Record<string, string>>({});
+  const [message, setMessage] = useState<string | null>(null);
+
+  const persist = useCallback(async (next: ShortcutOverride[]) => {
+    try {
+      await setShortcuts(next);
+      setMessage('快捷键已保存');
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : String(error));
+    }
+  }, [setShortcuts]);
+
+  const saveBinding = async (shortcut: ShortcutOverride): Promise<void> => {
+    const canonical = normalizeShortcut(drafts[shortcut.commandId] ?? shortcut.key);
+    if (!canonical) {
+      setMessage('请输入有效快捷键，例如 Mod+Shift+F');
+      return;
+    }
+    const collision = shortcuts.find(
+      (candidate) => candidate.commandId !== shortcut.commandId && !candidate.disabled && candidate.key === canonical,
+    );
+    if (collision) {
+      setMessage(`快捷键与 ${collision.commandId} 冲突`);
+      return;
+    }
+    await persist(shortcuts.map((candidate) =>
+      candidate.commandId === shortcut.commandId
+        ? { ...candidate, key: canonical, disabled: false }
+        : candidate,
+    ));
+  };
+
+  const toggleBinding = async (shortcut: ShortcutOverride): Promise<void> => {
+    const key = normalizeShortcut(drafts[shortcut.commandId] ?? shortcut.key);
+    if (shortcut.disabled && !key) {
+      setMessage('启用前请先输入有效快捷键');
+      return;
+    }
+    await persist(shortcuts.map((candidate) =>
+      candidate.commandId === shortcut.commandId
+        ? { ...candidate, key: shortcut.disabled ? key : '', disabled: !shortcut.disabled }
+        : candidate,
+    ));
+  };
 
   if (!global) return <div className="text-sm text-muted-foreground">加载中…</div>;
-
-  const shortcuts = global.shortcuts;
 
   const handleImport = async (): Promise<void> => {
     try {
       const result = await invoke('settings:pickImportFile');
       if (result) {
         const { imported } = await invoke('settings:importShortcuts', { json: result });
-        alert(`已导入 ${imported} 条快捷键`);
+        setMessage(`已导入 ${imported} 条快捷键`);
       }
     } catch (e) {
-      alert(e instanceof Error ? e.message : String(e));
+      setMessage(e instanceof Error ? e.message : String(e));
     }
   };
 
@@ -407,47 +476,35 @@ function ShortcutsSection() {
         suggestedName: 'nexnote-shortcuts.json',
         contents: result.json,
       });
+      setMessage('快捷键已导出');
     } catch (e) {
-      alert(e instanceof Error ? e.message : String(e));
+      setMessage(e instanceof Error ? e.message : String(e));
     }
   };
 
   return (
     <div className="space-y-4">
-      <SectionHeader
-        title="快捷键"
-        description="当前快捷键列表。完整自定义（录制、碰撞检测）在 DEV-017 中完善。"
-      />
+      <SectionHeader title="快捷键" description="直接编辑快捷键，或单独启用、禁用每个绑定。" />
       <div className="mb-3 flex gap-2">
-        <button
-          type="button"
-          onClick={() => void handleImport()}
-          className="h-7 rounded-md border px-3 text-xs hover:bg-accent"
-        >
-          导入…
-        </button>
-        <button
-          type="button"
-          onClick={() => void handleExport()}
-          className="h-7 rounded-md border px-3 text-xs hover:bg-accent"
-        >
-          导出…
-        </button>
+        <button type="button" onClick={() => void handleImport()} className="h-7 rounded-md border px-3 text-xs hover:bg-accent">导入…</button>
+        <button type="button" onClick={() => void handleExport()} className="h-7 rounded-md border px-3 text-xs hover:bg-accent">导出…</button>
       </div>
+      {message && <p role="status" className="text-xs text-muted-foreground">{message}</p>}
       <div className="divide-y rounded-md border">
-        {shortcuts.map((sc) => (
-          <div
-            key={sc.commandId}
-            className="flex items-center justify-between px-3 py-2 text-sm"
-          >
-            <span className="text-muted-foreground">{sc.commandId}</span>
-            <span
-              className={`rounded border px-2 py-0.5 font-mono text-xs ${
-                sc.disabled ? 'text-muted-foreground/50' : ''
-              }`}
-            >
-              {sc.disabled ? '已禁用' : sc.key || '未设置'}
-            </span>
+        {shortcuts.map((shortcut) => (
+          <div key={shortcut.commandId} className="grid grid-cols-[minmax(0,1fr)_minmax(9rem,12rem)_auto] items-center gap-2 px-3 py-2 text-sm">
+            <label htmlFor={`shortcut-${shortcut.commandId}`} className="truncate text-muted-foreground">{shortcut.commandId}</label>
+            <input
+              id={`shortcut-${shortcut.commandId}`}
+              aria-label={`${shortcut.commandId} 快捷键`}
+              value={drafts[shortcut.commandId] ?? shortcut.key}
+              disabled={shortcut.disabled}
+              onChange={(event) => setDrafts((current) => ({ ...current, [shortcut.commandId]: event.target.value }))}
+              onBlur={() => { if (!shortcut.disabled) void saveBinding(shortcut); }}
+              onKeyDown={(event) => { if (event.key === 'Enter') { event.preventDefault(); void saveBinding(shortcut); } }}
+              className="h-8 rounded-md border bg-background px-2 font-mono text-xs disabled:opacity-50"
+            />
+            <Toggle checked={!shortcut.disabled} onChange={() => void toggleBinding(shortcut)} />
           </div>
         ))}
       </div>

@@ -132,6 +132,31 @@ async function bootstrap(): Promise<void> {
 
   // DEV-016：全局设置单一权威（替代 AppStore 中的零散字段 + localStorage 主题）。
   const settings = new SettingsService(join(app.getPath('userData'), 'nexnote-settings.json'));
+  // SettingsService 是 useSystemGit 的唯一权威；AppStore 仅作旧版本兼容镜像，
+  // GitService 始终从设置服务加载并在变更时立即生效。
+  const applyGlobalSettings = (global: ReturnType<SettingsService['get']>): void => {
+    const useSystemGit = global.git.useSystemGit;
+    git.setUseSystemGit(useSystemGit);
+    if (appStore.getUseSystemGit() !== useSystemGit) {
+      appStore.setUseSystemGit(useSystemGit);
+    }
+  };
+  applyGlobalSettings(settings.get());
+  settings.onChange((global) => {
+    applyGlobalSettings(global);
+    void (async () => {
+      const root = vaultSession.getCurrent()?.root;
+      const vault = root ? await import('./vault/vault-manager').then(({ readVaultSettings }) => readVaultSettings(root)) : null;
+      windows?.sendToMainWindow('settings:changed', { global, vault });
+      if (root) {
+        try {
+          windows?.sendToMainWindow('git:statusChanged', await git.status());
+        } catch {
+          // 设置持久化已成功；Git 状态可在下一次常规刷新时恢复。
+        }
+      }
+    })();
+  });
 
   // DEV-016：向导操作取消控制器（sender scoped AbortController）。
   const vaultOperations = new VaultOperationsController();

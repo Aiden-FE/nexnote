@@ -1,6 +1,7 @@
-import { existsSync } from 'node:fs';
+import { existsSync, mkdirSync } from 'node:fs';
 import { promises as fsp } from 'node:fs';
 import * as path from 'node:path';
+import { tmpdir } from 'node:os';
 import { simpleGit, type SimpleGit } from 'simple-git';
 import { resolveGitBinary, setupEnvironment } from 'dugite';
 import type {
@@ -438,9 +439,11 @@ export class GitService {
   /** 轻量探测：ls-remote --heads，仅验证远端可达（不下载仓库内容）。 */
   async lsRemote(url: string): Promise<void> {
     if (!url.trim()) throw new GitServiceError('远程地址不能为空', 'INVALID_REMOTE');
-    // 使用 /tmp 作为工作目录——ls-remote 不需要本地仓库
-    const tmp = process.env.TMPDIR || '/tmp';
-    await this.git(tmp).raw(['ls-remote', '--heads', '--exit-code', url]);
+    // ls-remote 不需要本地仓库，但 simple-git 的 baseDir 必须存在。
+    // 使用 Node 的跨平台临时目录，避免 Windows 上不存在 `/tmp` 导致预检恒失败。
+    const baseDir = tmpdir();
+    mkdirSync(baseDir, { recursive: true });
+    await this.git(baseDir).raw(['ls-remote', '--heads', '--exit-code', url]);
   }
 
   async previewRestore(file: string, commit: string): Promise<GitRestorePreview> {

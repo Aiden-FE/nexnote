@@ -233,8 +233,8 @@ const vaultClone = object(
   ],
 );
 const vaultClonePreflight = object(
-  ['url', 'parentDir'],
-  [stringField('url'), stringField('parentDir')],
+  ['url', 'parentDir', 'name'],
+  [stringField('url'), stringField('parentDir'), optionalField('name', 'string')],
 );
 const vaultCancelOperation = object(
   ['operationId'],

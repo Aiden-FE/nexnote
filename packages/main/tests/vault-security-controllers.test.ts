@@ -68,6 +68,22 @@ describe('VaultCloneController', () => {
     expect(c.consume(token, 1, 'url', '/tmp')).toEqual({ ok: true });
   });
 
+  it('preflight 签发的 canonical targetDir 可被合法 clone 消费，目标变更仍失败', () => {
+    const c = new VaultCloneController();
+    const url = 'https://github.com/a/b.git';
+    const canonicalTarget = '/Users/me/b';
+    const token = c.createToken(1, url, canonicalTarget);
+    expect(c.consume(token, 1, url, canonicalTarget)).toEqual({ ok: true });
+
+    const mismatchToken = c.createToken(1, url, canonicalTarget);
+    expect(c.consume(mismatchToken, 1, url, '/Users/me/elsewhere')).toEqual({
+      ok: false,
+      reason: 'PARAM_MISMATCH',
+    });
+    // 参数不匹配不会消费令牌，合法目标仍可随后消费。
+    expect(c.consume(mismatchToken, 1, url, canonicalTarget)).toEqual({ ok: true });
+  });
+
   it('consume 校验 url / targetDir 完全匹配', () => {
     const c = new VaultCloneController();
     const token = c.createToken(1, 'https://github.com/a/b.git', '/Users/me');

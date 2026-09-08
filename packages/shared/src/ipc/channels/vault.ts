@@ -74,12 +74,17 @@ export interface VaultChannelMap {
   'vault:initGit': { request: { path: string }; response: Result<VaultInfo> };
   /** 检查一个路径：是否为目录、是否为 Obsidian vault、是否为 Git 仓库、条目数。 */
   'vault:inspect': { request: { path: string }; response: Result<VaultInspection> };
-  /** 授权预检 + 签发一次性 clone 授权 token（webContents/sender 绑定 + TTL）。 */
+  /** 授权预检 + 签发一次性 clone 授权 token（webContents/sender 绑定 + TTL）。
+   * `name` 可选；未提供时从 URL 推导目标目录名。
+   * token 与 canonical targetDir（parentDir/name）绑定，clone 消费时必须完全一致。
+   */
   'vault:clonePreflight': {
-    request: { url: string; parentDir: string };
+    request: { url: string; parentDir: string; name?: string };
     response: Result<{ reachable: boolean; preflightToken?: string; error?: string }>;
   };
-  /** 撤销一个进行中的向导文件操作（new/open/clone），仅当 sender 匹配。 */
+  /** 撤销一个进行中的向导文件操作（new/open/clone），仅当 sender 匹配。
+   * 若 operationId 不存在或已完成，返回 OPERATION_NOT_FOUND 错误。
+   */
   'vault:cancelOperation': { request: { operationId: string }; response: Result<void> };
   /** 在 Finder / 资源管理器中显示 vault 内文件 */
   'vault:reveal': { request: { path: string }; response: Result<void> };
