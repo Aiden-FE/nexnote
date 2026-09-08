@@ -10,6 +10,7 @@ import './git';
 import './statusbar/index-status';
 import './commands/builtin';
 import './settings';
+import './settings/update-section';
 import './ai';
 import './plugins';
 import './skills';

@@ -1,4 +1,10 @@
-import type { AppInfo, UpdateCheckResult } from '@nexnote/shared';
+import type {
+  AppInfo,
+  UpdateChannel,
+  UpdateCheckResult,
+  UpdateSettings,
+  UpdateSettingsPatch,
+} from '@nexnote/shared';
 import type { AppStore } from '../vault/app-store';
 import type { SettingsService } from '../settings/settings-service';
 import type { VaultCloneController } from '../vault/vault-clone-controller';
@@ -52,4 +58,9 @@ export interface IpcServices {
   vaultClones: VaultCloneController;
   appInfo(): AppInfo;
   checkForUpdates(): Promise<UpdateCheckResult>;
+  downloadUpdate(): Promise<UpdateCheckResult>;
+  installUpdate(): { willRestart: true };
+  setUpdateChannel(channel: UpdateChannel): UpdateCheckResult;
+  getUpdateSettings(): UpdateSettings;
+  setUpdateSettings(patch: UpdateSettingsPatch): UpdateSettings;
 }

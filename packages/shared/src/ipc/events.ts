@@ -1,5 +1,6 @@
 import type { GitStatus } from './channels/git';
 import type { VaultInfo } from '../types/vault';
+import type { UpdateCheckResult, UpdateChannel } from './channels/app';
 import type { ChatStreamEvent, AiConfigState } from '../types/ai';
 import type { IndexStatus } from '../types/index';
 import type { RetrievalIndexStatusPayload } from '../types/retrieval';
@@ -14,6 +15,8 @@ export interface IpcEventMap {
   'vault:changed': { vault: VaultInfo | null };
   /** vault 文件系统变化（DEV-003，chokidar 驱动）。 */
   'fs:changed': FsChangeEvent;
+  /** 更新检查、下载、安装流程的实时状态（DEV-018）。 */
+  'app:updateStatus': UpdateCheckResult & { progress?: number; channel: UpdateChannel };
   /** AI 对话流事件（统一内部协议，按 streamId 关联） */
   'ai:streamEvent': { streamId: string; event: ChatStreamEvent };
   /** DEV-011 向量索引后台构建进度 */
@@ -42,6 +45,7 @@ export interface FsChangeEvent {
 export const IPC_EVENT_CHANNELS: readonly string[] = [
   'vault:changed',
   'fs:changed',
+  'app:updateStatus',
   'ai:streamEvent',
   'ai:retrievalStatus',
   'ai:configChanged',

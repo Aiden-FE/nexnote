@@ -6,16 +6,16 @@
 
 ## 当前状态（2026-09-07）
 
-- 顶层 Goal：**未完成**；全局进度：**16 / 19**（DEV-001 ～ DEV-015 + DEV-017 已验收并合入 `master`）。
-- `master` 当前基线：`39b239d`（`merge: DEV-017 编辑器交互增强`）。
-- 剩余：DEV-016 🔄（fresh worktree 实现中）、DEV-018 🔄（候选 `8680d39` 门禁复跑 + 双轴重审中）、DEV-019 ⏳（依赖全部主要票据，最后执行）。
+- 顶层 Goal：**未完成**；全局进度：**17 / 19**（DEV-001 ～ DEV-015 + DEV-017 + DEV-018 已验收并合入 `master`）。
+- `master` 当前基线：`abf52c0`（`merge: DEV-018 打包、自动更新与发布流程`）。
+- 剩余：DEV-016 🔄（综合修复 agent 处理 blocker/major）、DEV-019 ⏳（依赖全部主要票据，最后执行）。
 - 本文件是续接入口；历史执行细节、闸门命令与审查证据见 [`.scratch/DEV-STATUS-CHECKPOINT.md`](../DEV-STATUS-CHECKPOINT.md)。票据需求与验收标准以各 `issues/*.md` 为准。
 
 ## 模块总览
 
 | 模块 | 票据 | 状态 | 说明 |
 |---|---|---|---|
-| **foundation** 基础架构 | DEV-001, DEV-016, DEV-018 | 🔄 进行中 | 工程骨架 ✅、设置、打包发布未完成 |
+| **foundation** 基础架构 | DEV-001, DEV-016, DEV-018 | 🔄 进行中 | 工程骨架、打包发布 ✅；设置收尾中 |
 | **editor** 编辑器内核 | DEV-002, DEV-003, DEV-017 | ✅ 已完成 | 内核、文件管理、高级交互均已合并 |
 | **knowledge** 知识关系 | DEV-004, DEV-005, DEV-006 | ✅ 已完成 | 索引、双链、frontmatter、图谱 |
 | **git** Git 底座 | DEV-007, DEV-008 | ✅ 已完成 | 自动提交、时间线、置信度 |
@@ -56,7 +56,7 @@
 | **DEV-015** | [内置示范插件：Mermaid + KaTeX](issues/015-builtin-plugins-mermaid-katex.md) | plugins | M | DEV-014 | E | ✅ 已合并 |
 | **DEV-016** | [设置系统与首启动向导完善](issues/016-settings-onboarding.md) | foundation | M | DEV-001 | B→C | 🔄 进行中（旧 WIP `dev/DEV-016@aad90d6` 已过时，需从最新 `master` 新建 fresh worktree 重建） |
 | **DEV-017** | [编辑器高级交互](issues/017-editor-interactions.md) | editor | M | DEV-002 | C | ✅ 已合并（`39b239d`，候选 `dev/DEV-017-fresh@f0b2b8a`，双轴审查 PASS） |
-| **DEV-018** | [打包、自动更新与发布流程](issues/018-packaging-updates-ci.md) | foundation | M | DEV-001 | 全期并行 | 🔄 进行中（候选 `dev/DEV-018@8680d39`，门禁复跑 + 双轴重审中） |
+| **DEV-018** | [打包、自动更新与发布流程](issues/018-packaging-updates-ci.md) | foundation | M | DEV-001 | 全期并行 | ✅ 已合并（`abf52c0`，候选 `dev/DEV-018@ef905ed`，双轴审查 PASS） |
 
 ### P0 · 集成验收（最后）— ⏳ 等待依赖
 
@@ -98,7 +98,7 @@ DEV-008 (置信度) ← DEV-004 + DEV-007
 
 1. ~~DEV-017~~ ✅ 已合并（`39b239d`，→ 16/19）：闸门全绿 + fresh Standards/Spec 双轴 PASS（Standards 5 minor / Spec 2 minor，无 blocker/major）。
 2. **再重建 DEV-016**（→ 17/19）：不要 cherry-pick 或直接延续过时 WIP；以最新 `master` 新建 `DEV-016-fresh` 隔离 worktree，实现 8 大设置分类 + 全局/vault 持久化 + 设置搜索 + 快捷键自定义 + 三路径向导（新建 / 打开含 git 与 Obsidian 检测 / 克隆授权预检）与欢迎页，含 opt-in Git init、clone 安全（temp 独占 + atomic move + TTL/revoke）等验收。
-3. **处理 DEV-018**（→ 18/19）：以最新主线核对原 WIP 可复用部分；完成 electron-builder 三端配置、updater（renderer 通道以 main AppStore 为单一权威）、CI release 流程（preflight setup、lease anchored regex 解析、显式 platform manifest 映射、禁止 `mv -n` 静默 first-wins）；真实签名/公证/物理安装/N-1 在线更新必须标注 NOT_RUN 并附人工步骤。
+3. ~~DEV-018~~ ✅ 已合并（`abf52c0`，→ 17/19）：三平台打包、electron-updater 三通道、release/preflight/nightly CI、durable lease + QA approval gate；N-1 真实网络更新/签名公证/物理安装按规格标 NOT_RUN。
 4. **最后执行 DEV-019**（→ 19/19）：以 DEV-016/017/018 全部合并的主线为唯一候选，全量 smoke + E2E + 回归打磨 + 发布清单；配置检查、构建成功、健康探测不等同端到端验证。
 
 ## 统一验收与合并协议

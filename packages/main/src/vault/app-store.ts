@@ -1,6 +1,6 @@
 import { existsSync, readFileSync, renameSync, writeFileSync } from 'node:fs';
 import * as path from 'node:path';
-import type { RecentVaultEntry } from '@nexnote/shared';
+import type { RecentVaultEntry, UpdateChannel } from '@nexnote/shared';
 
 export interface WindowBounds {
   x?: number;
@@ -15,10 +15,13 @@ export interface AppStoreData {
   lastVaultPath: string | null;
   recentVaults: RecentVaultEntry[];
   windowBounds: WindowBounds | null;
+  updateChannel: UpdateChannel | null;
   /** Git binary preference; persisted in app userData rather than a vault. */
   useSystemGit: boolean;
   /** 自动提交防抖（毫秒），持久化到应用 userData；受 DEBOUNCE_RANGE_MS 约束。 */
   autoCommitDebounceMs: number;
+  updateAutoDownload: boolean;
+  updateCheckOnLaunch: boolean;
 }
 
 export const MAX_RECENT_VAULTS = 10;
@@ -39,8 +42,11 @@ function defaults(): AppStoreData {
     lastVaultPath: null,
     recentVaults: [],
     windowBounds: null,
+    updateChannel: null,
     useSystemGit: false,
     autoCommitDebounceMs: DEFAULT_AUTO_COMMIT_DEBOUNCE_MS,
+    updateAutoDownload: true,
+    updateCheckOnLaunch: true,
   };
 }
 
@@ -62,8 +68,16 @@ function coerce(raw: unknown): AppStoreData {
       typeof data.windowBounds === 'object' && data.windowBounds !== null
         ? data.windowBounds
         : null,
+    updateChannel:
+      data.updateChannel === 'stable' ||
+      data.updateChannel === 'beta' ||
+      data.updateChannel === 'alpha'
+        ? data.updateChannel
+        : null,
     useSystemGit: data.useSystemGit === true,
     autoCommitDebounceMs: coerceDebounceMs(data.autoCommitDebounceMs),
+    updateAutoDownload: data.updateAutoDownload !== false,
+    updateCheckOnLaunch: data.updateCheckOnLaunch !== false,
   };
 }
 
@@ -127,6 +141,29 @@ export class AppStore {
 
   setWindowBounds(bounds: WindowBounds): void {
     this.data.windowBounds = bounds;
+    this.persist();
+  }
+
+  setUpdateChannel(channel: UpdateChannel): void {
+    this.data.updateChannel = channel;
+    this.persist();
+  }
+
+  getUpdateAutoDownload(): boolean {
+    return this.data.updateAutoDownload;
+  }
+
+  setUpdateAutoDownload(enabled: boolean): void {
+    this.data.updateAutoDownload = enabled === true;
+    this.persist();
+  }
+
+  getUpdateCheckOnLaunch(): boolean {
+    return this.data.updateCheckOnLaunch;
+  }
+
+  setUpdateCheckOnLaunch(enabled: boolean): void {
+    this.data.updateCheckOnLaunch = enabled === true;
     this.persist();
   }
 

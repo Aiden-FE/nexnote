@@ -1,0 +1,30 @@
+Written Offer for Corresponding Source (GPLv2 section 3)
+
+NexNote distributes the Git executable (GPLv2, "the Program") bundled through
+the `dugite` package. In accordance with the GNU General Public License version
+2, section 3(b), NexNote hereby makes the following written offer:
+
+  NexNote offers to give any third party, for a period of no less than three
+  years after the date of distribution, a complete machine-readable copy of
+  the corresponding source code of the Program, at no charge beyond the cost
+  of physically performing the source distribution (e.g. media/transfer costs).
+
+How to obtain the source:
+  - The canonical Git source is published and freely available at
+    https://github.com/git/git (and the official mirror https://git.kernel.org).
+  - The Windows/MinGW distribution bundled on Windows is built from
+    https://github.com/git-for-windows/git.
+  - The exact shipped binary derives from desktop/dugite-native
+    (https://github.com/desktop/dugite-native); its packaging metadata
+    identifies the matching git source revision.
+
+Alternatively, you may obtain the source directly by requesting it:
+  Email: source-request@nexnote.example
+  (Subject: "GPL source offer — NexNote bundled Git")
+
+NexNote's own application code is not covered by this offer; the Program (Git)
+is the only GPLv2-covered component distributed with this application.
+
+This offer does not apply to source code already published in locations freely
+accessible to the public, which you may download directly at any time at no
+charge.

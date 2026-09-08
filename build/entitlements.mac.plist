@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <!-- Hardened Runtime 基本权利 -->
+    <key>com.apple.security.cs.allow-jit</key>
+    <true/>
+    <key>com.apple.security.cs.allow-unsigned-executable-memory</key>
+    <true/>
+    <key>com.apple.security.cs.disable-library-validation</key>
+    <true/>
+
+    <!-- 网络（自动更新、AI 请求、Git 远程同步） -->
+    <key>com.apple.security.network.client</key>
+    <true/>
+
+    <!-- 用户选定文件读写（打开 vault / 文件） -->
+    <key>com.apple.security.files.user-selected.read-write</key>
+    <true/>
+    <key>com.apple.security.files.bookmarks.app-scope</key>
+    <true/>
+
+    <!-- Keychain（safeStorage 后端 + Git 凭据） -->
+    <key>com.apple.security.keychain-item-access-groups</key>
+    <string>$(AppIdentifierPrefix)dev.nexnote.desktop</string>
+</dict>
+</plist>

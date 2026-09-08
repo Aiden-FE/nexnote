@@ -8,8 +8,8 @@
 
 ## 0. 最新状态（持续更新，优先于下方陈旧冻结段）
 
-- **真实进度：16 / 19** —— DEV-001~DEV-015 + DEV-017 已合入 master。
-- master HEAD：`39b239d`（merge DEV-017）；post-merge typecheck / main-tsc（仅 2 个基线错）/ 529 tests(2 skipped, 64 files) / eslint / build 全过。
+- **真实进度：17 / 19** —— DEV-001~DEV-015 + DEV-017 + DEV-018 已合入 master。
+- master HEAD：`abf52c0`（merge DEV-018）；post-merge typecheck / main-tsc（仅 2 个基线错）/ 66 test files passed(1 skipped) / eslint / build / release-config / changed-format 回归 全过。
 - 子Agent 派发工具 `multi_agent_v1__spawn_agent` 在本环境返回 unsupported，按用户接管规则由主控直接在隔离 worktree 实现。
 - better-sqlite3 ABI：vitest 用 Node ABI；electron smoke 用 `runtime=electron target=44.2.0 arch=arm64`，smoke 后务必切回 Node ABI。
 - Electron smoke 当前环境基线 **60/69**：9 项失败为 DEV-003/004/006/007 既有环境基线（Git 状态栏 2、新笔记 frontmatter/面包屑 2、标签面板/过滤 2、重命名 wikilink 1、500 节点 FPS 1、时间线 1）；master 与候选失败集逐名一致，DEV-010 无新增回归。
@@ -265,3 +265,14 @@ DEV-006 ← DEV-004；DEV-008 ← DEV-004+007；DEV-010 ← DEV-002+009；DEV-01
 - post-merge master `39b239d`：typecheck / 529 tests（2 skipped，64 files）/ eslint / build 全绿（main-tsc = 2 基线错）。
 - NOT_RUN：无外部不可验证项（无真实 provider/签名/安装项）；媒体导入与红链创建由真实 kernel + mock IPC 单测覆盖。
 - 进度：**16 / 19**。剩余 DEV-016（fresh worktree 实现中）、DEV-018（候选 `8680d39` 重审中）、DEV-019（E2E，最后）。
+
+### DEV-018 — 已完成合并（2026-09-08）
+
+- Merge commit `abf52c0`；候选 `dev/DEV-018@ef905ed`（44 files，+3572/−109；含原 agent 多轮修复 + 主控格式修复 + sync to master merge）；旧 `.wt/DEV-018`（`b86a6f2`）是历史 WIP 勿用。
+- 实现：electron-builder 三平台配置（macOS dmg+zip arm64/x64、Windows nsis+portable x64、Linux AppImage+deb x64，asarUnpack dugite/better-sqlite3，entitlements + hardened runtime，GPLv2 source offer），electron-updater 三通道（stable/beta/alpha，AppStore 单一权威，readBakedChannel 烘焙通道，autoDownload 配置），renderer 设置页更新 UI（检查/下载/重启安装/通道切换/busy/错误提示），release CI（prepare → build 矩阵 → macos smoke → preflight → publish with release-qa environment + durable lease + QA evidence hash 校验 + tag 幂等），PR checks（lint/typecheck/test/build/verify-release-config/Linux unpacked build/changed-file formatting），Nightly（仅 macos 构建不上传 Release），verify-release-config.mjs（28 项结构/权限/密钥/lease 校验），release-evidence（不可变 QA JSON URL + sha256 + validateAttestation），merge-mac-update-manifests（mac 双架构 latest-mac.yml 合并），updater 15 测 + release-policy 4 测 + app-store 6 测 全通过，参数边界回归脚本 check-changed-format.sh + 5 组测试（--config=、--plugin=、空格、换行、空 diff）。
+- 主控闸门 @ef905ed（worktree，已 sync master 114beea）：typecheck PASS / 66 test files passed（1 skipped，501 测通过）/ eslint PASS / build PASS / verify-release-config 28/28 PASS / changed-format 回归 PASS / diff-check PASS；main 包 tsc 仅 master 基线 2 错（Entry、GitStatus.conflict）。
+- fresh fixed-SHA 双轴审查 @ef905ed：Standards PASS（3 minor：参数边界回归脚本未接入 CI、release 校验强度不对称、ipc-registrar 基线失败备注，无 blocker/major）+ Spec PASS（真实 Actions/签名/公证/三平台安装/N-1 网络更新 NOT_RUN 并附人工步骤，本地可验证项全部满足）。
+- 修复迭代：f1289a3 → Standards FAIL (major: pr-check.yml prettier 数组注入) → 7446ab0 修复为 NUL 分隔 + `./` 前缀 + `--` 终止 + 回归测；同步 master 后 595db14 → Spec FAIL (major: 自身两文件未过新 Prettier gate) → ef905ed 格式化修复后通过。
+- post-merge master `abf52c0`：typecheck / 66 test files(1 skipped) / eslint / build / release-config / changed-format 回归 全绿（main-tsc = 2 基线错）。
+- NOT_RUN：真实 GitHub Actions 流水线端到端、macOS Developer ID 签名+公证+Gatekeeper、Windows Authenticode+SmartScreen、Linux GPG/deb 物理安装、三平台物理 smoke、N-1 真实网络自动更新；均按规格允许标注，并逐项给出人工验证步骤。
+- 进度：**17 / 19**。剩余 DEV-016（修复 blocker/major 中）、DEV-019（E2E，最后）。
