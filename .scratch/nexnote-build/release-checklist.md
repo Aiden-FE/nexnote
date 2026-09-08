@@ -10,7 +10,7 @@
 | # | 项 | 命令 | 结果 | 备注 |
 | --- | --- | --- | --- | --- |
 | 1.1 | 全 workspace typecheck | `CI=true pnpm -r typecheck` | ✅ 全绿 | 5 个包（shared / plugin-api / kernel / renderer / main）全部通过；main 包无 typecheck 脚本，其 `tsc --noEmit` 基线错误 1 个（`secret-store.ts` 中 `Entry` TS2304），与 master 一致 |
-| 1.2 | 单元 + 集成测试 | `env -u GIT_EDITOR -u GIT_SEQUENCE_EDITOR -u EDITOR CI=true pnpm test` | ✅ 72 文件 / 600+ 通过 / 2 skip | 新增 3 个文件（e2e-integration / perf-timebox / bug-bash），共 13 个新用例 |
+| 1.2 | 单元 + 集成测试 | `env -u GIT_EDITOR -u GIT_SEQUENCE_EDITOR -u EDITOR CI=true pnpm test` | ✅ 74 文件通过（1 文件 skipped）/ 616 测试通过（2 skipped） | 新增 3 个文件（e2e-integration / perf-timebox / bug-bash），共 13 个新用例 |
 | 1.3 | ESLint | `CI=true pnpm exec eslint .` | ✅ 全绿 | 无警告无错误 |
 | 1.4 | Production build | `CI=true pnpm build` | ✅ | electron-vite 三端构建通过；最大 bundle `index-*.js` ~3.4MB |
 | 1.5 | Release config 校验 | `node scripts/verify-release-config.mjs` | ✅ 28/28 checks passed | 含 immutable SHA pin、dugite GPL、updater 状态机、PR gate 覆盖 等 |

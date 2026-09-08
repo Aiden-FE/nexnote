@@ -104,7 +104,7 @@ Wikilink 目标按以下优先级解析（唯一匹配才生效，歧义保留�
 
 | 方式 | 快捷键 | 入口 | 说明 |
 | --- | --- | --- | --- |
-| 命令面板 | ⌘K / Ctrl+K | 顶部居中按钮 | 跳转命令、最近页面、插件命令 |
+| 命令面板 | ⌘K / Ctrl+K | 顶部居中按钮 | 快跳页面、执行应用与插件命令（扁平列表，结果带类别标签，↑/↓ 移动高亮、Enter 执行） |
 | 全文搜索 | ⌘⇧F / Ctrl+Shift+F | 左侧"搜索"页签 | 基于 SQLite FTS5，支持 CJK 子串和拉丁前缀 |
 | 页面快跳 | ⌘T / Ctrl+T | 顶部 + 号 | 按标题/别名/路径快跳到页面 |
 
@@ -182,7 +182,7 @@ API Key 只写入系统钥匙串（macOS Keychain / Windows Credential Manager /
 
 ### 7.2 会话即页面
 
-每个 AI 对话是一个普通 markdown 文件（默认保存在 `AI Chats/` 目录），可以被双链引用、被搜索、被召回。点击会话菜单的「转为文档」可把 AI 回答固化为普通笔记。
+每个 AI 对话是一个普通 markdown 文件（默认保存在 `AI Chats/` 目录），可以被双链引用、被搜索、被召回，也可以直接在页面树或文件管理器中打开它、像普通笔记一样编辑。Dock 顶部的「历史」菜单可在过往会话之间切换。
 
 ### 7.3 写作辅助
 
@@ -202,18 +202,19 @@ API Key 只写入系统钥匙串（macOS Keychain / Windows Credential Manager /
 
 ## 9. 设置
 
-设置面板（⌘,）分八个区：
+设置面板（⌘,）分九个区：
 
 | 区 | 内容 |
 | --- | --- |
-| 通用 | 主题、语言、字体、字号、启动行为 |
+| 常规 | 主题、语言、字体、字号、启动行为 |
 | 编辑器 | 自动保存间隔、模板、文件名绑定标题、Vim 模式、代码主题 |
 | Git | 使用系统 Git、自动提交防抖 |
-| AI | Profile、密钥、默认模型、特性分配（对话 / 召回 / 写作 / 向量化） |
-| 召回 Skill | 启停、排序、参数 |
-| 插件 | 安装 / 启停 / 权限管理 |
 | 快捷键 | 查看与覆盖默认快捷键 |
-| 关于 | 版本、更新通道（stable/beta/alpha）、更新设置 |
+| 关于 | 版本信息 |
+| 更新 | 更新通道（stable/beta/alpha）、自动下载与启动检查开关 |
+| 插件 | 安装 / 启停 / 权限管理 |
+| AI 供应商 | Profile、密钥、默认模型、特性分配（对话 / 召回 / 写作 / 向量化） |
+| 检索 Skill | 启停、排序、参数 |
 
 ---
 
@@ -221,6 +222,6 @@ API Key 只写入系统钥匙串（macOS Keychain / Windows Credential Manager /
 
 遇到问题先看 [FAQ](./faq.md)；若未覆盖：
 
-- 日志：`~/Library/Logs/NexNote/`（macOS）/ `%APPDATA%/NexNote/logs/`（Windows）/ `~/.config/NexNote/logs/`（Linux）。
+- 日志：当前版本暂无文件日志，主进程与渲染进程的输出进入控制台——开发模式下直接看启动终端即可；排查时建议先在 FAQ 中找到对应症状再按章节操作。
 - 重置设置：退出 NexNote，删除 `~/Library/Application Support/nexnote/nexnote-settings.json` 等配置文件。
 - 重置索引：退出 NexNote，删除 vault 根目录下的 `.nexnote/index.db`（下次启动自动重建）。
