@@ -3,10 +3,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { SettingsService } from '../src/settings/settings-service';
-import {
-  extractUpdateSettings,
-  syncUpdaterSettings,
-} from '../src/settings/update-settings-sync';
+import { extractUpdateSettings, syncUpdaterSettings } from '../src/settings/update-settings-sync';
 import { AppStore } from '../src/vault/app-store';
 import {
   getUpdateSettings,
@@ -87,7 +84,10 @@ describe('syncUpdaterSettings', () => {
     const appStore = new AppStore(appStoreFile);
 
     // 初始化 updater 为默认 stable（packaged=true 且无 baked channel 无 env → stable）
-    initAutoUpdater(() => {}, () => {});
+    initAutoUpdater(
+      () => {},
+      () => {},
+    );
     expect(getUpdateSettings().channel).toBe('stable');
 
     // 执行同步
@@ -111,7 +111,10 @@ describe('syncUpdaterSettings', () => {
     const appStore = new AppStore(appStoreFile);
 
     // 初始化 updater 为默认值
-    initAutoUpdater(() => {}, () => {});
+    initAutoUpdater(
+      () => {},
+      () => {},
+    );
     const unsubscribe = syncUpdaterSettings(settings, appStore);
 
     // 初始：stable, autoDownload=false (默认值)
@@ -131,14 +134,18 @@ describe('syncUpdaterSettings', () => {
 
   it('修改 autoDownload 会同步到 updater 适配器（packaged 模式）', () => {
     const { adapter } = makeAdapter();
-    const localRestore = setUpdaterAdapterForTests(
-      adapter,
-      { isPackaged: true, getVersion: () => '0.1.0' },
-    );
+    const localRestore = setUpdaterAdapterForTests(adapter, {
+      isPackaged: true,
+      getVersion: () => '0.1.0',
+    });
     try {
       const settings = new SettingsService(settingsFile);
       const appStore = new AppStore(appStoreFile);
-      initAutoUpdater(() => {}, () => {}, { channel: 'stable', autoDownload: true });
+      initAutoUpdater(
+        () => {},
+        () => {},
+        { channel: 'stable', autoDownload: true },
+      );
       expect(adapter.autoDownload).toBe(true);
 
       const unsubscribe = syncUpdaterSettings(settings, appStore);
@@ -159,7 +166,10 @@ describe('syncUpdaterSettings', () => {
   it('无关设置变更（如 theme）不会触发 updater 状态变更', () => {
     const settings = new SettingsService(settingsFile);
     const appStore = new AppStore(appStoreFile);
-    initAutoUpdater(() => {}, () => {});
+    initAutoUpdater(
+      () => {},
+      () => {},
+    );
     const unsubscribe = syncUpdaterSettings(settings, appStore);
 
     const before = getUpdateSettings();
@@ -175,14 +185,18 @@ describe('syncUpdaterSettings', () => {
 
   it('幂等：重复调用相同值不会产生冗余应用', () => {
     const { adapter } = makeAdapter();
-    const localRestore = setUpdaterAdapterForTests(
-      adapter,
-      { isPackaged: true, getVersion: () => '0.1.0' },
-    );
+    const localRestore = setUpdaterAdapterForTests(adapter, {
+      isPackaged: true,
+      getVersion: () => '0.1.0',
+    });
     try {
       const settings = new SettingsService(settingsFile);
       const appStore = new AppStore(appStoreFile);
-      initAutoUpdater(() => {}, () => {}, { channel: 'stable', autoDownload: true });
+      initAutoUpdater(
+        () => {},
+        () => {},
+        { channel: 'stable', autoDownload: true },
+      );
 
       const unsubscribe = syncUpdaterSettings(settings, appStore);
 

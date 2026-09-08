@@ -176,10 +176,7 @@ check('channel 接线：build env → 打包发布 → updater 烘焙通道', ()
   // 任一模式均代表启动时恢复了持久化通道：
   // - 旧模式：appStore.get().updateChannel 直接传给 initAutoUpdater
   // - 新模式：extractUpdateSettings 从 SettingsService.updates 提取 channel
-  if (
-    !/appStore\.get\(\)\.updateChannel/.test(indexTs) &&
-    !/extractUpdateSettings/.test(indexTs)
-  )
+  if (!/appStore\.get\(\)\.updateChannel/.test(indexTs) && !/extractUpdateSettings/.test(indexTs))
     throw new Error('main updater does not restore persisted channel');
 });
 check('publish 在上传前必须是 hard gate（签名缺失则失败）', () => {

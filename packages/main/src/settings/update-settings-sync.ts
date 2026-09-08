@@ -51,15 +51,16 @@ export function applyUpdateSettings(next: UpdateSettings, appStore: AppStore): v
  * 建立 SettingsService -> updater/AppStore 同步：启动时初始化 + onChange 持续同步。
  * 返回 unsubscriber（用于测试或热重载）。
  */
-export function syncUpdaterSettings(
-  settings: SettingsService,
-  appStore: AppStore,
-): () => void {
+export function syncUpdaterSettings(settings: SettingsService, appStore: AppStore): () => void {
   // 启动时先对齐一次（确保 updater 状态与 SettingsService 一致）。
   applyUpdateSettings(extractUpdateSettings(settings), appStore);
   return settings.onChange((global) => {
     applyUpdateSettings(
-      { channel: global.updates.channel, autoDownload: global.updates.autoDownload, checkOnLaunch: global.updates.checkOnLaunch },
+      {
+        channel: global.updates.channel,
+        autoDownload: global.updates.autoDownload,
+        checkOnLaunch: global.updates.checkOnLaunch,
+      },
       appStore,
     );
   });
