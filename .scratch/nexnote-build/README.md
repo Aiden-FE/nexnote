@@ -4,11 +4,11 @@
 > 认可原型：[A 案 · 块编辑优先](../nexnote-mvp/docs/research/prototypes/a-block-first.html)
 > 技术栈：Electron + React + TS + TailwindCSS/shadcn/ui + TipTap 3 + SQLite + simple-git(dugite)
 
-## 当前状态（2026-09-07）
+## 当前状态（2026-09-08）
 
-- 顶层 Goal：**未完成**；全局进度：**18 / 19**（DEV-001 ～ DEV-015 + DEV-016 + DEV-017 + DEV-018 已验收并合入 `master`）。
-- `master` 当前基线：`68604c4`（DEV-016 合并 + 集成 tsc 修复）。
-- 剩余：DEV-019 ⏳（E2E 验收与打磨，最后执行）。
+- 顶层 Goal：**✅ 已完成**；全局进度：**19 / 19**（DEV-001 ～ DEV-019 全部验收并合入 `master`）。
+- `master` 当前基线：`d95fb9e`（`merge: DEV-019 端到端验收与打磨`）。
+- 全部票据已合入；双轴审查（Standards + Spec）均 PASS；未验证项按协议标注 **NOT_RUN** 并附人工步骤（见 [RELEASE-NOTES](./RELEASE-NOTES.md) 与 [release-checklist](./release-checklist.md) 第 6 节）。
 - 本文件是续接入口；历史执行细节、闸门命令与审查证据见 [`.scratch/DEV-STATUS-CHECKPOINT.md`](../DEV-STATUS-CHECKPOINT.md)。票据需求与验收标准以各 `issues/*.md` 为准。
 
 ## 模块总览
@@ -21,7 +21,7 @@
 | **git** Git 底座 | DEV-007, DEV-008 | ✅ 已完成 | 自动提交、时间线、置信度 |
 | **ai** AI 层 | DEV-009, DEV-010, DEV-011, DEV-012 | ✅ 已完成 | Provider、写作辅助、召回、对话 |
 | **plugins** 插件 & Skill | DEV-013, DEV-014, DEV-015 | ✅ 已完成 | 运行时、扩展点、内置插件 |
-| **integration** 集成验收 | DEV-019 | ⏳ 等待依赖 | 联调、打磨、发布（最后） |
+| **integration** 集成验收 | DEV-019 | ✅ 已完成 | E2E 集成、性能时间盒、bug bash、文档、发布准备 |
 
 ## 票据清单（按建议动工顺序）
 
@@ -58,11 +58,11 @@
 | **DEV-017** | [编辑器高级交互](issues/017-editor-interactions.md) | editor | M | DEV-002 | C | ✅ 已合并（`39b239d`，候选 `dev/DEV-017-fresh@f0b2b8a`，双轴审查 PASS） |
 | **DEV-018** | [打包、自动更新与发布流程](issues/018-packaging-updates-ci.md) | foundation | M | DEV-001 | 全期并行 | ✅ 已合并（`abf52c0`，候选 `dev/DEV-018@ef905ed`，双轴审查 PASS） |
 
-### P0 · 集成验收（最后）— ⏳ 等待依赖
+### P0 · 集成验收（最后）— ✅ 已完成
 
 | # | 标题 | 模块 | 工作量 | 依赖 | 状态 |
 |---|---|---|---|---|---|
-| **DEV-019** | [端到端验收与打磨](issues/019-e2e-polish.md) | integration | L | 全部 P0 + P1 主要票 | ⏳ 等待 DEV-016/017/018 合并后启动 |
+| **DEV-019** | [端到端验收与打磨](issues/019-e2e-polish.md) | integration | L | 全部 P0 + P1 主要票 | ✅ 已合并（`d95fb9e`，候选 `dev/DEV-019@9c77dba`，双轴审查 PASS） |
 
 ## 依赖图
 
@@ -99,7 +99,14 @@ DEV-008 (置信度) ← DEV-004 + DEV-007
 1. ~~DEV-017~~ ✅ 已合并（`39b239d`，→ 16/19）：闸门全绿 + fresh Standards/Spec 双轴 PASS（Standards 5 minor / Spec 2 minor，无 blocker/major）。
 1. ~~DEV-016~~ ✅ 已合并（`68604c4`，→ 18/19）：8 分类设置 + 全局/vault 持久化 + 搜索 + 快捷键自定义 + 三路径向导（新建/打开/克隆），双轴审查 PASS。
 3. ~~DEV-018~~ ✅ 已合并（`abf52c0`，→ 17/19）：三平台打包、electron-updater 三通道、release/preflight/nightly CI、durable lease + QA approval gate；N-1 真实网络更新/签名公证/物理安装按规格标 NOT_RUN。
-4. **最后执行 DEV-019**（→ 19/19）：以 DEV-016/017/018 全部合并的主线为唯一候选，全量 smoke + E2E + 回归打磨 + 发布清单；配置检查、构建成功、健康探测不等同端到端验证。
+4. ~~DEV-019~~ ✅ 已合并（`d95fb9e`，→ 19/19）：E2E 纯逻辑集成测试（4 用例，120 页 fixture vault 全链路）、性能时间盒（3 用例，千页/8k 块/3k 链接，实测索引 ~210ms / 搜索 ~8ms / PageRank ~280ms / 图谱 ~90ms）、bug bash 6 个模块交界回归断言、4 份用户文档（user-guide / shortcut-cheatsheet / plugin-development / FAQ）、RELEASE-NOTES + release-checklist（含 NOT_RUN 清单）。双轴审查：Spec @480cd66 PASS（2 minor）、Standards 一审 FAIL（4 major 文档失实）→ 修复 `9c77dba` → 复审 PASS（0 issues）。
+
+## 🏁 终局状态（2026-09-08）
+
+- **19 / 19 全部完成并合入 `master`（`d95fb9e`）**。
+- 最终 master 门禁：typecheck 5/5 包、74 测试文件（1 skip）/ 616 测试（2 skip）通过、eslint、build、verify-release-config 28/28、changed-format、diff --check 全绿；main 包 tsc 仅 `secret-store.ts` 基线 `Entry` TS2304（基线问题，未随票据修复）。
+- 剩余 NOT_RUN（需人工，完整清单见 [release-checklist 第 6 节](./release-checklist.md)）：三平台签名/公证/物理安装、真实 Obsidian vault 导入、kill -9 崩溃恢复、打包后冷启动 <3s 实测、GUI 视觉走查、大文档流畅度、自动更新端到端、P0/P1 人工复核。
+- 基线遗留（非本次票据范围）：`secret-store.ts Entry TS2304`；chokidar watch flaky。
 
 ## 统一验收与合并协议
 

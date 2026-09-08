@@ -266,6 +266,17 @@ DEV-006 ← DEV-004；DEV-008 ← DEV-004+007；DEV-010 ← DEV-002+009；DEV-01
 - NOT_RUN：无外部不可验证项（无真实 provider/签名/安装项）；媒体导入与红链创建由真实 kernel + mock IPC 单测覆盖。
 - 进度：**16 / 19**。剩余 DEV-016（fresh worktree 实现中）、DEV-018（候选 `8680d39` 重审中）、DEV-019（E2E，最后）。
 
+### DEV-019 — 已完成合并（2026-09-08）🏁 终局
+
+- Merge commit `d95fb9e`；候选 `dev/DEV-019@9c77dba`（基线 master `00c858c`；6 commits：e5aa010 4 提交交付 + 480cd66 主控 fixture tsc 修复 + 9c77dba 主控文档失实修复）。
+- 实现：`packages/main/tests/e2e-integration.test.ts`（4 用例，120 页 fixture vault 全链路：索引→CJK/拉丁搜索→双链→图谱→三阶段召回→置信度 PageRank→Skill→Chat→标签→空库降级→生命周期）+ `tests/fixtures/vault-fixture.ts`（116 行生成器）；`tests/perf-timebox.test.ts`（3 用例：千页/8k 块/3k 链接时间盒断言 index<30s、CJK<150ms、拉丁<100ms、graph<1.5s、PageRank<3s、召回<500ms、增量<5s + 500→1000 线性度搜索<4x/rank<5x；实测 index ~210ms、CJK ~8ms、graph ~90ms、PageRank ~280ms、召回 ~27ms）；`tests/bug-bash.test.ts`（6 个模块交界回归断言：hash 去重全量保护、空召回不抛错、空图不 NaN、单页合法分、大小写不敏感 wikilink、增量内容更新）；docs/ 四份（user-guide 10 章 / shortcut-cheatsheet / plugin-development 11 章 / faq 6 类）；RELEASE-NOTES.md + release-checklist.md（7 节，NOT_RUN 15 项附人工步骤）。
+- 主控闸门 @9c77dba（worktree）：typecheck PASS / 74 test files passed（1 skipped，616 测试通过）/ eslint PASS / build PASS / release-config 28/28 PASS / changed-format PASS / diff-check PASS；main-tsc 仅基线 1 错（Entry）。**注意**：门禁必须 `env -u GIT_EDITOR -u GIT_SEQUENCE_EDITOR -u EDITOR`（GIT_EDITOR=true 会让 simple-git 全套测试失败 27 例，非代码回归）。
+- fresh fixed-SHA 双轴审查：Spec @480cd66 **PASS**（2 minor：bug-bash 大小写用例断言强度偏弱 `>0` 未断言 =3、checklist 数字过时——后者已在 9c77dba 顺带修正）；Standards @480cd66 **FAIL**（4 major 文档失实：AI 会话「转为文档」虚构、三平台日志路径虚构、搜索面板 ↑↓/Mod+Enter 虚构、命令面板「最近访问/设置项」分组虚构；2 minor：设置分区 8→9 且「更新」错归「关于」、RELEASE-NOTES 实测值写成承诺）→ 主控逐项对照代码修复 `9c77dba`（4 文件 +16/−16；核实 SearchPanelInner 仅 Escape/Enter、CommandPalette 扁平列表 9 类标签、settingsSectionRegistry 9 分区、update-section 控件、无 electron-log 依赖）→ fresh Standards 复审 @9c77dba **PASS**（0 issues）。Spec delta 纯文档措辞修正，按协议 PASS 带入。
+- post-merge master `d95fb9e`：typecheck / 74 test files(1 skipped, 616 tests) / eslint / build / release-config / changed-format 全绿（main-tsc = 1 基线错 Entry）。
+- NOT_RUN（本地无法验证，已写入 release-checklist 第 6 节）：三平台签名/公证/物理安装、真实 Obsidian vault 导入走查、kill -9 崩溃恢复、打包后冷启动 <3s 实测、Electron GUI 视觉走查、大文档流畅度、自动更新端到端、P0/P1 人工复核等 15 项。
+- 进度：**19 / 19 — 顶层 Goal 达成**。master 终局基线 `d95fb9e`。
+
+
 ### DEV-018 — 已完成合并（2026-09-08）
 
 - Merge commit `abf52c0`；候选 `dev/DEV-018@ef905ed`（44 files，+3572/−109；含原 agent 多轮修复 + 主控格式修复 + sync to master merge）；旧 `.wt/DEV-018`（`b86a6f2`）是历史 WIP 勿用。
