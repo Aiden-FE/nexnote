@@ -6,8 +6,8 @@
 
 ## 当前状态（2026-09-08）
 
-- 顶层 Goal：**✅ 已完成**；全局进度：**19 / 19**（DEV-001 ～ DEV-019 全部验收并合入 `master`）。
-- `master` 当前基线：`2af0166`（`merge: DEV-019 GUI 验收修复`；候选 `dev/DEV-019-gui@849fa83`）。
+- 顶层 Goal：**✅ 已完成**；全局进度：**20 / 20**（DEV-001 ～ DEV-020 全部验收并合入 `master`）。
+- `master` 当前基线：`0f14a49`（`merge: DEV-020 源码模式与单栈编辑器修复`；候选 `dev/DEV-020@839baf5`）。
 - 全部票据已合入；双轴审查（Standards + Spec）均 PASS；未验证项按协议标注 **NOT_RUN** 并附人工步骤（见 [RELEASE-NOTES](./RELEASE-NOTES.md) 与 [release-checklist](./release-checklist.md) 第 6 节）。
 - 本文件是续接入口；历史执行细节、闸门命令与审查证据见 [`.scratch/DEV-STATUS-CHECKPOINT.md`](../DEV-STATUS-CHECKPOINT.md)。票据需求与验收标准以各 `issues/*.md` 为准。
 
@@ -16,7 +16,7 @@
 | 模块 | 票据 | 状态 | 说明 |
 |---|---|---|---|
 | **foundation** 基础架构 | DEV-001, DEV-016, DEV-018 | ✅ 已完成 | 工程骨架、设置、打包发布均已合并 |
-| **editor** 编辑器内核 | DEV-002, DEV-003, DEV-017 | ✅ 已完成 | 内核、文件管理、高级交互均已合并 |
+| **editor** 编辑器内核 | DEV-002, DEV-003, DEV-017, **DEV-020** | ✅ 已完成 | 内核、文件管理、高级交互、源码模式均已合并 |
 | **knowledge** 知识关系 | DEV-004, DEV-005, DEV-006 | ✅ 已完成 | 索引、双链、frontmatter、图谱 |
 | **git** Git 底座 | DEV-007, DEV-008 | ✅ 已完成 | 自动提交、时间线、置信度 |
 | **ai** AI 层 | DEV-009, DEV-010, DEV-011, DEV-012 | ✅ 已完成 | Provider、写作辅助、召回、对话 |
@@ -57,6 +57,7 @@
 | **DEV-016** | [设置系统与首启动向导完善](issues/016-settings-onboarding.md) | foundation | M | DEV-001 | B→C | ✅ 已合并（`68604c4`，候选 `dev/DEV-016-fresh@e9e4f04`，双轴审查 PASS） |
 | **DEV-017** | [编辑器高级交互](issues/017-editor-interactions.md) | editor | M | DEV-002 | C | ✅ 已合并（`39b239d`，候选 `dev/DEV-017-fresh@f0b2b8a`，双轴审查 PASS） |
 | **DEV-018** | [打包、自动更新与发布流程](issues/018-packaging-updates-ci.md) | foundation | M | DEV-001 | 全期并行 | ✅ 已合并（`abf52c0`，候选 `dev/DEV-018@ef905ed`，双轴审查 PASS） |
+| **DEV-020** | [源码模式与单栈编辑器](issues/020-source-mode.md) | editor | L | DEV-002, DEV-005, DEV-015, DEV-017, DEV-019 | 追加 | ✅ 已合并（`0f14a49`，候选 `dev/DEV-020@839baf5`，双轴审查 PASS） |
 
 ### P0 · 集成验收（最后）— ✅ 已完成
 
@@ -100,11 +101,12 @@ DEV-008 (置信度) ← DEV-004 + DEV-007
 1. ~~DEV-016~~ ✅ 已合并（`68604c4`，→ 18/19）：8 分类设置 + 全局/vault 持久化 + 搜索 + 快捷键自定义 + 三路径向导（新建/打开/克隆），双轴审查 PASS。
 3. ~~DEV-018~~ ✅ 已合并（`abf52c0`，→ 17/19）：三平台打包、electron-updater 三通道、release/preflight/nightly CI、durable lease + QA approval gate；N-1 真实网络更新/签名公证/物理安装按规格标 NOT_RUN。
 4. ~~DEV-019~~ ✅ 已合并（`d95fb9e`，→ 19/19）：E2E 纯逻辑集成测试（4 用例，120 页 fixture vault 全链路）、性能时间盒（3 用例，千页/8k 块/3k 链接，实测索引 ~210ms / 搜索 ~8ms / PageRank ~280ms / 图谱 ~90ms）、bug bash 6 个模块交界回归断言、4 份用户文档（user-guide / shortcut-cheatsheet / plugin-development / FAQ）、RELEASE-NOTES + release-checklist（含 NOT_RUN 清单）。双轴审查：Spec @480cd66 PASS（2 minor）、Standards 一审 FAIL（4 major 文档失实）→ 修复 `9c77dba` → 复审 PASS（0 issues）。
+5. ~~DEV-020~~ ✅ 已合并（`0f14a49`，→ 20/20）：删除通用双 Pane 分屏，落地 per-tab 源码模式（CodeMirror 6 左侧原文 + 只读 Live Preview 右侧，三入口：头部按钮 / Mod+E / 命令面板；H1↔文件名联动与预览 Wikilink 同 tab 导航保持源码模式；字节保真写盘与外部冲突防护）。首轮候选 `6ce348d` 后修复 6 项 smoke 失败（kernel UniqueID 初始化补 ID 误触发保存 → 打开即归一化写盘；Mermaid tokenizer 不认 `~~~` 围栏；smoke 陈旧 DOM 竞态与场景顺序断言）+ 加固 smoke 退出码假绿（`app.quit()` → `app.exit(code)`，空报告判失败）。双轴审查 @`839baf5`：Standards PASS（1 minor 时序耦合注释建议）、Spec PASS（1–23 PASS，24 为合并后流程）。证据：`smoke/DEV-020/results.json`（打包产物 102/102，退出码 0）。
 
 ## 🏁 终局状态（2026-09-08）
 
-- **19 / 19 全部完成并合入 `master`；GUI follow-up 已合入（`2af0166`）**。
-- 最终 master 门禁（含 GUI follow-up）：typecheck 5/5 包、78 测试文件通过（1 文件 skip）/ 633 测试通过（2 skip）、eslint、build、verify-release-config 28/28、changed-format、diff --check 全绿；Electron smoke **83/83** 全绿。
+- **20 / 20 全部完成并合入 `master`；DEV-020 源码模式已合入（`0f14a49`）**。
+- 最终 master 门禁（含 DEV-020）：typecheck 3 包、82 测试文件通过（1 文件 skip）/ 657 测试通过（2 skip）、eslint、build、verify-release-config 28/28、changed-format、diff --check 全绿；Electron smoke **102/102** 全绿（打包产物，退出码 0；失败时退出码 1 已由 `app.exit` 保证）。
 - GUI follow-up 已完成真实 Electron smoke：默认单栏、Dock 默认关闭、页面树同步、插件裸露 UI 移除、复制 Markdown 排版等 **83/83**。剩余 NOT_RUN 仅为跨平台/外部环境项（完整清单见 [release-checklist 第 6 节](./release-checklist.md)）：三平台签名/公证/物理安装、真实 Obsidian vault 导入、kill -9 崩溃恢复、打包后冷启动 <3s 实测、大文档流畅度、自动更新端到端等。
 - 本次 GUI follow-up 无遗留 smoke 失败；`better-sqlite3` 在 Node/Electron ABI 间切换后需按环境 rebuild（已在 post-merge 恢复 Node ABI）。
 

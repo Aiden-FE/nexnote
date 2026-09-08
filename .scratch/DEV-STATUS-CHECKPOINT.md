@@ -8,11 +8,12 @@
 
 ## 0. 最新状态（持续更新，优先于下方陈旧冻结段）
 
-- **真实进度：18 / 19** —— DEV-001~DEV-015 + DEV-016 + DEV-017 + DEV-018 已合入 master。
-- master HEAD：`68604c4`（DEV-016 merge + 集成 tsc 修复）；post-merge typecheck / main-tsc（仅 1 个基线错 Entry）/ 71 test files passed(1 skipped, 603 tests) / eslint / build / release-config / changed-format 全过。
-- 子Agent 派发工具 `multi_agent_v1__spawn_agent` 在本环境返回 unsupported，按用户接管规则由主控直接在隔离 worktree 实现。
-- better-sqlite3 ABI：vitest 用 Node ABI；electron smoke 用 `runtime=electron target=44.2.0 arch=arm64`，smoke 后务必切回 Node ABI。
-- Electron smoke 当前环境基线 **60/69**：9 项失败为 DEV-003/004/006/007 既有环境基线（Git 状态栏 2、新笔记 frontmatter/面包屑 2、标签面板/过滤 2、重命名 wikilink 1、500 节点 FPS 1、时间线 1）；master 与候选失败集逐名一致，DEV-010 无新增回归。
+- **真实进度：20 / 20** —— DEV-001~DEV-020 全部验收并合入 master（DEV-020 为原 19 票完成后的追加票）。
+- master HEAD：`0f14a49`（DEV-020 merge；候选 `dev/DEV-020@839baf5`）；post-merge typecheck / 82 test files passed（1 skipped，657 tests / 2 skipped）/ eslint / build / release-config 28/28 / changed-format / diff-check 全过。
+- DEV-020 固定 SHA 双轴审查：Standards PASS（无 blocker/major）+ Spec PASS（1–23 PASS；24 为合并后流程，已执行）。
+- better-sqlite3 ABI：最终打包 Electron smoke 后已恢复 Node ABI。
+- Electron smoke 最终基线：真实打包 macOS arm64 unsigned dev app **102/102 PASS**，runner 退出码 0；失败运行已验证退出码 1，不再假绿。证据：`.scratch/nexnote-build/smoke/DEV-020/results.json`。
+- 外部/跨平台不可验证项沿用 `release-checklist.md` 第 6 节的既有 **NOT_RUN** 清单；DEV-020 本票新增 Electron 验收无 NOT_RUN。
 
 ### DEV-010 · AI 写作辅助（已合并 `ab0b882`，候选 `2c563e4`）
 - kernel：新增框架无关扩展 SelectionBubble（选区浮动工具栏，⌘⌥+R/E/C/P/F/A 快捷键）、ContextMenu（右键 AI 子菜单，二级菜单）、`computeEditorActionContext`；SlashMenu 支持 `extraSlashItems`（`/ai` 六动作）；新增回写原语 `replaceRangeWithMarkdown` / `insertMarkdownBlocks`（单事务，可 undo）。
@@ -310,3 +311,19 @@ DEV-006 ← DEV-004；DEV-008 ← DEV-004+007；DEV-010 ← DEV-002+009；DEV-01
 - post-merge master `b7c6583` + 集成修复 `68604c4`：typecheck / 71 test files(1 skipped, 603 tests) / eslint / build / release-config / changed-format 全绿（main-tsc = 1 基线错 Entry）。
 - NOT_RUN：真实 Electron 对话框（新建/打开/克隆路径选择、Git 初始化确认）、真实网络克隆（ls-remote 授权预检 + 完整 clone）、重启后设置保持、快捷键运行时生效（真实 Electron 环境）、设置搜索 UI 人工验证；均按规格允许标注，并逐项给出人工验证步骤。
 - 进度：**18 / 19**。剩余 DEV-019（E2E 验收与打磨，最后）。
+
+### DEV-020 — 源码模式与单栈编辑器 — 已完成合并（2026-09-09）
+
+- 票据 `issues/020-source-mode.md`（ADR-0004 + CONTEXT.md 术语已先行合入 `b16ea63`）；worktree `.wt/DEV-020` / 分支 `dev/DEV-020`。
+- 主交付（首提交 `6ce348d`，47 files +2258/−649）：删除通用双 Pane（`splitEnabled`/`splitRatio`/divider/⌘K「切换左右分屏」及全部引用点），tab-store 单栈化 + `editorMode?: 'block' | 'source'` per-tab 临时态；新增 `editor/source/*`（SourceModeView / CodeMirror host / LivePreview 只读内核复用 / preview-scheduler 200ms 防抖+过期丢弃 / page-source-io 版本检查与冲突分类 / parse-guard / scroll-sync 单向滚动 / source-mode-toggle 三入口单一路径）；EditorView 头部按钮 + `Mod+E`（DEFAULT_SHORTCUTS `editor.toggleSourceMode`）+ 命令面板三入口，切换前 flush + 整页解析守卫，失败停留当前模式；字节保真 raw 写盘、H1↔文件名联动、预览 Wikilink 同 tab 导航保持源码模式、外部冲突 banner（保留本地/读取磁盘）。
+- 首轮真实打包 smoke 92/102 → 根因定位与修复（次提交 `839baf5`，7 files）：
+  1. **打开即写盘（字节被归一化）**：kernel `UniqueID` onCreate 给缺 ID 块补 ID 的初始化事务被 onUpdate 当作用户编辑调度防抖保存。修复：`block-id.ts` 增加初始化窗口门控（priority 10001/9999 双扩展夹住 UniqueID 1e4 的 onCreate，WeakMap 标记），`editor.ts` onUpdate 在窗口内早退。新增 kernel 回归测试（打开非常规 Markdown saved=[] / revision=0，真实编辑仍保存）。
+  2. **预览 Mermaid 不渲染**：tokenizer `FENCE_RE` 只认 ``` 围栏。修复：同时接受 ```/~~~（开闭标记必须相同，混用拒绝；序列化仍归一 ```）。新增 builtin-blocks 回归测试 2 例。
+  3. **入口 1 头部按钮 + 关闭重开一致**：smoke 陈旧 DOM 竞态（点击命中正在卸载的旧 tab 编辑器）。修复：按 `[data-path]` 限定等待与断言。
+  4. **图谱 500/2000 精确相等 / timeline 首条 initial**：场景顺序敏感。修复：改为 ≥ seed 与「列表中存在 initial」。
+  5. **smoke 假绿**：`app.quit()` 不携带 `process.exitCode`。修复：`app.exit(allPassed ? 0 : 1)`，空报告判失败；`SmokeController.finish` 行为由回归语义锁定（退出码经真实运行验证：失败 1 / 全绿 0）。
+- 主控闸门 @`839baf5`：typecheck PASS / `CI=true pnpm test` 82 files 657 PASS（2 skipped）/ eslint PASS（1 个 master 既有 warning）/ build PASS / verify-release-config 28/28 / changed-format PASS / `git diff --check` PASS。
+- fresh 双轴审查 @`839baf5`：Standards **PASS**（1 minor：UniqueID onCreate 同步时序属隐式耦合，建议后续改 transaction meta；4 nit）；Spec **PASS**（1–23 PASS，24 合并后流程）。
+- post-merge master `0f14a49`：typecheck / 657 tests / eslint / build / release-config / changed-format 全绿；真实打包（unsigned dev，`NEXNOTE_NOTARIZE_MODE=disabled` + `CSC_IDENTITY_AUTO_DISCOVERY=false` + `--dir --publish never`）Electron smoke **102/102 PASS 退出码 0**（`smoke/DEV-020/results.json` + 19 张截图）；完成后已恢复 Node ABI。
+- NOT_RUN：本票本地可验证项全部执行；外部/跨平台项沿用 release-checklist 第 6 节既有清单（三平台签名公证/物理安装、真实网络自动更新、真实 Obsidian vault 导入等），无新增。
+- 进度：**20 / 20**。
