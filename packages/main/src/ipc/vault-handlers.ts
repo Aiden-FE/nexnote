@@ -45,7 +45,9 @@ function resolveCloneTarget(
   parentDir: string,
   url: string,
   name: string | undefined,
-): { ok: true; targetDir: string; targetName: string } | { ok: false; reason: string; code: string } {
+):
+  | { ok: true; targetDir: string; targetName: string }
+  | { ok: false; reason: string; code: string } {
   const targetName = sanitizeVaultName(name?.trim() || fallbackVaultName(url));
   if (!targetName.ok) {
     return { ok: false, reason: `克隆目录名称不合法：${targetName.reason}`, code: 'INVALID_NAME' };
@@ -90,7 +92,11 @@ export function registerVaultHandlers(registrar: IpcRegistrar): void {
 
   registrar.register(
     'vault:create',
-    async ({ parentDir, name, initGit, operationId }, services, context): Promise<Result<VaultInfo>> => {
+    async (
+      { parentDir, name, initGit, operationId },
+      services,
+      context,
+    ): Promise<Result<VaultInfo>> => {
       const op = operationId ? services.vaultOperations.start(context.senderId, 'create') : null;
       try {
         const info = await createVault(parentDir, name);
@@ -195,34 +201,41 @@ export function registerVaultHandlers(registrar: IpcRegistrar): void {
     },
   );
 
-  registrar.register('vault:inspect', async ({ path }, services): Promise<Result<VaultInspection>> => {
-    const result: VaultInspection = {
-      path,
-      exists: false,
-      isDirectory: false,
-      hasNexnote: false,
-      isGitRepo: false,
-      isObsidian: false,
-      entryCount: 0,
-    };
-    const stat = await fsp.stat(path).catch(() => null);
-    if (!stat) return ok(result);
-    result.exists = true;
-    if (!stat.isDirectory()) return ok(result);
-    result.isDirectory = true;
-    const entries = await fsp.readdir(path).catch(() => []);
-    result.entryCount = entries.length;
-    const entrySet = new Set(entries);
-    result.hasNexnote = entrySet.has('.nexnote');
-    result.isGitRepo = entrySet.has('.git');
-    result.isObsidian = entrySet.has('.obsidian');
-    void services;
-    return ok(result);
-  });
+  registrar.register(
+    'vault:inspect',
+    async ({ path }, services): Promise<Result<VaultInspection>> => {
+      const result: VaultInspection = {
+        path,
+        exists: false,
+        isDirectory: false,
+        hasNexnote: false,
+        isGitRepo: false,
+        isObsidian: false,
+        entryCount: 0,
+      };
+      const stat = await fsp.stat(path).catch(() => null);
+      if (!stat) return ok(result);
+      result.exists = true;
+      if (!stat.isDirectory()) return ok(result);
+      result.isDirectory = true;
+      const entries = await fsp.readdir(path).catch(() => []);
+      result.entryCount = entries.length;
+      const entrySet = new Set(entries);
+      result.hasNexnote = entrySet.has('.nexnote');
+      result.isGitRepo = entrySet.has('.git');
+      result.isObsidian = entrySet.has('.obsidian');
+      void services;
+      return ok(result);
+    },
+  );
 
   registrar.register(
     'vault:clonePreflight',
-    async ({ url, parentDir, name }, services, context): Promise<Result<{ reachable: boolean; preflightToken?: string; error?: string }>> => {
+    async (
+      { url, parentDir, name },
+      services,
+      context,
+    ): Promise<Result<{ reachable: boolean; preflightToken?: string; error?: string }>> => {
       await validateVaultRoot(parentDir);
       // 先解析目标目录，保证 token 与 clone 消费端绑定同一个 canonical targetDir
       const resolved = resolveCloneTarget(parentDir, url, name);
@@ -238,11 +251,7 @@ export function registerVaultHandlers(registrar: IpcRegistrar): void {
         const safe = sanitizeRemoteText(raw);
         return ok({ reachable: false, error: safe || '远端不可达' });
       }
-      const token = services.vaultClones.createToken(
-        context.senderId,
-        url,
-        resolved.targetDir,
-      );
+      const token = services.vaultClones.createToken(context.senderId, url, resolved.targetDir);
       return ok({ reachable: true, preflightToken: token });
     },
   );

@@ -28,7 +28,8 @@ import { SETTINGS_CHANNELS } from './channels/settings';
  * 主进程即会获得编译期强制实现，渲染层 client 获得类型推导。
  */
 export interface IpcContract
-  extends AppChannelMap,
+  extends
+    AppChannelMap,
     VaultChannelMap,
     FsChannelMap,
     EditorChannelMap,

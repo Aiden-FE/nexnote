@@ -228,7 +228,7 @@ export class GitService {
 
   async statusFor(root: string): Promise<GitStatus> {
     const git = this.git(root);
-      if (!(await this.isRepository(root))) {
+    if (!(await this.isRepository(root))) {
       return {
         repository: false,
         branch: null,
@@ -241,8 +241,7 @@ export class GitService {
       };
     }
     const status = await git.status();
-    const remote =
-      status.current ? await this.branchRemote(git, status.current) : null;
+    const remote = status.current ? await this.branchRemote(git, status.current) : null;
     const conflict =
       this.hasUnresolvedConflict(status) || (await this.hasConflictMarkers(root, status));
     return {
@@ -298,7 +297,9 @@ export class GitService {
     for (const line of output.split(/\r?\n/)) {
       if (line.startsWith('\u001e')) {
         const [hash, date, authorName, authorEmail] = line.slice(1).split('\u001f');
-        commit = hash ? { hash, date: date ?? '', author: `${authorName ?? ''} <${authorEmail ?? ''}>` } : null;
+        commit = hash
+          ? { hash, date: date ?? '', author: `${authorName ?? ''} <${authorEmail ?? ''}>` }
+          : null;
         continue;
       }
       const match = /^(\d+|-)\t(\d+|-)\t(.+)$/.exec(line);
@@ -326,7 +327,9 @@ export class GitService {
     }
     const result: GitFileHistoryIndex = new Map();
     for (const [filePath, history] of histories) {
-      const events = [...history.events].sort((left, right) => Date.parse(right.date) - Date.parse(left.date));
+      const events = [...history.events].sort(
+        (left, right) => Date.parse(right.date) - Date.parse(left.date),
+      );
       result.set(filePath, {
         commits: events.length,
         authors: history.authorSet.size,
@@ -678,7 +681,8 @@ function normalizeNumstatPath(rawPath: string): string {
   if (value.length > 1 && value.startsWith('"') && value.endsWith('"')) value = value.slice(1, -1);
   const renamed = value.match(/^(.*)\{(.*) => (.*)\}(.*)$/) ?? value.match(/^(.*) => (.*)$/);
   if (renamed) {
-    if (renamed[3] !== undefined) value = `${renamed[1] ?? ''}${renamed[3] ?? ''}${renamed[4] ?? ''}`;
+    if (renamed[3] !== undefined)
+      value = `${renamed[1] ?? ''}${renamed[3] ?? ''}${renamed[4] ?? ''}`;
     else value = renamed[2] ?? value;
   }
   return value.replace(/\\/g, '/').replace(/\/+/g, '/');

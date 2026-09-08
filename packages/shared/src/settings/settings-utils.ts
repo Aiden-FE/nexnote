@@ -10,10 +10,7 @@ import type {
  * so structured-cloned IPC payloads never carry present-but-undefined fields.
  * Runtime validation already rejected unknown fields; this only sanitizes values.
  */
-export function mergeGlobalPatch(
-  base: GlobalSettings,
-  patch: GlobalSettingsPatch,
-): GlobalSettings {
+export function mergeGlobalPatch(base: GlobalSettings, patch: GlobalSettingsPatch): GlobalSettings {
   const appearance = patch.appearance
     ? { ...base.appearance, ...patch.appearance }
     : base.appearance;
@@ -32,9 +29,7 @@ export function mergeGlobalPatch(
     ...result,
     appearance: {
       ...result.appearance,
-      theme: isTheme(result.appearance.theme)
-        ? result.appearance.theme
-        : base.appearance.theme,
+      theme: isTheme(result.appearance.theme) ? result.appearance.theme : base.appearance.theme,
       language:
         result.appearance.language === 'en-US' || result.appearance.language === 'zh-CN'
           ? result.appearance.language

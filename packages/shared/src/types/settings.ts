@@ -1,6 +1,8 @@
+import type { UpdateChannel } from '../ipc/channels/app';
+
 export type ThemePreference = 'light' | 'dark' | 'system';
 export type AppLanguage = 'zh-CN' | 'en-US';
-export type UpdateChannel = 'stable' | 'beta' | 'alpha';
+export type { UpdateChannel };
 export type StartupBehavior = 'restore' | 'welcome' | 'specific-vault';
 export type CodeTheme = 'github' | 'dracula' | 'nord';
 

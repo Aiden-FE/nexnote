@@ -56,8 +56,12 @@ describe('validateVaultRoot', () => {
   });
 
   it('相对路径 / 不存在 / 文件路径 均报错', async () => {
-    await expect(validateVaultRoot('relative/path')).rejects.toMatchObject({ code: 'PATH_NOT_ABSOLUTE' });
-    await expect(validateVaultRoot(path.join(tmp, 'missing'))).rejects.toMatchObject({ code: 'NOT_FOUND' });
+    await expect(validateVaultRoot('relative/path')).rejects.toMatchObject({
+      code: 'PATH_NOT_ABSOLUTE',
+    });
+    await expect(validateVaultRoot(path.join(tmp, 'missing'))).rejects.toMatchObject({
+      code: 'NOT_FOUND',
+    });
     const file = path.join(tmp, 'a-file');
     await writeFile(file, 'x');
     await expect(validateVaultRoot(file)).rejects.toMatchObject({ code: 'NOT_DIRECTORY' });
@@ -133,7 +137,9 @@ describe('createVault（新建空 vault）', () => {
   });
 
   it('父目录不存在时报错', async () => {
-    await expect(createVault(path.join(tmp, 'nope'), 'v')).rejects.toMatchObject({ code: 'NOT_FOUND' });
+    await expect(createVault(path.join(tmp, 'nope'), 'v')).rejects.toMatchObject({
+      code: 'NOT_FOUND',
+    });
   });
 
   it('目标存在符号链接时拒绝（VAULT_TARGET_SYMLINK）', async () => {
@@ -151,7 +157,9 @@ describe('vault 设置持久化（DEV-016）', () => {
   it('mergeVaultSettings 对缺失字段逐字段回退默认', () => {
     const merged = mergeVaultSettings({ editor: { autoSaveMs: 1200 } });
     expect(merged.editor.autoSaveMs).toBe(1200);
-    expect(merged.editor.bindFileNameToTitle).toBe(defaultVaultSettings().editor.bindFileNameToTitle);
+    expect(merged.editor.bindFileNameToTitle).toBe(
+      defaultVaultSettings().editor.bindFileNameToTitle,
+    );
     expect(merged.git.autoCommitIntervalMs).toBe(defaultVaultSettings().git.autoCommitIntervalMs);
   });
 
@@ -185,11 +193,9 @@ describe('vault 设置持久化（DEV-016）', () => {
     const configPath = path.join(root, NEXNOTE_DIR, CONFIG_FILENAME);
     const cfg = JSON.parse(await (await import('node:fs/promises')).readFile(configPath, 'utf8'));
     cfg.settings = null;
-    await (await import('node:fs/promises')).writeFile(
-      configPath,
-      `${JSON.stringify(cfg, null, 2)}\n`,
-      'utf8',
-    );
+    await (
+      await import('node:fs/promises')
+    ).writeFile(configPath, `${JSON.stringify(cfg, null, 2)}\n`, 'utf8');
     const reread = await readVaultConfig(root);
     expect(reread.settings).toEqual(defaultVaultSettings());
   });

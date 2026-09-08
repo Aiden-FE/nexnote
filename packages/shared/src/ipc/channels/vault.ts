@@ -88,5 +88,4 @@ export interface VaultChannelMap {
   'vault:cancelOperation': { request: { operationId: string }; response: Result<void> };
   /** 在 Finder / 资源管理器中显示 vault 内文件 */
   'vault:reveal': { request: { path: string }; response: Result<void> };
-
 }

@@ -91,10 +91,12 @@ describe('VaultCloneController', () => {
       ok: false,
       reason: 'PARAM_MISMATCH',
     });
-    expect(c.consume(token, 1, 'https://github.com/evil/malicious.git', '/Users/me')).toMatchObject({
-      ok: false,
-      reason: 'PARAM_MISMATCH',
-    });
+    expect(c.consume(token, 1, 'https://github.com/evil/malicious.git', '/Users/me')).toMatchObject(
+      {
+        ok: false,
+        reason: 'PARAM_MISMATCH',
+      },
+    );
   });
 
   it('disposeSender 销毁该 sender 所有令牌', () => {

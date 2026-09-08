@@ -48,7 +48,11 @@ export class SettingsService {
     writeFileSync(tmp, `${JSON.stringify(this.data, null, 2)}\n`, 'utf8');
     renameSync(tmp, this.filePath);
     for (const listener of this.listeners) {
-      try { listener(this.data); } catch { /* listener self-contained */ }
+      try {
+        listener(this.data);
+      } catch {
+        /* listener self-contained */
+      }
     }
   }
 
@@ -326,17 +330,12 @@ export function normalizeStoredGlobal(raw: unknown): GlobalSettings {
         typeof appearance.uiFontFamily === 'string' && appearance.uiFontFamily.trim()
           ? appearance.uiFontFamily
           : base.appearance.uiFontFamily,
-editorFontFamily:
+      editorFontFamily:
         typeof appearance.editorFontFamily === 'string' && appearance.editorFontFamily.trim()
           ? appearance.editorFontFamily
           : base.appearance.editorFontFamily,
       uiFontSize: clampInt(appearance.uiFontSize, 10, 24, base.appearance.uiFontSize),
-      editorFontSize: clampInt(
-        appearance.editorFontSize,
-        10,
-        32,
-        base.appearance.editorFontSize,
-      ),
+      editorFontSize: clampInt(appearance.editorFontSize, 10, 32, base.appearance.editorFontSize),
     },
     updates: {
       checkOnLaunch: hasKey(updates, 'checkOnLaunch')
@@ -361,9 +360,7 @@ editorFontFamily:
           : base.startup.specificVaultPath,
     },
     git: {
-      useSystemGit: hasKey(git, 'useSystemGit')
-        ? git.useSystemGit === true
-        : base.git.useSystemGit,
+      useSystemGit: hasKey(git, 'useSystemGit') ? git.useSystemGit === true : base.git.useSystemGit,
     },
     shortcuts: Array.isArray(value.shortcuts)
       ? normalizeShortcutOverrides(value.shortcuts)

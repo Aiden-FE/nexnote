@@ -1,46 +1,53 @@
 import { ok, err } from '@nexnote/shared';
-import type {
-  GlobalSettings,
-  Result,
-  ShortcutOverride,
-  VaultSettings,
-} from '@nexnote/shared';
+import type { GlobalSettings, Result, ShortcutOverride, VaultSettings } from '@nexnote/shared';
 import { readVaultSettings, saveVaultSettings } from '../vault/vault-manager';
 import type { IpcRegistrar } from './registrar';
 
 /** settings:* 命名空间 handler。单一权威：SettingsService（全局）+ vault config（vault 设置）。 */
 export function registerSettingsHandlers(registrar: IpcRegistrar): void {
-  registrar.register('settings:getAll', async (_payload, services): Promise<Result<GlobalSettings>> => {
-    return ok(services.settings.get());
-  });
+  registrar.register(
+    'settings:getAll',
+    async (_payload, services): Promise<Result<GlobalSettings>> => {
+      return ok(services.settings.get());
+    },
+  );
 
-  registrar.register('settings:getVault', async (_payload, services): Promise<Result<VaultSettings>> => {
-    const root = services.vaultSession.getCurrent()?.root;
-    if (!root) return err('当前未打开 vault', 'NO_VAULT');
-    const settings = await readVaultSettings(root);
-    // vault config 是自动提交间隔的唯一权威；每次加载都回灌 GitService，
-    // 保证重启/切换 vault 后立即采用持久化值。
-    services.git.setDebounceMs(settings.git.autoCommitIntervalMs);
-    return ok(settings);
-  });
+  registrar.register(
+    'settings:getVault',
+    async (_payload, services): Promise<Result<VaultSettings>> => {
+      const root = services.vaultSession.getCurrent()?.root;
+      if (!root) return err('当前未打开 vault', 'NO_VAULT');
+      const settings = await readVaultSettings(root);
+      // vault config 是自动提交间隔的唯一权威；每次加载都回灌 GitService，
+      // 保证重启/切换 vault 后立即采用持久化值。
+      services.git.setDebounceMs(settings.git.autoCommitIntervalMs);
+      return ok(settings);
+    },
+  );
 
-  registrar.register('settings:setGlobal', async (payload, services): Promise<Result<GlobalSettings>> => {
-    const updated = services.settings.update(payload.patch);
-    return ok(updated);
-  });
+  registrar.register(
+    'settings:setGlobal',
+    async (payload, services): Promise<Result<GlobalSettings>> => {
+      const updated = services.settings.update(payload.patch);
+      return ok(updated);
+    },
+  );
 
-  registrar.register('settings:setVault', async (payload, services): Promise<Result<VaultSettings>> => {
-    const root = services.vaultSession.getCurrent()?.root;
-    if (!root) return err('当前未打开 vault', 'NO_VAULT');
-    const updated = await saveVaultSettings(root, payload.patch);
-    // vault config 是自动提交间隔的唯一权威；UI 保存后立即应用。
-    services.git.setDebounceMs(updated.git.autoCommitIntervalMs);
-    services.windows.sendToMainWindow('settings:changed', {
-      global: services.settings.get(),
-      vault: updated,
-    });
-    return ok(updated);
-  });
+  registrar.register(
+    'settings:setVault',
+    async (payload, services): Promise<Result<VaultSettings>> => {
+      const root = services.vaultSession.getCurrent()?.root;
+      if (!root) return err('当前未打开 vault', 'NO_VAULT');
+      const updated = await saveVaultSettings(root, payload.patch);
+      // vault config 是自动提交间隔的唯一权威；UI 保存后立即应用。
+      services.git.setDebounceMs(updated.git.autoCommitIntervalMs);
+      services.windows.sendToMainWindow('settings:changed', {
+        global: services.settings.get(),
+        vault: updated,
+      });
+      return ok(updated);
+    },
+  );
 
   registrar.register(
     'settings:setShortcuts',
@@ -61,7 +68,10 @@ export function registerSettingsHandlers(registrar: IpcRegistrar): void {
 
   registrar.register(
     'settings:importShortcuts',
-    async (payload, services): Promise<Result<{ imported: number; shortcuts: ShortcutOverride[] }>> => {
+    async (
+      payload,
+      services,
+    ): Promise<Result<{ imported: number; shortcuts: ShortcutOverride[] }>> => {
       const result = services.settings.importShortcutsJson(payload.json);
       return ok(result);
     },
@@ -71,21 +81,24 @@ export function registerSettingsHandlers(registrar: IpcRegistrar): void {
     return ok(services.settings.search(payload.query));
   });
 
-  registrar.register('settings:pickImportFile', async (_payload, services): Promise<Result<string | null>> => {
-    const filePath = await services.dialogs.pickFile([
-      { name: 'NexNote 快捷键', extensions: ['json'] },
-      { name: '所有文件', extensions: ['*'] },
-    ]);
-    if (!filePath) return ok(null);
-    // 主进程读完文件内容，把字符串回传；渲染层绝不直接访问文件系统。
-    const { readFileSync } = await import('node:fs');
-    try {
-      const contents = readFileSync(filePath, 'utf8');
-      return ok(contents);
-    } catch {
-      return err('无法读取文件', 'FILE_READ_FAILED');
-    }
-  });
+  registrar.register(
+    'settings:pickImportFile',
+    async (_payload, services): Promise<Result<string | null>> => {
+      const filePath = await services.dialogs.pickFile([
+        { name: 'NexNote 快捷键', extensions: ['json'] },
+        { name: '所有文件', extensions: ['*'] },
+      ]);
+      if (!filePath) return ok(null);
+      // 主进程读完文件内容，把字符串回传；渲染层绝不直接访问文件系统。
+      const { readFileSync } = await import('node:fs');
+      try {
+        const contents = readFileSync(filePath, 'utf8');
+        return ok(contents);
+      } catch {
+        return err('无法读取文件', 'FILE_READ_FAILED');
+      }
+    },
+  );
 
   registrar.register('settings:saveExportFile', async (payload): Promise<Result<string | null>> => {
     const { dialog } = await import('electron');

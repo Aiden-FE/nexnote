@@ -257,10 +257,7 @@ const vaultClonePreflight = object(
   ['url', 'parentDir', 'name'],
   [stringField('url'), stringField('parentDir'), optionalField('name', 'string')],
 );
-const vaultCancelOperation = object(
-  ['operationId'],
-  [stringField('operationId')],
-);
+const vaultCancelOperation = object(['operationId'], [stringField('operationId')]);
 
 // Settings validators（DEV-016）：浅校验（类型+结构），深度校验交给 merge 函数。
 const settingsSetGlobal: PayloadValidator = (payload) => {
@@ -302,15 +299,9 @@ const settingsSetShortcuts: PayloadValidator = (payload) => {
   return null;
 };
 
-const settingsImportShortcuts = object(
-  ['json'],
-  [stringField('json')],
-);
+const settingsImportShortcuts = object(['json'], [stringField('json')]);
 
-const settingsSearch = object(
-  ['query'],
-  [stringField('query')],
-);
+const settingsSearch = object(['query'], [stringField('query')]);
 
 const settingsSaveExportFile: PayloadValidator = (payload) => {
   if (!isPlainObject(payload)) return invalid('payload 必须是普通对象');

@@ -1,11 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import {
-  Settings as SettingsIcon,
-  FileText,
-  Keyboard,
-  GitBranch,
-  Info,
-} from 'lucide-react';
+import { Settings as SettingsIcon, FileText, Keyboard, GitBranch, Info } from 'lucide-react';
 import { settingsSectionRegistry } from '../../registries';
 import { useSettingsStore } from '../../stores/settings-store';
 import { invoke } from '../../lib/ipc';
@@ -84,7 +78,15 @@ function SectionHeader({ title, description }: { title: string; description?: st
   );
 }
 
-function Row({ label, description, children }: { label: string; description?: string; children: React.ReactNode }) {
+function Row({
+  label,
+  description,
+  children,
+}: {
+  label: string;
+  description?: string;
+  children: React.ReactNode;
+}) {
   return (
     <div className="flex items-start justify-between gap-4 py-3">
       <div className="min-w-0 flex-1">
@@ -198,9 +200,7 @@ function GeneralSection() {
           min={10}
           max={24}
           value={global.appearance.uiFontSize}
-          onChange={(e) =>
-            void setGlobal({ appearance: { uiFontSize: Number(e.target.value) } })
-          }
+          onChange={(e) => void setGlobal({ appearance: { uiFontSize: Number(e.target.value) } })}
           className="w-32"
         />
       </Row>
@@ -222,9 +222,7 @@ function GeneralSection() {
         <Row label="启动时" description="打开上次知识库、走向导或打开特定 vault">
           <Select
             value={global.startup.behavior}
-            onChange={(v) =>
-              void setGlobal({ startup: { behavior: v as StartupBehavior } })
-            }
+            onChange={(v) => void setGlobal({ startup: { behavior: v as StartupBehavior } })}
             options={[
               { value: 'restore', label: '恢复上次 vault' },
               { value: 'welcome', label: '显示欢迎页' },
@@ -298,9 +296,7 @@ function EditorSection() {
           max={10000}
           step={100}
           value={vault.editor.autoSaveMs}
-          onChange={(e) =>
-            void setVault({ editor: { autoSaveMs: Number(e.target.value) } })
-          }
+          onChange={(e) => void setVault({ editor: { autoSaveMs: Number(e.target.value) } })}
           className="w-32"
         />
       </Row>
@@ -363,10 +359,7 @@ function GitSection() {
           onChange={(v) => void setVault({ git: { autoCommit: v } })}
         />
       </Row>
-      <Row
-        label="自动提交间隔"
-        description={`${vault.git.autoCommitIntervalMs}ms（2s–10min）`}
-      >
+      <Row label="自动提交间隔" description={`${vault.git.autoCommitIntervalMs}ms（2s–10min）`}>
         <input
           type="range"
           min={2000}
@@ -385,9 +378,7 @@ function GitSection() {
         <input
           type="text"
           value={vault.git.commitMessageTemplate}
-          onChange={(e) =>
-            void setVault({ git: { commitMessageTemplate: e.target.value } })
-          }
+          onChange={(e) => void setVault({ git: { commitMessageTemplate: e.target.value } })}
           className="h-8 w-56 rounded-md border bg-background px-2 text-sm"
         />
       </Row>
@@ -399,9 +390,7 @@ function GitSection() {
           className="h-8 w-40 rounded-md border bg-background px-2 text-sm"
         />
       </Row>
-      {message && (
-        <p className="text-xs text-muted-foreground">{message}</p>
-      )}
+      {message && <p className="text-xs text-muted-foreground">{message}</p>}
     </div>
   );
 }
@@ -413,14 +402,17 @@ function ShortcutsSection() {
   const [drafts, setDrafts] = useState<Record<string, string>>({});
   const [message, setMessage] = useState<string | null>(null);
 
-  const persist = useCallback(async (next: ShortcutOverride[]) => {
-    try {
-      await setShortcuts(next);
-      setMessage('快捷键已保存');
-    } catch (error) {
-      setMessage(error instanceof Error ? error.message : String(error));
-    }
-  }, [setShortcuts]);
+  const persist = useCallback(
+    async (next: ShortcutOverride[]) => {
+      try {
+        await setShortcuts(next);
+        setMessage('快捷键已保存');
+      } catch (error) {
+        setMessage(error instanceof Error ? error.message : String(error));
+      }
+    },
+    [setShortcuts],
+  );
 
   const saveBinding = async (shortcut: ShortcutOverride): Promise<void> => {
     const canonical = normalizeShortcut(drafts[shortcut.commandId] ?? shortcut.key);
@@ -429,17 +421,22 @@ function ShortcutsSection() {
       return;
     }
     const collision = shortcuts.find(
-      (candidate) => candidate.commandId !== shortcut.commandId && !candidate.disabled && candidate.key === canonical,
+      (candidate) =>
+        candidate.commandId !== shortcut.commandId &&
+        !candidate.disabled &&
+        candidate.key === canonical,
     );
     if (collision) {
       setMessage(`快捷键与 ${collision.commandId} 冲突`);
       return;
     }
-    await persist(shortcuts.map((candidate) =>
-      candidate.commandId === shortcut.commandId
-        ? { ...candidate, key: canonical, disabled: false }
-        : candidate,
-    ));
+    await persist(
+      shortcuts.map((candidate) =>
+        candidate.commandId === shortcut.commandId
+          ? { ...candidate, key: canonical, disabled: false }
+          : candidate,
+      ),
+    );
   };
 
   const toggleBinding = async (shortcut: ShortcutOverride): Promise<void> => {
@@ -448,11 +445,13 @@ function ShortcutsSection() {
       setMessage('启用前请先输入有效快捷键');
       return;
     }
-    await persist(shortcuts.map((candidate) =>
-      candidate.commandId === shortcut.commandId
-        ? { ...candidate, key: shortcut.disabled ? key : '', disabled: !shortcut.disabled }
-        : candidate,
-    ));
+    await persist(
+      shortcuts.map((candidate) =>
+        candidate.commandId === shortcut.commandId
+          ? { ...candidate, key: shortcut.disabled ? key : '', disabled: !shortcut.disabled }
+          : candidate,
+      ),
+    );
   };
 
   if (!global) return <div className="text-sm text-muted-foreground">加载中…</div>;
@@ -486,22 +485,55 @@ function ShortcutsSection() {
     <div className="space-y-4">
       <SectionHeader title="快捷键" description="直接编辑快捷键，或单独启用、禁用每个绑定。" />
       <div className="mb-3 flex gap-2">
-        <button type="button" onClick={() => void handleImport()} className="h-7 rounded-md border px-3 text-xs hover:bg-accent">导入…</button>
-        <button type="button" onClick={() => void handleExport()} className="h-7 rounded-md border px-3 text-xs hover:bg-accent">导出…</button>
+        <button
+          type="button"
+          onClick={() => void handleImport()}
+          className="h-7 rounded-md border px-3 text-xs hover:bg-accent"
+        >
+          导入…
+        </button>
+        <button
+          type="button"
+          onClick={() => void handleExport()}
+          className="h-7 rounded-md border px-3 text-xs hover:bg-accent"
+        >
+          导出…
+        </button>
       </div>
-      {message && <p role="status" className="text-xs text-muted-foreground">{message}</p>}
+      {message && (
+        <p role="status" className="text-xs text-muted-foreground">
+          {message}
+        </p>
+      )}
       <div className="divide-y rounded-md border">
         {shortcuts.map((shortcut) => (
-          <div key={shortcut.commandId} className="grid grid-cols-[minmax(0,1fr)_minmax(9rem,12rem)_auto] items-center gap-2 px-3 py-2 text-sm">
-            <label htmlFor={`shortcut-${shortcut.commandId}`} className="truncate text-muted-foreground">{shortcut.commandId}</label>
+          <div
+            key={shortcut.commandId}
+            className="grid grid-cols-[minmax(0,1fr)_minmax(9rem,12rem)_auto] items-center gap-2 px-3 py-2 text-sm"
+          >
+            <label
+              htmlFor={`shortcut-${shortcut.commandId}`}
+              className="truncate text-muted-foreground"
+            >
+              {shortcut.commandId}
+            </label>
             <input
               id={`shortcut-${shortcut.commandId}`}
               aria-label={`${shortcut.commandId} 快捷键`}
               value={drafts[shortcut.commandId] ?? shortcut.key}
               disabled={shortcut.disabled}
-              onChange={(event) => setDrafts((current) => ({ ...current, [shortcut.commandId]: event.target.value }))}
-              onBlur={() => { if (!shortcut.disabled) void saveBinding(shortcut); }}
-              onKeyDown={(event) => { if (event.key === 'Enter') { event.preventDefault(); void saveBinding(shortcut); } }}
+              onChange={(event) =>
+                setDrafts((current) => ({ ...current, [shortcut.commandId]: event.target.value }))
+              }
+              onBlur={() => {
+                if (!shortcut.disabled) void saveBinding(shortcut);
+              }}
+              onKeyDown={(event) => {
+                if (event.key === 'Enter') {
+                  event.preventDefault();
+                  void saveBinding(shortcut);
+                }
+              }}
               className="h-8 rounded-md border bg-background px-2 font-mono text-xs disabled:opacity-50"
             />
             <Toggle checked={!shortcut.disabled} onChange={() => void toggleBinding(shortcut)} />
@@ -513,7 +545,12 @@ function ShortcutsSection() {
 }
 
 function AboutSection() {
-  const [info, setInfo] = useState<{ version: string; platform: string; arch: string; electronVersion: string } | null>(null);
+  const [info, setInfo] = useState<{
+    version: string;
+    platform: string;
+    arch: string;
+    electronVersion: string;
+  } | null>(null);
 
   useEffect(() => {
     void invoke('app:getInfo').then(setInfo);

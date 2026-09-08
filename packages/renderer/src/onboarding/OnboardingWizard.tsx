@@ -181,18 +181,16 @@ export function OnboardingWizard({ recent, onRecentsChanged }: OnboardingWizardP
             data-testid="git-init-confirmation"
             className="mb-4 rounded-md border border-amber-500/40 bg-amber-500/10 p-3 text-sm"
           >
-            <p className="font-medium">
-              此文件夹还不是 Git 仓库
-            </p>
+            <p className="font-medium">此文件夹还不是 Git 仓库</p>
             {inspectResult?.isObsidian && (
               <p className="mt-1 text-xs text-muted-foreground">
-                检测到 Obsidian vault（.obsidian 目录）。NexNote 不会修改你的 Obsidian 配置，
-                仅添加 .nexnote/ 和 .git。
+                检测到 Obsidian vault（.obsidian 目录）。NexNote 不会修改你的 Obsidian 配置， 仅添加
+                .nexnote/ 和 .git。
               </p>
             )}
             <p className="mt-1 text-xs text-muted-foreground">
-              是否在 <code className="break-all">{pendingGitInitPath}</code> 中初始化 Git？
-              这会创建 .git、.gitignore 和初始提交；仅在你确认后执行。
+              是否在 <code className="break-all">{pendingGitInitPath}</code> 中初始化 Git？ 这会创建
+              .git、.gitignore 和初始提交；仅在你确认后执行。
             </p>
             <div className="mt-3 flex gap-2">
               <button

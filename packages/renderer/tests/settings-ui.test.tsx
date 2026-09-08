@@ -25,16 +25,31 @@ function installBridge(mock?: Record<string, unknown>) {
   const invokeSpy = vi.fn((channel: string, payload?: unknown) => {
     const handler = mock?.[channel];
     if (typeof handler === 'function') return handler(payload);
-    if (channel in (mock ?? {})) return Promise.resolve({ ok: true, data: (mock as Record<string, unknown>)[channel] } as const);
+    if (channel in (mock ?? {}))
+      return Promise.resolve({
+        ok: true,
+        data: (mock as Record<string, unknown>)[channel],
+      } as const);
     // 默认响应
-    if (channel === 'settings:getAll') return Promise.resolve({ ok: true, data: defaultGlobalSettings() } as const);
-    if (channel === 'settings:search') return Promise.resolve({ ok: true, data: [] as SettingSearchEntry[] } as const);
+    if (channel === 'settings:getAll')
+      return Promise.resolve({ ok: true, data: defaultGlobalSettings() } as const);
+    if (channel === 'settings:search')
+      return Promise.resolve({ ok: true, data: [] as SettingSearchEntry[] } as const);
     if (channel === 'settings:setShortcuts') {
       const payload = payload as { shortcuts: unknown };
       return Promise.resolve({ ok: true, data: payload.shortcuts } as const);
     }
     if (channel === 'app:getInfo') {
-      return Promise.resolve({ ok: true, data: { version: '0.0.0-test', platform: 'test', arch: 'arm64', isPackaged: false, electronVersion: '30.0.0' } } as const);
+      return Promise.resolve({
+        ok: true,
+        data: {
+          version: '0.0.0-test',
+          platform: 'test',
+          arch: 'arm64',
+          isPackaged: false,
+          electronVersion: '30.0.0',
+        },
+      } as const);
     }
     return Promise.resolve({ ok: true, data: null } as const);
   });
@@ -47,7 +62,8 @@ function installBridge(mock?: Record<string, unknown>) {
       return () => set.delete(cb);
     },
   };
-  const emit = (channel: string, payload: unknown) => listeners[channel]?.forEach((cb) => cb(payload));
+  const emit = (channel: string, payload: unknown) =>
+    listeners[channel]?.forEach((cb) => cb(payload));
   return { invokeSpy, emit };
 }
 
@@ -85,7 +101,9 @@ describe('SettingsPage 搜索', () => {
       root.render(<SettingsPage />);
       await vi.advanceTimersByTimeAsync(100);
     });
-    const input = container.querySelector<HTMLInputElement>('[data-testid="settings-search-input"]');
+    const input = container.querySelector<HTMLInputElement>(
+      '[data-testid="settings-search-input"]',
+    );
     expect(input).toBeTruthy();
     expect(input?.getAttribute('aria-label')).toBe('搜索设置');
     expect(input?.type).toBe('search');
@@ -93,15 +111,29 @@ describe('SettingsPage 搜索', () => {
 
   it('输入查询后调用 settings:search 并展示结果', async () => {
     const entries: SettingSearchEntry[] = [
-      { id: 'appearance.theme', sectionId: 'general', title: '主题', keywords: ['theme'], scope: 'global' },
-      { id: 'shortcuts.list', sectionId: 'shortcuts', title: '快捷键', keywords: ['shortcut'], scope: 'global' },
+      {
+        id: 'appearance.theme',
+        sectionId: 'general',
+        title: '主题',
+        keywords: ['theme'],
+        scope: 'global',
+      },
+      {
+        id: 'shortcuts.list',
+        sectionId: 'shortcuts',
+        title: '快捷键',
+        keywords: ['shortcut'],
+        scope: 'global',
+      },
     ];
     const { invokeSpy } = installBridge({ 'settings:search': entries });
     await act(async () => {
       root.render(<SettingsPage />);
       await vi.advanceTimersByTimeAsync(100);
     });
-    const input = container.querySelector<HTMLInputElement>('[data-testid="settings-search-input"]')!;
+    const input = container.querySelector<HTMLInputElement>(
+      '[data-testid="settings-search-input"]',
+    )!;
     // 直接设置 React 状态的代理：触发输入事件 + 推进时间
     await act(async () => {
       typeInto(input, '主题');
@@ -122,7 +154,9 @@ describe('SettingsPage 搜索', () => {
     });
     // 初始空查询不展示结果区
     expect(container.querySelector('[data-testid="settings-search-results"]')).toBeFalsy();
-    const input = container.querySelector<HTMLInputElement>('[data-testid="settings-search-input"]')!;
+    const input = container.querySelector<HTMLInputElement>(
+      '[data-testid="settings-search-input"]',
+    )!;
     await act(async () => {
       typeInto(input, 'zzzznoresult');
       await vi.advanceTimersByTimeAsync(200);
@@ -139,7 +173,9 @@ describe('SettingsPage 搜索', () => {
       root.render(<SettingsPage />);
       await vi.advanceTimersByTimeAsync(100);
     });
-    const input = container.querySelector<HTMLInputElement>('[data-testid="settings-search-input"]')!;
+    const input = container.querySelector<HTMLInputElement>(
+      '[data-testid="settings-search-input"]',
+    )!;
     await act(async () => {
       typeInto(input, 'x');
       await vi.advanceTimersByTimeAsync(200);
@@ -149,19 +185,29 @@ describe('SettingsPage 搜索', () => {
 
   it('点击搜索结果跳转到对应分区', async () => {
     const entries: SettingSearchEntry[] = [
-      { id: 'shortcuts.list', sectionId: 'shortcuts', title: '快捷键', keywords: ['shortcut'], scope: 'global' },
+      {
+        id: 'shortcuts.list',
+        sectionId: 'shortcuts',
+        title: '快捷键',
+        keywords: ['shortcut'],
+        scope: 'global',
+      },
     ];
     installBridge({ 'settings:search': entries });
     await act(async () => {
       root.render(<SettingsPage />);
       await vi.advanceTimersByTimeAsync(100);
     });
-    const input = container.querySelector<HTMLInputElement>('[data-testid="settings-search-input"]')!;
+    const input = container.querySelector<HTMLInputElement>(
+      '[data-testid="settings-search-input"]',
+    )!;
     await act(async () => {
       typeInto(input, 'shortcut');
       await vi.advanceTimersByTimeAsync(200);
     });
-    const result = container.querySelector<HTMLButtonElement>('[data-testid="settings-search-result-shortcuts.list"]');
+    const result = container.querySelector<HTMLButtonElement>(
+      '[data-testid="settings-search-result-shortcuts.list"]',
+    );
     expect(result).toBeTruthy();
     await act(async () => {
       result!.click();
@@ -171,11 +217,12 @@ describe('SettingsPage 搜索', () => {
   });
 });
 
-
 describe('快捷键设置可编辑', () => {
   async function openShortcuts(): Promise<void> {
     await mountAndLoad();
-    const navBtn = container.querySelector<HTMLButtonElement>('[data-testid="settings-nav-shortcuts"]')!;
+    const navBtn = container.querySelector<HTMLButtonElement>(
+      '[data-testid="settings-nav-shortcuts"]',
+    )!;
     await act(async () => {
       navBtn.click();
       await tick(20);
@@ -212,7 +259,9 @@ describe('快捷键设置可编辑', () => {
   it('保留导入/导出按钮', async () => {
     installBridge();
     await openShortcuts();
-    const buttons = Array.from(container.querySelectorAll('button')).map((b) => b.textContent?.trim() ?? '');
+    const buttons = Array.from(container.querySelectorAll('button')).map(
+      (b) => b.textContent?.trim() ?? '',
+    );
     expect(buttons.some((t) => t.includes('导入'))).toBe(true);
     expect(buttons.some((t) => t.includes('导出'))).toBe(true);
   });

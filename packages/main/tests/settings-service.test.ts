@@ -32,7 +32,10 @@ describe('normalizeStoredGlobal', () => {
   it('对非法字段值回退默认并保留合法字段', () => {
     const base = defaultGlobalSettings();
     expect(
-      normalizeStoredGlobal({ appearance: { theme: 'neon', uiFontSize: 3 }, git: { useSystemGit: true } }),
+      normalizeStoredGlobal({
+        appearance: { theme: 'neon', uiFontSize: 3 },
+        git: { useSystemGit: true },
+      }),
     ).toMatchObject({
       // 非法 theme 回退 system；越界 uiFontSize clamp 到下限 10
       appearance: { theme: 'system', uiFontSize: 10 },
@@ -138,14 +141,19 @@ describe('shared 设置工具函数', () => {
   it('mergeVaultPatch clamp 自动保存与提交间隔', () => {
     const base = defaultVaultSettings();
     expect(mergeVaultPatch(base, { editor: { autoSaveMs: 1 } }).editor.autoSaveMs).toBe(100);
-    expect(mergeVaultPatch(base, { git: { autoCommitIntervalMs: 1_000_000_000 } }).git.autoCommitIntervalMs).toBe(600_000);
+    expect(
+      mergeVaultPatch(base, { git: { autoCommitIntervalMs: 1_000_000_000 } }).git
+        .autoCommitIntervalMs,
+    ).toBe(600_000);
   });
 
   it('mergeVaultPatch 剪除非法分支名', () => {
     const base = defaultVaultSettings();
     const merged = mergeVaultPatch(base, { git: { defaultBranch: 'my branch' } });
     expect(merged.git.defaultBranch).toBe(base.git.defaultBranch);
-    expect(mergeVaultPatch(base, { git: { defaultBranch: 'main-v2' } }).git.defaultBranch).toBe('main-v2');
+    expect(mergeVaultPatch(base, { git: { defaultBranch: 'main-v2' } }).git.defaultBranch).toBe(
+      'main-v2',
+    );
   });
 
   it('mergeGlobalPatch 保留合法多级字段', () => {

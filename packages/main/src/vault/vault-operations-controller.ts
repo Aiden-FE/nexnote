@@ -47,7 +47,11 @@ export class VaultOperationsController {
     const list = this.bySender.get(senderId);
     if (!list) return;
     for (const entry of list) {
-      try { entry.controller.abort(); } catch { /* listener self-contained */ }
+      try {
+        entry.controller.abort();
+      } catch {
+        /* listener self-contained */
+      }
     }
     this.bySender.delete(senderId);
   }

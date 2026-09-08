@@ -47,7 +47,10 @@ export function sanitizeVaultName(
  */
 export function sanitizeChatFolder(raw: unknown): string | null {
   if (typeof raw !== 'string') return null;
-  const value = raw.trim().replaceAll('\\', '/').replace(/^\/+|\/+$/g, '');
+  const value = raw
+    .trim()
+    .replaceAll('\\', '/')
+    .replace(/^\/+|\/+$/g, '');
   if (value.length === 0) return null;
   const parts = value.split('/').filter(Boolean);
   if (parts.length === 0) return null;

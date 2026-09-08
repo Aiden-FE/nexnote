@@ -20,25 +20,28 @@ export function SettingsPage() {
   const [results, setResults] = useState<SettingSearchEntry[]>([]);
   const queryRef = useRef('');
 
-  const runSearch = useCallback(async (value: string) => {
-    const trimmed = value.trim();
-    if (!trimmed) {
-      setResults([]);
-      setSearchState('idle');
-      return;
-    }
-    setSearchState('loading');
-    try {
-      const entries = await searchSettings(trimmed);
-      if (queryRef.current.trim() !== trimmed) return;
-      setResults(entries);
-      setSearchState('done');
-    } catch {
-      if (queryRef.current.trim() !== trimmed) return;
-      setResults([]);
-      setSearchState('error');
-    }
-  }, [searchSettings]);
+  const runSearch = useCallback(
+    async (value: string) => {
+      const trimmed = value.trim();
+      if (!trimmed) {
+        setResults([]);
+        setSearchState('idle');
+        return;
+      }
+      setSearchState('loading');
+      try {
+        const entries = await searchSettings(trimmed);
+        if (queryRef.current.trim() !== trimmed) return;
+        setResults(entries);
+        setSearchState('done');
+      } catch {
+        if (queryRef.current.trim() !== trimmed) return;
+        setResults([]);
+        setSearchState('error');
+      }
+    },
+    [searchSettings],
+  );
 
   useEffect(() => {
     queryRef.current = query;
@@ -48,20 +51,27 @@ export function SettingsPage() {
 
   const groupedResults = useMemo(() => {
     const map = new Map<string, SettingSearchEntry[]>();
-    for (const entry of results) map.set(entry.sectionId, [...(map.get(entry.sectionId) ?? []), entry]);
+    for (const entry of results)
+      map.set(entry.sectionId, [...(map.get(entry.sectionId) ?? []), entry]);
     return map;
   }, [results]);
 
   const showResults = searchState !== 'idle' && searchState !== 'error' && query.trim().length > 0;
 
   return (
-    <div data-testid="settings-page" className="mx-auto flex h-full max-w-4xl min-w-0 flex-col px-6 py-8">
+    <div
+      data-testid="settings-page"
+      className="mx-auto flex h-full max-w-4xl min-w-0 flex-col px-6 py-8"
+    >
       <h1 className="mb-4 flex items-center gap-2 text-lg font-semibold tracking-tight">
         <SettingsIcon className="size-4.5" />
         设置
       </h1>
       <div className="relative mb-4">
-        <Search aria-hidden className="pointer-events-none absolute left-2.5 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
+        <Search
+          aria-hidden
+          className="pointer-events-none absolute left-2.5 top-1/2 size-4 -translate-y-1/2 text-muted-foreground"
+        />
         <input
           type="search"
           data-testid="settings-search-input"
@@ -74,14 +84,22 @@ export function SettingsPage() {
       </div>
 
       {showResults && (
-        <div data-testid="settings-search-results" role="region" aria-label="设置搜索结果" className="mb-4 max-h-64 overflow-auto rounded-md border bg-card">
+        <div
+          data-testid="settings-search-results"
+          role="region"
+          aria-label="设置搜索结果"
+          className="mb-4 max-h-64 overflow-auto rounded-md border bg-card"
+        >
           {searchState === 'loading' && results.length === 0 && (
             <div className="flex items-center gap-2 px-3 py-2 text-xs text-muted-foreground">
-              <Loader2 className="size-3.5 animate-spin" />搜索中…
+              <Loader2 className="size-3.5 animate-spin" />
+              搜索中…
             </div>
           )}
           {searchState === 'done' && results.length === 0 && (
-            <div className="px-3 py-3 text-xs text-muted-foreground">没有找到与 “{query.trim()}” 相关的设置</div>
+            <div className="px-3 py-3 text-xs text-muted-foreground">
+              没有找到与 “{query.trim()}” 相关的设置
+            </div>
           )}
           {searchState === 'done' && results.length > 0 && (
             <div className="divide-y">
@@ -89,7 +107,9 @@ export function SettingsPage() {
                 const section = sections.find((candidate) => candidate.id === sectionId);
                 return (
                   <div key={sectionId}>
-                    <div className="bg-muted/30 px-3 py-1 text-[11px] font-medium text-muted-foreground">{section?.title ?? sectionId}</div>
+                    <div className="bg-muted/30 px-3 py-1 text-[11px] font-medium text-muted-foreground">
+                      {section?.title ?? sectionId}
+                    </div>
                     {entries.map((entry) => (
                       <button
                         key={entry.id}
@@ -110,7 +130,12 @@ export function SettingsPage() {
         </div>
       )}
       {searchState === 'error' && (
-        <div role="alert" className="mb-4 rounded-md border border-destructive/40 bg-destructive/10 px-3 py-2 text-xs text-destructive">搜索失败，请稍后再试</div>
+        <div
+          role="alert"
+          className="mb-4 rounded-md border border-destructive/40 bg-destructive/10 px-3 py-2 text-xs text-destructive"
+        >
+          搜索失败，请稍后再试
+        </div>
       )}
 
       <div className="flex min-h-0 flex-1 gap-6">
@@ -126,7 +151,9 @@ export function SettingsPage() {
                 onClick={() => useSettingsNav.getState().setSection(section.id)}
                 className={cn(
                   'flex items-center gap-2 rounded-md px-2.5 py-1.5 text-left text-sm',
-                  isActive ? 'bg-accent font-medium text-accent-foreground' : 'text-muted-foreground hover:bg-accent/50 hover:text-foreground',
+                  isActive
+                    ? 'bg-accent font-medium text-accent-foreground'
+                    : 'text-muted-foreground hover:bg-accent/50 hover:text-foreground',
                 )}
               >
                 <Icon className="size-4 shrink-0" />
@@ -135,7 +162,10 @@ export function SettingsPage() {
             );
           })}
         </nav>
-        <div data-testid={`settings-section-${active?.id ?? 'none'}`} className="min-h-0 min-w-0 flex-1 overflow-auto rounded-lg border bg-card p-5 text-card-foreground">
+        <div
+          data-testid={`settings-section-${active?.id ?? 'none'}`}
+          className="min-h-0 min-w-0 flex-1 overflow-auto rounded-lg border bg-card p-5 text-card-foreground"
+        >
           {ActiveContent ? <ActiveContent /> : null}
         </div>
       </div>

@@ -167,7 +167,11 @@ async function bootstrap(): Promise<void> {
     applyGlobalSettings(global);
     void (async () => {
       const root = vaultSession.getCurrent()?.root;
-      const vault = root ? await import('./vault/vault-manager').then(({ readVaultSettings }) => readVaultSettings(root)) : null;
+      const vault = root
+        ? await import('./vault/vault-manager').then(({ readVaultSettings }) =>
+            readVaultSettings(root),
+          )
+        : null;
       windows?.sendToMainWindow('settings:changed', { global, vault });
       if (root) {
         try {
