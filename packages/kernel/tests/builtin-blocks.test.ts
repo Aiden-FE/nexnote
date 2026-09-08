@@ -43,6 +43,29 @@ describe('Mermaid 块（DEV-015）', () => {
     container.remove();
   });
 
+  it('~~~mermaid 波浪线围栏同样解析（CommonMark/Obsidian 合法），序列化归一为 ```', () => {
+    const md = '~~~mermaid\ngraph TD\n  A --> B\n~~~\n';
+    const { kernel, container } = make(md);
+    const block = (kernel.getJSON().content ?? []).find((b) => b.type === 'mermaidBlock');
+    expect(block?.attrs?.source).toBe('graph TD\n  A --> B');
+    const serialized = kernel.getMarkdown();
+    expect(serialized).toBe('```mermaid\ngraph TD\n  A --> B\n```');
+    // 二次 round-trip 稳定。
+    const again = make(serialized);
+    expect(again.kernel.getMarkdown()).toBe(serialized);
+    again.kernel.destroy();
+    again.container.remove();
+    kernel.destroy();
+    container.remove();
+  });
+
+  it('围栏标记不得混用（```开 ~~~闭 视为普通代码块）', () => {
+    const { kernel, container } = make('```mermaid\ngraph TD\n~~~\n');
+    expect(kernel.getJSON().content?.some((b) => b.type === 'mermaidBlock')).toBe(false);
+    kernel.destroy();
+    container.remove();
+  });
+
   it('非 mermaid 语言围栏不被误判', () => {
     const md = '```js\nconst a = 1;\n```\n';
     const { kernel, container } = make(md);

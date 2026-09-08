@@ -14,6 +14,7 @@ import {
   serializeClipboardText,
   serializeMarkdown,
 } from './markdown/pipeline';
+import { isBlockIdInitTransaction } from './extensions/block-id';
 import { createSaveScheduler } from './save';
 import type { SaveScheduler } from './save';
 import { Frontmatter } from './extensions/frontmatter';
@@ -153,6 +154,8 @@ export function createEditor(
       clipboardTextSerializer: (slice) => serializeClipboardText(manager, slice),
     },
     onUpdate() {
+      // 打开文件时 UniqueID 补块 ID 不是用户编辑：不得据此写盘（原文必须逐字节保持）。
+      if (isBlockIdInitTransaction(editor)) return;
       revision += 1;
       scheduler.schedule(kernel.getMarkdown());
     },

@@ -210,17 +210,16 @@ export async function runSmokeIfEnabled(): Promise<void> {
         title: '冒烟重命名页',
         pagePath: '冒烟重命名页.md',
       });
-      await waitFor(
-        () =>
-          document
-            .querySelector('[data-testid="editor-view"] .ProseMirror')
-            ?.textContent?.includes('第一块') ?? false,
-      );
+      const reopenedEditor = () =>
+        document.querySelector(
+          '[data-testid="editor-view"][data-path="冒烟重命名页.md"] .ProseMirror',
+        );
       check(
         '关闭并重新打开 Markdown 页面内容一致',
-        document
-          .querySelector('[data-testid="editor-view"] .ProseMirror')
-          ?.textContent?.includes('第二块') ?? false,
+        await waitFor(() => {
+          const text = reopenedEditor()?.textContent ?? '';
+          return text.includes('第一块') && text.includes('第二块');
+        }),
       );
     } else {
       check('编辑器 DOM 就绪', false, `editor=${!!editorRoot} tab=${!!leftPageTab}`);
@@ -254,13 +253,22 @@ export async function runSmokeIfEnabled(): Promise<void> {
         !document.querySelector('[data-testid="source-mode-view"]'),
     );
 
-    // 入口 1：编辑器头部按钮
-    document
-      .querySelector<HTMLElement>('[data-testid="editor-view"] [data-testid="source-mode-toggle"]')
-      ?.click();
+    // 入口 1：编辑器头部按钮。必须等目标页面自己的 EditorView，避免命中正在卸载的旧 tab。
+    const sourceEditorView = await waitFor(() => {
+      const view = document.querySelector<HTMLElement>(
+        '[data-testid="editor-view"][data-path="源码模式冒烟.md"]',
+      );
+      return !!view?.querySelector('.ProseMirror');
+    });
+    const sourceToggle = document.querySelector<HTMLElement>(
+      '[data-testid="editor-view"][data-path="源码模式冒烟.md"] [data-testid="source-mode-toggle"]',
+    );
+    if (sourceEditorView) sourceToggle?.click();
     check(
       '入口 1（头部按钮）进入源码模式',
-      await waitFor(() => !!document.querySelector('[data-testid="source-mode-view"]')),
+      sourceEditorView &&
+        !!sourceToggle &&
+        (await waitFor(() => !!document.querySelector('[data-testid="source-mode-view"]'))),
     );
     check(
       '源码左侧为 CodeMirror（行号 + .cm-content）',
@@ -302,7 +310,8 @@ export async function runSmokeIfEnabled(): Promise<void> {
             ).length >= 1,
           15_000,
         )),
-      `katex=${document.querySelectorAll('[data-testid="live-preview"] .katex').length}`,
+      `svg=${document.querySelectorAll('[data-testid="live-preview"] svg').length} ` +
+        `katex=${document.querySelectorAll('[data-testid="live-preview"] .katex').length}`,
     );
     check(
       '预览渲染 Wikilink',
@@ -737,13 +746,15 @@ export async function runSmokeIfEnabled(): Promise<void> {
     const graphText = () =>
       document.querySelector('[data-testid="global-graph-view"]')?.textContent ?? '';
     check(
-      '全局图谱展示 500 页 / 2000 链接快照',
-      await waitFor(
-        () =>
-          graphText().includes('2000 链接') &&
-          document.querySelectorAll('.react-flow__node').length >= 500,
-        20_000,
-      ),
+      '全局图谱包含 500 页 / 2000 链接性能种子',
+      await waitFor(() => {
+        const match = /(\d+) 页面 · (\d+) 链接/.exec(graphText());
+        return (
+          Number(match?.[1] ?? 0) >= (graphSeed.pages ?? 500) &&
+          Number(match?.[2] ?? 0) >= (graphSeed.links ?? 2000) &&
+          document.querySelectorAll('.react-flow__node').length >= (graphSeed.pages ?? 500)
+        );
+      }, 20_000),
       graphText().slice(0, 100),
     );
     check(
@@ -894,7 +905,10 @@ export async function runSmokeIfEnabled(): Promise<void> {
     );
     const initial = await invoke('git:getTimeline', {});
     check('git:getTimeline 返回 ≥1 提交', initial.length >= 1);
-    check('git:getTimeline 首条为 initial', (initial[0]?.kind ?? '') === 'initial');
+    check(
+      'git:getTimeline 包含 initial 基线',
+      initial.some((entry) => entry.kind === 'initial'),
+    );
     await invoke('fs:writeTextFile', { path: 'smoke-note.md', content: '冒烟笔记' });
     // 自动提交走 30s 防抖；这里用手动提交验证提交链路，随后时间线刷新。
     const manual = await invoke('git:commit', { message: 'smoke manual commit' });

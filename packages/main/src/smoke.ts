@@ -51,20 +51,17 @@ export class SmokeController {
       }
     });
     // 模拟「外部进程」直接写磁盘（不经 fs IPC），验证 chokidar 实时同步
-    ipcMain.handle(
-      'smoke:writeFile',
-      async (_event, payload: unknown) => {
-        try {
-          const { root, rel, content } = payload as { root: string; rel: string; content: string };
-          const abs = path.join(root, rel);
-          await mkdir(path.dirname(abs), { recursive: true });
-          await writeFile(abs, content, 'utf8');
-          return { ok: true, path: abs };
-        } catch (e) {
-          return { ok: false, error: e instanceof Error ? e.message : String(e) };
-        }
-      },
-    );
+    ipcMain.handle('smoke:writeFile', async (_event, payload: unknown) => {
+      try {
+        const { root, rel, content } = payload as { root: string; rel: string; content: string };
+        const abs = path.join(root, rel);
+        await mkdir(path.dirname(abs), { recursive: true });
+        await writeFile(abs, content, 'utf8');
+        return { ok: true, path: abs };
+      } catch (e) {
+        return { ok: false, error: e instanceof Error ? e.message : String(e) };
+      }
+    });
     ipcMain.handle('smoke:seedGraph', async (_event, root: unknown) => {
       try {
         if (typeof root !== 'string') throw new Error('graph vault root is required');
@@ -79,7 +76,11 @@ export class SmokeController {
               ).join(' ');
               const abs = path.join(root, 'graph', group, `${name}.md`);
               await mkdir(path.dirname(abs), { recursive: true });
-              await writeFile(abs, `---\ntags: [smoke/${group}]\n---\n# ${name}\n\n${targets}\n`, 'utf8');
+              await writeFile(
+                abs,
+                `---\ntags: [smoke/${group}]\n---\n# ${name}\n\n${targets}\n`,
+                'utf8',
+              );
             }),
           ),
         );
@@ -124,11 +125,12 @@ export class SmokeController {
       `${JSON.stringify(finalReport, null, 2)}\n`,
       'utf8',
     );
-    const allPassed = finalReport.checks.every((c) => c.passed);
-    if (!allPassed) process.exitCode = 1;
+    // 空报告视为 harness 失败：不能因为一次检查都没跑就判定通过。
+    const allPassed = finalReport.checks.length > 0 && finalReport.checks.every((c) => c.passed);
     console.log(
       `[smoke] ${finalReport.checks.filter((c) => c.passed).length}/${finalReport.checks.length} checks passed; report written to ${this.deps.outputDir}`,
     );
-    setTimeout(() => app.quit(), 300);
+    // app.quit() 是可取消的优雅退出且不携带退出码；CI 需要确定性失败信号。
+    setTimeout(() => app.exit(allPassed ? 0 : 1), 300);
   }
 }

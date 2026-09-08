@@ -187,6 +187,41 @@ describe('Round-trip 验证矩阵', () => {
 });
 
 describe('Editor kernel 事务与保存', () => {
+  it('打开非常规 Markdown 不触发保存（UniqueID 初始化补 ID 非用户编辑）', async () => {
+    const container = document.createElement('div');
+    document.body.append(container);
+    const saved: string[] = [];
+    const kernel = createEditor(container, {
+      initialMarkdown:
+        '---\ntitle: x\n---\n\n# 标题\n\n*  宽列表标记\n\n行尾双空格   \n硬换行\n\n~~~js\ncode\n~~~\n',
+      slashMenu: false,
+      dragHandle: false,
+      saveDelayMs: 1,
+      onContentChange: (md) => saved.push(md),
+    });
+
+    await vi.waitFor(() => {
+      expect(kernel.editor.isInitialized).toBe(true);
+      const ids = (kernel.getJSON().content ?? [])
+        .map((b) => b.attrs?.blockId)
+        .filter((id) => typeof id === 'string' && id.length > 0);
+      expect(ids.length).toBeGreaterThan(0);
+    });
+    await kernel.flushPendingSave();
+    // UniqueID 确实补了 ID（初始化事务发生过），但它不得被当成用户编辑调度保存。
+    expect(saved).toEqual([]);
+    expect(kernel.getRevision()).toBe(0);
+
+    // 真实编辑仍然正常保存。
+    expect(kernel.editor.commands.insertContent('用户编辑')).toBe(true);
+    await kernel.flushPendingSave();
+    expect(saved).toHaveLength(1);
+    expect(saved[0]).toContain('用户编辑');
+
+    kernel.destroy();
+    container.remove();
+  });
+
   it('块拖拽等价事务可重排，保存后重开顺序与 block ID 一致', async () => {
     const container = document.createElement('div');
     document.body.append(container);
