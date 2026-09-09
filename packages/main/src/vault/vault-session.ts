@@ -14,8 +14,8 @@ export class VaultSession {
     private readonly deps: {
       appStore: AppStore;
       windows: WindowManager;
-      /** vault 变化回调（DEV-003 文件监视等外部联动；可选，不影响既有行为） */
-      onChanged?: (vault: VaultInfo | null) => void;
+      /** vault 变化回调（DEV-003 文件监视等外部联动；open 时先完成初始化再提交 session） */
+      onChanged?: (vault: VaultInfo | null) => void | Promise<void>;
     },
   ) {}
 
@@ -25,10 +25,23 @@ export class VaultSession {
 
   async open(root: string): Promise<VaultInfo> {
     const info = await ensureVault(root);
+    // 原子性：index/watch/git 等初始化全部成功后才提交 currentVault/持久化/广播。
+    const previous = this.currentVault;
+    try {
+      await this.deps.onChanged?.(info);
+    } catch (e) {
+      // 失败不上线：保留旧 session，并把外部联动（索引等）回滚到旧 root。
+      try {
+        await this.deps.onChanged?.(previous);
+      } catch {
+        /* 回滚尽力而为，不掩盖原始错误 */
+      }
+      throw e;
+    }
     this.currentVault = info;
     this.deps.appStore.setLastVault(info.root);
     this.deps.appStore.touchRecent(info.root);
-    this.broadcast();
+    this.emitChanged();
     return info;
   }
 
@@ -51,8 +64,14 @@ export class VaultSession {
     return this.open(last);
   }
 
-  private broadcast(): void {
+  private emitChanged(): void {
     this.deps.windows.sendToMainWindow('vault:changed', { vault: this.currentVault });
-    this.deps.onChanged?.(this.currentVault);
+  }
+
+  private broadcast(): void {
+    this.emitChanged();
+    void Promise.resolve(this.deps.onChanged?.(this.currentVault)).catch((error) => {
+      console.error('[vault] close cleanup failed:', error);
+    });
   }
 }

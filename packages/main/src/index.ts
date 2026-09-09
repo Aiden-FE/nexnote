@@ -59,14 +59,20 @@ async function bootstrap(): Promise<void> {
     getAppStore: () => appStore,
     devTools: !!process.env.NEXNOTE_DEVTOOLS,
   });
+  let initializingRoot: string | null | undefined;
   const vaultSession = new VaultSession({
     appStore,
     windows,
-    onChanged: () => {
-      const root = vaultSession.getCurrent()?.root ?? null;
-      git.setRoot(root);
-      index.setRoot(root);
-      void watch.sync();
+    onChanged: async (vault) => {
+      const root = vault?.root ?? null;
+      initializingRoot = root;
+      try {
+        git.setRoot(root);
+        index.setRoot(root);
+        await watch.sync();
+      } finally {
+        initializingRoot = undefined;
+      }
     },
   });
   let confidenceService: ConfidenceService | null = null;
@@ -80,7 +86,8 @@ async function bootstrap(): Promise<void> {
   );
   // 文件监视（DEV-003）：事件同时驱动树刷新与 DEV-004 的防抖单文件索引。
   const watch = new VaultWatchService({
-    getRoot: () => vaultSession.getCurrent()?.root ?? null,
+    getRoot: () =>
+      initializingRoot !== undefined ? initializingRoot : (vaultSession.getCurrent()?.root ?? null),
     emit: (event) => {
       windows?.sendToMainWindow('fs:changed', event);
       const root = vaultSession.getCurrent()?.root ?? null;

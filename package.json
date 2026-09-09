@@ -8,9 +8,12 @@
   "license": "UNLICENSED",
   "main": "out/main/index.js",
   "scripts": {
+    "predev": "node scripts/prepare-native-bindings.mjs --electron",
     "dev": "electron-vite dev",
+    "prestart": "node scripts/prepare-native-bindings.mjs --electron",
     "start": "electron-vite preview",
     "build": "electron-vite build",
+    "presmoke": "node scripts/prepare-native-bindings.mjs --electron",
     "smoke": "NEXNOTE_SMOKE=1 electron-vite dev",
     "smoke:ci": "node scripts/ci-smoke.mjs",
     "verify:release-config": "node scripts/verify-release-config.mjs",
@@ -21,6 +24,7 @@
     "lint:fix": "eslint . --fix",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
+    "pretest": "node scripts/prepare-native-bindings.mjs --node",
     "test": "vitest run",
     "test:watch": "vitest",
     "dist": "electron-vite build && node scripts/run-builder.mjs --mac --win --linux",
@@ -39,6 +43,7 @@
   },
   "devDependencies": {
     "@electron/notarize": "^3.1.1",
+    "@electron/rebuild": "^4.2.0",
     "@eslint/js": "^9.39.5",
     "@tailwindcss/vite": "^4.3.3",
     "@types/node": "^26.0.0",

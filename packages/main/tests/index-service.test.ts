@@ -503,6 +503,44 @@ describe('LinkIndexService', () => {
     svc2.close();
   });
 
+  it('切换 root 打开数据库失败时保留旧 root 与旧数据库', async () => {
+    await page('a.md', '', '# A\n');
+    const svc = new LinkIndexService();
+    svc.setRoot(tmp);
+    const bad = path.join(tmp, 'bad-vault');
+    await mkdir(path.join(bad, '.nexnote', 'index.db'), { recursive: true });
+
+    expect(() => svc.setRoot(bad)).toThrow();
+    expect(svc.rootPath).toBe(tmp);
+    expect(svc.pageSummary('a.md')?.path).toBe('a.md');
+    svc.close();
+  });
+
+  it('首次 setRoot 打开数据库失败时不残留 root', async () => {
+    await mkdir(path.join(tmp, '.nexnote', 'index.db'), { recursive: true });
+    const svc = new LinkIndexService();
+
+    expect(() => svc.setRoot(tmp)).toThrow();
+    expect(svc.rootPath).toBeNull();
+    expect(svc.graph()).toEqual({ pages: [], links: [] });
+    svc.close();
+  });
+
+  it('新 root 与旧 root 都无法重开时保持安全关闭态', async () => {
+    await page('a.md', '', '# A\n');
+    const svc = new LinkIndexService();
+    svc.setRoot(tmp);
+    await rm(path.join(tmp, '.nexnote', 'index.db'), { force: true });
+    await mkdir(path.join(tmp, '.nexnote', 'index.db'));
+    const bad = path.join(tmp, 'bad-vault');
+    await mkdir(path.join(bad, '.nexnote', 'index.db'), { recursive: true });
+
+    expect(() => svc.setRoot(bad)).toThrow();
+    expect(svc.rootPath).toBeNull();
+    expect(svc.graph()).toEqual({ pages: [], links: [] });
+    svc.close();
+  });
+
   it('FTS 性能：千级页面搜索 < 100ms（验收项 4）', async () => {
     // 生成 1000 个小页面
     const jobs: Promise<void>[] = [];
