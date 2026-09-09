@@ -12,7 +12,7 @@ export default defineConfig({
     // electron / electron-updater 等真实依赖保持外部化。
     plugins: [
       externalizeDepsPlugin({
-        include: ['@napi-rs/keyring'],
+        include: ['@napi-rs/keyring', 'dugite'],
         exclude: ['@nexnote/shared'],
       }),
     ],

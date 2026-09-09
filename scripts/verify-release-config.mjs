@@ -393,10 +393,10 @@ check('preflight 强制 channel manifest、blockmap 与 Linux .asc', () => {
   )
     throw new Error('native mac manifests must remain isolated until explicit merge');
   if (
-    !/Rebuild bundled Git for runner target architecture/.test(releaseWorkflow) ||
+    !/Restore and verify bundled Git payload/.test(releaseWorkflow) ||
     !/file "\$gitbin"/.test(releaseWorkflow)
   )
-    throw new Error('mac dugite binary must be rebuilt and architecture checked');
+    throw new Error('mac dugite binary must be restored and architecture checked');
 });
 check('smoke 缺产物必须失败、写入临时目录且 QA gate 顺序一致', () => {
   if (/skipping e2e smoke|process\.exit\(0\)/.test(smoke))
@@ -470,6 +470,50 @@ check('捆绑 dugite Git 随附 GPLv2 许可与源码 offer', () => {
       throw new Error('SOURCE_OFFER must reference GPLv2 section 3');
     if (file.endsWith('NOTICE') && !/dugite/.test(text))
       throw new Error('NOTICE must identify the bundled dugite Git');
+  }
+});
+
+check('dugite 为 optionalDependency 且发布门禁校验 bundled Git payload', () => {
+  const rootPkg = JSON.parse(readFileSync(resolve(root, 'package.json'), 'utf8'));
+  if (rootPkg.dependencies?.dugite)
+    throw new Error('dugite must not be a hard dependency (offline install would fail)');
+  if (rootPkg.optionalDependencies?.dugite !== '^3.2.3')
+    throw new Error('dugite must be an optionalDependency of the root package');
+  const mainPkg = JSON.parse(readFileSync(resolve(root, 'packages/main/package.json'), 'utf8'));
+  if (mainPkg.dependencies?.dugite)
+    throw new Error('packages/main dugite must not be a hard dependency');
+  if (mainPkg.optionalDependencies?.dugite !== '^3.2.3')
+    throw new Error('packages/main dugite must be an optionalDependency');
+  const workspaceYaml = readFileSync(resolve(root, 'pnpm-workspace.yaml'), 'utf8');
+  if (!/onlyBuiltDependencies:[\s\S]*?- dugite/.test(workspaceYaml))
+    throw new Error('pnpm-workspace must keep dugite build-script allowlist (pnpm 10 compat)');
+  if (!/allowBuilds:[\s\S]*?dugite:\s*true/.test(workspaceYaml))
+    throw new Error('pnpm-workspace allowBuilds must include dugite');
+  if (/ignore-scripts|ignoreScripts/.test(workspaceYaml))
+    throw new Error('workspace must not disable install scripts globally');
+  const electronVite = readFileSync(resolve(root, 'electron.vite.config.ts'), 'utf8');
+  if (!/include:\s*\[[^\]]*['"]dugite['"]/.test(electronVite))
+    throw new Error(
+      'dugite must stay externalized so its packaged __dirname resolves app.asar.unpacked',
+    );
+  const gitRuntime = readFileSync(resolve(root, 'packages/main/src/git/git-runtime.ts'), 'utf8');
+  if (
+    !/if \(options\.allowSystemFallback\)[\s\S]*source: 'system'[\s\S]*source: 'missing'/.test(
+      gitRuntime,
+    )
+  )
+    throw new Error('git runtime resolver must fail closed without system fallback');
+  const gitService = readFileSync(resolve(root, 'packages/main/src/git/git-service.ts'), 'utf8');
+  if (!/GIT_BINARY_MISSING/.test(gitService))
+    throw new Error('GitService must surface GIT_BINARY_MISSING instead of silent PATH fallback');
+  const verifyScript = readFileSync(resolve(root, 'scripts/verify-bundled-git.mjs'), 'utf8');
+  if (!/app\.asar\.unpacked/.test(verifyScript) || !/::error::/.test(verifyScript))
+    throw new Error('verify-bundled-git must walk asar.unpacked and emit GitHub annotations');
+  for (const workflow of [releaseWorkflow, devWorkflow, nightlyWorkflow]) {
+    if (!/verify-bundled-git\.mjs --install-tree/.test(workflow))
+      throw new Error('workflows must verify install-tree bundled Git after install');
+    if (!/verify-bundled-git\.mjs --app/.test(workflow))
+      throw new Error('workflows must verify packaged bundled Git after packaging');
   }
 });
 
