@@ -96,6 +96,7 @@ async function bootstrap(): Promise<void> {
   const fs = new VaultFsService(() => vaultSession.getCurrent()?.root ?? null);
   const git = new GitService({
     useSystemGit: appStore.getUseSystemGit(),
+    allowSystemGitFallback: !app.isPackaged,
     defaultDebounceMs: appStore.getAutoCommitDebounceMs(),
   });
   const confidence = new ConfidenceService(

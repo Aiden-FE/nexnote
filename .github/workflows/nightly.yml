@@ -25,10 +25,16 @@ jobs:
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with: { node-version: 22, cache: pnpm }
       - run: pnpm install --frozen-lockfile
+      - name: Restore and verify bundled Git payload
+        run: |
+          pnpm rebuild dugite
+          node scripts/verify-bundled-git.mjs --install-tree .
       - run: pnpm lint && pnpm typecheck && pnpm test
       - run: pnpm dist:mac -- --arm64 --publish never
         env:
           ELECTRON_NO_ASAR: '1'
+      - name: Verify packaged bundled Git
+        run: node scripts/verify-bundled-git.mjs --app release
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: nexnote-nightly-macos

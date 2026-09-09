@@ -129,11 +129,13 @@ jobs:
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with: { node-version: 22, cache: pnpm }
       - run: pnpm install --frozen-lockfile
-      - name: Rebuild bundled Git for runner target architecture
+      - name: Restore and verify bundled Git payload
+        run: |
+          pnpm rebuild dugite
+          node scripts/verify-bundled-git.mjs --install-tree .
+      - name: Verify bundled Git runner architecture
         if: runner.os == 'macOS'
         run: |
-          rm -rf node_modules/.pnpm/dugite@*/node_modules/dugite/git
-          pnpm rebuild dugite
           gitbin=$(find node_modules -path '*/dugite/git/bin/git' -print -quit)
           test -x "$gitbin" || { echo '::error::dugite Git missing'; exit 1; }
           file "$gitbin" | grep -q "${{ runner.arch == 'ARM64' && 'arm64' || 'x86_64' }}" || { echo '::error::dugite Git architecture mismatch'; exit 1; }
@@ -175,6 +177,9 @@ jobs:
       - name: Package Linux distributables
         if: runner.os == 'Linux'
         run: node scripts/run-builder.mjs ${{ matrix.target }} --publish never
+
+      - name: Verify packaged bundled Git
+        run: node scripts/verify-bundled-git.mjs --app release
 
       - name: Verify macOS signature and notarization staple
         if: runner.os == 'macOS'

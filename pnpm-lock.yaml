@@ -14,9 +14,6 @@ importers:
       better-sqlite3:
         specifier: ^12.11.1
         version: 12.11.1
-      dugite:
-        specifier: ^3.2.3
-        version: 3.2.3
       electron-updater:
         specifier: ^6.8.9
         version: 6.8.9(supports-color@7.1.0)
@@ -85,6 +82,9 @@ importers:
       '@napi-rs/keyring':
         specifier: ^1.3.0
         version: 1.3.0
+      dugite:
+        specifier: ^3.2.3
+        version: 3.2.3
 
   packages/kernel:
     dependencies:
@@ -149,9 +149,6 @@ importers:
       chokidar:
         specifier: ^5.0.0
         version: 5.0.0
-      dugite:
-        specifier: ^3.2.3
-        version: 3.2.3
       simple-git:
         specifier: ^3.36.0
         version: 3.36.0(supports-color@7.1.0)
@@ -159,6 +156,10 @@ importers:
       '@types/better-sqlite3':
         specifier: ^7.6.13
         version: 7.6.13
+    optionalDependencies:
+      dugite:
+        specifier: ^3.2.3
+        version: 3.2.3
 
   packages/plugin-api: {}
 
@@ -5280,13 +5281,15 @@ snapshots:
 
   aws4@1.13.2: {}
 
-  b4a@1.8.1: {}
+  b4a@1.8.1:
+    optional: true
 
   balanced-match@1.0.0: {}
 
   balanced-match@4.0.4: {}
 
-  bare-events@2.9.2: {}
+  bare-events@2.9.2:
+    optional: true
 
   bare-fs@4.8.1:
     dependencies:
@@ -5298,8 +5301,10 @@ snapshots:
     transitivePeerDependencies:
       - bare-abort-controller
       - react-native-b4a
+    optional: true
 
-  bare-path@3.1.2: {}
+  bare-path@3.1.2:
+    optional: true
 
   bare-stream@2.13.4(bare-events@2.9.2):
     dependencies:
@@ -5310,10 +5315,12 @@ snapshots:
       bare-events: 2.9.2
     transitivePeerDependencies:
       - react-native-b4a
+    optional: true
 
   bare-url@2.5.4:
     dependencies:
       bare-path: 3.1.2
+    optional: true
 
   base64-js@1.5.1: {}
 
@@ -5750,6 +5757,7 @@ snapshots:
       - bare-abort-controller
       - bare-buffer
       - react-native-b4a
+    optional: true
 
   dunder-proto@1.0.1:
     dependencies:
@@ -6049,6 +6057,7 @@ snapshots:
       bare-events: 2.9.2
     transitivePeerDependencies:
       - bare-abort-controller
+    optional: true
 
   expand-template@2.0.3: {}
 
@@ -6058,7 +6067,8 @@ snapshots:
 
   fast-deep-equal@3.1.3: {}
 
-  fast-fifo@1.3.2: {}
+  fast-fifo@1.3.2:
+    optional: true
 
   fast-json-stable-stringify@2.1.0: {}
 
@@ -6999,6 +7009,7 @@ snapshots:
     transitivePeerDependencies:
       - bare-abort-controller
       - react-native-b4a
+    optional: true
 
   strictdom@1.0.1: {}
 
@@ -7075,6 +7086,7 @@ snapshots:
       - bare-abort-controller
       - bare-buffer
       - react-native-b4a
+    optional: true
 
   tar@7.5.22:
     dependencies:
@@ -7090,6 +7102,7 @@ snapshots:
     transitivePeerDependencies:
       - bare-abort-controller
       - react-native-b4a
+    optional: true
 
   temp-file@3.4.0:
     dependencies:
@@ -7106,6 +7119,7 @@ snapshots:
       b4a: 1.8.1
     transitivePeerDependencies:
       - react-native-b4a
+    optional: true
 
   tiny-async-pool@1.3.0:
     dependencies:

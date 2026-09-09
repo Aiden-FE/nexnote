@@ -288,7 +288,7 @@ export function registerVaultHandlers(registrar: IpcRegistrar): void {
       ahead: 0,
       behind: 0,
       remote: null,
-      usingSystemGit: services.appStore.getUseSystemGit(),
+      usingSystemGit: services.git.effectiveUsesSystemGit(),
       conflict: false,
     });
     return ok(undefined);
