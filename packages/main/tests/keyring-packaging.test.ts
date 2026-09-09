@@ -24,11 +24,12 @@ describe('native keyring packaging contract', () => {
     expect(config).toContain('node_modules/@napi-rs/keyring/**');
     expect(config).toContain('node_modules/@napi-rs/keyring-*/**');
     expect(packageJson.optionalDependencies?.['@napi-rs/keyring']).toBe('^1.3.0');
-    expect(
-      readFileSync(
-        path.resolve(fileURLToPath(new URL('../../../electron.vite.config.ts', import.meta.url))),
-        'utf8',
-      ),
-    ).toContain("include: ['@napi-rs/keyring']");
+    const electronVite = readFileSync(
+      path.resolve(fileURLToPath(new URL('../../../electron.vite.config.ts', import.meta.url))),
+      'utf8',
+    );
+    expect(electronVite).toContain("'@napi-rs/keyring'");
+    // dugite 的 __dirname 推导要求它在 Electron main 构建中保持 externalize。
+    expect(electronVite).toContain("'dugite'");
   });
 });

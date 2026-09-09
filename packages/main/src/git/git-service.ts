@@ -1,9 +1,9 @@
-import { existsSync, mkdirSync } from 'node:fs';
+import { mkdirSync } from 'node:fs';
 import { promises as fsp } from 'node:fs';
 import * as path from 'node:path';
 import { tmpdir } from 'node:os';
 import { simpleGit, type SimpleGit } from 'simple-git';
-import { resolveGitBinary, setupEnvironment } from 'dugite';
+import { resolveInstalledGitRuntime, type GitRuntimeResolution } from './git-runtime';
 import type {
   GitCommit,
   GitOperationResult,
@@ -40,6 +40,12 @@ export class GitServiceError extends Error {
 export interface GitServiceOptions {
   /** 生产默认使用 dugite 的嵌入式 Git；因安装损坏不可用时仅开发环境退回系统 Git。 */
   useSystemGit?: boolean;
+  /**
+   * 是否允许在 bundled Git 不可用时回退 PATH 系统 Git。
+   * 应用入口以 !app.isPackaged 传入：开发 checkout（fresh install 下载失败/离线）可继续调试；
+   * 打包产物默认 fail-closed，避免用户机静默依赖不确定的 PATH Git。
+   */
+  allowSystemGitFallback?: boolean;
   defaultDebounceMs?: number;
   minCommitIntervalMs?: number;
 }
@@ -67,6 +73,8 @@ export type GitFileHistoryIndex = Map<string, GitFileHistory>;
 export class GitService {
   private root: string | null = null;
   private useSystemGit: boolean;
+  private readonly allowSystemGitFallback: boolean;
+  private systemFallbackWarned = false;
   private readonly defaultDebounceMs: number;
   private readonly minCommitIntervalMs: number;
   private autoTimer: ReturnType<typeof setTimeout> | null = null;
@@ -98,6 +106,7 @@ export class GitService {
 
   constructor(options: GitServiceOptions = {}) {
     this.useSystemGit = options.useSystemGit ?? false;
+    this.allowSystemGitFallback = options.allowSystemGitFallback ?? false;
     this.defaultDebounceMs = normalizeDebounceMs(options.defaultDebounceMs ?? DEFAULT_DEBOUNCE_MS);
     this.minCommitIntervalMs = options.minCommitIntervalMs ?? MIN_COMMIT_INTERVAL_MS;
     this.debounceMs = this.defaultDebounceMs;
@@ -110,6 +119,17 @@ export class GitService {
 
   setUseSystemGit(enabled: boolean): void {
     this.useSystemGit = enabled;
+    this.systemFallbackWarned = false;
+  }
+
+  /** 实际生效的 Git 是否来自系统 PATH（含开发环境 payload 缺失的回退）。 */
+  effectiveUsesSystemGit(): boolean {
+    return (
+      resolveInstalledGitRuntime({
+        useSystemGit: this.useSystemGit,
+        allowSystemFallback: this.allowSystemGitFallback,
+      }).source === 'system'
+    );
   }
 
   /** 读取当前自动提交防抖窗口。 */
@@ -141,11 +161,11 @@ export class GitService {
     this.commitListener = listener;
   }
 
-  async isRepository(root: string): Promise<boolean> {
+  async isRepository(root: string, runtime?: GitRuntimeResolution): Promise<boolean> {
     try {
       // simple-git discovery walks upward; a vault nested inside another repository
       // must not accidentally operate on that parent repository.
-      const topLevel = (await this.git(root).raw(['rev-parse', '--show-toplevel'])).trim();
+      const topLevel = (await this.git(root, runtime).raw(['rev-parse', '--show-toplevel'])).trim();
       const [realTopLevel, realRoot] = await Promise.all([
         fsp.realpath(topLevel).catch(() => path.resolve(topLevel)),
         fsp.realpath(root).catch(() => path.resolve(root)),
@@ -227,8 +247,9 @@ export class GitService {
   }
 
   async statusFor(root: string): Promise<GitStatus> {
-    const git = this.git(root);
-    if (!(await this.isRepository(root))) {
+    const runtime = this.resolveRuntime();
+    const git = this.git(root, runtime);
+    if (!(await this.isRepository(root, runtime))) {
       return {
         repository: false,
         branch: null,
@@ -237,7 +258,7 @@ export class GitService {
         behind: 0,
         remote: null,
         conflict: false,
-        usingSystemGit: this.useSystemGit,
+        usingSystemGit: runtime.source === 'system',
       };
     }
     const status = await git.status();
@@ -252,7 +273,7 @@ export class GitService {
       behind: status.behind,
       remote,
       conflict,
-      usingSystemGit: this.useSystemGit,
+      usingSystemGit: runtime.source === 'system',
     };
   }
 
@@ -579,25 +600,24 @@ export class GitService {
     if (alwaysLocal.length > 0) await git.raw(['rm', '--cached', '--', ...alwaysLocal]);
   }
 
-  private git(baseDir: string): SimpleGit {
-    // dugite exports a known, version-pinned binary. A source checkout may not have
-    // downloaded it yet; only then do we use PATH so tests/development stay runnable.
-    let binary = 'git';
-    let usingEmbeddedGit = false;
-    if (!this.useSystemGit) {
-      try {
-        const candidate = resolveGitBinary();
-        if (candidate && existsSync(candidate)) {
-          binary = candidate;
-          usingEmbeddedGit = true;
-        }
-      } catch {
-        // Installed package missing its postinstall payload; PATH fallback is explicit in diagnostics/UI.
-      }
+  private git(baseDir: string, runtime: GitRuntimeResolution = this.resolveRuntime()): SimpleGit {
+    if (runtime.source === 'missing') {
+      throw new GitServiceError(
+        '应用内捆绑 Git 缺失（安装或打包异常），且未启用系统 Git 回退；请重新安装或到设置中启用「使用系统 Git」',
+        'GIT_BINARY_MISSING',
+      );
+    }
+    if (runtime.source === 'system' && !this.useSystemGit && !this.systemFallbackWarned) {
+      this.systemFallbackWarned = true;
+      console.warn(
+        '[git] bundled Git payload 未就位（postinstall 下载失败或离线安装），当前回退 PATH 系统 Git；' +
+          '发布/打包前请先执行 pnpm rebuild dugite 恢复捆绑 Git',
+      );
     }
     // Do not inject dugite paths when its downloaded executable is unavailable.
     // In that development fallback, preserve the user's normal Git environment.
-    const env = usingEmbeddedGit ? setupEnvironment({ ...process.env }).env : process.env;
+    const binary = runtime.binary;
+    const env = runtime.environment ?? process.env;
     return simpleGit({
       baseDir,
       binary,
@@ -611,6 +631,13 @@ export class GitService {
         allowUnsafeTemplateDir: true,
       },
     }).env(env);
+  }
+
+  private resolveRuntime(): GitRuntimeResolution {
+    return resolveInstalledGitRuntime({
+      useSystemGit: this.useSystemGit,
+      allowSystemFallback: this.allowSystemGitFallback,
+    });
   }
 
   private requireRoot(): string {
