@@ -1,5 +1,5 @@
 {
-  "finishedAt": "2026-09-09T01:35:31.399Z",
+  "finishedAt": "2026-09-09T02:00:51.284Z",
   "checks": [
     {
       "name": "首启动向导可见（新建/打开/克隆三选一）",
@@ -12,7 +12,7 @@
     {
       "name": "vault:create 成功",
       "passed": true,
-      "detail": "/var/folders/np/sd6hrwgj7gs9m5chdfpcycv00000gn/T/nexnote-smoke-vault-QtpNbW/smoke-vault"
+      "detail": "/var/folders/np/sd6hrwgj7gs9m5chdfpcycv00000gn/T/nexnote-smoke-vault-RXoAxy/smoke-vault"
     },
     {
       "name": "工作区出现（vault:changed 驱动）",
@@ -288,7 +288,7 @@
     {
       "name": "重命名：树实时更新，wikilink 已替换",
       "passed": true,
-      "detail": "linkSource=e-4adb-9a90-1f201d99e46b\n---\n\n看 [[改名后]]\n"
+      "detail": "linkSource=a-40e9-a172-1d24533e1a4e\n---\n\n看 [[改名后]]\n"
     },
     {
       "name": "重命名：已打开 tab 的路径与标题联动",
@@ -343,7 +343,7 @@
     {
       "name": "500 节点 / 2000 边连续交互 FPS ≥ 30",
       "passed": true,
-      "detail": "fps=120.5 wheels=107"
+      "detail": "fps=121.5 wheels=108"
     },
     {
       "name": "文件夹子树过滤生效",
@@ -371,7 +371,7 @@
     {
       "name": "DEV-008 IPC getConfidence 返回缓存分数",
       "passed": true,
-      "detail": "{\"pageId\":2,\"activeConfidence\":{\"pageId\":2,\"path\":\"graph/group-a/group-a-node-0.md\",\"score\":38,\"factors\":[{\"key\":\"stability\",\"label\":\"内容稳定性\",\"score\":0.4,\"weight\":0.25,\"contribution\":10,\"detail\":\"0 次历史改动按近期权重聚合，改动越小越稳定\"},{\"key\":\"review_count\",\"label\":\"修订次数\",\"score\":0,\"weight\":0.15,\"contribution\":0,\"detail\":\"0 次提交，20 次后饱和\"},{\"key\":\"author_count\",\"label\":\"作者数量\",\"score\":0.25,\"weight\":0.15,\"contribution\":3.75,\"detail\":\"1 位作者，单人保留基础分\"},{\"key\":\"age\",\"label\":\"文档年龄\",\"score\":0,\"weight\":0.15,\"contribution\":0,\"detail\":\"文档存活 0 天，按对数增长\"},{\"key\":\"link_authority\",\"label\":\"链接权威度\",\"score\":0.94,\"weight\":0.2,\"contribution\":18.8,\"detail\":\"由去重入链图的简化 PageRank 归一化\"},{\"key\":\"manual_boost\",\"label\":\"手动加权\",\"score\":0.5,\"weight\":0.1,\"contribution\":5,\"detail\":\"未设置 confidence_boost，使用中性分\"}],\"computedAt\":\"2026-09-09T01:35:17.009Z\"}}"
+      "detail": "{\"pageId\":2,\"activeConfidence\":{\"pageId\":2,\"path\":\"graph/group-a/group-a-node-0.md\",\"score\":38,\"factors\":[{\"key\":\"stability\",\"label\":\"内容稳定性\",\"score\":0.4,\"weight\":0.25,\"contribution\":10,\"detail\":\"0 次历史改动按近期权重聚合，改动越小越稳定\"},{\"key\":\"review_count\",\"label\":\"修订次数\",\"score\":0,\"weight\":0.15,\"contribution\":0,\"detail\":\"0 次提交，20 次后饱和\"},{\"key\":\"author_count\",\"label\":\"作者数量\",\"score\":0.25,\"weight\":0.15,\"contribution\":3.75,\"detail\":\"1 位作者，单人保留基础分\"},{\"key\":\"age\",\"label\":\"文档年龄\",\"score\":0,\"weight\":0.15,\"contribution\":0,\"detail\":\"文档存活 0 天，按对数增长\"},{\"key\":\"link_authority\",\"label\":\"链接权威度\",\"score\":0.94,\"weight\":0.2,\"contribution\":18.8,\"detail\":\"由去重入链图的简化 PageRank 归一化\"},{\"key\":\"manual_boost\",\"label\":\"手动加权\",\"score\":0.5,\"weight\":0.1,\"contribution\":5,\"detail\":\"未设置 confidence_boost，使用中性分\"}],\"computedAt\":\"2026-09-09T02:00:36.970Z\"}}"
     },
     {
       "name": "DEV-008 属性面板显示真实置信度总分与六个因子",
@@ -434,7 +434,7 @@
     {
       "name": "DEV-015 保存文件为 Obsidian 原生语法（围栏/$$/$）",
       "passed": true,
-      "detail": "```mermaid\ngraph TD\n  A[\"开始\"] --> B[\"结束\"]\n```\n\n$$\nE = mc^2\n$$\n\n# $a^2 + b^2 = c^2$内置插件演示 ^oezyjg1s\n\n ^anxq771t"
+      "detail": "```mermaid\ngraph TD\n  A[\"开始\"] --> B[\"结束\"]\n```\n\n$$\nE = mc^2\n$$\n\n# $a^2 + b^2 = c^2$内置插件演示 ^7482r01s\n\n ^a3hxhz1t"
     },
     {
       "name": "DEV-015 设置页插件分区可见",
@@ -468,24 +468,24 @@
     }
   ],
   "captures": [
-    "/tmp/nexnote-smoke-dev020-gui.8y2AWo/01-onboarding.png",
-    "/tmp/nexnote-smoke-dev020-gui.8y2AWo/02-workspace.png",
-    "/tmp/nexnote-smoke-dev020-gui.8y2AWo/02b-editor.png",
-    "/tmp/nexnote-smoke-dev020-gui.8y2AWo/03-source-mode.png",
-    "/tmp/nexnote-smoke-dev020-gui.8y2AWo/04-source-mode-reset.png",
-    "/tmp/nexnote-smoke-dev020-gui.8y2AWo/04-palette.png",
-    "/tmp/nexnote-smoke-dev020-gui.8y2AWo/05-dark.png",
-    "/tmp/nexnote-smoke-dev020-gui.8y2AWo/06-light.png",
-    "/tmp/nexnote-smoke-dev020-gui.8y2AWo/07-sidebar-collapsed.png",
-    "/tmp/nexnote-smoke-dev020-gui.8y2AWo/09-page-tree.png",
-    "/tmp/nexnote-smoke-dev020-gui.8y2AWo/10-tags.png",
-    "/tmp/nexnote-smoke-dev020-gui.8y2AWo/11-tree-final.png",
-    "/tmp/nexnote-smoke-dev020-gui.8y2AWo/16-global-graph.png",
-    "/tmp/nexnote-smoke-dev020-gui.8y2AWo/17-local-graph.png",
-    "/tmp/nexnote-smoke-dev020-gui.8y2AWo/18-confidence-properties.png",
-    "/tmp/nexnote-smoke-dev020-gui.8y2AWo/09-git-timeline.png",
-    "/tmp/nexnote-smoke-dev020-gui.8y2AWo/19-builtin-mermaid-katex.png",
-    "/tmp/nexnote-smoke-dev020-gui.8y2AWo/20-builtin-plugins-settings.png",
-    "/tmp/nexnote-smoke-dev020-gui.8y2AWo/08-recent-list.png"
+    "/tmp/nexnote-smoke-master-postmerge.kqMh1N/01-onboarding.png",
+    "/tmp/nexnote-smoke-master-postmerge.kqMh1N/02-workspace.png",
+    "/tmp/nexnote-smoke-master-postmerge.kqMh1N/02b-editor.png",
+    "/tmp/nexnote-smoke-master-postmerge.kqMh1N/03-source-mode.png",
+    "/tmp/nexnote-smoke-master-postmerge.kqMh1N/04-source-mode-reset.png",
+    "/tmp/nexnote-smoke-master-postmerge.kqMh1N/04-palette.png",
+    "/tmp/nexnote-smoke-master-postmerge.kqMh1N/05-dark.png",
+    "/tmp/nexnote-smoke-master-postmerge.kqMh1N/06-light.png",
+    "/tmp/nexnote-smoke-master-postmerge.kqMh1N/07-sidebar-collapsed.png",
+    "/tmp/nexnote-smoke-master-postmerge.kqMh1N/09-page-tree.png",
+    "/tmp/nexnote-smoke-master-postmerge.kqMh1N/10-tags.png",
+    "/tmp/nexnote-smoke-master-postmerge.kqMh1N/11-tree-final.png",
+    "/tmp/nexnote-smoke-master-postmerge.kqMh1N/16-global-graph.png",
+    "/tmp/nexnote-smoke-master-postmerge.kqMh1N/17-local-graph.png",
+    "/tmp/nexnote-smoke-master-postmerge.kqMh1N/18-confidence-properties.png",
+    "/tmp/nexnote-smoke-master-postmerge.kqMh1N/09-git-timeline.png",
+    "/tmp/nexnote-smoke-master-postmerge.kqMh1N/19-builtin-mermaid-katex.png",
+    "/tmp/nexnote-smoke-master-postmerge.kqMh1N/20-builtin-plugins-settings.png",
+    "/tmp/nexnote-smoke-master-postmerge.kqMh1N/08-recent-list.png"
   ]
 }
