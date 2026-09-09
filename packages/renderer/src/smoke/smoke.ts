@@ -8,7 +8,7 @@ import { useThemeStore } from '../theme/theme-store';
 import { dockPanelRegistry } from '../registries';
 import { getActiveEditor } from '../editor/active-editor';
 import { openSettings } from '../lib/open-settings';
-import { deleteEntry, moveEntry, renameEntry } from '../features/sidebar/page-tree/ops';
+import { deleteEntry, moveEntry } from '../features/sidebar/page-tree/ops';
 import { BUILTIN_PLUGIN_IDS } from '@nexnote/shared';
 
 interface SmokeCaptureResult {
@@ -232,7 +232,7 @@ export async function runSmokeIfEnabled(): Promise<void> {
       '---\n' +
       'title: 源码模式冒烟\n' +
       '---\n\n' +
-      '# 源码模式冒烟\n\n' +
+      '# 源码模式冒烟 ^smokefix1\n\n' +
       '*  宽列表标记\n\n' +
       '行尾双空格   \n' +
       '硬换行后一行\n\n' +
@@ -299,6 +299,17 @@ export async function runSmokeIfEnabled(): Promise<void> {
         const pm = document.querySelector<HTMLElement>('[data-testid="live-preview"] .ProseMirror');
         return !!pm && pm.getAttribute('contenteditable') === 'false';
       })(),
+    );
+    check(
+      '初次进入源码模式：未输入前右侧预览已渲染正文',
+      (
+        document.querySelector('[data-testid="live-preview"] .ProseMirror')?.textContent ?? ''
+      ).includes('源码模式冒烟'),
+    );
+    check(
+      '源码模式块锚点视觉弱化（.cm-block-anchor 渲染锚点文本）',
+      (document.querySelector('[data-testid="source-editor-pane"] .cm-block-anchor')?.textContent ??
+        '') === '^smokefix1',
     );
     check(
       '预览渲染 Mermaid SVG 与 KaTeX',
@@ -414,6 +425,29 @@ export async function runSmokeIfEnabled(): Promise<void> {
             !!document.querySelector('[data-testid="source-mode-view"]')
           );
         }),
+      );
+
+      // 源码 → 块编辑：正文完整显示，标题未被锚点篡改（GUI 反馈）
+      window.dispatchEvent(
+        new KeyboardEvent('keydown', {
+          key: 'e',
+          [isMac ? 'metaKey' : 'ctrlKey']: true,
+          bubbles: true,
+          cancelable: true,
+        }),
+      );
+      check(
+        '源码→块编辑：正文完整显示，标题未被锚点篡改',
+        (await waitFor(() => {
+          const view = document.querySelector(
+            '[data-testid="editor-view"][data-path="源码模式跳转目标.md"]',
+          );
+          return (
+            !!view?.querySelector('.ProseMirror') && (view.textContent ?? '').includes('目标页正文')
+          );
+        })) &&
+          useTabStore.getState().tabs.find((t) => t.pagePath === '源码模式跳转目标.md')?.title ===
+            '源码模式跳转目标',
       );
     }
 
@@ -649,7 +683,58 @@ export async function runSmokeIfEnabled(): Promise<void> {
     // 先打开「外部笔记」tab，再经真实 UI 入口重命名：flush 所有编辑器 → renameLinked → 树即时联动。
     openPage('研究/外部笔记.md');
     await sleep(300);
-    await renameEntry('研究/外部笔记.md', 'file', '改名后');
+    check(
+      '当前打开页面在树中显示激活态（data-active）',
+      treeRow('研究/外部笔记.md')?.getAttribute('data-active') === 'true',
+    );
+    // 真实 UI 链路：右键 → 重命名 → 逐字输入（每个字符后不得被重新全选覆盖）→ Enter 提交。
+    treeRow('研究/外部笔记.md')?.dispatchEvent(
+      new MouseEvent('contextmenu', { bubbles: true, cancelable: true, clientX: 24, clientY: 24 }),
+    );
+    const renameMenuOpen = await waitFor(
+      () => !!document.querySelector('[data-testid="tree-context-menu"]'),
+    );
+    const renameMenuBtn = [
+      ...document.querySelectorAll<HTMLButtonElement>(
+        '[data-testid="tree-context-menu"] [role="menuitem"]',
+      ),
+    ].find((btn) => (btn.textContent ?? '').includes('重命名'));
+    renameMenuBtn?.click();
+    const renameInputReady = await waitFor(
+      () => !!document.querySelector<HTMLInputElement>('[data-testid="tree-rename-input"]'),
+    );
+    const renameInput = document.querySelector<HTMLInputElement>(
+      '[data-testid="tree-rename-input"]',
+    );
+    let renameTypedOk = false;
+    if (renameMenuOpen && renameMenuBtn && renameInputReady && renameInput) {
+      const renameSetter = Object.getOwnPropertyDescriptor(
+        HTMLInputElement.prototype,
+        'value',
+      )?.set;
+      for (const ch of '改名后') {
+        if (!renameSetter) break;
+        const start = renameInput.selectionStart ?? renameInput.value.length;
+        const end = renameInput.selectionEnd ?? renameInput.value.length;
+        renameSetter.call(
+          renameInput,
+          renameInput.value.slice(0, start) + ch + renameInput.value.slice(end),
+        );
+        renameInput.setSelectionRange(start + ch.length, start + ch.length);
+        renameInput.dispatchEvent(new Event('input', { bubbles: true }));
+        await sleep(30);
+      }
+      renameTypedOk = renameInput.value === '改名后';
+      renameInput.dispatchEvent(
+        new KeyboardEvent('keydown', { key: 'Enter', bubbles: true, cancelable: true }),
+      );
+      await sleep(300);
+    }
+    check(
+      '右键重命名：连续逐字输入不被全选覆盖',
+      renameTypedOk,
+      `menu=${renameMenuOpen} btn=${!!renameMenuBtn} value=${renameInput?.value ?? '(none)'}`,
+    );
     const renamedLinkSource = await invoke('fs:readTextFile', { path: '链接源.md' });
     check(
       '重命名：树实时更新，wikilink 已替换',
@@ -662,6 +747,10 @@ export async function runSmokeIfEnabled(): Promise<void> {
       '[data-testid="tab"][data-page-path="研究/改名后.md"]',
     );
     check('重命名：已打开 tab 的路径与标题联动', !!renamedTab);
+    check(
+      '重命名后激活态跟随新路径',
+      treeRow('研究/改名后.md')?.getAttribute('data-active') === 'true',
+    );
 
     // 移动（目录拖拽走同一 IPC）
     await moveEntry('研究/改名后.md', '');

@@ -38,6 +38,8 @@ export function LivePreview({ markdown, sourcePath, onNavigate, scrollRef }: Liv
   const kernelRef = useRef<EditorKernelInstance | null>(null);
   const schedulerRef = useRef<PreviewScheduler | null>(null);
   const [renderError, setRenderError] = useState<string | null>(null);
+  // 首帧必须同步渲染：进入源码模式时右侧不得先空白再等防抖。
+  const initialMarkdownRef = useRef(markdown);
 
   // 内核只建一次（复用实例）；插件启停影响的是后续重挂（与块编辑模式同语义）。
   useEffect(() => {
@@ -49,6 +51,14 @@ export function LivePreview({ markdown, sourcePath, onNavigate, scrollRef }: Liv
       extraExtensions: buildBuiltinViewExtensions(flags),
     });
     kernelRef.current = kernel;
+    try {
+      kernel.setMarkdown(initialMarkdownRef.current);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      queueMicrotask(() => {
+        if (kernelRef.current === kernel) setRenderError(message);
+      });
+    }
     return () => {
       kernelRef.current = null;
       kernel.destroy();
