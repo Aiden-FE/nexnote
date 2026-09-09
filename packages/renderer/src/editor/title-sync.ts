@@ -7,6 +7,8 @@ export function titleFromPath(path: string): string {
 
 export function sanitizePageTitle(title: string): string {
   const cleaned = title
+    // 块锚点是 Markdown 元数据，不能成为文件名。仅剥离独立的行尾 token，不误伤 a^b。
+    .replace(/(?:^|\s+)\^[A-Za-z0-9-]+\s*$/, '')
     .replace(/[\\/:*?"<>|]/g, '-')
     .replace(/\s+/g, ' ')
     .trim()
@@ -49,7 +51,7 @@ export function bindH1ToTitle(markdown: string, title: string): string {
 
 /** 文档首个正文块为 H1 时返回标题；跳过 frontmatter。 */
 export function firstH1(markdown: string): string | null {
-  const lines = markdown.split('\n');
+  const lines = markdown.split(/\r?\n/);
   let i = 0;
   if (lines[0]?.trim() === '---') {
     i = 1;
@@ -58,5 +60,7 @@ export function firstH1(markdown: string): string | null {
   }
   while (i < lines.length && lines[i]?.trim() === '') i += 1;
   const m = /^#\s+(.+?)(?:\s+\^[A-Za-z0-9-]+)?\s*$/.exec(lines[i] ?? '');
-  return m?.[1]?.trim() || null;
+  const title = m?.[1]?.trim() || null;
+  // `# ^id` 只剩块锚点，不能把内部元数据当作标题并据此重命名文件。
+  return title && !/^\^[A-Za-z0-9-]+$/.test(title) ? title : null;
 }

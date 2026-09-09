@@ -1,0 +1,491 @@
+{
+  "finishedAt": "2026-09-09T01:35:31.399Z",
+  "checks": [
+    {
+      "name": "首启动向导可见（新建/打开/克隆三选一）",
+      "passed": true
+    },
+    {
+      "name": "向导包含三选一入口",
+      "passed": true
+    },
+    {
+      "name": "vault:create 成功",
+      "passed": true,
+      "detail": "/var/folders/np/sd6hrwgj7gs9m5chdfpcycv00000gn/T/nexnote-smoke-vault-QtpNbW/smoke-vault"
+    },
+    {
+      "name": "工作区出现（vault:changed 驱动）",
+      "passed": true
+    },
+    {
+      "name": "首次工作区为侧栏 + 单栏主区（Dock 默认关闭）",
+      "passed": true,
+      "detail": "sb=true main=true dock=false"
+    },
+    {
+      "name": "主区只有一个 tab 栈（无分隔线 / 无第二 Pane）",
+      "passed": true
+    },
+    {
+      "name": "底部状态栏",
+      "passed": true
+    },
+    {
+      "name": "侧栏至少一个面板已注册（按合并后 DEV-003 实际面板为准）",
+      "passed": true
+    },
+    {
+      "name": "Dock AI 面板已注册（默认收起）",
+      "passed": true
+    },
+    {
+      "name": "Dock Git 时间线面板已注册（DEV-007）",
+      "passed": true
+    },
+    {
+      "name": "状态栏 Git 状态项（分支可见）",
+      "passed": true
+    },
+    {
+      "name": "状态栏在 vault 创建后即显示分支与变更数",
+      "passed": true,
+      "detail": "master"
+    },
+    {
+      "name": "默认欢迎 Tab 激活",
+      "passed": true
+    },
+    {
+      "name": "tab-bar 新建页面后页面树立即出现",
+      "passed": true
+    },
+    {
+      "name": "Tab 可打开（单栈多 tab）",
+      "passed": true,
+      "detail": "count=3"
+    },
+    {
+      "name": "主区含新 Tab 内容",
+      "passed": true
+    },
+    {
+      "name": "Tab 可关闭",
+      "passed": true,
+      "detail": "count=2"
+    },
+    {
+      "name": "page Tab 挂载真实 TipTap EditorView",
+      "passed": true
+    },
+    {
+      "name": "空 vault 新页编辑后防抖保存",
+      "passed": true
+    },
+    {
+      "name": "编辑防抖保存并由 H1 重命名文件",
+      "passed": true
+    },
+    {
+      "name": "H1 → 文件名/Tab 标题双向联动",
+      "passed": true
+    },
+    {
+      "name": "H1 改名后页面树同步（新名出现、旧名消失）",
+      "passed": true
+    },
+    {
+      "name": "关闭并重新打开 Markdown 页面内容一致",
+      "passed": true
+    },
+    {
+      "name": "源码模式冒烟页写入",
+      "passed": true
+    },
+    {
+      "name": "块编辑模式为默认（无源码视图）",
+      "passed": true
+    },
+    {
+      "name": "入口 1（头部按钮）进入源码模式",
+      "passed": true
+    },
+    {
+      "name": "源码左侧为 CodeMirror（行号 + .cm-content）",
+      "passed": true,
+      "detail": "cm=true"
+    },
+    {
+      "name": "源码包含原始 YAML frontmatter 且属性面板隐藏",
+      "passed": true
+    },
+    {
+      "name": "源码模式无块编辑交互（斜杠/浮栏/块菜单/拖拽手柄 DOM 不存在）",
+      "passed": true
+    },
+    {
+      "name": "右侧只读 Live Preview 复用内核（ProseMirror 不可编辑）",
+      "passed": true
+    },
+    {
+      "name": "初次进入源码模式：未输入前右侧预览已渲染正文",
+      "passed": true
+    },
+    {
+      "name": "源码模式块锚点视觉弱化（.cm-block-anchor 渲染锚点文本）",
+      "passed": true
+    },
+    {
+      "name": "预览渲染 Mermaid SVG 与 KaTeX",
+      "passed": true,
+      "detail": "svg=1 katex=1"
+    },
+    {
+      "name": "预览渲染 Wikilink",
+      "passed": true
+    },
+    {
+      "name": "打开源码模式不写盘（字节不变）",
+      "passed": true,
+      "detail": "---\ntitle: 源码模式冒烟\n---\n\n# 源码模式冒烟 ^smokefix1\n\n*  宽列表标记\n\n行尾双空格 "
+    },
+    {
+      "name": "入口 2（⌘/Ctrl+E）切回块编辑模式",
+      "passed": true
+    },
+    {
+      "name": "入口 2（⌘/Ctrl+E）再次进入源码模式",
+      "passed": true
+    },
+    {
+      "name": "入口 3（命令面板）注册「切换源码模式」",
+      "passed": true
+    },
+    {
+      "name": "入口 3（命令面板执行）切回块编辑模式",
+      "passed": true
+    },
+    {
+      "name": "入口 3（命令面板执行）再次进入源码模式",
+      "passed": true
+    },
+    {
+      "name": "CodeMirror 可聚焦",
+      "passed": true
+    },
+    {
+      "name": "源码保存逐字节写回（编辑框文本原样落盘）",
+      "passed": true,
+      "detail": "# 源码模式改名页\n\n链接到[[源码模式跳转目标]]\n"
+    },
+    {
+      "name": "H1 改名同步页面树（新名出现、旧名消失）",
+      "passed": true
+    },
+    {
+      "name": "H1 改名同步 Tab 标题",
+      "passed": true,
+      "detail": "title=源码模式改名页"
+    },
+    {
+      "name": "预览 Wikilink 同一 tab 导航且保持源码模式",
+      "passed": true
+    },
+    {
+      "name": "源码→块编辑：正文完整显示，标题未被锚点篡改",
+      "passed": true
+    },
+    {
+      "name": "关闭重开后回到块编辑模式（默认）",
+      "passed": true
+    },
+    {
+      "name": "⌘K 唤起命令面板",
+      "passed": true
+    },
+    {
+      "name": "面板过滤命令",
+      "passed": true,
+      "detail": "items=1"
+    },
+    {
+      "name": "面板 Enter 执行命令（主题已切换）",
+      "passed": true,
+      "detail": "resolved=light->dark"
+    },
+    {
+      "name": "命令面板执行后关闭",
+      "passed": true
+    },
+    {
+      "name": "外部模块可注册新命令并执行",
+      "passed": true
+    },
+    {
+      "name": "暗色主题生效（CSS 变量切换）",
+      "passed": true
+    },
+    {
+      "name": "切回亮色主题",
+      "passed": true
+    },
+    {
+      "name": "侧栏可折叠",
+      "passed": true
+    },
+    {
+      "name": "fs:listDir 经 IPC 返回 vault 内容",
+      "passed": true,
+      "detail": ".gitdirectory .nexnotedirectory .gitignorefile 冒烟重命名页.mdfile 冒烟页面 B.mdfile 源码模式改"
+    },
+    {
+      "name": "新建笔记：树实时出现（fs:changed 驱动）",
+      "passed": true
+    },
+    {
+      "name": "新建笔记：打开 tab，编辑器头显示页面路径",
+      "passed": true
+    },
+    {
+      "name": "frontmatter 面板渲染 created/id 字段",
+      "passed": true
+    },
+    {
+      "name": "状态栏显示 vault 根名",
+      "passed": true
+    },
+    {
+      "name": "外部写入成功",
+      "passed": true
+    },
+    {
+      "name": "外部创建文件实时反映到树（含目录自动创建）",
+      "passed": true
+    },
+    {
+      "name": "搜索实时过滤：仅命中页面与祖先目录可见",
+      "passed": true,
+      "detail": "fileRows=1 total=2"
+    },
+    {
+      "name": "标签面板聚合 frontmatter + 内联标签（计数=2）",
+      "passed": true
+    },
+    {
+      "name": "点击标签过滤页面树（仅含标签页面 + 过滤 chip）",
+      "passed": true,
+      "detail": "rows=2"
+    },
+    {
+      "name": "当前打开页面在树中显示激活态（data-active）",
+      "passed": true
+    },
+    {
+      "name": "右键重命名：连续逐字输入不被全选覆盖",
+      "passed": true,
+      "detail": "menu=true btn=true value=改名后"
+    },
+    {
+      "name": "重命名：树实时更新，wikilink 已替换",
+      "passed": true,
+      "detail": "linkSource=e-4adb-9a90-1f201d99e46b\n---\n\n看 [[改名后]]\n"
+    },
+    {
+      "name": "重命名：已打开 tab 的路径与标题联动",
+      "passed": true
+    },
+    {
+      "name": "重命名后激活态跟随新路径",
+      "passed": true
+    },
+    {
+      "name": "移动：树刷新到新位置",
+      "passed": true
+    },
+    {
+      "name": "删除：树移除 + 指向它的 tab 关闭",
+      "passed": true
+    },
+    {
+      "name": "外部 mkdir 也实时同步",
+      "passed": true
+    },
+    {
+      "name": "折叠状态持久化到 vault 配置（treeCollapsedDirs）",
+      "passed": true
+    },
+    {
+      "name": "侧栏宽度可调",
+      "passed": true,
+      "detail": "260 -> 300"
+    },
+    {
+      "name": "tab 右键菜单弹出",
+      "passed": true
+    },
+    {
+      "name": "菜单含 关闭其他/关闭右侧/复制路径",
+      "passed": true
+    },
+    {
+      "name": "图谱性能种子写入 500 页 / 2000 链接",
+      "passed": true
+    },
+    {
+      "name": "全局图谱包含 500 页 / 2000 链接性能种子",
+      "passed": true,
+      "detail": "知识图谱508 页面 · 2001 链接标签全部冒烟专用项目/inboxsmoke/group-asmoke/group-b文件夹全部graph/group-agraph/group-b孤立页面fro"
+    },
+    {
+      "name": "React Flow 渲染全部图谱节点",
+      "passed": true
+    },
+    {
+      "name": "500 节点 / 2000 边连续交互 FPS ≥ 30",
+      "passed": true,
+      "detail": "fps=120.5 wheels=107"
+    },
+    {
+      "name": "文件夹子树过滤生效",
+      "passed": true,
+      "detail": "知识图谱250 页面 · 1000 链接标签全部冒烟专用项目/inboxsmoke/group-asmoke/group-b文件夹全部graph/group-agraph/group-b孤立页面fro"
+    },
+    {
+      "name": "点击图谱节点跳转页面",
+      "passed": true
+    },
+    {
+      "name": "局部图谱面板随当前页面更新",
+      "passed": true
+    },
+    {
+      "name": "局部图谱支持 2 跳扩展",
+      "passed": true,
+      "detail": "nodes=17"
+    },
+    {
+      "name": "DEV-008 IPC pageSummary 返回图谱页面",
+      "passed": true,
+      "detail": "{\"activePath\":\"graph/group-a/group-a-node-0.md\",\"activeSummary\":{\"pageId\":2,\"path\":\"graph/group-a/group-a-node-0.md\",\"title\":\"group-a-node-0\",\"aliases\":[],\"tags\":[\"smoke/group-a\"],\"updatedAt\":\"\",\"wordCount\":6,\"blockCount\":2,\"inboundLinks\":4,\"outboundLinks\":4}}"
+    },
+    {
+      "name": "DEV-008 IPC getConfidence 返回缓存分数",
+      "passed": true,
+      "detail": "{\"pageId\":2,\"activeConfidence\":{\"pageId\":2,\"path\":\"graph/group-a/group-a-node-0.md\",\"score\":38,\"factors\":[{\"key\":\"stability\",\"label\":\"内容稳定性\",\"score\":0.4,\"weight\":0.25,\"contribution\":10,\"detail\":\"0 次历史改动按近期权重聚合，改动越小越稳定\"},{\"key\":\"review_count\",\"label\":\"修订次数\",\"score\":0,\"weight\":0.15,\"contribution\":0,\"detail\":\"0 次提交，20 次后饱和\"},{\"key\":\"author_count\",\"label\":\"作者数量\",\"score\":0.25,\"weight\":0.15,\"contribution\":3.75,\"detail\":\"1 位作者，单人保留基础分\"},{\"key\":\"age\",\"label\":\"文档年龄\",\"score\":0,\"weight\":0.15,\"contribution\":0,\"detail\":\"文档存活 0 天，按对数增长\"},{\"key\":\"link_authority\",\"label\":\"链接权威度\",\"score\":0.94,\"weight\":0.2,\"contribution\":18.8,\"detail\":\"由去重入链图的简化 PageRank 归一化\"},{\"key\":\"manual_boost\",\"label\":\"手动加权\",\"score\":0.5,\"weight\":0.1,\"contribution\":5,\"detail\":\"未设置 confidence_boost，使用中性分\"}],\"computedAt\":\"2026-09-09T01:35:17.009Z\"}}"
+    },
+    {
+      "name": "DEV-008 属性面板显示真实置信度总分与六个因子",
+      "passed": true,
+      "detail": "基本信息文件路径graph/group-a/group-a-node-0.md标题（未设置）类型普通文档别名无标签#smoke/group-a自定义字段无自定义字段置信度38/ 100内容稳定性10.0修订次数0.0作者数量3.8文档年龄0"
+    },
+    {
+      "name": "DEV-008 因子悬停解释 tooltip 已提供",
+      "passed": true,
+      "detail": "内容稳定性：0 次历史改动按近期权重聚合，改动越小越稳定"
+    },
+    {
+      "name": "editor:* 命名空间通道可用（占位）",
+      "passed": true
+    },
+    {
+      "name": "git:getStatus 报告真实仓库",
+      "passed": true
+    },
+    {
+      "name": "git:getTimeline 返回 ≥1 提交",
+      "passed": true
+    },
+    {
+      "name": "git:getTimeline 包含 initial 基线",
+      "passed": true
+    },
+    {
+      "name": "手动提交成功（commitManual）",
+      "passed": true
+    },
+    {
+      "name": "手动提交形成新 HEAD（kind=manual）",
+      "passed": true
+    },
+    {
+      "name": "版本时间线 dock 面板渲染 commit 列表",
+      "passed": true,
+      "detail": "版本时间线单篇文件时间线提交远程仓库与 Git 设置添加/更新保存时执行 git ls-remote 授权预检；失败请检查网络、SSH key 或 HTTPS "
+    },
+    {
+      "name": "DEV-015 编辑器就绪",
+      "passed": true
+    },
+    {
+      "name": "DEV-015 活动编辑器可用",
+      "passed": true,
+      "detail": "editors=1 pm=1"
+    },
+    {
+      "name": "DEV-015 Mermaid 真实渲染 SVG（flowchart）",
+      "passed": true,
+      "detail": "svg=true"
+    },
+    {
+      "name": "DEV-015 KaTeX 块级与行内均渲染",
+      "passed": true,
+      "detail": "block=true inline=true · E=mc2"
+    },
+    {
+      "name": "DEV-015 保存文件为 Obsidian 原生语法（围栏/$$/$）",
+      "passed": true,
+      "detail": "```mermaid\ngraph TD\n  A[\"开始\"] --> B[\"结束\"]\n```\n\n$$\nE = mc^2\n$$\n\n# $a^2 + b^2 = c^2$内置插件演示 ^oezyjg1s\n\n ^anxq771t"
+    },
+    {
+      "name": "DEV-015 设置页插件分区可见",
+      "passed": true
+    },
+    {
+      "name": "DEV-015 设置页列出两个内置插件",
+      "passed": true,
+      "detail": "mermaid=true katex=true"
+    },
+    {
+      "name": "DEV-015 详情页标注内置且隐藏卸载按钮",
+      "passed": true
+    },
+    {
+      "name": "DEV-015 内置插件可禁用并重新启用",
+      "passed": true,
+      "detail": "state=active"
+    },
+    {
+      "name": "插件贡献不渲染为底部裸露 UI",
+      "passed": true
+    },
+    {
+      "name": "vault:close 后回到向导",
+      "passed": true
+    },
+    {
+      "name": "最近打开列表持久化并显示",
+      "passed": true
+    }
+  ],
+  "captures": [
+    "/tmp/nexnote-smoke-dev020-gui.8y2AWo/01-onboarding.png",
+    "/tmp/nexnote-smoke-dev020-gui.8y2AWo/02-workspace.png",
+    "/tmp/nexnote-smoke-dev020-gui.8y2AWo/02b-editor.png",
+    "/tmp/nexnote-smoke-dev020-gui.8y2AWo/03-source-mode.png",
+    "/tmp/nexnote-smoke-dev020-gui.8y2AWo/04-source-mode-reset.png",
+    "/tmp/nexnote-smoke-dev020-gui.8y2AWo/04-palette.png",
+    "/tmp/nexnote-smoke-dev020-gui.8y2AWo/05-dark.png",
+    "/tmp/nexnote-smoke-dev020-gui.8y2AWo/06-light.png",
+    "/tmp/nexnote-smoke-dev020-gui.8y2AWo/07-sidebar-collapsed.png",
+    "/tmp/nexnote-smoke-dev020-gui.8y2AWo/09-page-tree.png",
+    "/tmp/nexnote-smoke-dev020-gui.8y2AWo/10-tags.png",
+    "/tmp/nexnote-smoke-dev020-gui.8y2AWo/11-tree-final.png",
+    "/tmp/nexnote-smoke-dev020-gui.8y2AWo/16-global-graph.png",
+    "/tmp/nexnote-smoke-dev020-gui.8y2AWo/17-local-graph.png",
+    "/tmp/nexnote-smoke-dev020-gui.8y2AWo/18-confidence-properties.png",
+    "/tmp/nexnote-smoke-dev020-gui.8y2AWo/09-git-timeline.png",
+    "/tmp/nexnote-smoke-dev020-gui.8y2AWo/19-builtin-mermaid-katex.png",
+    "/tmp/nexnote-smoke-dev020-gui.8y2AWo/20-builtin-plugins-settings.png",
+    "/tmp/nexnote-smoke-dev020-gui.8y2AWo/08-recent-list.png"
+  ]
+}

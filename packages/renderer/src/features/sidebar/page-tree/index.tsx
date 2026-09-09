@@ -13,9 +13,10 @@ import {
   X,
 } from 'lucide-react';
 import { ContextMenu, type ContextMenuItem } from '../../../components/ContextMenu';
+import { Input } from '../../../components/ui/input';
 import { usePageTreeStore } from '../../../stores/page-tree-store';
 import { useUiStore } from '../../../stores/ui-store';
-import { openPage } from '../../../stores/tab-store';
+import { openPage, useTabStore } from '../../../stores/tab-store';
 import { cn } from '../../../lib/utils';
 import {
   buildTree,
@@ -53,6 +54,9 @@ function PageTreePanel() {
   const tagFilter = usePageTreeStore((s) => s.tagFilter);
   const tagFiles = usePageTreeStore((s) => s.tagFiles);
   const selectedPath = usePageTreeStore((s) => s.selectedPath);
+  // 激活态跟随当前活动 tab 的页面（打开/切换/H1 改名都会同步），点击选中仅作非页面 tab 时的回退。
+  const activePagePath = useTabStore((s) => s.tabs.find((t) => t.id === s.activeTabId)?.pagePath);
+  const highlightPath = activePagePath ?? selectedPath;
   const collapsedDirs = useUiStore((s) => s.treeCollapsedDirs);
   const showAllFiles = useUiStore((s) => s.treeShowAllFiles);
 
@@ -153,7 +157,7 @@ function PageTreePanel() {
         node={node}
         depth={depth}
         expanded={node.kind === 'directory' ? isExpanded(node.path) : undefined}
-        selected={selectedPath === node.path}
+        selected={highlightPath === node.path}
         renaming={renaming?.path === node.path ? renaming : null}
         dragOver={dragOverDir === node.path}
         onToggleDir={() => useUiStore.getState().toggleTreeDir(node.path)}
@@ -359,19 +363,21 @@ interface TreeRowProps {
 function TreeRow(p: TreeRowProps) {
   const inputRef = useRef<HTMLInputElement>(null);
   const isDir = p.node.kind === 'directory';
-
+  // 只在进入重命名那一刻全选一次；依赖 value 会在每次输入后重新全选，导致下一个按键覆盖全部输入。
+  const renameTarget = p.renaming ? `${p.renaming.kind}:${p.renaming.path}` : null;
   useEffect(() => {
-    if (p.renaming && inputRef.current) {
+    if (renameTarget && inputRef.current) {
       inputRef.current.focus();
       inputRef.current.select();
     }
-  }, [p.renaming]);
+  }, [renameTarget]);
 
   return (
     <div
       data-testid="tree-row"
       data-path={p.node.path}
       data-kind={p.node.kind}
+      data-active={p.selected ? 'true' : undefined}
       draggable={p.renaming === null}
       onDragStart={p.onDragStart}
       onDragOver={p.onDragOver}
@@ -415,7 +421,7 @@ function TreeRow(p: TreeRowProps) {
         <FileText className="size-3.5 shrink-0 text-muted-foreground/50" />
       )}
       {p.renaming ? (
-        <input
+        <Input
           ref={inputRef}
           data-testid="tree-rename-input"
           value={p.renaming.value}
@@ -427,7 +433,7 @@ function TreeRow(p: TreeRowProps) {
             if (e.key === 'Escape') p.onRenameCancel();
           }}
           onBlur={p.onRenameCommit}
-          className="h-5 min-w-0 flex-1 rounded border border-ring bg-background px-1 text-xs outline-none"
+          className="h-5 min-w-0 flex-1 rounded border-ring bg-background px-1 text-xs shadow-none focus-visible:ring-1"
         />
       ) : (
         <span className={cn('truncate', isDir && 'font-medium')}>{displayName(p.node)}</span>
