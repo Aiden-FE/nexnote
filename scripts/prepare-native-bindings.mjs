@@ -11,6 +11,7 @@ import {
 } from 'node:fs/promises';
 import { existsSync, readFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
+import { randomUUID } from 'node:crypto';
 import { dirname, join } from 'node:path';
 import { createRequire } from 'node:module';
 import { spawn } from 'node:child_process';
@@ -40,7 +41,7 @@ async function exists(file) {
 
 async function copyBinding(from, to) {
   await mkdir(dirname(to), { recursive: true });
-  const temporary = `${to}.tmp-${process.pid}-${Date.now()}`;
+  const temporary = `${to}.tmp-${process.pid}-${randomUUID()}`;
   try {
     await copyFile(from, temporary);
     await rename(temporary, to);
