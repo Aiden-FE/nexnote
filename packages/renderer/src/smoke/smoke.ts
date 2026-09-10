@@ -621,13 +621,18 @@ export async function runSmokeIfEnabled(): Promise<void> {
     const createdDocumentMetadata = await invoke('document:getMetadata', {
       path: '冒烟首页.md',
     });
+    const createdDocumentText = await invoke('fs:readTextFile', { path: '冒烟首页.md' });
     check(
       '新建 Markdown 保持正文干净、产品 metadata 在 sidecar',
-      !document.querySelector('[data-testid="frontmatter-field-created"]') &&
-        !document.querySelector('[data-testid="frontmatter-field-id"]') &&
+      !createdDocumentText.trimStart().startsWith('---') &&
+        !/^created\s*:/m.test(createdDocumentText) &&
+        !/^id\s*:/m.test(createdDocumentText) &&
         typeof createdDocumentMetadata?.id === 'string' &&
         typeof createdDocumentMetadata?.createdAt === 'string',
-      JSON.stringify(createdDocumentMetadata),
+      JSON.stringify({
+        text: createdDocumentText.slice(0, 120),
+        metadata: createdDocumentMetadata,
+      }),
     );
     check(
       '状态栏显示 vault 根名',
