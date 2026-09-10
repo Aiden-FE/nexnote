@@ -122,14 +122,8 @@ describe('better-sqlite3 native binding isolation', () => {
 
   it('rebuilds Node when both the active binding and cached Node binding are invalid', async () => {
     const root = await temporaryRoot();
-    const activeBinding = path.join(
-      root,
-      'node_modules',
-      'better-sqlite3',
-      'build',
-      'Release',
-      'better_sqlite3.node',
-    );
+    const moduleRoot = path.join(root, 'node_modules', 'better-sqlite3');
+    const activeBinding = path.join(moduleRoot, 'build', 'Release', 'better_sqlite3.node');
     const nodeCacheBinding = nativeBindingCachePath(root, {
       platform: 'darwin',
       arch: 'arm64',
@@ -147,6 +141,7 @@ describe('better-sqlite3 native binding isolation', () => {
 
     await prepareNativeBindings({
       root,
+      moduleRoot,
       mode: 'node',
       platform: 'darwin',
       arch: 'arm64',
@@ -164,20 +159,15 @@ describe('better-sqlite3 native binding isolation', () => {
 
   it('fails closed and keeps Node intact when staged Electron is invalid', async () => {
     const root = await temporaryRoot();
-    const activeBinding = path.join(
-      root,
-      'node_modules',
-      'better-sqlite3',
-      'build',
-      'Release',
-      'better_sqlite3.node',
-    );
+    const moduleRoot = path.join(root, 'node_modules', 'better-sqlite3');
+    const activeBinding = path.join(moduleRoot, 'build', 'Release', 'better_sqlite3.node');
     await mkdir(path.dirname(activeBinding), { recursive: true });
     await writeFile(activeBinding, 'node-binding');
 
     await expect(
       prepareNativeBindings({
         root,
+        moduleRoot,
         mode: 'electron',
         platform: 'linux',
         arch: 'x64',
