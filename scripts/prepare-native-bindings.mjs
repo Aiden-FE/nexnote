@@ -1,5 +1,16 @@
-import { copyFile, mkdir, realpath, rename, rm, stat } from 'node:fs/promises';
+import {
+  copyFile,
+  cp,
+  mkdir,
+  mkdtemp,
+  realpath,
+  rename,
+  rm,
+  stat,
+  writeFile,
+} from 'node:fs/promises';
 import { existsSync, readFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { createRequire } from 'node:module';
 import { spawn } from 'node:child_process';
@@ -150,36 +161,58 @@ async function rebuildNode(root) {
 }
 
 async function rebuildElectron(root, moduleRoot, version, platform, arch) {
-  const prebuildInstall = createRequire(join(moduleRoot, 'package.json')).resolve(
-    'prebuild-install/bin.js',
-  );
+  const stagingRoot = await mkdtemp(join(tmpdir(), 'nexnote-native-binding-'));
+  const stagingModuleRoot = join(stagingRoot, 'node_modules', 'better-sqlite3');
+  const binding = join(stagingModuleRoot, 'build', 'Release', 'better_sqlite3.node');
   try {
-    await run(process.execPath, [prebuildInstall, '-r', 'electron', '-t', version], {
-      cwd: moduleRoot,
-      stdio: 'ignore',
-    });
-    return;
-  } catch {
-    // Electron ABI can arrive after better-sqlite3's prebuilt release cadence; compile locally as the official fallback.
+    await mkdir(join(stagingRoot, 'node_modules'), { recursive: true });
+    await writeFile(
+      join(stagingRoot, 'package.json'),
+      '{"name":"nexnote-native-stage","private":true,"version":"0.0.0","dependencies":{"better-sqlite3":"*"}}\n',
+    );
+    // Electron rebuild 只接触 staging 副本，活动 Node binding 始终保持 ABI 可加载。
+    await cp(moduleRoot, stagingModuleRoot, { recursive: true, dereference: true });
+    await rm(join(stagingModuleRoot, 'build'), { force: true, recursive: true });
+    await rm(join(stagingModuleRoot, '.forge-meta'), { force: true, recursive: true });
+
+    const prebuildInstall = createRequire(join(moduleRoot, 'package.json')).resolve(
+      'prebuild-install/bin.js',
+    );
+    try {
+      await run(process.execPath, [prebuildInstall, '-r', 'electron', '-t', version], {
+        cwd: stagingModuleRoot,
+        stdio: 'ignore',
+      });
+    } catch {
+      // Electron ABI can arrive after better-sqlite3's prebuilt release cadence; compile locally as the official fallback.
+      await runPnpm(
+        [
+          'exec',
+          'electron-rebuild',
+          '--force',
+          '--only',
+          'better-sqlite3',
+          '--version',
+          version,
+          '--platform',
+          platform,
+          '--arch',
+          arch,
+          '--module-dir',
+          stagingRoot,
+        ],
+        { cwd: root },
+      );
+    }
+    if (!(await exists(binding))) throw new Error('Electron rebuild produced no native binding.');
+    return {
+      binding,
+      cleanup: () => rm(stagingRoot, { force: true, recursive: true }),
+    };
+  } catch (error) {
+    await rm(stagingRoot, { force: true, recursive: true });
+    throw error;
   }
-  await runPnpm(
-    [
-      'exec',
-      'electron-rebuild',
-      '--force',
-      '--only',
-      'better-sqlite3',
-      '--version',
-      version,
-      '--platform',
-      platform,
-      '--arch',
-      arch,
-      '--module-dir',
-      root,
-    ],
-    { cwd: root },
-  );
 }
 
 async function removeForgeMeta(moduleRoot) {
@@ -250,21 +283,22 @@ export async function prepareNativeBindings(options) {
     }
   }
 
+  let staged;
   try {
-    await rebuildForElectron();
-    await validate(activeBinding, 'electron');
-    await copyBinding(activeBinding, cacheBinding);
+    staged = await rebuildForElectron();
+    const stagedBinding = typeof staged === 'string' ? staged : staged.binding;
+    await validate(stagedBinding, 'electron');
+    await copyBinding(stagedBinding, cacheBinding);
     await validate(cacheBinding, 'electron');
   } catch (error) {
     await rm(cacheBinding, { force: true });
-    await copyBinding(nodeCacheBinding, activeBinding);
-    await removeForgeMeta(moduleRoot);
     throw new Error(
       `Electron binding validation failed: ${error instanceof Error ? error.message : String(error)}`,
     );
+  } finally {
+    if (staged && typeof staged !== 'string') await staged.cleanup();
   }
 
-  await copyBinding(nodeCacheBinding, activeBinding);
   await removeForgeMeta(moduleRoot);
   return { cacheBinding };
 }

@@ -97,7 +97,15 @@ describe('better-sqlite3 native binding isolation', () => {
       electronVersion: '44.2.0',
       electronAbi: '143',
       validate,
-      rebuildElectron: async () => writeFile(activeBinding, 'electron-binding'),
+      rebuildElectron: async () => {
+        const binding = path.join(root, 'stage', 'better_sqlite3.node');
+        await mkdir(path.dirname(binding), { recursive: true });
+        await writeFile(binding, 'electron-binding');
+        return {
+          binding,
+          cleanup: async () => rm(path.dirname(binding), { recursive: true, force: true }),
+        };
+      },
     });
 
     expect(await readFile(activeBinding, 'utf8')).toBe('node-binding');
@@ -174,7 +182,15 @@ describe('better-sqlite3 native binding isolation', () => {
           const bytes = await readFile(binding, 'utf8');
           if (bytes !== `${runtime}-binding`) throw new Error(`${runtime} ABI mismatch`);
         },
-        rebuildElectron: async () => writeFile(activeBinding, 'wrong-binding'),
+        rebuildElectron: async () => {
+          const binding = path.join(root, 'stage', 'better_sqlite3.node');
+          await mkdir(path.dirname(binding), { recursive: true });
+          await writeFile(binding, 'wrong-binding');
+          return {
+            binding,
+            cleanup: async () => rm(path.dirname(binding), { recursive: true, force: true }),
+          };
+        },
       }),
     ).rejects.toThrow('Electron binding validation failed');
 
