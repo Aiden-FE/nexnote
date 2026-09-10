@@ -63,6 +63,7 @@ export async function createNote(
   name?: string,
   content = '',
   sidecar?: SidecarWriter,
+  format: DocumentFormat = 'native-block',
 ): Promise<FileInfo> {
   let finalName = name;
   if (finalName === undefined || finalName.trim() === '') {
@@ -80,7 +81,7 @@ export async function createNote(
   }
   const body = content.length > 0 ? `${content}\n` : `# ${sanitized.value}\n`;
   const info = await fs.writeTextFile(relPath, body, true);
-  if (sidecar) await sidecar.write(relPath, defaultNoteMetadata('native-block'));
+  if (sidecar) await sidecar.write(relPath, defaultNoteMetadata(format));
   return info;
 }
 
@@ -112,7 +113,9 @@ export function rewriteWikilinks(
 /** 收集 vault 内全部 .md 文件相对路径（排除 .nexnote/.git/.trash 等内部目录）。 */
 export async function listMarkdownFiles(fs: VaultFsService): Promise<string[]> {
   const entries: DirEntry[] = await fs.listTree(true);
-  return entries.filter((e) => e.kind === 'file' && e.name.toLowerCase().endsWith('.md')).map((e) => e.path);
+  return entries
+    .filter((e) => e.kind === 'file' && e.name.toLowerCase().endsWith('.md'))
+    .map((e) => e.path);
 }
 
 /**
@@ -195,7 +198,11 @@ export function parseFrontmatterTags(frontmatter: string): string[] {
 }
 
 function stripTagQuotes(value: string): string {
-  if (value.length >= 2 && ((value.startsWith('"') && value.endsWith('"')) || (value.startsWith("'") && value.endsWith("'")))) {
+  if (
+    value.length >= 2 &&
+    ((value.startsWith('"') && value.endsWith('"')) ||
+      (value.startsWith("'") && value.endsWith("'")))
+  ) {
     return value.slice(1, -1);
   }
   return value;
@@ -240,7 +247,10 @@ export function setFrontmatterNumber(text: string, key: string, value: number): 
   const existing = new RegExp(`^${key}:\\s*.*$`, 'm').exec(fence);
   if (existing?.[0] === line) return null;
   if (existing) {
-    const updated = fence.slice(0, existing.index) + line + fence.slice((existing.index ?? 0) + existing[0].length);
+    const updated =
+      fence.slice(0, existing.index) +
+      line +
+      fence.slice((existing.index ?? 0) + existing[0].length);
     return text.slice(0, match.index) + updated + text.slice((match.index ?? 0) + fence.length);
   }
   const closing = fence.lastIndexOf('---');

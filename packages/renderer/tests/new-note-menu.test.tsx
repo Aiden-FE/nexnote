@@ -106,9 +106,10 @@ describe('页面树「新建」下拉菜单', () => {
     expect(trigger?.getAttribute('aria-expanded')).toBe('true');
 
     const items = [...menu!.querySelectorAll<HTMLElement>('[role="menuitem"]')];
-    expect(items).toHaveLength(2);
+    expect(items).toHaveLength(3);
     expect(items[0].textContent).toContain('新建文档（块编辑）');
     expect(items[1].textContent).toContain('新建 Markdown（源码模式）');
+    expect(items[2].textContent).toContain('导入 DOCX');
     // 格式徽标（块 / MD）
     const badgeOf = (item: HTMLElement): string | null | undefined =>
       item.querySelector<HTMLElement>('[aria-hidden="true"]')?.textContent;
@@ -129,7 +130,7 @@ describe('页面树「新建」下拉菜单', () => {
       view.querySelector<HTMLElement>('[data-testid="new-note-native-block"]')!.click();
     });
 
-    expect(createdPayloads).toEqual([{ parentDir: '' }]);
+    expect(createdPayloads).toEqual([{ parentDir: '', format: 'native-block' }]);
     const tab = activeTab();
     expect(tab?.kind).toBe('page');
     expect(tab?.pagePath).toBe('新建文档.md');
@@ -146,7 +147,7 @@ describe('页面树「新建」下拉菜单', () => {
       view.querySelector<HTMLElement>('[data-testid="new-note-markdown"]')!.click();
     });
 
-    expect(createdPayloads).toEqual([{ parentDir: '' }]);
+    expect(createdPayloads).toEqual([{ parentDir: '', format: 'markdown' }]);
     const tab = activeTab();
     expect(tab?.kind).toBe('page');
     expect(tab?.pagePath).toBe('新建文档.md');
@@ -160,7 +161,7 @@ describe('页面树「新建」下拉菜单', () => {
 
     await act(async () => main!.click());
 
-    expect(createdPayloads).toEqual([{ parentDir: '' }]);
+    expect(createdPayloads).toEqual([{ parentDir: '', format: 'native-block' }]);
     expect(activeTab()?.pagePath).toBe('新建文档.md');
     expect(activeTab()?.editorMode).toBeUndefined();
     expect(view.querySelector('[data-testid="new-note-menu"]')).toBeNull();

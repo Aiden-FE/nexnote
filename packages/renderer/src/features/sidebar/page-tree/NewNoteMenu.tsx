@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { ChevronDown, FilePlus2 } from 'lucide-react';
+import { ChevronDown, FilePlus2, FileType2 } from 'lucide-react';
 import { cn } from '../../../lib/utils';
 import type { NewNoteFormat } from './ops';
 
@@ -31,15 +31,17 @@ const ITEMS: NewNoteMenuItem[] = [
 ];
 
 interface NewNoteMenuProps {
-  /** 按所选格式新建（两种格式都写纯标准 Markdown，仅打开 tab 的编辑模式不同）。 */
+  /** 按所选格式新建（两种格式都写纯标准 Markdown，format 持久化到 sidecar）。 */
   onCreate(format: NewNoteFormat): void;
+  /** 经主进程文件选择器导入 DOCX 原件。 */
+  onImportDocx(): void;
 }
 
 /**
  * 「新建」下拉按钮：主按钮保持原单一按钮行为（默认格式直接新建），箭头展开格式菜单。
  * 键盘：↑/↓ 打开并在项间移动，Enter 选中，Esc/Tab 关闭（Esc 后焦点回到触发按钮）。
  */
-export function NewNoteMenu({ onCreate }: NewNoteMenuProps) {
+export function NewNoteMenu({ onCreate, onImportDocx }: NewNoteMenuProps) {
   const [open, setOpen] = useState(false);
   const [anchor, setAnchor] = useState({ x: 0, y: 0 });
   const wrapRef = useRef<HTMLDivElement>(null);
@@ -180,6 +182,31 @@ export function NewNoteMenu({ onCreate }: NewNoteMenuProps) {
               </span>
             </button>
           ))}
+          <div className="my-1 border-t" />
+          <button
+            type="button"
+            role="menuitem"
+            data-testid="new-note-docx"
+            title="导入 DOCX——原件只读，编辑时创建 Markdown 副本"
+            onClick={() => {
+              onImportDocx();
+              close(true);
+            }}
+            className="flex w-full items-start gap-2 rounded-sm px-2 py-1.5 text-left hover:bg-accent"
+          >
+            <span
+              aria-hidden="true"
+              className="mt-0.5 inline-flex w-7 shrink-0 items-center justify-center rounded bg-muted px-1 py-0.5 text-muted-foreground"
+            >
+              <FileType2 className="size-3" />
+            </span>
+            <span className="min-w-0 flex-1">
+              <span className="block truncate text-xs">导入 DOCX</span>
+              <span className="mt-0.5 block text-[10px] leading-4 text-muted-foreground">
+                原件只读，编辑时创建 Markdown 副本
+              </span>
+            </span>
+          </button>
         </div>
       )}
     </div>

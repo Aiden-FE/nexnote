@@ -2,7 +2,7 @@ import { sanitizeEntryName } from '@nexnote/shared';
 import type { DirEntry } from '@nexnote/shared';
 import { invoke } from '../../../lib/ipc';
 import { requestAppSave } from '../../../editor/app-save';
-import { getTabStore, openPage } from '../../../stores/tab-store';
+import { getTabStore, openDocx, openPage } from '../../../stores/tab-store';
 import { usePageTreeStore } from '../../../stores/page-tree-store';
 import { displayName, isMarkdown } from '../../../page-tree/tree-utils';
 
@@ -22,10 +22,26 @@ export async function createNoteIn(
   parentDir: string,
   format: NewNoteFormat = 'native-block',
 ): Promise<string> {
-  const info = await invoke('fs:createNote', { parentDir });
+  const info = await invoke('fs:createNote', { parentDir, format });
   const tab = openPage(info.path, displayName({ name: info.name, kind: 'file' }));
   if (format === 'markdown') getTabStore().getState().toggleSourceMode(tab.id, true);
   return info.path;
+}
+
+/** 按 sidecar 中的持久格式打开页面；Markdown 文档默认进入源码模式。 */
+export async function openDocument(path: string): Promise<string> {
+  const metadata = await invoke('document:getMetadata', { path });
+  const tab = openPage(path);
+  if (metadata?.format === 'markdown') getTabStore().getState().toggleSourceMode(tab.id, true);
+  return path;
+}
+
+/** 经主进程文件选择器导入 DOCX，成功后打开只读预览 tab；取消选择返回 null。 */
+export async function importDocxIn(targetDir = ''): Promise<string | null> {
+  const result = await invoke('docx:import', { targetDir });
+  if (!result) return null;
+  openDocx(result.path);
+  return result.path;
 }
 
 /** 在 parentDir 下创建不重名的文件夹，返回最终路径。 */

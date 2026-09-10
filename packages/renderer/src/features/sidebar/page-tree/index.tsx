@@ -16,7 +16,7 @@ import { ContextMenu, type ContextMenuItem } from '../../../components/ContextMe
 import { Input } from '../../../components/ui/input';
 import { usePageTreeStore } from '../../../stores/page-tree-store';
 import { useUiStore } from '../../../stores/ui-store';
-import { openDocx, openPage, useTabStore } from '../../../stores/tab-store';
+import { openDocx, useTabStore } from '../../../stores/tab-store';
 import { cn } from '../../../lib/utils';
 import {
   buildTree,
@@ -170,7 +170,7 @@ function PageTreePanel() {
           usePageTreeStore.getState().setSelected(node.path);
           if (node.kind === 'file') {
             // .md 页面 → 块编辑器；.docx → 只读预览 tab（阶段6）
-            if (isMarkdown(node.name)) openPage(node.path);
+            if (isMarkdown(node.name)) void run(() => ops.openDocument(node.path));
             else if (isDocx(node.name)) openDocx(node.path);
           }
         }}
@@ -240,7 +240,10 @@ function PageTreePanel() {
             className="h-7 w-full rounded-md border bg-background/60 pl-7 pr-2 text-xs outline-none placeholder:text-muted-foreground/60 focus-visible:ring-1 focus-visible:ring-ring"
           />
         </div>
-        <NewNoteMenu onCreate={(format) => run(() => ops.createNoteIn('', format))} />
+        <NewNoteMenu
+          onCreate={(format) => run(() => ops.createNoteIn('', format))}
+          onImportDocx={() => run(() => ops.importDocxIn(''))}
+        />
         <button
           type="button"
           data-testid="tree-new-folder"

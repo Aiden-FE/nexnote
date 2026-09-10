@@ -40,7 +40,9 @@ export interface RenameLinkedResult {
  * 校验 vault 内文件/文件夹条目名称（新建笔记/文件夹、重命名输入共用）。
  * 返回 ok:false 时 reason 可直接展示给用户。
  */
-export function sanitizeEntryName(raw: string): { ok: true; value: string } | { ok: false; reason: string } {
+export function sanitizeEntryName(
+  raw: string,
+): { ok: true; value: string } | { ok: false; reason: string } {
   const value = raw.trim();
   if (value.length === 0) return { ok: false, reason: '名称不能为空' };
   if (value.length > 128) return { ok: false, reason: '名称过长（≤128 字符）' };
@@ -66,6 +68,7 @@ export const FS_CHANNELS = [
   'fs:rename',
   'fs:delete',
   'fs:createNote',
+  'document:getMetadata',
   'fs:listTree',
   'fs:renameLinked',
   'fs:revealInFinder',
@@ -119,11 +122,21 @@ export interface FsChannelMap {
   'fs:delete': { request: { path: string; toTrash?: boolean }; response: Result<void> };
   /**
    * 新建笔记（DEV-003）：parentDir 为 vault 相对目录（'' = 根），name 不带 .md 时自动补全。
-   * 写入默认 frontmatter（created + id）。返回新文件信息。
+   * format 持久化到 sidecar（native-block/markdown），正文不注入产品 metadata。
    */
   'fs:createNote': {
-    request: { parentDir: string; name?: string; content?: string };
+    request: {
+      parentDir: string;
+      name?: string;
+      content?: string;
+      format?: 'native-block' | 'markdown';
+    };
     response: Result<FileInfo>;
+  };
+  /** 读取文档 sidecar metadata（.nexnote/metadata）；无 sidecar 时返回 null。 */
+  'document:getMetadata': {
+    request: { path: string };
+    response: Result<Record<string, unknown> | null>;
   };
   /**
    * 全量列出 vault 树（DEV-003 页面树初始加载）。排除 .nexnote/、.git/、.trash/。
@@ -138,7 +151,10 @@ export interface FsChannelMap {
    * 除移动文件外，还对 vault 内全部 .md 做 wikilink 简单字符串替换
    * （[[旧名]] → [[新名]]，路径前缀形式同样处理；DEV-004 索引后再做精确替换）。
    */
-  'fs:renameLinked': { request: { from: string; to: string }; response: Result<RenameLinkedResult> };
+  'fs:renameLinked': {
+    request: { from: string; to: string };
+    response: Result<RenameLinkedResult>;
+  };
   /** 在系统文件管理器（Finder/资源管理器）中显示该文件。 */
   'fs:revealInFinder': { request: { path: string }; response: Result<void> };
   /**

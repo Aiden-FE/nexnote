@@ -81,10 +81,23 @@ const remove = object(
   ['path', 'toTrash'],
   [stringField('path'), optionalField('toTrash', 'boolean')],
 );
-const createNote = object(
-  ['parentDir', 'name', 'content'],
-  [stringField('parentDir'), optionalField('name', 'string'), optionalField('content', 'string')],
-);
+const createNote: PayloadValidator = (payload) => {
+  const base = object(
+    ['parentDir', 'name', 'content', 'format'],
+    [
+      stringField('parentDir'),
+      optionalField('name', 'string'),
+      optionalField('content', 'string'),
+      optionalField('format', 'string'),
+    ],
+  )(payload);
+  if (base) return base;
+  const format = (payload as Record<string, unknown>).format;
+  if (format !== undefined && format !== 'native-block' && format !== 'markdown') {
+    return invalid('format 必须是 native-block 或 markdown');
+  }
+  return null;
+};
 const createTextFile = object(
   ['path', 'content', 'createParentDirs'],
   [stringField('path'), stringField('content'), optionalField('createParentDirs', 'boolean')],
@@ -478,6 +491,7 @@ const VALIDATORS: Partial<Record<IpcChannel, PayloadValidator>> = {
   'fs:rename': rename,
   'fs:delete': remove,
   'fs:createNote': createNote,
+  'document:getMetadata': docxPath,
   'fs:listTree': listTree,
   'fs:renameLinked': rename,
   'fs:revealInFinder': pathOnly,
