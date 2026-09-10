@@ -109,6 +109,7 @@ export function documentXmlToMarkdown(xml: string): string {
   const source = xml.replace(/^\s*<\?xml[\s\S]*?\?>/, '').replace(/<!--[\s\S]*?-->/g, '');
   const stack: string[] = [];
   let rootName: string | null = null;
+  let rootClosed = false;
 
   const blocks: string[] = [];
   let paragraph: ParagraphDraft | null = null;
@@ -143,6 +144,7 @@ export function documentXmlToMarkdown(xml: string): string {
           'DOCX_INVALID_XML',
         );
       }
+      if (stack.length === 0) rootClosed = true;
       if (name === 'w:t') {
         if (currentRun) currentRun.text += decodeEntities(textBuffer);
         textBuffer = '';
@@ -181,6 +183,9 @@ export function documentXmlToMarkdown(xml: string): string {
       continue;
     }
 
+    if (rootClosed) {
+      throw new DocxError('document.xml 结构损坏：根元素结束后仍有内容', 'DOCX_INVALID_XML');
+    }
     if (!selfClosing) {
       stack.push(name);
       rootName ??= name;

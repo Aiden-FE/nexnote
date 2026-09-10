@@ -1,3 +1,5 @@
+import { promises as fsp } from 'node:fs';
+import path from 'node:path';
 import { ok, type Result } from '@nexnote/shared';
 import type { DocxEditCopyPayload, DocxPreviewPayload } from '@nexnote/shared';
 import type { IpcRegistrar } from './registrar';
@@ -22,21 +24,25 @@ export function registerDocxHandlers(registrar: IpcRegistrar): void {
   registrar.register(
     'docx:import',
     async (
-      { externalPath, data, name, targetDir },
+      { data, name, targetDir },
       services,
     ): Promise<Result<{ path: string; sha256: string } | null>> => {
-      let sourcePath = externalPath;
-      // 未带来源时经现有 dialogs.pickFile 策略选择 vault 外 .docx；取消返回 null。
-      if (!sourcePath && !data) {
-        sourcePath =
-          (await services.dialogs.pickFile([{ name: 'Word 文档', extensions: ['docx'] }])) ??
-          undefined;
-        if (!sourcePath) return ok(null);
+      // 外部文件来源只经主进程 dialogs.pickFile；renderer 提供的字节走 base64。
+      // 不接受 renderer 直接传外部路径，防止任意本地文件被读入 vault。
+      if (!data) {
+        const picked = await services.dialogs.pickFile([
+          { name: 'Word 文档', extensions: ['docx'] },
+        ]);
+        if (!picked) return ok(null);
+        const bytes = await fsp.readFile(picked);
+        const result = await service(services).importDocx(
+          { base64: bytes.toString('base64'), name: path.basename(picked) },
+          targetDir ?? '',
+        );
+        await recordWrite(services, `导入 DOCX ${result.path}`);
+        return ok(result);
       }
-      const result = await service(services).importDocx(
-        { externalPath: sourcePath, base64: data, name },
-        targetDir ?? '',
-      );
+      const result = await service(services).importDocx({ base64: data, name }, targetDir ?? '');
       await recordWrite(services, `导入 DOCX ${result.path}`);
       return ok(result);
     },

@@ -8,13 +8,14 @@ import { projectDocxToMarkdown } from './docx-markdown';
 import { markdownToDocx } from './docx-writer';
 
 export interface DocxImportInput {
-  /** vault 外部 .docx 绝对路径（dialogs.pickFile 结果）。 */
-  externalPath?: string;
-  /** renderer 已持有字节时走 base64（fs:importBinaryFile 同款策略）。 */
+  /** renderer 已持有字节时走 base64（外部路径一律经主进程 dialogs.pickFile 后转 base64）。 */
   base64?: string;
   /** base64 模式下的文件名（缺省「导入文档.docx」）。 */
   name?: string;
 }
+
+/** 单个导入 DOCX 的字节上限（防 renderer 借导入通道搬运超大任意文件）。 */
+export const MAX_DOCX_BYTES = 200 * 1024 * 1024;
 
 export interface DocxPreview {
   markdown: string;
@@ -58,42 +59,40 @@ export class DocxService {
     }
   }
 
-  /** 导入 vault 外 .docx（路径或 base64）：先验证可解析，再经 fs 导入策略落盘 + 写 sidecar。 */
+  /** 导入 .docx（base64）：先验证可解析，再经 fs 导入策略落盘 + 写 sidecar。 */
   async importDocx(
     input: DocxImportInput,
     targetDir: string,
   ): Promise<{ path: string; sha256: string }> {
     const root = this.requireRoot();
-    if ((input.externalPath ? 1 : 0) + (input.base64 ? 1 : 0) !== 1) {
-      throw new DocxServiceError(
-        '必须且只能提供 externalPath 或 base64 之一',
-        'DOCX_IMPORT_SOURCE',
-      );
+    if (!input.base64) {
+      throw new DocxServiceError('必须提供 DOCX base64 数据', 'DOCX_IMPORT_SOURCE');
+    }
+    const encoded = input.base64;
+    if (
+      encoded.length > Math.ceil((MAX_DOCX_BYTES * 4) / 3) + 4 ||
+      encoded.length % 4 !== 0 ||
+      !/^[A-Za-z0-9+/]*={0,2}$/.test(encoded)
+    ) {
+      throw new DocxServiceError('DOCX base64 无效', 'DOCX_IMPORT_SOURCE');
     }
     let bytes: Buffer;
-    let name: string;
-    if (input.externalPath) {
-      const source = input.externalPath;
-      if (!source.toLowerCase().endsWith('.docx')) {
-        throw new DocxServiceError('仅支持导入 .docx 文件', 'DOCX_IMPORT_SOURCE');
-      }
-      try {
-        bytes = await fsp.readFile(source);
-      } catch (e) {
-        throw new DocxServiceError(
-          `读取外部文件失败: ${source}（${(e as Error).message}）`,
-          'READ_FAILED',
-        );
-      }
-      name = path.basename(source);
-    } else {
-      bytes = Buffer.from(input.base64!, 'base64');
-      const raw = (input.name ?? '导入文档.docx').trim();
-      name = path.basename(raw).length > 0 ? path.basename(raw) : '导入文档.docx';
-      if (!name.toLowerCase().endsWith('.docx')) name = `${name}.docx`;
+    try {
+      bytes = Buffer.from(encoded, 'base64');
+    } catch {
+      throw new DocxServiceError('DOCX base64 无效', 'DOCX_IMPORT_SOURCE');
     }
     if (bytes.length === 0) throw new DocxServiceError('DOCX 内容为空', 'DOCX_INVALID_ZIP');
-    // 导入前 fail closed 验证（坏 zip/坏 XML 在落盘前拒绝）。
+    if (bytes.length > MAX_DOCX_BYTES) {
+      throw new DocxServiceError('DOCX 文件过大', 'DOCX_TOO_LARGE');
+    }
+    const raw = (input.name ?? '导入文档.docx').trim();
+    let name = path.basename(raw).length > 0 ? path.basename(raw) : '导入文档.docx';
+    if (!name.toLowerCase().endsWith('.docx')) name = `${name}.docx`;
+    /*
+     * base64 由 IPC validator 做语法校验；这里再次校验是为了保证直接调用领域服务时
+     * 也不会静默接受 Node Buffer.from 会忽略的非法字符。
+     */
     projectDocxToMarkdown(bytes);
     const relPath = targetDir ? `${targetDir}/${name}` : name;
     const written = await this.fs.importBinaryFile(relPath, bytes, { createParentDirs: true });

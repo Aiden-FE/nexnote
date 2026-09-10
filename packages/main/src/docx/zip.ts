@@ -112,7 +112,8 @@ export function readZipEntry(buf: Buffer, wanted: string, maxBytes = 64 * 1024 *
   if (entry.method === 0) data = raw;
   else if (entry.method === 8) {
     try {
-      data = inflateRawSync(raw);
+      // maxOutputLength 在解压过程中强制上限，防止声明小尺寸的 zip 炸弹在校验前耗尽内存。
+      data = inflateRawSync(raw, { maxOutputLength: maxBytes });
     } catch (e) {
       throw new ZipError(`zip 解压失败: ${(e as Error).message}`);
     }

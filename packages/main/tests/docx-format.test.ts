@@ -50,6 +50,9 @@ describe('DOCX ZIP 与 Markdown 投影', () => {
       'DOCX_INVALID_XML',
     );
     expect(errorCode(() => documentXmlToMarkdown('<w:other/>'))).toBe('DOCX_INVALID_XML');
+    expect(errorCode(() => documentXmlToMarkdown('<w:document/><w:other/>'))).toBe(
+      'DOCX_INVALID_XML',
+    );
     const bytes = markdownToDocx('hello');
     const marker = Buffer.from('word/document.xml');
     const nameAt = bytes.indexOf(marker);
@@ -64,5 +67,11 @@ describe('DOCX ZIP 与 Markdown 投影', () => {
   it('缺少 document.xml 明确报 DOCX_ENTRY_NOT_FOUND', () => {
     const zip = buildZip([{ name: 'other.xml', data: Buffer.from('x') }]);
     expect(errorCode(() => readZipEntry(zip, 'word/document.xml'))).toBe('DOCX_ENTRY_NOT_FOUND');
+  });
+
+  it('解压炸弹被 maxOutputLength 上限拒绝', () => {
+    const bomb = Buffer.alloc(64 * 1024 * 1024 + 1, 0x61); // 超过默认 maxBytes 的输出
+    const zip = buildZip([{ name: 'word/document.xml', data: bomb }]);
+    expect(errorCode(() => readZipEntry(zip, 'word/document.xml'))).toMatch(/DOCX_|解压失败/);
   });
 });

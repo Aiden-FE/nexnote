@@ -32,12 +32,12 @@ export type DocxChannel = (typeof DOCX_CHANNELS)[number];
 
 export interface DocxChannelMap {
   /**
-   * 导入 vault 外 .docx：externalPath（dialogs.pickFile 结果）或 data（base64）二选一。
+   * 导入 vault 外 .docx：不携带 data 时经主进程 dialogs.pickFile 选择文件（外部路径
+   * 不接受 renderer 提供，防止任意本地文件读取）；data 为 renderer 显式提供的 base64。
    * 导入前做 zip/XML fail closed 校验，落盘后写 sidecar {format:'docx', sourceSha256}。
    */
   'docx:import': {
     request: {
-      externalPath?: string;
       data?: string;
       name?: string;
       targetDir?: string;

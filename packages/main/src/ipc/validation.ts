@@ -108,9 +108,8 @@ const docxExport = object(
 );
 const docxImport: PayloadValidator = (payload) => {
   const base = object(
-    ['externalPath', 'data', 'name', 'targetDir'],
+    ['data', 'name', 'targetDir'],
     [
-      optionalField('externalPath', 'string'),
       optionalField('data', 'string'),
       optionalField('name', 'string'),
       optionalField('targetDir', 'string'),
@@ -118,9 +117,15 @@ const docxImport: PayloadValidator = (payload) => {
   )(payload);
   if (base) return base;
   const value = payload as Record<string, unknown>;
-  const hasPath = typeof value.externalPath === 'string' && value.externalPath.length > 0;
-  const hasData = typeof value.data === 'string' && value.data.length > 0;
-  if (hasPath && hasData) return invalid('externalPath 与 data 只能提供其一');
+  if (value.data === undefined) return null;
+  if (typeof value.data !== 'string' || value.data.length === 0) return invalid('data 不能为空');
+  if (
+    value.data.length > 268_435_456 ||
+    value.data.length % 4 !== 0 ||
+    !/^[A-Za-z0-9+/]*={0,2}$/.test(value.data)
+  ) {
+    return invalid('data 不是合法 base64');
+  }
   return null;
 };
 
