@@ -225,6 +225,8 @@ async function removeForgeMeta(moduleRoot) {
 
 const LOCK_POLL_MS = 200;
 const LOCK_TIMEOUT_MS = 10 * 60 * 1000;
+// open 与写入 owner token 之间进程被杀死时，允许回收空锁；正常写入远小于此窗口。
+const EMPTY_LOCK_STALE_MS = 30 * 1000;
 
 function sleep(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
@@ -264,22 +266,41 @@ async function withPrepareLock(root, options, run) {
   for (;;) {
     try {
       const handle = await open(lockPath, 'wx');
-      await handle.writeFile(`${token}\n`);
+      try {
+        await handle.writeFile(`${token}\n`);
+      } catch (error) {
+        await handle.close().catch(() => undefined);
+        await rm(lockPath, { force: true }).catch(() => undefined);
+        throw error;
+      }
       await handle.close();
       break;
     } catch (error) {
       if (error.code !== 'EEXIST') throw error;
     }
     const held = await readToken();
+    let reclaim = false;
     if (held) {
       const holderPid = Number.parseInt(held.split('-', 1)[0] ?? '', 10);
-      if (Number.isInteger(holderPid) && !processExists(holderPid)) {
-        // 持锁进程已死亡：仅当 token 未变时回收，防止竞态中误删新锁。
-        if ((await readToken()) === held) {
-          await rm(lockPath, { force: true }).catch(() => undefined);
-        }
-        continue;
+      reclaim = Number.isInteger(holderPid) && !processExists(holderPid);
+    } else {
+      try {
+        reclaim = Date.now() - (await stat(lockPath)).mtimeMs > EMPTY_LOCK_STALE_MS;
+      } catch (error) {
+        if (error.code === 'ENOENT') continue;
+        throw error;
       }
+    }
+    if (reclaim) {
+      // 原子移走陈旧锁，避免旧 owner 随后写 token 或释放时误伤新 owner。
+      const quarantine = `${lockPath}.stale-${randomUUID()}`;
+      try {
+        await rename(lockPath, quarantine);
+        await rm(quarantine, { force: true }).catch(() => undefined);
+      } catch (error) {
+        if (error.code !== 'ENOENT') throw error;
+      }
+      continue;
     }
     if (Date.now() - startedAt > timeoutMs) {
       throw new Error(`Timed out acquiring native binding prepare lock: ${lockPath}`);
