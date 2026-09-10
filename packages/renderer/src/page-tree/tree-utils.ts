@@ -18,12 +18,18 @@ export function parentPath(relPath: string): string {
 }
 
 export function isMarkdown(name: string): boolean {
-  return name.toLowerCase().endsWith('.md');
+  return name.toLowerCase().endsWith('.md') || name.toLowerCase().endsWith('.markdown');
+}
+
+export function isDocx(name: string): boolean {
+  return name.toLowerCase().endsWith('.docx');
 }
 
 /** 文件显示名（去 .md 后缀）。 */
 export function displayName(node: { name: string; kind: 'file' | 'directory' }): string {
-  return node.kind === 'file' && isMarkdown(node.name) ? node.name.replace(/\.md$/i, '') : node.name;
+  return node.kind === 'file' && isMarkdown(node.name)
+    ? node.name.replace(/\.md$/i, '')
+    : node.name;
 }
 
 /** 扁平列表 → 树。输入含目录与（已按 showAllFiles 过滤的）文件；孤儿节点自动挂到最近存在的祖先。 */
@@ -35,8 +41,7 @@ export function buildTree(entries: DirEntry[]): TreeNode[] {
     if (e.kind === 'directory') dirMap.set(e.path, { ...e, children: [] });
   }
   for (const e of entries) {
-    const node: TreeNode =
-      e.kind === 'directory' ? dirMap.get(e.path)! : { ...e, children: [] };
+    const node: TreeNode = e.kind === 'directory' ? dirMap.get(e.path)! : { ...e, children: [] };
     const parent = dirMap.get(parentPath(e.path));
     if (parent) parent.children.push(node);
     else roots.push(node);
@@ -60,16 +65,23 @@ export function sortTree(nodes: TreeNode[]): TreeNode[] {
  * 返回新数组（不可变更新）；目录的 addDir/unlinkDir 不级联其子项——
  * chokidar 会为子项各自推送事件。
  */
-export function applyFsChangeEvent(entries: DirEntry[], event: {
-  kind: 'add' | 'addDir' | 'unlink' | 'unlinkDir' | 'change';
-  path: string;
-}): DirEntry[] {
+export function applyFsChangeEvent(
+  entries: DirEntry[],
+  event: {
+    kind: 'add' | 'addDir' | 'unlink' | 'unlinkDir' | 'change';
+    path: string;
+  },
+): DirEntry[] {
   const name = event.path.slice(event.path.lastIndexOf('/') + 1);
   if (event.kind === 'add' || event.kind === 'addDir') {
     if (entries.some((e) => e.path === event.path)) return entries;
     const next = [
       ...entries,
-      { name, path: event.path, kind: event.kind === 'addDir' ? ('directory' as const) : ('file' as const) },
+      {
+        name,
+        path: event.path,
+        kind: event.kind === 'addDir' ? ('directory' as const) : ('file' as const),
+      },
     ];
     return next;
   }
@@ -129,7 +141,11 @@ export function filterTree(
     return null;
   };
 
-  return { tree: roots.map(walk).filter((n): n is TreeNode => n !== null), matchedFiles, expandDirs };
+  return {
+    tree: roots.map(walk).filter((n): n is TreeNode => n !== null),
+    matchedFiles,
+    expandDirs,
+  };
 }
 
 function collectFiles(node: TreeNode, out: Set<string>): void {

@@ -101,6 +101,28 @@ const importBinaryFile = object(
   ],
 );
 const listTree = object(['showAllFiles'], [optionalField('showAllFiles', 'boolean')]);
+const docxPath = object(['path'], [stringField('path')]);
+const docxExport = object(
+  ['path', 'targetPath'],
+  [stringField('path'), optionalField('targetPath', 'string')],
+);
+const docxImport: PayloadValidator = (payload) => {
+  const base = object(
+    ['externalPath', 'data', 'name', 'targetDir'],
+    [
+      optionalField('externalPath', 'string'),
+      optionalField('data', 'string'),
+      optionalField('name', 'string'),
+      optionalField('targetDir', 'string'),
+    ],
+  )(payload);
+  if (base) return base;
+  const value = payload as Record<string, unknown>;
+  const hasPath = typeof value.externalPath === 'string' && value.externalPath.length > 0;
+  const hasData = typeof value.data === 'string' && value.data.length > 0;
+  if (hasPath && hasData) return invalid('externalPath 与 data 只能提供其一');
+  return null;
+};
 
 const stringArrayField =
   (key: string): PayloadValidator =>
@@ -490,6 +512,11 @@ const VALIDATORS: Partial<Record<IpcChannel, PayloadValidator>> = {
   'settings:saveExportFile': settingsSaveExportFile,
   'app:setUpdateChannel': updateChannel,
   'app:setUpdateSettings': updateSettingsPatch,
+  // DOCX（阶段6）
+  'docx:import': docxImport,
+  'docx:readPreview': docxPath,
+  'docx:createEditCopy': docxPath,
+  'docx:export': docxExport,
 };
 
 /** Reject malformed input with a stable code before executing the registered handler. */

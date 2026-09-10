@@ -4,6 +4,7 @@ import {
   Eye,
   EyeOff,
   FileText,
+  FileType2,
   Folder,
   FolderPlus,
   FolderTree,
@@ -15,13 +16,14 @@ import { ContextMenu, type ContextMenuItem } from '../../../components/ContextMe
 import { Input } from '../../../components/ui/input';
 import { usePageTreeStore } from '../../../stores/page-tree-store';
 import { useUiStore } from '../../../stores/ui-store';
-import { openPage, useTabStore } from '../../../stores/tab-store';
+import { openDocx, openPage, useTabStore } from '../../../stores/tab-store';
 import { cn } from '../../../lib/utils';
 import {
   buildTree,
   displayName,
   filterTree,
   isMarkdown,
+  isDocx,
   type TreeNode,
 } from '../../../page-tree/tree-utils';
 import * as ops from './ops';
@@ -77,7 +79,10 @@ function PageTreePanel() {
   };
 
   const visibleEntries = useMemo(
-    () => entries.filter((e) => showAllFiles || e.kind === 'directory' || isMarkdown(e.name)),
+    () =>
+      entries.filter(
+        (e) => showAllFiles || e.kind === 'directory' || isMarkdown(e.name) || isDocx(e.name),
+      ),
     [entries, showAllFiles],
   );
   const tree = useMemo(() => buildTree(visibleEntries), [visibleEntries]);
@@ -163,8 +168,10 @@ function PageTreePanel() {
         onToggleDir={() => useUiStore.getState().toggleTreeDir(node.path)}
         onClick={() => {
           usePageTreeStore.getState().setSelected(node.path);
-          if (node.kind === 'file' && (isMarkdown(node.name) || showAllFiles)) {
+          if (node.kind === 'file') {
+            // .md 页面 → 块编辑器；.docx → 只读预览 tab（阶段6）
             if (isMarkdown(node.name)) openPage(node.path);
+            else if (isDocx(node.name)) openDocx(node.path);
           }
         }}
         onContextMenu={(e) => openMenuFor(e, node)}
@@ -409,7 +416,10 @@ function TreeRow(p: TreeRowProps) {
       {!isDir && isMarkdown(p.node.name) && (
         <FileText className="size-3.5 shrink-0 text-muted-foreground" />
       )}
-      {!isDir && !isMarkdown(p.node.name) && (
+      {!isDir && isDocx(p.node.name) && (
+        <FileType2 className="size-3.5 shrink-0 text-primary/80" aria-label="DOCX 文档" />
+      )}
+      {!isDir && !isMarkdown(p.node.name) && !isDocx(p.node.name) && (
         <FileText className="size-3.5 shrink-0 text-muted-foreground/50" />
       )}
       {p.renaming ? (
