@@ -225,27 +225,18 @@ async function removeForgeMeta(moduleRoot) {
 
 const LOCK_POLL_MS = 200;
 const LOCK_TIMEOUT_MS = 10 * 60 * 1000;
-// open 与写入 owner token 之间进程被杀死时，允许回收空锁；正常写入远小于此窗口。
-const EMPTY_LOCK_STALE_MS = 30 * 1000;
 
 function sleep(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
-function processExists(pid) {
-  try {
-    process.kill(pid, 0);
-    return true;
-  } catch (error) {
-    return error.code === 'EPERM';
-  }
-}
-
 /**
  * 跨进程互斥：并行的 pretest/predev/presmoke 会同时 prepare 同一份 binding 缓存，
  * 无锁并发时失败路径的 rm 可能删掉另一进程刚发布成功的缓存。
- * 锁文件内容为不可复用的 owner token（pid + uuid）；陈旧锁只有在持锁 PID 确认
- * 不存在时才回收，释放时校验 token，避免旧进程删掉新持有者的锁。
+ * 锁文件内容为不可复用的 owner token（pid + uuid），释放时校验 token 防止误删新锁。
+ * 刻意不做 stale 锁自动回收：文件 API 无法区分“死进程遗留”与“存活但被暂停的 owner”，
+ * 任何启发式回收都可能制造双 owner。持锁进程崩溃残留的锁会在等待方超时后 fail closed，
+ * 手动删除该锁即可恢复（错误信息已给出路径）。
  */
 async function withPrepareLock(root, options, run) {
   const lockDir = join(root, 'node_modules', '.cache', 'nexnote-native-bindings');
@@ -266,44 +257,17 @@ async function withPrepareLock(root, options, run) {
   for (;;) {
     try {
       const handle = await open(lockPath, 'wx');
-      try {
-        await handle.writeFile(`${token}\n`);
-      } catch (error) {
-        await handle.close().catch(() => undefined);
-        await rm(lockPath, { force: true }).catch(() => undefined);
-        throw error;
-      }
+      await handle.writeFile(`${token}\n`);
       await handle.close();
       break;
     } catch (error) {
       if (error.code !== 'EEXIST') throw error;
     }
-    const held = await readToken();
-    let reclaim = false;
-    if (held) {
-      const holderPid = Number.parseInt(held.split('-', 1)[0] ?? '', 10);
-      reclaim = Number.isInteger(holderPid) && !processExists(holderPid);
-    } else {
-      try {
-        reclaim = Date.now() - (await stat(lockPath)).mtimeMs > EMPTY_LOCK_STALE_MS;
-      } catch (error) {
-        if (error.code === 'ENOENT') continue;
-        throw error;
-      }
-    }
-    if (reclaim) {
-      // 原子移走陈旧锁，避免旧 owner 随后写 token 或释放时误伤新 owner。
-      const quarantine = `${lockPath}.stale-${randomUUID()}`;
-      try {
-        await rename(lockPath, quarantine);
-        await rm(quarantine, { force: true }).catch(() => undefined);
-      } catch (error) {
-        if (error.code !== 'ENOENT') throw error;
-      }
-      continue;
-    }
     if (Date.now() - startedAt > timeoutMs) {
-      throw new Error(`Timed out acquiring native binding prepare lock: ${lockPath}`);
+      throw new Error(
+        `Timed out acquiring native binding prepare lock: ${lockPath}. ` +
+          'If no other NexNote dev/test/smoke process is running, delete this file and retry.',
+      );
     }
     await sleep(pollMs);
   }
