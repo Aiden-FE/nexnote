@@ -2,7 +2,8 @@ import { randomUUID } from 'node:crypto';
 import { sanitizeEntryName, type FileInfo } from '@nexnote/shared';
 import type { ChatSession, ChatSummary, ChatTurn } from '@nexnote/shared';
 import { FsError, type VaultFsService } from '../fs/fs-service';
-import { defaultNoteFrontmatter } from '../fs/page-ops';
+import { defaultNoteMetadata } from '../fs/page-ops';
+import { MetadataStore } from '../document/metadata-store';
 import { parseChatFile, serializeChatFile } from './chat-format';
 import { readVaultConfig, sanitizeChatFolder, writeVaultConfig } from '../vault/vault-manager';
 
@@ -149,11 +150,12 @@ export class ChatService {
     const session = await this.getChat(relPath);
     const title = session.meta.title || '对话笔记';
     const body = this.renderDocumentBody(session.turns, userAsQuote);
-    const frontmatter = defaultNoteFrontmatter();
     const fileName = await this.uniqueRootName(title);
     const target = `${fileName}.md`;
-    const content = `${frontmatter}\n# ${title}\n\n${body}\n`;
-    return this.fs.writeTextFile(target, content, true);
+    const content = `# ${title}\n\n${body}\n`;
+    const info = await this.fs.writeTextFile(target, content, true);
+    await new MetadataStore(this.root()).write(target, defaultNoteMetadata('native-block'));
+    return info;
   }
 
   private async uniqueRootName(title: string): Promise<string> {

@@ -2,7 +2,9 @@ import Database from 'better-sqlite3';
 import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync } from 'node:fs';
 import * as path from 'node:path';
 import type { Backlink, ConfidenceResult, GraphSnapshot, IndexStatus, PageIndexSummary, PageJumpResult, PageSummaryLite, SearchHit, TagIndexEntry } from '@nexnote/shared';
-import { parsePageMarkdown, type ParsedPage } from './markdown-indexer';
+import { formatForPath, isDocumentPath, metadataPathFor, type DocumentMetadata } from '../document/document-domain';
+import { EXCLUDED_DIRS } from '../fs/fs-service';
+import { applySidecarMetadata, parsePageMarkdown, projectBinaryPage, type ParsedPage } from './markdown-indexer';
 import { currentBetterSqlite3Options } from './native-binding';
 
 export interface CandidateBlock {
@@ -23,7 +25,7 @@ export interface VectorItem {
   model: string;
 }
 
-const SCHEMA_VERSION = 5;
+const SCHEMA_VERSION = 6;
 type Db = Database.Database;
 
 function emptyStatus(): IndexStatus { return { phase: 'idle', pagesTotal: 0, pagesIndexed: 0, mode: 'full' }; }
@@ -215,23 +217,44 @@ export class LinkIndexService {
         CREATE TABLE IF NOT EXISTS vector_meta (key TEXT PRIMARY KEY, value TEXT NOT NULL);
       `);
     }
+    if (version < 6) {
+      // document-domain sidecar：pages 增加 stable_id（.nexnote/metadata 侧车的 canonical id）。
+      db.exec(`
+        ALTER TABLE pages ADD COLUMN stable_id TEXT;
+        CREATE INDEX IF NOT EXISTS pages_stable_id_idx ON pages(stable_id);
+      `);
+    }
     db.pragma(`user_version = ${SCHEMA_VERSION}`);
   }
-  private allMarkdownFiles(): string[] {
+  /** 全量扫描可发现文档（.md/.markdown/.docx，复用 document-domain 的扩展名口径）。 */
+  private allDocumentFiles(): string[] {
     const root = this.requireRoot(); const found: string[] = [];
-    const walk = (rel: string): void => { for (const ent of readdirSync(path.join(root, rel), { withFileTypes: true })) { if (['.nexnote','.git','.trash','node_modules'].includes(ent.name)) continue; const next = rel ? `${rel}/${ent.name}` : ent.name; if (ent.isDirectory()) walk(next); else if (ent.isFile() && ent.name.toLowerCase().endsWith('.md')) found.push(next); } };
+    const walk = (rel: string): void => { for (const ent of readdirSync(path.join(root, rel), { withFileTypes: true })) { if (EXCLUDED_DIRS.has(ent.name)) continue; const next = rel ? `${rel}/${ent.name}` : ent.name; if (ent.isDirectory()) walk(next); else if (ent.isFile() && isDocumentPath(ent.name)) found.push(next); } };
     walk(''); return found.sort();
+  }
+  /** 读取 .nexnote/metadata sidecar（canonical id/createdAt/updatedAt）；读取/解析失败按无 sidecar 降级（派生缓存尽力而为）。 */
+  private loadSidecar(root: string, relPath: string): DocumentMetadata | null {
+    try {
+      const value: unknown = JSON.parse(readFileSync(metadataPathFor(root, relPath), 'utf8'));
+      return value && typeof value === 'object' && !Array.isArray(value) ? (value as DocumentMetadata) : null;
+    } catch { return null; }
+  }
+  /** 按格式解析文档：markdown 走 UTF-8 解析并合并 sidecar；docx 等二进制只做安全投影（不解码正文）。 */
+  private parseDocument(root: string, relPath: string): ParsedPage {
+    const abs = path.join(root, relPath);
+    if (formatForPath(relPath) === 'docx') return applySidecarMetadata(projectBinaryPage(relPath, readFileSync(abs)), this.loadSidecar(root, relPath));
+    return applySidecarMetadata(parsePageMarkdown(relPath, readFileSync(abs, 'utf8')), this.loadSidecar(root, relPath));
   }
   rebuild(): IndexStatus {
     const root = this.requireRoot();
     let files: string[];
-    try { files = this.allMarkdownFiles(); }
+    try { files = this.allDocumentFiles(); }
     catch (e) { this.publish({ phase: 'error', pagesTotal: 0, pagesIndexed: 0, mode: 'full', error: e instanceof Error ? e.message : String(e) }); return this.status; }
     this.publish({ phase: 'scanning', pagesTotal: files.length, pagesIndexed: 0, mode: 'full' });
     // 单个文件读取/解析失败不阻断全库重建（派生缓存尽力而为），错误集中到 transaction/边界。
     const pages: ParsedPage[] = [];
     for (const file of files) {
-      try { pages.push(parsePageMarkdown(file, readFileSync(path.join(root, file), 'utf8'))); }
+      try { pages.push(this.parseDocument(root, file)); }
       catch { /* 跳过不可读/损坏文件 */ }
     }
     const db = this.db!; const run = db.transaction(() => { db.exec('DELETE FROM page_fts; DELETE FROM links; DELETE FROM tags; DELETE FROM blocks; DELETE FROM pages;'); for (const page of pages) { this.upsertPage(page, false); this._status.pagesIndexed += 1; if (this._status.pagesIndexed % 25 === 0 || this._status.pagesIndexed === files.length) this.onStatus(this.status); } this.resolveLinks(); });
@@ -245,7 +268,7 @@ export class LinkIndexService {
   scheduleUpdate(relPath: string, sourceRoot: string | null = this.root): void {
     if (!sourceRoot) return;
     const safePath = vaultRelativePath(sourceRoot, relPath);
-    if (!safePath || !safePath.toLowerCase().endsWith('.md') || this.rebuildScheduled) return;
+    if (!safePath || !isDocumentPath(safePath) || this.rebuildScheduled) return;
     this.pendingPaths.add(safePath);
     const key = '__updates__'; const prior = this.timers.get(key); if (prior) clearTimeout(prior);
     this.timers.set(key, setTimeout(() => {
@@ -270,7 +293,7 @@ export class LinkIndexService {
   private updateFiles(relPaths: string[], sourceRoot: string | null): void {
     if (!this.root || this.root !== sourceRoot) return; // switch/close drops stale batches
     const root = this.requireRoot();
-    const paths = [...new Set(relPaths.map((value) => vaultRelativePath(root, value)).filter((value): value is string => !!value && value.toLowerCase().endsWith('.md')))];
+    const paths = [...new Set(relPaths.map((value) => vaultRelativePath(root, value)).filter((value): value is string => !!value && isDocumentPath(value)))];
     if (paths.length === 0) return;
     this.publish({ phase: 'scanning', pagesTotal: paths.length, pagesIndexed: 0, currentFile: paths[0], mode: 'incremental' });
     const db = this.db!;
@@ -281,7 +304,7 @@ export class LinkIndexService {
         const abs = path.join(root, safePath);
         if (!existsSync(abs)) this.deletePath(safePath);
         else {
-          try { this.upsertPage(parsePageMarkdown(safePath, readFileSync(abs, 'utf8')), false); }
+          try { this.upsertPage(this.parseDocument(root, safePath), false); }
           catch { /* 跳过不可读/损坏文件，其余批次照常 */ }
         }
       }
@@ -317,9 +340,11 @@ export class LinkIndexService {
   }
   private deletePath(relPath: string): void { const db = this.db!; const row = db.prepare('SELECT id FROM pages WHERE path=?').get(relPath) as { id: number } | undefined; if (!row) return; db.prepare('DELETE FROM page_fts WHERE path=?').run(relPath); db.prepare('DELETE FROM pages WHERE id=?').run(row.id); }
   private upsertPage(page: ParsedPage, resolve = true): void {
-    const db = this.db!; const old = db.prepare('SELECT id, hash FROM pages WHERE path=?').get(page.path) as { id:number; hash:string } | undefined; if (old?.hash === page.hash) return;
+    type ExistingPage = { id: number; hash: string; stable_id: string | null; created_at: string | null; updated_at: string | null };
+    const db = this.db!; const old = db.prepare('SELECT id, hash, stable_id, created_at, updated_at FROM pages WHERE path=?').get(page.path) as ExistingPage | undefined;
+    if (old?.hash === page.hash && old.stable_id === page.stableId && old.created_at === page.createdAt && old.updated_at === page.updatedAt) return;
     if (old) { db.prepare('DELETE FROM page_fts WHERE path=?').run(page.path); db.prepare('DELETE FROM links WHERE source_page_id=?').run(old.id); db.prepare('DELETE FROM tags WHERE page_id=?').run(old.id); db.prepare('DELETE FROM blocks WHERE page_id=?').run(old.id); }
-    db.prepare(`INSERT INTO pages(path,title,aliases,created_at,updated_at,hash,confidence_boost) VALUES(?,?,?,?,?,?,?) ON CONFLICT(path) DO UPDATE SET title=excluded.title,aliases=excluded.aliases,created_at=excluded.created_at,updated_at=excluded.updated_at,hash=excluded.hash,confidence_boost=excluded.confidence_boost`).run(page.path,page.title,JSON.stringify(page.aliases),page.createdAt,page.updatedAt,page.hash,page.confidenceBoost);
+    db.prepare(`INSERT INTO pages(path,title,aliases,created_at,updated_at,stable_id,hash,confidence_boost) VALUES(?,?,?,?,?,?,?,?) ON CONFLICT(path) DO UPDATE SET title=excluded.title,aliases=excluded.aliases,created_at=excluded.created_at,updated_at=excluded.updated_at,stable_id=excluded.stable_id,hash=excluded.hash,confidence_boost=excluded.confidence_boost`).run(page.path,page.title,JSON.stringify(page.aliases),page.createdAt,page.updatedAt,page.stableId,page.hash,page.confidenceBoost);
     const id = (db.prepare('SELECT id FROM pages WHERE path=?').get(page.path) as {id:number}).id;
     const block = db.prepare('INSERT INTO blocks(page_id,block_id,block_type,content_text,position) VALUES(?,?,?,?,?)');
     const blockIdRows: number[] = []; // index = position
@@ -343,7 +368,10 @@ export class LinkIndexService {
     const pages = db.prepare('SELECT id,path,title,aliases FROM pages').all() as Array<{ id: number; path: string; title: string; aliases: string }>;
     // 精确 vault 相对 stem（含子目录）→ id。普通链接已归一化到 stem，wiki 的 [[dir/name]] 也走这里。
     const byPath = new Map<string, number>();
-    for (const page of pages) byPath.set(page.path.replace(/\.md$/i, '').toLowerCase(), page.id);
+    for (const page of pages) {
+      const ext = path.posix.extname(page.path);
+      byPath.set(page.path.slice(0, page.path.length - ext.length).toLowerCase(), page.id);
+    }
     // basename：同名 basename 跨多个目录时为歧义，不武断 last-win（保持红链）。
     const basenameOwners = new Map<string, Set<number>>();
     const ownerOf = (map: Map<string, Set<number>>, key: string, id: number): void => {

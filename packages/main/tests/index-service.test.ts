@@ -5,6 +5,7 @@ import * as path from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import Database from 'better-sqlite3';
 import { LinkIndexService, } from '../src/indexer/index-service';
+import { MetadataStore } from '../src/document/metadata-store';
 
 let tmp: string;
 
@@ -501,6 +502,94 @@ describe('LinkIndexService', () => {
     expect(svc2.status.phase).toBe('ready');
     expect(svc2.search('Keep').length).toBe(1); // 自动重建完成
     svc2.close();
+  });
+
+  it('sidecar metadata 作为 canonical override 入索引（id/createdAt/updatedAt）', async () => {
+    await page('a.md', '---\nid: front-a\ncreated: 2020-01-01T00:00:00.000Z\nupdated: 2020-06-01T00:00:00.000Z\n---\n', '# A\n');
+    await page('b.md', '---\nid: front-b\ncreated: 2021-01-01T00:00:00.000Z\n---\n', '# B\n');
+    const sidecar = new MetadataStore(tmp);
+    await sidecar.write('a.md', { id: 'stable-a', createdAt: '2026-09-01T00:00:00.000Z', updatedAt: '2026-09-02T00:00:00.000Z' });
+
+    const svc = new LinkIndexService();
+    svc.setRoot(tmp);
+    const rows = () => {
+      const db = new Database(path.join(tmp, '.nexnote', 'index.db'), { readonly: true });
+      const value = db.prepare('SELECT path, stable_id, created_at, updated_at FROM pages ORDER BY path').all() as Array<{
+        path: string; stable_id: string | null; created_at: string | null; updated_at: string | null;
+      }>;
+      db.close();
+      return value;
+    };
+    // a.md：sidecar 全量覆盖；b.md：无 sidecar 回落 frontmatter
+    expect(rows()).toEqual([
+      { path: 'a.md', stable_id: 'stable-a', created_at: '2026-09-01T00:00:00.000Z', updated_at: '2026-09-02T00:00:00.000Z' },
+      { path: 'b.md', stable_id: 'front-b', created_at: '2021-01-01T00:00:00.000Z', updated_at: null },
+    ]);
+
+    // sidecar-only 变化（正文未变）也会刷新行，而不是被 hash 短路跳过
+    await sidecar.write('b.md', { id: 'stable-b' });
+    svc.updateFile('b.md');
+    expect(rows()).toEqual([
+      { path: 'a.md', stable_id: 'stable-a', created_at: '2026-09-01T00:00:00.000Z', updated_at: '2026-09-02T00:00:00.000Z' },
+      { path: 'b.md', stable_id: 'stable-b', created_at: '2021-01-01T00:00:00.000Z', updated_at: null },
+    ]);
+    svc.close();
+  });
+
+  it('sidecar 文件不会被当成页面索引', async () => {
+    await page('note.md', '', '# Note\n');
+    const sidecar = new MetadataStore(tmp);
+    await sidecar.write('note.md', { id: 'n-1', aliases: ['SidecarAliasShouldNotIndex'] });
+    // .nexnote 内即使混入 .md 也不进入扫描口径
+    await mkdir(path.join(tmp, '.nexnote', 'metadata'), { recursive: true });
+    await writeFile(path.join(tmp, '.nexnote', 'metadata', 'fake.md'), '# Fake\n', 'utf8');
+
+    const svc = new LinkIndexService();
+    svc.setRoot(tmp);
+    expect(svc.graph().pages.map((p) => p.path)).toEqual(['note.md']);
+    expect(svc.jumpTo('SidecarAliasShouldNotIndex')).toEqual([]);
+    expect(svc.search('Fake')).toEqual([]);
+    svc.close();
+  });
+
+  it('docx 可发现且按安全投影索引（title/path 描述符，正文不解码为 Markdown）', async () => {
+    const docxBytes = Buffer.concat([
+      Buffer.from([0x50, 0x4b, 0x03, 0x04, 0xff, 0xfe]),
+      Buffer.from('# 伪装标题\n\n假 wikilink [[note]] 正文\n', 'utf8'),
+    ]);
+    await mkdir(path.join(tmp, 'Files'), { recursive: true });
+    await writeFile(path.join(tmp, 'Files', 'report.docx'), docxBytes);
+    await page('note.md', '', '# Note\n\n见 [[report]]\n');
+    const sidecar = new MetadataStore(tmp);
+    await sidecar.write('Files/report.docx', { id: 'docx-1', createdAt: '2026-09-01T00:00:00.000Z' });
+
+    const svc = new LinkIndexService();
+    svc.setRoot(tmp);
+    // 可发现：⌘K 跳转与 graph 均含 docx 描述符
+    expect(svc.jumpTo('report').map((hit) => hit.path)).toContain('Files/report.docx');
+    expect(svc.graph().pages.map((p) => p.path).sort()).toEqual(['Files/report.docx', 'note.md']);
+    // 安全投影：标题是文件名 stem（绝非二进制里解码出的 H1），无块/正文
+    const summary = svc.pageSummary('Files/report.docx');
+    expect(summary?.title).toBe('report');
+    expect(summary?.blockCount).toBe(0);
+    expect(svc.search('伪装标题')).toEqual([]);
+    // wikilink 按唯一 basename 解析到 docx 描述符
+    expect(svc.backlinks('Files/report.docx').map((b) => b.fromPath)).toEqual(['note.md']);
+    // sidecar 的 canonical id/createdAt 同样作用于 docx 描述符
+    const db = new Database(path.join(tmp, '.nexnote', 'index.db'), { readonly: true });
+    expect(db.prepare("SELECT stable_id, created_at FROM pages WHERE path='Files/report.docx'").get()).toEqual({
+      stable_id: 'docx-1',
+      created_at: '2026-09-01T00:00:00.000Z',
+    });
+    db.close();
+    // 增量口径：docx 变更与删除同样经 isDocumentPath 处理
+    await writeFile(path.join(tmp, 'Files', 'report.docx'), Buffer.from('changed bytes'));
+    svc.updateFile('Files/report.docx');
+    expect(svc.pageSummary('Files/report.docx')?.path).toBe('Files/report.docx');
+    await rm(path.join(tmp, 'Files', 'report.docx'));
+    svc.updateFile('Files/report.docx');
+    expect(svc.pageSummary('Files/report.docx')).toBeNull();
+    svc.close();
   });
 
   it('切换 root 打开数据库失败时保留旧 root 与旧数据库', async () => {

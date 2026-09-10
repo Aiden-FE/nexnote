@@ -3,6 +3,7 @@ import type { DirEntry, FileInfo, RenameLinkedResult, TagStat } from '@nexnote/s
 import * as pathLib from 'node:path';
 import type { IpcRegistrar } from './registrar';
 import { createNote, renameWithLinks, scanTags } from '../fs/page-ops';
+import { MetadataStore } from '../document/metadata-store';
 import type { IpcServices } from './services';
 
 /** fs:* — vault 沙箱文件能力。 */
@@ -107,7 +108,9 @@ export function registerFsHandlers(registrar: IpcRegistrar): void {
   registrar.register(
     'fs:createNote',
     async ({ parentDir, name, content }, services): Promise<Result<FileInfo>> => {
-      const result = await createNote(services.fs, parentDir, name, content);
+      const root = services.vaultSession.getCurrent()?.root;
+      const sidecar = root ? new MetadataStore(root) : undefined;
+      const result = await createNote(services.fs, parentDir, name, content, sidecar);
       await recordWrite(services, `创建笔记 ${result.path}`);
       return ok(result);
     },
