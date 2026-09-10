@@ -76,7 +76,7 @@ describe('better-sqlite3 native binding isolation', () => {
     ).toEqual({});
   });
 
-  it('saves and validates Node, caches Electron, restores Node, and clears .forge-meta', async () => {
+  it('keeps Node intact, caches staged Electron, and clears .forge-meta', async () => {
     const root = await temporaryRoot();
     const moduleRoot = path.join(root, 'node_modules', 'better-sqlite3');
     const activeBinding = path.join(moduleRoot, 'build', 'Release', 'better_sqlite3.node');
@@ -110,6 +110,11 @@ describe('better-sqlite3 native binding isolation', () => {
 
     expect(await readFile(activeBinding, 'utf8')).toBe('node-binding');
     expect(await readFile(result.cacheBinding, 'utf8')).toBe('electron-binding');
+    await expect(
+      readFile(path.join(root, 'stage', 'better_sqlite3.node'), 'utf8'),
+    ).rejects.toMatchObject({
+      code: 'ENOENT',
+    });
     await expect(readFile(forgeMeta, 'utf8')).rejects.toMatchObject({ code: 'ENOENT' });
     expect(validate).toHaveBeenCalledWith(expect.stringMatching(/better_sqlite3\.node$/), 'node');
     expect(validate).toHaveBeenCalledWith(result.cacheBinding, 'electron');
@@ -157,7 +162,7 @@ describe('better-sqlite3 native binding isolation', () => {
     expect(await readFile(nodeCacheBinding, 'utf8')).toBe('node-binding');
   });
 
-  it('fails closed and restores Node when the Electron binding is invalid', async () => {
+  it('fails closed and keeps Node intact when staged Electron is invalid', async () => {
     const root = await temporaryRoot();
     const activeBinding = path.join(
       root,
@@ -195,6 +200,11 @@ describe('better-sqlite3 native binding isolation', () => {
     ).rejects.toThrow('Electron binding validation failed');
 
     expect(await readFile(activeBinding, 'utf8')).toBe('node-binding');
+    await expect(
+      readFile(path.join(root, 'stage', 'better_sqlite3.node'), 'utf8'),
+    ).rejects.toMatchObject({
+      code: 'ENOENT',
+    });
     await expect(
       readFile(
         path.join(

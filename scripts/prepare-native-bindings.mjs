@@ -161,9 +161,13 @@ async function rebuildNode(root) {
 }
 
 async function rebuildElectron(root, moduleRoot, version, platform, arch) {
-  const stagingRoot = await mkdtemp(join(tmpdir(), 'nexnote-native-binding-'));
+  const stagingRoot = await mkdtemp(join(tmpdir(), 'nexnote-electron-stage-'));
   const stagingModuleRoot = join(stagingRoot, 'node_modules', 'better-sqlite3');
   const binding = join(stagingModuleRoot, 'build', 'Release', 'better_sqlite3.node');
+  // cleanup 失败不应掩盖真正的 rebuild/发布错误。
+  const cleanup = async () => {
+    await rm(stagingRoot, { force: true, recursive: true }).catch(() => undefined);
+  };
   try {
     await mkdir(join(stagingRoot, 'node_modules'), { recursive: true });
     await writeFile(
@@ -205,12 +209,9 @@ async function rebuildElectron(root, moduleRoot, version, platform, arch) {
       );
     }
     if (!(await exists(binding))) throw new Error('Electron rebuild produced no native binding.');
-    return {
-      binding,
-      cleanup: () => rm(stagingRoot, { force: true, recursive: true }),
-    };
+    return { binding, cleanup };
   } catch (error) {
-    await rm(stagingRoot, { force: true, recursive: true });
+    await cleanup();
     throw error;
   }
 }
@@ -286,9 +287,8 @@ export async function prepareNativeBindings(options) {
   let staged;
   try {
     staged = await rebuildForElectron();
-    const stagedBinding = typeof staged === 'string' ? staged : staged.binding;
-    await validate(stagedBinding, 'electron');
-    await copyBinding(stagedBinding, cacheBinding);
+    await validate(staged.binding, 'electron');
+    await copyBinding(staged.binding, cacheBinding);
     await validate(cacheBinding, 'electron');
   } catch (error) {
     await rm(cacheBinding, { force: true });
@@ -296,7 +296,7 @@ export async function prepareNativeBindings(options) {
       `Electron binding validation failed: ${error instanceof Error ? error.message : String(error)}`,
     );
   } finally {
-    if (staged && typeof staged !== 'string') await staged.cleanup();
+    if (staged) await staged.cleanup();
   }
 
   await removeForgeMeta(moduleRoot);
