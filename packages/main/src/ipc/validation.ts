@@ -129,7 +129,7 @@ const docxImport: PayloadValidator = (payload) => {
     ],
   )(payload);
   const value = payload as Record<string, unknown>;
-  if (base) return null;
+  if (base) return base;
   if (value.data === undefined) return null;
   if (typeof value.data !== 'string' || value.data.length === 0) return invalid('data 不能为空');
   if (
