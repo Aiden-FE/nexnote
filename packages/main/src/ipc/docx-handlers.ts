@@ -34,7 +34,18 @@ export function registerDocxHandlers(registrar: IpcRegistrar): void {
           { name: 'Word 文档', extensions: ['docx'] },
         ]);
         if (!picked) return ok(null);
-        const bytes = await fsp.readFile(picked);
+        const handle = await fsp.open(picked, 'r');
+        let bytes: Buffer;
+        try {
+          const stat = await handle.stat();
+          if (stat.size > 200 * 1024 * 1024) {
+            throw new Error('DOCX 文件过大');
+          }
+          bytes = Buffer.alloc(stat.size);
+          await handle.read(bytes, 0, stat.size, 0);
+        } finally {
+          await handle.close();
+        }
         const result = await service(services).importDocx(
           { base64: bytes.toString('base64'), name: path.basename(picked) },
           targetDir ?? '',

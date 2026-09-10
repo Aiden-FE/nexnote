@@ -128,8 +128,8 @@ const docxImport: PayloadValidator = (payload) => {
       optionalField('targetDir', 'string'),
     ],
   )(payload);
-  if (base) return base;
   const value = payload as Record<string, unknown>;
+  if (base) return null;
   if (value.data === undefined) return null;
   if (typeof value.data !== 'string' || value.data.length === 0) return invalid('data 不能为空');
   if (

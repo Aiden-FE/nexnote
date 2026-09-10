@@ -1,6 +1,7 @@
 import { promises as fsp } from 'node:fs';
 import * as path from 'node:path';
 import type { DirEntry, FileInfo } from '@nexnote/shared';
+import { isDocumentPath } from '../document/document-domain';
 
 export class FsError extends Error {
   constructor(
@@ -262,7 +263,10 @@ export class VaultFsService {
       await fsp.mkdir(path.dirname(to.abs), { recursive: true });
       await fsp.rename(from.abs, to.abs);
     } catch (e) {
-      throw new FsError(`重命名失败: ${fromRel} → ${toRel}（${(e as Error).message}）`, 'RENAME_FAILED');
+      throw new FsError(
+        `重命名失败: ${fromRel} → ${toRel}（${(e as Error).message}）`,
+        'RENAME_FAILED',
+      );
     }
     const st = await fsp.stat(to.abs);
     return toFileInfo(toRel, st);
@@ -292,7 +296,8 @@ export class VaultFsService {
           out.push({ name: d.name, path: rel, kind: 'directory' });
           await walk(rel);
         } else if (d.isFile()) {
-          if (!showAllFiles && !d.name.toLowerCase().endsWith('.md')) continue;
+          // 默认视图只返回文档（.md/.markdown/.docx）；showAllFiles 时返回全部文件。
+          if (!showAllFiles && !isDocumentPath(d.name)) continue;
           out.push({ name: d.name, path: rel, kind: 'file' });
         }
       }
@@ -313,7 +318,10 @@ export class VaultFsService {
   }
 }
 
-function toFileInfo(relPath: string, st: { isDirectory(): boolean; size: number; mtimeMs: number }): FileInfo {
+function toFileInfo(
+  relPath: string,
+  st: { isDirectory(): boolean; size: number; mtimeMs: number },
+): FileInfo {
   return {
     path: relPath,
     name: path.basename(relPath),
