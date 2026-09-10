@@ -618,10 +618,16 @@ export async function runSmokeIfEnabled(): Promise<void> {
         return !!editor && editor.textContent?.includes('冒烟首页.md');
       }),
     );
+    const createdDocumentMetadata = await invoke('document:getMetadata', {
+      path: '冒烟首页.md',
+    });
     check(
-      'frontmatter 面板渲染 created/id 字段',
-      !!document.querySelector('[data-testid="frontmatter-field-created"]') &&
-        !!document.querySelector('[data-testid="frontmatter-field-id"]'),
+      '新建 Markdown 保持正文干净、产品 metadata 在 sidecar',
+      !document.querySelector('[data-testid="frontmatter-field-created"]') &&
+        !document.querySelector('[data-testid="frontmatter-field-id"]') &&
+        typeof createdDocumentMetadata?.id === 'string' &&
+        typeof createdDocumentMetadata?.createdAt === 'string',
+      JSON.stringify(createdDocumentMetadata),
     );
     check(
       '状态栏显示 vault 根名',
