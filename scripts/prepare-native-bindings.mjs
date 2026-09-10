@@ -3,6 +3,7 @@ import {
   cp,
   mkdir,
   mkdtemp,
+  open,
   realpath,
   rename,
   rm,
@@ -221,6 +222,58 @@ async function removeForgeMeta(moduleRoot) {
   await rm(join(moduleRoot, '.forge-meta'), { force: true, recursive: true });
 }
 
+const LOCK_STALE_MS = 15 * 60 * 1000;
+const LOCK_POLL_MS = 200;
+const LOCK_TIMEOUT_MS = 10 * 60 * 1000;
+
+function sleep(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+/**
+ * 跨进程互斥：并行的 pretest/predev/presmoke 会同时 prepare 同一份 binding 缓存，
+ * 无锁并发时失败路径的 rm 可能删掉另一进程刚发布成功的缓存。
+ */
+async function withPrepareLock(root, options, run) {
+  const lockDir = join(root, 'node_modules', '.cache', 'nexnote-native-bindings');
+  await mkdir(lockDir, { recursive: true });
+  const lockPath = join(lockDir, '.prepare.lock');
+  const staleMs = options.lockStaleMs ?? LOCK_STALE_MS;
+  const pollMs = options.lockPollMs ?? LOCK_POLL_MS;
+  const timeoutMs = options.lockTimeoutMs ?? LOCK_TIMEOUT_MS;
+  const startedAt = Date.now();
+  for (;;) {
+    try {
+      const handle = await open(lockPath, 'wx');
+      await handle.writeFile(`${process.pid}\n`);
+      await handle.close();
+      break;
+    } catch (error) {
+      if (error.code !== 'EEXIST') throw error;
+      try {
+        const stats = await stat(lockPath);
+        if (Date.now() - stats.mtimeMs > staleMs) {
+          // 持锁进程已被杀死时击穿陈旧锁，避免永久阻塞。
+          await rm(lockPath, { force: true }).catch(() => undefined);
+          continue;
+        }
+      } catch (statError) {
+        if (statError.code !== 'ENOENT') throw statError;
+        continue;
+      }
+      if (Date.now() - startedAt > timeoutMs) {
+        throw new Error(`Timed out acquiring native binding prepare lock: ${lockPath}`);
+      }
+      await sleep(pollMs);
+    }
+  }
+  try {
+    return await run();
+  } finally {
+    await rm(lockPath, { force: true }).catch(() => undefined);
+  }
+}
+
 /**
  * Keeps a verified Node binding at better-sqlite3's default path and a separately
  * verified Electron binding in the ABI-keyed cache consumed through nativeBinding.
@@ -246,62 +299,64 @@ export async function prepareNativeBindings(options) {
     options.rebuildElectron ?? (() => rebuildElectron(root, moduleRoot, version, platform, arch));
   const rebuildForNode = options.rebuildNode ?? (() => rebuildNode(root));
 
-  const ensureNode = async () => {
-    if (await exists(activeBinding)) {
+  return withPrepareLock(root, options, async () => {
+    const ensureNode = async () => {
+      if (await exists(activeBinding)) {
+        try {
+          await validate(activeBinding, 'node');
+          await copyBinding(activeBinding, nodeCacheBinding);
+          await removeForgeMeta(moduleRoot);
+          return;
+        } catch {
+          // An Electron rebuild may have overwritten the shared default binding.
+        }
+      }
+      if (await exists(nodeCacheBinding)) {
+        try {
+          await copyBinding(nodeCacheBinding, activeBinding);
+          await validate(activeBinding, 'node');
+          await removeForgeMeta(moduleRoot);
+          return;
+        } catch {
+          await rm(nodeCacheBinding, { force: true });
+        }
+      }
+      await rebuildForNode();
+      await validate(activeBinding, 'node');
+      await copyBinding(activeBinding, nodeCacheBinding);
+      await removeForgeMeta(moduleRoot);
+    };
+
+    await ensureNode();
+    if (options.mode === 'node') return { cacheBinding: nodeCacheBinding };
+
+    if (await exists(cacheBinding)) {
       try {
-        await validate(activeBinding, 'node');
-        await copyBinding(activeBinding, nodeCacheBinding);
-        await removeForgeMeta(moduleRoot);
-        return;
+        await validate(cacheBinding, 'electron');
+        return { cacheBinding };
       } catch {
-        // An Electron rebuild may have overwritten the shared default binding.
+        await rm(cacheBinding, { force: true });
       }
     }
-    if (await exists(nodeCacheBinding)) {
-      try {
-        await copyBinding(nodeCacheBinding, activeBinding);
-        await validate(activeBinding, 'node');
-        await removeForgeMeta(moduleRoot);
-        return;
-      } catch {
-        await rm(nodeCacheBinding, { force: true });
-      }
-    }
-    await rebuildForNode();
-    await validate(activeBinding, 'node');
-    await copyBinding(activeBinding, nodeCacheBinding);
-    await removeForgeMeta(moduleRoot);
-  };
 
-  await ensureNode();
-  if (options.mode === 'node') return { cacheBinding: nodeCacheBinding };
-
-  if (await exists(cacheBinding)) {
+    let staged;
     try {
+      staged = await rebuildForElectron();
+      await validate(staged.binding, 'electron');
+      await copyBinding(staged.binding, cacheBinding);
       await validate(cacheBinding, 'electron');
-      return { cacheBinding };
-    } catch {
+    } catch (error) {
       await rm(cacheBinding, { force: true });
+      throw new Error(
+        `Electron binding validation failed: ${error instanceof Error ? error.message : String(error)}`,
+      );
+    } finally {
+      if (staged) await staged.cleanup();
     }
-  }
 
-  let staged;
-  try {
-    staged = await rebuildForElectron();
-    await validate(staged.binding, 'electron');
-    await copyBinding(staged.binding, cacheBinding);
-    await validate(cacheBinding, 'electron');
-  } catch (error) {
-    await rm(cacheBinding, { force: true });
-    throw new Error(
-      `Electron binding validation failed: ${error instanceof Error ? error.message : String(error)}`,
-    );
-  } finally {
-    if (staged) await staged.cleanup();
-  }
-
-  await removeForgeMeta(moduleRoot);
-  return { cacheBinding };
+    await removeForgeMeta(moduleRoot);
+    return { cacheBinding };
+  });
 }
 
 async function main() {
