@@ -3,6 +3,8 @@ import {
   cp,
   mkdir,
   mkdtemp,
+  open,
+  readFile,
   realpath,
   rename,
   rm,
@@ -221,6 +223,63 @@ async function removeForgeMeta(moduleRoot) {
   await rm(join(moduleRoot, '.forge-meta'), { force: true, recursive: true });
 }
 
+const LOCK_POLL_MS = 200;
+const LOCK_TIMEOUT_MS = 10 * 60 * 1000;
+
+function sleep(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+/**
+ * 跨进程互斥：并行的 pretest/predev/presmoke 会同时 prepare 同一份 binding 缓存，
+ * 无锁并发时失败路径的 rm 可能删掉另一进程刚发布成功的缓存。
+ * 锁文件内容为不可复用的 owner token（pid + uuid），释放时校验 token 防止误删新锁。
+ * 刻意不做 stale 锁自动回收：文件 API 无法区分“死进程遗留”与“存活但被暂停的 owner”，
+ * 任何启发式回收都可能制造双 owner。持锁进程崩溃残留的锁会在等待方超时后 fail closed，
+ * 手动删除该锁即可恢复（错误信息已给出路径）。
+ */
+async function withPrepareLock(root, options, run) {
+  const lockDir = join(root, 'node_modules', '.cache', 'nexnote-native-bindings');
+  await mkdir(lockDir, { recursive: true });
+  const lockPath = join(lockDir, '.prepare.lock');
+  const pollMs = options.lockPollMs ?? LOCK_POLL_MS;
+  const timeoutMs = options.lockTimeoutMs ?? LOCK_TIMEOUT_MS;
+  const token = `${process.pid}-${randomUUID()}`;
+  const startedAt = Date.now();
+  const readToken = async () => {
+    try {
+      return (await readFile(lockPath, 'utf8')).trim();
+    } catch (error) {
+      if (error.code === 'ENOENT') return null;
+      throw error;
+    }
+  };
+  for (;;) {
+    try {
+      const handle = await open(lockPath, 'wx');
+      await handle.writeFile(`${token}\n`);
+      await handle.close();
+      break;
+    } catch (error) {
+      if (error.code !== 'EEXIST') throw error;
+    }
+    if (Date.now() - startedAt > timeoutMs) {
+      throw new Error(
+        `Timed out acquiring native binding prepare lock: ${lockPath}. ` +
+          'If no other NexNote dev/test/smoke process is running, delete this file and retry.',
+      );
+    }
+    await sleep(pollMs);
+  }
+  try {
+    return await run();
+  } finally {
+    if ((await readToken()) === token) {
+      await rm(lockPath, { force: true }).catch(() => undefined);
+    }
+  }
+}
+
 /**
  * Keeps a verified Node binding at better-sqlite3's default path and a separately
  * verified Electron binding in the ABI-keyed cache consumed through nativeBinding.
@@ -246,62 +305,64 @@ export async function prepareNativeBindings(options) {
     options.rebuildElectron ?? (() => rebuildElectron(root, moduleRoot, version, platform, arch));
   const rebuildForNode = options.rebuildNode ?? (() => rebuildNode(root));
 
-  const ensureNode = async () => {
-    if (await exists(activeBinding)) {
+  return withPrepareLock(root, options, async () => {
+    const ensureNode = async () => {
+      if (await exists(activeBinding)) {
+        try {
+          await validate(activeBinding, 'node');
+          await copyBinding(activeBinding, nodeCacheBinding);
+          await removeForgeMeta(moduleRoot);
+          return;
+        } catch {
+          // An Electron rebuild may have overwritten the shared default binding.
+        }
+      }
+      if (await exists(nodeCacheBinding)) {
+        try {
+          await copyBinding(nodeCacheBinding, activeBinding);
+          await validate(activeBinding, 'node');
+          await removeForgeMeta(moduleRoot);
+          return;
+        } catch {
+          await rm(nodeCacheBinding, { force: true });
+        }
+      }
+      await rebuildForNode();
+      await validate(activeBinding, 'node');
+      await copyBinding(activeBinding, nodeCacheBinding);
+      await removeForgeMeta(moduleRoot);
+    };
+
+    await ensureNode();
+    if (options.mode === 'node') return { cacheBinding: nodeCacheBinding };
+
+    if (await exists(cacheBinding)) {
       try {
-        await validate(activeBinding, 'node');
-        await copyBinding(activeBinding, nodeCacheBinding);
-        await removeForgeMeta(moduleRoot);
-        return;
+        await validate(cacheBinding, 'electron');
+        return { cacheBinding };
       } catch {
-        // An Electron rebuild may have overwritten the shared default binding.
+        await rm(cacheBinding, { force: true });
       }
     }
-    if (await exists(nodeCacheBinding)) {
-      try {
-        await copyBinding(nodeCacheBinding, activeBinding);
-        await validate(activeBinding, 'node');
-        await removeForgeMeta(moduleRoot);
-        return;
-      } catch {
-        await rm(nodeCacheBinding, { force: true });
-      }
-    }
-    await rebuildForNode();
-    await validate(activeBinding, 'node');
-    await copyBinding(activeBinding, nodeCacheBinding);
-    await removeForgeMeta(moduleRoot);
-  };
 
-  await ensureNode();
-  if (options.mode === 'node') return { cacheBinding: nodeCacheBinding };
-
-  if (await exists(cacheBinding)) {
+    let staged;
     try {
+      staged = await rebuildForElectron();
+      await validate(staged.binding, 'electron');
+      await copyBinding(staged.binding, cacheBinding);
       await validate(cacheBinding, 'electron');
-      return { cacheBinding };
-    } catch {
+    } catch (error) {
       await rm(cacheBinding, { force: true });
+      throw new Error(
+        `Electron binding validation failed: ${error instanceof Error ? error.message : String(error)}`,
+      );
+    } finally {
+      if (staged) await staged.cleanup();
     }
-  }
 
-  let staged;
-  try {
-    staged = await rebuildForElectron();
-    await validate(staged.binding, 'electron');
-    await copyBinding(staged.binding, cacheBinding);
-    await validate(cacheBinding, 'electron');
-  } catch (error) {
-    await rm(cacheBinding, { force: true });
-    throw new Error(
-      `Electron binding validation failed: ${error instanceof Error ? error.message : String(error)}`,
-    );
-  } finally {
-    if (staged) await staged.cleanup();
-  }
-
-  await removeForgeMeta(moduleRoot);
-  return { cacheBinding };
+    await removeForgeMeta(moduleRoot);
+    return { cacheBinding };
+  });
 }
 
 async function main() {

@@ -91,6 +91,7 @@ describe('better-sqlite3 native binding isolation', () => {
 
     const result = await prepareNativeBindings({
       root,
+      moduleRoot,
       mode: 'electron',
       platform: 'darwin',
       arch: 'arm64',
@@ -122,14 +123,8 @@ describe('better-sqlite3 native binding isolation', () => {
 
   it('rebuilds Node when both the active binding and cached Node binding are invalid', async () => {
     const root = await temporaryRoot();
-    const activeBinding = path.join(
-      root,
-      'node_modules',
-      'better-sqlite3',
-      'build',
-      'Release',
-      'better_sqlite3.node',
-    );
+    const moduleRoot = path.join(root, 'node_modules', 'better-sqlite3');
+    const activeBinding = path.join(moduleRoot, 'build', 'Release', 'better_sqlite3.node');
     const nodeCacheBinding = nativeBindingCachePath(root, {
       platform: 'darwin',
       arch: 'arm64',
@@ -147,6 +142,7 @@ describe('better-sqlite3 native binding isolation', () => {
 
     await prepareNativeBindings({
       root,
+      moduleRoot,
       mode: 'node',
       platform: 'darwin',
       arch: 'arm64',
@@ -164,20 +160,15 @@ describe('better-sqlite3 native binding isolation', () => {
 
   it('fails closed and keeps Node intact when staged Electron is invalid', async () => {
     const root = await temporaryRoot();
-    const activeBinding = path.join(
-      root,
-      'node_modules',
-      'better-sqlite3',
-      'build',
-      'Release',
-      'better_sqlite3.node',
-    );
+    const moduleRoot = path.join(root, 'node_modules', 'better-sqlite3');
+    const activeBinding = path.join(moduleRoot, 'build', 'Release', 'better_sqlite3.node');
     await mkdir(path.dirname(activeBinding), { recursive: true });
     await writeFile(activeBinding, 'node-binding');
 
     await expect(
       prepareNativeBindings({
         root,
+        moduleRoot,
         mode: 'electron',
         platform: 'linux',
         arch: 'x64',
@@ -219,5 +210,68 @@ describe('better-sqlite3 native binding isolation', () => {
         'utf8',
       ),
     ).rejects.toMatchObject({ code: 'ENOENT' });
+  });
+
+  it('serializes concurrent prepares and fail-closes on held lock', async () => {
+    const root = await temporaryRoot();
+    const moduleRoot = path.join(root, 'node_modules', 'better-sqlite3');
+    const activeBinding = path.join(moduleRoot, 'build', 'Release', 'better_sqlite3.node');
+    await mkdir(path.dirname(activeBinding), { recursive: true });
+    await writeFile(activeBinding, 'node-binding');
+    const lockPath = path.join(
+      root,
+      'node_modules',
+      '.cache',
+      'nexnote-native-bindings',
+      '.prepare.lock',
+    );
+    await mkdir(path.dirname(lockPath), { recursive: true });
+    await writeFile(lockPath, '123456-stale-owner\n');
+    const rebuildNode = vi.fn(async () => writeFile(activeBinding, 'node-binding'));
+
+    await expect(
+      prepareNativeBindings({
+        root,
+        moduleRoot,
+        mode: 'node',
+        platform: 'darwin',
+        arch: 'arm64',
+        electronVersion: '44.2.0',
+        electronAbi: '149',
+        nodeAbi: '147',
+        validate: async (binding: string, runtime: 'node' | 'electron') => {
+          const bytes = await readFile(binding, 'utf8');
+          if (bytes !== `${runtime}-binding`) throw new Error(`${runtime} ABI mismatch`);
+        },
+        rebuildNode,
+        lockPollMs: 10,
+        lockTimeoutMs: 100,
+      }),
+    ).rejects.toThrow('prepare lock');
+
+    expect(rebuildNode).not.toHaveBeenCalled();
+    expect(await readFile(activeBinding, 'utf8')).toBe('node-binding');
+
+    await rm(lockPath, { force: true });
+    await expect(
+      prepareNativeBindings({
+        root,
+        moduleRoot,
+        mode: 'node',
+        platform: 'darwin',
+        arch: 'arm64',
+        electronVersion: '44.2.0',
+        electronAbi: '149',
+        nodeAbi: '147',
+        validate: async (binding: string, runtime: 'node' | 'electron') => {
+          const bytes = await readFile(binding, 'utf8');
+          if (bytes !== `${runtime}-binding`) throw new Error(`${runtime} ABI mismatch`);
+        },
+        rebuildNode,
+        lockPollMs: 10,
+        lockTimeoutMs: 1000,
+      }),
+    ).resolves.toMatchObject({ cacheBinding: expect.any(String) });
+    await expect(readFile(lockPath, 'utf8')).rejects.toMatchObject({ code: 'ENOENT' });
   });
 });
