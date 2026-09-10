@@ -1,3 +1,4 @@
+import { openDocumentTab } from '../../lib/open-document';
 import { useEffect, useMemo, useState } from 'react';
 import { Network } from 'lucide-react';
 import {
@@ -79,7 +80,7 @@ function LocalGraphPanel() {
             nodeTypes={graphNodeTypes}
             onNodeMouseEnter={(_, node) => setHoverPath(node.id)}
             onNodeMouseLeave={() => setHoverPath(null)}
-            onNodeClick={(_, node) => useTabStore.getState().openPageTab(node.id)}
+            onNodeClick={(_, node) => void openDocumentTab(node.id)}
             fitView
             fitViewOptions={{ padding: 0.2, maxZoom: 1 }}
             nodesDraggable

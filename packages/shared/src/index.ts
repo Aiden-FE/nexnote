@@ -24,6 +24,7 @@ export type * from './ipc/channels/ai';
 export type * from './ipc/channels/plugins';
 export type * from './ipc/channels/index';
 export type * from './ipc/channels/settings';
+export type * from './ipc/channels/docx';
 // 运行时值
 export {
   ok,

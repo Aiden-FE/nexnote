@@ -1,6 +1,7 @@
 import { createHash } from 'node:crypto';
 import * as path from 'node:path';
 import { extractMarkdownLinks, resolveNoteLinkTarget, splitMarkdownBlocks } from '@nexnote/shared';
+import type { DocumentMetadata } from '../document/document-domain';
 import { extractInlineTags, parseFrontmatterTags, splitFrontmatter } from '../fs/page-ops';
 
 export interface ParsedLink {
@@ -15,7 +16,7 @@ export interface ParsedLink {
   sourceBlockIndex: number;
 }
 export interface ParsedBlock { blockId: string | null; blockType: string; content: string; position: number; }
-export interface ParsedPage { path: string; title: string; aliases: string[]; createdAt: string | null; updatedAt: string | null; hash: string; body: string; tags: string[]; links: ParsedLink[]; blocks: ParsedBlock[]; confidenceBoost: number | null; }
+export interface ParsedPage { path: string; title: string; aliases: string[]; createdAt: string | null; updatedAt: string | null; stableId: string | null; hash: string; body: string; tags: string[]; links: ParsedLink[]; blocks: ParsedBlock[]; confidenceBoost: number | null; }
 
 function yamlValue(frontmatter: string | null, key: string): string | null {
   if (!frontmatter) return null;
@@ -95,5 +96,40 @@ export function parsePageMarkdown(pagePath: string, text: string): ParsedPage {
     });
   }
   const tags = [...new Set([...(frontmatter ? parseFrontmatterTags(frontmatter) : []), ...extractInlineTags(body)])].sort();
-  return { path: pagePath, title, aliases, createdAt: yamlValue(frontmatter, 'created'), updatedAt: yamlValue(frontmatter, 'updated'), hash: createHash('sha256').update(text).digest('hex'), body, tags, links, blocks, confidenceBoost: yamlNumber(frontmatter, 'confidence_boost') };
+  return { path: pagePath, title, aliases, createdAt: yamlValue(frontmatter, 'created'), updatedAt: yamlValue(frontmatter, 'updated'), stableId: yamlValue(frontmatter, 'id'), hash: createHash('sha256').update(text).digest('hex'), body, tags, links, blocks, confidenceBoost: yamlNumber(frontmatter, 'confidence_boost') };
+}
+
+/**
+ * sidecar 元数据 canonical 合并（document-domain）：sidecar 的 id/createdAt/updatedAt
+ * 覆盖正文 frontmatter 推断值，缺失字段回落到 frontmatter；其余索引投影不动。
+ */
+export function applySidecarMetadata(page: ParsedPage, sidecar: DocumentMetadata | null): ParsedPage {
+  if (!sidecar) return page;
+  return {
+    ...page,
+    stableId: typeof sidecar.id === 'string' ? sidecar.id : page.stableId,
+    createdAt: typeof sidecar.createdAt === 'string' ? sidecar.createdAt : page.createdAt,
+    updatedAt: typeof sidecar.updatedAt === 'string' ? sidecar.updatedAt : page.updatedAt,
+  };
+}
+
+/**
+ * 二进制文档（docx 等）的安全索引投影：仅 title/path 描述符入索引，
+ * hash 对原始字节计算（绝不按 UTF-8 解码正文），正文/块/链接/标签保守跳过。
+ */
+export function projectBinaryPage(pagePath: string, bytes: Buffer): ParsedPage {
+  return {
+    path: pagePath,
+    title: path.posix.basename(pagePath, path.posix.extname(pagePath)),
+    aliases: [],
+    createdAt: null,
+    updatedAt: null,
+    stableId: null,
+    hash: createHash('sha256').update(bytes).digest('hex'),
+    body: '',
+    tags: [],
+    links: [],
+    blocks: [],
+    confidenceBoost: null,
+  };
 }

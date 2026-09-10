@@ -4,6 +4,7 @@ import { WelcomePage } from '../pages/WelcomePage';
 import { PlaceholderPage } from '../pages/PlaceholderPage';
 import { FilesPage } from '../pages/FilesPage';
 import { SettingsPage } from '../pages/SettingsPage';
+import { DocxView } from '../pages/DocxView';
 import { EditorView } from '../editor/EditorView';
 import { SourceModeView } from '../editor/source/SourceModeView';
 import { GlobalGraphView } from '../features/graph/GlobalGraphView';
@@ -26,6 +27,8 @@ function TabContent({ tab }: { tab: TabDescriptor }) {
       return <SettingsPage />;
     case 'page':
       return <PageEditorHost key={tab.id} tab={tab} />;
+    case 'docx':
+      return <DocxView key={tab.id} tab={tab} />;
     default:
       return <PlaceholderPage title={tab.title} />;
   }

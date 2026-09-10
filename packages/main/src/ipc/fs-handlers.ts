@@ -3,6 +3,8 @@ import type { DirEntry, FileInfo, RenameLinkedResult, TagStat } from '@nexnote/s
 import * as pathLib from 'node:path';
 import type { IpcRegistrar } from './registrar';
 import { createNote, renameWithLinks, scanTags } from '../fs/page-ops';
+import { MetadataStore } from '../document/metadata-store';
+import { isDocumentPath } from '../document/document-domain';
 import type { IpcServices } from './services';
 
 /** fs:* — vault 沙箱文件能力。 */
@@ -30,7 +32,10 @@ export function registerFsHandlers(registrar: IpcRegistrar): void {
   );
   registrar.register(
     'fs:createTextFile',
-    async ({ path, content, createParentDirs }, services): Promise<Result<{ file: FileInfo | null; created: boolean }>> => {
+    async (
+      { path, content, createParentDirs },
+      services,
+    ): Promise<Result<{ file: FileInfo | null; created: boolean }>> => {
       const result = await services.fs.createTextFile(path, content, createParentDirs ?? true);
       if (result.created) await recordWrite(services, `创建 ${path}`);
       return ok(result);
@@ -38,7 +43,10 @@ export function registerFsHandlers(registrar: IpcRegistrar): void {
   );
   registrar.register(
     'fs:importBinaryFile',
-    async ({ path, data, suggestionName, mime, createParentDirs, overwrite }, services): Promise<Result<{ path: string }>> => {
+    async (
+      { path, data, suggestionName, mime, createParentDirs, overwrite },
+      services,
+    ): Promise<Result<{ path: string }>> => {
       // renderer 传 base64，这里解码成 Buffer 再交给 fs 服务；不接受 node Buffer 类型，
       // 避免类型穿越 IPC 边界。mime 仅校验语义，不用于写入。
       if (typeof data !== 'string' || data.length === 0) {
@@ -48,7 +56,11 @@ export function registerFsHandlers(registrar: IpcRegistrar): void {
       try {
         buffer = Buffer.from(data, 'base64');
       } catch (e) {
-        return { ok: false, error: `data 不是合法 base64（${(e as Error).message}）`, code: 'IPC_PAYLOAD_INVALID' };
+        return {
+          ok: false,
+          error: `data 不是合法 base64（${(e as Error).message}）`,
+          code: 'IPC_PAYLOAD_INVALID',
+        };
       }
       const target = suggestionName ?? path;
       const result = await services.fs.importBinaryFile(target, buffer, {
@@ -78,13 +90,21 @@ export function registerFsHandlers(registrar: IpcRegistrar): void {
     },
   );
   registrar.register('fs:rename', async ({ from, to }, services): Promise<Result<FileInfo>> => {
+    const before = await services.fs.stat(from);
     const result = await services.fs.rename(from, to);
+    const root = services.vaultSession.getCurrent()?.root;
+    if (root) {
+      const metadata = new MetadataStore(root);
+      if (before?.kind === 'directory') await metadata.renameUnder(from, to);
+      else if (isDocumentPath(from)) await metadata.rename(from, to);
+    }
     await recordWrite(services, `重命名 ${from} → ${to}`);
     return ok(result);
   });
   registrar.register('fs:delete', async ({ path, toTrash }, services): Promise<Result<void>> => {
     if (path.trim().length === 0 || path.trim() === '.')
       return err('不允许删除 vault 根目录', 'VAULT_ROOT_OPERATION');
+    const before = await services.fs.stat(path);
     if (toTrash) {
       const { abs } = await services.fs.resolve(path);
       try {
@@ -101,15 +121,39 @@ export function registerFsHandlers(registrar: IpcRegistrar): void {
     } else {
       await services.fs.delete(path);
     }
+    const root = services.vaultSession.getCurrent()?.root;
+    if (root) {
+      const metadata = new MetadataStore(root);
+      if (before?.kind === 'directory') await metadata.removeUnder(path);
+      else if (isDocumentPath(path)) await metadata.remove(path);
+    }
     await recordWrite(services, `删除 ${path}`);
     return ok(undefined);
   });
   registrar.register(
     'fs:createNote',
-    async ({ parentDir, name, content }, services): Promise<Result<FileInfo>> => {
-      const result = await createNote(services.fs, parentDir, name, content);
+    async ({ parentDir, name, content, format }, services): Promise<Result<FileInfo>> => {
+      const root = services.vaultSession.getCurrent()?.root;
+      const sidecar = root ? new MetadataStore(root) : undefined;
+      const result = await createNote(
+        services.fs,
+        parentDir,
+        name,
+        content,
+        sidecar,
+        format ?? 'native-block',
+      );
       await recordWrite(services, `创建笔记 ${result.path}`);
       return ok(result);
+    },
+  );
+  registrar.register(
+    'document:getMetadata',
+    async ({ path }, services): Promise<Result<Record<string, unknown> | null>> => {
+      const root = services.vaultSession.getCurrent()?.root;
+      if (!root) return err('尚未打开任何 vault', 'NO_VAULT');
+      if (!isDocumentPath(path)) return ok(null);
+      return ok(await new MetadataStore(root).read(path));
     },
   );
   registrar.register(
@@ -120,7 +164,14 @@ export function registerFsHandlers(registrar: IpcRegistrar): void {
   registrar.register(
     'fs:renameLinked',
     async ({ from, to }, services): Promise<Result<RenameLinkedResult>> => {
+      const before = await services.fs.stat(from);
       const result = await renameWithLinks(services.fs, from, to);
+      const root = services.vaultSession.getCurrent()?.root;
+      if (root) {
+        const metadata = new MetadataStore(root);
+        if (before?.kind === 'directory') await metadata.renameUnder(from, to);
+        else if (isDocumentPath(from)) await metadata.rename(from, to);
+      }
       await recordWrite(services, `重命名并更新链接 ${from} → ${to}`);
       return ok(result);
     },

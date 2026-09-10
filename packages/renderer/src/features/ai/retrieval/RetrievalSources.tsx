@@ -1,6 +1,6 @@
+import { openDocumentTab } from '../../../lib/open-document';
 import type { RetrievalResponse, RetrievalStageName } from '@nexnote/shared';
 import { cn } from '../../../lib/utils';
-import { useTabStore } from '../../../stores/tab-store';
 
 const STAGE_LABEL: Record<RetrievalStageName, string> = {
   fts: '全文粗筛',
@@ -17,7 +17,7 @@ export function RetrievalSources({
   testId?: string;
 }) {
   const openPage = (path: string, title: string) => {
-    useTabStore.getState().openPageTab(path, title);
+    void openDocumentTab(path, title);
   };
 
   return (

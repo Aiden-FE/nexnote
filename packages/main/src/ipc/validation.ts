@@ -81,10 +81,23 @@ const remove = object(
   ['path', 'toTrash'],
   [stringField('path'), optionalField('toTrash', 'boolean')],
 );
-const createNote = object(
-  ['parentDir', 'name', 'content'],
-  [stringField('parentDir'), optionalField('name', 'string'), optionalField('content', 'string')],
-);
+const createNote: PayloadValidator = (payload) => {
+  const base = object(
+    ['parentDir', 'name', 'content', 'format'],
+    [
+      stringField('parentDir'),
+      optionalField('name', 'string'),
+      optionalField('content', 'string'),
+      optionalField('format', 'string'),
+    ],
+  )(payload);
+  if (base) return base;
+  const format = (payload as Record<string, unknown>).format;
+  if (format !== undefined && format !== 'native-block' && format !== 'markdown') {
+    return invalid('format 必须是 native-block 或 markdown');
+  }
+  return null;
+};
 const createTextFile = object(
   ['path', 'content', 'createParentDirs'],
   [stringField('path'), stringField('content'), optionalField('createParentDirs', 'boolean')],
@@ -101,6 +114,33 @@ const importBinaryFile = object(
   ],
 );
 const listTree = object(['showAllFiles'], [optionalField('showAllFiles', 'boolean')]);
+const docxPath = object(['path'], [stringField('path')]);
+const docxExport = object(
+  ['path', 'targetPath'],
+  [stringField('path'), optionalField('targetPath', 'string')],
+);
+const docxImport: PayloadValidator = (payload) => {
+  const base = object(
+    ['data', 'name', 'targetDir'],
+    [
+      optionalField('data', 'string'),
+      optionalField('name', 'string'),
+      optionalField('targetDir', 'string'),
+    ],
+  )(payload);
+  const value = payload as Record<string, unknown>;
+  if (base) return base;
+  if (value.data === undefined) return null;
+  if (typeof value.data !== 'string' || value.data.length === 0) return invalid('data 不能为空');
+  if (
+    value.data.length > 268_435_456 ||
+    value.data.length % 4 !== 0 ||
+    !/^[A-Za-z0-9+/]*={0,2}$/.test(value.data)
+  ) {
+    return invalid('data 不是合法 base64');
+  }
+  return null;
+};
 
 const stringArrayField =
   (key: string): PayloadValidator =>
@@ -451,6 +491,7 @@ const VALIDATORS: Partial<Record<IpcChannel, PayloadValidator>> = {
   'fs:rename': rename,
   'fs:delete': remove,
   'fs:createNote': createNote,
+  'document:getMetadata': docxPath,
   'fs:listTree': listTree,
   'fs:renameLinked': rename,
   'fs:revealInFinder': pathOnly,
@@ -490,6 +531,11 @@ const VALIDATORS: Partial<Record<IpcChannel, PayloadValidator>> = {
   'settings:saveExportFile': settingsSaveExportFile,
   'app:setUpdateChannel': updateChannel,
   'app:setUpdateSettings': updateSettingsPatch,
+  // DOCX（阶段6）
+  'docx:import': docxImport,
+  'docx:readPreview': docxPath,
+  'docx:createEditCopy': docxPath,
+  'docx:export': docxExport,
 };
 
 /** Reject malformed input with a stable code before executing the registered handler. */

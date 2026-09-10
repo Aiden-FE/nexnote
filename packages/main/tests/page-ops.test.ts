@@ -5,7 +5,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { VaultFsService } from '../src/fs/fs-service';
 import {
   createNote,
-  defaultNoteFrontmatter,
+  defaultNoteMetadata,
   extractInlineTags,
   nextUntitledName,
   parseFrontmatterTags,
@@ -15,6 +15,8 @@ import {
   setFrontmatterNumber,
   splitFrontmatter,
 } from '../src/fs/page-ops';
+import { MetadataStore } from '../src/document/metadata-store';
+import { metadataPathFor } from '../src/document/document-domain';
 
 let tmp: string;
 let vaultRoot: string;
@@ -32,13 +34,15 @@ afterEach(async () => {
 });
 
 describe('createNote 新建笔记', () => {
-  it('生成 .md 文件，frontmatter 含 created 与 id', async () => {
-    const info = await createNote(service, '', '第一条笔记');
+  it('生成干净 .md 文件，产品 metadata 写入 sidecar', async () => {
+    const sidecar = new MetadataStore(vaultRoot);
+    const info = await createNote(service, '', '第一条笔记', '', sidecar);
     expect(info.path).toBe('第一条笔记.md');
     const content = await service.readTextFile('第一条笔记.md');
-    expect(content).toMatch(/^---\n/);
-    expect(content).toMatch(/^created: \d{4}-\d{2}-\d{2}T/m);
-    expect(content).toMatch(/^id: [0-9a-f-]{36}$/m);
+    expect(content).toBe('# 第一条笔记\n');
+    expect(await sidecar.read('第一条笔记.md')).toMatchObject({ format: 'native-block' });
+    expect(await sidecar.read('第一条笔记.md')).toHaveProperty('id');
+    expect(await import('node:fs/promises').then(({ readFile }) => readFile(metadataPathFor(vaultRoot, '第一条笔记.md'), 'utf8'))).toContain('createdAt');
   });
 
   it('自动补 .md 后缀（用户输入带后缀也接受）', async () => {
@@ -68,19 +72,18 @@ describe('createNote 新建笔记', () => {
     });
   });
 
-  it('自定义 content 追加在 frontmatter 之后', async () => {
+  it('自定义 content 原样写入正文（无产品 frontmatter）', async () => {
     await createNote(service, '', '有正文', '# 标题\n\n正文');
     const content = await service.readTextFile('有正文.md');
-    const { frontmatter, body } = splitFrontmatter(content);
-    expect(frontmatter).toBeTruthy();
-    expect(body).toContain('# 标题');
-    expect(body).toContain('正文');
+    expect(content).toBe('# 标题\n\n正文\n');
+    expect(content.startsWith('---')).toBe(false);
   });
 
-  it('defaultNoteFrontmatter 可被解析（id 为 UUID）', () => {
-    const fm = defaultNoteFrontmatter(new Date('2026-09-05T00:00:00.000Z'));
-    expect(fm).toContain('created: 2026-09-05T00:00:00.000Z');
-    expect(fm).toMatch(/id: [0-9a-f-]{36}/);
+  it('defaultNoteMetadata 生成稳定 id 与创建时间', () => {
+    const metadata = defaultNoteMetadata('native-block', new Date('2026-09-05T00:00:00.000Z'));
+    expect(metadata.createdAt).toBe('2026-09-05T00:00:00.000Z');
+    expect(metadata.format).toBe('native-block');
+    expect(String(metadata.id)).toMatch(/^[0-9a-f-]{36}$/);
   });
 });
 

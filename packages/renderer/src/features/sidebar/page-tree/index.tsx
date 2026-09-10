@@ -3,8 +3,8 @@ import {
   ChevronRight,
   Eye,
   EyeOff,
-  FilePlus2,
   FileText,
+  FileType2,
   Folder,
   FolderPlus,
   FolderTree,
@@ -16,16 +16,18 @@ import { ContextMenu, type ContextMenuItem } from '../../../components/ContextMe
 import { Input } from '../../../components/ui/input';
 import { usePageTreeStore } from '../../../stores/page-tree-store';
 import { useUiStore } from '../../../stores/ui-store';
-import { openPage, useTabStore } from '../../../stores/tab-store';
+import { openDocx, useTabStore } from '../../../stores/tab-store';
 import { cn } from '../../../lib/utils';
 import {
   buildTree,
   displayName,
   filterTree,
   isMarkdown,
+  isDocx,
   type TreeNode,
 } from '../../../page-tree/tree-utils';
 import * as ops from './ops';
+import { NewNoteMenu } from './NewNoteMenu';
 import { sidebarPanelRegistry } from '../../../registries';
 
 /**
@@ -77,7 +79,10 @@ function PageTreePanel() {
   };
 
   const visibleEntries = useMemo(
-    () => entries.filter((e) => showAllFiles || e.kind === 'directory' || isMarkdown(e.name)),
+    () =>
+      entries.filter(
+        (e) => showAllFiles || e.kind === 'directory' || isMarkdown(e.name) || isDocx(e.name),
+      ),
     [entries, showAllFiles],
   );
   const tree = useMemo(() => buildTree(visibleEntries), [visibleEntries]);
@@ -163,8 +168,10 @@ function PageTreePanel() {
         onToggleDir={() => useUiStore.getState().toggleTreeDir(node.path)}
         onClick={() => {
           usePageTreeStore.getState().setSelected(node.path);
-          if (node.kind === 'file' && (isMarkdown(node.name) || showAllFiles)) {
-            if (isMarkdown(node.name)) openPage(node.path);
+          if (node.kind === 'file') {
+            // .md 页面 → 块编辑器；.docx → 只读预览 tab（阶段6）
+            if (isMarkdown(node.name)) void run(() => ops.openDocument(node.path));
+            else if (isDocx(node.name)) openDocx(node.path);
           }
         }}
         onContextMenu={(e) => openMenuFor(e, node)}
@@ -233,15 +240,10 @@ function PageTreePanel() {
             className="h-7 w-full rounded-md border bg-background/60 pl-7 pr-2 text-xs outline-none placeholder:text-muted-foreground/60 focus-visible:ring-1 focus-visible:ring-ring"
           />
         </div>
-        <button
-          type="button"
-          data-testid="tree-new-note"
-          title="新建笔记"
-          onClick={() => run(() => ops.createNoteIn(''))}
-          className="rounded p-1 text-muted-foreground hover:bg-accent hover:text-foreground"
-        >
-          <FilePlus2 className="size-3.5" />
-        </button>
+        <NewNoteMenu
+          onCreate={(format) => run(() => ops.createNoteIn('', format))}
+          onImportDocx={() => run(() => ops.importDocxIn(''))}
+        />
         <button
           type="button"
           data-testid="tree-new-folder"
@@ -417,7 +419,10 @@ function TreeRow(p: TreeRowProps) {
       {!isDir && isMarkdown(p.node.name) && (
         <FileText className="size-3.5 shrink-0 text-muted-foreground" />
       )}
-      {!isDir && !isMarkdown(p.node.name) && (
+      {!isDir && isDocx(p.node.name) && (
+        <FileType2 className="size-3.5 shrink-0 text-primary/80" aria-label="DOCX 文档" />
+      )}
+      {!isDir && !isMarkdown(p.node.name) && !isDocx(p.node.name) && (
         <FileText className="size-3.5 shrink-0 text-muted-foreground/50" />
       )}
       {p.renaming ? (

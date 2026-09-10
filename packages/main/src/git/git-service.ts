@@ -4,6 +4,7 @@ import * as path from 'node:path';
 import { tmpdir } from 'node:os';
 import { simpleGit, type SimpleGit } from 'simple-git';
 import { resolveInstalledGitRuntime, type GitRuntimeResolution } from './git-runtime';
+import { isDocumentPath } from '../document/document-domain';
 import type {
   GitCommit,
   GitOperationResult,
@@ -326,7 +327,7 @@ export class GitService {
       const match = /^(\d+|-)\t(\d+|-)\t(.+)$/.exec(line);
       if (!commit || !match) continue;
       const filePath = normalizeNumstatPath(match[3] ?? '');
-      if (!filePath.toLowerCase().endsWith('.md') || filePath.startsWith('.nexnote/')) continue;
+      if (!isDocumentPath(filePath) || filePath.startsWith('.nexnote/')) continue;
       let history = histories.get(filePath);
       if (!history) {
         history = {

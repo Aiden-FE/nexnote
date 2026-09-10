@@ -3,7 +3,7 @@ import { FileText, Folder, Plus, RefreshCw } from 'lucide-react';
 import { invoke } from '../lib/ipc';
 import type { DirEntry } from '@nexnote/shared';
 import { createPage } from '../features/editor/create-page';
-import { openPage } from '../stores/tab-store';
+import { openDocumentTab } from '../lib/open-document';
 import { titleFromPath } from '../editor/title-sync';
 
 /**
@@ -72,8 +72,8 @@ export function FilesPage() {
                 key={entry.path}
                 data-testid="files-entry"
                 onDoubleClick={() => {
-                  if (entry.kind === 'file' && entry.name.toLowerCase().endsWith('.md')) {
-                    openPage(entry.path, titleFromPath(entry.path));
+                  if (entry.kind === 'file' && /\.(md|markdown|docx)$/i.test(entry.name)) {
+                    void openDocumentTab(entry.path, titleFromPath(entry.path));
                   }
                 }}
                 className="flex cursor-default items-center gap-2 border-b px-3 py-2 text-sm last:border-b-0 hover:bg-accent/40"

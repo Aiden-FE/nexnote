@@ -8,19 +8,28 @@ import {
   type TagStat,
 } from '@nexnote/shared';
 import { FsError, type VaultFsService } from './fs-service';
+import type { DocumentFormat, DocumentMetadata } from '../document/document-domain';
 
 /**
  * 页面操作内核（DEV-003）：
- * - 新建笔记（默认 frontmatter：created + id）
+ * - 新建笔记（产品元数据写入 .nexnote sidecar，不再污染 .md 正文）
  * - 带全库 wikilink 更新的重命名/移动（简单字符串替换版，DEV-004 索引后升级精确替换）
  * - 标签扫描（frontmatter tags + 内联 #tag）
  *
  * 全部基于 VaultFsService 沙箱，路径均为 vault 相对路径。
  */
 
-/** 生成新建笔记的默认 frontmatter（创建时间 + 稳定 id）。 */
-export function defaultNoteFrontmatter(now = new Date()): string {
-  return `---\ncreated: ${now.toISOString()}\nid: ${randomUUID()}\n---\n`;
+/** sidecar 元数据写入器（由 DocumentService/MetadataStore 提供，保持 page-ops 无 IO 依赖）。 */
+export interface SidecarWriter {
+  write(path: string, metadata: DocumentMetadata): Promise<void>;
+}
+
+/** 生成新建笔记的 sidecar 元数据（稳定 id + 创建时间 + 格式，全部不进入正文文件）。 */
+export function defaultNoteMetadata(
+  format: DocumentFormat = 'native-block',
+  now = new Date(),
+): DocumentMetadata {
+  return { id: randomUUID(), createdAt: now.toISOString(), format };
 }
 
 /** 生成不冲突的笔记文件名（无后缀），如 未命名、未命名 2、未命名 3… */
@@ -45,13 +54,16 @@ export async function nextUntitledName(
  * 新建笔记：parentDir（'' = vault 根）下创建 name.md。
  * - name 缺省时自动生成「未命名 N」
  * - 自动补 .md 后缀；名称经 sanitizeEntryName 校验
- * - content 为正文（不含 frontmatter），默认追加在 frontmatter 之后
+ * - content 为正文（纯标准 Markdown，不注入任何产品元数据）
+ * - 传入 sidecar 时将 id/createdAt/format 写入 .nexnote 元数据侧车
  */
 export async function createNote(
   fs: VaultFsService,
   parentDir: string,
   name?: string,
   content = '',
+  sidecar?: SidecarWriter,
+  format: DocumentFormat = 'native-block',
 ): Promise<FileInfo> {
   let finalName = name;
   if (finalName === undefined || finalName.trim() === '') {
@@ -67,8 +79,10 @@ export async function createNote(
   if (await fs.exists(relPath)) {
     throw new FsError(`已存在同名笔记: ${relPath}`, 'TARGET_EXISTS');
   }
-  const body = defaultNoteFrontmatter() + (content.length > 0 ? `\n${content}\n` : '');
-  return fs.writeTextFile(relPath, body, true);
+  const body = content.length > 0 ? `${content}\n` : `# ${sanitized.value}\n`;
+  const info = await fs.writeTextFile(relPath, body, true);
+  if (sidecar) await sidecar.write(relPath, defaultNoteMetadata(format));
+  return info;
 }
 
 // ── wikilink / Markdown 链接重写（委托 @nexnote/shared 的 code-aware 解析器） ──
@@ -99,7 +113,9 @@ export function rewriteWikilinks(
 /** 收集 vault 内全部 .md 文件相对路径（排除 .nexnote/.git/.trash 等内部目录）。 */
 export async function listMarkdownFiles(fs: VaultFsService): Promise<string[]> {
   const entries: DirEntry[] = await fs.listTree(true);
-  return entries.filter((e) => e.kind === 'file' && e.name.toLowerCase().endsWith('.md')).map((e) => e.path);
+  return entries
+    .filter((e) => e.kind === 'file' && e.name.toLowerCase().endsWith('.md'))
+    .map((e) => e.path);
 }
 
 /**
@@ -182,7 +198,11 @@ export function parseFrontmatterTags(frontmatter: string): string[] {
 }
 
 function stripTagQuotes(value: string): string {
-  if (value.length >= 2 && ((value.startsWith('"') && value.endsWith('"')) || (value.startsWith("'") && value.endsWith("'")))) {
+  if (
+    value.length >= 2 &&
+    ((value.startsWith('"') && value.endsWith('"')) ||
+      (value.startsWith("'") && value.endsWith("'")))
+  ) {
     return value.slice(1, -1);
   }
   return value;
@@ -227,7 +247,10 @@ export function setFrontmatterNumber(text: string, key: string, value: number): 
   const existing = new RegExp(`^${key}:\\s*.*$`, 'm').exec(fence);
   if (existing?.[0] === line) return null;
   if (existing) {
-    const updated = fence.slice(0, existing.index) + line + fence.slice((existing.index ?? 0) + existing[0].length);
+    const updated =
+      fence.slice(0, existing.index) +
+      line +
+      fence.slice((existing.index ?? 0) + existing[0].length);
     return text.slice(0, match.index) + updated + text.slice((match.index ?? 0) + fence.length);
   }
   const closing = fence.lastIndexOf('---');

@@ -4,6 +4,7 @@ import * as path from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { VaultFsService } from '../src/fs/fs-service';
 import { ChatService } from '../src/chat/chat-service';
+import { MetadataStore } from '../src/document/metadata-store';
 import type { ChatSession } from '@nexnote/shared';
 
 let tmp: string;
@@ -100,7 +101,8 @@ describe('ChatService 会话即页面', () => {
     const text = await fs.readTextFile(doc.path);
     expect(text).toContain('双链是**双向链接**。');
     expect(text).toContain('> 什么是双链？');
-    expect(text).toMatch(/^---\n/); // 普通笔记 frontmatter
+    expect(text).toMatch(/^# /); // 纯 Markdown 正文，产品 metadata 走 sidecar
+    expect(await new MetadataStore(vaultRoot).read(doc.path)).toMatchObject({ format: 'native-block' });
     // 原会话仍在
     expect(await fs.exists(draft.path)).toBe(true);
   });

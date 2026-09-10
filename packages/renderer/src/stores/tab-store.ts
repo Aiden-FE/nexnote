@@ -7,7 +7,7 @@ import {
   titleFromPath,
 } from '../editor/title-sync';
 
-export type TabKind = 'welcome' | 'page' | 'files' | 'graph' | 'settings';
+export type TabKind = 'welcome' | 'page' | 'docx' | 'files' | 'graph' | 'settings';
 export type EditorMode = 'block' | 'source';
 
 export interface TabDescriptor {
@@ -26,6 +26,7 @@ export interface WorkspaceState {
   activeTabId: string | null;
   openTab(tab: { kind: TabKind; title: string; pagePath?: string }): TabDescriptor;
   openPageTab(pagePath: string, title?: string): TabDescriptor;
+  openDocxTab(pagePath: string, title?: string): TabDescriptor;
   updateTab(
     tabId: string,
     patch: { title?: string; pagePath?: string; editorMode?: EditorMode },
@@ -76,6 +77,16 @@ export const useTabStore = create<WorkspaceState>()((set, get) => ({
     const fallbackTitle =
       title ?? pagePath.slice(pagePath.lastIndexOf('/') + 1).replace(/\.md$/i, '');
     return get().openTab({ kind: 'page', title: fallbackTitle, pagePath });
+  },
+
+  openDocxTab(pagePath, title) {
+    const existing = get().tabs.find((tab) => tab.kind === 'docx' && tab.pagePath === pagePath);
+    if (existing) {
+      get().setActiveTab(existing.id);
+      return existing;
+    }
+    const fallbackTitle = title ?? pagePath.slice(pagePath.lastIndexOf('/') + 1);
+    return get().openTab({ kind: 'docx', title: fallbackTitle, pagePath });
   },
 
   updateTab(tabId, patch) {
@@ -162,6 +173,10 @@ export function openWorkspaceTab(kind: TabKind, title: string, pagePath?: string
 
 export function openPage(pagePath: string, title?: string): TabDescriptor {
   return useTabStore.getState().openPageTab(pagePath, title);
+}
+
+export function openDocx(pagePath: string, title?: string): TabDescriptor {
+  return useTabStore.getState().openDocxTab(pagePath, title);
 }
 
 export function getTabStore() {
