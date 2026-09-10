@@ -1,8 +1,8 @@
+import { openDocumentTab } from '../../lib/open-document';
 import { useEffect, useRef, useState } from 'react';
 import { Search } from 'lucide-react';
 import type { PageJumpResult, SearchHit } from '@nexnote/shared';
 import { useIndexStore } from '../../stores/index-store';
-import { useTabStore } from '../../stores/tab-store';
 import { useUiStore } from '../../stores/ui-store';
 import { cn } from '../../lib/utils';
 import { invoke } from '../../lib/ipc';
@@ -48,7 +48,7 @@ function TagSearchResults({ tag, paths }: { tag: string; paths: string[] }) {
   const setOpen = useUiStore((s) => s.setSearchOpen);
   const go = (path: string): void => {
     setOpen(false);
-    useTabStore.getState().openPageTab(path);
+    void openDocumentTab(path);
   };
   return (
     <div
@@ -156,7 +156,7 @@ function SearchPanelInner() {
 
   const go = (path: string): void => {
     setOpen(false);
-    useTabStore.getState().openPageTab(path);
+    void openDocumentTab(path);
   };
 
   return (

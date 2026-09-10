@@ -1,3 +1,4 @@
+import { openDocumentTab } from '../lib/open-document';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { AlertCircle, Check, FileCode2, LoaderCircle, Save } from 'lucide-react';
 import { createEditor } from '@nexnote/kernel';
@@ -428,7 +429,7 @@ export function EditorView({ tab }: EditorViewProps) {
             return;
           }
           const nextPath = `${sanitizePageTitle(pageName)}.md`;
-          useTabStore.getState().openPageTab(nextPath, titleFromPath(nextPath));
+          void openDocumentTab(nextPath, titleFromPath(nextPath));
         });
       },
       selectionBubble: {

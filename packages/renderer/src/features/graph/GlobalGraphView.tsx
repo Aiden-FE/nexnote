@@ -1,3 +1,4 @@
+import { openDocumentTab } from '../../lib/open-document';
 import { useEffect, useMemo, useState } from 'react';
 import {
   Background,
@@ -9,7 +10,6 @@ import {
 } from '@xyflow/react';
 import '@xyflow/react/dist/style.css';
 import { useIndexStore } from '../../stores/index-store';
-import { useTabStore } from '../../stores/tab-store';
 import { filterGraph, graphElements, layoutGraph, uniqueFolders, uniqueTags } from './model';
 import { graphNodeTypes } from './GraphPageNode';
 
@@ -103,7 +103,7 @@ export function GlobalGraphView() {
           nodeTypes={graphNodeTypes}
           onNodeMouseEnter={(_, node) => setHoverPath(node.id)}
           onNodeMouseLeave={() => setHoverPath(null)}
-          onNodeClick={(_, node) => useTabStore.getState().openPageTab(node.id)}
+          onNodeClick={(_, node) => void openDocumentTab(node.id)}
           minZoom={0.08}
           maxZoom={2}
           fitView

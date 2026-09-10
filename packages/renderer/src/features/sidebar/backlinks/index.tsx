@@ -1,3 +1,4 @@
+import { openDocumentTab } from '../../../lib/open-document';
 import { useEffect } from 'react';
 import { Link2 } from 'lucide-react';
 import { sidebarPanelRegistry } from '../../../registries';
@@ -32,7 +33,7 @@ function BacklinksPanel() {
   }, [tabs, activeTabId, load]);
 
   const open = (b: Backlink): void => {
-    useTabStore.getState().openPageTab(b.fromPath);
+    void openDocumentTab(b.fromPath);
   };
 
   return (

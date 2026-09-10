@@ -53,4 +53,23 @@ describe('document domain', () => {
     await metadata.write('report.docx', { id: 'docx-1' });
     await expect(metadata.read('report.docx')).resolves.toEqual({ id: 'docx-1' });
   });
+
+  it('cascades sidecar rename and cleanup for directory moves and deletes', async () => {
+    const vault = await root();
+    const metadata = new MetadataStore(vault);
+    await metadata.write('docs/a.md', { id: 'a' });
+    await metadata.write('docs/sub/b.md', { id: 'b' });
+    await metadata.write('outside.md', { id: 'outside' });
+
+    await metadata.renameUnder('docs', 'archive');
+    await expect(metadata.read('docs/a.md')).resolves.toBeNull();
+    await expect(metadata.read('archive/a.md')).resolves.toEqual({ id: 'a' });
+    await expect(metadata.read('archive/sub/b.md')).resolves.toEqual({ id: 'b' });
+    await expect(metadata.read('outside.md')).resolves.toEqual({ id: 'outside' });
+
+    await metadata.removeUnder('archive');
+    await expect(metadata.read('archive/a.md')).resolves.toBeNull();
+    await expect(metadata.read('archive/sub/b.md')).resolves.toBeNull();
+    await expect(metadata.read('outside.md')).resolves.toEqual({ id: 'outside' });
+  });
 });

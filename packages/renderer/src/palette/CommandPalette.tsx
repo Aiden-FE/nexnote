@@ -1,9 +1,9 @@
+import { openDocumentTab } from '../lib/open-document';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { CornerDownLeft, Search } from 'lucide-react';
 import { commandRegistry, useRegistryItems, type CommandDef } from '../registries';
 import { usePaletteStore } from '../stores/palette-store';
 import { useUiStore } from '../stores/ui-store';
-import { useTabStore } from '../stores/tab-store';
 import { notifyPaletteQuery } from '../features/search';
 import { cn } from '../lib/utils';
 
@@ -63,7 +63,7 @@ function PaletteInner() {
         title: r.title,
         category: '页面',
         run: () => {
-          useTabStore.getState().openPageTab(r.path);
+          void openDocumentTab(r.path);
         },
       })) as CommandDef[],
     [jumpResults],

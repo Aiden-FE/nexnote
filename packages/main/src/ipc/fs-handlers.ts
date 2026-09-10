@@ -90,15 +90,21 @@ export function registerFsHandlers(registrar: IpcRegistrar): void {
     },
   );
   registrar.register('fs:rename', async ({ from, to }, services): Promise<Result<FileInfo>> => {
+    const before = await services.fs.stat(from);
     const result = await services.fs.rename(from, to);
     const root = services.vaultSession.getCurrent()?.root;
-    if (root && isDocumentPath(from)) await new MetadataStore(root).rename(from, to);
+    if (root) {
+      const metadata = new MetadataStore(root);
+      if (before?.kind === 'directory') await metadata.renameUnder(from, to);
+      else if (isDocumentPath(from)) await metadata.rename(from, to);
+    }
     await recordWrite(services, `重命名 ${from} → ${to}`);
     return ok(result);
   });
   registrar.register('fs:delete', async ({ path, toTrash }, services): Promise<Result<void>> => {
     if (path.trim().length === 0 || path.trim() === '.')
       return err('不允许删除 vault 根目录', 'VAULT_ROOT_OPERATION');
+    const before = await services.fs.stat(path);
     if (toTrash) {
       const { abs } = await services.fs.resolve(path);
       try {
@@ -116,7 +122,11 @@ export function registerFsHandlers(registrar: IpcRegistrar): void {
       await services.fs.delete(path);
     }
     const root = services.vaultSession.getCurrent()?.root;
-    if (root && isDocumentPath(path)) await new MetadataStore(root).remove(path);
+    if (root) {
+      const metadata = new MetadataStore(root);
+      if (before?.kind === 'directory') await metadata.removeUnder(path);
+      else if (isDocumentPath(path)) await metadata.remove(path);
+    }
     await recordWrite(services, `删除 ${path}`);
     return ok(undefined);
   });
@@ -154,9 +164,14 @@ export function registerFsHandlers(registrar: IpcRegistrar): void {
   registrar.register(
     'fs:renameLinked',
     async ({ from, to }, services): Promise<Result<RenameLinkedResult>> => {
+      const before = await services.fs.stat(from);
       const result = await renameWithLinks(services.fs, from, to);
       const root = services.vaultSession.getCurrent()?.root;
-      if (root && isDocumentPath(from)) await new MetadataStore(root).rename(from, to);
+      if (root) {
+        const metadata = new MetadataStore(root);
+        if (before?.kind === 'directory') await metadata.renameUnder(from, to);
+        else if (isDocumentPath(from)) await metadata.rename(from, to);
+      }
       await recordWrite(services, `重命名并更新链接 ${from} → ${to}`);
       return ok(result);
     },
