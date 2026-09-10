@@ -91,6 +91,7 @@ describe('better-sqlite3 native binding isolation', () => {
 
     const result = await prepareNativeBindings({
       root,
+      moduleRoot,
       mode: 'electron',
       platform: 'darwin',
       arch: 'arm64',
