@@ -3,7 +3,6 @@ import {
   ChevronRight,
   Eye,
   EyeOff,
-  FilePlus2,
   FileText,
   Folder,
   FolderPlus,
@@ -26,6 +25,7 @@ import {
   type TreeNode,
 } from '../../../page-tree/tree-utils';
 import * as ops from './ops';
+import { NewNoteMenu } from './NewNoteMenu';
 import { sidebarPanelRegistry } from '../../../registries';
 
 /**
@@ -233,15 +233,7 @@ function PageTreePanel() {
             className="h-7 w-full rounded-md border bg-background/60 pl-7 pr-2 text-xs outline-none placeholder:text-muted-foreground/60 focus-visible:ring-1 focus-visible:ring-ring"
           />
         </div>
-        <button
-          type="button"
-          data-testid="tree-new-note"
-          title="新建笔记"
-          onClick={() => run(() => ops.createNoteIn(''))}
-          className="rounded p-1 text-muted-foreground hover:bg-accent hover:text-foreground"
-        >
-          <FilePlus2 className="size-3.5" />
-        </button>
+        <NewNoteMenu onCreate={(format) => run(() => ops.createNoteIn('', format))} />
         <button
           type="button"
           data-testid="tree-new-folder"

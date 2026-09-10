@@ -11,9 +11,20 @@ import { displayName, isMarkdown } from '../../../page-tree/tree-utils';
  * tab 联动（重命名 retarget / 删除关闭）在操作成功后执行。
  */
 
-export async function createNoteIn(parentDir: string): Promise<string> {
+/** 新建笔记的产品格式概念（同 document-domain）：两种格式落盘都是纯标准 Markdown，仅打开模式不同。 */
+export type NewNoteFormat = 'native-block' | 'markdown';
+
+/**
+ * 新建笔记并打开：native-block（默认）保持块编辑模式；markdown 打开后进入源码模式
+ * （复用 tab 级临时状态，关闭 tab 即回到块编辑，ADR-0004）。
+ */
+export async function createNoteIn(
+  parentDir: string,
+  format: NewNoteFormat = 'native-block',
+): Promise<string> {
   const info = await invoke('fs:createNote', { parentDir });
-  openPage(info.path, displayName({ name: info.name, kind: 'file' }));
+  const tab = openPage(info.path, displayName({ name: info.name, kind: 'file' }));
+  if (format === 'markdown') getTabStore().getState().toggleSourceMode(tab.id, true);
   return info.path;
 }
 
