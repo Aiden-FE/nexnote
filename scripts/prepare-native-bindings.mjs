@@ -4,6 +4,7 @@ import {
   mkdir,
   mkdtemp,
   open,
+  readFile,
   realpath,
   rename,
   rm,
@@ -222,7 +223,6 @@ async function removeForgeMeta(moduleRoot) {
   await rm(join(moduleRoot, '.forge-meta'), { force: true, recursive: true });
 }
 
-const LOCK_STALE_MS = 15 * 60 * 1000;
 const LOCK_POLL_MS = 200;
 const LOCK_TIMEOUT_MS = 10 * 60 * 1000;
 
@@ -230,47 +230,68 @@ function sleep(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
+function processExists(pid) {
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch (error) {
+    return error.code === 'EPERM';
+  }
+}
+
 /**
  * 跨进程互斥：并行的 pretest/predev/presmoke 会同时 prepare 同一份 binding 缓存，
  * 无锁并发时失败路径的 rm 可能删掉另一进程刚发布成功的缓存。
+ * 锁文件内容为不可复用的 owner token（pid + uuid）；陈旧锁只有在持锁 PID 确认
+ * 不存在时才回收，释放时校验 token，避免旧进程删掉新持有者的锁。
  */
 async function withPrepareLock(root, options, run) {
   const lockDir = join(root, 'node_modules', '.cache', 'nexnote-native-bindings');
   await mkdir(lockDir, { recursive: true });
   const lockPath = join(lockDir, '.prepare.lock');
-  const staleMs = options.lockStaleMs ?? LOCK_STALE_MS;
   const pollMs = options.lockPollMs ?? LOCK_POLL_MS;
   const timeoutMs = options.lockTimeoutMs ?? LOCK_TIMEOUT_MS;
+  const token = `${process.pid}-${randomUUID()}`;
   const startedAt = Date.now();
+  const readToken = async () => {
+    try {
+      return (await readFile(lockPath, 'utf8')).trim();
+    } catch (error) {
+      if (error.code === 'ENOENT') return null;
+      throw error;
+    }
+  };
   for (;;) {
     try {
       const handle = await open(lockPath, 'wx');
-      await handle.writeFile(`${process.pid}\n`);
+      await handle.writeFile(`${token}\n`);
       await handle.close();
       break;
     } catch (error) {
       if (error.code !== 'EEXIST') throw error;
-      try {
-        const stats = await stat(lockPath);
-        if (Date.now() - stats.mtimeMs > staleMs) {
-          // 持锁进程已被杀死时击穿陈旧锁，避免永久阻塞。
+    }
+    const held = await readToken();
+    if (held) {
+      const holderPid = Number.parseInt(held.split('-', 1)[0] ?? '', 10);
+      if (Number.isInteger(holderPid) && !processExists(holderPid)) {
+        // 持锁进程已死亡：仅当 token 未变时回收，防止竞态中误删新锁。
+        if ((await readToken()) === held) {
           await rm(lockPath, { force: true }).catch(() => undefined);
-          continue;
         }
-      } catch (statError) {
-        if (statError.code !== 'ENOENT') throw statError;
         continue;
       }
-      if (Date.now() - startedAt > timeoutMs) {
-        throw new Error(`Timed out acquiring native binding prepare lock: ${lockPath}`);
-      }
-      await sleep(pollMs);
     }
+    if (Date.now() - startedAt > timeoutMs) {
+      throw new Error(`Timed out acquiring native binding prepare lock: ${lockPath}`);
+    }
+    await sleep(pollMs);
   }
   try {
     return await run();
   } finally {
-    await rm(lockPath, { force: true }).catch(() => undefined);
+    if ((await readToken()) === token) {
+      await rm(lockPath, { force: true }).catch(() => undefined);
+    }
   }
 }
 
