@@ -1,0 +1,289 @@
+import { copyFile, mkdir, realpath, rename, rm, stat } from 'node:fs/promises';
+import { existsSync, readFileSync } from 'node:fs';
+import { dirname, join } from 'node:path';
+import { createRequire } from 'node:module';
+import { spawn } from 'node:child_process';
+import { fileURLToPath } from 'node:url';
+
+const require = createRequire(import.meta.url);
+
+export function nativeBindingCachePath(root, { platform, arch, modules }) {
+  return join(
+    root,
+    'node_modules',
+    '.cache',
+    'nexnote-native-bindings',
+    'better-sqlite3',
+    `${platform}-${arch}-abi${modules}`,
+    'better_sqlite3.node',
+  );
+}
+
+async function exists(file) {
+  try {
+    return (await stat(file)).isFile();
+  } catch {
+    return false;
+  }
+}
+
+async function copyBinding(from, to) {
+  await mkdir(dirname(to), { recursive: true });
+  const temporary = `${to}.tmp-${process.pid}-${Date.now()}`;
+  try {
+    await copyFile(from, temporary);
+    await rename(temporary, to);
+  } finally {
+    await rm(temporary, { force: true });
+  }
+}
+
+function run(command, args, options = {}) {
+  return new Promise((resolve, reject) => {
+    const child = spawn(command, args, {
+      cwd: options.cwd,
+      env: options.env ?? process.env,
+      shell: options.shell ?? false,
+      stdio: options.stdio ?? 'inherit',
+    });
+    child.once('error', reject);
+    child.once('exit', (code, signal) => {
+      if (code === 0) resolve();
+      else reject(new Error(`${command} ${args.join(' ')} failed (${signal ?? `exit ${code}`})`));
+    });
+  });
+}
+
+async function resolveModuleRoot(root, packageName) {
+  try {
+    const rootRequire = createRequire(join(root, 'package.json'));
+    return await realpath(dirname(rootRequire.resolve(`${packageName}/package.json`)));
+  } catch {
+    // 沙箱/测试环境可能没有可解析的依赖图；退回标准 node_modules 布局。
+    return realpath(join(root, 'node_modules', packageName));
+  }
+}
+
+function readElectronVersion(root) {
+  const rootRequire = createRequire(join(root, 'package.json'));
+  return JSON.parse(readFileSync(rootRequire.resolve('electron/package.json'), 'utf8')).version;
+}
+
+function electronBinary(root) {
+  const rootRequire = createRequire(join(root, 'package.json'));
+  const binary = rootRequire('electron');
+  if (typeof binary !== 'string')
+    throw new Error('Unable to resolve the Electron binary outside Electron.');
+  return binary;
+}
+
+async function validateBinding(binding, runtime, root) {
+  const binary = runtime === 'electron' ? electronBinary(root) : process.execPath;
+  const env = runtime === 'electron' ? { ...process.env, ELECTRON_RUN_AS_NODE: '1' } : process.env;
+  await new Promise((resolve, reject) => {
+    const child = spawn(binary, ['-e', 'require(process.argv[1])', binding], {
+      env,
+      stdio: ['ignore', 'ignore', 'pipe'],
+    });
+    let stderr = '';
+    child.stderr.on('data', (chunk) => {
+      stderr += chunk;
+    });
+    child.once('error', reject);
+    child.once('exit', (code, signal) => {
+      if (code === 0) resolve();
+      else {
+        const detail = stderr.trim().split('\n').slice(-4).join('\n').slice(0, 500);
+        reject(
+          new Error(`${runtime} binding validation failed: ${detail || signal || `exit ${code}`}`),
+        );
+      }
+    });
+  });
+}
+
+/**
+ * pnpm 进程入口：脚本经 predev/pretest 生命周期运行时 npm_execpath 指向 pnpm 的
+ * JS 入口，用 node 直接执行避免 Windows 上 spawn('pnpm.cmd') 无 shell 的 EINVAL。
+ */
+function pnpmInvocation() {
+  const entry = process.env.npm_execpath;
+  if (entry && existsSync(entry)) return { command: process.execPath, args: [entry], shell: false };
+  return { command: 'pnpm', args: [], shell: process.platform === 'win32' };
+}
+
+async function runPnpm(args, options = {}) {
+  const invocation = pnpmInvocation();
+  await run(invocation.command, [...invocation.args, ...args], {
+    ...options,
+    shell: invocation.shell,
+  });
+}
+
+async function electronAbi(root) {
+  const binary = electronBinary(root);
+  return new Promise((resolve, reject) => {
+    const child = spawn(binary, ['-p', 'process.versions.modules'], {
+      env: { ...process.env, ELECTRON_RUN_AS_NODE: '1' },
+      stdio: ['ignore', 'pipe', 'pipe'],
+    });
+    let output = '';
+    let error = '';
+    child.stdout.on('data', (chunk) => {
+      output += chunk;
+    });
+    child.stderr.on('data', (chunk) => {
+      error += chunk;
+    });
+    child.once('error', reject);
+    child.once('exit', (code) => {
+      const abi = output.trim();
+      if (code === 0 && abi) resolve(abi);
+      else
+        reject(new Error(`Unable to read Electron module ABI: ${error.trim() || `exit ${code}`}`));
+    });
+  });
+}
+
+async function rebuildNode(root) {
+  await runPnpm(['rebuild', 'better-sqlite3'], { cwd: root });
+}
+
+async function rebuildElectron(root, moduleRoot, version, platform, arch) {
+  const prebuildInstall = createRequire(join(moduleRoot, 'package.json')).resolve(
+    'prebuild-install/bin.js',
+  );
+  try {
+    await run(process.execPath, [prebuildInstall, '-r', 'electron', '-t', version], {
+      cwd: moduleRoot,
+      stdio: 'ignore',
+    });
+    return;
+  } catch {
+    // Electron ABI can arrive after better-sqlite3's prebuilt release cadence; compile locally as the official fallback.
+  }
+  await runPnpm(
+    [
+      'exec',
+      'electron-rebuild',
+      '--force',
+      '--only',
+      'better-sqlite3',
+      '--version',
+      version,
+      '--platform',
+      platform,
+      '--arch',
+      arch,
+      '--module-dir',
+      root,
+    ],
+    { cwd: root },
+  );
+}
+
+async function removeForgeMeta(moduleRoot) {
+  await rm(join(moduleRoot, '.forge-meta'), { force: true, recursive: true });
+}
+
+/**
+ * Keeps a verified Node binding at better-sqlite3's default path and a separately
+ * verified Electron binding in the ABI-keyed cache consumed through nativeBinding.
+ */
+export async function prepareNativeBindings(options) {
+  const root = options.root;
+  const platform = options.platform ?? process.platform;
+  const arch = options.arch ?? process.arch;
+  const moduleRoot = options.moduleRoot ?? (await resolveModuleRoot(root, 'better-sqlite3'));
+  const activeBinding = join(moduleRoot, 'build', 'Release', 'better_sqlite3.node');
+  const nodeAbi = options.nodeAbi ?? process.versions.modules;
+  const resolvedElectronAbi = options.electronAbi ?? (await electronAbi(root));
+  const version = options.electronVersion ?? readElectronVersion(root);
+  const nodeCacheBinding = nativeBindingCachePath(root, { platform, arch, modules: nodeAbi });
+  const cacheBinding = nativeBindingCachePath(root, {
+    platform,
+    arch,
+    modules: resolvedElectronAbi,
+  });
+  const validate =
+    options.validate ?? ((binding, runtime) => validateBinding(binding, runtime, root));
+  const rebuildForElectron =
+    options.rebuildElectron ?? (() => rebuildElectron(root, moduleRoot, version, platform, arch));
+  const rebuildForNode = options.rebuildNode ?? (() => rebuildNode(root));
+
+  const ensureNode = async () => {
+    if (await exists(activeBinding)) {
+      try {
+        await validate(activeBinding, 'node');
+        await copyBinding(activeBinding, nodeCacheBinding);
+        await removeForgeMeta(moduleRoot);
+        return;
+      } catch {
+        // An Electron rebuild may have overwritten the shared default binding.
+      }
+    }
+    if (await exists(nodeCacheBinding)) {
+      try {
+        await copyBinding(nodeCacheBinding, activeBinding);
+        await validate(activeBinding, 'node');
+        await removeForgeMeta(moduleRoot);
+        return;
+      } catch {
+        await rm(nodeCacheBinding, { force: true });
+      }
+    }
+    await rebuildForNode();
+    await validate(activeBinding, 'node');
+    await copyBinding(activeBinding, nodeCacheBinding);
+    await removeForgeMeta(moduleRoot);
+  };
+
+  await ensureNode();
+  if (options.mode === 'node') return { cacheBinding: nodeCacheBinding };
+
+  if (await exists(cacheBinding)) {
+    try {
+      await validate(cacheBinding, 'electron');
+      return { cacheBinding };
+    } catch {
+      await rm(cacheBinding, { force: true });
+    }
+  }
+
+  try {
+    await rebuildForElectron();
+    await validate(activeBinding, 'electron');
+    await copyBinding(activeBinding, cacheBinding);
+    await validate(cacheBinding, 'electron');
+  } catch (error) {
+    await rm(cacheBinding, { force: true });
+    await copyBinding(nodeCacheBinding, activeBinding);
+    await removeForgeMeta(moduleRoot);
+    throw new Error(
+      `Electron binding validation failed: ${error instanceof Error ? error.message : String(error)}`,
+    );
+  }
+
+  await copyBinding(nodeCacheBinding, activeBinding);
+  await removeForgeMeta(moduleRoot);
+  return { cacheBinding };
+}
+
+async function main() {
+  const mode = process.argv.includes('--node')
+    ? 'node'
+    : process.argv.includes('--electron')
+      ? 'electron'
+      : null;
+  if (!mode) throw new Error('Usage: node scripts/prepare-native-bindings.mjs --node|--electron');
+  const root = process.cwd();
+  const result = await prepareNativeBindings({ root, mode });
+  console.log(`better-sqlite3 ${mode} binding ready: ${result.cacheBinding}`);
+}
+
+if (process.argv[1] === fileURLToPath(import.meta.url)) {
+  main().catch((error) => {
+    console.error(error instanceof Error ? error.message : error);
+    process.exitCode = 1;
+  });
+}

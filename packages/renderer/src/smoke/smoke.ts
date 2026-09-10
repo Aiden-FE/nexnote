@@ -514,6 +514,50 @@ export async function runSmokeIfEnabled(): Promise<void> {
     const darkOn = document.documentElement.classList.contains('dark');
     check('暗色主题生效（CSS 变量切换）', darkOn && useThemeStore.getState().resolved === 'dark');
     await capture('05-dark');
+
+    // 真实 Chromium DOM 验证源码模式的两种 caret 均消费 --foreground，且主题切换不重建编辑器。
+    const caretToggle = commandRegistry.get('editor.toggleSourceMode');
+    caretToggle?.run();
+    const sourceCaretReady = await waitFor(
+      () => !!document.querySelector('[data-testid="source-editor-pane"] .cm-content'),
+    );
+    const cmEditorDark = document.querySelector<HTMLElement>(
+      '[data-testid="source-editor-pane"] .cm-editor',
+    );
+    const cmContentDark = document.querySelector<HTMLElement>(
+      '[data-testid="source-editor-pane"] .cm-content',
+    );
+    const cursorProbe = document.createElement('span');
+    cursorProbe.className = 'cm-cursor';
+    cmEditorDark?.append(cursorProbe);
+    const darkForeground = getComputedStyle(document.body).color;
+    const darkCaret = cmContentDark ? getComputedStyle(cmContentDark).caretColor : '';
+    const darkCursorBorder = getComputedStyle(cursorProbe).borderLeftColor;
+    check(
+      '暗色源码模式 caret 跟随 --foreground（原生 caret 与 .cm-cursor 一致）',
+      sourceCaretReady && darkCaret === darkForeground && darkCursorBorder === darkForeground,
+      `caret=${darkCaret} cursor=${darkCursorBorder} foreground=${darkForeground}`,
+    );
+
+    useThemeStore.getState().setPreference('light');
+    await sleep(300);
+    const cmContentLight = document.querySelector<HTMLElement>(
+      '[data-testid="source-editor-pane"] .cm-content',
+    );
+    const lightForeground = getComputedStyle(document.body).color;
+    const lightCaret = cmContentLight ? getComputedStyle(cmContentLight).caretColor : '';
+    const lightCursorBorder = getComputedStyle(cursorProbe).borderLeftColor;
+    check(
+      '主题切换后 caret 随之变化且 CodeMirror 未重建',
+      document.querySelector('[data-testid="source-editor-pane"] .cm-editor') === cmEditorDark &&
+        lightCaret === lightForeground &&
+        lightCursorBorder === lightForeground &&
+        lightCaret !== darkCaret,
+      `dark=${darkCaret} light=${lightCaret} foreground=${lightForeground}`,
+    );
+    cursorProbe.remove();
+    if (sourceCaretReady) caretToggle?.run();
+
     useThemeStore.getState().setPreference('light');
     await sleep(300);
     check('切回亮色主题', !document.documentElement.classList.contains('dark'));

@@ -3,6 +3,7 @@ import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync } from 'node:f
 import * as path from 'node:path';
 import type { Backlink, ConfidenceResult, GraphSnapshot, IndexStatus, PageIndexSummary, PageJumpResult, PageSummaryLite, SearchHit, TagIndexEntry } from '@nexnote/shared';
 import { parsePageMarkdown, type ParsedPage } from './markdown-indexer';
+import { currentBetterSqlite3Options } from './native-binding';
 
 export interface CandidateBlock {
   blockRowid: number;
@@ -127,14 +128,28 @@ export class LinkIndexService {
   get rootPath(): string | null { return this.root; }
   setRoot(root: string | null): void {
     if (this.root === root) return;
+    const prevRoot = this.root; const prevStatus = this._status;
     this.close(); this.root = root;
-    if (root) this.openAndEnsure();
+    try { if (root) this.openAndEnsure(); }
+    catch (error) {
+      // 打开失败：不残留失败 root；旧库能恢复则恢复，否则保持 root/db 一致的安全关闭态。
+      this.close();
+      try {
+        this.root = prevRoot;
+        if (prevRoot) { this.db = this.openDatabase(prevRoot); this._status = prevStatus; }
+      } catch { this.root = null; }
+      throw error;
+    }
   }
   close(): void { for (const t of this.timers.values()) clearTimeout(t); this.timers.clear(); this.pendingPaths.clear(); this.rebuildScheduled = false; this.db?.close(); this.db = null; this.root = null; this._status = emptyStatus(); }
   private requireRoot(): string { if (!this.root) throw Object.assign(new Error('尚未打开任何 vault'), { code: 'NO_VAULT' }); return this.root; }
+  private openDatabase(root: string): Db {
+    const dir = path.join(root, '.nexnote'); mkdirSync(dir, { recursive: true });
+    const db = new Database(path.join(dir, 'index.db'), currentBetterSqlite3Options()); db.pragma('journal_mode = WAL'); db.pragma('foreign_keys = ON');
+    return db;
+  }
   private openAndEnsure(): void {
-    const root = this.requireRoot(); const dir = path.join(root, '.nexnote'); mkdirSync(dir, { recursive: true });
-    const dbPath = path.join(dir, 'index.db'); this.db = new Database(dbPath); this.db.pragma('journal_mode = WAL'); this.db.pragma('foreign_keys = ON'); this.migrate();
+    this.db = this.openDatabase(this.requireRoot()); this.migrate();
     // 派生缓存：每次打开 vault 与文件系统做一次权威全量同步。
     this.rebuild();
   }

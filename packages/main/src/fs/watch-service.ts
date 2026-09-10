@@ -71,9 +71,25 @@ export class VaultWatchService {
       .on('error', (e) => this.deps.onError?.(e));
     this.watcher = watcher;
     this.watchedRoot = capturedRoot;
-    this.readyPromise = new Promise<void>((resolve) => {
-      watcher.once('ready', () => resolve());
+    let resolveReady!: () => void;
+    let rejectReady!: (error: unknown) => void;
+    this.readyPromise = new Promise<void>((resolve, reject) => {
+      resolveReady = resolve;
+      rejectReady = reject;
     });
+    const onReady = () => resolveReady();
+    const onInitialError = (error: unknown) => rejectReady(error);
+    watcher.once('ready', onReady);
+    watcher.once('error', onInitialError);
+    try {
+      await this.readyPromise;
+    } catch (error) {
+      await this.stop();
+      throw error;
+    } finally {
+      watcher.off('ready', onReady);
+      watcher.off('error', onInitialError);
+    }
   }
 
   /** 等待当前 watcher 初始扫描完成；未监听时立即返回。 */
