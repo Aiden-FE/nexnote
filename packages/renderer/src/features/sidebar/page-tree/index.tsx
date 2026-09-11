@@ -16,7 +16,7 @@ import { ContextMenu, type ContextMenuItem } from '../../../components/ContextMe
 import { Input } from '../../../components/ui/input';
 import { usePageTreeStore } from '../../../stores/page-tree-store';
 import { useUiStore } from '../../../stores/ui-store';
-import { openDocx, useTabStore } from '../../../stores/tab-store';
+import { useTabStore } from '../../../stores/tab-store';
 import { cn } from '../../../lib/utils';
 import {
   buildTree,
@@ -61,6 +61,7 @@ function PageTreePanel() {
   const highlightPath = activePagePath ?? selectedPath;
   const collapsedDirs = useUiStore((s) => s.treeCollapsedDirs);
   const showAllFiles = useUiStore((s) => s.treeShowAllFiles);
+  const showExtensions = useUiStore((s) => s.treeShowExtensions);
 
   const [renaming, setRenaming] = useState<RenamingState | null>(null);
   const [opError, setOpError] = useState<string | null>(null);
@@ -92,8 +93,8 @@ function PageTreePanel() {
     [tagFilter, tagFiles],
   );
   const { tree: filteredTree, expandDirs } = useMemo(
-    () => filterTree(tree, { query, tagFiles: activeTagFiles }),
-    [tree, query, activeTagFiles],
+    () => filterTree(tree, { query, tagFiles: activeTagFiles, showExtensions }),
+    [tree, query, activeTagFiles, showExtensions],
   );
   const collapsedSet = useMemo(() => new Set(collapsedDirs), [collapsedDirs]);
 
@@ -126,7 +127,7 @@ function PageTreePanel() {
               setRenaming({
                 path: node.path,
                 kind: node.kind,
-                value: node.kind === 'file' ? displayName(node) : node.name,
+                value: node.kind === 'file' ? displayName(node, { showExtensions }) : node.name,
               }),
           },
           {
@@ -162,6 +163,7 @@ function PageTreePanel() {
         node={node}
         depth={depth}
         expanded={node.kind === 'directory' ? isExpanded(node.path) : undefined}
+        showExtensions={showExtensions}
         selected={highlightPath === node.path}
         renaming={renaming?.path === node.path ? renaming : null}
         dragOver={dragOverDir === node.path}
@@ -169,9 +171,10 @@ function PageTreePanel() {
         onClick={() => {
           usePageTreeStore.getState().setSelected(node.path);
           if (node.kind === 'file') {
-            // .md 页面 → 块编辑器；.docx → 只读预览 tab（阶段6）
-            if (isMarkdown(node.name)) void run(() => ops.openDocument(node.path));
-            else if (isDocx(node.name)) openDocx(node.path);
+            // 所有文档经统一入口按 sidecar / 扩展名分流，避免 Markdown 误入 TipTap。
+            if (isMarkdown(node.name) || isDocx(node.name)) {
+              void run(() => ops.openDocument(node.path));
+            }
           }
         }}
         onContextMenu={(e) => openMenuFor(e, node)}
@@ -268,6 +271,16 @@ function PageTreePanel() {
         </button>
         <button
           type="button"
+          data-testid="tree-toggle-extensions"
+          title="显示文件后缀"
+          aria-pressed={showExtensions}
+          onClick={() => useUiStore.getState().setTreeShowExtensions(!showExtensions)}
+          className="rounded p-1 text-muted-foreground hover:bg-accent hover:text-foreground"
+        >
+          <FileType2 className="size-3.5" />
+        </button>
+        <button
+          type="button"
           title="刷新"
           onClick={() => run(() => usePageTreeStore.getState().load())}
           className="ml-auto rounded p-0.5 hover:bg-accent hover:text-foreground"
@@ -347,6 +360,7 @@ interface TreeRowProps {
   node: TreeNode;
   depth: number;
   expanded: boolean | undefined;
+  showExtensions: boolean;
   selected: boolean;
   renaming: RenamingState | null;
   dragOver: boolean;
@@ -441,7 +455,9 @@ function TreeRow(p: TreeRowProps) {
           className="h-5 min-w-0 flex-1 rounded border-ring bg-background px-1 text-xs shadow-none focus-visible:ring-1"
         />
       ) : (
-        <span className={cn('truncate', isDir && 'font-medium')}>{displayName(p.node)}</span>
+        <span className={cn('truncate', isDir && 'font-medium')}>
+          {displayName(p.node, { showExtensions: p.showExtensions })}
+        </span>
       )}
     </div>
   );

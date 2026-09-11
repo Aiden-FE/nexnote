@@ -44,6 +44,8 @@ export interface VaultLayout {
   treeCollapsedDirs: string[];
   /** 页面树显示非 .md 文件（默认隐藏，DEV-003） */
   treeShowAllFiles: boolean;
+  /** 页面树显示文件扩展名（默认隐藏 Markdown 后缀） */
+  treeShowExtensions: boolean;
 }
 
 export function defaultVaultLayout(): VaultLayout {
@@ -56,6 +58,7 @@ export function defaultVaultLayout(): VaultLayout {
     dockWidth: 320,
     treeCollapsedDirs: [],
     treeShowAllFiles: false,
+    treeShowExtensions: false,
   };
 }
 

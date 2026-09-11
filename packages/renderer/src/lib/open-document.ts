@@ -1,31 +1,41 @@
 import { invoke } from './ipc';
-import { openDocx, openPage, getTabStore } from '../stores/tab-store';
+import { openDocx, openPage, getTabStore, type DocumentFormat } from '../stores/tab-store';
 
 /**
  * 统一文档打开入口：所有导航（搜索/面板/图谱/反链/AI 来源/编辑器内链接/页面树）
  * 都经此函数，保证：
  * - `.docx` 打开只读预览 tab；
- * - sidecar 持久格式为 markdown 的文档默认进入源码模式（重开也保持）。
+ * - sidecar 持久格式为 markdown 的文档使用源码编辑器（预览由该视图管理）；
+ * - legacy 无 sidecar 文档默认按 native-block 兼容打开。
  */
 export async function openDocumentTab(
   pagePath: string,
   title?: string,
-): Promise<{ kind: 'page' | 'docx'; editorMode?: 'source' }> {
+  options?: { knownFormat?: DocumentFormat },
+): Promise<{ kind: 'page' | 'docx'; format?: DocumentFormat }> {
   if (/\.(docx)$/i.test(pagePath)) {
     openDocx(pagePath, title);
     return { kind: 'docx' };
   }
-  // sidecar 是尽力而为：读取失败（无 bridge/无 vault/损坏）时按默认块编辑打开，不让导航中断。
-  let metadata: { format?: string } | null = null;
-  try {
-    metadata = await invoke('document:getMetadata', { path: pagePath });
-  } catch {
-    metadata = null;
+  // 创建路径可用 knownFormat 跳过 sidecar 查询，避免“先默认后补格式”的第二套路由窗口。
+  let format: DocumentFormat = options?.knownFormat ?? 'native-block';
+  if (!options?.knownFormat) {
+    // sidecar 是尽力而为：读取失败（无 bridge/无 vault/损坏）时按默认块编辑打开，不让导航中断。
+    let metadata: { format?: string } | null = null;
+    try {
+      metadata = await invoke('document:getMetadata', { path: pagePath });
+    } catch {
+      metadata = null;
+    }
+    format = metadata?.format === 'markdown' ? 'markdown' : 'native-block';
   }
   const tab = openPage(pagePath, title);
-  if (metadata?.format === 'markdown') {
-    getTabStore().getState().toggleSourceMode(tab.id, true);
-    return { kind: 'page', editorMode: 'source' };
-  }
-  return { kind: 'page' };
+  getTabStore()
+    .getState()
+    .updateTab(tab.id, {
+      format,
+      // Markdown's only mode is source editor; initialize it explicitly.
+      editorMode: format === 'markdown' ? 'source' : 'block',
+    });
+  return { kind: 'page', format };
 }

@@ -74,8 +74,17 @@ function createBubbleDom(
   const show: BubbleView['show'] = (coords) => {
     const host = dom.parentElement?.getBoundingClientRect();
     dom.style.display = 'flex';
-    dom.style.top = `${coords.top - (host?.top ?? 0) - 8}px`;
-    dom.style.left = `${coords.left - (host?.left ?? 0)}px`;
+    const hostLeft = host?.left ?? 0;
+    const hostTop = host?.top ?? 0;
+    const hostRight = host?.right ?? hostLeft;
+    const width = dom.offsetWidth;
+    const height = dom.offsetHeight;
+    const minLeft = hostLeft + width / 2;
+    const maxLeft = Math.max(minLeft, hostRight - width / 2);
+    const left = Math.min(Math.max(coords.left, minLeft), maxLeft);
+    const top = Math.max(coords.top - 8, hostTop + height);
+    dom.style.top = `${top - hostTop}px`;
+    dom.style.left = `${left - hostLeft}px`;
     dom.style.transform = 'translate(-50%, -100%)';
   };
   const hide = () => {
@@ -135,7 +144,8 @@ export const SelectionBubble = Extension.create<SelectionBubbleOptions, { visibl
             const { selection } = view.state;
             const hasSel = !selection.empty && selection.from !== selection.to;
             let text = '';
-            if (hasSel) text = view.state.doc.textBetween(selection.from, selection.to, '\n', '\ufffc');
+            if (hasSel)
+              text = view.state.doc.textBetween(selection.from, selection.to, '\n', '\ufffc');
             const visible = hasSel && text.trim().length > 0;
             ext.storage.visible = visible;
             if (!bubble) return;
@@ -172,7 +182,8 @@ export const SelectionBubble = Extension.create<SelectionBubbleOptions, { visibl
           handleDOMEvents: {
             blur(view, event) {
               // relatedTarget 在 bubble DOM 内：焦点移到工具栏按钮上，保持可见
-              const bubbleDom = view.dom.parentElement?.querySelector<HTMLElement>('[data-selection-bubble]');
+              const bubbleDom =
+                view.dom.parentElement?.querySelector<HTMLElement>('[data-selection-bubble]');
               const related = event.relatedTarget as Node | null;
               if (bubbleDom && related && bubbleDom.contains(related)) return false;
               ext.storage.visible = false;
@@ -181,7 +192,8 @@ export const SelectionBubble = Extension.create<SelectionBubbleOptions, { visibl
             },
             focusout(view, event) {
               // 焦点完全离开编辑器+气泡（relatedTarget 不在编辑器内也不在气泡内），隐藏气泡
-              const bubbleDom = view.dom.parentElement?.querySelector<HTMLElement>('[data-selection-bubble]');
+              const bubbleDom =
+                view.dom.parentElement?.querySelector<HTMLElement>('[data-selection-bubble]');
               const related = event.relatedTarget as Node | null;
               const leavingEditor = view.dom.contains(event.target as Node);
               const goingIntoBubble = bubbleDom && related && bubbleDom.contains(related);

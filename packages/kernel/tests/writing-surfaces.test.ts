@@ -17,7 +17,10 @@ function mount(markdown: string, options?: Parameters<typeof createEditor>[1]) {
 
 /** 序列化后去掉 UniqueID 块锚，便于断言正文。 */
 function stripped(kernel: ReturnType<typeof createEditor>): string {
-  return kernel.getMarkdown().replace(/[ \t]*\^[A-Za-z0-9]+/g, '').trim();
+  return kernel
+    .getMarkdown()
+    .replace(/[ \t]*\^[A-Za-z0-9]+/g, '')
+    .trim();
 }
 
 function selectText(kernel: ReturnType<typeof createEditor>, from: number, to: number) {
@@ -75,7 +78,12 @@ describe('选区浮动工具栏（SelectionBubble）', () => {
     const { kernel } = mount('这是第一段的示例文字\n\n第二段', {
       selectionBubble: {
         actions: [
-          { id: 'ai-rewrite', title: '改写', shortcut: { mod: true, key: 'r' }, shortcutLabel: '⌘R' },
+          {
+            id: 'ai-rewrite',
+            title: '改写',
+            shortcut: { mod: true, key: 'r' },
+            shortcutLabel: '⌘R',
+          },
           { id: 'ai-expand', title: '扩写' },
         ],
         onAction,
@@ -91,9 +99,82 @@ describe('选区浮动工具栏（SelectionBubble）', () => {
     expect(btn).toBeTruthy();
     btn?.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, cancelable: true }));
     btn?.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
-    expect(onAction).toHaveBeenCalledWith('ai-rewrite', expect.objectContaining({ target: 'selection' }));
+    expect(onAction).toHaveBeenCalledWith(
+      'ai-rewrite',
+      expect.objectContaining({ target: 'selection' }),
+    );
     // 选区不被破坏
     expect(view.state.selection.empty).toBe(false);
+    kernel.destroy();
+  });
+
+  it('多行选区时锚定选区起点行而非首尾中点', () => {
+    const onAction = vi.fn();
+    const { container, kernel } = mount('第一行内容\n\n第二行内容', {
+      selectionBubble: {
+        actions: [{ id: 'ai-rewrite', title: '改写' }],
+        onAction,
+      },
+    });
+    const view = kernel.editor.view;
+    const host = container.getBoundingClientRect;
+    container.getBoundingClientRect = () => ({
+      top: 50,
+      left: 0,
+      right: 800,
+      bottom: 600,
+      width: 800,
+      height: 550,
+      x: 0,
+      y: 50,
+      toJSON: () => ({}),
+    });
+    const from = 1;
+    const to = view.state.doc.content.size - 1;
+    vi.spyOn(view, 'coordsAtPos').mockImplementation((pos) =>
+      pos === from
+        ? { top: 120, bottom: 140, left: 24, right: 40 }
+        : { top: 240, bottom: 260, left: 400, right: 420 },
+    );
+    selectText(kernel, from, to);
+    const ctx = computeEditorActionContext(view, 'selection');
+    expect(ctx.coords).toEqual({ top: 120, left: 24 });
+    const bubble = container.querySelector<HTMLElement>('[data-selection-bubble]');
+    expect(bubble?.style.left).toBe('24px');
+    container.getBoundingClientRect = host;
+    kernel.destroy();
+  });
+
+  it('选区贴近顶部时工具栏不越过容器上边界', () => {
+    const { container, kernel } = mount('顶部内容', {
+      selectionBubble: {
+        actions: [{ id: 'ai-rewrite', title: '改写' }],
+        onAction: () => undefined,
+      },
+    });
+    const view = kernel.editor.view;
+    container.getBoundingClientRect = () => ({
+      top: 50,
+      left: 0,
+      right: 800,
+      bottom: 600,
+      width: 800,
+      height: 550,
+      x: 0,
+      y: 50,
+      toJSON: () => ({}),
+    });
+    const bubble = container.querySelector<HTMLElement>('[data-selection-bubble]');
+    expect(bubble).toBeTruthy();
+    Object.defineProperty(bubble, 'offsetHeight', { configurable: true, value: 32 });
+    vi.spyOn(view, 'coordsAtPos').mockReturnValue({
+      top: 54,
+      bottom: 74,
+      left: 24,
+      right: 40,
+    });
+    selectText(kernel, 1, 4);
+    expect(bubble?.style.top).toBe('32px');
     kernel.destroy();
   });
 
@@ -101,7 +182,14 @@ describe('选区浮动工具栏（SelectionBubble）', () => {
     const onAction = vi.fn();
     const { kernel } = mount('第一段', {
       selectionBubble: {
-        actions: [{ id: 'ai-polish', title: '润色', shortcut: { mod: true, key: 'p' }, shortcutLabel: '⌘P' }],
+        actions: [
+          {
+            id: 'ai-polish',
+            title: '润色',
+            shortcut: { mod: true, key: 'p' },
+            shortcutLabel: '⌘P',
+          },
+        ],
         onAction,
       },
     });
@@ -112,10 +200,16 @@ describe('选区浮动工具栏（SelectionBubble）', () => {
     selectText(kernel, 1, 4);
     expect(bubble?.style.display).not.toBe('none');
     const handled = view.someProp('handleKeyDown', (f) =>
-      f(view, new KeyboardEvent('keydown', { metaKey: true, key: 'p' }) as unknown as KeyboardEvent),
+      f(
+        view,
+        new KeyboardEvent('keydown', { metaKey: true, key: 'p' }) as unknown as KeyboardEvent,
+      ),
     );
     expect(handled).toBe(true);
-    expect(onAction).toHaveBeenCalledWith('ai-polish', expect.objectContaining({ target: 'selection' }));
+    expect(onAction).toHaveBeenCalledWith(
+      'ai-polish',
+      expect.objectContaining({ target: 'selection' }),
+    );
     kernel.destroy();
   });
 });
@@ -148,14 +242,17 @@ describe('右键上下文菜单（ContextMenu）', () => {
     const aiItem = menu?.querySelector<HTMLButtonElement>('[data-context-menu-item=""]');
     expect(aiItem).toBeTruthy();
     // hover 展开子菜单（mouseenter 绑定在子项 wrapper 上）
-    aiItem?.closest('.nexnote-context-menu__sub-wrap')?.dispatchEvent(
-      new MouseEvent('mouseenter', { bubbles: false }),
-    );
+    aiItem
+      ?.closest('.nexnote-context-menu__sub-wrap')
+      ?.dispatchEvent(new MouseEvent('mouseenter', { bubbles: false }));
     const sub = menu?.querySelector<HTMLElement>('.nexnote-context-menu__sub');
     expect(sub?.style.display).toBe('block');
     const action = sub?.querySelector<HTMLButtonElement>('[data-context-menu-item="ai-fill"]');
     action?.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
-    expect(onAction).toHaveBeenCalledWith('ai-fill', expect.objectContaining({ target: 'selection' }));
+    expect(onAction).toHaveBeenCalledWith(
+      'ai-fill',
+      expect.objectContaining({ target: 'selection' }),
+    );
     kernel.destroy();
   });
 
@@ -190,7 +287,9 @@ describe('diff 回写编辑器原语', () => {
     const { kernel } = mount('原标题\n\n后段');
     const secondFrom = kernel.editor.view.state.doc.child(0).nodeSize + 1;
     const secondTo = secondFrom + kernel.editor.view.state.doc.child(1).nodeSize;
-    expect(kernel.replaceRangeWithMarkdown(secondFrom, secondTo, '新段落一\n\n新段落二')).toBe(true);
+    expect(kernel.replaceRangeWithMarkdown(secondFrom, secondTo, '新段落一\n\n新段落二')).toBe(
+      true,
+    );
     expect(kernel.getMarkdown()).toContain('新段落一');
     expect(kernel.getMarkdown()).toContain('新段落二');
     expect(kernel.undo()).toBe(true);
@@ -229,9 +328,11 @@ describe('斜杠菜单注入 AI 项（extraSlashItems）', () => {
         },
       ],
     });
-    const slash = exts.find(
-      (e) => (e as { name?: string }).name === 'nexnoteSlashMenu',
-    ) as { options: { items: (q: string) => { id: string; action: (ctx: { view: unknown }) => boolean }[] } };
+    const slash = exts.find((e) => (e as { name?: string }).name === 'nexnoteSlashMenu') as {
+      options: {
+        items: (q: string) => { id: string; action: (ctx: { view: unknown }) => boolean }[];
+      };
+    };
     const aiItems = slash.options.items('ai').map((i) => i.id);
     expect(aiItems).toContain('ai-rewrite');
     // 默认结构块项不匹配 'ai'

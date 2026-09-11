@@ -18,6 +18,16 @@ export async function requestSourceModeToggle(tabId: string): Promise<boolean> {
   if (switching.has(tabId)) return false;
   const tab = useTabStore.getState().tabs.find((candidate) => candidate.id === tabId);
   if (!tab || tab.kind !== 'page') return false;
+  // Markdown 的“模式切换”是预览分栏开关，不切换到 TipTap 块编辑。
+  if (tab.format === 'markdown') {
+    useTabStore.getState().togglePreview(tabId);
+    return true;
+  }
+  // Native-block 文档不允许进入源码模式；legacy tab 保持原有兼容行为。
+  if (tab.format === 'native-block') {
+    useTabStore.getState().toggleSourceMode(tabId, false);
+    return false;
+  }
   switching.add(tabId);
   try {
     const prepare = handlers.get(tabId);

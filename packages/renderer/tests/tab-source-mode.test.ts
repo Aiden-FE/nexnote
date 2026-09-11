@@ -34,6 +34,37 @@ describe('tab store 源码模式（DEV-020）', () => {
     expect(reopened.editorMode).toBeUndefined();
   });
 
+  it('native-block 文档拒绝源码模式并自动回到 block', () => {
+    const page = useTabStore.getState().openTab({
+      kind: 'page',
+      title: 'Native',
+      pagePath: 'native.md',
+    });
+    useTabStore.getState().updateTab(page.id, { format: 'native-block', editorMode: 'source' });
+    useTabStore.getState().toggleSourceMode(page.id);
+    expect(useTabStore.getState().tabs.find((t) => t.id === page.id)).toMatchObject({
+      format: 'native-block',
+      editorMode: 'block',
+    });
+  });
+
+  it('Markdown 预览开关独立于源码编辑器模式', () => {
+    const markdown = useTabStore.getState().openTab({
+      kind: 'page',
+      title: 'Markdown',
+      pagePath: 'markdown.md',
+    });
+    useTabStore.getState().updateTab(markdown.id, { format: 'markdown', editorMode: 'source' });
+    useTabStore.getState().togglePreview(markdown.id, false);
+    expect(useTabStore.getState().tabs.find((t) => t.id === markdown.id)?.previewVisible).toBe(
+      false,
+    );
+    useTabStore.getState().togglePreview(markdown.id, true);
+    expect(useTabStore.getState().tabs.find((t) => t.id === markdown.id)?.previewVisible).toBe(
+      true,
+    );
+  });
+
   it('updateTab 可同步模式（切换入口共用同一状态）', () => {
     const page = useTabStore.getState().openPageTab('a.md');
     useTabStore.getState().updateTab(page.id, { editorMode: 'source' });

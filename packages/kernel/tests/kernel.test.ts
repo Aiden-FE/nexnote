@@ -187,6 +187,34 @@ describe('Round-trip 验证矩阵', () => {
 });
 
 describe('Editor kernel 事务与保存', () => {
+  it('用户文档变更立即触发 onDocChange，早于防抖保存', async () => {
+    vi.useFakeTimers();
+    const events: string[] = [];
+    const kernel = createEditor(document.createElement('div'), {
+      initialMarkdown: '# 标题\n',
+      slashMenu: false,
+      dragHandle: false,
+      saveDelayMs: 100,
+      onDocChange: () => events.push('doc-change'),
+      onContentChange: () => events.push('save'),
+    });
+
+    expect(events).toEqual([]);
+    expect(kernel.editor.commands.insertContent('用户输入')).toBe(true);
+    expect(events).toEqual(['doc-change']);
+
+    await vi.advanceTimersByTimeAsync(100);
+    expect(events).toEqual(['doc-change', 'save']);
+
+    kernel.setMarkdown('# 程序化重载\n');
+    expect(events).toEqual(['doc-change', 'save']);
+    await kernel.flushPendingSave();
+    expect(events).toEqual(['doc-change', 'save']);
+
+    kernel.destroy();
+    vi.useRealTimers();
+  });
+
   it('打开非常规 Markdown 不触发保存（UniqueID 初始化补 ID 非用户编辑）', async () => {
     const container = document.createElement('div');
     document.body.append(container);

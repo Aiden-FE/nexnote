@@ -1,3 +1,4 @@
+import { useEffect } from 'react';
 import { TabStrip } from '../tabs/TabStrip';
 import { useTabStore, type TabDescriptor } from '../stores/tab-store';
 import { WelcomePage } from '../pages/WelcomePage';
@@ -9,10 +10,15 @@ import { EditorView } from '../editor/EditorView';
 import { SourceModeView } from '../editor/source/SourceModeView';
 import { GlobalGraphView } from '../features/graph/GlobalGraphView';
 
-/** 页面 tab：按 tab 的临时 editorMode 选择块编辑或源码模式（模式切换不换 tab，不重挂）。 */
+/** 页面 tab：持久格式决定编辑器；Markdown 永远不挂载 TipTap。 */
 function PageEditorHost({ tab }: { tab: TabDescriptor }) {
-  if (tab.editorMode === 'source') return <SourceModeView tab={tab} />;
-  return <EditorView tab={tab} />;
+  useEffect(() => {
+    if (tab.format === 'native-block' && tab.editorMode === 'source') {
+      useTabStore.getState().toggleSourceMode(tab.id, false);
+    }
+  }, [tab.format, tab.editorMode, tab.id]);
+  if (tab.format === 'markdown') return <SourceModeView key={tab.id} tab={tab} />;
+  return <EditorView key={tab.id} tab={tab} />;
 }
 
 function TabContent({ tab }: { tab: TabDescriptor }) {

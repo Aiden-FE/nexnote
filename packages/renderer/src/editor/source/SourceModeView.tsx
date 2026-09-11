@@ -1,13 +1,15 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { AlertCircle, Check, Code2, LoaderCircle, Save } from 'lucide-react';
+import { AlertCircle, Check, Code2, Eye, EyeOff, LoaderCircle, Save } from 'lucide-react';
 import type { TabDescriptor } from '../../stores/tab-store';
 import { useTabStore } from '../../stores/tab-store';
 import { usePageTreeStore } from '../../stores/page-tree-store';
 import { useUiStore } from '../../stores/ui-store';
+import { useSettingsStore } from '../../stores/settings-store';
 import { invoke, onEvent } from '../../lib/ipc';
 import { openChatWikilinkOrNull } from '../../features/ai/chat/chat-runtime';
 import { sanitizePageTitle, titleFromPath } from '../title-sync';
 import { registerAppSaveListener } from '../app-save';
+import { openDocumentTab } from '../../lib/open-document';
 import {
   classifyExternalChange,
   fileVersionOf,
@@ -25,11 +27,10 @@ type LoadState =
   { phase: 'loading' } | { phase: 'ready'; text: string } | { phase: 'error'; message: string };
 type SaveState = 'saved' | 'saving' | 'error';
 
-const SAVE_DEBOUNCE_MS = 500;
-
 /** IPC 适配器：renderer 永不直访 Node fs。 */
 const ipcIo: PageFileIo = {
   stat: (path) => invoke('fs:stat', { path }),
+  read: (path) => invoke('fs:readTextFile', { path }),
   exists: (path) => invoke('fs:exists', { path }),
   write: (path, content) => invoke('fs:writeTextFile', { path, content, createParentDirs: true }),
   renameLinked: async (from, to) => {
@@ -59,12 +60,16 @@ export function SourceModeView({ tab }: { tab: TabDescriptor }) {
   const [switchError, setSwitchError] = useState<string | null>(null);
   const [displayPath, setDisplayPath] = useState(initialPath);
   const [previewText, setPreviewText] = useState('');
+  const previewVisible = tab.previewVisible !== false;
+  const vaultSettings = useSettingsStore((state) => state.vault);
+  const autoSaveMs = vaultSettings?.editor.autoSaveMs ?? 1500;
 
   const hostRef = useRef<HTMLDivElement>(null);
   const editorRef = useRef<SourceEditorHandle | null>(null);
   const previewScrollRef = useRef<HTMLDivElement | null>(null);
   const pathRef = useRef(initialPath);
   const textRef = useRef('');
+  const baseTextRef = useRef('');
   const baseVersionRef = useRef<FileVersion | null>(null);
   const dirtyRef = useRef(false);
   const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -93,6 +98,7 @@ export function SourceModeView({ tab }: { tab: TabDescriptor }) {
       throw new Error('外部修改冲突，等待用户选择');
     }
     baseVersionRef.current = result.version;
+    baseTextRef.current = text;
     if (textRef.current === text) dirtyRef.current = false;
     if (result.renamedFrom) {
       const tree = usePageTreeStore.getState();
@@ -133,8 +139,8 @@ export function SourceModeView({ tab }: { tab: TabDescriptor }) {
     saveTimerRef.current = setTimeout(() => {
       saveTimerRef.current = null;
       void runSaveTracked().catch(() => undefined);
-    }, SAVE_DEBOUNCE_MS);
-  }, [runSaveTracked]);
+    }, autoSaveMs);
+  }, [autoSaveMs, runSaveTracked]);
 
   /** 立即落盘待保存内容（无修改则不写盘：仅切换模式不得触发规范化写回）。 */
   const flush = useCallback(async (): Promise<void> => {
@@ -151,6 +157,7 @@ export function SourceModeView({ tab }: { tab: TabDescriptor }) {
     const text = await invoke('fs:readTextFile', { path: pathRef.current });
     const info = await invoke('fs:stat', { path: pathRef.current });
     baseVersionRef.current = fileVersionOf(info);
+    baseTextRef.current = text;
     dirtyRef.current = false;
     editorRef.current?.setText(text);
     textRef.current = text;
@@ -171,6 +178,7 @@ export function SourceModeView({ tab }: { tab: TabDescriptor }) {
         const info = await invoke('fs:stat', { path: nextPath });
         if (cancelled) return;
         baseVersionRef.current = fileVersionOf(info);
+        baseTextRef.current = text;
         dirtyRef.current = false;
         textRef.current = text;
         setPreviewText(text);
@@ -250,6 +258,7 @@ export function SourceModeView({ tab }: { tab: TabDescriptor }) {
           io: ipcIo,
           path: current,
           baseVersion: baseVersionRef.current,
+          baseText: baseTextRef.current,
           dirty: dirtyRef.current,
         });
         if (result.kind === 'unchanged') return;
@@ -292,7 +301,7 @@ export function SourceModeView({ tab }: { tab: TabDescriptor }) {
     });
   }, [tab.id, flush]);
 
-  // ── 预览导航：先保存，成功后同一 tab 内导航并保持源码模式 ──
+  // ── 预览导航：先保存，成功后经统一入口按目标文档格式打开 ──
   const navigate = useCallback(
     (link: InternalLinkNavigation): void => {
       void (async () => {
@@ -316,13 +325,11 @@ export function SourceModeView({ tab }: { tab: TabDescriptor }) {
             createParentDirs: true,
           });
         }
-        useTabStore.getState().updateTab(tab.id, {
-          pagePath: nextPath,
-          title: titleFromPath(nextPath),
-        });
+        // 经统一文档入口导航（ADR-0004）：sidecar markdown 保持在源码编辑器，绝不挂 TipTap。
+        await openDocumentTab(nextPath, titleFromPath(nextPath));
       })();
     },
-    [flush, tab.id],
+    [flush],
   );
 
   // ── 冲突选择：保留本地（以本地覆盖磁盘）/ 读取磁盘并重载 ──
@@ -387,15 +394,28 @@ export function SourceModeView({ tab }: { tab: TabDescriptor }) {
           <StatusIcon className={`size-3 ${status.className}`} />
           {status.text}
         </span>
-        <button
-          type="button"
-          data-testid="source-mode-toggle"
-          title="切回块编辑模式（⌘/Ctrl+E）"
-          className="flex shrink-0 items-center gap-1 rounded px-1.5 py-0.5 hover:bg-accent"
-          onClick={() => void requestSourceModeToggle(tab.id)}
-        >
-          <Code2 className="size-3" /> 块编辑
-        </button>
+        {tab.format === 'markdown' ? (
+          <button
+            type="button"
+            data-testid="preview-toggle"
+            title={previewVisible ? '隐藏预览（⌘/Ctrl+E）' : '显示预览（⌘/Ctrl+E）'}
+            className="flex shrink-0 items-center gap-1 rounded px-1.5 py-0.5 hover:bg-accent"
+            onClick={() => useTabStore.getState().togglePreview(tab.id)}
+          >
+            {previewVisible ? <EyeOff className="size-3" /> : <Eye className="size-3" />}
+            {previewVisible ? '隐藏预览' : '显示预览'}
+          </button>
+        ) : (
+          <button
+            type="button"
+            data-testid="source-mode-toggle"
+            title="切回块编辑模式（⌘/Ctrl+E）"
+            className="flex shrink-0 items-center gap-1 rounded px-1.5 py-0.5 hover:bg-accent"
+            onClick={() => void requestSourceModeToggle(tab.id)}
+          >
+            <Code2 className="size-3" /> 块编辑
+          </button>
+        )}
       </div>
 
       {conflict && (
@@ -438,12 +458,14 @@ export function SourceModeView({ tab }: { tab: TabDescriptor }) {
           className="min-h-0 min-w-0 flex-1 overflow-hidden border-r"
           ref={hostRef}
         />
-        <LivePreview
-          markdown={previewText}
-          sourcePath={displayPath}
-          onNavigate={navigate}
-          scrollRef={previewScrollRef}
-        />
+        {previewVisible && (
+          <LivePreview
+            markdown={previewText}
+            sourcePath={displayPath}
+            onNavigate={navigate}
+            scrollRef={previewScrollRef}
+          />
+        )}
       </div>
     </div>
   );

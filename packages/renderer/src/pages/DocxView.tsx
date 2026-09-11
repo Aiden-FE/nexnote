@@ -1,8 +1,8 @@
 import { useEffect, useState } from 'react';
 import { FileWarning } from 'lucide-react';
 import type { TabDescriptor } from '../stores/tab-store';
-import { openPage } from '../stores/tab-store';
 import { invoke } from '../lib/ipc';
+import { openDocumentTab } from '../lib/open-document';
 
 /** DOCX 原件只读预览：编辑仅通过 native-block 副本，不修改原件。 */
 export function DocxView({ tab }: { tab: TabDescriptor }) {
@@ -31,7 +31,7 @@ export function DocxView({ tab }: { tab: TabDescriptor }) {
     setStatus('正在创建编辑副本…');
     const result = await invoke('docx:createEditCopy', { path: pagePath });
     setStatus(result.created ? '已创建编辑副本' : '已使用现有编辑副本');
-    openPage(result.path);
+    await openDocumentTab(result.path);
     return result.path;
   };
 

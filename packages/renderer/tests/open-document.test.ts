@@ -8,6 +8,10 @@ const tabState = {
   tabs: [] as Array<{ id: string; kind: string; pagePath?: string; editorMode?: string }>,
   activeTabId: null as string | null,
   toggleSourceMode: vi.fn(),
+  updateTab: vi.fn((id: string, patch: Record<string, unknown>) => {
+    const tab = tabState.tabs.find((candidate) => candidate.id === id);
+    if (tab) Object.assign(tab, patch);
+  }),
 };
 const openPageMock = vi.fn((pagePath: string) => {
   const tab = { id: `t${tabState.tabs.length + 1}`, kind: 'page', pagePath };
@@ -36,6 +40,7 @@ describe('openDocumentTab 统一打开入口', () => {
     tabState.tabs = [];
     tabState.activeTabId = null;
     tabState.toggleSourceMode.mockClear();
+    tabState.updateTab.mockClear();
   });
 
   it('.docx 打开只读预览 tab，不查询 markdown 元数据', async () => {
@@ -51,16 +56,19 @@ describe('openDocumentTab 统一打开入口', () => {
     const { openDocumentTab } = await import('../src/lib/open-document');
     const result = await openDocumentTab('notes/a.md', '标题');
     expect(invokeMock).toHaveBeenCalledWith('document:getMetadata', { path: 'notes/a.md' });
-    expect(result).toEqual({ kind: 'page', editorMode: 'source' });
+    expect(result).toEqual({ kind: 'page', format: 'markdown' });
     expect(openPageMock).toHaveBeenCalledWith('notes/a.md', '标题');
-    expect(tabState.toggleSourceMode).toHaveBeenCalledWith('t1', true);
+    expect(tabState.updateTab).toHaveBeenCalledWith('t1', {
+      format: 'markdown',
+      editorMode: 'source',
+    });
   });
 
   it('无 sidecar 或 native-block 时保持块编辑模式', async () => {
     invokeMock.mockResolvedValueOnce(null).mockResolvedValueOnce({ format: 'native-block' });
     const { openDocumentTab } = await import('../src/lib/open-document');
-    expect(await openDocumentTab('notes/b.md')).toEqual({ kind: 'page' });
-    expect(await openDocumentTab('notes/c.md')).toEqual({ kind: 'page' });
-    expect(tabState.toggleSourceMode).not.toHaveBeenCalled();
+    expect(await openDocumentTab('notes/b.md')).toEqual({ kind: 'page', format: 'native-block' });
+    expect(await openDocumentTab('notes/c.md')).toEqual({ kind: 'page', format: 'native-block' });
+    expect(tabState.updateTab).toHaveBeenCalledTimes(2);
   });
 });

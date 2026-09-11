@@ -13,7 +13,7 @@ const hints = [
   { icon: FileCode2, text: 'Markdown 页面可随时切换源码模式与实时预览' },
   { icon: PanelLeft, text: '拖动侧栏边缘调整宽度，双击折叠' },
   { icon: Moon, text: '命令面板或状态栏可切换亮/暗主题' },
-  { icon: Sparkles, text: '右侧 AI 对话 Dock 将在 DEV-012 接入' },
+  { icon: Sparkles, text: 'AI 对话与写作辅助' },
 ];
 
 /** 默认欢迎 Tab。 */
@@ -89,8 +89,8 @@ export function WelcomePage() {
       </div>
 
       <p className="text-[11px] leading-relaxed text-muted-foreground/80">
-        编辑器内核（DEV-002 · TipTap 3）、页面树（DEV-003）、Git 底座（DEV-007）、AI 层（DEV-009+）
-        将在后续票据接入本应用壳。
+        块编辑与 Markdown 双格式文档 · 页面树、双向链接与图谱 · 内置 Git 版本历史 · AI
+        对话与写作辅助
       </p>
     </div>
   );

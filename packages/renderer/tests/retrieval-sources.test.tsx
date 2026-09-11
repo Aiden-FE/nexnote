@@ -1,10 +1,15 @@
 // @vitest-environment happy-dom
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { createRoot } from 'react-dom/client';
 import { act } from 'react';
 import type { RetrievalResponse } from '@nexnote/shared';
 
 globalThis.IS_REACT_ACT_ENVIRONMENT = true;
+
+const invokeMock = vi.fn();
+vi.mock('../src/lib/ipc', () => ({
+  invoke: (...args: unknown[]) => invokeMock(...args),
+}));
 import { RetrievalSources } from '../src/features/ai/retrieval/RetrievalSources';
 import { useTabStore } from '../src/stores/tab-store';
 
@@ -66,7 +71,8 @@ describe('RetrievalSources 召回透明 UI', () => {
     const stages = container.querySelectorAll('[data-stage]');
     expect(stages).toHaveLength(3);
 
-    // 点击来源打开对应页面 tab
+    // 点击来源必须经统一路由：sidecar markdown 直接进入源码编辑器，不能挂 TipTap。
+    invokeMock.mockResolvedValue({ format: 'markdown' });
     const before = useTabStore.getState().tabs.length;
     const btn = container.querySelector<HTMLButtonElement>(
       '[data-testid="retrieval-source"] button',
@@ -77,7 +83,12 @@ describe('RetrievalSources 召回透明 UI', () => {
     });
     const after = useTabStore.getState().tabs;
     expect(after.length).toBe(before + 1);
-    expect(after[after.length - 1]?.pagePath).toBe('coffee.md');
+    expect(after[after.length - 1]).toMatchObject({
+      pagePath: 'coffee.md',
+      format: 'markdown',
+      editorMode: 'source',
+    });
+    expect(invokeMock).toHaveBeenCalledWith('document:getMetadata', { path: 'coffee.md' });
   });
 
   it('降级时显示两阶段徽标且向量阶段标注跳过', async () => {

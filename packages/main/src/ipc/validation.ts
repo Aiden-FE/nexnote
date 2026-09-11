@@ -362,6 +362,7 @@ const saveLayout: PayloadValidator = (payload) => {
     dockWidth: 'number',
     treeCollapsedDirs: 'string-array',
     treeShowAllFiles: 'boolean',
+    treeShowExtensions: 'boolean',
   };
   if (Object.keys(layout).some((key) => !(key in fields))) return invalid('layout 包含未知字段');
   for (const [key, type] of Object.entries(fields)) {

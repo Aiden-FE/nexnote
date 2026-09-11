@@ -1,8 +1,9 @@
 import { sanitizeEntryName } from '@nexnote/shared';
 import type { DirEntry } from '@nexnote/shared';
 import { invoke } from '../../../lib/ipc';
+import { openDocumentTab } from '../../../lib/open-document';
 import { requestAppSave } from '../../../editor/app-save';
-import { getTabStore, openDocx, openPage } from '../../../stores/tab-store';
+import { getTabStore } from '../../../stores/tab-store';
 import { usePageTreeStore } from '../../../stores/page-tree-store';
 import { displayName, isMarkdown } from '../../../page-tree/tree-utils';
 
@@ -15,24 +16,23 @@ import { displayName, isMarkdown } from '../../../page-tree/tree-utils';
 export type NewNoteFormat = 'native-block' | 'markdown';
 
 /**
- * 新建笔记并打开：native-block（默认）保持块编辑模式；markdown 打开后进入源码模式
- * （复用 tab 级临时状态，关闭 tab 即回到块编辑，ADR-0004）。
+ * 新建笔记并打开：native-block（默认）进入块编辑；markdown 进入源码编辑器
+ * （模式语义是格式的一部分，持久于 tab 生命周期，ADR-0004）。
  */
 export async function createNoteIn(
   parentDir: string,
   format: NewNoteFormat = 'native-block',
 ): Promise<string> {
   const info = await invoke('fs:createNote', { parentDir, format });
-  const tab = openPage(info.path, displayName({ name: info.name, kind: 'file' }));
-  if (format === 'markdown') getTabStore().getState().toggleSourceMode(tab.id, true);
+  await openDocumentTab(info.path, displayName({ name: info.name, kind: 'file' }), {
+    knownFormat: format,
+  });
   return info.path;
 }
 
-/** 按 sidecar 中的持久格式打开页面；Markdown 文档默认进入源码模式。 */
+/** 按 sidecar 中的持久格式打开页面；统一委托 openDocumentTab，避免第二套路由。 */
 export async function openDocument(path: string): Promise<string> {
-  const metadata = await invoke('document:getMetadata', { path });
-  const tab = openPage(path);
-  if (metadata?.format === 'markdown') getTabStore().getState().toggleSourceMode(tab.id, true);
+  await openDocumentTab(path);
   return path;
 }
 
@@ -40,7 +40,7 @@ export async function openDocument(path: string): Promise<string> {
 export async function importDocxIn(targetDir = ''): Promise<string | null> {
   const result = await invoke('docx:import', { targetDir });
   if (!result) return null;
-  openDocx(result.path);
+  await openDocumentTab(result.path);
   return result.path;
 }
 
@@ -69,11 +69,17 @@ export async function renameEntry(
 ): Promise<void> {
   let name = newNameRaw.trim();
   if (name.length === 0) return;
-  if (kind === 'file' && isMarkdown(fromPath) && !isMarkdown(name)) name = `${name}.md`;
-  const sanitized = sanitizeEntryName(kind === 'file' ? name.replace(/\.md$/i, '') : name);
+  const markdownExtension = fromPath.toLowerCase().endsWith('.markdown') ? '.markdown' : '.md';
+  if (kind === 'file' && isMarkdown(fromPath) && !isMarkdown(name))
+    name = `${name}${markdownExtension}`;
+  const sanitized = sanitizeEntryName(
+    kind === 'file' ? name.replace(/\.(?:md|markdown)$/i, '') : name,
+  );
   if (!sanitized.ok) throw new Error(sanitized.reason);
   const finalName =
-    kind === 'file' && isMarkdown(fromPath) ? `${sanitized.value}.md` : sanitized.value;
+    kind === 'file' && isMarkdown(fromPath)
+      ? `${sanitized.value}${markdownExtension}`
+      : sanitized.value;
   const parent = fromPath.slice(0, Math.max(0, fromPath.lastIndexOf('/')));
   const toPath = parent.length === 0 ? finalName : `${parent}/${finalName}`;
   if (toPath === fromPath) return;

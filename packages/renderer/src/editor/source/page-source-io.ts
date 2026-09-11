@@ -16,6 +16,7 @@ export interface FileVersion {
 
 export interface PageFileIo {
   stat(path: string): Promise<FileInfo | null>;
+  read(path: string): Promise<string>;
   exists(path: string): Promise<boolean>;
   write(path: string, content: string): Promise<FileInfo>;
   renameLinked(from: string, to: string): Promise<void>;
@@ -97,11 +98,18 @@ export async function classifyExternalChange(params: {
   io: PageFileIo;
   path: string;
   baseVersion: FileVersion | null;
+  /** 本地基线文本，用于区分自身写入与真实外部修改。 */
+  baseText: string;
   dirty: boolean;
 }): Promise<ExternalChange> {
   const current = fileVersionOf(await params.io.stat(params.path));
   if (!current) return { kind: 'unchanged' };
   if (sameVersion(params.baseVersion, current)) return { kind: 'unchanged' };
+  try {
+    if ((await params.io.read(params.path)) === params.baseText) return { kind: 'unchanged' };
+  } catch {
+    // 文件竞态时按版本差异继续保护 dirty 内容。
+  }
   return params.dirty
     ? { kind: 'conflict', version: current }
     : { kind: 'reload', version: current };

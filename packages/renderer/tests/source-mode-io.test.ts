@@ -10,6 +10,7 @@ import {
 function io(overrides: Partial<PageFileIo> = {}): PageFileIo {
   return {
     stat: async () => ({ path: 'a.md', name: 'a.md', kind: 'file', size: 1, modifiedAt: 't1' }),
+    read: async () => 'different',
     exists: async () => false,
     write: async () => ({ path: 'a.md', name: 'a.md', kind: 'file', size: 2, modifiedAt: 't2' }),
     renameLinked: async () => undefined,
@@ -123,6 +124,27 @@ describe('外部变更分类（写入前版本检查）', () => {
       }),
       path: 'a.md',
       baseVersion: base,
+      baseText: 'baseline',
+      dirty: true,
+    });
+    expect(result.kind).toBe('unchanged');
+  });
+
+  it('保存后 mtime 抖动但磁盘文本仍是基线时视为自身写入', async () => {
+    const result = await classifyExternalChange({
+      io: io({
+        read: async () => 'baseline',
+        stat: async () => ({
+          path: 'a.md',
+          name: 'a.md',
+          kind: 'file',
+          size: 20,
+          modifiedAt: 't2',
+        }),
+      }),
+      path: 'a.md',
+      baseVersion: base,
+      baseText: 'baseline',
       dirty: true,
     });
     expect(result.kind).toBe('unchanged');
@@ -141,6 +163,7 @@ describe('外部变更分类（写入前版本检查）', () => {
       }),
       path: 'a.md',
       baseVersion: base,
+      baseText: 'baseline',
       dirty: false,
     });
     expect(result).toMatchObject({ kind: 'reload', version: { modifiedAt: 't2', size: 20 } });
@@ -159,6 +182,7 @@ describe('外部变更分类（写入前版本检查）', () => {
       }),
       path: 'a.md',
       baseVersion: base,
+      baseText: 'baseline',
       dirty: true,
     });
     expect(result).toMatchObject({ kind: 'conflict' });
@@ -169,6 +193,7 @@ describe('外部变更分类（写入前版本检查）', () => {
       io: io({ stat: async () => null }),
       path: 'a.md',
       baseVersion: base,
+      baseText: 'baseline',
       dirty: true,
     });
     expect(result.kind).toBe('unchanged');
