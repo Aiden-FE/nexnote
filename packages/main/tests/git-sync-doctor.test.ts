@@ -35,6 +35,12 @@ function fakeGit(status: Partial<GitStatus> = {}): FakeGit {
     pull: vi.fn(async () => ({ message: 'pulled', status: {} as GitStatus })),
     push: vi.fn(async () => ({ message: 'pushed', status: {} as GitStatus })),
     rawStatusPorcelain: vi.fn(async () => [] as string[]),
+    doctorFingerprint: vi.fn(async () => ({
+      headOid: 'head-1',
+      remoteOid: 'remote-1',
+      porcelain: ' M note.md',
+      files: [{ path: 'note.md', sha256: 'hash-1' }],
+    })),
   } as unknown as FakeGit;
 }
 
@@ -130,6 +136,30 @@ describe('sanitizeDiagnosticText（脱敏）', () => {
   });
   it('剥离 token=xxx 键值对', () => {
     expect(sanitizeDiagnosticText('fetch failed token=abc123 after retry')).not.toContain('abc123');
+  });
+  it('剥离 Authorization Bearer/Basic 以及凭据键（含下划线和 URL query）', () => {
+    const text = sanitizeDiagnosticText(
+      'Authorization: Bearer bearer-value; Authorization: Basic basic-value ' +
+        'client_secret=cs-value api_key=ak-value access_token=at-value password=pw-value ' +
+        'token=tok-value secret=sec-value key=key-value ' +
+        'https://host/x?client_secret=url-cs&api_key=url-ak&access_token=url-at',
+    );
+    expect(text).toContain('Authorization: ***');
+    for (const secret of [
+      'bearer-value',
+      'basic-value',
+      'cs-value',
+      'ak-value',
+      'at-value',
+      'pw-value',
+      'tok-value',
+      'sec-value',
+      'key-value',
+      'url-cs',
+      'url-ak',
+      'url-at',
+    ])
+      expect(text).not.toContain(secret);
   });
 });
 
@@ -232,6 +262,19 @@ describe('ticket 一次性 / TTL / 参数漂移（TOCTOU）', () => {
       remote: 'origin',
       conflict: false,
       usingSystemGit: false,
+    });
+    await expect(doctor.execute(ticket)).rejects.toMatchObject({ code: 'STATE_DRIFT' });
+    expect(git.commitManual).not.toHaveBeenCalled();
+  });
+  it('内容指纹漂移（文件 sha256）→ STATE_DRIFT，不执行命令', async () => {
+    const git = fakeGit({ changed: 1 });
+    const { doctor } = doctorWith(git);
+    const { ticket } = await doctor.prepare('commit');
+    git.doctorFingerprint.mockResolvedValue({
+      headOid: 'head-1',
+      remoteOid: 'remote-1',
+      porcelain: ' M note.md',
+      files: [{ path: 'note.md', sha256: 'changed-hash' }],
     });
     await expect(doctor.execute(ticket)).rejects.toMatchObject({ code: 'STATE_DRIFT' });
     expect(git.commitManual).not.toHaveBeenCalled();

@@ -21,7 +21,9 @@ export const GIT_REPAIR_ACTIONS: readonly GitRepairAction[] = ['commit', 'pull',
  * 任何破坏性命令（reset --hard / clean / checkout -- . / push --force）都没有入口。
  */
 const COMMAND_PREVIEW: Record<GitRepairAction, string> = {
-  commit: 'git add -A && git commit（仅当前 vault）',
+  // Keep this wording aligned with GitService.commitManual: it stages the vault
+  // with `git add .` and adds the manual-message prefix itself.
+  commit: 'git add . && git commit（手动提交，消息由应用生成）',
   pull: 'git pull --no-rebase（拒绝脏工作区）',
   push: 'git push（普通推送，从不 force）',
 };
@@ -60,6 +62,7 @@ interface DoctorTicket {
   root: string;
   action: GitRepairAction;
   snapshot: GitDoctorStatusSnapshot;
+  fingerprint?: Awaited<ReturnType<GitService['doctorFingerprint']>>;
   expiresAt: number;
 }
 
@@ -72,14 +75,17 @@ export interface GitSyncDoctorDeps {
   ttlMs?: number;
 }
 
-function snapshotOf(status: {
-  branch: string | null;
-  changed: number;
-  ahead: number;
-  behind: number;
-  remote: string | null;
-  conflict: boolean;
-}): GitDoctorStatusSnapshot {
+function snapshotOf(
+  status: {
+    branch: string | null;
+    changed: number;
+    ahead: number;
+    behind: number;
+    remote: string | null;
+    conflict: boolean;
+  },
+  fingerprint?: Awaited<ReturnType<GitService['doctorFingerprint']>>,
+): GitDoctorStatusSnapshot {
   return {
     branch: status.branch,
     changed: status.changed,
@@ -87,7 +93,29 @@ function snapshotOf(status: {
     behind: status.behind,
     remote: status.remote,
     conflict: status.conflict,
+    ...(fingerprint ?? {}),
   };
+}
+
+function sameFiles(
+  a: Array<{ path: string; sha256: string | null }>,
+  b: Array<{ path: string; sha256: string | null }>,
+): boolean {
+  return (
+    a.length === b.length &&
+    a.every(
+      (file, index) => file.path === b[index]?.path && file.sha256 === b[index]?.sha256,
+    )
+  );
+}
+
+type DoctorFingerprint = Awaited<ReturnType<GitService['doctorFingerprint']>>;
+
+/** 诊断快照若带内容指纹则直接复用，避免 prepare 二次读仓库。 */
+function fingerprintFromSnapshot(snapshot: GitDoctorStatusSnapshot): DoctorFingerprint | undefined {
+  return snapshot.headOid !== undefined && snapshot.porcelain !== undefined && snapshot.files !== undefined && snapshot.remoteOid !== undefined
+    ? { headOid: snapshot.headOid, remoteOid: snapshot.remoteOid, porcelain: snapshot.porcelain, files: snapshot.files }
+    : undefined;
 }
 
 /** 发送给 AI 或渲染层之前剥离错误文本中的凭据/URL 细节。 */
@@ -96,10 +124,13 @@ export function sanitizeDiagnosticText(value: string): string {
     value
       // userinfo 凭据：https://user:token@host → https://***@host
       .replace(/([a-z][a-z0-9+.-]*:\/\/)([^\s/@:]+):[^\s/@]+@/gi, '$1***@')
-      // token/password/secret 形式的键值对
-      .replace(/\b(token|password|passwd|secret|api[_-]?key)\b\s*[=:]\s*\S+/gi, '$1=***')
-      // SSH 用户名@主机保留协议性信息但去掉路径查询
-      .replace(/([?&](?:access_token|token|password|passwd|secret)=)[^\s&#]+/gi, '$1***')
+      // Authorization headers must never reach the AI or renderer.
+      .replace(/(\bauthorization\s*:\s*)(?:bearer|basic)\s+[^\s,;]+/gi, '$1***')
+      // Credential-like assignment values, including snake_case and URL query keys.
+      .replace(
+        /([?&\s]|^)(client[_-]?secret|api[_-]?key|access[_-]?token|password|passwd|token|secret|key)\s*[=:]\s*([^\s&#,;]+)/gi,
+        '$1$2=***',
+      )
       .slice(0, 500)
   );
 }
@@ -300,7 +331,7 @@ export class GitSyncDoctor {
     let conflictFiles: string[] = [];
     try {
       const status = await this.deps.git.statusFor(root);
-      snapshot = snapshotOf(status);
+      [snapshot] = await this.captureSnapshot(root, status);
       classified = classifySyncIssue(status);
       conflictFiles = await this.conflictFiles(root, status.conflict);
     } catch (error) {
@@ -354,12 +385,14 @@ export class GitSyncDoctor {
       );
     const root = this.deps.getRoot();
     if (!root) throw new GitSyncDoctorError('尚未打开任何 vault', 'NO_VAULT');
+    const fingerprint = fingerprintFromSnapshot(diagnosis.status);
     this.sweepExpired();
     const ticket = randomUUID();
     this.tickets.set(ticket, {
       root,
       action,
       snapshot: diagnosis.status,
+      ...(fingerprint ? { fingerprint } : {}),
       expiresAt: this.now() + this.ttlMs,
     });
     return { diagnosis, ticket, ticketExpiresAt: this.now() + this.ttlMs };
@@ -377,8 +410,9 @@ export class GitSyncDoctor {
       throw new GitSyncDoctorError('修复票据已过期，请重新诊断并确认', 'TICKET_EXPIRED');
     if (this.deps.getRoot() !== entry.root)
       throw new GitSyncDoctorError('vault 已切换，请重新诊断后重试', 'ROOT_CHANGED');
-    const current = await this.deps.git.statusFor(entry.root);
-    const snapshot = snapshotOf(current);
+    // TOCTOU：execute 前重新取完整快照（含内容指纹），与 prepare 时不一致即拒绝。
+    const status = await this.deps.git.statusFor(entry.root);
+    const [snapshot, fingerprint] = await this.captureSnapshot(entry.root, status);
     const sameRootState =
       snapshot.branch === entry.snapshot.branch &&
       snapshot.changed === entry.snapshot.changed &&
@@ -386,7 +420,14 @@ export class GitSyncDoctor {
       snapshot.behind === entry.snapshot.behind &&
       snapshot.remote === entry.snapshot.remote &&
       snapshot.conflict === entry.snapshot.conflict;
-    if (!sameRootState)
+    const sameContent =
+      entry.fingerprint !== undefined &&
+      fingerprint !== undefined &&
+      entry.fingerprint.headOid === fingerprint.headOid &&
+      entry.fingerprint.remoteOid === fingerprint.remoteOid &&
+      entry.fingerprint.porcelain === fingerprint.porcelain &&
+      sameFiles(entry.fingerprint.files, fingerprint.files);
+    if (!sameRootState || !sameContent)
       throw new GitSyncDoctorError('仓库状态在确认后发生了变化，请重新诊断', 'STATE_DRIFT');
     if (snapshot.conflict)
       throw new GitSyncDoctorError('检测到未解决冲突，拒绝执行', 'CONFLICT_PRESENT');
@@ -402,13 +443,47 @@ export class GitSyncDoctor {
       await this.deps.git.push();
       message = '已推送本地提交';
     }
-    const after = snapshotOf(await this.deps.git.statusFor(entry.root));
-    return { message, status: after };
+    const after = await this.deps.git.statusFor(entry.root);
+    const [afterSnapshot] = await this.captureSnapshot(entry.root, after);
+    return { message, status: afterSnapshot };
   }
 
   /** 渲染层「忽略」：清空所有未消费票据。 */
   dismiss(): void {
     this.tickets.clear();
+  }
+
+  private async fingerprintOf(
+    root: string,
+  ): Promise<Awaited<ReturnType<GitService['doctorFingerprint']>> | undefined> {
+    try {
+      return await this.deps.git.doctorFingerprint(root);
+    } catch {
+      return undefined; // 无指纹 → execute 一律拒绝（fail-closed）
+    }
+  }
+
+  /**
+   * 组装快照并附加内容绑定指纹；指纹抓取失败时按无指纹处理（execute 会拒绝）。
+   * 指纹只含 OID、porcelain 状态行与文件 sha256，绝不包含文件内容或凭据。
+   */
+  private async captureSnapshot(
+    root: string,
+    status: Awaited<ReturnType<GitService['statusFor']>>,
+  ): Promise<
+    [GitDoctorStatusSnapshot, Awaited<ReturnType<GitService['doctorFingerprint']>> | undefined]
+  > {
+    if (!status.repository)
+      return [
+        snapshotOf(status),
+        { headOid: null, remoteOid: null, porcelain: '', files: [] },
+      ];
+    try {
+      const fingerprint = await this.deps.git.doctorFingerprint(root);
+      return [snapshotOf(status, fingerprint), fingerprint];
+    } catch {
+      return [snapshotOf(status), undefined];
+    }
   }
 
   /** 冲突文件列表（unmerged index + 冲突标记文件），只读。 */

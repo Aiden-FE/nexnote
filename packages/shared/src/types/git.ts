@@ -27,6 +27,11 @@ export interface GitDoctorStatusSnapshot {
   behind: number;
   remote: string | null;
   conflict: boolean;
+  /** Content-bound TOCTOU data; hashes never contain file contents or credentials. */
+  headOid?: string | null;
+  remoteOid?: string | null;
+  porcelain?: string;
+  files?: Array<{ path: string; sha256: string | null }>;
 }
 export interface GitDoctorDiagnosis {
   issue: GitSyncIssue;
