@@ -21,6 +21,7 @@ export class ZipError extends Error {
 const EOCD_SIG = 0x06054b50;
 const CENTRAL_SIG = 0x02014b50;
 const LOCAL_SIG = 0x04034b50;
+const DATA_DESCRIPTOR_SIG = 0x08074b50;
 
 /** 标准 CRC-32（IEEE 802.3）查表实现。 */
 const CRC_TABLE = Array.from({ length: 256 }, (_, i) => {
@@ -113,6 +114,16 @@ export function readZipEntries(buf: Buffer): ZipEntry[] {
     if (dataStart > buf.length || dataEnd > buf.length) {
       throw new ZipError('非法 zip：条目数据越界');
     }
+    // bit 3 means sizes are written in a data descriptor after the payload.
+    // The central directory remains authoritative, but preserve the descriptor bytes.
+    const hasDescriptor = (buf.readUInt16LE(localOffset + 6) & 0x08) !== 0;
+    let localEnd = dataEnd;
+    if (hasDescriptor) {
+      const descriptorLength =
+        dataEnd + 16 <= buf.length && buf.readUInt32LE(dataEnd) === DATA_DESCRIPTOR_SIG ? 16 : 12;
+      localEnd += descriptorLength;
+      if (localEnd > buf.length) throw new ZipError('非法 zip：数据描述符越界');
+    }
     // 中央目录里的条目名必须与本地头一致（防御偏移错位的包）。
     const localName = buf.subarray(localOffset + 30, localOffset + 30 + nameLen);
     if (localName.toString('utf8') !== entry.name) {
@@ -120,7 +131,7 @@ export function readZipEntries(buf: Buffer): ZipEntry[] {
     }
     result.push({
       ...entry,
-      localBytes: buf.subarray(localOffset, dataEnd),
+      localBytes: buf.subarray(localOffset, localEnd),
       centralBytes: findCentralRecordFor(buf, entry),
     });
   }
@@ -216,10 +227,31 @@ export function rebuildZip(buf: Buffer, replacement: ZipReplacement): Buffer {
       const extraLen = entry.localBytes.readUInt16LE(28);
       const localNameAndExtra = entry.localBytes.subarray(30, 30 + name.length + extraLen);
       header.writeUInt16LE(8, 8);
-      header.writeUInt32LE(crc32(replacement.data), 14);
-      header.writeUInt32LE(compressed.length, 18);
-      header.writeUInt32LE(replacement.data.length, 22);
-      local = Buffer.concat([header, localNameAndExtra, compressed]);
+      const replacementCrc = crc32(replacement.data);
+      const hasDescriptor = (header.readUInt16LE(6) & 0x08) !== 0;
+      if (!hasDescriptor) {
+        header.writeUInt32LE(replacementCrc, 14);
+        header.writeUInt32LE(compressed.length, 18);
+        header.writeUInt32LE(replacement.data.length, 22);
+      }
+      const descriptorOffset = 30 + name.length + extraLen + entry.compressedSize;
+      const descriptorLength = hasDescriptor
+        ? entry.localBytes.readUInt32LE(descriptorOffset) === DATA_DESCRIPTOR_SIG
+          ? 16
+          : 12
+        : 0;
+      const descriptor = hasDescriptor
+        ? Buffer.from(entry.localBytes.subarray(descriptorOffset, descriptorOffset + descriptorLength))
+        : Buffer.alloc(0);
+      if (hasDescriptor) {
+        const descriptorHasSignature = descriptor.length === 16;
+        const descriptorOffset = descriptorHasSignature ? 4 : 0;
+        if (descriptorHasSignature) descriptor.writeUInt32LE(DATA_DESCRIPTOR_SIG, 0);
+        descriptor.writeUInt32LE(replacementCrc, descriptorOffset);
+        descriptor.writeUInt32LE(compressed.length, descriptorOffset + 4);
+        descriptor.writeUInt32LE(replacement.data.length, descriptorOffset + 8);
+      }
+      local = Buffer.concat([header, localNameAndExtra, compressed, descriptor]);
       central.writeUInt16LE(8, 10);
       central.writeUInt32LE(crc32(replacement.data), 16);
       central.writeUInt32LE(compressed.length, 20);

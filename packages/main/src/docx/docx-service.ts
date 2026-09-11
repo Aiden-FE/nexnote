@@ -6,7 +6,7 @@ import { formatForPath } from '../document/document-domain';
 import { MetadataStore } from '../document/metadata-store';
 import { projectDocxToMarkdown } from './docx-markdown';
 import { markdownToDocx } from './docx-writer';
-import { rebuildZip } from './zip';
+import { rebuildZip, readZipEntry } from './zip';
 import { serializeEditDocument, openEditDocument, type EditDocument } from './docx-edit';
 
 export interface DocxImportInput {
@@ -150,7 +150,13 @@ export class DocxService {
     } finally {
       await fsp.rm(tmp, { force: true }).catch(() => undefined);
     }
-    return { sha256: createHash('sha256').update(bytes).digest('hex') };
+    const sha256 = createHash('sha256').update(bytes).digest('hex');
+    // 连续保存：刷新内存模型为新字节上的原始状态，第二次编辑保存不再引用旧 XML。
+    const savedXml = readZipEntry(bytes, 'word/document.xml').toString('utf8');
+    document.originalXml = savedXml;
+    document.paragraphs = openEditDocument(bytes).paragraphs;
+    document.unsupportedCount = document.paragraphs.filter((p) => !p.editable).length;
+    return { sha256 };
   }
 
   /**

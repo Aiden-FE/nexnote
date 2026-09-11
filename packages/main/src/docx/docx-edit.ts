@@ -50,19 +50,22 @@ function decode(value: string): string {
     );
   });
 }
-function paragraphXml(p: EditParagraph): string {
-  const pPr = p.heading
-    ? `<w:pPr><w:pStyle w:val="Heading${p.heading}"/></w:pPr>`
-    : p.list
-      ? '<w:pPr><w:numPr><w:ilvl w:val="0"/><w:numId w:val="1"/></w:numPr></w:pPr>'
-      : '';
-  const runs = p.runs
-    .map(
-      (r) =>
-        `<w:r>${r.bold || r.italic ? `<w:rPr>${r.bold ? '<w:b/>' : ''}${r.italic ? '<w:i/>' : ''}</w:rPr>` : ''}<w:t xml:space="preserve">${escapeXml(r.text)}</w:t></w:r>`,
-    )
-    .join('');
-  return `<w:p>${pPr}${runs}</w:p>`;
+function replaceParagraphText(originalXml: string, text: string): string {
+  const nodes = [...originalXml.matchAll(/(<w:t\b[^>]*>)([\s\S]*?)(<\/w:t>)/g)];
+  if (nodes.length === 0) throw new Error('该段落没有可安全编辑的文本节点');
+  const decodedLengths = nodes.map((node) => decode(node[2] ?? '').length);
+  let cursor = 0;
+  let output = '';
+  for (let i = 0; i < nodes.length; i += 1) {
+    const node = nodes[i]!;
+    const length = i === nodes.length - 1 ? text.length - cursor : Math.min(decodedLengths[i]!, text.length - cursor);
+    const chunk = text.slice(cursor, cursor + Math.max(0, length));
+    cursor += chunk.length;
+    output += originalXml.slice(i === 0 ? 0 : nodes[i - 1]!.index! + nodes[i - 1]![0].length, node.index!);
+    output += `${node[1]}${escapeXml(chunk)}${node[3]}`;
+  }
+  const last = nodes[nodes.length - 1]!;
+  return output + originalXml.slice(last.index! + last[0].length);
 }
 
 function topLevelParagraphs(xml: string): string[] {
@@ -72,20 +75,30 @@ function topLevelParagraphs(xml: string): string[] {
   if (bodyStart < 0 || bodyOpen < 0 || bodyEnd < 0) throw new Error('document.xml 缺少 w:body');
   const body = xml.slice(bodyOpen + 1, bodyEnd);
   const result: string[] = [];
-  let start = -1;
-  let depth = 0;
-  const token = /<\/?w:p(?:\s[^>]*)?>/g;
+  let tableDepth = 0;
+  let paragraphStart = -1;
+  let paragraphDepth = 0;
+  const token = /<\/?w:(?:p|tbl)\b[^>]*>/g;
   let m: RegExpExecArray | null;
   while ((m = token.exec(body))) {
-    if (!m[0].startsWith('</')) {
-      if (depth === 0) start = m.index;
-      depth += 1;
-      if (m[0].endsWith('/>')) depth -= 1;
+    const tag = m[0];
+    const closing = tag.startsWith('</');
+    const name = /^<\/?w:(p|tbl)\b/i.exec(tag)?.[1];
+    if (!name) continue;
+    if (name.toLowerCase() === 'tbl') {
+      if (closing) tableDepth = Math.max(0, tableDepth - 1);
+      else if (!tag.endsWith('/>')) tableDepth += 1;
+      continue;
+    }
+    if (!closing) {
+      if (tableDepth === 0 && paragraphDepth === 0) paragraphStart = m.index;
+      paragraphDepth += 1;
+      if (tag.endsWith('/>')) paragraphDepth -= 1;
     } else {
-      depth -= 1;
-      if (depth === 0 && start >= 0) {
-        result.push(body.slice(start, token.lastIndex));
-        start = -1;
+      paragraphDepth -= 1;
+      if (paragraphDepth === 0 && paragraphStart >= 0) {
+        result.push(body.slice(paragraphStart, token.lastIndex));
+        paragraphStart = -1;
       }
     }
   }
@@ -110,7 +123,16 @@ function parseParagraph(xml: string): EditParagraph {
         italic: /<w:i(?:\s[^>]*)?\s*\/>/.test(runXml),
       });
   }
-  const editable = !/<w:(?:drawing|pict|object|fldSimple|hyperlink)\b/.test(xml);
+  // 最小安全策略：仅当段落无复杂子结构、且文本全部位于 w:r/w:t 内时才可编辑。
+  // pPr/rPr/bookmarks/未编辑 runs 等其余子元素在保存时原样保留。
+  const textNodes = [...xml.matchAll(/<w:t\b[^>]*>([\s\S]*?)<\/w:t>/g)];
+  const editable =
+    !/<w:(?:drawing|pict|object|fldSimple|hyperlink)\b/.test(xml) &&
+    textNodes.length > 0 &&
+    textNodes.every((node) => {
+      const before = xml.slice(0, node.index);
+      return before.lastIndexOf('<w:r') > before.lastIndexOf('</w:r>');
+    });
   return {
     text: runs.map((r) => r.text).join(''),
     runs,
@@ -142,7 +164,7 @@ export function serializeEditDocument(document: EditDocument): string {
     const position = output.indexOf(paragraph.originalXml, cursor);
     if (position < 0) throw new Error('编辑模型与原始 document.xml 不匹配');
     if (paragraph.modified && paragraph.editable) {
-      const replacement = paragraphXml(paragraph);
+      const replacement = replaceParagraphText(paragraph.originalXml, paragraph.text);
       output =
         output.slice(0, position) +
         replacement +
