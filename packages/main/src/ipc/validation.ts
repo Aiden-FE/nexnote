@@ -251,6 +251,8 @@ const restore = object(['path', 'commit'], [stringField('path'), stringField('co
 const pull = object(['force'], [optionalField('force', 'boolean')]);
 const useSystemGit = object(['enabled'], [booleanField('enabled')]);
 const autoCommitDebounce = object(['milliseconds'], [finiteNumberField('milliseconds')]);
+const doctorPrepare = object(['action'], [stringField('action')]);
+const doctorExecute = object(['ticket'], [stringField('ticket')]);
 const confidence = object(
   ['pageId'],
   [
@@ -505,6 +507,8 @@ const VALIDATORS: Partial<Record<IpcChannel, PayloadValidator>> = {
   'git:pull': pull,
   'git:setUseSystemGit': useSystemGit,
   'git:setAutoCommitDebounce': autoCommitDebounce,
+  'git:doctor:repairPrepare': doctorPrepare,
+  'git:doctor:repairExecute': doctorExecute,
   'index:backlinks': indexBacklinks,
   'index:search': indexQuery,
   'index:jumpTo': indexQuery,

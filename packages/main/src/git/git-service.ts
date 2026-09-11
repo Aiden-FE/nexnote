@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto';
 import { mkdirSync } from 'node:fs';
 import { promises as fsp } from 'node:fs';
 import * as path from 'node:path';
@@ -245,6 +246,57 @@ export class GitService {
 
   async status(): Promise<GitStatus> {
     return this.statusFor(this.requireRoot());
+  }
+
+  /** Content-bound, read-only fingerprint for Git doctor ticket TOCTOU checks. */
+  async doctorFingerprint(root: string): Promise<{
+    headOid: string | null;
+    remoteOid: string | null;
+    porcelain: string;
+    files: Array<{ path: string; sha256: string | null }>;
+  }> {
+    const runtime = this.resolveRuntime();
+    const git = this.git(root, runtime);
+    if (!(await this.isRepository(root, runtime)))
+      return { headOid: null, remoteOid: null, porcelain: '', files: [] };
+    const headOid = (await git.revparse('HEAD').catch(() => '')).trim() || null;
+    const branch = (await git.revparse(['--abbrev-ref', 'HEAD']).catch(() => '')).trim();
+    let remoteOid: string | null = null;
+    if (branch && branch !== 'HEAD') {
+      const remote = (await this.branchRemote(git, branch))?.trim();
+      if (remote)
+        remoteOid =
+          (await git.revparse(`refs/remotes/${remote}/${branch}`).catch(() => '')).trim() || null;
+    }
+    const porcelain = await git.raw(['status', '--porcelain=v1']);
+    const paths = porcelain
+      .split(/\r?\n/)
+      .filter(Boolean)
+      .map((line) => line.slice(3).replace(/\\/g, '/'));
+    const files = await Promise.all(
+      paths.map(async (filePath) => {
+        try {
+          const bytes = await fsp.readFile(path.join(root, filePath));
+          return { path: filePath, sha256: createHash('sha256').update(bytes).digest('hex') };
+        } catch {
+          return { path: filePath, sha256: null };
+        }
+      }),
+    );
+    return { headOid, remoteOid, porcelain, files };
+  }
+
+  /** Doctor 只读获取 porcelain 冲突文件列表；不暴露 git 命令给 renderer。 */
+  async rawStatusPorcelain(root: string): Promise<string[]> {
+    const output = await this.git(root).raw(['status', '--porcelain=v1', '-z']);
+    const files: string[] = [];
+    for (const item of output.split('\0')) {
+      if (!item || item.length < 4) continue;
+      const value = item.slice(3).replace(/\\/g, '/');
+      if (item[0] === 'U' || item[1] === 'U' || item.startsWith('AA ') || item.startsWith('DD '))
+        files.push(value);
+    }
+    return [...new Set(files)];
   }
 
   async statusFor(root: string): Promise<GitStatus> {
@@ -732,6 +784,14 @@ function errorMessage(error: unknown): string {
 export function sanitizeRemoteText(value: string): string {
   return value
     .replace(/([a-z][a-z0-9+.-]*:\/\/)([^\s/@:]+):[^\s/@]+@/gi, '$1$2:***@')
-    .replace(/([?&](?:access_token|token|password|passwd|secret)=)[^\s&#]+/gi, '$1***')
+    .replace(/(authorization\s*:\s*)(?:bearer|basic|token)\s+[^\s,;"']+/gi, '$1***')
+    .replace(
+      /([?&](?:access_token|client_secret|api_key|apikey|token|password|passwd|secret|key)=)[^\s&#]+/gi,
+      '$1***',
+    )
+    .replace(
+      /\b((?:client[_-]?secret|api[_-]?key|access[_-]?token|secret[_-]?key|private[_-]?key|refresh[_-]?token|auth[_-]?token|password|passwd|token|secret|key)\s*[=:]\s*)["']?[^\s"',;&]+/gi,
+      '$1***',
+    )
     .replace(/(https?:\/\/)[^\s/@]+@/gi, '$1***@');
 }

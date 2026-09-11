@@ -185,6 +185,27 @@ describe.runIf(runIfGit())('GitService（系统 Git，临时仓库）', () => {
     expect(redacted).toContain('https://***@');
   });
 
+  it('remote text strips modern credential variants', () => {
+    const samples = [
+      'Authorization: Bearer sk-live-abcdef123',
+      'Authorization: Basic dXNlcjpwYXNz',
+      'Authorization: Token ghp_1234567890',
+      'fatal: client_secret=supersecret call failed',
+      "remote: api_key: 'AKIA1234567890'",
+      'https://example.test/repo?client_secret=cs-1&api_key=ak-1',
+    ];
+    for (const sample of samples) {
+      const redacted = sanitizeRemoteText(sample);
+      expect(redacted, sample).not.toContain('sk-live-abcdef123');
+      expect(redacted, sample).not.toContain('dXNlcjpwYXNz');
+      expect(redacted, sample).not.toContain('ghp_1234567890');
+      expect(redacted, sample).not.toContain('supersecret');
+      expect(redacted, sample).not.toContain('AKIA1234567890');
+      expect(redacted, sample).not.toContain('cs-1');
+      expect(redacted, sample).not.toContain('ak-1');
+    }
+  });
+
   it('commitManual 创建带 manual 前缀的提交，kind=manual', async () => {
     await service.initialize(root);
     const file = path.join(root, 'manual.md');

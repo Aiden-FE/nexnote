@@ -14,6 +14,8 @@ import type {
   GitRemote,
   GitRestorePreview,
   GitStatus,
+  GitDoctorDiagnosis,
+  GitDoctorRepairPrepareResult,
 } from '@nexnote/shared';
 import { dockPanelRegistry, statusBarRegistry } from '../../registries';
 import { invoke, onEvent } from '../../lib/ipc';
@@ -57,6 +59,9 @@ function GitStatusItem() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [confirm, setConfirm] = useState<'pull' | 'pull-force' | 'push' | null>(null);
+  const [doctor, setDoctor] = useState<GitDoctorDiagnosis | null>(null);
+  const [doctorTicket, setDoctorTicket] = useState<GitDoctorRepairPrepareResult | null>(null);
+  const [doctorBusy, setDoctorBusy] = useState(false);
   const operation = async () => {
     if (!confirm) return;
     setBusy(true);
@@ -84,6 +89,47 @@ function GitStatusItem() {
   };
   if (!vault) return null;
   if (!status) return <span data-testid="status-git">Git…</span>;
+  const diagnose = async () => {
+    setDoctorBusy(true);
+    try {
+      setDoctor(await invoke('git:doctor:diagnose'));
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setDoctorBusy(false);
+    }
+  };
+  const prepareDoctor = async () => {
+    if (!doctor?.plan.action) return;
+    setDoctorBusy(true);
+    try {
+      setDoctorTicket(await invoke('git:doctor:repairPrepare', { action: doctor.plan.action }));
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setDoctorBusy(false);
+    }
+  };
+  const executeDoctor = async () => {
+    if (!doctorTicket) return;
+    setDoctorBusy(true);
+    try {
+      await invoke('git:doctor:repairExecute', { ticket: doctorTicket.ticket });
+      setDoctorTicket(null);
+      setDoctor(null);
+      setError(null);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setDoctorBusy(false);
+      void refresh();
+    }
+  };
+  const dismissDoctor = async () => {
+    setDoctorTicket(null);
+    setDoctor(null);
+    await invoke('git:doctor:dismiss').catch(() => undefined);
+  };
   return (
     <div
       data-testid="status-git"
@@ -134,12 +180,35 @@ function GitStatusItem() {
       )}
       <button
         type="button"
+        title="诊断并预览安全修复"
+        disabled={doctorBusy}
+        onClick={() => void diagnose()}
+        className="rounded border px-1 text-[10px] hover:bg-accent"
+      >
+        诊断
+      </button>
+      <button
+        type="button"
         title="刷新 Git 状态"
         onClick={() => void refresh()}
         className="rounded p-0.5 hover:bg-accent"
       >
         <RefreshCw className="size-3.5" />
       </button>
+      {doctor && !doctorTicket && (
+        <DoctorDialog
+          diagnosis={doctor}
+          onPrepare={() => void prepareDoctor()}
+          onDismiss={() => void dismissDoctor()}
+        />
+      )}
+      {doctorTicket && (
+        <DoctorTicketDialog
+          prepared={doctorTicket}
+          onExecute={() => void executeDoctor()}
+          onDismiss={() => void dismissDoctor()}
+        />
+      )}
       {confirm && (
         <ConfirmDialog
           title={`确认${confirm === 'push' ? '推送本地提交' : confirm === 'pull-force' ? '强制拉取远程变更' : '拉取远程变更'}？`}
@@ -442,6 +511,80 @@ function CommitRow({
     </li>
   );
 }
+function DoctorDialog({
+  diagnosis,
+  onPrepare,
+  onDismiss,
+}: {
+  diagnosis: GitDoctorDiagnosis;
+  onPrepare(): void;
+  onDismiss(): void;
+}) {
+  return (
+    <div
+      role="dialog"
+      aria-label="Git 同步诊断"
+      className="fixed bottom-10 left-4 z-20 w-80 rounded border bg-card p-3 shadow"
+    >
+      <p className="font-medium">Git 同步诊断：{diagnosis.issue.category}</p>
+      <p className="mt-1 text-xs">{diagnosis.explanation}</p>
+      {diagnosis.conflictFiles.length > 0 && (
+        <p className="mt-1 text-[10px]">冲突文件：{diagnosis.conflictFiles.join('、')}</p>
+      )}
+      <p className="mt-1 text-[10px] text-muted-foreground">{diagnosis.plan.manualGuidance}</p>
+      <div className="mt-2 flex gap-2">
+        {diagnosis.plan.action && (
+          <button
+            type="button"
+            onClick={onPrepare}
+            className="rounded bg-primary px-2 py-1 text-xs text-primary-foreground"
+          >
+            预览并准备
+          </button>
+        )}
+        <button type="button" onClick={onDismiss} className="rounded border px-2 py-1 text-xs">
+          忽略
+        </button>
+      </div>
+    </div>
+  );
+}
+function DoctorTicketDialog({
+  prepared,
+  onExecute,
+  onDismiss,
+}: {
+  prepared: GitDoctorRepairPrepareResult;
+  onExecute(): void;
+  onDismiss(): void;
+}) {
+  return (
+    <div
+      role="dialog"
+      aria-label="确认 Git 修复"
+      className="fixed bottom-10 left-4 z-20 w-80 rounded border border-amber-500/40 bg-card p-3 shadow"
+    >
+      <p className="font-medium">确认执行安全修复？</p>
+      <p className="mt-1 text-xs">{prepared.diagnosis.plan.commandPreview}</p>
+      <p className="mt-1 text-[10px]">
+        票据有效至 {new Date(prepared.ticketExpiresAt).toLocaleTimeString()}
+      </p>
+      <div className="mt-2 flex gap-2">
+        <button
+          type="button"
+          onClick={onExecute}
+          className="rounded bg-primary px-2 py-1 text-xs text-primary-foreground"
+        >
+          确认执行
+        </button>
+        <button type="button" onClick={onDismiss} className="rounded border px-2 py-1 text-xs">
+          拒绝
+        </button>
+      </div>
+    </div>
+  );
+}
+
 function ConfirmDialog({
   title,
   detail,

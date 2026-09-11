@@ -2,6 +2,7 @@ import type { ChannelRequest, ChannelResponse, IpcChannel, Result } from '@nexno
 import { isIpcChannel } from '@nexnote/shared';
 import type { IpcServices } from './services';
 import { validatePayload } from './validation';
+import { sanitizeRemoteText } from '../git/git-service';
 
 /** 与 electron.ipcMain 兼容的最小接口（单测用假实现替换）。 */
 export interface IpcMainLike {
@@ -19,8 +20,10 @@ export interface IpcHandlerContext {
 }
 
 function toErrorResult(thrown: unknown): Result<never> {
-  const error =
+  const rawError =
     thrown instanceof Error ? thrown.message : typeof thrown === 'string' ? thrown : '内部错误';
+  // IPC 错误信封同样可能携带 git/provider 原始文本，统一脱敏后再返回渲染层。
+  const error = sanitizeRemoteText(rawError);
   const code =
     thrown && typeof thrown === 'object' && 'code' in thrown && typeof thrown.code === 'string'
       ? thrown.code

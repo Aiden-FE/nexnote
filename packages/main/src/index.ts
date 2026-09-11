@@ -21,6 +21,7 @@ import { AiService } from './ai/ai-service';
 import { RetrievalService } from './retrieval/retrieval-service';
 import { createSecretVault } from './ai/secret-store';
 import { GitService } from './git/git-service';
+import { GitSyncDoctor } from './git/git-sync-doctor';
 import { ConfidenceService } from './confidence/confidence-service';
 import { PluginService } from './plugins/plugin-service';
 import { SkillService } from './skills/skill-service';
@@ -128,6 +129,12 @@ async function bootstrap(): Promise<void> {
     sendEvent: (channel, payload) => winRef.sendToMainWindow(channel, payload),
   });
 
+  const gitDoctor = new GitSyncDoctor({
+    git,
+    ai,
+    getRoot: () => vaultSession.getCurrent()?.root ?? null,
+  });
+
   // DEV-011 向量索引 + 三阶段召回（embedding 走 ai 的 embedding feature，未配置时自动降级）。
   retrievalService = new RetrievalService({
     index,
@@ -214,6 +221,7 @@ async function bootstrap(): Promise<void> {
     fs,
     ai,
     git,
+    gitDoctor,
     dialogs: {
       async pickDirectory() {
         const win = windows?.getMainWindow() ?? null;
