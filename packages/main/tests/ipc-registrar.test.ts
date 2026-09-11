@@ -57,11 +57,15 @@ class FakeWindows {
 let tmp: string;
 
 beforeEach(async () => {
+  // GitService intentionally rejects inherited unsafe editor overrides; keep this
+  // integration suite isolated from a developer shell's GIT_EDITOR setting.
+  vi.stubEnv('GIT_EDITOR', undefined);
   tmp = await mkdtemp(path.join(tmpdir(), 'nexnote-ipc-test-'));
 });
 
 afterEach(async () => {
   await rm(tmp, { recursive: true, force: true });
+  vi.unstubAllEnvs();
 });
 
 function makeServices(): {

@@ -14,7 +14,7 @@ import type {
 } from '@nexnote/shared';
 import { OpenAIProtocolAdapter } from './provider/openai';
 import { LocalEmbeddingAdapter } from './provider/local-embedding';
-import type { ProviderAdapter } from './provider/types';
+import type { ChatStreamHandle, ProviderAdapter } from './provider/types';
 import { ProviderError } from './provider/types';
 import type { AiStoredProfile, AiStore } from './ai-store';
 
@@ -37,7 +37,8 @@ function credentialOrigin(baseUrl: string): string {
   if (url.protocol !== 'http:' && url.protocol !== 'https:') {
     throw new ProviderError('Base URL 必须使用 http(s) 协议', 'BAD_BASE_URL');
   }
-  if (url.username || url.password) throw new ProviderError('Base URL 不得包含凭据', 'BAD_BASE_URL');
+  if (url.username || url.password)
+    throw new ProviderError('Base URL 不得包含凭据', 'BAD_BASE_URL');
   return `${url.protocol}//${url.host}`;
 }
 
@@ -314,23 +315,25 @@ export class AiService {
       params?: ChatParams;
     },
     onEvent: (event: ChatStreamEvent) => void,
-  ): import('./provider/types').ChatStreamHandle {
+  ): ChatStreamHandle {
     const { adapter, model, params } = this.resolve(options);
     return adapter.chatCompletionStream({ model, messages: options.messages, params }, onEvent);
   }
-
 
   /**
    * 启动流式补全（主进程内部使用，AgentGateway 是唯一调用方）：
    * streamId 立即返回，事件经回调推送，支持取消与活跃计数（审计/测试用）。
    */
-  startChatStream(options: {
-    messages: ChatMessage[];
-    profileId?: string;
-    feature?: 'writing' | 'chat' | 'embedding';
-    model?: string;
-    params?: ChatParams;
-  }, onEvent?: (event: ChatStreamEvent) => void): string {
+  startChatStream(
+    options: {
+      messages: ChatMessage[];
+      profileId?: string;
+      feature?: 'writing' | 'chat' | 'embedding';
+      model?: string;
+      params?: ChatParams;
+    },
+    onEvent?: (event: ChatStreamEvent) => void,
+  ): string {
     const streamId = randomUUID();
     const handle = this.openChatStream(options, (event) => {
       if (onEvent) onEvent(event);

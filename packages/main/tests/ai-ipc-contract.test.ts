@@ -29,7 +29,11 @@ class FakeIpcMain implements IpcMainLike {
 
   invoke(channel: string, payload?: unknown): Promise<unknown> {
     const h = this.handlers.get(channel);
-    if (!h) return Promise.resolve({ ok: false, error: `no handler: ${channel}` } satisfies Result<never>);
+    if (!h)
+      return Promise.resolve({
+        ok: false,
+        error: `no handler: ${channel}`,
+      } satisfies Result<never>);
     return Promise.resolve(h(undefined, payload));
   }
 }
@@ -75,7 +79,10 @@ beforeEach(async () => {
     fs: {},
     git: { onStatusChanged: () => undefined },
     ai,
-    agent: new AgentGateway({ ai, sendEvent: (channel, payload) => sentEvents.push({ channel, payload }) }),
+    agent: new AgentGateway({
+      ai,
+      sendEvent: (channel, payload) => sentEvents.push({ channel, payload }),
+    }),
     dialogs: { pickDirectory: async () => null },
     trash: async () => {},
     appInfo: () => ({}),
@@ -152,15 +159,18 @@ describe('密钥安全 IPC 契约（密钥永不经过渲染层）', () => {
       secret: SECRET,
       baseUrl: `${mock.url}/v1`,
     });
-    const saved = await call<{ state: { profiles: Array<Record<string, unknown>> } }>('ai:profile:save', {
-      profile: {
-        name: '结构检查',
-        kind: 'openai-compatible',
-        baseUrl: `${mock.url}/v1`,
-        defaultModel: 'm',
-        credentialToken,
+    const saved = await call<{ state: { profiles: Array<Record<string, unknown>> } }>(
+      'ai:profile:save',
+      {
+        profile: {
+          name: '结构检查',
+          kind: 'openai-compatible',
+          baseUrl: `${mock.url}/v1`,
+          defaultModel: 'm',
+          credentialToken,
+        },
       },
-    });
+    );
     const view = saved.state.profiles[0]!;
     expect(view.hasApiKey).toBe(true);
     for (const key of Object.keys(view)) {

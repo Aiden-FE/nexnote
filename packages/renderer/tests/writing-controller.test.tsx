@@ -41,7 +41,11 @@ function installBridge() {
 function mountKernel(markdown: string): EditorKernelInstance {
   const container = document.createElement('div');
   document.body.append(container);
-  return createEditor(container, { initialMarkdown: markdown, slashMenu: false, dragHandle: false });
+  return createEditor(container, {
+    initialMarkdown: markdown,
+    slashMenu: false,
+    dragHandle: false,
+  });
 }
 
 function selectPrefix(kernel: EditorKernelInstance, chars = 6) {
@@ -79,7 +83,11 @@ describe('写作辅助控制器（流式 → diff → 回写）', () => {
       runId: 'stream-1',
       event: { type: 'delta', text: '第一句改写后。' },
     });
-    bridge.emit('agent:runEvent', { runId: 'stream-1', scenario: 'writing', event: { type: 'done' } });
+    bridge.emit('agent:runEvent', {
+      runId: 'stream-1',
+      scenario: 'writing',
+      event: { type: 'done' },
+    });
     await bridge.flush();
 
     let session = useWritingStore.getState().session;
@@ -104,7 +112,11 @@ describe('写作辅助控制器（流式 → diff → 回写）', () => {
       runId: 'stream-1',
       event: { type: 'delta', text: '不应写入的内容' },
     });
-    bridge.emit('agent:runEvent', { runId: 'stream-1', scenario: 'writing', event: { type: 'done' } });
+    bridge.emit('agent:runEvent', {
+      runId: 'stream-1',
+      scenario: 'writing',
+      event: { type: 'done' },
+    });
     await bridge.flush();
     session = useWritingStore.getState().session;
     session?.reject();
@@ -130,7 +142,11 @@ describe('写作辅助控制器（流式 → diff → 回写）', () => {
       runId: 'stream-1',
       event: { type: 'delta', text: '- 论据一\n- 论据二' },
     });
-    bridge.emit('agent:runEvent', { runId: 'stream-1', scenario: 'writing', event: { type: 'done' } });
+    bridge.emit('agent:runEvent', {
+      runId: 'stream-1',
+      scenario: 'writing',
+      event: { type: 'done' },
+    });
     await bridge.flush();
 
     const session = useWritingStore.getState().session;

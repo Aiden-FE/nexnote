@@ -75,8 +75,9 @@ export function AiChatDebug({ compact = false }: { compact?: boolean }) {
       if (!content || streaming) return;
       setError(null);
       setReasoning(null);
+      // The debug profile prompt is selected and constructed in the main-process gateway.
+      // Renderer input contains only conversation turns supplied by the user.
       const history: ChatMessage[] = [
-        { role: 'system', content: '你是 NexNote 的内置调试助手，用一两句话回答。' },
         ...turns
           .filter((t) => t.content)
           .map((t) => ({ role: t.role, content: t.content }) as ChatMessage),
@@ -188,7 +189,10 @@ export function AiChatDebug({ compact = false }: { compact?: boolean }) {
         {turns.map((t, i) => (
           <div
             key={i}
-            className={cn('group/turn flex flex-col', t.role === 'user' ? 'items-end' : 'items-start')}
+            className={cn(
+              'group/turn flex flex-col',
+              t.role === 'user' ? 'items-end' : 'items-start',
+            )}
           >
             <div
               data-testid={t.role === 'user' ? 'ai-debug-turn-user' : 'ai-debug-turn-assistant'}

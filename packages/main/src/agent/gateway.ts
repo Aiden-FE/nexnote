@@ -211,6 +211,13 @@ export class AgentGateway {
     const state = this.active.get(runId);
     if (!state || state.status !== 'active') return false;
     state.handle?.abort();
+    const emit = (event: AgentRunEvent) =>
+      this.deps.sendEvent('agent:runEvent', { runId, scenario: state.scenario, event });
+    if (code === 'TTL_EXPIRED') {
+      if (!this.finish(runId, 'error', code)) return false;
+      emit({ type: 'error', message: 'Agent runtime timed out', code });
+      return true;
+    }
     return this.finish(runId, 'cancelled', code);
   }
   async executeTool(runId: string, name: string, input: unknown): Promise<unknown> {

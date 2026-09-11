@@ -83,9 +83,7 @@ export class ToolLoopRuntime implements AgentRuntime {
     const done = new Promise<void>((resolve) => (resolveDone = resolve));
     void (async () => {
       try {
-        const queries = (task.request.toolQueries ?? []).filter((q) =>
-          this.tools.allowed.includes(q.name),
-        );
+        const queries = (task.toolQueries ?? []).filter((q) => this.tools.allowed.includes(q.name));
         const results: string[] = [];
         for (const q of queries) {
           if (controller.signal.aborted)
