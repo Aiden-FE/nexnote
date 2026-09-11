@@ -30,6 +30,8 @@ import { VaultOperationsController } from './vault/vault-operations-controller';
 import { VaultCloneController } from './vault/vault-clone-controller';
 import { BUILTIN_PLUGIN_MANIFESTS } from './plugins/builtin/builtin-manifests';
 import { AgentGateway } from './agent/gateway';
+import { ToolRegistry } from './agent/tool-registry';
+import { createBuiltinTools } from './agent/builtin-tools';
 
 const isSmokeMode = process.env.NEXNOTE_SMOKE === '1';
 
@@ -129,12 +131,6 @@ async function bootstrap(): Promise<void> {
     sendEvent: (channel, payload) => winRef.sendToMainWindow(channel, payload),
   });
 
-  // Agent 执行网关：应用内一切大模型调用统一经 agent:*（场景化 profile + 工具管控 + 审计）。
-  const agent = new AgentGateway({
-    ai,
-    sendEvent: (channel, payload) => winRef.sendToMainWindow(channel, payload),
-  });
-
   // DEV-011 向量索引 + 三阶段召回（embedding 走 ai 的 embedding feature，未配置时自动降级）。
   retrievalService = new RetrievalService({
     index,
@@ -156,6 +152,33 @@ async function bootstrap(): Promise<void> {
     stateFile: join(app.getPath('userData'), 'nexnote-skills.json'),
     retrieve: (options) => retrievalService.retrieve(options),
     plugins,
+  });
+  const tools = new ToolRegistry(
+    createBuiltinTools({
+      retrieve: async (query) => {
+        const result = await retrievalService!.retrieve({ query });
+        return {
+          degraded: result.degraded,
+          sources: result.sources.map((s) => ({
+            path: s.path,
+            title: s.title,
+            snippet: s.snippet,
+            score: s.score,
+          })),
+        };
+      },
+      listPages: () =>
+        index
+          .allBlocks()
+          .filter((b, i, all) => all.findIndex((x) => x.path === b.path) === i)
+          .map((b) => ({ path: b.path, title: b.title })),
+    }),
+  );
+  const agent = new AgentGateway({
+    ai,
+    tools,
+    skills,
+    sendEvent: (channel, payload) => winRef.sendToMainWindow(channel, payload),
   });
 
   // DEV-016：全局设置单一权威（替代 AppStore 中的零散字段 + localStorage 主题）。

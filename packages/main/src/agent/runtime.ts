@@ -1,10 +1,16 @@
-import type { AgentInternalEvent, AgentRunRequest, AgentRuntimeKind } from '@nexnote/shared';
+import type {
+  AgentInternalEvent,
+  AgentRunRequest,
+  AgentRuntimeKind,
+  AgentScenario,
+} from '@nexnote/shared';
 import type { AiService } from '../ai/ai-service';
 import type { ChatStreamHandle } from '../ai/provider/types';
 
 export interface AgentRuntimeTask {
   request: AgentRunRequest;
   messages: AgentRunRequest['messages'];
+  scenario?: AgentScenario;
   onEvent: (event: AgentInternalEvent) => void;
 }
 export interface AgentRuntime {
@@ -17,7 +23,11 @@ export class BuiltinLoopRuntime implements AgentRuntime {
   constructor(private readonly ai: AiService) {}
   run(task: AgentRuntimeTask): ChatStreamHandle {
     return this.ai.openChatStream(
-      { messages: task.messages, feature: 'chat', params: task.request.params },
+      {
+        messages: task.messages,
+        feature: task.scenario === 'debug' ? 'chat' : (task.scenario ?? 'chat'),
+        params: task.request.params,
+      },
       task.onEvent,
     );
   }
