@@ -21,6 +21,7 @@ import type { ConfidenceService } from '../confidence/confidence-service';
 import type { RetrievalService } from '../retrieval/retrieval-service';
 import type { PluginService } from '../plugins/plugin-service';
 import type { SkillService } from '../skills/skill-service';
+import type { AgentGateway } from '../agent/gateway';
 
 /** 注入给所有 IPC handler 的服务集合（全部可替身，便于单测）。 */
 export interface IpcServices {
@@ -30,6 +31,7 @@ export interface IpcServices {
   fs: VaultFsService;
   /** AI 组装层（DEV-009）：密钥仅存在于此层 + 系统钥匙串 */
   ai: AiService;
+  agent: AgentGateway;
   git: GitService;
   /** Git 同步诊断/安全修复（dry-run + 一次性 ticket + 显式确认）。 */
   gitDoctor?: GitSyncDoctor;

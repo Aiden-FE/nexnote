@@ -34,8 +34,9 @@ const ACCOUNT_PREFIX = 'nexnote-ai-';
 export class KeyringSecretVault implements SecretVault {
   readonly available: boolean;
   constructor(
-    private readonly entryFactory: (account: string) => KeyringEntryLike = (account) =>
-      new Entry(SERVICE, account),
+    private readonly entryFactory: (account: string) => KeyringEntryLike = () => {
+      throw new Error('keyring backend unavailable');
+    },
   ) {
     try {
       // Verify the native credential backend itself, without writing a credential. Construction

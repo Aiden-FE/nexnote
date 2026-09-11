@@ -25,15 +25,15 @@ export function AiChatDebug({ compact = false }: { compact?: boolean }) {
   const [reasoning, setReasoning] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [modelLabel, setModelLabel] = useState<string | null>(null);
-  const streamIdRef = useRef<string | null>(null);
+  const runIdRef = useRef<string | null>(null);
   const disposedRef = useRef(false);
   const scrollRef = useRef<HTMLDivElement>(null);
 
-  // 订阅统一流事件协议（按 streamId 关联本会话）并在卸载时取消仍在运行的请求。
+  // 订阅统一流事件协议（按 runId 关联本会话）并在卸载时取消仍在运行的请求。
   useEffect(() => {
     disposedRef.current = false;
-    const unsubscribe = onEvent('ai:streamEvent', ({ streamId, event }) => {
-      if (streamId !== streamIdRef.current) return;
+    const unsubscribe = onEvent('agent:runEvent', ({ runId, event }) => {
+      if (runId !== runIdRef.current) return;
       if (event.type === 'start') {
         setModelLabel(event.model);
       } else if (event.type === 'delta') {
@@ -49,18 +49,18 @@ export function AiChatDebug({ compact = false }: { compact?: boolean }) {
         setReasoning((prev) => (prev ?? '') + event.text);
       } else if (event.type === 'done') {
         setStreaming(false);
-        streamIdRef.current = null;
+        runIdRef.current = null;
       } else if (event.type === 'error') {
         setError(`${event.message}${event.code ? `（${event.code}）` : ''}`);
         setStreaming(false);
-        streamIdRef.current = null;
+        runIdRef.current = null;
       }
     });
     return () => {
       disposedRef.current = true;
-      const streamId = streamIdRef.current;
-      streamIdRef.current = null;
-      if (streamId) void invoke('ai:chat:stream:cancel', { streamId }).catch(() => undefined);
+      const runId = runIdRef.current;
+      runIdRef.current = null;
+      if (runId) void invoke('agent:cancel', { runId }).catch(() => undefined);
       unsubscribe();
     };
   }, []);
@@ -75,8 +75,9 @@ export function AiChatDebug({ compact = false }: { compact?: boolean }) {
       if (!content || streaming) return;
       setError(null);
       setReasoning(null);
+      // The debug profile prompt is selected and constructed in the main-process gateway.
+      // Renderer input contains only conversation turns supplied by the user.
       const history: ChatMessage[] = [
-        { role: 'system', content: '你是 NexNote 的内置调试助手，用一两句话回答。' },
         ...turns
           .filter((t) => t.content)
           .map((t) => ({ role: t.role, content: t.content }) as ChatMessage),
@@ -86,17 +87,16 @@ export function AiChatDebug({ compact = false }: { compact?: boolean }) {
       setInput('');
       setStreaming(true);
       try {
-        const { streamId } = await invoke('ai:chat:stream:start', {
+        const { runId } = await invoke('agent:run:debug', {
           messages: history,
-          feature: 'chat',
         });
         if (disposedRef.current) {
           // The component can unmount while start IPC is in flight. Cancel the late stream instead
           // of retaining provider-side prompt/request resources with no renderer consumer.
-          void invoke('ai:chat:stream:cancel', { streamId }).catch(() => undefined);
+          void invoke('agent:cancel', { runId }).catch(() => undefined);
           return;
         }
-        streamIdRef.current = streamId;
+        runIdRef.current = runId;
       } catch (e) {
         if (!disposedRef.current) {
           setError(e instanceof Error ? e.message : String(e));
@@ -108,15 +108,15 @@ export function AiChatDebug({ compact = false }: { compact?: boolean }) {
   );
 
   const stop = async () => {
-    const id = streamIdRef.current;
+    const id = runIdRef.current;
     if (!id) return;
-    await invoke('ai:chat:stream:cancel', { streamId: id }).catch(() => undefined);
+    await invoke('agent:cancel', { runId: id }).catch(() => undefined);
   };
 
   const reset = () => {
-    const streamId = streamIdRef.current;
-    streamIdRef.current = null;
-    if (streamId) void invoke('ai:chat:stream:cancel', { streamId }).catch(() => undefined);
+    const runId = runIdRef.current;
+    runIdRef.current = null;
+    if (runId) void invoke('agent:cancel', { runId: runId }).catch(() => undefined);
     setStreaming(false);
     setTurns([]);
     setError(null);
@@ -189,7 +189,10 @@ export function AiChatDebug({ compact = false }: { compact?: boolean }) {
         {turns.map((t, i) => (
           <div
             key={i}
-            className={cn('group/turn flex flex-col', t.role === 'user' ? 'items-end' : 'items-start')}
+            className={cn(
+              'group/turn flex flex-col',
+              t.role === 'user' ? 'items-end' : 'items-start',
+            )}
           >
             <div
               data-testid={t.role === 'user' ? 'ai-debug-turn-user' : 'ai-debug-turn-assistant'}

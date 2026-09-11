@@ -1,9 +1,5 @@
 import type { EditorActionContext, EditorKernelInstance } from '@nexnote/kernel';
-import {
-  buildWritingMessages,
-  fromAiActionId,
-  WRITING_ACTION_MAP,
-} from './actions';
+import { fromAiActionId, WRITING_ACTION_MAP } from './actions';
 import { assembleWritingContext, type BacklinkSnippet } from './context';
 import { startWritingStream, type WritingStreamHandle } from './stream';
 import { nextSessionId, useWritingStore } from './writing-store';
@@ -44,10 +40,6 @@ export function createWritingController(deps: WritingControllerDeps): WritingCon
       document: markdown,
       backlinks,
       budgetChars: deps.budgetChars,
-    });
-    const messages = buildWritingMessages(action, {
-      target: ctx.text,
-      contextBlock: assembly.contextBlock,
     });
 
     const applyGenerated = (generated: string) => {
@@ -97,25 +89,28 @@ export function createWritingController(deps: WritingControllerDeps): WritingCon
       },
     });
 
-    stream = startWritingStream(messages, {
-      onDelta: (text) => {
-        const current = useWritingStore.getState().session;
-        if (!current || current.id !== sessionId) return;
-        useWritingStore.getState().patchSession({ generated: current.generated + text });
+    stream = startWritingStream(
+      { actionId, target: ctx.text, contextText: assembly.contextBlock },
+      {
+        onDelta: (text) => {
+          const current = useWritingStore.getState().session;
+          if (!current || current.id !== sessionId) return;
+          useWritingStore.getState().patchSession({ generated: current.generated + text });
+        },
+        onDone: () => {
+          const current = useWritingStore.getState().session;
+          if (!current || current.id !== sessionId) return;
+          useWritingStore.getState().patchSession({ status: 'done' });
+        },
+        onError: (message, code) => {
+          const current = useWritingStore.getState().session;
+          if (!current || current.id !== sessionId) return;
+          useWritingStore
+            .getState()
+            .patchSession({ status: 'error', error: `${message}${code ? `（${code}）` : ''}` });
+        },
       },
-      onDone: () => {
-        const current = useWritingStore.getState().session;
-        if (!current || current.id !== sessionId) return;
-        useWritingStore.getState().patchSession({ status: 'done' });
-      },
-      onError: (message, code) => {
-        const current = useWritingStore.getState().session;
-        if (!current || current.id !== sessionId) return;
-        useWritingStore
-          .getState()
-          .patchSession({ status: 'error', error: `${message}${code ? `（${code}）` : ''}` });
-      },
-    });
+    );
   };
 
   return { trigger };

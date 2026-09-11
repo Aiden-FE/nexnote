@@ -31,7 +31,9 @@ export function useVaultLayoutPersistence(vault: VaultInfo | null): void {
     return () => {
       cancelled = true;
     };
-  }, [vault]);
+    // Layout state is per vault root; re-running for other VaultInfo field churn is unnecessary.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [vault?.root]);
 
   useEffect(() => {
     if (!vault) return;

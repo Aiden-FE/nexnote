@@ -2,7 +2,6 @@ import { describe, expect, it } from 'vitest';
 import {
   WRITING_ACTIONS,
   WRITING_ACTION_MAP,
-  buildWritingMessages,
   fromAiActionId,
   toAiActionId,
 } from '../src/features/ai/writing';
@@ -27,20 +26,15 @@ describe('AI 写作六动作定义', () => {
     for (const action of WRITING_ACTIONS) {
       expect(action.modKey).toMatch(/^[a-z]$/);
       expect(action.keywords.length).toBeGreaterThan(0);
-      expect(action.systemPrompt.length).toBeGreaterThan(10);
     }
   });
 
   it('用户提示携带目标文本与上下文', () => {
-    const messages = buildWritingMessages(WRITING_ACTION_MAP.rewrite, {
-      target: '这是选中的句子',
-      contextBlock: '【当前文档】\n文档正文',
-    });
-    expect(messages).toHaveLength(2);
-    expect(messages[0]!.role).toBe('system');
-    expect(messages[1]!.role).toBe('user');
-    expect(messages[1]!.content).toContain('这是选中的句子');
-    expect(messages[1]!.content).toContain('文档正文');
+    const action = WRITING_ACTION_MAP.rewrite;
+    expect(action.id).toBe('rewrite');
+    expect(action.kind).toBe('replace');
+    expect(action).not.toHaveProperty('systemPrompt');
+    expect(action).not.toHaveProperty('buildUserPrompt');
   });
 
   it('动作 id 编解码（ai: 前缀）', () => {

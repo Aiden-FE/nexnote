@@ -44,18 +44,6 @@ export function registerAiHandlers(registrar: IpcRegistrar, ai: AiService): void
     return ok({ models: await ai.listModels(payload) });
   });
 
-  registrar.register('ai:chat:complete', async (payload) => {
-    return ok(await ai.chatCompletion(payload));
-  });
-
-  registrar.register('ai:chat:stream:start', async (payload) => {
-    return ok({ streamId: ai.startChatStream(payload) });
-  });
-
-  registrar.register('ai:chat:stream:cancel', async (payload) => {
-    return ok({ cancelled: ai.cancelChatStream(payload.streamId) });
-  });
-
   registrar.register('ai:embed', async (payload) => {
     return ok(await ai.embed(payload.texts));
   });
