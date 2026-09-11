@@ -21,6 +21,7 @@ export class ZipError extends Error {
 const EOCD_SIG = 0x06054b50;
 const CENTRAL_SIG = 0x02014b50;
 const LOCAL_SIG = 0x04034b50;
+const DATA_DESCRIPTOR_SIG = 0x08074b50;
 
 /** 标准 CRC-32（IEEE 802.3）查表实现。 */
 const CRC_TABLE = Array.from({ length: 256 }, (_, i) => {
@@ -35,14 +36,19 @@ export function crc32(data: Buffer): number {
   return (c ^ 0xffffffff) >>> 0;
 }
 
-interface CentralEntry {
+export interface ZipEntry {
   method: number;
   crc: number;
   compressedSize: number;
   uncompressedSize: number;
   name: string;
   localOffset: number;
+  /** 原始 local header、extra 字段与压缩数据；未编辑部件可原样复用。 */
+  localBytes: Buffer;
+  centralBytes: Buffer;
 }
+
+type CentralEntry = Omit<ZipEntry, 'localBytes' | 'centralBytes'>;
 
 function findEocd(buf: Buffer): number {
   // EOCD 位于文件末尾（注释最长 65535 字节）。
@@ -87,6 +93,75 @@ function readCentralEntries(buf: Buffer): CentralEntry[] {
 }
 
 /**
+ * 枚举 zip 全部条目（保序），未编辑重建（rebuildZip）所需的原样字节随行返回。
+ * 结构校验与 readZipEntry 同口径（任何损坏 fail closed）。
+ */
+export function readZipEntries(buf: Buffer): ZipEntry[] {
+  const result: ZipEntry[] = [];
+  for (const entry of readCentralEntries(buf)) {
+    const { localOffset } = entry;
+    if (
+      localOffset < 0 ||
+      localOffset + 30 > buf.length ||
+      buf.readUInt32LE(localOffset) !== LOCAL_SIG
+    ) {
+      throw new ZipError('非法 zip：本地文件头损坏');
+    }
+    const nameLen = buf.readUInt16LE(localOffset + 26);
+    const extraLen = buf.readUInt16LE(localOffset + 28);
+    const dataStart = localOffset + 30 + nameLen + extraLen;
+    const dataEnd = dataStart + entry.compressedSize;
+    if (dataStart > buf.length || dataEnd > buf.length) {
+      throw new ZipError('非法 zip：条目数据越界');
+    }
+    // bit 3 means sizes are written in a data descriptor after the payload.
+    // The central directory remains authoritative, but preserve the descriptor bytes.
+    const hasDescriptor = (buf.readUInt16LE(localOffset + 6) & 0x08) !== 0;
+    let localEnd = dataEnd;
+    if (hasDescriptor) {
+      const descriptorLength =
+        dataEnd + 16 <= buf.length && buf.readUInt32LE(dataEnd) === DATA_DESCRIPTOR_SIG ? 16 : 12;
+      localEnd += descriptorLength;
+      if (localEnd > buf.length) throw new ZipError('非法 zip：数据描述符越界');
+    }
+    // 中央目录里的条目名必须与本地头一致（防御偏移错位的包）。
+    const localName = buf.subarray(localOffset + 30, localOffset + 30 + nameLen);
+    if (localName.toString('utf8') !== entry.name) {
+      throw new ZipError(`非法 zip：条目名不一致: ${entry.name}`);
+    }
+    result.push({
+      ...entry,
+      localBytes: buf.subarray(localOffset, localEnd),
+      centralBytes: findCentralRecordFor(buf, entry),
+    });
+  }
+  return result;
+}
+
+/** 在中央目录区按 localOffset 定位该条目的原始中央记录（含名/extra/comment）。 */
+function findCentralRecordFor(buf: Buffer, entry: CentralEntry): Buffer {
+  const eocd = findEocd(buf);
+  const count = buf.readUInt16LE(eocd + 10);
+  const cdOffset = buf.readUInt32LE(eocd + 16);
+  let offset = cdOffset;
+  for (let i = 0; i < count; i += 1) {
+    if (offset + 46 > buf.length || buf.readUInt32LE(offset) !== CENTRAL_SIG) {
+      throw new ZipError('非法 zip：中央目录损坏');
+    }
+    const nameLen = buf.readUInt16LE(offset + 28);
+    const extraLen = buf.readUInt16LE(offset + 30);
+    const commentLen = buf.readUInt16LE(offset + 32);
+    const recordEnd = offset + 46 + nameLen + extraLen + commentLen;
+    if (recordEnd > buf.length) throw new ZipError('非法 zip：中央目录越界');
+    if (buf.readUInt32LE(offset + 42) === entry.localOffset) {
+      return buf.subarray(offset, recordEnd);
+    }
+    offset = recordEnd;
+  }
+  throw new ZipError('非法 zip：中央目录损坏');
+}
+
+/**
  * 从 zip 字节中按精确名读取单条目（如 'word/document.xml'）。
  * 任何结构损坏、不支持的压缩方式、CRC 不匹配都抛 ZipError（fail closed，不崩溃）。
  */
@@ -127,12 +202,82 @@ export function readZipEntry(buf: Buffer, wanted: string, maxBytes = 64 * 1024 *
   return data;
 }
 
+export interface ZipReplacement {
+  name: string;
+  data: Buffer;
+}
+
+/** 重建 ZIP，仅替换指定部件；其余 local/central 记录与压缩数据逐字节复用。 */
+export function rebuildZip(buf: Buffer, replacement: ZipReplacement): Buffer {
+  const entries = readZipEntries(buf);
+  const replacementEntry = entries.find((entry) => entry.name === replacement.name);
+  if (!replacementEntry)
+    throw new ZipError(`zip 中缺少 ${replacement.name}`, 'DOCX_ENTRY_NOT_FOUND');
+  const locals: Buffer[] = [];
+  const centrals: Buffer[] = [];
+  let offset = 0;
+  for (const entry of entries) {
+    const isReplacement = entry.name === replacement.name;
+    let local = entry.localBytes;
+    const central = Buffer.from(entry.centralBytes);
+    if (isReplacement) {
+      const name = Buffer.from(entry.name, 'utf8');
+      const compressed = deflateRawSync(replacement.data);
+      const header = Buffer.from(entry.localBytes.subarray(0, 30));
+      const extraLen = entry.localBytes.readUInt16LE(28);
+      const localNameAndExtra = entry.localBytes.subarray(30, 30 + name.length + extraLen);
+      header.writeUInt16LE(8, 8);
+      const replacementCrc = crc32(replacement.data);
+      const hasDescriptor = (header.readUInt16LE(6) & 0x08) !== 0;
+      if (!hasDescriptor) {
+        header.writeUInt32LE(replacementCrc, 14);
+        header.writeUInt32LE(compressed.length, 18);
+        header.writeUInt32LE(replacement.data.length, 22);
+      }
+      const descriptorOffset = 30 + name.length + extraLen + entry.compressedSize;
+      const descriptorLength = hasDescriptor
+        ? entry.localBytes.readUInt32LE(descriptorOffset) === DATA_DESCRIPTOR_SIG
+          ? 16
+          : 12
+        : 0;
+      const descriptor = hasDescriptor
+        ? Buffer.from(entry.localBytes.subarray(descriptorOffset, descriptorOffset + descriptorLength))
+        : Buffer.alloc(0);
+      if (hasDescriptor) {
+        const descriptorHasSignature = descriptor.length === 16;
+        const descriptorOffset = descriptorHasSignature ? 4 : 0;
+        if (descriptorHasSignature) descriptor.writeUInt32LE(DATA_DESCRIPTOR_SIG, 0);
+        descriptor.writeUInt32LE(replacementCrc, descriptorOffset);
+        descriptor.writeUInt32LE(compressed.length, descriptorOffset + 4);
+        descriptor.writeUInt32LE(replacement.data.length, descriptorOffset + 8);
+      }
+      local = Buffer.concat([header, localNameAndExtra, compressed, descriptor]);
+      central.writeUInt16LE(8, 10);
+      central.writeUInt32LE(crc32(replacement.data), 16);
+      central.writeUInt32LE(compressed.length, 20);
+      central.writeUInt32LE(replacement.data.length, 24);
+    }
+    central.writeUInt32LE(offset, 42);
+    locals.push(local);
+    centrals.push(central);
+    offset += local.length;
+  }
+  const body = Buffer.concat(locals);
+  const centralDir = Buffer.concat(centrals);
+  const eocd = Buffer.from(buf.subarray(findEocd(buf)));
+  eocd.writeUInt16LE(entries.length, 8);
+  eocd.writeUInt16LE(entries.length, 10);
+  eocd.writeUInt32LE(centralDir.length, 12);
+  eocd.writeUInt32LE(body.length, 16);
+  return Buffer.concat([body, centralDir, eocd]);
+}
+
+/** 构造最小合法 zip（全部条目 deflate + UTF-8 名 + 正确 CRC32 + 中央目录）。 */
 export interface ZipFileInput {
   name: string;
   data: Buffer;
 }
 
-/** 构造最小合法 zip（全部条目 deflate + UTF-8 名 + 正确 CRC32 + 中央目录）。 */
 export function buildZip(files: ZipFileInput[]): Buffer {
   if (files.length === 0 || files.length > 0xffff) {
     throw new ZipError('zip 文件列表无效', 'DOCX_ZIP_WRITE_FAILED');

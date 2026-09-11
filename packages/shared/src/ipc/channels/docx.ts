@@ -14,6 +14,41 @@ export interface DocxPreviewPayload {
   sha256: string;
 }
 
+export interface DocxEditRun {
+  text: string;
+  bold?: boolean;
+  italic?: boolean;
+}
+export interface DocxEditParagraph {
+  type?: 'paragraph';
+  text: string;
+  runs: DocxEditRun[];
+  heading: number | null;
+  list: boolean;
+  editable: boolean;
+  originalXml: string;
+  modified?: boolean;
+}
+export interface DocxRawTable {
+  type: 'table';
+  /** Read-only text projection of the table cells. */
+  text: string;
+  /** The complete original w:tbl element, retained for lossless saves. */
+  originalXml: string;
+}
+export type DocxEditBlock = DocxEditParagraph | DocxRawTable;
+export interface DocxEditDocument {
+  /** Top-level blocks in document order. */
+  blocks: DocxEditBlock[];
+  unsupportedCount: number;
+  originalXml: string;
+}
+
+export interface DocxEditDocumentPayload {
+  document: DocxEditDocument;
+  sha256: string;
+}
+
 export interface DocxEditCopyPayload {
   /** 副本 vault 相对路径（`<stem> (副本).md`） */
   path: string;
@@ -26,6 +61,8 @@ export const DOCX_CHANNELS = [
   'docx:readPreview',
   'docx:createEditCopy',
   'docx:export',
+  'docx:openEdit',
+  'docx:save',
 ] as const;
 
 export type DocxChannel = (typeof DOCX_CHANNELS)[number];
@@ -55,5 +92,10 @@ export interface DocxChannelMap {
   'docx:export': {
     request: { path: string; targetPath?: string };
     response: Result<{ path: string }>;
+  };
+  'docx:openEdit': { request: { path: string }; response: Result<DocxEditDocumentPayload> };
+  'docx:save': {
+    request: { path: string; document: DocxEditDocument; expectedSha256: string };
+    response: Result<DocxEditDocumentPayload>;
   };
 }
