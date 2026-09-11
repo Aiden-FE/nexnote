@@ -56,9 +56,13 @@ describe('tab store 源码模式（DEV-020）', () => {
     });
     useTabStore.getState().updateTab(markdown.id, { format: 'markdown', editorMode: 'source' });
     useTabStore.getState().togglePreview(markdown.id, false);
-    expect(useTabStore.getState().tabs.find((t) => t.id === markdown.id)?.previewVisible).toBe(false);
+    expect(useTabStore.getState().tabs.find((t) => t.id === markdown.id)?.previewVisible).toBe(
+      false,
+    );
     useTabStore.getState().togglePreview(markdown.id, true);
-    expect(useTabStore.getState().tabs.find((t) => t.id === markdown.id)?.previewVisible).toBe(true);
+    expect(useTabStore.getState().tabs.find((t) => t.id === markdown.id)?.previewVisible).toBe(
+      true,
+    );
   });
 
   it('updateTab 可同步模式（切换入口共用同一状态）', () => {

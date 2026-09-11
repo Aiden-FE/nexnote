@@ -16,7 +16,7 @@ import { ContextMenu, type ContextMenuItem } from '../../../components/ContextMe
 import { Input } from '../../../components/ui/input';
 import { usePageTreeStore } from '../../../stores/page-tree-store';
 import { useUiStore } from '../../../stores/ui-store';
-import { openDocx, useTabStore } from '../../../stores/tab-store';
+import { useTabStore } from '../../../stores/tab-store';
 import { cn } from '../../../lib/utils';
 import {
   buildTree,
@@ -171,9 +171,10 @@ function PageTreePanel() {
         onClick={() => {
           usePageTreeStore.getState().setSelected(node.path);
           if (node.kind === 'file') {
-            // .md 页面 → 块编辑器；.docx → 只读预览 tab（阶段6）
-            if (isMarkdown(node.name)) void run(() => ops.openDocument(node.path));
-            else if (isDocx(node.name)) openDocx(node.path);
+            // 所有文档经统一入口按 sidecar / 扩展名分流，避免 Markdown 误入 TipTap。
+            if (isMarkdown(node.name) || isDocx(node.name)) {
+              void run(() => ops.openDocument(node.path));
+            }
           }
         }}
         onContextMenu={(e) => openMenuFor(e, node)}

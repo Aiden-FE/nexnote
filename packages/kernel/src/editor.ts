@@ -39,7 +39,7 @@ export interface EditorKernelConfig extends KernelExtensionsOptions {
   onContentChange?: (markdown: string) => void | Promise<void>;
   /** 保存回调异常上报 */
   onSaveError?: (error: unknown) => void;
-  /** 文档变更（含结构）时的轻量回调 */
+  /** 用户文档变更（含结构）后同步回调；初始挂载与 setMarkdown 重载不触发 */
   onDocChange?: (json: JSONContent) => void;
 }
 
@@ -157,6 +157,7 @@ export function createEditor(
       // 打开文件时 UniqueID 补块 ID 不是用户编辑：不得据此写盘（原文必须逐字节保持）。
       if (isBlockIdInitTransaction(editor)) return;
       revision += 1;
+      options.onDocChange?.(editor.getJSON());
       scheduler.schedule(kernel.getMarkdown());
     },
   });
@@ -365,8 +366,6 @@ export function createEditor(
       editor.destroy();
     },
   };
-
-  options.onDocChange?.(editor.getJSON());
 
   return kernel;
 }

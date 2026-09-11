@@ -122,7 +122,8 @@ export function filterTree(
   const walk = (node: TreeNode): TreeNode | null => {
     const children = node.children.map(walk).filter((c): c is TreeNode => c !== null);
     if (node.kind === 'file') {
-      const nameHit = q.length === 0 || displayName(node, { showExtensions }).toLowerCase().includes(q);
+      const nameHit =
+        q.length === 0 || displayName(node, { showExtensions }).toLowerCase().includes(q);
       const tagHit = tagFiles === null || tagFiles.has(node.path);
       if (nameHit && tagHit) {
         matchedFiles.add(node.path);

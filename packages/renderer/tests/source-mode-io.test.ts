@@ -134,7 +134,13 @@ describe('外部变更分类（写入前版本检查）', () => {
     const result = await classifyExternalChange({
       io: io({
         read: async () => 'baseline',
-        stat: async () => ({ path: 'a.md', name: 'a.md', kind: 'file', size: 20, modifiedAt: 't2' }),
+        stat: async () => ({
+          path: 'a.md',
+          name: 'a.md',
+          kind: 'file',
+          size: 20,
+          modifiedAt: 't2',
+        }),
       }),
       path: 'a.md',
       baseVersion: base,
@@ -143,7 +149,6 @@ describe('外部变更分类（写入前版本检查）', () => {
     });
     expect(result.kind).toBe('unchanged');
   });
-
 
   it('无本地修改时直接重载', async () => {
     const result = await classifyExternalChange({

@@ -32,7 +32,12 @@ import { openChatWikilinkOrNull } from '../features/ai/chat/chat-runtime';
 import { useUiStore } from '../stores/ui-store';
 import { useSettingsStore } from '../stores/settings-store';
 import { onEvent } from '../lib/ipc';
-import { classifyExternalChange, fileVersionOf, type FileVersion, type PageFileIo } from './source/page-source-io';
+import {
+  classifyExternalChange,
+  fileVersionOf,
+  type FileVersion,
+  type PageFileIo,
+} from './source/page-source-io';
 import { pluginContributionRegistry } from '../registries';
 import {
   buildDispatchableBlockCommands,
@@ -389,7 +394,8 @@ export function EditorView({ tab }: EditorViewProps) {
         });
         baseTextRef.current = markdown;
         baseVersionRef.current = fileVersionOf(await invoke('fs:stat', { path: currentPath }));
-        dirtyRef.current = false;
+        // 保存完成只能确认本次 snapshot；保存期间若又有输入，当前内容仍是 dirty。
+        if (kernelRef.current?.getMarkdown() === markdown) dirtyRef.current = false;
       });
 
       try {
@@ -428,7 +434,13 @@ export function EditorView({ tab }: EditorViewProps) {
     const kernel = createEditor(hostRef.current, {
       initialMarkdown: load.markdown,
       saveDelayMs: autoSaveMs,
-      onContentChange: (markdown) => { dirtyRef.current = true; void save(markdown); },
+      onDocChange: () => {
+        // 用户文档变更立即置 dirty：不得等防抖保存回调（间隔内退出/外部改盘需保护未落盘内容）。
+        dirtyRef.current = true;
+      },
+      onContentChange: (markdown) => {
+        void save(markdown);
+      },
       onSaveError: (e) => {
         if (!unmountedRef.current) {
           saveStateRef.current = 'error';
@@ -602,13 +614,34 @@ export function EditorView({ tab }: EditorViewProps) {
   }, [load, save, tab.id, autoSaveMs]);
 
   useEffect(() => {
-    const io: PageFileIo = { stat: (p) => invoke('fs:stat', { path: p }), read: (p) => invoke('fs:readTextFile', { path: p }), exists: async () => false, write: async () => { throw new Error('unused'); }, renameLinked: async () => { throw new Error('unused'); } };
+    const io: PageFileIo = {
+      stat: (p) => invoke('fs:stat', { path: p }),
+      read: (p) => invoke('fs:readTextFile', { path: p }),
+      exists: async () => false,
+      write: async () => {
+        throw new Error('unused');
+      },
+      renameLinked: async () => {
+        throw new Error('unused');
+      },
+    };
     return onEvent('fs:changed', (event) => {
       if (event.kind !== 'change' || event.path !== pathRef.current) return;
-      void classifyExternalChange({ io, path: pathRef.current, baseVersion: baseVersionRef.current, baseText: baseTextRef.current, dirty: dirtyRef.current }).then((result) => {
+      void classifyExternalChange({
+        io,
+        path: pathRef.current,
+        baseVersion: baseVersionRef.current,
+        baseText: baseTextRef.current,
+        dirty: dirtyRef.current,
+      }).then((result) => {
         if (result.kind === 'unchanged') return;
         if (result.kind === 'reload') {
-          void invoke('fs:readTextFile', { path: pathRef.current }).then((text) => { baseTextRef.current = text; baseVersionRef.current = result.version; dirtyRef.current = false; kernelRef.current?.setMarkdown(text); });
+          void invoke('fs:readTextFile', { path: pathRef.current }).then((text) => {
+            baseTextRef.current = text;
+            baseVersionRef.current = result.version;
+            dirtyRef.current = false;
+            kernelRef.current?.setMarkdown(text);
+          });
           return;
         }
         setConflict(result.version);
@@ -776,8 +809,40 @@ export function EditorView({ tab }: EditorViewProps) {
               applyFrontmatter(next, source);
             }}
           />
-          {conflict && <div data-testid="editor-conflict-banner" className="flex shrink-0 items-center gap-2 border-b border-destructive/40 bg-destructive/10 px-3 py-1.5 text-xs text-destructive"><AlertCircle className="size-3.5" /><span className="flex-1">磁盘文件已被外部修改，本地还有未保存的修改。</span><button type="button" data-testid="conflict-keep-local" onClick={() => { setConflict(null); void kernelRef.current?.flushPendingSave(); }}>保留本地</button><button type="button" data-testid="conflict-take-disk" onClick={() => void invoke('fs:readTextFile', { path: pathRef.current }).then((text) => { baseTextRef.current = text; dirtyRef.current = false; kernelRef.current?.setMarkdown(text); setConflict(null); })}>读取磁盘并重载</button></div>}
-        <div ref={hostRef} data-testid="editor-host" className="nexnote-editor-host" />
+          {conflict && (
+            <div
+              data-testid="editor-conflict-banner"
+              className="flex shrink-0 items-center gap-2 border-b border-destructive/40 bg-destructive/10 px-3 py-1.5 text-xs text-destructive"
+            >
+              <AlertCircle className="size-3.5" />
+              <span className="flex-1">磁盘文件已被外部修改，本地还有未保存的修改。</span>
+              <button
+                type="button"
+                data-testid="conflict-keep-local"
+                onClick={() => {
+                  setConflict(null);
+                  void kernelRef.current?.flushPendingSave();
+                }}
+              >
+                保留本地
+              </button>
+              <button
+                type="button"
+                data-testid="conflict-take-disk"
+                onClick={() =>
+                  void invoke('fs:readTextFile', { path: pathRef.current }).then((text) => {
+                    baseTextRef.current = text;
+                    dirtyRef.current = false;
+                    kernelRef.current?.setMarkdown(text);
+                    setConflict(null);
+                  })
+                }
+              >
+                读取磁盘并重载
+              </button>
+            </div>
+          )}
+          <div ref={hostRef} data-testid="editor-host" className="nexnote-editor-host" />
         </div>
       </div>
     </div>

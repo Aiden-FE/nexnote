@@ -13,8 +13,9 @@ import { useChatStore } from './chat-store';
 import { ContextChips } from './ContextChips';
 import { RetrievalSources } from '../retrieval/RetrievalSources';
 import { insertIntoActiveEditor } from '../../../editor/active-editor';
-import { openPage, useTabStore } from '../../../stores/tab-store';
+import { useTabStore } from '../../../stores/tab-store';
 import { openSettings } from '../../../lib/open-settings';
+import { openDocumentTab } from '../../../lib/open-document';
 import { cn } from '../../../lib/utils';
 import { Button } from '../../../components/ui/button';
 import {
@@ -184,7 +185,7 @@ export function ChatDock() {
 
   const saveAsDoc = useCallback(async () => {
     const path = await saveActiveAsDocument(true);
-    if (path) openPage(path);
+    if (path) await openDocumentTab(path);
   }, []);
 
   const hasTurns = (active?.turns.length ?? 0) > 0;

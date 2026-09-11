@@ -135,11 +135,15 @@ describe('页面树 GUI 回归', () => {
       '导出文档.docx',
     );
 
-    act(() => view.querySelector<HTMLButtonElement>('[data-testid="tree-toggle-extensions"]')!.click());
+    act(() =>
+      view.querySelector<HTMLButtonElement>('[data-testid="tree-toggle-extensions"]')!.click(),
+    );
 
     expect(useUiStore.getState().treeShowExtensions).toBe(true);
     expect(view.querySelector('[data-path="另一页.md"]')?.textContent).toContain('另一页.md');
-    expect(view.querySelector('[data-path="旧笔记.markdown"]')?.textContent).toContain('旧笔记.markdown');
+    expect(view.querySelector('[data-path="旧笔记.markdown"]')?.textContent).toContain(
+      '旧笔记.markdown',
+    );
   });
 
   it('右键重命名后连续输入不会在每个字符后重新全选', async () => {

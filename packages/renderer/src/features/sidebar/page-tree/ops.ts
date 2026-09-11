@@ -1,8 +1,9 @@
 import { sanitizeEntryName } from '@nexnote/shared';
 import type { DirEntry } from '@nexnote/shared';
 import { invoke } from '../../../lib/ipc';
+import { openDocumentTab } from '../../../lib/open-document';
 import { requestAppSave } from '../../../editor/app-save';
-import { getTabStore, openDocx, openPage } from '../../../stores/tab-store';
+import { getTabStore, openPage } from '../../../stores/tab-store';
 import { usePageTreeStore } from '../../../stores/page-tree-store';
 import { displayName, isMarkdown } from '../../../page-tree/tree-utils';
 
@@ -24,22 +25,18 @@ export async function createNoteIn(
 ): Promise<string> {
   const info = await invoke('fs:createNote', { parentDir, format });
   const tab = openPage(info.path, displayName({ name: info.name, kind: 'file' }));
-  getTabStore().getState().updateTab(tab.id, {
-    format,
-    editorMode: format === 'markdown' ? 'source' : 'block',
-  });
+  getTabStore()
+    .getState()
+    .updateTab(tab.id, {
+      format,
+      editorMode: format === 'markdown' ? 'source' : 'block',
+    });
   return info.path;
 }
 
-/** 按 sidecar 中的持久格式打开页面；Markdown 文档由源码编辑器承载。 */
+/** 按 sidecar 中的持久格式打开页面；统一委托 openDocumentTab，避免第二套路由。 */
 export async function openDocument(path: string): Promise<string> {
-  const metadata = await invoke('document:getMetadata', { path });
-  const format: NewNoteFormat = metadata?.format === 'markdown' ? 'markdown' : 'native-block';
-  const tab = openPage(path);
-  getTabStore().getState().updateTab(tab.id, {
-    format,
-    editorMode: format === 'markdown' ? 'source' : 'block',
-  });
+  await openDocumentTab(path);
   return path;
 }
 
@@ -47,7 +44,7 @@ export async function openDocument(path: string): Promise<string> {
 export async function importDocxIn(targetDir = ''): Promise<string | null> {
   const result = await invoke('docx:import', { targetDir });
   if (!result) return null;
-  openDocx(result.path);
+  await openDocumentTab(result.path);
   return result.path;
 }
 
@@ -77,7 +74,8 @@ export async function renameEntry(
   let name = newNameRaw.trim();
   if (name.length === 0) return;
   const markdownExtension = fromPath.toLowerCase().endsWith('.markdown') ? '.markdown' : '.md';
-  if (kind === 'file' && isMarkdown(fromPath) && !isMarkdown(name)) name = `${name}${markdownExtension}`;
+  if (kind === 'file' && isMarkdown(fromPath) && !isMarkdown(name))
+    name = `${name}${markdownExtension}`;
   const sanitized = sanitizeEntryName(
     kind === 'file' ? name.replace(/\.(?:md|markdown)$/i, '') : name,
   );

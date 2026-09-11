@@ -31,7 +31,7 @@ export function useVaultLayoutPersistence(vault: VaultInfo | null): void {
     return () => {
       cancelled = true;
     };
-  }, [vault?.root]);
+  }, [vault]);
 
   useEffect(() => {
     if (!vault) return;

@@ -25,10 +25,12 @@ export async function openDocumentTab(
   }
   const format: DocumentFormat = metadata?.format === 'markdown' ? 'markdown' : 'native-block';
   const tab = openPage(pagePath, title);
-  getTabStore().getState().updateTab(tab.id, {
-    format,
-    // Markdown's only mode is source editor; initialize it explicitly.
-    editorMode: format === 'markdown' ? 'source' : 'block',
-  });
+  getTabStore()
+    .getState()
+    .updateTab(tab.id, {
+      format,
+      // Markdown's only mode is source editor; initialize it explicitly.
+      editorMode: format === 'markdown' ? 'source' : 'block',
+    });
   return { kind: 'page', format };
 }

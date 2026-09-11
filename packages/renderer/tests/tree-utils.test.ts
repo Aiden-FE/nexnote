@@ -45,7 +45,13 @@ describe('applyFsChangeEvent（fs:changed 增量）', () => {
   });
 
   it('unlink 移除；unlinkDir 连带移除子项（前缀）', () => {
-    let entries = [d('a.md', 'file'), d('sub', 'directory'), d('sub/x.md', 'file'), d('sub/y.md', 'file'), d('other.md', 'file')];
+    let entries = [
+      d('a.md', 'file'),
+      d('sub', 'directory'),
+      d('sub/x.md', 'file'),
+      d('sub/y.md', 'file'),
+      d('other.md', 'file'),
+    ];
     entries = applyFsChangeEvent(entries, { kind: 'unlink', path: 'a.md' });
     expect(entries.some((e) => e.path === 'a.md')).toBe(false);
     entries = applyFsChangeEvent(entries, { kind: 'unlinkDir', path: 'sub' });
@@ -58,7 +64,12 @@ describe('applyFsChangeEvent（fs:changed 增量）', () => {
   });
 
   it('同名前缀目录不受兄弟路径误伤（sub 与 sub2）', () => {
-    let entries = [d('sub', 'directory'), d('sub/x.md', 'file'), d('sub2', 'directory'), d('sub2/y.md', 'file')];
+    let entries = [
+      d('sub', 'directory'),
+      d('sub/x.md', 'file'),
+      d('sub2', 'directory'),
+      d('sub2/y.md', 'file'),
+    ];
     entries = applyFsChangeEvent(entries, { kind: 'unlinkDir', path: 'sub' });
     expect(entries.map((e) => e.path).sort()).toEqual(['sub2', 'sub2/y.md']);
   });
@@ -83,7 +94,11 @@ describe('filterTree', () => {
   });
 
   it('搜索：匹配文件名、祖先目录保留并强制展开', () => {
-    const { tree: t, matchedFiles, expandDirs } = filterTree(tree(), { query: 'alp', tagFiles: null });
+    const {
+      tree: t,
+      matchedFiles,
+      expandDirs,
+    } = filterTree(tree(), { query: 'alp', tagFiles: null });
     expect(matchedFiles).toEqual(new Set(['dir/alpha.md']));
     expect(expandDirs.has('dir')).toBe(true);
     const dir = t.find((n) => n.path === 'dir');
@@ -117,7 +132,8 @@ describe('filterTree', () => {
     const roots = buildTree([{ name: '笔记.markdown', path: '笔记.markdown', kind: 'file' }]);
     expect(filterTree(roots, { query: 'markdown', tagFiles: null }).matchedFiles.size).toBe(0);
     expect(
-      filterTree(roots, { query: 'markdown', tagFiles: null, showExtensions: true }).matchedFiles.size,
+      filterTree(roots, { query: 'markdown', tagFiles: null, showExtensions: true }).matchedFiles
+        .size,
     ).toBe(1);
   });
 

@@ -4,10 +4,12 @@ import type { TabDescriptor } from '../../stores/tab-store';
 import { useTabStore } from '../../stores/tab-store';
 import { usePageTreeStore } from '../../stores/page-tree-store';
 import { useUiStore } from '../../stores/ui-store';
+import { useSettingsStore } from '../../stores/settings-store';
 import { invoke, onEvent } from '../../lib/ipc';
 import { openChatWikilinkOrNull } from '../../features/ai/chat/chat-runtime';
 import { sanitizePageTitle, titleFromPath } from '../title-sync';
 import { registerAppSaveListener } from '../app-save';
+import { openDocumentTab } from '../../lib/open-document';
 import {
   classifyExternalChange,
   fileVersionOf,
@@ -24,8 +26,6 @@ import { syncScrollRatio } from './scroll-sync';
 type LoadState =
   { phase: 'loading' } | { phase: 'ready'; text: string } | { phase: 'error'; message: string };
 type SaveState = 'saved' | 'saving' | 'error';
-
-const SAVE_DEBOUNCE_MS = 500;
 
 /** IPC 适配器：renderer 永不直访 Node fs。 */
 const ipcIo: PageFileIo = {
@@ -61,6 +61,8 @@ export function SourceModeView({ tab }: { tab: TabDescriptor }) {
   const [displayPath, setDisplayPath] = useState(initialPath);
   const [previewText, setPreviewText] = useState('');
   const previewVisible = tab.previewVisible !== false;
+  const vaultSettings = useSettingsStore((state) => state.vault);
+  const autoSaveMs = vaultSettings?.editor.autoSaveMs ?? 1500;
 
   const hostRef = useRef<HTMLDivElement>(null);
   const editorRef = useRef<SourceEditorHandle | null>(null);
@@ -137,8 +139,8 @@ export function SourceModeView({ tab }: { tab: TabDescriptor }) {
     saveTimerRef.current = setTimeout(() => {
       saveTimerRef.current = null;
       void runSaveTracked().catch(() => undefined);
-    }, SAVE_DEBOUNCE_MS);
-  }, [runSaveTracked]);
+    }, autoSaveMs);
+  }, [autoSaveMs, runSaveTracked]);
 
   /** 立即落盘待保存内容（无修改则不写盘：仅切换模式不得触发规范化写回）。 */
   const flush = useCallback(async (): Promise<void> => {
@@ -299,7 +301,7 @@ export function SourceModeView({ tab }: { tab: TabDescriptor }) {
     });
   }, [tab.id, flush]);
 
-  // ── 预览导航：先保存，成功后同一 tab 内导航并保持源码模式 ──
+  // ── 预览导航：先保存，成功后经统一入口按目标文档格式打开 ──
   const navigate = useCallback(
     (link: InternalLinkNavigation): void => {
       void (async () => {
@@ -323,13 +325,11 @@ export function SourceModeView({ tab }: { tab: TabDescriptor }) {
             createParentDirs: true,
           });
         }
-        useTabStore.getState().updateTab(tab.id, {
-          pagePath: nextPath,
-          title: titleFromPath(nextPath),
-        });
+        // 经统一文档入口导航（ADR-0004）：sidecar markdown 保持在源码编辑器，绝不挂 TipTap。
+        await openDocumentTab(nextPath, titleFromPath(nextPath));
       })();
     },
-    [flush, tab.id],
+    [flush],
   );
 
   // ── 冲突选择：保留本地（以本地覆盖磁盘）/ 读取磁盘并重载 ──

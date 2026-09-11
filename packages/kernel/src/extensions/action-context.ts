@@ -25,10 +25,7 @@ export interface EditorActionContext {
 }
 
 /** 抽取选区/光标所在顶层块的边界位置。 */
-function topLevelBlockRange(
-  view: EditorView,
-  pos: number,
-): { from: number; to: number } | null {
+function topLevelBlockRange(view: EditorView, pos: number): { from: number; to: number } | null {
   const { doc } = view.state;
   const $pos = doc.resolve(Math.min(Math.max(pos, 0), doc.content.size));
   if ($pos.depth < 1) return null;
