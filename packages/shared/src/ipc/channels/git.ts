@@ -1,4 +1,10 @@
 import type { Result } from '../result';
+import type {
+  GitDoctorDiagnosis,
+  GitDoctorRepairExecuteResult,
+  GitDoctorRepairPrepareResult,
+  GitRepairAction,
+} from '../../types/git';
 
 export interface GitCommit {
   hash: string;
@@ -58,6 +64,10 @@ export const GIT_CHANNELS = [
   'git:setUseSystemGit',
   'git:getAutoCommitDebounce',
   'git:setAutoCommitDebounce',
+  'git:doctor:diagnose',
+  'git:doctor:repairPrepare',
+  'git:doctor:repairExecute',
+  'git:doctor:dismiss',
 ] as const;
 
 export type GitChannel = (typeof GIT_CHANNELS)[number];
@@ -94,4 +104,14 @@ export interface GitChannelMap {
     request: { milliseconds: number };
     response: Result<{ milliseconds: number }>;
   };
+  'git:doctor:diagnose': { request: void; response: Result<GitDoctorDiagnosis> };
+  'git:doctor:repairPrepare': {
+    request: { action: GitRepairAction };
+    response: Result<GitDoctorRepairPrepareResult>;
+  };
+  'git:doctor:repairExecute': {
+    request: { ticket: string };
+    response: Result<GitDoctorRepairExecuteResult>;
+  };
+  'git:doctor:dismiss': { request: void; response: Result<void> };
 }

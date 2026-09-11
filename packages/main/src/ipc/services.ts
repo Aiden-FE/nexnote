@@ -13,6 +13,7 @@ import type { VaultSession } from '../vault/vault-session';
 import type { VaultFsService } from '../fs/fs-service';
 import type { VaultWatchService } from '../fs/watch-service';
 import type { GitService } from '../git/git-service';
+import type { GitSyncDoctor } from '../git/git-sync-doctor';
 import type { WindowManager } from '../window';
 import type { AiService } from '../ai/ai-service';
 import type { LinkIndexService } from '../indexer/index-service';
@@ -30,6 +31,8 @@ export interface IpcServices {
   /** AI 组装层（DEV-009）：密钥仅存在于此层 + 系统钥匙串 */
   ai: AiService;
   git: GitService;
+  /** Git 同步诊断/安全修复（dry-run + 一次性 ticket + 显式确认）。 */
+  gitDoctor?: GitSyncDoctor;
   /** 系统目录选择对话框（渲染层无原生能力，统一走主进程） */
   dialogs: {
     pickDirectory(): Promise<string | null>;

@@ -7,6 +7,8 @@ export type * from './types/chat';
 export type * from './types/plugin';
 export type * from './types/skill';
 export type * from './types/settings';
+export type * from './types/git';
+
 export * from './markdown/wikilink';
 export * from './markdown/links';
 // Settings utils（纯函数，主/渲染共用）

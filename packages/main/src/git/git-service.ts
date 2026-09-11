@@ -247,6 +247,18 @@ export class GitService {
     return this.statusFor(this.requireRoot());
   }
 
+  /** Doctor 只读获取 porcelain 冲突文件列表；不暴露 git 命令给 renderer。 */
+  async rawStatusPorcelain(root: string): Promise<string[]> {
+    const output = await this.git(root).raw(['status', '--porcelain=v1', '-z']);
+    const files: string[] = [];
+    for (const item of output.split('\0')) {
+      if (!item || item.length < 4) continue;
+      const value = item.slice(3).replace(/\\/g, '/');
+      if (item[0] === 'U' || item[1] === 'U' || item.startsWith('AA ') || item.startsWith('DD ')) files.push(value);
+    }
+    return [...new Set(files)];
+  }
+
   async statusFor(root: string): Promise<GitStatus> {
     const runtime = this.resolveRuntime();
     const git = this.git(root, runtime);

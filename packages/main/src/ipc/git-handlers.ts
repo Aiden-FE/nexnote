@@ -8,6 +8,7 @@ import type {
 } from '@nexnote/shared';
 import type { IpcRegistrar } from './registrar';
 import { GitServiceError } from '../git/git-service';
+import { GitSyncDoctorError } from '../git/git-sync-doctor';
 
 /**
  * git:* 命名空间 handler：与 shared 契约一一对应，主进程唯一 Git 调用点。
@@ -20,6 +21,24 @@ export function registerGitHandlers(registrar: IpcRegistrar): void {
 
   registrar.register('git:getStatus', async (_payload, services): Promise<Result<GitStatus>> => {
     return ok(await services.git.status());
+  });
+
+  registrar.register('git:doctor:diagnose', async (_payload, services) => {
+    requireDoctor(services);
+    return ok(await services.gitDoctor!.diagnose());
+  });
+  registrar.register('git:doctor:repairPrepare', async ({ action }, services) => {
+    requireDoctor(services);
+    return ok(await services.gitDoctor!.prepare(action));
+  });
+  registrar.register('git:doctor:repairExecute', async ({ ticket }, services) => {
+    requireDoctor(services);
+    return ok(await services.gitDoctor!.execute(ticket));
+  });
+  registrar.register('git:doctor:dismiss', async (_payload, services) => {
+    requireDoctor(services);
+    services.gitDoctor!.dismiss();
+    return ok(undefined);
   });
 
   registrar.register(
@@ -123,4 +142,10 @@ export function registerGitHandlers(registrar: IpcRegistrar): void {
   });
 }
 
-export { GitServiceError };
+function requireDoctor(services: {
+  gitDoctor?: unknown;
+}): asserts services is { gitDoctor: NonNullable<typeof services.gitDoctor> } {
+  if (!services.gitDoctor) throw new GitSyncDoctorError('Git doctor 未初始化', 'NO_VAULT');
+}
+
+export { GitServiceError, GitSyncDoctorError };
