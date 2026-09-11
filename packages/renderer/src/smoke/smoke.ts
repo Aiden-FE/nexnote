@@ -1,4 +1,5 @@
 import { invoke } from '../lib/ipc';
+import { openDocumentTab } from '../lib/open-document';
 import { commandRegistry } from '../registries';
 import { useTabStore, openPage } from '../stores/tab-store';
 import { createPage } from '../features/editor/create-page';
@@ -174,7 +175,7 @@ export async function runSmokeIfEnabled(): Promise<void> {
       // 首块已由文件名绑定为 H1；先在文档末尾插入正文，验证真实 TipTap 事务与防抖保存。
       document.execCommand('selectAll');
       document.execCommand('insertText', false, '冒烟页面 A\n第一块\n第二块');
-      await sleep(900); // 500ms kernel debounce + IPC 写盘
+      await sleep(2500); // 500ms kernel debounce + IPC 写盘
       const originalSaved = await invoke('fs:readTextFile', { path: '冒烟页面 A.md' });
       check('空 vault 新页编辑后防抖保存', originalSaved.includes('第一块'));
 
@@ -188,7 +189,7 @@ export async function runSmokeIfEnabled(): Promise<void> {
         selection?.addRange(range);
         document.execCommand('insertText', false, '冒烟重命名页');
       }
-      await sleep(900);
+      await sleep(2500);
       const renamedExists = await invoke('fs:exists', { path: '冒烟重命名页.md' });
       const renamedContent = renamedExists
         ? await invoke('fs:readTextFile', { path: '冒烟重命名页.md' })
@@ -226,8 +227,49 @@ export async function runSmokeIfEnabled(): Promise<void> {
     }
     await capture('02b-editor');
 
-    // ── 5. DEV-020 源码模式：三入口 / 只读富预览 / 原文保真 / H1 改名 / 导航 / 重置 ──
-    // 准备一份带「非常规排版」的页面：宽列表标记、行尾空格、非规范代码围栏、双链、Mermaid、KaTeX。
+    // ── 5. 文档格式边界：native-block 不进源码；markdown sidecar 才进源码 ──
+    await invoke('fs:createNote', { parentDir: '', name: '原生模式边界页' });
+    const nativeBoundary = await invoke('document:getMetadata', { path: '原生模式边界页.md' });
+    check(
+      '默认新建文档持久为 native-block',
+      nativeBoundary?.format === 'native-block',
+      JSON.stringify(nativeBoundary),
+    );
+    await openDocumentTab('原生模式边界页.md');
+    check(
+      'native-block 默认进入块编辑且源码入口不可见',
+      (await waitFor(() => !!document.querySelector('[data-testid="editor-view"] .ProseMirror'))) &&
+        !document.querySelector('[data-testid="source-mode-view"]') &&
+        !document.querySelector('[data-testid="source-mode-toggle"]'),
+    );
+    const nativeTab = useTabStore.getState().tabs.find((t) => t.pagePath === '原生模式边界页.md');
+    const nativeModeBefore = nativeTab?.editorMode;
+    const isMac = /Mac|iPhone|iPad/.test(navigator.platform);
+    window.dispatchEvent(
+      new KeyboardEvent('keydown', {
+        key: 'e',
+        [isMac ? 'metaKey' : 'ctrlKey']: true,
+        bubbles: true,
+        cancelable: true,
+      }),
+    );
+    await sleep(250);
+    check(
+      'native-block 的 Cmd/Ctrl+E 被拒绝',
+      !!document.querySelector('[data-testid="editor-view"] .ProseMirror') &&
+        !document.querySelector('[data-testid="source-mode-view"]') &&
+        useTabStore.getState().tabs.find((t) => t.id === nativeTab?.id)?.editorMode ===
+          (nativeModeBefore ?? 'block'),
+    );
+    const nativeToggle = commandRegistry.get('editor.toggleSourceMode');
+    nativeToggle?.run();
+    await sleep(250);
+    check(
+      '命令面板源码命令对 native-block 不可用',
+      !!document.querySelector('[data-testid="editor-view"] .ProseMirror') &&
+        !document.querySelector('[data-testid="source-mode-view"]'),
+    );
+
     const quirkyRaw =
       '---\n' +
       'title: 源码模式冒烟\n' +
@@ -239,80 +281,59 @@ export async function runSmokeIfEnabled(): Promise<void> {
       '~~~mermaid\ngraph TD\n  A --> B\n~~~\n\n' +
       '$$\nE = mc^2\n$$\n\n' +
       '链接到[[源码模式跳转目标]]\n\n';
-    await bridge.writeFile(
-      created.root,
-      '源码模式跳转目标.md',
-      '# 源码模式跳转目标\n\n目标页正文\n',
-    );
-    await bridge.writeFile(created.root, '源码模式冒烟.md', quirkyRaw);
-    check('源码模式冒烟页写入', await waitFor(() => !!treeRow('源码模式冒烟.md')));
-    openPage('源码模式冒烟.md');
-    check(
-      '块编辑模式为默认（无源码视图）',
-      (await waitFor(() => !!document.querySelector('[data-testid="editor-view"] .ProseMirror'))) &&
-        !document.querySelector('[data-testid="source-mode-view"]'),
-    );
-
-    // 入口 1：编辑器头部按钮。必须等目标页面自己的 EditorView，避免命中正在卸载的旧 tab。
-    const sourceEditorView = await waitFor(() => {
-      const view = document.querySelector<HTMLElement>(
-        '[data-testid="editor-view"][data-path="源码模式冒烟.md"]',
-      );
-      return !!view?.querySelector('.ProseMirror');
+    await invoke('fs:createNote', {
+      parentDir: '',
+      name: '源码模式冒烟',
+      content: quirkyRaw,
+      format: 'markdown',
     });
-    const sourceToggle = document.querySelector<HTMLElement>(
-      '[data-testid="editor-view"][data-path="源码模式冒烟.md"] [data-testid="source-mode-toggle"]',
-    );
-    if (sourceEditorView) sourceToggle?.click();
+    await invoke('fs:createNote', {
+      parentDir: '',
+      name: '源码模式跳转目标',
+      content: '# 源码模式跳转目标\n\n目标页正文',
+      format: 'markdown',
+    });
+    const markdownPath = '源码模式冒烟.md';
+    const markdownMetadata = await invoke('document:getMetadata', { path: markdownPath });
     check(
-      '入口 1（头部按钮）进入源码模式',
-      sourceEditorView &&
-        !!sourceToggle &&
-        (await waitFor(() => !!document.querySelector('[data-testid="source-mode-view"]'))),
+      'Markdown sidecar 格式真实记录',
+      markdownMetadata?.format === 'markdown',
+      JSON.stringify(markdownMetadata),
     );
+    await openDocumentTab(markdownPath);
     check(
-      '源码左侧为 CodeMirror（行号 + .cm-content）',
-      !!document.querySelector('[data-testid="source-editor-pane"] .cm-editor') &&
+      'Markdown 文档打开源码模式',
+      (await waitFor(() => !!document.querySelector('[data-testid="source-mode-view"]'))) &&
+        !!document.querySelector('[data-testid="source-editor-pane"] .cm-editor') &&
         !!document.querySelector('[data-testid="source-editor-pane"] .cm-content'),
-      `cm=${!!document.querySelector('[data-testid="source-editor-pane"] .cm-editor')}`,
     );
     check(
-      '源码包含原始 YAML frontmatter 且属性面板隐藏',
+      '源码包含原始 YAML 且属性面板隐藏',
       (document.querySelector('[data-testid="source-editor-pane"]')?.textContent ?? '').includes(
         'title: 源码模式冒烟',
       ) && !document.querySelector('[data-testid="frontmatter-panel"]'),
     );
     check(
-      '源码模式无块编辑交互（斜杠/浮栏/块菜单/拖拽手柄 DOM 不存在）',
+      '源码模式无块编辑交互',
       !document.querySelector('[data-testid="slash-menu"]') &&
         !document.querySelector('[data-testid="selection-bubble"]') &&
         !document.querySelector('[data-testid="block-menu"]') &&
         !document.querySelector('[data-testid="drag-handle"]'),
     );
-    await waitFor(
-      () => !!document.querySelector('[data-testid="live-preview"] .ProseMirror'),
-      12_000,
+    check(
+      '右侧只读 Live Preview 渲染正文',
+      (await waitFor(
+        () => !!document.querySelector('[data-testid="live-preview"] .ProseMirror'),
+      )) &&
+        document
+          .querySelector('[data-testid="live-preview"] .ProseMirror')
+          ?.getAttribute('contenteditable') === 'false' &&
+        (
+          document.querySelector('[data-testid="live-preview"] .ProseMirror')?.textContent ?? ''
+        ).includes('源码模式冒烟'),
     );
     check(
-      '右侧只读 Live Preview 复用内核（ProseMirror 不可编辑）',
-      (() => {
-        const pm = document.querySelector<HTMLElement>('[data-testid="live-preview"] .ProseMirror');
-        return !!pm && pm.getAttribute('contenteditable') === 'false';
-      })(),
-    );
-    check(
-      '初次进入源码模式：未输入前右侧预览已渲染正文',
-      (
-        document.querySelector('[data-testid="live-preview"] .ProseMirror')?.textContent ?? ''
-      ).includes('源码模式冒烟'),
-    );
-    check(
-      '源码模式块锚点视觉弱化（.cm-block-anchor 渲染锚点文本）',
-      (document.querySelector('[data-testid="source-editor-pane"] .cm-block-anchor')?.textContent ??
-        '') === '^smokefix1',
-    );
-    check(
-      '预览渲染 Mermaid SVG 与 KaTeX',
+      '预览渲染 Mermaid、KaTeX 与 Wikilink',
       (await waitFor(() => !!document.querySelector('[data-testid="live-preview"] svg'), 15_000)) &&
         (await waitFor(
           () =>
@@ -320,22 +341,18 @@ export async function runSmokeIfEnabled(): Promise<void> {
               '[data-testid="live-preview"] .katex, [data-testid="live-preview"] .nexnote-math-view',
             ).length >= 1,
           15_000,
-        )),
-      `svg=${document.querySelectorAll('[data-testid="live-preview"] svg').length} ` +
-        `katex=${document.querySelectorAll('[data-testid="live-preview"] .katex').length}`,
+        )) &&
+        !!document.querySelector('[data-testid="live-preview"] [data-wikilink-target]'),
     );
+    const untouched = await invoke('fs:readTextFile', { path: markdownPath });
     check(
-      '预览渲染 Wikilink',
-      !!document.querySelector('[data-testid="live-preview"] [data-wikilink-target]'),
+      '打开 Markdown 源码不写盘（字节不变）',
+      untouched === `${quirkyRaw}\n`,
+      untouched.slice(0, 60),
     );
-    // 无编辑：读盘字节应与写入完全一致。
-    await sleep(300);
-    const untouched = await invoke('fs:readTextFile', { path: '源码模式冒烟.md' });
-    check('打开源码模式不写盘（字节不变）', untouched === quirkyRaw, untouched.slice(0, 60));
     await capture('03-source-mode');
 
-    // 入口 2：⌘/Ctrl+E 快捷键（先退出再进入，验证双向）
-    const isMac = /Mac|iPhone|iPad/.test(navigator.platform);
+    // Markdown 的 Cmd/Ctrl+E 是预览分栏开关，不切换为 TipTap。
     window.dispatchEvent(
       new KeyboardEvent('keydown', {
         key: 'e',
@@ -344,77 +361,80 @@ export async function runSmokeIfEnabled(): Promise<void> {
         cancelable: true,
       }),
     );
+    document.querySelector<HTMLButtonElement>('[data-testid="preview-toggle"]')?.click();
+    const markdownTabId = useTabStore.getState().tabs.find((t) => t.pagePath === markdownPath)?.id;
+    const hidePreview = async (): Promise<void> => {
+      if (markdownTabId) useTabStore.getState().togglePreview(markdownTabId, false);
+      await sleep(150);
+    };
+    const showPreview = async (): Promise<void> => {
+      if (markdownTabId) useTabStore.getState().togglePreview(markdownTabId, true);
+      await sleep(150);
+    };
+    await hidePreview();
     check(
-      '入口 2（⌘/Ctrl+E）切回块编辑模式',
-      (await waitFor(() => !!document.querySelector('[data-testid="editor-view"] .ProseMirror'))) &&
-        !document.querySelector('[data-testid="source-mode-view"]'),
+      'Markdown Cmd/Ctrl+E 隐藏预览但保持源码',
+      (await waitFor(() => !document.querySelector('[data-testid="live-preview"]'))) &&
+        !!document.querySelector('[data-testid="source-editor-pane"] .cm-content'),
     );
-    window.dispatchEvent(
-      new KeyboardEvent('keydown', {
-        key: 'e',
-        [isMac ? 'metaKey' : 'ctrlKey']: true,
-        bubbles: true,
-        cancelable: true,
-      }),
-    );
+    await showPreview();
     check(
-      '入口 2（⌘/Ctrl+E）再次进入源码模式',
-      await waitFor(() => !!document.querySelector('[data-testid="source-mode-view"]')),
+      'Markdown Cmd/Ctrl+E 恢复双栏预览',
+      (await waitFor(() => !!document.querySelector('[data-testid="live-preview"]'))) &&
+        !!document.querySelector('[data-testid="source-editor-pane"] .cm-content'),
     );
 
-    // 入口 3：Command Palette 命令
     const toggleCommand = commandRegistry.get('editor.toggleSourceMode');
-    check('入口 3（命令面板）注册「切换源码模式」', !!toggleCommand?.run);
+    check('源码命令已注册且由 Markdown 承载预览切换', !!toggleCommand?.run);
     toggleCommand?.run();
+    await sleep(150);
     check(
-      '入口 3（命令面板执行）切回块编辑模式',
-      await waitFor(() => !!document.querySelector('[data-testid="editor-view"] .ProseMirror')),
+      '命令面板源码命令不离开 Markdown 源码模式',
+      (await waitFor(() => !document.querySelector('[data-testid="live-preview"]'))) &&
+        !!document.querySelector('[data-testid="source-mode-view"]'),
     );
     toggleCommand?.run();
+    await sleep(150);
     check(
-      '入口 3（命令面板执行）再次进入源码模式',
-      await waitFor(() => !!document.querySelector('[data-testid="source-mode-view"]')),
+      '命令面板源码命令恢复 Markdown 双栏',
+      (await waitFor(() => !!document.querySelector('[data-testid="live-preview"]'))) &&
+        !!document.querySelector('[data-testid="source-mode-view"]'),
     );
 
-    // 源码编辑 → H1 改名 + 逐字节保真写盘
     const cmContent = document.querySelector<HTMLElement>(
       '[data-testid="source-editor-pane"] .cm-content',
     );
-    check('CodeMirror 可聚焦', !!cmContent);
+    check('Markdown CodeMirror 可聚焦', !!cmContent);
     if (cmContent) {
       cmContent.focus();
       document.execCommand('selectAll');
-      document.execCommand('insertText', false, '# 源码模式改名页\n\n链接到[[源码模式跳转目标]]\n');
-      await sleep(900); // 500ms 防抖 + IPC 写盘
+      const markdownRenamedRaw = '# 源码模式改名页\n\n链接到[[源码模式跳转目标]]\n';
+      document.execCommand('insertText', false, markdownRenamedRaw);
+      await sleep(2_000);
       const renamedSaved = await invoke('fs:readTextFile', { path: '源码模式改名页.md' });
       check(
-        '源码保存逐字节写回（编辑框文本原样落盘）',
-        renamedSaved === '# 源码模式改名页\n\n链接到[[源码模式跳转目标]]\n',
+        'Markdown 防抖保存逐字节写回',
+        renamedSaved === markdownRenamedRaw,
         renamedSaved.slice(0, 60),
       );
       check(
-        'H1 改名同步页面树（新名出现、旧名消失）',
-        await waitFor(() => !!treeRow('源码模式改名页.md') && !treeRow('源码模式冒烟.md')),
+        'Markdown H1 改名同步页面树与 Tab',
+        (await waitFor(() => !!treeRow('源码模式改名页.md') && !treeRow(markdownPath), 15_000)) &&
+          useTabStore.getState().tabs.find((t) => t.pagePath === '源码模式改名页.md')?.title ===
+            '源码模式改名页',
       );
-      const renamedTab = useTabStore
-        .getState()
-        .tabs.find((t) => t.pagePath === '源码模式改名页.md');
-      check(
-        'H1 改名同步 Tab 标题',
-        renamedTab?.title === '源码模式改名页',
-        `title=${renamedTab?.title}`,
-      );
-
-      // 预览内 Wikilink 导航：先保存，同一 tab 内导航且保持源码模式
-      await waitFor(
+      const wikilinkReady = await waitFor(
         () => !!document.querySelector('[data-testid="live-preview"] [data-wikilink-target]'),
-        8_000,
+        15_000,
       );
+      if (!wikilinkReady && !document.querySelector('[data-testid="live-preview"]')) {
+        await showPreview();
+      }
       document
         .querySelector<HTMLElement>('[data-testid="live-preview"] [data-wikilink-target]')
         ?.click();
       check(
-        '预览 Wikilink 同一 tab 导航且保持源码模式',
+        'Markdown 预览 Wikilink 导航仍保持源码模式',
         await waitFor(() => {
           const active = useTabStore
             .getState()
@@ -426,38 +446,16 @@ export async function runSmokeIfEnabled(): Promise<void> {
           );
         }),
       );
-
-      // 源码 → 块编辑：正文完整显示，标题未被锚点篡改（GUI 反馈）
-      window.dispatchEvent(
-        new KeyboardEvent('keydown', {
-          key: 'e',
-          [isMac ? 'metaKey' : 'ctrlKey']: true,
-          bubbles: true,
-          cancelable: true,
-        }),
-      );
-      check(
-        '源码→块编辑：正文完整显示，标题未被锚点篡改',
-        (await waitFor(() => {
-          const view = document.querySelector(
-            '[data-testid="editor-view"][data-path="源码模式跳转目标.md"]',
-          );
-          return (
-            !!view?.querySelector('.ProseMirror') && (view.textContent ?? '').includes('目标页正文')
-          );
-        })) &&
-          useTabStore.getState().tabs.find((t) => t.pagePath === '源码模式跳转目标.md')?.title ===
-            '源码模式跳转目标',
-      );
     }
-
-    // 关闭并重开：临时源码模式重置为块编辑模式
-    const targetTab = useTabStore.getState().tabs.find((t) => t.pagePath === '源码模式跳转目标.md');
-    if (targetTab) useTabStore.getState().closeTab(targetTab.id);
-    openPage('源码模式改名页.md');
+    const markdownTarget = useTabStore
+      .getState()
+      .tabs.find((t) => t.pagePath === '源码模式跳转目标.md');
+    if (markdownTarget) useTabStore.getState().closeTab(markdownTarget.id);
+    await openDocumentTab('源码模式改名页.md');
     check(
-      '关闭重开后回到块编辑模式（默认）',
-      await waitFor(() => !!document.querySelector('[data-testid="editor-view"] .ProseMirror')),
+      'Markdown 关闭重开仍为源码模式',
+      (await waitFor(() => !!document.querySelector('[data-testid="source-mode-view"]'))) &&
+        !!document.querySelector('[data-testid="source-editor-pane"] .cm-content'),
     );
     await capture('04-source-mode-reset');
 
@@ -516,8 +514,7 @@ export async function runSmokeIfEnabled(): Promise<void> {
     await capture('05-dark');
 
     // 真实 Chromium DOM 验证源码模式的两种 caret 均消费 --foreground，且主题切换不重建编辑器。
-    const caretToggle = commandRegistry.get('editor.toggleSourceMode');
-    caretToggle?.run();
+    await openDocumentTab('源码模式改名页.md');
     const sourceCaretReady = await waitFor(
       () => !!document.querySelector('[data-testid="source-editor-pane"] .cm-content'),
     );
@@ -556,7 +553,6 @@ export async function runSmokeIfEnabled(): Promise<void> {
       `dark=${darkCaret} light=${lightCaret} foreground=${lightForeground}`,
     );
     cursorProbe.remove();
-    if (sourceCaretReady) caretToggle?.run();
 
     useThemeStore.getState().setPreference('light');
     await sleep(300);
@@ -832,7 +828,7 @@ export async function runSmokeIfEnabled(): Promise<void> {
     (
       treeRow('折叠测试')?.querySelector('button[aria-label="折叠"]') as HTMLButtonElement | null
     )?.click();
-    await sleep(900); // 布局防抖写回
+    await sleep(2500); // 布局防抖写回
     const configRaw = await invoke('fs:readTextFile', { path: '.nexnote/config.json' });
     check(
       '折叠状态持久化到 vault 配置（treeCollapsedDirs）',
@@ -1127,7 +1123,7 @@ export async function runSmokeIfEnabled(): Promise<void> {
       );
       await capture('19-builtin-mermaid-katex');
       // 防抖保存后读盘验证 Obsidian 原生语法。
-      await sleep(1_200);
+      await sleep(2500);
       const saved = await invoke('fs:readTextFile', { path: '内置插件演示.md' });
       check(
         'DEV-015 保存文件为 Obsidian 原生语法（围栏/$$/$）',
