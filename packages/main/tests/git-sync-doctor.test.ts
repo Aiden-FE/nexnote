@@ -307,6 +307,18 @@ describe('ticket 一次性 / TTL / 参数漂移（TOCTOU）', () => {
     const d = await doctor.diagnose();
     expect(d.issue.code).toBe('NO_VAULT');
   });
+  it('statusFor 原始异常 → STATUS_FAILED 稳定文案，票据一次性消费', async () => {
+    const git = fakeGit({ changed: 1 });
+    const { doctor } = doctorWith(git);
+    const { ticket } = await doctor.prepare('commit');
+    git.statusFor.mockRejectedValue(new Error('Authorization: Bearer sk-live-abcdef123'));
+    const error = await doctor.execute(ticket).catch((e: Error & { code?: string }) => e);
+    expect(error).toMatchObject({ code: 'STATUS_FAILED' });
+    expect(error.message).not.toContain('sk-live-abcdef123');
+    expect(error.message).toBe('无法读取当前仓库状态，请重试');
+    await expect(doctor.execute(ticket)).rejects.toMatchObject({ code: 'INVALID_TICKET' });
+    expect(git.commitManual).not.toHaveBeenCalled();
+  });
   it('execute 走 commitManual/pull/push 既有安全路径且无其它 git 调用', async () => {
     const git = fakeGit({ changed: 1 });
     const { doctor } = doctorWith(git);

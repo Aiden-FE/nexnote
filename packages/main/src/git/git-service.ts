@@ -790,7 +790,7 @@ export function sanitizeRemoteText(value: string): string {
       '$1***',
     )
     .replace(
-      /\b((?:client_secret|api_key|apikey|access_token|secret_key|private_key|refresh_token|auth_token)\s*[=:]\s*)["']?[^\s"',;]+/gi,
+      /\b((?:client[_-]?secret|api[_-]?key|access[_-]?token|secret[_-]?key|private[_-]?key|refresh[_-]?token|auth[_-]?token|password|passwd|token|secret|key)\s*[=:]\s*)["']?[^\s"',;&]+/gi,
       '$1***',
     )
     .replace(/(https?:\/\/)[^\s/@]+@/gi, '$1***@');

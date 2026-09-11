@@ -10,6 +10,7 @@ import type {
   GitSyncIssueCategory,
 } from '@nexnote/shared';
 import type { GitService } from './git-service';
+import { sanitizeRemoteText } from './git-service';
 import type { AiService } from '../ai/ai-service';
 
 /** 修复票据 TTL：预览到显式确认执行之间的最大窗口。 */
@@ -126,19 +127,7 @@ function fingerprintFromSnapshot(snapshot: GitDoctorStatusSnapshot): DoctorFinge
 
 /** 发送给 AI 或渲染层之前剥离错误文本中的凭据/URL 细节。 */
 export function sanitizeDiagnosticText(value: string): string {
-  return (
-    value
-      // userinfo 凭据：https://user:token@host → https://***@host
-      .replace(/([a-z][a-z0-9+.-]*:\/\/)([^\s/@:]+):[^\s/@]+@/gi, '$1***@')
-      // Authorization headers must never reach the AI or renderer.
-      .replace(/(\bauthorization\s*:\s*)(?:bearer|basic)\s+[^\s,;]+/gi, '$1***')
-      // Credential-like assignment values, including snake_case and URL query keys.
-      .replace(
-        /([?&\s]|^)(client[_-]?secret|api[_-]?key|access[_-]?token|password|passwd|token|secret|key)\s*[=:]\s*([^\s&#,;]+)/gi,
-        '$1$2=***',
-      )
-      .slice(0, 500)
-  );
+  return sanitizeRemoteText(value).slice(0, 500);
 }
 
 /** 纯规则分类：状态码优先，其次错误文本启发式。冲突永远最先判定（不自动覆盖）。 */
