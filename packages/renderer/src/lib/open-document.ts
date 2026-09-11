@@ -11,19 +11,24 @@ import { openDocx, openPage, getTabStore, type DocumentFormat } from '../stores/
 export async function openDocumentTab(
   pagePath: string,
   title?: string,
+  options?: { knownFormat?: DocumentFormat },
 ): Promise<{ kind: 'page' | 'docx'; format?: DocumentFormat }> {
   if (/\.(docx)$/i.test(pagePath)) {
     openDocx(pagePath, title);
     return { kind: 'docx' };
   }
-  // sidecar 是尽力而为：读取失败（无 bridge/无 vault/损坏）时按默认块编辑打开，不让导航中断。
-  let metadata: { format?: string } | null = null;
-  try {
-    metadata = await invoke('document:getMetadata', { path: pagePath });
-  } catch {
-    metadata = null;
+  // 创建路径可用 knownFormat 跳过 sidecar 查询，避免“先默认后补格式”的第二套路由窗口。
+  let format: DocumentFormat = options?.knownFormat ?? 'native-block';
+  if (!options?.knownFormat) {
+    // sidecar 是尽力而为：读取失败（无 bridge/无 vault/损坏）时按默认块编辑打开，不让导航中断。
+    let metadata: { format?: string } | null = null;
+    try {
+      metadata = await invoke('document:getMetadata', { path: pagePath });
+    } catch {
+      metadata = null;
+    }
+    format = metadata?.format === 'markdown' ? 'markdown' : 'native-block';
   }
-  const format: DocumentFormat = metadata?.format === 'markdown' ? 'markdown' : 'native-block';
   const tab = openPage(pagePath, title);
   getTabStore()
     .getState()

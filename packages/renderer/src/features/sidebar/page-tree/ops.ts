@@ -3,7 +3,7 @@ import type { DirEntry } from '@nexnote/shared';
 import { invoke } from '../../../lib/ipc';
 import { openDocumentTab } from '../../../lib/open-document';
 import { requestAppSave } from '../../../editor/app-save';
-import { getTabStore, openPage } from '../../../stores/tab-store';
+import { getTabStore } from '../../../stores/tab-store';
 import { usePageTreeStore } from '../../../stores/page-tree-store';
 import { displayName, isMarkdown } from '../../../page-tree/tree-utils';
 
@@ -24,13 +24,9 @@ export async function createNoteIn(
   format: NewNoteFormat = 'native-block',
 ): Promise<string> {
   const info = await invoke('fs:createNote', { parentDir, format });
-  const tab = openPage(info.path, displayName({ name: info.name, kind: 'file' }));
-  getTabStore()
-    .getState()
-    .updateTab(tab.id, {
-      format,
-      editorMode: format === 'markdown' ? 'source' : 'block',
-    });
+  await openDocumentTab(info.path, displayName({ name: info.name, kind: 'file' }), {
+    knownFormat: format,
+  });
   return info.path;
 }
 
