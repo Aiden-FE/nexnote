@@ -1,4 +1,4 @@
-export { WRITING_ACTIONS, WRITING_ACTION_MAP, buildWritingMessages, toAiActionId, fromAiActionId } from './actions';
+export { WRITING_ACTIONS, WRITING_ACTION_MAP, toAiActionId, fromAiActionId } from './actions';
 export type { WritingActionDef, WritingActionId, WritingKind } from './actions';
 export { assembleWritingContext, TRUNCATION_NOTE } from './context';
 export type { BacklinkSnippet, WritingContextAssembly } from './context';

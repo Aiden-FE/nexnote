@@ -76,8 +76,15 @@ describe('写作辅助控制器（流式 → diff → 回写）', () => {
     controller.trigger('ai:rewrite', ctx);
     await bridge.flush();
     expect(bridge.startCalls).toHaveLength(1);
-    const startPayload = bridge.startCalls[0] as { messages: unknown[] };
-    expect(startPayload.messages).toHaveLength(2);
+    const startPayload = bridge.startCalls[0] as {
+      actionId: string;
+      target: string;
+      contextText: string;
+      messages?: unknown[];
+    };
+    expect(startPayload).toMatchObject({ actionId: 'rewrite', target: '第一句原文。' });
+    expect(startPayload.contextText).toContain('当前文档');
+    expect(startPayload.messages).toBeUndefined();
 
     bridge.emit('agent:runEvent', {
       runId: 'stream-1',

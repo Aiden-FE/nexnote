@@ -250,6 +250,26 @@ const agentRun: PayloadValidator = (payload) => {
   return null;
 };
 
+const agentWritingRun: PayloadValidator = (payload) => {
+  if (!isPlainObject(payload)) return invalid('payload 必须是普通对象');
+  const allowed = ['actionId', 'target', 'contextText', 'params'];
+  if (Object.keys(payload).some((key) => !allowed.includes(key)))
+    return invalid('writing payload 包含未知字段');
+  if (
+    !['rewrite', 'expand', 'condense', 'polish', 'fillgaps', 'evidence'].includes(
+      String(payload.actionId),
+    )
+  )
+    return invalid('actionId 无效');
+  if (payload.target !== undefined && typeof payload.target !== 'string')
+    return invalid('target 必须是字符串');
+  if (payload.contextText !== undefined && typeof payload.contextText !== 'string')
+    return invalid('contextText 必须是字符串');
+  if (payload.params !== undefined && !isPlainObject(payload.params))
+    return invalid('params 必须是对象');
+  return null;
+};
+
 const agentCancel = object(['runId'], [stringField('runId')]);
 const agentApproval = object(
   ['approvalId', 'decision'],
@@ -503,7 +523,7 @@ const VALIDATORS: Partial<Record<IpcChannel, PayloadValidator>> = {
   'ai:testConnection': aiConnectionTarget,
   'ai:listModels': aiConnectionTarget,
   'agent:run:chat': agentRun,
-  'agent:run:writing': agentRun,
+  'agent:run:writing': agentWritingRun,
   'agent:run:debug': agentRun,
   'agent:cancel': agentCancel,
   'agent:approval:respond': agentApproval,

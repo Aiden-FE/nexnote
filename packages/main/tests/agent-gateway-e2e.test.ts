@@ -34,8 +34,8 @@ const aiState: AiConfigState = {
 };
 
 type StreamFactory = (
-  messages: Array<{ role: string; content: string }>,
-  onEvent: (event: AgentRunEvent) => void,
+  messages?: Array<{ role: string; content: string }>,
+  onEvent?: (event: AgentRunEvent) => void,
 ) => ChatStreamHandle;
 
 const immediateStream: StreamFactory = () => ({
@@ -203,7 +203,7 @@ describe('AgentGateway end-to-end lifecycle', () => {
         ),
       ],
       stream: (messages) => {
-        providerMessages.push(messages);
+        providerMessages.push(messages!);
         return immediateStream(messages);
       },
     });

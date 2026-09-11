@@ -1,15 +1,22 @@
 import type { ChatMessage, ChatParams, ChatStreamEvent } from './ai';
 
 export type AgentScenario = 'chat' | 'writing' | 'debug';
+export type AgentWritingActionId =
+  'rewrite' | 'expand' | 'condense' | 'polish' | 'fillgaps' | 'evidence';
 export type AgentRunStatus = 'started' | 'completed' | 'cancelled' | 'failed';
 export type AgentApprovalDecision = 'approved' | 'denied';
 
 /** Renderer input deliberately carries no provider/profile credentials. */
 export interface AgentRunRequest {
-  messages: ChatMessage[];
+  /** chat/debug 消息序列；writing 场景改用 actionId + target。 */
+  messages?: ChatMessage[];
   skillIds?: string[];
   contextText?: string;
   params?: ChatParams;
+  /** writing 场景动作白名单，由主进程解析 prompt 模板。 */
+  actionId?: AgentWritingActionId;
+  /** writing 场景选区/块文本；cursor 触发时为空。 */
+  target?: string;
 }
 
 export type AgentRunEvent =
@@ -52,4 +59,5 @@ export interface AgentAuditRecord {
   durationMs?: number;
 }
 export type AgentRuntimeKind = 'pi' | 'builtin-fallback';
-export type AgentInternalEvent = ChatStreamEvent;
+/** Runtime 事件还包含受控工具生命周期，gateway 将其转发为 AgentRunEvent。 */
+export type AgentInternalEvent = ChatStreamEvent | Extract<AgentRunEvent, { type: 'tool' }>;

@@ -1,9 +1,9 @@
-import type { ChatMessage } from '@nexnote/shared';
+import type { AgentWritingActionId } from '@nexnote/shared';
 import { invoke, onEvent } from '../../../lib/ipc';
 
 /**
- * 写作辅助流式请求封装：复用 DEV-009 的 ai:chat:stream:* 通道（feature='writing'），
- * 渲染层只消费统一内部事件协议；返回可取消句柄，卸载/拒绝时取消上游流。
+ * 写作辅助流式请求封装：渲染层只发送白名单动作及选区/上下文，
+ * 消费统一内部事件协议；返回可取消句柄，卸载/拒绝时取消上游流。
  */
 
 export interface WritingStreamHandlers {
@@ -17,7 +17,7 @@ export interface WritingStreamHandle {
 }
 
 export function startWritingStream(
-  messages: ChatMessage[],
+  request: { actionId: AgentWritingActionId; target: string; contextText: string },
   handlers: WritingStreamHandlers,
 ): WritingStreamHandle {
   let runId: string | null = null;
@@ -39,7 +39,7 @@ export function startWritingStream(
     }
   });
 
-  void invoke('agent:run:writing', { messages })
+  void invoke('agent:run:writing', request)
     .then((res) => {
       if (finished) {
         // start 返回前已被取消：补发 cancel，避免上游孤儿流。

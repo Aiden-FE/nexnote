@@ -1,5 +1,11 @@
 import { randomUUID } from 'node:crypto';
-import type { AgentRunEvent, AgentRunRequest, AgentScenario, IpcEventMap } from '@nexnote/shared';
+import type {
+  AgentRunEvent,
+  AgentRunRequest,
+  AgentScenario,
+  AgentWritingActionId,
+  IpcEventMap,
+} from '@nexnote/shared';
 import type { AiService } from '../ai/ai-service';
 import type { ChatStreamHandle } from '../ai/provider/types';
 import { AuditStore } from './audit-store';
@@ -22,6 +28,52 @@ export const AGENT_SCENARIO_PROFILES: Record<AgentScenario, { system: string; to
     system: '你是 NexNote 内置调试助手。简洁回答并指出不确定性。',
     tools: ['search_notes', 'list_pages'],
   },
+};
+
+const WRITING_BASE =
+  '你是 NexNote 内置的 Markdown 笔记写作助手。' +
+  '严格只输出处理后的正文（Obsidian 方言 Markdown），不要任何解释、前后缀或代码围栏。' +
+  '保持原文语言，保留其中的双链 [[...]]、标签 #tag 与 ^id 块锚点语法。';
+const writingContext = (context: string) =>
+  context.trim() ? `\n\n【参考上下文（可能已被截断，仅供理解，不要照抄）】\n${context.trim()}` : '';
+const writingAction = (systemTask: string, user: (target: string, context: string) => string) => ({
+  system: `${WRITING_BASE}\n任务：${systemTask}`,
+  buildUserPrompt: user,
+});
+export const AGENT_WRITING_ACTIONS: Record<
+  AgentWritingActionId,
+  { system: string; buildUserPrompt: (target: string, context: string) => string }
+> = {
+  rewrite: writingAction(
+    '在保持原意的前提下改写文本，使表达更清晰流畅，可调整句式但不增删观点。',
+    (target, context) =>
+      `请改写下面的文本，输出改写后的完整正文。\n\n【待改写文本】\n${target}${writingContext(context)}`,
+  ),
+  polish: writingAction(
+    '润色文本，修正语病、错别字与标点，提升措辞，尽量不改变结构与长度。',
+    (target, context) =>
+      `请润色下面的文本，输出润色后的完整正文。\n\n【待润色文本】\n${target}${writingContext(context)}`,
+  ),
+  condense: writingAction(
+    '缩写文本，保留核心观点，去除冗余，输出更精炼的正文。',
+    (target, context) =>
+      `请缩写下面的文本，保留要点，输出缩写后的正文。\n\n【待缩写文本】\n${target}${writingContext(context)}`,
+  ),
+  expand: writingAction(
+    '基于给定文本扩写，补充细节与阐释，输出要新增的正文段落，不要重复原文。',
+    (target, context) =>
+      `请基于下面的文本扩写，输出要新增的正文（Markdown），不要重复已有内容。\n\n【当前文本】\n${target || '（空块，请基于上文自由展开）'}${writingContext(context)}`,
+  ),
+  fillgaps: writingAction(
+    '检查文本的论证/信息缺口，补充缺失的衔接、前提或必要说明，输出要新增的正文。',
+    (target, context) =>
+      `请检查下面文本的缺漏并补充，输出要新增的正文（Markdown），不要重复原文。\n\n【当前文本】\n${target}${writingContext(context)}`,
+  ),
+  evidence: writingAction(
+    '为文本的观点补充支撑论据、例子或说明，输出要新增的正文，使用列表组织多条论据。',
+    (target, context) =>
+      `请为下面文本的观点补充论据/例子，输出要新增的正文（Markdown，列表为佳）。\n\n【当前文本】\n${target}${writingContext(context)}`,
+  ),
 };
 
 type RunState = {
@@ -86,7 +138,10 @@ export class AgentGateway {
         at: Date.now(),
       });
     }
-    const lastUser = [...request.messages].reverse().find((m) => m.role === 'user')?.content ?? '';
+    const incomingMessages = request.messages ?? [];
+    const lastUser = request.actionId
+      ? (request.target ?? '')
+      : ([...incomingMessages].reverse().find((m) => m.role === 'user')?.content ?? '');
     if (request.skillIds && !this.deps.skills) {
       this.finishError(
         runId,
@@ -131,12 +186,25 @@ export class AgentGateway {
       emit({ type: 'context', sources: retrieved.sources, degraded: retrieved.degraded });
     }
     const context = [request.contextText?.trim(), skillContext.trim()].filter(Boolean).join('\n\n');
-    const messages = [
-      { role: 'system' as const, content: profile.system },
-      ...(context ? [{ role: 'system' as const, content: `参考上下文：\n${context}` }] : []),
-      ...request.messages.filter((m) => m.role !== 'system'),
-    ];
-    let terminalError: AgentRunEvent | undefined;
+    // writing 场景：渲染层只带白名单 actionId + 选区/上下文；prompt 模板全部由主进程持有。
+    const messages = request.actionId
+      ? [
+          { role: 'system' as const, content: profile.system },
+          { role: 'system' as const, content: AGENT_WRITING_ACTIONS[request.actionId].system },
+          {
+            role: 'user' as const,
+            content: AGENT_WRITING_ACTIONS[request.actionId].buildUserPrompt(
+              request.target ?? '',
+              context,
+            ),
+          },
+        ]
+      : [
+          { role: 'system' as const, content: profile.system },
+          ...(context ? [{ role: 'system' as const, content: `参考上下文：\n${context}` }] : []),
+          ...incomingMessages.filter((m) => m.role !== 'system'),
+        ];
+    let terminalError: Extract<AgentRunEvent, { type: 'error' }> | undefined;
     let handle: ChatStreamHandle;
     try {
       handle = this.runtime.run({
@@ -146,9 +214,8 @@ export class AgentGateway {
         messages,
         scenario,
         onEvent: (event) => {
-          const normalized = event as AgentRunEvent;
-          if (normalized.type === 'error') terminalError = normalized;
-          emit(normalized);
+          if (event.type === 'error') terminalError = event;
+          emit(event);
         },
       });
     } catch (error) {
@@ -159,7 +226,8 @@ export class AgentGateway {
     state.timer = setTimeout(() => this.cancel(runId, scenario, 'TTL_EXPIRED'), TTL_MS);
     void handle.done
       .then(() => {
-        if (terminalError) this.finish(runId, 'error', terminalError.code ?? 'AGENT_RUNTIME_ERROR');
+        if (terminalError?.type === 'error')
+          this.finish(runId, 'error', terminalError.code ?? 'AGENT_RUNTIME_ERROR');
         else this.finish(runId, 'completed');
       })
       .catch((error) => this.finishError(runId, error, emit));

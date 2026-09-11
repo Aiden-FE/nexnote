@@ -11,7 +11,7 @@ import type { ChatStreamHandle } from '../ai/provider/types';
 export interface AgentRuntimeTask {
   runId: string;
   request: AgentRunRequest;
-  messages: AgentRunRequest['messages'];
+  messages: ChatMessage[];
   scenario?: AgentScenario;
   onEvent: (event: AgentInternalEvent) => void;
   /** 受控 scenario pre-tool phase；仅主进程生成，renderer 无法指定。 */
@@ -63,19 +63,6 @@ export class ToolLoopRuntime implements AgentRuntime {
     private readonly tools: { allowed: string[] },
     private readonly execute: (runId: string, name: string, input: unknown) => Promise<unknown>,
   ) {}
-  private buildPreToolMessages(request: AgentRunRequest): ChatMessage[] | null {
-    const queries = (request.toolQueries ?? []).filter(
-      (q) => this.tools.allowed.includes(q.name) && typeof q.input === 'object',
-    );
-    if (queries.length === 0) return null;
-    const lines = queries.map((q) => `- ${q.name}(${JSON.stringify(q.input)})`);
-    return [
-      {
-        role: 'system',
-        content: `【工具检索结果占位】将执行受控工具：\n${lines.join('\n')}`,
-      },
-    ];
-  }
   run(task: AgentRuntimeTask): ChatStreamHandle {
     const controller = new AbortController();
     let inner: ChatStreamHandle | undefined;
