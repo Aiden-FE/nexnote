@@ -6,6 +6,7 @@ import { registerAllIpcHandlers } from '../src/ipc';
 import type { IpcMainLike, IpcServices } from '../src/ipc';
 import { AiStore } from '../src/ai/ai-store';
 import { AiService } from '../src/ai/ai-service';
+import { AgentGateway } from '../src/agent/gateway';
 import type { SecretVault } from '../src/ai/secret-store';
 import { startMockOpenAiServer, type MockOpenAiServer } from './helpers/mock-openai';
 import type { Result } from '@nexnote/shared';
@@ -74,6 +75,7 @@ beforeEach(async () => {
     fs: {},
     git: { onStatusChanged: () => undefined },
     ai,
+    agent: new AgentGateway({ ai, sendEvent: (channel, payload) => sentEvents.push({ channel, payload }) }),
     dialogs: { pickDirectory: async () => null },
     trash: async () => {},
     appInfo: () => ({}),
@@ -116,8 +118,8 @@ describe('密钥安全 IPC 契约（密钥永不经过渲染层）', () => {
     expect(mock.requests.some((r) => r.headers['authorization'] === `Bearer ${SECRET}`)).toBe(true);
 
     // 3. 流式 + embed 走全链路（产生事件推送）
-    await call('ai:chat:stream:start', {
-      profileId: saved.id,
+    await call('ai:profile:setDefault', { id: saved.id });
+    await call('agent:run:chat', {
       messages: [{ role: 'user', content: 'hi' }],
     });
     const embed = await call<number[][]>('ai:embed', { texts: ['契约测试'] });

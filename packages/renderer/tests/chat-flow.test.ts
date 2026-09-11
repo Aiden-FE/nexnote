@@ -78,11 +78,11 @@ function installBridge() {
         };
       if (channel === 'chat:folder:get') return { ok: true, data: { folder: 'AI Chats' } };
       if (channel === 'ai:retrieve') return { ok: true, data: retrieval };
-      if (channel === 'ai:chat:stream:start') {
+      if (channel === 'agent:run:chat') {
         startCalls.push(payload as never);
-        return { ok: true, data: { streamId: 'stream-1' } };
+        return { ok: true, data: { runId: 'stream-1' } };
       }
-      if (channel === 'ai:chat:stream:cancel') return { ok: true, data: { cancelled: true } };
+      if (channel === 'agent:cancel') return { ok: true, data: { cancelled: true } };
       if (channel === 'fs:readTextFile') return { ok: true, data: '# 页面正文' };
       return { ok: true, data: null };
     }),
@@ -101,10 +101,10 @@ function installBridge() {
     flush: () => new Promise((r) => setTimeout(r, 0)),
     streamDone: () => {
       setTimeout(() => {
-        emit('ai:streamEvent', { streamId: 'stream-1', event: { type: 'start', model: 'chat-model' } });
-        emit('ai:streamEvent', { streamId: 'stream-1', event: { type: 'delta', text: '双链是' } });
-        emit('ai:streamEvent', { streamId: 'stream-1', event: { type: 'delta', text: '双向链接。' } });
-        emit('ai:streamEvent', { streamId: 'stream-1', event: { type: 'done' } });
+        emit('agent:runEvent', { runId: 'stream-1', scenario: 'chat', event: { type: 'start', model: 'chat-model' } });
+        emit('agent:runEvent', { runId: 'stream-1', scenario: 'chat', event: { type: 'delta', text: '双链是' } });
+        emit('agent:runEvent', { runId: 'stream-1', scenario: 'chat', event: { type: 'delta', text: '双向链接。' } });
+        emit('agent:runEvent', { runId: 'stream-1', scenario: 'chat', event: { type: 'done' } });
       }, 0);
     },
   };

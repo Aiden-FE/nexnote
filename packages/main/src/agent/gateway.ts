@@ -8,7 +8,7 @@ import { BuiltinLoopRuntime, PiRuntime } from './runtime';
 import type { ToolRegistry } from './tool-registry';
 
 const TTL_MS = 10 * 60_000;
-const PROFILES: Record<AgentScenario, { system: string; tools: string[] }> = {
+export const AGENT_SCENARIO_PROFILES: Record<AgentScenario, { system: string; tools: string[] }> = {
   chat: { system: '你是 NexNote 内置知识库对话助手。基于提供的上下文回答，不要编造来源。', tools: [] },
   writing: { system: '你是 NexNote Markdown 写作助手。只输出处理后的正文，不要解释。', tools: [] },
   debug: { system: '你是 NexNote 内置调试助手。简洁回答并指出不确定性。', tools: [] },
@@ -35,7 +35,7 @@ export class AgentGateway {
   }
   run(scenario: AgentScenario, request: AgentRunRequest): { runId: string } {
     const runId = randomUUID();
-    const profile = PROFILES[scenario];
+    const profile = AGENT_SCENARIO_PROFILES[scenario];
     const messages = [{ role: 'system' as const, content: profile.system }, ...request.messages.filter((m) => m.role !== 'system')];
     const emit = (event: AgentRunEvent) => this.deps.sendEvent('agent:runEvent', { runId, scenario, event });
     emit({ type: 'start', model: 'configured' });

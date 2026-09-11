@@ -14,12 +14,12 @@ function installBridge() {
   const cancelCalls: string[] = [];
   (window as unknown as { nexnote: unknown }).nexnote = {
     invoke: vi.fn(async (channel: string, payload?: unknown) => {
-      if (channel === 'ai:chat:stream:start') {
+      if (channel === 'agent:run:writing') {
         startCalls.push(payload);
-        return { ok: true, data: { streamId: 'stream-1' } };
+        return { ok: true, data: { runId: 'stream-1' } };
       }
-      if (channel === 'ai:chat:stream:cancel') {
-        cancelCalls.push((payload as { streamId: string }).streamId);
+      if (channel === 'agent:cancel') {
+        cancelCalls.push((payload as { runId: string }).runId);
         return { ok: true, data: { cancelled: true } };
       }
       return { ok: true, data: null };
@@ -72,15 +72,14 @@ describe('写作辅助控制器（流式 → diff → 回写）', () => {
     controller.trigger('ai:rewrite', ctx);
     await bridge.flush();
     expect(bridge.startCalls).toHaveLength(1);
-    const startPayload = bridge.startCalls[0] as { messages: unknown[]; feature: string };
-    expect(startPayload.feature).toBe('writing');
+    const startPayload = bridge.startCalls[0] as { messages: unknown[] };
     expect(startPayload.messages).toHaveLength(2);
 
-    bridge.emit('ai:streamEvent', {
-      streamId: 'stream-1',
+    bridge.emit('agent:runEvent', {
+      runId: 'stream-1',
       event: { type: 'delta', text: '第一句改写后。' },
     });
-    bridge.emit('ai:streamEvent', { streamId: 'stream-1', event: { type: 'done' } });
+    bridge.emit('agent:runEvent', { runId: 'stream-1', scenario: 'writing', event: { type: 'done' } });
     await bridge.flush();
 
     let session = useWritingStore.getState().session;
@@ -101,11 +100,11 @@ describe('写作辅助控制器（流式 → diff → 回写）', () => {
     const ctx2 = computeEditorActionContext(kernel.editor.view, 'selection');
     controller.trigger('ai:polish', ctx2);
     await bridge.flush();
-    bridge.emit('ai:streamEvent', {
-      streamId: 'stream-1',
+    bridge.emit('agent:runEvent', {
+      runId: 'stream-1',
       event: { type: 'delta', text: '不应写入的内容' },
     });
-    bridge.emit('ai:streamEvent', { streamId: 'stream-1', event: { type: 'done' } });
+    bridge.emit('agent:runEvent', { runId: 'stream-1', scenario: 'writing', event: { type: 'done' } });
     await bridge.flush();
     session = useWritingStore.getState().session;
     session?.reject();
@@ -127,11 +126,11 @@ describe('写作辅助控制器（流式 → diff → 回写）', () => {
     const ctx = computeEditorActionContext(kernel.editor.view, 'selection');
     controller.trigger('ai:evidence', ctx);
     await bridge.flush();
-    bridge.emit('ai:streamEvent', {
-      streamId: 'stream-1',
+    bridge.emit('agent:runEvent', {
+      runId: 'stream-1',
       event: { type: 'delta', text: '- 论据一\n- 论据二' },
     });
-    bridge.emit('ai:streamEvent', { streamId: 'stream-1', event: { type: 'done' } });
+    bridge.emit('agent:runEvent', { runId: 'stream-1', scenario: 'writing', event: { type: 'done' } });
     await bridge.flush();
 
     const session = useWritingStore.getState().session;
