@@ -114,7 +114,7 @@ export function defaultGlobalSettings(): GlobalSettings {
 export function defaultVaultSettings(): VaultSettings {
   return {
     editor: {
-      autoSaveMs: 500,
+      autoSaveMs: 1500,
       defaultPageTemplate: '# {{title}}\n\n',
       bindFileNameToTitle: true,
       vimMode: false,

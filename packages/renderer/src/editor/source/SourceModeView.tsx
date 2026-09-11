@@ -30,6 +30,7 @@ const SAVE_DEBOUNCE_MS = 500;
 /** IPC 适配器：renderer 永不直访 Node fs。 */
 const ipcIo: PageFileIo = {
   stat: (path) => invoke('fs:stat', { path }),
+  read: (path) => invoke('fs:readTextFile', { path }),
   exists: (path) => invoke('fs:exists', { path }),
   write: (path, content) => invoke('fs:writeTextFile', { path, content, createParentDirs: true }),
   renameLinked: async (from, to) => {
@@ -65,6 +66,7 @@ export function SourceModeView({ tab }: { tab: TabDescriptor }) {
   const previewScrollRef = useRef<HTMLDivElement | null>(null);
   const pathRef = useRef(initialPath);
   const textRef = useRef('');
+  const baseTextRef = useRef('');
   const baseVersionRef = useRef<FileVersion | null>(null);
   const dirtyRef = useRef(false);
   const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -93,6 +95,7 @@ export function SourceModeView({ tab }: { tab: TabDescriptor }) {
       throw new Error('外部修改冲突，等待用户选择');
     }
     baseVersionRef.current = result.version;
+    baseTextRef.current = text;
     if (textRef.current === text) dirtyRef.current = false;
     if (result.renamedFrom) {
       const tree = usePageTreeStore.getState();
@@ -151,6 +154,7 @@ export function SourceModeView({ tab }: { tab: TabDescriptor }) {
     const text = await invoke('fs:readTextFile', { path: pathRef.current });
     const info = await invoke('fs:stat', { path: pathRef.current });
     baseVersionRef.current = fileVersionOf(info);
+    baseTextRef.current = text;
     dirtyRef.current = false;
     editorRef.current?.setText(text);
     textRef.current = text;
@@ -171,6 +175,7 @@ export function SourceModeView({ tab }: { tab: TabDescriptor }) {
         const info = await invoke('fs:stat', { path: nextPath });
         if (cancelled) return;
         baseVersionRef.current = fileVersionOf(info);
+        baseTextRef.current = text;
         dirtyRef.current = false;
         textRef.current = text;
         setPreviewText(text);
@@ -250,6 +255,7 @@ export function SourceModeView({ tab }: { tab: TabDescriptor }) {
           io: ipcIo,
           path: current,
           baseVersion: baseVersionRef.current,
+          baseText: baseTextRef.current,
           dirty: dirtyRef.current,
         });
         if (result.kind === 'unchanged') return;

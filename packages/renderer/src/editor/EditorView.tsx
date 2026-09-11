@@ -30,6 +30,9 @@ import {
 import { CHAT_ASK_ACTION, requestAskAi } from '../features/ai/chat/ask-ai';
 import { openChatWikilinkOrNull } from '../features/ai/chat/chat-runtime';
 import { useUiStore } from '../stores/ui-store';
+import { useSettingsStore } from '../stores/settings-store';
+import { onEvent } from '../lib/ipc';
+import { classifyExternalChange, fileVersionOf, type FileVersion, type PageFileIo } from './source/page-source-io';
 import { pluginContributionRegistry } from '../registries';
 import {
   buildDispatchableBlockCommands,
@@ -252,6 +255,12 @@ export function EditorView({ tab }: EditorViewProps) {
   const saveStateRef = useRef<SaveState>('saved');
   const [saveError, setSaveError] = useState<string | null>(null);
   const [displayPath, setDisplayPath] = useState(path);
+  const [conflict, setConflict] = useState<FileVersion | null>(null);
+  const baseVersionRef = useRef<FileVersion | null>(null);
+  const baseTextRef = useRef('');
+  const dirtyRef = useRef(false);
+  const vaultSettings = useSettingsStore((s) => s.vault);
+  const autoSaveMs = vaultSettings?.editor.autoSaveMs ?? 1500;
   const hostRef = useRef<HTMLDivElement>(null);
   const kernelRef = useRef<EditorKernelInstance | null>(null);
   const pathRef = useRef(path);
@@ -324,6 +333,10 @@ export function EditorView({ tab }: EditorViewProps) {
           setFmSource(inspected.source);
           setFmLocked(inspected.locked);
           setFmParseError(inspected.parseError);
+          baseTextRef.current = markdown;
+          const info = await invoke('fs:stat', { path });
+          baseVersionRef.current = fileVersionOf(info);
+          dirtyRef.current = false;
           setLoad({ phase: 'ready', markdown });
         }
       } catch (e) {
@@ -374,6 +387,9 @@ export function EditorView({ tab }: EditorViewProps) {
           content: markdown,
           createParentDirs: true,
         });
+        baseTextRef.current = markdown;
+        baseVersionRef.current = fileVersionOf(await invoke('fs:stat', { path: currentPath }));
+        dirtyRef.current = false;
       });
 
       try {
@@ -411,8 +427,8 @@ export function EditorView({ tab }: EditorViewProps) {
     const builtinFlags = flagsFromActivePlugins(usePluginStore.getState().plugins);
     const kernel = createEditor(hostRef.current, {
       initialMarkdown: load.markdown,
-      saveDelayMs: 500,
-      onContentChange: save,
+      saveDelayMs: autoSaveMs,
+      onContentChange: (markdown) => { dirtyRef.current = true; void save(markdown); },
       onSaveError: (e) => {
         if (!unmountedRef.current) {
           saveStateRef.current = 'error';
@@ -583,7 +599,22 @@ export function EditorView({ tab }: EditorViewProps) {
       kernelRef.current = null;
       unmountedRef.current = true;
     };
-  }, [load, save, tab.id]);
+  }, [load, save, tab.id, autoSaveMs]);
+
+  useEffect(() => {
+    const io: PageFileIo = { stat: (p) => invoke('fs:stat', { path: p }), read: (p) => invoke('fs:readTextFile', { path: p }), exists: async () => false, write: async () => { throw new Error('unused'); }, renameLinked: async () => { throw new Error('unused'); } };
+    return onEvent('fs:changed', (event) => {
+      if (event.kind !== 'change' || event.path !== pathRef.current) return;
+      void classifyExternalChange({ io, path: pathRef.current, baseVersion: baseVersionRef.current, baseText: baseTextRef.current, dirty: dirtyRef.current }).then((result) => {
+        if (result.kind === 'unchanged') return;
+        if (result.kind === 'reload') {
+          void invoke('fs:readTextFile', { path: pathRef.current }).then((text) => { baseTextRef.current = text; baseVersionRef.current = result.version; dirtyRef.current = false; kernelRef.current?.setMarkdown(text); });
+          return;
+        }
+        setConflict(result.version);
+      });
+    });
+  }, []);
 
   // 仅替换 ProseMirror 文档首部 frontmatter 节点，保留正文选择与撤销映射。
   const applyFrontmatter = useCallback((next: FrontmatterData, sourceOverride?: string) => {
@@ -743,7 +774,8 @@ export function EditorView({ tab }: EditorViewProps) {
               applyFrontmatter(next, source);
             }}
           />
-          <div ref={hostRef} data-testid="editor-host" className="nexnote-editor-host" />
+          {conflict && <div data-testid="editor-conflict-banner" className="flex shrink-0 items-center gap-2 border-b border-destructive/40 bg-destructive/10 px-3 py-1.5 text-xs text-destructive"><AlertCircle className="size-3.5" /><span className="flex-1">磁盘文件已被外部修改，本地还有未保存的修改。</span><button type="button" data-testid="conflict-keep-local" onClick={() => { setConflict(null); void kernelRef.current?.flushPendingSave(); }}>保留本地</button><button type="button" data-testid="conflict-take-disk" onClick={() => void invoke('fs:readTextFile', { path: pathRef.current }).then((text) => { baseTextRef.current = text; dirtyRef.current = false; kernelRef.current?.setMarkdown(text); setConflict(null); })}>读取磁盘并重载</button></div>}
+        <div ref={hostRef} data-testid="editor-host" className="nexnote-editor-host" />
         </div>
       </div>
     </div>
