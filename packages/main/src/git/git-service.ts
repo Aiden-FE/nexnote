@@ -293,7 +293,8 @@ export class GitService {
     for (const item of output.split('\0')) {
       if (!item || item.length < 4) continue;
       const value = item.slice(3).replace(/\\/g, '/');
-      if (item[0] === 'U' || item[1] === 'U' || item.startsWith('AA ') || item.startsWith('DD ')) files.push(value);
+      if (item[0] === 'U' || item[1] === 'U' || item.startsWith('AA ') || item.startsWith('DD '))
+        files.push(value);
     }
     return [...new Set(files)];
   }
@@ -783,6 +784,14 @@ function errorMessage(error: unknown): string {
 export function sanitizeRemoteText(value: string): string {
   return value
     .replace(/([a-z][a-z0-9+.-]*:\/\/)([^\s/@:]+):[^\s/@]+@/gi, '$1$2:***@')
-    .replace(/([?&](?:access_token|token|password|passwd|secret)=)[^\s&#]+/gi, '$1***')
+    .replace(/(authorization\s*:\s*)(?:bearer|basic|token)\s+[^\s,;"']+/gi, '$1***')
+    .replace(
+      /([?&](?:access_token|client_secret|api_key|apikey|token|password|passwd|secret|key)=)[^\s&#]+/gi,
+      '$1***',
+    )
+    .replace(
+      /\b((?:client_secret|api_key|apikey|access_token|secret_key|private_key|refresh_token|auth_token)\s*[=:]\s*)["']?[^\s"',;]+/gi,
+      '$1***',
+    )
     .replace(/(https?:\/\/)[^\s/@]+@/gi, '$1***@');
 }

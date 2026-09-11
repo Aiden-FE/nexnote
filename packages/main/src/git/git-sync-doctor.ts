@@ -103,9 +103,7 @@ function sameFiles(
 ): boolean {
   return (
     a.length === b.length &&
-    a.every(
-      (file, index) => file.path === b[index]?.path && file.sha256 === b[index]?.sha256,
-    )
+    a.every((file, index) => file.path === b[index]?.path && file.sha256 === b[index]?.sha256)
   );
 }
 
@@ -113,8 +111,16 @@ type DoctorFingerprint = Awaited<ReturnType<GitService['doctorFingerprint']>>;
 
 /** 诊断快照若带内容指纹则直接复用，避免 prepare 二次读仓库。 */
 function fingerprintFromSnapshot(snapshot: GitDoctorStatusSnapshot): DoctorFingerprint | undefined {
-  return snapshot.headOid !== undefined && snapshot.porcelain !== undefined && snapshot.files !== undefined && snapshot.remoteOid !== undefined
-    ? { headOid: snapshot.headOid, remoteOid: snapshot.remoteOid, porcelain: snapshot.porcelain, files: snapshot.files }
+  return snapshot.headOid !== undefined &&
+    snapshot.porcelain !== undefined &&
+    snapshot.files !== undefined &&
+    snapshot.remoteOid !== undefined
+    ? {
+        headOid: snapshot.headOid,
+        remoteOid: snapshot.remoteOid,
+        porcelain: snapshot.porcelain,
+        files: snapshot.files,
+      }
     : undefined;
 }
 
@@ -411,7 +417,13 @@ export class GitSyncDoctor {
     if (this.deps.getRoot() !== entry.root)
       throw new GitSyncDoctorError('vault 已切换，请重新诊断后重试', 'ROOT_CHANGED');
     // TOCTOU：execute 前重新取完整快照（含内容指纹），与 prepare 时不一致即拒绝。
-    const status = await this.deps.git.statusFor(entry.root);
+    // statusFor 失败时以稳定错误码返回，避免原始异常消息经 IPC 暴露。
+    let status;
+    try {
+      status = await this.deps.git.statusFor(entry.root);
+    } catch {
+      throw new GitSyncDoctorError('无法读取当前仓库状态，请重试', 'STATUS_FAILED');
+    }
     const [snapshot, fingerprint] = await this.captureSnapshot(entry.root, status);
     const sameRootState =
       snapshot.branch === entry.snapshot.branch &&
@@ -443,7 +455,12 @@ export class GitSyncDoctor {
       await this.deps.git.push();
       message = '已推送本地提交';
     }
-    const after = await this.deps.git.statusFor(entry.root);
+    let after;
+    try {
+      after = await this.deps.git.statusFor(entry.root);
+    } catch {
+      throw new GitSyncDoctorError('修复已执行，但读取最新状态失败，请手动刷新', 'STATUS_FAILED');
+    }
     const [afterSnapshot] = await this.captureSnapshot(entry.root, after);
     return { message, status: afterSnapshot };
   }
@@ -474,10 +491,7 @@ export class GitSyncDoctor {
     [GitDoctorStatusSnapshot, Awaited<ReturnType<GitService['doctorFingerprint']>> | undefined]
   > {
     if (!status.repository)
-      return [
-        snapshotOf(status),
-        { headOid: null, remoteOid: null, porcelain: '', files: [] },
-      ];
+      return [snapshotOf(status), { headOid: null, remoteOid: null, porcelain: '', files: [] }];
     try {
       const fingerprint = await this.deps.git.doctorFingerprint(root);
       return [snapshotOf(status, fingerprint), fingerprint];
