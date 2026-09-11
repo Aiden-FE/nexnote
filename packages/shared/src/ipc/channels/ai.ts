@@ -6,8 +6,6 @@ import type {
   AiFeatureKey,
   AiProfileExportBundle,
   AiProfileInput,
-  ChatMessage,
-  ChatParams,
   ConnectionTestResult,
   EmbedResult,
 } from '../../types/ai';

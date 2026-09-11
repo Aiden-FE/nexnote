@@ -14,7 +14,8 @@ export interface AgentRunRequest {
 
 export type AgentRunEvent =
   | { type: 'start'; model: string }
-  | { type: 'context'; sources: unknown[]; degraded: boolean }
+  | { type: 'fallback'; runtime: AgentRuntimeKind }
+  | { type: 'context'; sources: unknown[]; degraded: boolean; retrievalModel?: string | null }
   | { type: 'delta'; text: string }
   | { type: 'reasoningDelta'; text: string }
   | { type: 'tool'; tool: string; status: 'started' | 'completed' | 'denied' }
@@ -36,7 +37,10 @@ export interface AgentApprovalRequest {
   tool: string;
   expiresAt: number;
 }
-export interface AgentApprovalResponse { approvalId: string; decision: AgentApprovalDecision; }
+export interface AgentApprovalResponse {
+  approvalId: string;
+  decision: AgentApprovalDecision;
+}
 export interface AgentAuditRecord {
   runId: string;
   scenario: AgentScenario;

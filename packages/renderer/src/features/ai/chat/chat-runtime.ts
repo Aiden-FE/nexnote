@@ -1,24 +1,8 @@
-import type {
-  ChatMessage,
-  ChatSession,
-  ChatSourceRef,
-  ChatStageStat,
-  ChatTurn,
-  ChatTurnMeta,
-  RetrievalResponse,
-} from '@nexnote/shared';
+import type { ChatMessage, ChatSession, ChatTurn, ChatTurnMeta } from '@nexnote/shared';
 import { invoke, onEvent } from '../../../lib/ipc';
-import { retrieve } from '../retrieval/retrieval-client';
 import { getSelectedSkillIds } from '../../skills/chat-skill-store';
 import { useChatStore } from './chat-store';
-import { assembleChatContext } from './context';
-import { refreshAutoDocumentChip } from './chat-context-bridge';
 import * as client from './chat-client';
-
-const SYSTEM_PROMPT =
-  '你是 NexNote 内置的知识库对话助手。基于用户给出的当前笔记上下文与知识库召回内容回答问题；' +
-  '使用 Markdown 排版，保留正文中的双链 [[...]] 与标签 #tag 语法；' +
-  '若参考资料不足以回答，请明确指出，不要编造来源。';
 
 let working: ChatSession | null = null;
 let draft = false;
@@ -38,27 +22,6 @@ function errorMessage(e: unknown): string {
   return e instanceof Error ? e.message : String(e);
 }
 
-function toTurnMeta(retrieval: RetrievalResponse): ChatTurnMeta {
-  const sources: ChatSourceRef[] = retrieval.sources.map((s) => ({
-    path: s.path,
-    title: s.title,
-    blockId: s.blockId,
-    snippet: s.snippet,
-    score: s.score,
-    vectorSim: s.vectorSim,
-    confidenceScore: s.confidenceScore,
-    via: s.via,
-  }));
-  const stages: ChatStageStat[] = retrieval.stages.map((s) => ({
-    stage: s.stage,
-    candidates: s.candidates,
-    elapsedMs: s.elapsedMs,
-    enabled: s.enabled,
-    note: s.note,
-  }));
-  return { sources, stages, degraded: retrieval.degraded, retrievalModel: retrieval.model };
-}
-
 async function persist(session: ChatSession): Promise<void> {
   session.meta.updatedAt = new Date().toISOString();
   try {
@@ -71,14 +34,12 @@ async function persist(session: ChatSession): Promise<void> {
   }
 }
 
-function finalizeStream(attachMeta: boolean): void {
+function finalizeStream(_attachMeta: boolean): void {
   runId = null;
   useChatStore.getState().setStreaming(false);
   if (working) {
     const assistant = working.turns[working.turns.length - 1];
-    if (assistant && assistant.role === 'assistant') {
-      if (attachMeta && pendingMeta) assistant.meta = pendingMeta;
-    }
+    if (assistant?.role === 'assistant' && pendingMeta) assistant.meta = pendingMeta;
     pendingMeta = null;
     void persist(working);
   }
@@ -92,7 +53,13 @@ export function initChatRuntime(): void {
     if (sid !== runId || !working) return;
     const assistant = working.turns[working.turns.length - 1];
     if (!assistant || assistant.role !== 'assistant') return;
-    if (event.type === 'start') {
+    if (event.type === 'context') {
+      pendingMeta = {
+        sources: event.sources as ChatTurnMeta['sources'],
+        degraded: event.degraded,
+        retrievalModel: event.retrievalModel ?? null,
+      };
+    } else if (event.type === 'start') {
       useChatStore.getState().setModelLabel(event.model);
       working.meta.model = event.model;
     } else if (event.type === 'delta') {
@@ -101,9 +68,7 @@ export function initChatRuntime(): void {
     } else if (event.type === 'done') {
       finalizeStream(true);
     } else if (event.type === 'error') {
-      useChatStore
-        .getState()
-        .setError(`${event.message}${event.code ? `（${event.code}）` : ''}`);
+      useChatStore.getState().setError(`${event.message}${event.code ? `（${event.code}）` : ''}`);
       finalizeStream(true);
     }
   });
@@ -112,7 +77,6 @@ export function initChatRuntime(): void {
 async function cancelActiveStream(): Promise<void> {
   const id = runId;
   runId = null;
-  pendingMeta = null;
   if (id) await invoke('agent:cancel', { runId: id }).catch(() => undefined);
   useChatStore.getState().setStreaming(false);
 }
@@ -173,7 +137,12 @@ export async function openChatWikilinkOrNull(pageName: string): Promise<boolean>
 
 export function stopStream(): void {
   void cancelActiveStream().then(() => {
-    if (working) void persist(working);
+    if (working) {
+      const assistant = working.turns[working.turns.length - 1];
+      if (assistant?.role === 'assistant' && pendingMeta) assistant.meta = pendingMeta;
+      pendingMeta = null;
+      void persist(working);
+    }
   });
 }
 
@@ -201,47 +170,26 @@ export async function sendMessage(rawText: string): Promise<void> {
   // 自动保存：用户消息落盘（重启可续聊）。
   await persist(session);
 
-  // 上下文注入：chips（显式选择）+ 知识库召回（DEV-011）。
-  // 发送前刷新「当前文档」chip，保证注入最新正文。
-  refreshAutoDocumentChip();
-  const { contextBlock } = assembleChatContext(useChatStore.getState().chips);
-  let retrieval: RetrievalResponse | null = null;
-  try {
-    retrieval = await retrieve({
-      query: content,
-      budgetChars: 2000,
-      skillIds: getSelectedSkillIds(),
-    });
-  } catch {
-    retrieval = null;
-  }
-
+  // 上下文正文与 skill 选择透传给主进程；主进程负责 Skill 验证、召回和 prompt 组装。
+  const contextText = useChatStore
+    .getState()
+    .chips.map((chip) => chip.text)
+    .filter(Boolean)
+    .join('\n\n');
   const prior = session.turns.slice(0, session.turns.length - 2);
-  const messages: ChatMessage[] = [{ role: 'system', content: SYSTEM_PROMPT }];
-  for (const turn of prior) {
-    messages.push({ role: turn.role, content: turn.content });
-  }
-  const contextParts: string[] = [];
-  if (contextBlock.trim()) contextParts.push(contextBlock.trim());
-  if (retrieval?.contextText.trim()) {
-    contextParts.push(`【知识库召回内容】\n${retrieval.contextText.trim()}`);
-  }
-  const userContent =
-    contextParts.length > 0
-      ? `${contextParts.join('\n\n')}\n\n（以上为参考资料，可能不完整或已截断）\n\n我的请求：\n${content}`
-      : content;
-  messages.push({ role: 'user', content: userContent });
-
-  pendingMeta = retrieval ? toTurnMeta(retrieval) : null;
+  const messages: ChatMessage[] = [];
+  for (const turn of prior) messages.push({ role: turn.role, content: turn.content });
+  messages.push({ role: 'user', content });
 
   try {
     const { runId: sid } = await invoke('agent:run:chat', {
       messages,
+      skillIds: getSelectedSkillIds(),
+      contextText,
     });
     runId = sid;
   } catch (e) {
     runId = null;
-    pendingMeta = null;
     useChatStore.getState().setStreaming(false);
     useChatStore.getState().setError(errorMessage(e));
     if (working) await persist(working);

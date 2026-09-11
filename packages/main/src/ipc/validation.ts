@@ -225,16 +225,43 @@ const aiConnectionTarget: PayloadValidator = (payload) => {
 const agentRun: PayloadValidator = (payload) => {
   if (!isPlainObject(payload)) return invalid('payload 必须是普通对象');
   const allowed = ['messages', 'skillIds', 'contextText', 'params'];
-  if (Object.keys(payload).some((key) => !allowed.includes(key))) return invalid('agent payload 包含未知字段');
+  if (Object.keys(payload).some((key) => !allowed.includes(key)))
+    return invalid('agent payload 包含未知字段');
   const messages = payload.messages;
-  if (!Array.isArray(messages) || messages.some((m) => !isPlainObject(m) || !['system', 'user', 'assistant'].includes(String(m.role)) || typeof m.content !== 'string')) return invalid('messages 必须是合法消息数组');
-  if (payload.skillIds !== undefined && (!Array.isArray(payload.skillIds) || payload.skillIds.some((id) => typeof id !== 'string'))) return invalid('skillIds 必须是字符串数组');
-  if (payload.contextText !== undefined && typeof payload.contextText !== 'string') return invalid('contextText 必须是字符串');
-  if (payload.params !== undefined && !isPlainObject(payload.params)) return invalid('params 必须是对象');
+  if (
+    !Array.isArray(messages) ||
+    messages.some(
+      (m) =>
+        !isPlainObject(m) ||
+        !['system', 'user', 'assistant'].includes(String(m.role)) ||
+        typeof m.content !== 'string',
+    )
+  )
+    return invalid('messages 必须是合法消息数组');
+  if (
+    payload.skillIds !== undefined &&
+    (!Array.isArray(payload.skillIds) || payload.skillIds.some((id) => typeof id !== 'string'))
+  )
+    return invalid('skillIds 必须是字符串数组');
+  if (payload.contextText !== undefined && typeof payload.contextText !== 'string')
+    return invalid('contextText 必须是字符串');
+  if (payload.params !== undefined && !isPlainObject(payload.params))
+    return invalid('params 必须是对象');
   return null;
 };
+
 const agentCancel = object(['runId'], [stringField('runId')]);
-const agentApproval = object(['approvalId', 'decision'], [stringField('approvalId'), (p) => ((p as Record<string, unknown>).decision === 'approved' || (p as Record<string, unknown>).decision === 'denied') ? null : invalid('decision 无效')]);
+const agentApproval = object(
+  ['approvalId', 'decision'],
+  [
+    stringField('approvalId'),
+    (p) =>
+      (p as Record<string, unknown>).decision === 'approved' ||
+      (p as Record<string, unknown>).decision === 'denied'
+        ? null
+        : invalid('decision 无效'),
+  ],
+);
 const aiEmbed = object(['texts'], [stringArrayField('texts')]);
 const aiImport = object(['json'], [stringField('json')]);
 

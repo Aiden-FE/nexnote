@@ -48,19 +48,39 @@ const retrieval: RetrievalResponse = {
 function installBridge() {
   const listeners: Record<string, Set<StreamListener>> = {};
   const saveCalls: ChatSession[] = [];
-  const startCalls: Array<{ messages: Array<{ role: string; content: string }> }> = [];
+  const startCalls: Array<{
+    messages: Array<{ role: string; content: string }>;
+    skillIds?: string[];
+    contextText?: string;
+  }> = [];
   (window as unknown as { nexnote: unknown }).nexnote = {
     invoke: vi.fn(async (channel: string, payload?: unknown) => {
       if (channel === 'chat:new') return { ok: true, data: newSession() };
       if (channel === 'chat:save') {
         saveCalls.push((payload as { session: ChatSession }).session);
-        return { ok: true, data: { path: 'AI Chats/新对话.md', name: '新对话.md', kind: 'file', size: 1, modifiedAt: '' } };
+        return {
+          ok: true,
+          data: {
+            path: 'AI Chats/新对话.md',
+            name: '新对话.md',
+            kind: 'file',
+            size: 1,
+            modifiedAt: '',
+          },
+        };
       }
       if (channel === 'chat:list')
         return {
           ok: true,
           data: [
-            { path: 'AI Chats/历史会话.md', id: 'c-9', title: '历史会话', model: null, turnCount: 2, updatedAt: '2026-09-01T00:00:00.000Z' },
+            {
+              path: 'AI Chats/历史会话.md',
+              id: 'c-9',
+              title: '历史会话',
+              model: null,
+              turnCount: 2,
+              updatedAt: '2026-09-01T00:00:00.000Z',
+            },
           ],
         };
       if (channel === 'chat:get')
@@ -93,7 +113,8 @@ function installBridge() {
       return () => set.delete(cb);
     },
   };
-  const emit = (channel: string, payload: unknown) => listeners[channel]?.forEach((cb) => cb(payload));
+  const emit = (channel: string, payload: unknown) =>
+    listeners[channel]?.forEach((cb) => cb(payload));
   return {
     saveCalls,
     startCalls,
@@ -101,9 +122,26 @@ function installBridge() {
     flush: () => new Promise((r) => setTimeout(r, 0)),
     streamDone: () => {
       setTimeout(() => {
-        emit('agent:runEvent', { runId: 'stream-1', scenario: 'chat', event: { type: 'start', model: 'chat-model' } });
-        emit('agent:runEvent', { runId: 'stream-1', scenario: 'chat', event: { type: 'delta', text: '双链是' } });
-        emit('agent:runEvent', { runId: 'stream-1', scenario: 'chat', event: { type: 'delta', text: '双向链接。' } });
+        emit('agent:runEvent', {
+          runId: 'stream-1',
+          scenario: 'chat',
+          event: { type: 'context', sources: retrieval.sources, degraded: retrieval.degraded },
+        });
+        emit('agent:runEvent', {
+          runId: 'stream-1',
+          scenario: 'chat',
+          event: { type: 'start', model: 'chat-model' },
+        });
+        emit('agent:runEvent', {
+          runId: 'stream-1',
+          scenario: 'chat',
+          event: { type: 'delta', text: '双链是' },
+        });
+        emit('agent:runEvent', {
+          runId: 'stream-1',
+          scenario: 'chat',
+          event: { type: 'delta', text: '双向链接。' },
+        });
         emit('agent:runEvent', { runId: 'stream-1', scenario: 'chat', event: { type: 'done' } });
       }, 0);
     },
@@ -137,15 +175,19 @@ describe('对话 dock 运行时（流式 → 来源 → 自动保存）', () => 
     const meta = active.turns[1]!.meta!;
     expect(meta.sources).toHaveLength(1);
     expect(meta.sources![0]!.path).toBe('笔记.md');
-    expect(meta.retrievalModel).toBe('embed-1');
+    expect(meta.degraded).toBe(false);
     const lastStart = bridge.startCalls.at(-1)!;
     const userMsg = lastStart.messages.find((m) => m.role === 'user')!;
-    expect(userMsg.content).toContain('知识库召回');
+    expect(userMsg.content).not.toContain('知识库召回');
     expect(userMsg.content).toContain('什么是双链？');
+    expect(lastStart.skillIds).toBeUndefined();
+    expect(lastStart.contextText).toBe('');
     expect(bridge.saveCalls.length).toBeGreaterThan(0);
     const saved = bridge.saveCalls.at(-1)!;
     expect(saved.path).toContain('AI Chats/');
-    expect(saved.turns.some((t) => t.role === 'assistant' && (t.meta?.sources?.length ?? 0) > 0)).toBe(true);
+    expect(
+      saved.turns.some((t) => t.role === 'assistant' && (t.meta?.sources?.length ?? 0) > 0),
+    ).toBe(true);
     expect(store.useChatStore.getState().streaming).toBe(false);
   });
 

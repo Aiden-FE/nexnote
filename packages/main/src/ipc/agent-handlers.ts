@@ -7,9 +7,11 @@ import type { AgentGateway } from '../agent/gateway';
  * 渲染层不能携带 provider/profile/model 选择权，scenario 由通道本身决定。
  */
 export function registerAgentHandlers(registrar: IpcRegistrar, agent: AgentGateway): void {
-  registrar.register('agent:run:chat', async (payload) => ok(agent.run('chat', payload)));
-  registrar.register('agent:run:writing', async (payload) => ok(agent.run('writing', payload)));
-  registrar.register('agent:run:debug', async (payload) => ok(agent.run('debug', payload)));
+  registrar.register('agent:run:chat', async (payload) => ok(await agent.run('chat', payload)));
+  registrar.register('agent:run:writing', async (payload) =>
+    ok(await agent.run('writing', payload)),
+  );
+  registrar.register('agent:run:debug', async (payload) => ok(await agent.run('debug', payload)));
 
   registrar.register('agent:cancel', async (payload) => {
     return ok({ cancelled: agent.cancel(payload.runId) });
