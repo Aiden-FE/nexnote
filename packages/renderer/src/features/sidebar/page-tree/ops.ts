@@ -15,8 +15,8 @@ import { displayName, isMarkdown } from '../../../page-tree/tree-utils';
 export type NewNoteFormat = 'native-block' | 'markdown';
 
 /**
- * 新建笔记并打开：native-block（默认）保持块编辑模式；markdown 打开后进入源码模式
- * （复用 tab 级临时状态，关闭 tab 即回到块编辑，ADR-0004）。
+ * 新建笔记并打开：native-block（默认）进入块编辑；markdown 进入源码编辑器
+ * （模式语义是格式的一部分，持久于 tab 生命周期，ADR-0004）。
  */
 export async function createNoteIn(
   parentDir: string,
@@ -24,15 +24,22 @@ export async function createNoteIn(
 ): Promise<string> {
   const info = await invoke('fs:createNote', { parentDir, format });
   const tab = openPage(info.path, displayName({ name: info.name, kind: 'file' }));
-  if (format === 'markdown') getTabStore().getState().toggleSourceMode(tab.id, true);
+  getTabStore().getState().updateTab(tab.id, {
+    format,
+    editorMode: format === 'markdown' ? 'source' : 'block',
+  });
   return info.path;
 }
 
-/** 按 sidecar 中的持久格式打开页面；Markdown 文档默认进入源码模式。 */
+/** 按 sidecar 中的持久格式打开页面；Markdown 文档由源码编辑器承载。 */
 export async function openDocument(path: string): Promise<string> {
   const metadata = await invoke('document:getMetadata', { path });
+  const format: NewNoteFormat = metadata?.format === 'markdown' ? 'markdown' : 'native-block';
   const tab = openPage(path);
-  if (metadata?.format === 'markdown') getTabStore().getState().toggleSourceMode(tab.id, true);
+  getTabStore().getState().updateTab(tab.id, {
+    format,
+    editorMode: format === 'markdown' ? 'source' : 'block',
+  });
   return path;
 }
 

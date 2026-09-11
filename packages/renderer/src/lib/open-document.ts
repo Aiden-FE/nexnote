@@ -1,16 +1,17 @@
 import { invoke } from './ipc';
-import { openDocx, openPage, getTabStore } from '../stores/tab-store';
+import { openDocx, openPage, getTabStore, type DocumentFormat } from '../stores/tab-store';
 
 /**
  * 统一文档打开入口：所有导航（搜索/面板/图谱/反链/AI 来源/编辑器内链接/页面树）
  * 都经此函数，保证：
  * - `.docx` 打开只读预览 tab；
- * - sidecar 持久格式为 markdown 的文档默认进入源码模式（重开也保持）。
+ * - sidecar 持久格式为 markdown 的文档使用源码编辑器（预览由该视图管理）；
+ * - legacy 无 sidecar 文档默认按 native-block 兼容打开。
  */
 export async function openDocumentTab(
   pagePath: string,
   title?: string,
-): Promise<{ kind: 'page' | 'docx'; editorMode?: 'source' }> {
+): Promise<{ kind: 'page' | 'docx'; format?: DocumentFormat }> {
   if (/\.(docx)$/i.test(pagePath)) {
     openDocx(pagePath, title);
     return { kind: 'docx' };
@@ -22,10 +23,12 @@ export async function openDocumentTab(
   } catch {
     metadata = null;
   }
+  const format: DocumentFormat = metadata?.format === 'markdown' ? 'markdown' : 'native-block';
   const tab = openPage(pagePath, title);
-  if (metadata?.format === 'markdown') {
-    getTabStore().getState().toggleSourceMode(tab.id, true);
-    return { kind: 'page', editorMode: 'source' };
-  }
-  return { kind: 'page' };
+  getTabStore().getState().updateTab(tab.id, {
+    format,
+    // Markdown's only mode is source editor; initialize it explicitly.
+    editorMode: format === 'markdown' ? 'source' : 'block',
+  });
+  return { kind: 'page', format };
 }

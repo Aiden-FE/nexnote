@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { AlertCircle, Check, Code2, LoaderCircle, Save } from 'lucide-react';
+import { AlertCircle, Check, Code2, Eye, EyeOff, LoaderCircle, Save } from 'lucide-react';
 import type { TabDescriptor } from '../../stores/tab-store';
 import { useTabStore } from '../../stores/tab-store';
 import { usePageTreeStore } from '../../stores/page-tree-store';
@@ -60,6 +60,7 @@ export function SourceModeView({ tab }: { tab: TabDescriptor }) {
   const [switchError, setSwitchError] = useState<string | null>(null);
   const [displayPath, setDisplayPath] = useState(initialPath);
   const [previewText, setPreviewText] = useState('');
+  const previewVisible = tab.previewVisible !== false;
 
   const hostRef = useRef<HTMLDivElement>(null);
   const editorRef = useRef<SourceEditorHandle | null>(null);
@@ -393,15 +394,28 @@ export function SourceModeView({ tab }: { tab: TabDescriptor }) {
           <StatusIcon className={`size-3 ${status.className}`} />
           {status.text}
         </span>
-        <button
-          type="button"
-          data-testid="source-mode-toggle"
-          title="切回块编辑模式（⌘/Ctrl+E）"
-          className="flex shrink-0 items-center gap-1 rounded px-1.5 py-0.5 hover:bg-accent"
-          onClick={() => void requestSourceModeToggle(tab.id)}
-        >
-          <Code2 className="size-3" /> 块编辑
-        </button>
+        {tab.format === 'markdown' ? (
+          <button
+            type="button"
+            data-testid="preview-toggle"
+            title={previewVisible ? '隐藏预览（⌘/Ctrl+E）' : '显示预览（⌘/Ctrl+E）'}
+            className="flex shrink-0 items-center gap-1 rounded px-1.5 py-0.5 hover:bg-accent"
+            onClick={() => useTabStore.getState().togglePreview(tab.id)}
+          >
+            {previewVisible ? <EyeOff className="size-3" /> : <Eye className="size-3" />}
+            {previewVisible ? '隐藏预览' : '显示预览'}
+          </button>
+        ) : (
+          <button
+            type="button"
+            data-testid="source-mode-toggle"
+            title="切回块编辑模式（⌘/Ctrl+E）"
+            className="flex shrink-0 items-center gap-1 rounded px-1.5 py-0.5 hover:bg-accent"
+            onClick={() => void requestSourceModeToggle(tab.id)}
+          >
+            <Code2 className="size-3" /> 块编辑
+          </button>
+        )}
       </div>
 
       {conflict && (
@@ -444,12 +458,14 @@ export function SourceModeView({ tab }: { tab: TabDescriptor }) {
           className="min-h-0 min-w-0 flex-1 overflow-hidden border-r"
           ref={hostRef}
         />
-        <LivePreview
-          markdown={previewText}
-          sourcePath={displayPath}
-          onNavigate={navigate}
-          scrollRef={previewScrollRef}
-        />
+        {previewVisible && (
+          <LivePreview
+            markdown={previewText}
+            sourcePath={displayPath}
+            onNavigate={navigate}
+            scrollRef={previewScrollRef}
+          />
+        )}
       </div>
     </div>
   );

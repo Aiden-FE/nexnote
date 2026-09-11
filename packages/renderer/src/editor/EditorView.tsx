@@ -749,15 +749,17 @@ export function EditorView({ tab }: EditorViewProps) {
           <StatusIcon className={`size-3 ${status.className}`} />
           {status.text}
         </span>
-        <button
-          type="button"
-          data-testid="source-mode-toggle"
-          title="打开源码模式（⌘/Ctrl+E）"
-          className="flex shrink-0 items-center gap-1 rounded px-1.5 py-0.5 hover:bg-accent"
-          onClick={() => void requestSourceModeToggle(tab.id)}
-        >
-          <FileCode2 className="size-3" /> 源码
-        </button>
+        {tab.format === 'markdown' && (
+          <button
+            type="button"
+            data-testid="source-mode-toggle"
+            title="打开源码模式（⌘/Ctrl+E）"
+            className="flex shrink-0 items-center gap-1 rounded px-1.5 py-0.5 hover:bg-accent"
+            onClick={() => void requestSourceModeToggle(tab.id)}
+          >
+            <FileCode2 className="size-3" /> 源码
+          </button>
+        )}
       </div>
       <div className="nexnote-editor-scroll min-h-0 flex-1 overflow-auto">
         <div className="nexnote-editor-relative relative mx-auto max-w-[var(--editor-content-width)] px-10 py-10">

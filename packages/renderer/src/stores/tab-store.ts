@@ -9,6 +9,7 @@ import {
 
 export type TabKind = 'welcome' | 'page' | 'docx' | 'files' | 'graph' | 'settings';
 export type EditorMode = 'block' | 'source';
+export type DocumentFormat = 'native-block' | 'markdown';
 
 export interface TabDescriptor {
   id: string;
@@ -18,6 +19,14 @@ export interface TabDescriptor {
   pagePath?: string;
   /** 仅存在于当前 tab 生命周期；关闭 tab 后不会持久化。 */
   editorMode?: EditorMode;
+  /**
+   * 页面 tab 的持久文档格式（来自 sidecar metadata）：
+   * - markdown：永远不进入块编辑（不挂 TipTap），由 SourceModeView 承载（编辑 + 可隐藏预览）；
+   * - native-block / 缺省（legacy 无 sidecar）：块编辑，且不提供源码模式入口。
+   */
+  format?: DocumentFormat;
+  /** Markdown 源码编辑器的实时预览面板是否显示。 */
+  previewVisible?: boolean;
   createdAt: number;
 }
 
@@ -29,7 +38,7 @@ export interface WorkspaceState {
   openDocxTab(pagePath: string, title?: string): TabDescriptor;
   updateTab(
     tabId: string,
-    patch: { title?: string; pagePath?: string; editorMode?: EditorMode },
+    patch: { title?: string; pagePath?: string; editorMode?: EditorMode; format?: DocumentFormat },
   ): void;
   closeTab(tabId: string): void;
   closeOtherTabs(tabId: string): void;
@@ -37,6 +46,8 @@ export interface WorkspaceState {
   setActiveTab(tabId: string): void;
   setTabTitle(tabId: string, title: string): void;
   toggleSourceMode(tabId: string, enabled?: boolean): void;
+  /** Markdown 文档的源码编辑器分栏预览开关（仅对 format=markdown 的页面 tab 生效）。 */
+  togglePreview(tabId: string, visible?: boolean): void;
   retargetTabs(fromPath: string, toPath: string, title: string): void;
   closeTabsForPath(removedPath: string): void;
 }
@@ -139,8 +150,20 @@ export const useTabStore = create<WorkspaceState>()((set, get) => ({
     set((state) => ({
       tabs: state.tabs.map((tab) => {
         if (tab.id !== tabId || tab.kind !== 'page') return tab;
+        // Sidecar native-block 文档没有源码模式；legacy 无 sidecar 保持旧行为。
+        if (tab.format === 'native-block') return { ...tab, editorMode: 'block' };
         const next = enabled ?? tab.editorMode !== 'source';
         return { ...tab, editorMode: next ? 'source' : 'block' };
+      }),
+    }));
+  },
+
+  togglePreview(tabId, visible) {
+    set((state) => ({
+      tabs: state.tabs.map((tab) => {
+        if (tab.id !== tabId || tab.kind !== 'page' || tab.format !== 'markdown') return tab;
+        const next = visible ?? tab.previewVisible !== true;
+        return { ...tab, previewVisible: next };
       }),
     }));
   },

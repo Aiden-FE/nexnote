@@ -134,7 +134,8 @@ describe('页面树「新建」下拉菜单', () => {
     const tab = activeTab();
     expect(tab?.kind).toBe('page');
     expect(tab?.pagePath).toBe('新建文档.md');
-    expect(tab?.editorMode).toBeUndefined();
+    expect(tab?.format).toBe('native-block');
+    expect(tab?.editorMode).toBe('block');
     // 选中后菜单关闭
     expect(view.querySelector('[data-testid="new-note-menu"]')).toBeNull();
   });
@@ -163,7 +164,8 @@ describe('页面树「新建」下拉菜单', () => {
 
     expect(createdPayloads).toEqual([{ parentDir: '', format: 'native-block' }]);
     expect(activeTab()?.pagePath).toBe('新建文档.md');
-    expect(activeTab()?.editorMode).toBeUndefined();
+    expect(activeTab()?.format).toBe('native-block');
+    expect(activeTab()?.editorMode).toBe('block');
     expect(view.querySelector('[data-testid="new-note-menu"]')).toBeNull();
   });
 
