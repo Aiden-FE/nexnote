@@ -39,17 +39,16 @@ function textBetween(view: EditorView, from: number, to: number): string {
   return view.state.doc.textBetween(from, to, '\n', '\ufffc');
 }
 
-/** 计算浮层锚点坐标：选区首尾的水平中点、垂直上方。 */
-function coordsForRange(view: EditorView, from: number, to: number): { top: number; left: number } {
+/** 计算浮层锚点坐标：选区起点的视觉矩形，垂直上方。 */
+function coordsForRange(
+  view: EditorView,
+  from: number,
+  _to: number,
+): { top: number; left: number } {
   const maxPos = view.state.doc.content.size;
   const safeFrom = Math.min(Math.max(from, 0), maxPos);
-  const safeTo = Math.min(Math.max(to, 0), maxPos);
   const start = view.coordsAtPos(safeFrom);
-  const end = view.coordsAtPos(Math.max(safeTo, safeFrom));
-  return {
-    top: Math.min(start.top, end.top),
-    left: (start.left + end.right) / 2,
-  };
+  return { top: start.top, left: start.left };
 }
 
 /**

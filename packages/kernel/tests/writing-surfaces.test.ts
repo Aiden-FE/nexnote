@@ -97,6 +97,76 @@ describe('选区浮动工具栏（SelectionBubble）', () => {
     kernel.destroy();
   });
 
+  it('多行选区时锚定选区起点行而非首尾中点', () => {
+    const onAction = vi.fn();
+    const { container, kernel } = mount('第一行内容\n\n第二行内容', {
+      selectionBubble: {
+        actions: [{ id: 'ai-rewrite', title: '改写' }],
+        onAction,
+      },
+    });
+    const view = kernel.editor.view;
+    const host = container.getBoundingClientRect;
+    container.getBoundingClientRect = () => ({
+      top: 50,
+      left: 0,
+      right: 800,
+      bottom: 600,
+      width: 800,
+      height: 550,
+      x: 0,
+      y: 50,
+      toJSON: () => ({}),
+    });
+    const from = 1;
+    const to = view.state.doc.content.size - 1;
+    vi.spyOn(view, 'coordsAtPos').mockImplementation((pos) =>
+      pos === from
+        ? { top: 120, bottom: 140, left: 24, right: 40 }
+        : { top: 240, bottom: 260, left: 400, right: 420 },
+    );
+    selectText(kernel, from, to);
+    const ctx = computeEditorActionContext(view, 'selection');
+    expect(ctx.coords).toEqual({ top: 120, left: 24 });
+    const bubble = container.querySelector<HTMLElement>('[data-selection-bubble]');
+    expect(bubble?.style.left).toBe('24px');
+    container.getBoundingClientRect = host;
+    kernel.destroy();
+  });
+
+  it('选区贴近顶部时工具栏不越过容器上边界', () => {
+    const { container, kernel } = mount('顶部内容', {
+      selectionBubble: {
+        actions: [{ id: 'ai-rewrite', title: '改写' }],
+        onAction: () => undefined,
+      },
+    });
+    const view = kernel.editor.view;
+    container.getBoundingClientRect = () => ({
+      top: 50,
+      left: 0,
+      right: 800,
+      bottom: 600,
+      width: 800,
+      height: 550,
+      x: 0,
+      y: 50,
+      toJSON: () => ({}),
+    });
+    const bubble = container.querySelector<HTMLElement>('[data-selection-bubble]');
+    expect(bubble).toBeTruthy();
+    Object.defineProperty(bubble, 'offsetHeight', { configurable: true, value: 32 });
+    vi.spyOn(view, 'coordsAtPos').mockReturnValue({
+      top: 54,
+      bottom: 74,
+      left: 24,
+      right: 40,
+    });
+    selectText(kernel, 1, 4);
+    expect(bubble?.style.top).toBe('32px');
+    kernel.destroy();
+  });
+
   it('折叠光标时隐藏工具栏；快捷键触发动作', () => {
     const onAction = vi.fn();
     const { kernel } = mount('第一段', {
