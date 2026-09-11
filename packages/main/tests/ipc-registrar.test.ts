@@ -149,6 +149,27 @@ describe('IPC 注册表框架', () => {
     expect(registrar.registeredChannels()).not.toContain('ai:credential:retrieve');
   });
 
+  it('Git doctor 四个通道注册，malformed payload 稳定拒绝，未初始化返回 NO_VAULT', async () => {
+    const ipc = new FakeIpcMain();
+    const { services } = makeServices();
+    const registrar = registerAllIpcHandlers(ipc, services);
+    expect(registrar.registeredChannels()).toEqual(expect.arrayContaining([
+      'git:doctor:diagnose', 'git:doctor:repairPrepare',
+      'git:doctor:repairExecute', 'git:doctor:dismiss',
+    ]));
+    for (const [channel, payload] of [
+      ['git:doctor:repairPrepare', { action: 1 }],
+      ['git:doctor:repairExecute', { ticket: null }],
+    ] as const) {
+      const result = await ipc.invoke(channel, payload) as { ok: boolean; code?: string };
+      expect(result).toMatchObject({ ok: false, code: 'IPC_PAYLOAD_INVALID' });
+    }
+    const result = await ipc.invoke('git:doctor:diagnose') as { ok: boolean; code?: string };
+    expect(result).toMatchObject({ ok: false, code: 'NO_VAULT' });
+    const dismissed = await ipc.invoke('git:doctor:dismiss') as { ok: boolean; code?: string };
+    expect(dismissed).toMatchObject({ ok: false, code: 'NO_VAULT' });
+  });
+
   it('拒绝未在契约中声明的通道', () => {
     const ipc = new FakeIpcMain();
     const { services } = makeServices();
