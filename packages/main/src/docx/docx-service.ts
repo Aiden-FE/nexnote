@@ -6,8 +6,13 @@ import { formatForPath } from '../document/document-domain';
 import { MetadataStore } from '../document/metadata-store';
 import { projectDocxToMarkdown } from './docx-markdown';
 import { markdownToDocx } from './docx-writer';
-import { rebuildZip, readZipEntry } from './zip';
-import { serializeEditDocument, openEditDocument, type EditDocument } from './docx-edit';
+import { rebuildZip } from './zip';
+import {
+  serializeEditDocument,
+  openEditDocument,
+  editDocumentFromXml,
+  type EditDocument,
+} from './docx-edit';
 
 export interface DocxImportInput {
   /** renderer 已持有字节时走 base64（外部路径一律经主进程 dialogs.pickFile 后转 base64）。 */
@@ -131,32 +136,33 @@ export class DocxService {
     relPath: string,
     document: EditDocument,
     expectedSha256: string,
-  ): Promise<{ sha256: string }> {
+  ): Promise<{ sha256: string; document: EditDocument }> {
     const current = await this.readDocxBytes(relPath);
     const actual = createHash('sha256').update(current).digest('hex');
     if (actual !== expectedSha256)
       throw new DocxServiceError('DOCX 原件已被外部修改', 'DOCX_CONFLICT');
     const xml = serializeEditDocument(document);
-    if (xml === document.originalXml) return { sha256: actual };
-    const bytes = rebuildZip(current, {
-      name: 'word/document.xml',
-      data: Buffer.from(xml, 'utf8'),
-    });
-    const { abs } = await this.fs.resolve(relPath);
-    const tmp = `${abs}.tmp-${process.pid}-${Date.now()}`;
-    try {
-      await fsp.writeFile(tmp, bytes);
-      await fsp.rename(tmp, abs);
-    } finally {
-      await fsp.rm(tmp, { force: true }).catch(() => undefined);
+    let bytes = current;
+    if (xml !== document.originalXml) {
+      bytes = rebuildZip(current, {
+        name: 'word/document.xml',
+        data: Buffer.from(xml, 'utf8'),
+      });
+      const { abs } = await this.fs.resolve(relPath);
+      const tmp = `${abs}.tmp-${process.pid}-${Date.now()}`;
+      try {
+        await fsp.writeFile(tmp, bytes);
+        await fsp.rename(tmp, abs);
+      } finally {
+        await fsp.rm(tmp, { force: true }).catch(() => undefined);
+      }
     }
     const sha256 = createHash('sha256').update(bytes).digest('hex');
-    // 连续保存：刷新内存模型为新字节上的原始状态，第二次编辑保存不再引用旧 XML。
-    const savedXml = readZipEntry(bytes, 'word/document.xml').toString('utf8');
-    document.originalXml = savedXml;
-    document.paragraphs = openEditDocument(bytes).paragraphs;
-    document.unsupportedCount = document.paragraphs.filter((p) => !p.editable).length;
-    return { sha256 };
+    // Refresh both direct callers and the IPC response to the exact post-save XML.
+    // IPC structured cloning means mutating only this process's input is insufficient.
+    const refreshed = editDocumentFromXml(xml);
+    Object.assign(document, refreshed);
+    return { sha256, document: refreshed };
   }
 
   /**

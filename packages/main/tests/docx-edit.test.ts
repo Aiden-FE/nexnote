@@ -4,7 +4,7 @@ import { tmpdir } from 'node:os';
 import * as path from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 import { DocxService } from '../src/docx/docx-service';
-import { editParagraph, serializeEditDocument } from '../src/docx/docx-edit';
+import { editParagraph, paragraphsOf, serializeEditDocument } from '../src/docx/docx-edit';
 import { buildZip, readZipEntries, readZipEntry, rebuildZip } from '../src/docx/zip';
 import { DocumentService } from '../src/document/document-service';
 import { VaultFsService } from '../src/fs/fs-service';
@@ -39,6 +39,11 @@ function multiPartDocx(documentXml: string): Buffer {
   ]);
 }
 
+import type { EditDocument } from '../src/docx/docx-edit';
+
+/** 段落投影（不含表格块），等价 renderer 侧 paragraphsOf。 */
+const paragraphs = (document: EditDocument) => paragraphsOf(document);
+
 const SAMPLE_XML =
   '<?xml version="1.0" encoding="UTF-8" standalone="yes"?><w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"><w:body><w:p><w:pPr><w:pStyle w:val="Heading1"/></w:pPr><w:r><w:t>标题</w:t></w:r></w:p><w:p><w:r><w:t>正文段落</w:t></w:r></w:p></w:body></w:document>';
 
@@ -47,8 +52,8 @@ describe('DOCX native round-trip', () => {
     const { root, fs, service } = await setup();
     await fs.importBinaryFile('a.docx', multiPartDocx(SAMPLE_XML));
     const opened = await service.openEditDocument('a.docx');
-    expect(opened.document.paragraphs).toHaveLength(2);
-    expect(opened.document.paragraphs[0]).toMatchObject({
+    expect(paragraphs(opened.document)).toHaveLength(2);
+    expect(paragraphs(opened.document)[0]).toMatchObject({
       heading: 1,
       text: '标题',
       editable: true,
@@ -83,8 +88,55 @@ describe('DOCX native round-trip', () => {
       }
     }
     const reopened = await service.openEditDocument('a.docx');
-    expect(reopened.document.paragraphs[1]).toMatchObject({ text: '修改后的段落' });
-    expect(reopened.document.paragraphs[0]).toMatchObject({ text: '标题', heading: 1 });
+    expect(paragraphs(reopened.document)[1]).toMatchObject({ text: '修改后的段落' });
+    expect(paragraphs(reopened.document)[0]).toMatchObject({ text: '标题', heading: 1 });
+  });
+
+  it('连续两次保存不同段落：刷新后的模型随响应返回，不丢前次编辑', async () => {
+    const { root, fs, service } = await setup();
+    const xml = SAMPLE_XML.replace(
+      '</w:body>',
+      '<w:p><w:r><w:t>第三段</w:t></w:r></w:p><w:p><w:r><w:t>第四段</w:t></w:r></w:p></w:body>',
+    );
+    await fs.importBinaryFile('a.docx', multiPartDocx(xml));
+    // IPC 语义：renderer 每次保存后用响应中的 document 替换本地模型（structured clone 不会回传突变）。
+    let model = (await service.openEditDocument('a.docx')).document;
+    const openedSha = (await service.openEditDocument('a.docx')).sha256;
+    const rendererEdit = (
+      document: EditDocument,
+      paragraphIndex: number,
+      text: string,
+    ): EditDocument => ({
+      // 模拟 DocxView.updateParagraph：不可变更新，且仅目标段落带 modified。
+      ...document,
+      blocks: (() => {
+        let i = 0;
+        return document.blocks.map((block) => {
+          if (block.type === 'table') return block;
+          const currentIndex = i++;
+          return currentIndex === paragraphIndex && block.editable
+            ? { ...block, text, runs: [{ text }], modified: true }
+            : { ...block, modified: undefined };
+        });
+      })(),
+    });
+    model = rendererEdit(model, 1, '第一次保存的段落');
+    const first = await service.saveDocx('a.docx', structuredClone(model), openedSha);
+    model = structuredClone(first.document);
+    expect(paragraphs(model)[1]!.modified).toBeUndefined();
+    model = rendererEdit(model, 2, '第二次保存的段落');
+    const second = await service.saveDocx('a.docx', structuredClone(model), first.sha256);
+    expect(paragraphs(second.document)[1]!.text).toBe('第一次保存的段落');
+    expect(paragraphs(second.document)[2]!.text).toBe('第二次保存的段落');
+    const savedXml = readZipEntry(
+      await readFile(path.join(root, 'a.docx')),
+      'word/document.xml',
+    ).toString();
+    expect(savedXml).toContain('<w:t>第一次保存的段落</w:t>');
+    expect(savedXml).toContain('<w:t>第二次保存的段落</w:t>');
+    expect(paragraphs((await service.openEditDocument('a.docx')).document)[1]!.text).toBe(
+      '第一次保存的段落',
+    );
   });
 
   it('连续两次保存使用刷新后的原始 XML', async () => {
@@ -96,12 +148,15 @@ describe('DOCX native round-trip', () => {
     editParagraph(opened.document, 1, { text: '第二次' });
     const second = await service.saveDocx('a.docx', opened.document, first.sha256);
     expect(second.sha256).not.toBe(first.sha256);
-    expect((await service.openEditDocument('a.docx')).document.paragraphs[1]!.text).toBe('第二次');
+    expect(paragraphs((await service.openEditDocument('a.docx')).document)[1]!.text).toBe('第二次');
   });
 
   it('保留混排 runs 格式与段落属性', async () => {
     const { fs, service } = await setup();
-    const xml = SAMPLE_XML.replace('<w:r><w:t>正文段落</w:t></w:r>', '<w:pPr><w:spacing w:after="240"/></w:pPr><w:bookmarkStart w:id="1" w:name="x"/><w:r><w:rPr><w:b/></w:rPr><w:t>粗体</w:t></w:r><w:r><w:rPr><w:i/></w:rPr><w:t>斜体</w:t></w:r><w:bookmarkEnd w:id="1"/>');
+    const xml = SAMPLE_XML.replace(
+      '<w:r><w:t>正文段落</w:t></w:r>',
+      '<w:pPr><w:spacing w:after="240"/></w:pPr><w:bookmarkStart w:id="1" w:name="x"/><w:r><w:rPr><w:b/></w:rPr><w:t>粗体</w:t></w:r><w:r><w:rPr><w:i/></w:rPr><w:t>斜体</w:t></w:r><w:bookmarkEnd w:id="1"/>',
+    );
     await fs.importBinaryFile('a.docx', multiPartDocx(xml));
     const opened = await service.openEditDocument('a.docx');
     editParagraph(opened.document, 1, { text: '新文字' });
@@ -112,7 +167,8 @@ describe('DOCX native round-trip', () => {
     expect(output).toContain('bookmarkStart');
   });
 
-  it('外部修改后保存：返回 DOCX_CONFLICT 且不覆盖原件', async () => {    const { root, fs, service } = await setup();
+  it('外部修改后保存：返回 DOCX_CONFLICT 且不覆盖原件', async () => {
+    const { root, fs, service } = await setup();
     await fs.importBinaryFile('a.docx', multiPartDocx(SAMPLE_XML));
     const opened = await service.openEditDocument('a.docx');
     editParagraph(opened.document, 0, { text: '新标题' });
@@ -124,14 +180,14 @@ describe('DOCX native round-trip', () => {
       code: 'DOCX_CONFLICT',
     });
     const onDisk = await readFile(path.join(root, 'a.docx'));
-    expect((await service.openEditDocument('a.docx')).document.paragraphs[1]!.text).toBe(
+    expect(paragraphs((await service.openEditDocument('a.docx')).document)[1]!.text).toBe(
       '外部改动',
     );
     expect(hash(onDisk)).not.toBe(opened.sha256);
   });
 
   it('未支持块（表格/图片）保留原始 XML 且标记不可编辑', async () => {
-    const { fs, service } = await setup();
+    const { root, fs, service } = await setup();
     const xml = SAMPLE_XML.replace(
       '</w:body>',
       '<w:tbl><w:tr><w:tc><w:p><w:r><w:t>表格</w:t></w:r></w:p></w:tc></w:tr></w:tbl><w:p><w:r><w:drawing/></w:r></w:p></w:body>',
@@ -139,11 +195,20 @@ describe('DOCX native round-trip', () => {
     await fs.importBinaryFile('a.docx', multiPartDocx(xml));
     const opened = await service.openEditDocument('a.docx');
     expect(opened.document.unsupportedCount).toBeGreaterThanOrEqual(1);
-    // 含表格的 body 顶层段落结构：普通段落 2 + 表格(不在段落模型) + drawing 段落 1
-    const editable = opened.document.paragraphs.filter((p) => p.editable);
+    const table = opened.document.blocks.find((block) => block.type === 'table');
+    expect(table).toMatchObject({ type: 'table', text: '表格' });
+    expect(table?.originalXml).toContain('<w:tbl>');
+    const editable = paragraphs(opened.document).filter((p) => p.editable);
     expect(editable.map((p) => p.text)).toContain('标题');
+    editParagraph(opened.document, 1, { text: '修改表格旁段落' });
     const saved = await service.saveDocx('a.docx', opened.document, opened.sha256);
-    expect(saved.sha256).toBe(opened.sha256); // 未修改 → 字节不变，表格原样保留
+    expect(saved.document.blocks.find((block) => block.type === 'table')).toMatchObject({
+      type: 'table',
+      text: '表格',
+    });
+    expect(
+      readZipEntry(await readFile(path.join(root, 'a.docx')), 'word/document.xml').toString(),
+    ).toContain('<w:tbl><w:tr><w:tc><w:p><w:r><w:t>表格</w:t>');
   });
 
   it('重复段落只替换被编辑的实例', async () => {
@@ -168,18 +233,39 @@ describe('DOCX native round-trip', () => {
     const locals = entries.map((entry) => {
       const local = Buffer.from(entry.localBytes);
       local.writeUInt16LE(local.readUInt16LE(6) | 8, 6);
-      local.writeUInt32LE(0, 14); local.writeUInt32LE(0, 18); local.writeUInt32LE(0, 22);
+      local.writeUInt32LE(0, 14);
+      local.writeUInt32LE(0, 18);
+      local.writeUInt32LE(0, 22);
       const payload = local.subarray(30 + local.readUInt16LE(26) + local.readUInt16LE(28));
       const descriptor = Buffer.alloc(16);
-      descriptor.writeUInt32LE(0x08074b50, 0); descriptor.writeUInt32LE(entry.crc, 4);
-      descriptor.writeUInt32LE(entry.compressedSize, 8); descriptor.writeUInt32LE(entry.uncompressedSize, 12);
-      return Buffer.concat([local.subarray(0, payload.byteOffset - local.byteOffset), payload, descriptor]);
+      descriptor.writeUInt32LE(0x08074b50, 0);
+      descriptor.writeUInt32LE(entry.crc, 4);
+      descriptor.writeUInt32LE(entry.compressedSize, 8);
+      descriptor.writeUInt32LE(entry.uncompressedSize, 12);
+      return Buffer.concat([
+        local.subarray(0, payload.byteOffset - local.byteOffset),
+        payload,
+        descriptor,
+      ]);
     });
-    const body = Buffer.concat(locals); const centrals = entries.map((e, i) => { const c = Buffer.from(e.centralBytes); c.writeUInt32LE(locals.slice(0, i).reduce((n, x) => n + x.length, 0), 42); return c; });
-    const eocd = Buffer.from(original.subarray(original.length - 22)); eocd.writeUInt32LE(Buffer.concat(centrals).length, 12); eocd.writeUInt32LE(body.length, 16);
+    const body = Buffer.concat(locals);
+    const centrals = entries.map((e, i) => {
+      const c = Buffer.from(e.centralBytes);
+      c.writeUInt32LE(
+        locals.slice(0, i).reduce((n, x) => n + x.length, 0),
+        42,
+      );
+      return c;
+    });
+    const eocd = Buffer.from(original.subarray(original.length - 22));
+    eocd.writeUInt32LE(Buffer.concat(centrals).length, 12);
+    eocd.writeUInt32LE(body.length, 16);
     const descriptorZip = Buffer.concat([body, Buffer.concat(centrals), eocd]);
     expect(readZipEntry(descriptorZip, 'word/document.xml').toString()).toBe('<doc/>');
-    const rebuilt = rebuildZip(descriptorZip, { name: 'word/document.xml', data: Buffer.from('<new/>') });
+    const rebuilt = rebuildZip(descriptorZip, {
+      name: 'word/document.xml',
+      data: Buffer.from('<new/>'),
+    });
     const unchanged = readZipEntries(rebuilt).find((e) => e.name === 'word/styles.xml')!;
     expect(unchanged.localBytes.subarray(-16).readUInt32LE(0)).toBe(0x08074b50);
   });

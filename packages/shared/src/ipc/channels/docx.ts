@@ -20,6 +20,7 @@ export interface DocxEditRun {
   italic?: boolean;
 }
 export interface DocxEditParagraph {
+  type?: 'paragraph';
   text: string;
   runs: DocxEditRun[];
   heading: number | null;
@@ -28,8 +29,17 @@ export interface DocxEditParagraph {
   originalXml: string;
   modified?: boolean;
 }
+export interface DocxRawTable {
+  type: 'table';
+  /** Read-only text projection of the table cells. */
+  text: string;
+  /** The complete original w:tbl element, retained for lossless saves. */
+  originalXml: string;
+}
+export type DocxEditBlock = DocxEditParagraph | DocxRawTable;
 export interface DocxEditDocument {
-  paragraphs: DocxEditParagraph[];
+  /** Top-level blocks in document order. */
+  blocks: DocxEditBlock[];
   unsupportedCount: number;
   originalXml: string;
 }
@@ -86,6 +96,6 @@ export interface DocxChannelMap {
   'docx:openEdit': { request: { path: string }; response: Result<DocxEditDocumentPayload> };
   'docx:save': {
     request: { path: string; document: DocxEditDocument; expectedSha256: string };
-    response: Result<{ sha256: string }>;
+    response: Result<DocxEditDocumentPayload>;
   };
 }

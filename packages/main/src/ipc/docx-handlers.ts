@@ -82,7 +82,10 @@ export function registerDocxHandlers(registrar: IpcRegistrar): void {
 
   registrar.register(
     'docx:save',
-    async ({ path, document, expectedSha256 }, services): Promise<Result<{ sha256: string }>> => {
+    async (
+      { path, document, expectedSha256 },
+      services,
+    ): Promise<Result<{ document: DocxEditDocument; sha256: string }>> => {
       const result = await service(services).saveDocx(
         path,
         document as DocxEditDocument,

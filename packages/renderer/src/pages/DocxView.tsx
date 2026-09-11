@@ -5,6 +5,13 @@ import { openPage } from '../stores/tab-store';
 import { invoke } from '../lib/ipc';
 import type { DocxEditDocument, DocxEditParagraph } from '@nexnote/shared';
 
+function isParagraph(block: { type?: string }): block is DocxEditParagraph {
+  return block.type !== 'table';
+}
+
+const paragraphsOf = (document: DocxEditDocument): DocxEditParagraph[] =>
+  document.blocks.filter(isParagraph);
+
 interface LoadedState {
   document: DocxEditDocument;
   sha256: string;
@@ -48,17 +55,20 @@ export function DocxView({ tab }: { tab: TabDescriptor }) {
   ): void => {
     setLoaded((prev) => {
       if (!prev) return prev;
-      const paragraphs = prev.document.paragraphs.map((p, i) =>
-        i === index && p.editable
+      let paragraphIndex = 0;
+      const blocks = prev.document.blocks.map((block) => {
+        if (!isParagraph(block)) return block;
+        const currentIndex = paragraphIndex++;
+        return currentIndex === index && block.editable
           ? {
-              ...p,
+              ...block,
               ...patch,
-              runs: patch.text !== undefined ? [{ text: patch.text }] : p.runs,
+              runs: patch.text !== undefined ? [{ text: patch.text }] : block.runs,
               modified: true,
             }
-          : p,
-      );
-      return { ...prev, document: { ...prev.document, paragraphs } };
+          : block;
+      });
+      return { ...prev, document: { ...prev.document, blocks } };
     });
     setDirty(true);
   };
@@ -74,7 +84,7 @@ export function DocxView({ tab }: { tab: TabDescriptor }) {
         expectedSha256: loaded.sha256,
       });
       lastSha.current = result.sha256;
-      setLoaded((prev) => (prev ? { ...prev, sha256: result.sha256 } : prev));
+      setLoaded({ document: result.document, sha256: result.sha256 });
       setDirty(false);
       setStatus('已保存到 DOCX 原件');
     } catch (e) {
@@ -97,7 +107,10 @@ export function DocxView({ tab }: { tab: TabDescriptor }) {
   };
 
   const supportedCount = useMemo(
-    () => loaded?.document.paragraphs.filter((p) => p.editable).length ?? 0,
+    () =>
+      paragraphsOf(loaded?.document ?? { blocks: [], unsupportedCount: 0, originalXml: '' }).filter(
+        (p) => p.editable,
+      ).length,
     [loaded],
   );
 
@@ -142,21 +155,44 @@ export function DocxView({ tab }: { tab: TabDescriptor }) {
         {!error && loaded === null && <p className="p-6 text-sm text-muted-foreground">加载中…</p>}
         {loaded && (
           <div className="mx-auto max-w-3xl px-8 py-8 text-sm leading-7">
-            {loaded.document.paragraphs.map((p, i) =>
-              p.editable ? (
-                <ParagraphEditor key={i} index={i} paragraph={p} onChange={updateParagraph} />
+            {loaded.document.blocks.map((block, i) =>
+              isParagraph(block) ? (
+                block.editable ? (
+                  <ParagraphEditor
+                    key={i}
+                    index={paragraphsOf(loaded.document).indexOf(block)}
+                    paragraph={block}
+                    onChange={updateParagraph}
+                  />
+                ) : (
+                  <p
+                    key={i}
+                    className="my-2 flex items-start gap-2 whitespace-pre-wrap break-words text-muted-foreground"
+                  >
+                    <Lock className="mt-1.5 inline size-3 shrink-0" />
+                    <span>{block.text || '（未支持内容，已原样保留）'}</span>
+                  </p>
+                )
               ) : (
-                <p
+                <div
                   key={i}
-                  className="my-2 flex items-start gap-2 whitespace-pre-wrap break-words text-muted-foreground"
+                  data-testid={`docx-table-${i}`}
+                  aria-label="只读表格"
+                  className="my-4 overflow-x-auto rounded border bg-muted/20 p-3 text-muted-foreground"
+                  aria-readonly="true"
                 >
-                  <Lock className="mt-1.5 inline size-3 shrink-0" />
-                  <span>{p.text || '（未支持内容，已原样保留）'}</span>
-                </p>
+                  <div className="mb-1 flex items-center gap-2 text-xs">
+                    <Lock className="size-3 shrink-0" />
+                    <span>表格（只读）</span>
+                  </div>
+                  <pre className="whitespace-pre-wrap break-words font-sans">
+                    {block.text || '（空表格）'}
+                  </pre>
+                </div>
               ),
             )}
             <p className="mt-6 text-xs text-muted-foreground">
-              可编辑段落 {supportedCount}/{loaded.document.paragraphs.length}
+              可编辑段落 {supportedCount}/{paragraphsOf(loaded.document).length}
               ；保真边界：表格、图片等复杂块不可编辑，保存时原样保留。
             </p>
           </div>

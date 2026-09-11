@@ -10,6 +10,7 @@ export interface EditRun {
 }
 
 export interface EditParagraph {
+  type?: 'paragraph';
   text: string;
   runs: EditRun[];
   heading: number | null;
@@ -20,8 +21,18 @@ export interface EditParagraph {
   modified?: boolean;
 }
 
+export interface RawTable {
+  type: 'table';
+  /** Read-only text projection for the renderer. */
+  text: string;
+  /** Complete original w:tbl element. */
+  originalXml: string;
+}
+
+export type EditBlock = EditParagraph | RawTable;
+
 export interface EditDocument {
-  paragraphs: EditParagraph[];
+  blocks: EditBlock[];
   unsupportedCount: number;
   /** 内部保存原始 XML，open→不编辑→save 保证字节不变。 */
   originalXml: string;
@@ -58,46 +69,69 @@ function replaceParagraphText(originalXml: string, text: string): string {
   let output = '';
   for (let i = 0; i < nodes.length; i += 1) {
     const node = nodes[i]!;
-    const length = i === nodes.length - 1 ? text.length - cursor : Math.min(decodedLengths[i]!, text.length - cursor);
+    const length =
+      i === nodes.length - 1
+        ? text.length - cursor
+        : Math.min(decodedLengths[i]!, text.length - cursor);
     const chunk = text.slice(cursor, cursor + Math.max(0, length));
     cursor += chunk.length;
-    output += originalXml.slice(i === 0 ? 0 : nodes[i - 1]!.index! + nodes[i - 1]![0].length, node.index!);
+    output += originalXml.slice(
+      i === 0 ? 0 : nodes[i - 1]!.index! + nodes[i - 1]![0].length,
+      node.index!,
+    );
     output += `${node[1]}${escapeXml(chunk)}${node[3]}`;
   }
   const last = nodes[nodes.length - 1]!;
   return output + originalXml.slice(last.index! + last[0].length);
 }
 
-function topLevelParagraphs(xml: string): string[] {
+function tableText(xml: string): string {
+  return [...xml.matchAll(/<w:t\b[^>]*>([\s\S]*?)<\/w:t>/g)]
+    .map((m) => decode(m[1] ?? ''))
+    .join(' ')
+    .trim();
+}
+
+function topLevelBlocks(xml: string): EditBlock[] {
   const bodyStart = xml.indexOf('<w:body');
   const bodyOpen = xml.indexOf('>', bodyStart);
   const bodyEnd = xml.lastIndexOf('</w:body>');
   if (bodyStart < 0 || bodyOpen < 0 || bodyEnd < 0) throw new Error('document.xml 缺少 w:body');
   const body = xml.slice(bodyOpen + 1, bodyEnd);
-  const result: string[] = [];
+  const result: EditBlock[] = [];
   let tableDepth = 0;
   let paragraphStart = -1;
   let paragraphDepth = 0;
-  const token = /<\/?w:(?:p|tbl)\b[^>]*>/g;
+  let tableStart = -1;
+  const token = /<\/?w:(p|tbl)\b[^>]*>/g;
   let m: RegExpExecArray | null;
   while ((m = token.exec(body))) {
     const tag = m[0];
     const closing = tag.startsWith('</');
-    const name = /^<\/?w:(p|tbl)\b/i.exec(tag)?.[1];
-    if (!name) continue;
-    if (name.toLowerCase() === 'tbl') {
-      if (closing) tableDepth = Math.max(0, tableDepth - 1);
-      else if (!tag.endsWith('/>')) tableDepth += 1;
+    const name = /^<\/?w:(p|tbl)\b/i.exec(tag)?.[1]?.toLowerCase();
+    if (name === 'tbl') {
+      if (!closing) {
+        if (tableDepth === 0) tableStart = m.index;
+        if (!tag.endsWith('/>')) tableDepth += 1;
+      } else {
+        tableDepth = Math.max(0, tableDepth - 1);
+        if (tableDepth === 0 && tableStart >= 0) {
+          const originalXml = body.slice(tableStart, token.lastIndex);
+          result.push({ type: 'table', text: tableText(originalXml), originalXml });
+          tableStart = -1;
+        }
+      }
       continue;
     }
+    if (name !== 'p' || tableDepth > 0) continue;
     if (!closing) {
-      if (tableDepth === 0 && paragraphDepth === 0) paragraphStart = m.index;
+      if (paragraphDepth === 0) paragraphStart = m.index;
       paragraphDepth += 1;
       if (tag.endsWith('/>')) paragraphDepth -= 1;
     } else {
       paragraphDepth -= 1;
       if (paragraphDepth === 0 && paragraphStart >= 0) {
-        result.push(body.slice(paragraphStart, token.lastIndex));
+        result.push(parseParagraph(body.slice(paragraphStart, token.lastIndex)));
         paragraphStart = -1;
       }
     }
@@ -145,36 +179,53 @@ function parseParagraph(xml: string): EditParagraph {
 
 export function openEditDocument(bytes: Buffer): EditDocument {
   const xml = readZipEntry(bytes, DOCUMENT_ENTRY).toString('utf8');
-  const paragraphs = topLevelParagraphs(xml).map(parseParagraph);
+  return editDocumentFromXml(xml);
+}
+
+/** Build the editable model from a document.xml string. */
+export function editDocumentFromXml(xml: string): EditDocument {
+  const blocks = topLevelBlocks(xml);
   return {
-    paragraphs,
-    unsupportedCount: paragraphs.filter((p) => !p.editable).length,
+    blocks,
+    unsupportedCount: blocks.filter((block) => block.type !== 'table' && !block.editable).length,
     originalXml: xml,
   };
 }
 
+/** Paragraph blocks in document order (tables excluded). */
+export function paragraphsOf(document: EditDocument): EditParagraph[] {
+  return document.blocks.filter(isEditParagraph);
+}
+
+function isEditParagraph(block: EditBlock): block is EditParagraph {
+  return block.type !== 'table';
+}
+
 export function serializeEditDocument(document: EditDocument): string {
-  if (!document.paragraphs.some((p) => p.modified)) return document.originalXml;
+  const { blocks } = document;
+  if (!blocks.some(isModifiedParagraph)) return document.originalXml;
 
   // Replace paragraph occurrences in document order. Using String.replace per paragraph
   // would replace the first identical XML repeatedly when a document has duplicate paragraphs.
   let output = document.originalXml;
   let cursor = 0;
-  for (const paragraph of document.paragraphs) {
-    const position = output.indexOf(paragraph.originalXml, cursor);
+  for (const block of blocks) {
+    const position = output.indexOf(block.originalXml, cursor);
     if (position < 0) throw new Error('编辑模型与原始 document.xml 不匹配');
-    if (paragraph.modified && paragraph.editable) {
-      const replacement = replaceParagraphText(paragraph.originalXml, paragraph.text);
+    if (isModifiedParagraph(block) && block.editable) {
+      const replacement = replaceParagraphText(block.originalXml, block.text);
       output =
-        output.slice(0, position) +
-        replacement +
-        output.slice(position + paragraph.originalXml.length);
+        output.slice(0, position) + replacement + output.slice(position + block.originalXml.length);
       cursor = position + replacement.length;
     } else {
-      cursor = position + paragraph.originalXml.length;
+      cursor = position + block.originalXml.length;
     }
   }
   return output;
+}
+
+function isModifiedParagraph(block: EditBlock): block is EditParagraph & { modified: true } {
+  return block.type !== 'table' && !!block.modified;
 }
 
 export function editParagraph(
@@ -182,7 +233,7 @@ export function editParagraph(
   index: number,
   patch: Partial<Pick<EditParagraph, 'text' | 'runs' | 'heading' | 'list'>>,
 ): void {
-  const p = document.paragraphs[index];
+  const p = paragraphsOf(document)[index];
   if (!p || !p.editable) throw new Error('该段落不支持编辑');
   Object.assign(p, patch);
   if (patch.text !== undefined && patch.runs === undefined) p.runs = [{ text: patch.text }];
