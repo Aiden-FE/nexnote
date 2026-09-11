@@ -113,6 +113,14 @@ describe('filterTree', () => {
     expect(matchedFiles.size).toBe(0);
   });
 
+  it('过滤搜索使用后缀显示开关', () => {
+    const roots = buildTree([{ name: '笔记.markdown', path: '笔记.markdown', kind: 'file' }]);
+    expect(filterTree(roots, { query: 'markdown', tagFiles: null }).matchedFiles.size).toBe(0);
+    expect(
+      filterTree(roots, { query: 'markdown', tagFiles: null, showExtensions: true }).matchedFiles.size,
+    ).toBe(1);
+  });
+
   it('过滤时空目录被隐藏', () => {
     const { tree: t } = filterTree(tree(), { query: 'alpha', tagFiles: null });
     expect(t.some((n) => n.path === 'empty')).toBe(false);
@@ -120,9 +128,20 @@ describe('filterTree', () => {
 });
 
 describe('杂项', () => {
-  it('displayName 去 .md 后缀（仅 .md 文件）', () => {
+  it('displayName 按开关处理 Markdown，其他格式始终保留后缀', () => {
+    for (const showExtensions of [false, true]) {
+      expect(displayName({ name: '笔记.md', kind: 'file' }, { showExtensions })).toBe(
+        showExtensions ? '笔记.md' : '笔记',
+      );
+      expect(displayName({ name: '文档.markdown', kind: 'file' }, { showExtensions })).toBe(
+        showExtensions ? '文档.markdown' : '文档',
+      );
+      expect(displayName({ name: '文档.docx', kind: 'file' }, { showExtensions })).toBe(
+        '文档.docx',
+      );
+      expect(displayName({ name: '附件.png', kind: 'file' }, { showExtensions })).toBe('附件.png');
+    }
     expect(displayName({ name: '笔记.md', kind: 'file' })).toBe('笔记');
-    expect(displayName({ name: '附件.png', kind: 'file' })).toBe('附件.png');
     expect(displayName({ name: '目录', kind: 'directory' })).toBe('目录');
   });
 

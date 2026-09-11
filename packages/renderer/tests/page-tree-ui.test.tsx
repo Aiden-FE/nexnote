@@ -64,6 +64,8 @@ beforeEach(() => {
       { name: '研究', path: '研究', kind: 'directory' },
       { name: '外部笔记.md', path: '研究/外部笔记.md', kind: 'file' },
       { name: '另一页.md', path: '另一页.md', kind: 'file' },
+      { name: '导出文档.docx', path: '导出文档.docx', kind: 'file' },
+      { name: '旧笔记.markdown', path: '旧笔记.markdown', kind: 'file' },
     ],
     status: 'ready',
     error: null,
@@ -73,7 +75,11 @@ beforeEach(() => {
     selectedPath: '另一页.md',
   });
   useTabStore.setState({ tabs: [], activeTabId: null });
-  useUiStore.setState({ treeCollapsedDirs: [], treeShowAllFiles: false });
+  useUiStore.setState({
+    treeCollapsedDirs: [],
+    treeShowAllFiles: false,
+    treeShowExtensions: false,
+  });
   installBridge({ 'fs:renameLinked': () => ({ updated: [] }) });
 });
 
@@ -119,6 +125,21 @@ describe('页面树 GUI 回归', () => {
 
     expect(external?.hasAttribute('data-active')).toBe(false);
     expect(other?.getAttribute('data-active')).toBe('true');
+  });
+
+  it('文件后缀按钮切换显示名并更新 store', async () => {
+    const view = await mountPageTree();
+    expect(view.querySelector('[data-path="另一页.md"]')?.textContent).toContain('另一页');
+    expect(view.querySelector('[data-path="旧笔记.markdown"]')?.textContent).toContain('旧笔记');
+    expect(view.querySelector('[data-path="导出文档.docx"]')?.textContent).toContain(
+      '导出文档.docx',
+    );
+
+    act(() => view.querySelector<HTMLButtonElement>('[data-testid="tree-toggle-extensions"]')!.click());
+
+    expect(useUiStore.getState().treeShowExtensions).toBe(true);
+    expect(view.querySelector('[data-path="另一页.md"]')?.textContent).toContain('另一页.md');
+    expect(view.querySelector('[data-path="旧笔记.markdown"]')?.textContent).toContain('旧笔记.markdown');
   });
 
   it('右键重命名后连续输入不会在每个字符后重新全选', async () => {

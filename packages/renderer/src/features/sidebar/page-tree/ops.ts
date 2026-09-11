@@ -76,11 +76,16 @@ export async function renameEntry(
 ): Promise<void> {
   let name = newNameRaw.trim();
   if (name.length === 0) return;
-  if (kind === 'file' && isMarkdown(fromPath) && !isMarkdown(name)) name = `${name}.md`;
-  const sanitized = sanitizeEntryName(kind === 'file' ? name.replace(/\.md$/i, '') : name);
+  const markdownExtension = fromPath.toLowerCase().endsWith('.markdown') ? '.markdown' : '.md';
+  if (kind === 'file' && isMarkdown(fromPath) && !isMarkdown(name)) name = `${name}${markdownExtension}`;
+  const sanitized = sanitizeEntryName(
+    kind === 'file' ? name.replace(/\.(?:md|markdown)$/i, '') : name,
+  );
   if (!sanitized.ok) throw new Error(sanitized.reason);
   const finalName =
-    kind === 'file' && isMarkdown(fromPath) ? `${sanitized.value}.md` : sanitized.value;
+    kind === 'file' && isMarkdown(fromPath)
+      ? `${sanitized.value}${markdownExtension}`
+      : sanitized.value;
   const parent = fromPath.slice(0, Math.max(0, fromPath.lastIndexOf('/')));
   const toPath = parent.length === 0 ? finalName : `${parent}/${finalName}`;
   if (toPath === fromPath) return;

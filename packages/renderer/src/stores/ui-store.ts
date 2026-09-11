@@ -19,6 +19,8 @@ interface UiState {
   treeCollapsedDirs: string[];
   /** 页面树显示非 .md 文件（默认隐藏，DEV-003） */
   treeShowAllFiles: boolean;
+  /** 页面树显示文件扩展名（默认隐藏 Markdown 后缀） */
+  treeShowExtensions: boolean;
   /** ⌘⇧F 全文搜索面板开关（DEV-004） */
   searchOpen: boolean;
   /** 当前搜索结果视图；标签点击可直接进入标签搜索结果页。 */
@@ -36,6 +38,7 @@ interface UiState {
   toggleTreeDir(path: string): void;
   setTreeCollapsedDirs(dirs: string[]): void;
   setTreeShowAllFiles(show: boolean): void;
+  setTreeShowExtensions(show: boolean): void;
   setSearchOpen(open: boolean): void;
   showFulltextSearch(): void;
   showTagSearch(tag: string, paths: string[]): void;
@@ -54,6 +57,7 @@ export const useUiStore = create<UiState>((set) => ({
   activeDockPanelId: null,
   treeCollapsedDirs: [],
   treeShowAllFiles: false,
+  treeShowExtensions: false,
   searchOpen: false,
   searchRoute: { kind: 'fulltext' },
   jumpResults: [],
@@ -94,6 +98,9 @@ export const useUiStore = create<UiState>((set) => ({
   },
   setTreeShowAllFiles(show) {
     set(() => ({ treeShowAllFiles: show }));
+  },
+  setTreeShowExtensions(show) {
+    set(() => ({ treeShowExtensions: show }));
   },
   setSearchOpen(open) {
     set(() => ({ searchOpen: open }));

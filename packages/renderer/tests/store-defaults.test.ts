@@ -17,6 +17,7 @@ describe('工作区初始布局默认值', () => {
     expect(ui.dockWidth).toBe(shared.dockWidth);
     expect(ui.sidebarWidth).toBe(shared.sidebarWidth);
     expect(ui.sidebarCollapsed).toBe(shared.sidebarCollapsed);
+    expect(ui.treeShowExtensions).toBe(shared.treeShowExtensions);
   });
 
   it('tab-store 只有单 tab 栈，无 split 字段残留', () => {

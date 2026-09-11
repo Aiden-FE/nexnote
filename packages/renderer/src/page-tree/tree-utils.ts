@@ -25,10 +25,13 @@ export function isDocx(name: string): boolean {
   return name.toLowerCase().endsWith('.docx');
 }
 
-/** 文件显示名（去 .md 后缀）。 */
-export function displayName(node: { name: string; kind: 'file' | 'directory' }): string {
-  return node.kind === 'file' && isMarkdown(node.name)
-    ? node.name.replace(/\.md$/i, '')
+/** 文件显示名；默认隐藏 Markdown 后缀，其他格式始终保留后缀。 */
+export function displayName(
+  node: { name: string; kind: 'file' | 'directory' },
+  options: { showExtensions?: boolean } = {},
+): string {
+  return node.kind === 'file' && !options.showExtensions && isMarkdown(node.name)
+    ? node.name.replace(/\.(?:md|markdown)$/i, '')
     : node.name;
 }
 
@@ -99,6 +102,8 @@ export interface FilterOptions {
   query: string;
   /** 标签过滤：仅显示这些文件（vault 相对路径集合）+ 其祖先目录 */
   tagFiles: Set<string> | null;
+  /** 是否显示文件扩展名 */
+  showExtensions?: boolean;
 }
 
 /**
@@ -107,7 +112,7 @@ export interface FilterOptions {
  */
 export function filterTree(
   roots: TreeNode[],
-  { query, tagFiles }: FilterOptions,
+  { query, tagFiles, showExtensions = false }: FilterOptions,
 ): { tree: TreeNode[]; matchedFiles: Set<string>; expandDirs: Set<string> } {
   const q = query.trim().toLowerCase();
   const filtering = q.length > 0 || tagFiles !== null;
@@ -117,7 +122,7 @@ export function filterTree(
   const walk = (node: TreeNode): TreeNode | null => {
     const children = node.children.map(walk).filter((c): c is TreeNode => c !== null);
     if (node.kind === 'file') {
-      const nameHit = q.length === 0 || displayName(node).toLowerCase().includes(q);
+      const nameHit = q.length === 0 || displayName(node, { showExtensions }).toLowerCase().includes(q);
       const tagHit = tagFiles === null || tagFiles.has(node.path);
       if (nameHit && tagHit) {
         matchedFiles.add(node.path);

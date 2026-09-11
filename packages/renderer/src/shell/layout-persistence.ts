@@ -26,6 +26,7 @@ export function useVaultLayoutPersistence(vault: VaultInfo | null): void {
       ui.setDockWidth(merged.dockWidth);
       ui.setTreeCollapsedDirs(merged.treeCollapsedDirs ?? []);
       ui.setTreeShowAllFiles(merged.treeShowAllFiles ?? false);
+      ui.setTreeShowExtensions(merged.treeShowExtensions ?? false);
     })();
     return () => {
       cancelled = true;
@@ -45,6 +46,7 @@ export function useVaultLayoutPersistence(vault: VaultInfo | null): void {
         dockWidth: ui.dockWidth,
         treeCollapsedDirs: ui.treeCollapsedDirs,
         treeShowAllFiles: ui.treeShowAllFiles,
+        treeShowExtensions: ui.treeShowExtensions,
       };
     };
     const schedule = () => {
