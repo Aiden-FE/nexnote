@@ -1,7 +1,7 @@
 import { promises as fsp } from 'node:fs';
 import path from 'node:path';
 import { ok, type Result } from '@nexnote/shared';
-import type { DocxEditCopyPayload, DocxPreviewPayload } from '@nexnote/shared';
+import type { DocxEditCopyPayload, DocxPreviewPayload, DocxEditDocument } from '@nexnote/shared';
 import type { IpcRegistrar } from './registrar';
 import type { IpcServices } from './services';
 import { DocxService } from '../docx/docx-service';
@@ -70,6 +70,25 @@ export function registerDocxHandlers(registrar: IpcRegistrar): void {
     async ({ path }, services): Promise<Result<DocxEditCopyPayload>> => {
       const result = await service(services).createEditCopy(path);
       if (result.created) await recordWrite(services, `创建 DOCX 编辑副本 ${result.path}`);
+      return ok(result);
+    },
+  );
+
+  registrar.register(
+    'docx:openEdit',
+    async ({ path }, services): Promise<Result<{ document: DocxEditDocument; sha256: string }>> =>
+      ok(await service(services).openEditDocument(path)),
+  );
+
+  registrar.register(
+    'docx:save',
+    async ({ path, document, expectedSha256 }, services): Promise<Result<{ sha256: string }>> => {
+      const result = await service(services).saveDocx(
+        path,
+        document as DocxEditDocument,
+        expectedSha256,
+      );
+      await recordWrite(services, `保存 DOCX ${path}`);
       return ok(result);
     },
   );

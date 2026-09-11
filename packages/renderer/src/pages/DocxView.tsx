@@ -1,22 +1,38 @@
-import { useEffect, useState } from 'react';
-import { FileWarning } from 'lucide-react';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import { FileWarning, Lock } from 'lucide-react';
 import type { TabDescriptor } from '../stores/tab-store';
 import { openPage } from '../stores/tab-store';
 import { invoke } from '../lib/ipc';
+import type { DocxEditDocument, DocxEditParagraph } from '@nexnote/shared';
 
-/** DOCX 原件只读预览：编辑仅通过 native-block 副本，不修改原件。 */
+interface LoadedState {
+  document: DocxEditDocument;
+  sha256: string;
+}
+
+/** DOCX 原生编辑视图：docx:openEdit 载入段落模型，docx:save 写回（sha256 乐观锁）。 */
 export function DocxView({ tab }: { tab: TabDescriptor }) {
-  const [markdown, setMarkdown] = useState<string | null>(null);
+  const [loaded, setLoaded] = useState<LoadedState | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [status, setStatus] = useState<string | null>(null);
+  const [dirty, setDirty] = useState(false);
+  const [saving, setSaving] = useState(false);
   const pagePath = tab.pagePath;
+  const lastSha = useRef<string | null>(null);
 
   useEffect(() => {
     let cancelled = false;
     if (!pagePath) return;
-    void invoke('docx:readPreview', { path: pagePath })
-      .then((preview) => {
-        if (!cancelled) setMarkdown(preview.markdown);
+    // pagePath 切换时先复位再异步载入（reset 先于异步结果，避免残留上一个文档）。
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setLoaded(null);
+    setError(null);
+    setDirty(false);
+    void invoke('docx:openEdit', { path: pagePath })
+      .then((payload) => {
+        if (cancelled) return;
+        lastSha.current = payload.sha256;
+        setLoaded({ document: payload.document, sha256: payload.sha256 });
       })
       .catch((e: unknown) => {
         if (!cancelled) setError(e instanceof Error ? e.message : String(e));
@@ -26,49 +42,93 @@ export function DocxView({ tab }: { tab: TabDescriptor }) {
     };
   }, [pagePath]);
 
+  const updateParagraph = (
+    index: number,
+    patch: Partial<Pick<DocxEditParagraph, 'text' | 'heading' | 'list'>>,
+  ): void => {
+    setLoaded((prev) => {
+      if (!prev) return prev;
+      const paragraphs = prev.document.paragraphs.map((p, i) =>
+        i === index && p.editable
+          ? {
+              ...p,
+              ...patch,
+              runs: patch.text !== undefined ? [{ text: patch.text }] : p.runs,
+              modified: true,
+            }
+          : p,
+      );
+      return { ...prev, document: { ...prev.document, paragraphs } };
+    });
+    setDirty(true);
+  };
+
+  const save = async (): Promise<void> => {
+    if (!loaded || !pagePath || saving) return;
+    setSaving(true);
+    setStatus('正在保存…');
+    try {
+      const result = await invoke('docx:save', {
+        path: pagePath,
+        document: loaded.document,
+        expectedSha256: loaded.sha256,
+      });
+      lastSha.current = result.sha256;
+      setLoaded((prev) => (prev ? { ...prev, sha256: result.sha256 } : prev));
+      setDirty(false);
+      setStatus('已保存到 DOCX 原件');
+    } catch (e) {
+      const code = (e as { code?: string }).code;
+      if (code === 'DOCX_CONFLICT') {
+        setStatus('原件已被外部修改，未覆盖。请重新打开后再编辑。');
+      } else {
+        setStatus(e instanceof Error ? e.message : String(e));
+      }
+    } finally {
+      setSaving(false);
+    }
+  };
+
   const createCopy = async (): Promise<string | null> => {
     if (!pagePath) return null;
-    setStatus('正在创建编辑副本…');
     const result = await invoke('docx:createEditCopy', { path: pagePath });
-    setStatus(result.created ? '已创建编辑副本' : '已使用现有编辑副本');
     openPage(result.path);
     return result.path;
   };
 
-  const exportDocx = async (): Promise<void> => {
-    try {
-      const copyPath = await createCopy();
-      if (!copyPath) return;
-      const result = await invoke('docx:export', { path: copyPath });
-      setStatus(`已导出 DOCX：${result.path}`);
-    } catch (e) {
-      setStatus(e instanceof Error ? e.message : String(e));
-    }
-  };
+  const supportedCount = useMemo(
+    () => loaded?.document.paragraphs.filter((p) => p.editable).length ?? 0,
+    [loaded],
+  );
 
   return (
     <div data-testid="docx-view" className="flex h-full min-h-0 flex-col">
       <div className="flex shrink-0 items-center justify-between gap-3 border-b bg-muted/30 px-4 py-2">
         <div>
-          <strong className="text-sm">DOCX 原件只读</strong>
+          <strong className="text-sm">DOCX 原生编辑</strong>
           <p className="text-xs text-muted-foreground">
-            创建 native-block 副本后编辑，原件不会被覆盖
+            支持段落文本、标题、粗斜体、列表；styles/media/headers 原样保留
+            {loaded && loaded.document.unsupportedCount > 0
+              ? `；${loaded.document.unsupportedCount} 个未支持块只读`
+              : ''}
           </p>
         </div>
         <div className="flex shrink-0 gap-2">
           <button
             type="button"
-            className="rounded border px-2 py-1 text-xs hover:bg-accent"
-            onClick={() => void createCopy()}
+            className="rounded border px-2 py-1 text-xs hover:bg-accent disabled:opacity-50"
+            disabled={!dirty || saving}
+            onClick={() => void save()}
           >
-            创建编辑副本
+            保存{dirty ? ' *' : ''}
           </button>
           <button
             type="button"
             className="rounded border px-2 py-1 text-xs hover:bg-accent"
-            onClick={() => void exportDocx()}
+            onClick={() => void createCopy()}
+            title="转换为 Markdown 副本编辑（降级入口，不写回 DOCX）"
           >
-            导出 DOCX
+            编辑副本（转换降级）
           </button>
         </div>
       </div>
@@ -79,16 +139,57 @@ export function DocxView({ tab }: { tab: TabDescriptor }) {
             <span>无法读取 DOCX：{error}</span>
           </div>
         )}
-        {!error && markdown === null && (
-          <p className="p-6 text-sm text-muted-foreground">加载中…</p>
-        )}
-        {!error && markdown !== null && (
-          <pre className="mx-auto max-w-3xl whitespace-pre-wrap break-words px-8 py-8 text-sm leading-7">
-            {markdown}
-          </pre>
+        {!error && loaded === null && <p className="p-6 text-sm text-muted-foreground">加载中…</p>}
+        {loaded && (
+          <div className="mx-auto max-w-3xl px-8 py-8 text-sm leading-7">
+            {loaded.document.paragraphs.map((p, i) =>
+              p.editable ? (
+                <ParagraphEditor key={i} index={i} paragraph={p} onChange={updateParagraph} />
+              ) : (
+                <p
+                  key={i}
+                  className="my-2 flex items-start gap-2 whitespace-pre-wrap break-words text-muted-foreground"
+                >
+                  <Lock className="mt-1.5 inline size-3 shrink-0" />
+                  <span>{p.text || '（未支持内容，已原样保留）'}</span>
+                </p>
+              ),
+            )}
+            <p className="mt-6 text-xs text-muted-foreground">
+              可编辑段落 {supportedCount}/{loaded.document.paragraphs.length}
+              ；保真边界：表格、图片等复杂块不可编辑，保存时原样保留。
+            </p>
+          </div>
         )}
         {status && <p className="border-t px-4 py-2 text-xs text-muted-foreground">{status}</p>}
       </div>
+    </div>
+  );
+}
+
+function ParagraphEditor({
+  index,
+  paragraph,
+  onChange,
+}: {
+  index: number;
+  paragraph: DocxEditParagraph;
+  onChange: (
+    index: number,
+    patch: Partial<Pick<DocxEditParagraph, 'text' | 'heading' | 'list'>>,
+  ) => void;
+}): React.JSX.Element {
+  const cls = paragraph.heading ? `docx-h${paragraph.heading}` : '';
+  return (
+    <div className="group my-2 flex items-start gap-2">
+      {paragraph.list && <span className="mt-0 select-none text-muted-foreground">•</span>}
+      <textarea
+        data-testid={`docx-paragraph-${index}`}
+        className={`w-full resize-none border-none bg-transparent p-0 leading-7 outline-none focus:bg-accent/30 ${cls}`}
+        rows={Math.max(1, Math.ceil((paragraph.text.length || 1) / 64))}
+        value={paragraph.text}
+        onChange={(e) => onChange(index, { text: e.target.value })}
+      />
     </div>
   );
 }

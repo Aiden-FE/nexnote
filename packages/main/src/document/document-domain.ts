@@ -50,7 +50,7 @@ export interface DocumentPayload {
 export const DOCUMENT_CAPABILITIES: Record<DocumentFormat, DocumentCapabilities> = {
   'native-block': { read: true, write: true, edit: true, export: true },
   markdown: { read: true, write: true, edit: true, export: true },
-  docx: { read: true, write: false, edit: false, export: true },
+  docx: { read: true, write: false, edit: true, export: true },
 };
 
 export function formatForPath(filePath: string): DocumentFormat | null {

@@ -6,6 +6,8 @@ import { formatForPath } from '../document/document-domain';
 import { MetadataStore } from '../document/metadata-store';
 import { projectDocxToMarkdown } from './docx-markdown';
 import { markdownToDocx } from './docx-writer';
+import { rebuildZip } from './zip';
+import { serializeEditDocument, openEditDocument, type EditDocument } from './docx-edit';
 
 export interface DocxImportInput {
   /** renderer 已持有字节时走 base64（外部路径一律经主进程 dialogs.pickFile 后转 base64）。 */
@@ -25,6 +27,11 @@ export interface DocxPreview {
 export interface DocxEditCopy {
   path: string;
   created: boolean;
+}
+
+export interface OpenEditDocument {
+  document: EditDocument;
+  sha256: string;
 }
 
 /**
@@ -108,6 +115,42 @@ export class DocxService {
       markdown: projectDocxToMarkdown(bytes),
       sha256: createHash('sha256').update(bytes).digest('hex'),
     };
+  }
+
+  /** 打开原生可编辑模型，并携带打开时的字节哈希作为乐观锁版本。 */
+  async openEditDocument(relPath: string): Promise<OpenEditDocument> {
+    const bytes = await this.readDocxBytes(relPath);
+    return {
+      document: openEditDocument(bytes),
+      sha256: createHash('sha256').update(bytes).digest('hex'),
+    };
+  }
+
+  /** 仅替换 word/document.xml；expectedSha256 不匹配时绝不覆盖原件。 */
+  async saveDocx(
+    relPath: string,
+    document: EditDocument,
+    expectedSha256: string,
+  ): Promise<{ sha256: string }> {
+    const current = await this.readDocxBytes(relPath);
+    const actual = createHash('sha256').update(current).digest('hex');
+    if (actual !== expectedSha256)
+      throw new DocxServiceError('DOCX 原件已被外部修改', 'DOCX_CONFLICT');
+    const xml = serializeEditDocument(document);
+    if (xml === document.originalXml) return { sha256: actual };
+    const bytes = rebuildZip(current, {
+      name: 'word/document.xml',
+      data: Buffer.from(xml, 'utf8'),
+    });
+    const { abs } = await this.fs.resolve(relPath);
+    const tmp = `${abs}.tmp-${process.pid}-${Date.now()}`;
+    try {
+      await fsp.writeFile(tmp, bytes);
+      await fsp.rename(tmp, abs);
+    } finally {
+      await fsp.rm(tmp, { force: true }).catch(() => undefined);
+    }
+    return { sha256: createHash('sha256').update(bytes).digest('hex') };
   }
 
   /**

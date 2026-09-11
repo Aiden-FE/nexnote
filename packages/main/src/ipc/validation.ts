@@ -115,6 +115,15 @@ const importBinaryFile = object(
 );
 const listTree = object(['showAllFiles'], [optionalField('showAllFiles', 'boolean')]);
 const docxPath = object(['path'], [stringField('path')]);
+const docxOpenEdit = docxPath;
+const docxSave = object(
+  ['path', 'document', 'expectedSha256'],
+  [
+    stringField('path'),
+    (value) => (value && typeof value === 'object' ? null : invalid('document 必须是对象')),
+    stringField('expectedSha256'),
+  ],
+);
 const docxExport = object(
   ['path', 'targetPath'],
   [stringField('path'), optionalField('targetPath', 'string')],
@@ -536,6 +545,8 @@ const VALIDATORS: Partial<Record<IpcChannel, PayloadValidator>> = {
   'docx:readPreview': docxPath,
   'docx:createEditCopy': docxPath,
   'docx:export': docxExport,
+  'docx:openEdit': docxOpenEdit,
+  'docx:save': docxSave,
 };
 
 /** Reject malformed input with a stable code before executing the registered handler. */
