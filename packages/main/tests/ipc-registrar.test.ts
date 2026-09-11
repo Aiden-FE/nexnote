@@ -89,6 +89,7 @@ function makeServices(): {
     vaultSession: session,
     fs,
     ai,
+    agent: {} as never,
     git,
     dialogs: { pickDirectory: async () => null, pickFile: async () => null },
     plugins: new PluginService({ hostVersion: '0.1.0' }),

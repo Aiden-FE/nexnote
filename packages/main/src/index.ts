@@ -29,6 +29,7 @@ import { extractUpdateSettings, syncUpdaterSettings } from './settings/update-se
 import { VaultOperationsController } from './vault/vault-operations-controller';
 import { VaultCloneController } from './vault/vault-clone-controller';
 import { BUILTIN_PLUGIN_MANIFESTS } from './plugins/builtin/builtin-manifests';
+import { AgentGateway } from './agent/gateway';
 
 const isSmokeMode = process.env.NEXNOTE_SMOKE === '1';
 
@@ -128,6 +129,12 @@ async function bootstrap(): Promise<void> {
     sendEvent: (channel, payload) => winRef.sendToMainWindow(channel, payload),
   });
 
+  // Agent 执行网关：应用内一切大模型调用统一经 agent:*（场景化 profile + 工具管控 + 审计）。
+  const agent = new AgentGateway({
+    ai,
+    sendEvent: (channel, payload) => winRef.sendToMainWindow(channel, payload),
+  });
+
   // DEV-011 向量索引 + 三阶段召回（embedding 走 ai 的 embedding feature，未配置时自动降级）。
   retrievalService = new RetrievalService({
     index,
@@ -213,6 +220,7 @@ async function bootstrap(): Promise<void> {
     vaultSession,
     fs,
     ai,
+    agent,
     git,
     dialogs: {
       async pickDirectory() {

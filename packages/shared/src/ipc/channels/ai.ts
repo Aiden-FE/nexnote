@@ -6,7 +6,6 @@ import type {
   AiFeatureKey,
   AiProfileExportBundle,
   AiProfileInput,
-  ChatCompletionResult,
   ChatMessage,
   ChatParams,
   ConnectionTestResult,
@@ -15,8 +14,11 @@ import type {
 import type { RetrievalOptions, RetrievalResponse } from '../../types/retrieval';
 
 /**
- * ai:* 命名空间（DEV-009 Provider Adapter 与配置系统；DEV-010/011/012 在此追加业务通道）。
+ * ai:* 命名空间（DEV-009 Provider Adapter 与配置系统）。
  * 密钥安全契约：任何 response/event payload 都不含密钥明文——渲染层只见 hasApiKey。
+ *
+ * 模型执行通道已收敛到 agent:*（AgentGateway 是唯一执行入口）：
+ * ai:chat:* 不再暴露给渲染层；本命名空间仅保留配置 / 连通性 / embedding / 召回。
  */
 export const AI_CHANNELS = [
   'ai:ping',
@@ -28,9 +30,6 @@ export const AI_CHANNELS = [
   'ai:features:set',
   'ai:testConnection',
   'ai:listModels',
-  'ai:chat:complete',
-  'ai:chat:stream:start',
-  'ai:chat:stream:cancel',
   'ai:embed',
   'ai:embedWithMetadata',
   'ai:retrieve',
@@ -77,31 +76,6 @@ export interface AiChannelMap {
   'ai:listModels': {
     request: AiConnectionTarget;
     response: Result<{ models: string[] }>;
-  };
-  'ai:chat:complete': {
-    request: {
-      messages: ChatMessage[];
-      /** 解析优先级：profileId > feature > 全局默认 */
-      profileId?: string;
-      feature?: AiFeatureKey;
-      model?: string;
-      params?: ChatParams;
-    };
-    response: Result<ChatCompletionResult>;
-  };
-  'ai:chat:stream:start': {
-    request: {
-      messages: ChatMessage[];
-      profileId?: string;
-      feature?: AiFeatureKey;
-      model?: string;
-      params?: ChatParams;
-    };
-    response: Result<{ streamId: string }>;
-  };
-  'ai:chat:stream:cancel': {
-    request: { streamId: string };
-    response: Result<{ cancelled: boolean }>;
   };
   'ai:embed': {
     request: { texts: string[] };

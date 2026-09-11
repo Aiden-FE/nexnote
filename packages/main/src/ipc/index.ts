@@ -6,6 +6,7 @@ import { registerGitHandlers } from './git-handlers';
 import { registerVaultHandlers } from './vault-handlers';
 import { registerFsHandlers } from './fs-handlers';
 import { registerAiHandlers } from './ai-handlers';
+import { registerAgentHandlers } from './agent-handlers';
 import { registerChatHandlers } from './chat-handlers';
 import { registerIndexHandlers } from './index-handlers';
 import { registerPluginHandlers } from './plugin-handlers';
@@ -24,6 +25,7 @@ export function registerAllIpcHandlers(ipcMain: IpcMainLike, services: IpcServic
   registerVaultHandlers(registrar);
   registerFsHandlers(registrar);
   registerAiHandlers(registrar, services.ai);
+  registerAgentHandlers(registrar, services.agent);
   registerChatHandlers(registrar);
   registerGitHandlers(registrar);
   registerIndexHandlers(registrar);

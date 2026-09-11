@@ -10,6 +10,8 @@ import type { GitChannelMap } from './channels/git';
 import { GIT_CHANNELS } from './channels/git';
 import type { AiChannelMap } from './channels/ai';
 import { AI_CHANNELS } from './channels/ai';
+import type { AgentChannelMap } from './channels/agent';
+import { AGENT_CHANNELS } from './channels/agent';
 import type { ChatChannelMap } from './channels/chat';
 import { CHAT_CHANNELS } from './channels/chat';
 import type { PluginsChannelMap } from './channels/plugins';
@@ -37,6 +39,7 @@ export interface IpcContract
     EditorChannelMap,
     GitChannelMap,
     AiChannelMap,
+    AgentChannelMap,
     ChatChannelMap,
     PluginsChannelMap,
     SkillsChannelMap,
@@ -52,6 +55,7 @@ export const IPC_CHANNELS: readonly string[] = [
   ...EDITOR_CHANNELS,
   ...GIT_CHANNELS,
   ...AI_CHANNELS,
+  ...AGENT_CHANNELS,
   ...CHAT_CHANNELS,
   ...PLUGINS_CHANNELS,
   ...SKILLS_CHANNELS,

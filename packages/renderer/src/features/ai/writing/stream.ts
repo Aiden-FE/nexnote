@@ -20,11 +20,11 @@ export function startWritingStream(
   messages: ChatMessage[],
   handlers: WritingStreamHandlers,
 ): WritingStreamHandle {
-  let streamId: string | null = null;
+  let runId: string | null = null;
   let finished = false;
 
-  const unsubscribe = onEvent('ai:streamEvent', (payload) => {
-    if (payload.streamId !== streamId) return;
+  const unsubscribe = onEvent('agent:runEvent', (payload) => {
+    if (payload.runId !== runId) return;
     const event = payload.event;
     if (event.type === 'delta') {
       handlers.onDelta(event.text);
@@ -39,14 +39,14 @@ export function startWritingStream(
     }
   });
 
-  void invoke('ai:chat:stream:start', { messages, feature: 'writing' })
+  void invoke('agent:run:writing', { messages })
     .then((res) => {
       if (finished) {
         // start 返回前已被取消：补发 cancel，避免上游孤儿流。
-        void invoke('ai:chat:stream:cancel', { streamId: res.streamId }).catch(() => undefined);
+        void invoke('agent:cancel', { runId: res.runId }).catch(() => undefined);
         return;
       }
-      streamId = res.streamId;
+      runId = res.runId;
     })
     .catch((e: unknown) => {
       if (finished) return;
@@ -60,9 +60,9 @@ export function startWritingStream(
       if (finished) return;
       finished = true;
       unsubscribe();
-      const id = streamId;
-      streamId = null;
-      if (id) void invoke('ai:chat:stream:cancel', { streamId: id }).catch(() => undefined);
+      const id = runId;
+      runId = null;
+      if (id) void invoke('agent:cancel', { runId: id }).catch(() => undefined);
     },
   };
 }

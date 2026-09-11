@@ -304,23 +304,38 @@ export class AiService {
     return adapter.chatCompletion({ model, messages: options.messages, params });
   }
 
-  /** 启动流式补全：streamId 立即返回，统一事件经 ai:streamEvent 推送。 */
+  /** Main-process-only stream seam consumed by AgentGateway; never exposed through IPC. */
+  openChatStream(
+    options: {
+      messages: ChatMessage[];
+      profileId?: string;
+      feature?: 'writing' | 'chat' | 'embedding';
+      model?: string;
+      params?: ChatParams;
+    },
+    onEvent: (event: ChatStreamEvent) => void,
+  ): import('./provider/types').ChatStreamHandle {
+    const { adapter, model, params } = this.resolve(options);
+    return adapter.chatCompletionStream({ model, messages: options.messages, params }, onEvent);
+  }
+
+
+  /**
+   * 启动流式补全（主进程内部使用，AgentGateway 是唯一调用方）：
+   * streamId 立即返回，事件经回调推送，支持取消与活跃计数（审计/测试用）。
+   */
   startChatStream(options: {
     messages: ChatMessage[];
     profileId?: string;
     feature?: 'writing' | 'chat' | 'embedding';
     model?: string;
     params?: ChatParams;
-  }): string {
-    const { adapter, model, params } = this.resolve(options);
+  }, onEvent?: (event: ChatStreamEvent) => void): string {
     const streamId = randomUUID();
-    const send = (event: ChatStreamEvent): void => {
+    const handle = this.openChatStream(options, (event) => {
+      if (onEvent) onEvent(event);
       this.deps.sendEvent('ai:streamEvent', { streamId, event });
-    };
-    const handle = adapter.chatCompletionStream(
-      { model, messages: options.messages, params },
-      send,
-    );
+    });
     this.streams.set(streamId, handle);
     void handle.done.finally(() => this.streams.delete(streamId));
     return streamId;

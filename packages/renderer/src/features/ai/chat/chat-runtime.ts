@@ -22,7 +22,7 @@ const SYSTEM_PROMPT =
 
 let working: ChatSession | null = null;
 let draft = false;
-let streamId: string | null = null;
+let runId: string | null = null;
 let pendingMeta: ChatTurnMeta | null = null;
 let subscribed = false;
 
@@ -72,7 +72,7 @@ async function persist(session: ChatSession): Promise<void> {
 }
 
 function finalizeStream(attachMeta: boolean): void {
-  streamId = null;
+  runId = null;
   useChatStore.getState().setStreaming(false);
   if (working) {
     const assistant = working.turns[working.turns.length - 1];
@@ -88,8 +88,8 @@ function finalizeStream(attachMeta: boolean): void {
 export function initChatRuntime(): void {
   if (subscribed) return;
   subscribed = true;
-  onEvent('ai:streamEvent', ({ streamId: sid, event }) => {
-    if (sid !== streamId || !working) return;
+  onEvent('agent:runEvent', ({ runId: sid, event }) => {
+    if (sid !== runId || !working) return;
     const assistant = working.turns[working.turns.length - 1];
     if (!assistant || assistant.role !== 'assistant') return;
     if (event.type === 'start') {
@@ -110,10 +110,10 @@ export function initChatRuntime(): void {
 }
 
 async function cancelActiveStream(): Promise<void> {
-  const id = streamId;
-  streamId = null;
+  const id = runId;
+  runId = null;
   pendingMeta = null;
-  if (id) await invoke('ai:chat:stream:cancel', { streamId: id }).catch(() => undefined);
+  if (id) await invoke('agent:cancel', { runId: id }).catch(() => undefined);
   useChatStore.getState().setStreaming(false);
 }
 
@@ -235,13 +235,12 @@ export async function sendMessage(rawText: string): Promise<void> {
   pendingMeta = retrieval ? toTurnMeta(retrieval) : null;
 
   try {
-    const { streamId: sid } = await invoke('ai:chat:stream:start', {
+    const { runId: sid } = await invoke('agent:run:chat', {
       messages,
-      feature: 'chat',
     });
-    streamId = sid;
+    runId = sid;
   } catch (e) {
-    streamId = null;
+    runId = null;
     pendingMeta = null;
     useChatStore.getState().setStreaming(false);
     useChatStore.getState().setError(errorMessage(e));

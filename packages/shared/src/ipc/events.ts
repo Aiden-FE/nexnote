@@ -1,7 +1,8 @@
 import type { GitStatus } from './channels/git';
 import type { VaultInfo } from '../types/vault';
 import type { UpdateCheckResult, UpdateChannel } from './channels/app';
-import type { ChatStreamEvent, AiConfigState } from '../types/ai';
+import type { AiConfigState } from '../types/ai';
+import type { AgentScenario, AgentRunEvent } from '../types/agent';
 import type { IndexStatus } from '../types/index';
 import type { RetrievalIndexStatusPayload } from '../types/retrieval';
 import type { GlobalSettings, VaultSettings } from '../types/settings';
@@ -17,8 +18,10 @@ export interface IpcEventMap {
   'fs:changed': FsChangeEvent;
   /** 更新检查、下载、安装流程的实时状态（DEV-018）。 */
   'app:updateStatus': UpdateCheckResult & { progress?: number; channel: UpdateChannel };
-  /** AI 对话流事件（统一内部协议，按 streamId 关联） */
-  'ai:streamEvent': { streamId: string; event: ChatStreamEvent };
+  /** Agent 流事件（仅由主进程 AgentGateway 推送，按 runId 关联）。 */
+  'agent:runEvent': { runId: string; scenario: AgentScenario; event: AgentRunEvent };
+  /** @deprecated internal compatibility only; omitted from the renderer allowlist. */
+  'ai:streamEvent': { streamId: string; event: import('../types/ai').ChatStreamEvent };
   /** DEV-011 向量索引后台构建进度 */
   'ai:retrievalStatus': { status: RetrievalIndexStatusPayload };
   /** AI 配置变化（Profile 增删改/分功能指定/embedding generation 变更） */
@@ -46,7 +49,7 @@ export const IPC_EVENT_CHANNELS: readonly string[] = [
   'vault:changed',
   'fs:changed',
   'app:updateStatus',
-  'ai:streamEvent',
+  'agent:runEvent',
   'ai:retrievalStatus',
   'ai:configChanged',
   'git:statusChanged',

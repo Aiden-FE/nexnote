@@ -1,6 +1,7 @@
 // 类型
 export type * from './types/vault';
 export type * from './types/ai';
+export type * from './types/agent';
 export type * from './types/index';
 export type * from './types/retrieval';
 export type * from './types/chat';
@@ -21,6 +22,7 @@ export type * from './ipc/channels/fs';
 export type * from './ipc/channels/editor';
 export type * from './ipc/channels/git';
 export type * from './ipc/channels/ai';
+export type * from './ipc/channels/agent';
 export type * from './ipc/channels/plugins';
 export type * from './ipc/channels/index';
 export type * from './ipc/channels/settings';

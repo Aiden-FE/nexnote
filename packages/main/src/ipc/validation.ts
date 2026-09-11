@@ -177,7 +177,7 @@ const aiFeaturesSet = object(
     },
   ],
 );
-const aiChatRequest = object(
+const _aiChatRequest = object(
   ['messages', 'profileId', 'feature', 'model', 'params'],
   [
     (p) => {
@@ -222,7 +222,19 @@ const aiConnectionTarget: PayloadValidator = (payload) => {
     ? null
     : invalid('必须提供 profileId 或 candidate');
 };
-const streamIdOnly = object(['streamId'], [stringField('streamId')]);
+const agentRun: PayloadValidator = (payload) => {
+  if (!isPlainObject(payload)) return invalid('payload 必须是普通对象');
+  const allowed = ['messages', 'skillIds', 'contextText', 'params'];
+  if (Object.keys(payload).some((key) => !allowed.includes(key))) return invalid('agent payload 包含未知字段');
+  const messages = payload.messages;
+  if (!Array.isArray(messages) || messages.some((m) => !isPlainObject(m) || !['system', 'user', 'assistant'].includes(String(m.role)) || typeof m.content !== 'string')) return invalid('messages 必须是合法消息数组');
+  if (payload.skillIds !== undefined && (!Array.isArray(payload.skillIds) || payload.skillIds.some((id) => typeof id !== 'string'))) return invalid('skillIds 必须是字符串数组');
+  if (payload.contextText !== undefined && typeof payload.contextText !== 'string') return invalid('contextText 必须是字符串');
+  if (payload.params !== undefined && !isPlainObject(payload.params)) return invalid('params 必须是对象');
+  return null;
+};
+const agentCancel = object(['runId'], [stringField('runId')]);
+const agentApproval = object(['approvalId', 'decision'], [stringField('approvalId'), (p) => ((p as Record<string, unknown>).decision === 'approved' || (p as Record<string, unknown>).decision === 'denied') ? null : invalid('decision 无效')]);
 const aiEmbed = object(['texts'], [stringArrayField('texts')]);
 const aiImport = object(['json'], [stringField('json')]);
 
@@ -463,9 +475,11 @@ const VALIDATORS: Partial<Record<IpcChannel, PayloadValidator>> = {
   'ai:features:set': aiFeaturesSet,
   'ai:testConnection': aiConnectionTarget,
   'ai:listModels': aiConnectionTarget,
-  'ai:chat:complete': aiChatRequest,
-  'ai:chat:stream:start': aiChatRequest,
-  'ai:chat:stream:cancel': streamIdOnly,
+  'agent:run:chat': agentRun,
+  'agent:run:writing': agentRun,
+  'agent:run:debug': agentRun,
+  'agent:cancel': agentCancel,
+  'agent:approval:respond': agentApproval,
   'ai:embed': aiEmbed,
   'ai:embedWithMetadata': aiEmbed,
   'ai:import': aiImport,
