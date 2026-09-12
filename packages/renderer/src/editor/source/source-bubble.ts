@@ -48,10 +48,14 @@ export function sourceSelectionBubble(options: SourceBubbleOptions): Extension {
     class {
       readonly dom: HTMLDivElement;
       private visible = false;
+      private destroyed = false;
+      private rafId: number | null = null;
 
       constructor(readonly view: EditorView) {
         this.dom = this.createDom();
-        view.dom.parentElement?.append(this.dom);
+        // 固定挂载 document.body：React 重建任何编辑器容器都不影响工具栏存续。
+        this.dom.style.position = 'fixed';
+        document.body.append(this.dom);
         // focusout 冒泡：焦点从 cm-content 离开时可捕获；relatedTarget 在 bubble 内则保持
         view.dom.addEventListener('focusout', this.onBlur);
         // scroll 不冒泡但在捕获阶段经过祖先链：覆盖任意后代滚动容器
@@ -64,6 +68,8 @@ export function sourceSelectionBubble(options: SourceBubbleOptions): Extension {
       }
 
       destroy() {
+        this.destroyed = true;
+        this.stopLoop();
         document.removeEventListener('scroll', this.onScroll, true);
         this.view.dom.removeEventListener('focusout', this.onBlur);
         this.view.dom.removeEventListener('keydown', this.onKeyDown);
@@ -91,31 +97,43 @@ export function sourceSelectionBubble(options: SourceBubbleOptions): Extension {
         return false;
       };
 
-      private sync(): void {
-        const sel = this.view.state.selection.main;
-        const text = sel.empty ? '' : this.view.state.sliceDoc(sel.from, sel.to);
-        if (sel.empty || !text.trim()) {
-          this.hide();
-          return;
+      /** 可见期间每帧自愈：任何外部容器重建（含 document.body 被替换）后立即重挂。 */
+      private ensureMounted(): void {
+        if (this.dom.ownerDocument !== document || this.dom.parentElement !== document.body) {
+          this.dom.style.position = 'fixed';
+          document.body.append(this.dom);
         }
+      }
+
+      private startLoop(): void {
+        if (this.rafId !== null) return;
+        const tick = () => {
+          this.rafId = null;
+          if (this.destroyed || !this.visible) return;
+          this.ensureMounted();
+          this.positionToSelection();
+          this.rafId = requestAnimationFrame(tick);
+        };
+        this.rafId = requestAnimationFrame(tick);
+      }
+
+      private stopLoop(): void {
+        if (this.rafId !== null) {
+          cancelAnimationFrame(this.rafId);
+          this.rafId = null;
+        }
+      }
+
+      private positionToSelection(): void {
+        const sel = this.view.state.selection.main;
         const coords = this.view.coordsAtPos(sel.from);
         if (!coords) {
           this.hide();
           return;
         }
-        this.dom.style.display = 'flex';
-        this.visible = true;
-        // 以实际包含块（offsetParent）为参照换算：锚点与包含块不一致时仍准确落位
-        const frameRect =
-          (this.dom.offsetParent as HTMLElement | null)?.getBoundingClientRect() ??
-          this.dom.parentElement?.getBoundingClientRect();
         const pos = bubblePositionInFrame(
           coords,
-          {
-            left: frameRect?.left ?? 0,
-            top: frameRect?.top ?? 0,
-            right: frameRect?.right ?? frameRect?.left ?? 0,
-          },
+          { left: 0, top: 0, right: window.innerWidth },
           this.dom.offsetWidth,
           this.dom.offsetHeight,
         );
@@ -124,8 +142,23 @@ export function sourceSelectionBubble(options: SourceBubbleOptions): Extension {
         this.dom.style.transform = 'translate(-50%, -100%)';
       }
 
+      private sync(): void {
+        this.ensureMounted();
+        const sel = this.view.state.selection.main;
+        const text = sel.empty ? '' : this.view.state.sliceDoc(sel.from, sel.to);
+        if (sel.empty || !text.trim()) {
+          this.hide();
+          return;
+        }
+        this.dom.style.display = 'flex';
+        this.visible = true;
+        this.positionToSelection();
+        this.startLoop();
+      }
+
       private hide(): void {
         this.visible = false;
+        this.stopLoop();
         this.dom.style.display = 'none';
       }
 
