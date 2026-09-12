@@ -1,7 +1,7 @@
 import { defaultKeymap, history, historyKeymap } from '@codemirror/commands';
 import { markdown } from '@codemirror/lang-markdown';
 import { defaultHighlightStyle, syntaxHighlighting, syntaxTree } from '@codemirror/language';
-import { EditorState, type Range } from '@codemirror/state';
+import { EditorState, type Extension, type Range } from '@codemirror/state';
 import {
   Decoration,
   type DecorationSet,
@@ -13,6 +13,8 @@ import {
 } from '@codemirror/view';
 
 export interface SourceEditorHandle {
+  /** CodeMirror 视图实例（AI 辅助事务写回/坐标查询用）。 */
+  readonly view: EditorView;
   readonly scrollDOM: HTMLElement;
   getText(): string;
   setText(text: string): void;
@@ -76,6 +78,8 @@ export function createSourceEditor(
     initialText: string;
     onChange(text: string): void;
     onScroll?(scrollDOM: HTMLElement): void;
+    /** 追加扩展（如划词工具栏、AI 辅助），随编辑器一次性装配。 */
+    extraExtensions?: Extension[];
   },
 ): SourceEditorHandle {
   let programmatic = false;
@@ -129,11 +133,13 @@ export function createSourceEditor(
             return false;
           },
         }),
+        ...(options.extraExtensions ?? []),
       ],
     }),
   });
 
   return {
+    view,
     scrollDOM: view.scrollDOM,
     getText: () => view.state.doc.toString(),
     setText(text) {

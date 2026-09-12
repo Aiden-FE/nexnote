@@ -72,19 +72,24 @@ function createBubbleDom(
   }
 
   const show: BubbleView['show'] = (coords) => {
-    const host = dom.parentElement?.getBoundingClientRect();
     dom.style.display = 'flex';
-    const hostLeft = host?.left ?? 0;
-    const hostTop = host?.top ?? 0;
-    const hostRight = host?.right ?? hostLeft;
+    // 坐标以实际包含块（offsetParent）为参照：锚点容器（parentElement）与包含块
+    // 不一致时（如宿主未定位），absolute 的 top/left 相对包含块解析，
+    // 按锚点换算会随文档长度漂移；offsetParent 缺失时退回锚点矩形。
+    const frame =
+      (dom.offsetParent as HTMLElement | null)?.getBoundingClientRect() ??
+      dom.parentElement?.getBoundingClientRect();
+    const frameLeft = frame?.left ?? 0;
+    const frameTop = frame?.top ?? 0;
+    const frameRight = frame?.right ?? frameLeft;
     const width = dom.offsetWidth;
     const height = dom.offsetHeight;
-    const minLeft = hostLeft + width / 2;
-    const maxLeft = Math.max(minLeft, hostRight - width / 2);
+    const minLeft = frameLeft + width / 2;
+    const maxLeft = Math.max(minLeft, frameRight - width / 2);
     const left = Math.min(Math.max(coords.left, minLeft), maxLeft);
-    const top = Math.max(coords.top - 8, hostTop + height);
-    dom.style.top = `${top - hostTop}px`;
-    dom.style.left = `${left - hostLeft}px`;
+    const top = Math.max(coords.top - 8, frameTop + height);
+    dom.style.top = `${top - frameTop}px`;
+    dom.style.left = `${left - frameLeft}px`;
     dom.style.transform = 'translate(-50%, -100%)';
   };
   const hide = () => {
@@ -140,6 +145,20 @@ export const SelectionBubble = Extension.create<SelectionBubbleOptions, { visibl
           const host = editorView.dom.parentElement;
           if (host && bubble) host.append(bubble.dom);
 
+          // 滚动容器滚动后选区视口坐标变化：重算位置，保证 bubble 始终贴住选区。
+          // scroll 事件不冒泡但在捕获阶段会经过祖先链，document 捕获监听
+          // 可覆盖任意后代滚动容器（不依赖特定 scrollDOM 引用）。
+          const onScroll = () => {
+            if (bubble && ext.storage.visible) sync(editorView);
+          };
+          document.addEventListener('scroll', onScroll, true);
+
+          const destroyView = () => {
+            document.removeEventListener('scroll', onScroll, true);
+            bubble?.destroy();
+            bubble = null;
+          };
+
           const sync = (view: EditorView) => {
             const { selection } = view.state;
             const hasSel = !selection.empty && selection.from !== selection.to;
@@ -162,8 +181,7 @@ export const SelectionBubble = Extension.create<SelectionBubbleOptions, { visibl
               sync(view);
             },
             destroy() {
-              bubble?.destroy();
-              bubble = null;
+              destroyView();
             },
           };
         },

@@ -31,6 +31,28 @@ function selectText(kernel: ReturnType<typeof createEditor>, from: number, to: n
   );
 }
 
+/** 构造 getBoundingClientRect 返回值（测试布局桩）。 */
+function makeRect(init: {
+  top: number;
+  left: number;
+  right: number;
+  bottom: number;
+  width: number;
+  height: number;
+}): DOMRect {
+  return {
+    top: init.top,
+    left: init.left,
+    right: init.right,
+    bottom: init.bottom,
+    width: init.width,
+    height: init.height,
+    x: init.left,
+    y: init.top,
+    toJSON: () => ({}),
+  } as DOMRect;
+}
+
 describe('computeEditorActionContext', () => {
   it('选区目标抽取选区文本与坐标', () => {
     const { kernel } = mount('第一段文本\n\n第二段');
@@ -210,6 +232,77 @@ describe('选区浮动工具栏（SelectionBubble）', () => {
       'ai-polish',
       expect.objectContaining({ target: 'selection' }),
     );
+    kernel.destroy();
+  });
+
+  // 定位回归：CSS/包含块不一致曾导致 top/left 被忽略、浮层落入文档流末尾，
+  // 距离随文档长度增长。bubble 底边应始终距选区起点 top 8px，水平收在容器内。
+  it('长文档（大量空行）中部划词：底边距选区起点 8px，水平收在容器内', () => {
+    const onAction = vi.fn();
+    const paragraphs = Array.from({ length: 120 }, (_, i) => (i % 2 ? '' : `第 ${i} 段内容`));
+    const { container, kernel } = mount(paragraphs.join('\n\n'), {
+      selectionBubble: {
+        actions: [{ id: 'ai-rewrite', title: '改写' }],
+        onAction,
+      },
+    });
+    const view = kernel.editor.view;
+    // 模拟真实布局：容器位于视口 (0,50)，宽 800
+    container.getBoundingClientRect = () =>
+      makeRect({ top: 50, left: 0, right: 800, bottom: 650, width: 800, height: 600 });
+    // 选区起点在文档中部（视口 y=3000）
+    vi.spyOn(view, 'coordsAtPos').mockReturnValue({
+      top: 3000,
+      bottom: 3024,
+      left: 700,
+      right: 720,
+    });
+    const bubble = container.querySelector<HTMLElement>('[data-selection-bubble]');
+    expect(bubble).toBeTruthy();
+    Object.defineProperty(bubble, 'offsetWidth', { configurable: true, value: 120 });
+    Object.defineProperty(bubble, 'offsetHeight', { configurable: true, value: 32 });
+
+    const doc = view.state.doc;
+    const mid = Math.floor(doc.content.size / 2);
+    selectText(kernel, mid, mid + 4);
+
+    expect(bubble?.style.display).not.toBe('none');
+    // transform translate(-50%,-100%)：style.top 即 bubble 底边（容器内坐标），
+    // 底边 = 选区起点 top - 8 → 距选区起点 8px（3000 - 8 - 50 容器偏移 = 2942）
+    expect(bubble?.style.top).toBe(`${3000 - 8 - 50}px`);
+    // 水平：style.left 为 bubble 中心（translate(-50%)），中心被钳制在容器内
+    // 半宽处 → 视觉边缘 [640, 760] 完全落在容器 0~800 内
+    const center = Number.parseFloat(bubble?.style.left ?? '');
+    expect(center - 60).toBeGreaterThanOrEqual(0);
+    expect(center + 60).toBeLessThanOrEqual(800);
+    kernel.destroy();
+  });
+
+  it('滚动容器滚动后按新视口坐标重算，仍以包含块为参照', () => {
+    const onAction = vi.fn();
+    const { container, kernel } = mount('第一段\n\n第二段\n\n第三段', {
+      selectionBubble: {
+        actions: [{ id: 'ai-rewrite', title: '改写' }],
+        onAction,
+      },
+    });
+    const view = kernel.editor.view;
+    container.getBoundingClientRect = () =>
+      makeRect({ top: 0, left: 0, right: 800, bottom: 600, width: 800, height: 600 });
+    const coords = { top: 400, bottom: 424, left: 100, right: 120 };
+    const coordsSpy = vi.spyOn(view, 'coordsAtPos').mockReturnValue(coords);
+    const bubble = container.querySelector<HTMLElement>('[data-selection-bubble]');
+    Object.defineProperty(bubble, 'offsetWidth', { configurable: true, value: 120 });
+    Object.defineProperty(bubble, 'offsetHeight', { configurable: true, value: 32 });
+
+    selectText(kernel, 1, 4);
+    expect(bubble?.style.top).toBe(`${400 - 8}px`);
+
+    // 文档滚动 160px：选区视口坐标上移，scroll 事件触发重算（document 捕获阶段可收到）
+    coords.top = 240;
+    container.dispatchEvent(new Event('scroll'));
+    expect(coordsSpy).toHaveBeenCalled();
+    expect(bubble?.style.top).toBe(`${240 - 8}px`);
     kernel.destroy();
   });
 });

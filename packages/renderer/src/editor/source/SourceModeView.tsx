@@ -18,6 +18,9 @@ import {
   type PageFileIo,
 } from './page-source-io';
 import { createSourceEditor, type SourceEditorHandle } from './codemirror-host';
+import { sourceSelectionBubble } from './source-bubble';
+import { handleSourceBubbleAction, SOURCE_CHAT_ASK_ACTION } from './source-ai-assist';
+import { writingBubbleActions } from '../../features/ai/writing';
 import { LivePreview, type InternalLinkNavigation } from './LivePreview';
 import { parseWholePage } from './parse-guard';
 import { registerModeSwitchHandler, requestSourceModeToggle } from './source-mode-toggle';
@@ -251,6 +254,18 @@ export function SourceModeView({ tab }: { tab: TabDescriptor }) {
         );
         if (preview.scrollTop !== next) preview.scrollTop = next;
       },
+      // 划词工具栏（与块编辑一致）：询问 AI + 白名单写作动作，流式预览经共享
+      // WritingAssistantLayer（WorkspaceView 全局挂载），Accept 单事务写回可 undo。
+      extraExtensions: [
+        sourceSelectionBubble({
+          actions: [...writingBubbleActions(), { id: SOURCE_CHAT_ASK_ACTION, title: '询问 AI' }],
+          onAction: (id, ctx) => {
+            const editor = editorRef.current;
+            if (!editor) return;
+            handleSourceBubbleAction(editor.view, id, ctx, { getDocPath: () => pathRef.current });
+          },
+        }),
+      ],
     });
     editorRef.current = editor;
     return () => {
@@ -487,7 +502,7 @@ export function SourceModeView({ tab }: { tab: TabDescriptor }) {
       <div className="flex min-h-0 flex-1">
         <div
           data-testid="source-editor-pane"
-          className="min-h-0 min-w-0 flex-1 overflow-hidden border-r"
+          className="relative min-h-0 min-w-0 flex-1 overflow-hidden border-r"
           ref={hostRef}
         />
         {previewVisible && (
