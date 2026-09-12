@@ -268,6 +268,11 @@ export function SourceModeView({ tab }: { tab: TabDescriptor }) {
       ],
     });
     editorRef.current = editor;
+    // 调试/验收句柄：命名空间化全局，供 smoke 与诊断直接驱动真实 CodeMirror 实例。
+    (window as unknown as { __nexnoteSourceEditors?: unknown[] }).__nexnoteSourceEditors ??= [];
+    (window as unknown as { __nexnoteSourceEditors: unknown[] }).__nexnoteSourceEditors.push(
+      editor,
+    );
     return () => {
       editorRef.current = null;
       editor.destroy();

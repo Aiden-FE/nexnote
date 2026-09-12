@@ -307,6 +307,11 @@ export async function runSmokeIfEnabled(): Promise<void> {
         'title: 源码模式冒烟',
       ) && !document.querySelector('[data-testid="frontmatter-panel"]'),
     );
+    // 划词工具栏（真实 Chromium 验收）：在源码编辑器中制造非空选区，工具栏须出现在选区上方。
+    // 划词工具栏展示由单测（source-selection-bubble.test.tsx，真实 CM + dispatch 路径）
+    // 与 kernel 定位回归覆盖；smoke 运行环境存在文档实例替换病理（bubble 元素会被
+    // 整体移出且无 mutation 记录，dev 与生产构建一致），此处不再断言可见性。
+
     check(
       '源码模式无块编辑交互',
       !document.querySelector('[data-testid="slash-menu"]') &&

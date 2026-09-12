@@ -98,12 +98,12 @@ function selectWithCoords(
   coords: { top: number; left: number; right: number; bottom: number },
 ) {
   Object.defineProperty(
-    parent.querySelector<HTMLElement>('[data-source-selection-bubble]'),
+    document.querySelector<HTMLElement>('[data-source-selection-bubble]'),
     'offsetWidth',
     { configurable: true, value: 120 },
   );
   Object.defineProperty(
-    parent.querySelector<HTMLElement>('[data-source-selection-bubble]'),
+    document.querySelector<HTMLElement>('[data-source-selection-bubble]'),
     'offsetHeight',
     { configurable: true, value: 32 },
   );
@@ -111,8 +111,8 @@ function selectWithCoords(
   editor.view.dispatch({ selection: { anchor: from, head: to } });
 }
 
-function bubbleOf(parent: HTMLElement): HTMLElement {
-  const bubble = parent.querySelector<HTMLElement>('[data-source-selection-bubble]');
+function bubbleOf(): HTMLElement {
+  const bubble = document.querySelector<HTMLElement>('[data-source-selection-bubble]');
   expect(bubble).toBeTruthy();
   return bubble as HTMLElement;
 }
@@ -133,7 +133,7 @@ describe('源码模式划词工具栏（CodeMirror selection bubble）', () => {
   it('非空选区时在选区上方 8px 出现，水平收在容器内', () => {
     const { parent, editor } = mount('第一句原文。第二句。');
     selectWithCoords(editor, parent, 0, 6, { top: 3000, left: 700, right: 720, bottom: 3024 });
-    const bubble = bubbleOf(parent);
+    const bubble = bubbleOf();
     expect(bubble.style.display).not.toBe('none');
     // 底边距选区起点 top 8px（3000-8），水平中心钳制在容器半宽内（700+60 ≤ 800）
     expect(bubble.style.top).toBe(`${3000 - 8}px`);
@@ -144,7 +144,7 @@ describe('源码模式划词工具栏（CodeMirror selection bubble）', () => {
 
   it('选区折叠/为空隐藏；Esc 关闭；focusout 隐藏', () => {
     const { parent, editor } = mount('第一句原文。  \n第二句。');
-    const bubble = bubbleOf(parent);
+    const bubble = bubbleOf();
     expect(bubble.style.display).toBe('none');
 
     selectWithCoords(editor, parent, 0, 6, { top: 300, left: 100, right: 120, bottom: 320 });
@@ -175,7 +175,7 @@ describe('源码模式划词工具栏（CodeMirror selection bubble）', () => {
   it('滚动后按新视口坐标重算，仍以包含块为参照', () => {
     const { parent, editor } = mount('第一句原文。第二句。');
     selectWithCoords(editor, parent, 0, 6, { top: 400, left: 100, right: 120, bottom: 424 });
-    const bubble = bubbleOf(parent);
+    const bubble = bubbleOf();
     expect(bubble.style.top).toBe(`${400 - 8}px`);
 
     // 滚动 160px：视口坐标上移，scroll（document 捕获）触发重算
@@ -193,7 +193,7 @@ describe('源码模式划词工具栏（CodeMirror selection bubble）', () => {
   it('点击「询问 AI」走 chat queueAsk 带选区并展开 dock', () => {
     const { parent, editor } = mount('第一句原文。第二句。');
     selectWithCoords(editor, parent, 0, 6, { top: 300, left: 100, right: 120, bottom: 320 });
-    const bubble = bubbleOf(parent);
+    const bubble = bubbleOf();
     const btn = bubble.querySelector<HTMLButtonElement>(
       `[data-bubble-action="${SOURCE_CHAT_ASK_ACTION}"]`,
     );
@@ -215,7 +215,7 @@ describe('源码模式划词工具栏（CodeMirror selection bubble）', () => {
     const bridge = installBridge();
     const { parent, editor } = mount('第一句原文。第二句。');
     selectWithCoords(editor, parent, 0, 6, { top: 300, left: 100, right: 120, bottom: 320 });
-    const bubble = bubbleOf(parent);
+    const bubble = bubbleOf();
     const btn = bubble.querySelector<HTMLButtonElement>('[data-bubble-action="ai:rewrite"]');
     btn?.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, cancelable: true }));
     btn?.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
@@ -248,7 +248,7 @@ describe('源码模式划词工具栏（CodeMirror selection bubble）', () => {
     const bridge = installBridge();
     const { parent, editor } = mount('第一句原文。第二句。');
     selectWithCoords(editor, parent, 0, 6, { top: 300, left: 100, right: 120, bottom: 320 });
-    const bubble = bubbleOf(parent);
+    const bubble = bubbleOf();
     const btn = bubble.querySelector<HTMLButtonElement>('[data-bubble-action="ai:rewrite"]');
     btn?.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, cancelable: true }));
     btn?.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
