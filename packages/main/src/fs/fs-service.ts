@@ -2,6 +2,7 @@ import { promises as fsp } from 'node:fs';
 import * as path from 'node:path';
 import type { DirEntry, FileInfo } from '@nexnote/shared';
 import { isDocumentPath } from '../document/document-domain';
+import { AppWriteTracker } from './app-write-tracker';
 
 export class FsError extends Error {
   constructor(
@@ -31,7 +32,16 @@ async function realpathOrNull(target: string): Promise<string | null> {
  * - 未打开 vault 时全部拒绝
  */
 export class VaultFsService {
-  constructor(private readonly getVaultRoot: () => string | null) {}
+  constructor(
+    private readonly getVaultRoot: () => string | null,
+    /** 应用写入登记：所有写盘落盘点登记，供 watch-service 判定事件 origin（防自写误判冲突）。 */
+    private readonly appWrites: AppWriteTracker = new AppWriteTracker(),
+  ) {}
+
+  /** 该绝对路径是否在 TTL 内由应用自身写入（watcher 事件 origin 判定）。 */
+  isRecentAppWrite(absPath: string): boolean {
+    return this.appWrites.isRecent(absPath);
+  }
 
   private async requireRoot(): Promise<string> {
     const root = this.getVaultRoot();
@@ -109,6 +119,7 @@ export class VaultFsService {
     const tmp = `${abs}.tmp-${process.pid}-${Date.now()}`;
     await fsp.writeFile(tmp, content, 'utf8');
     await fsp.rename(tmp, abs);
+    this.appWrites.record(abs);
     const st = await fsp.stat(abs);
     return toFileInfo(relPath, st);
   }
@@ -138,6 +149,7 @@ export class VaultFsService {
     } finally {
       await handle.close();
     }
+    this.appWrites.record(abs);
     return { file: await this.stat(relPath), created: true };
   }
 
@@ -167,6 +179,7 @@ export class VaultFsService {
         } finally {
           await handle.close();
         }
+        this.appWrites.record(abs);
         return target;
       } catch (e) {
         if ((e as { code?: string }).code === 'EEXIST') return '';
@@ -189,6 +202,7 @@ export class VaultFsService {
         }
         throw new FsError(`导入文件失败: ${relPath}（${(e as Error).message}）`, 'IMPORT_FAILED');
       }
+      this.appWrites.record(abs);
       return relPath;
     }
 
@@ -268,6 +282,7 @@ export class VaultFsService {
         'RENAME_FAILED',
       );
     }
+    this.appWrites.record(to.abs);
     const st = await fsp.stat(to.abs);
     return toFileInfo(toRel, st);
   }

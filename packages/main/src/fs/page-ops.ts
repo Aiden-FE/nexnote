@@ -157,6 +157,8 @@ export async function renameWithLinks(
       const normal = rewriteMarkdownLinks(wiki.content, fromStem, toStem, file);
       if (wiki.changed || normal.changed) {
         const content = normal.content;
+        // 联动重写的其它文件经 fs.writeTextFile 落盘时已在主进程登记为应用写入
+        // （AppWriteTracker），watcher 事件据此标记 origin:'app'，不触发冲突横幅。
         await fs.writeTextFile(file, content, true);
         updatedFiles.push(file);
       }

@@ -43,7 +43,9 @@ function clamp01(value: number): number {
 }
 
 function pageAuthority(pages: ConfidencePageInput[], graph: GraphSnapshot): Map<string, number> {
-  const ranks = new Map(graph.pages.map((page) => [page.path, 1 / Math.max(1, graph.pages.length)]));
+  const ranks = new Map(
+    graph.pages.map((page) => [page.path, 1 / Math.max(1, graph.pages.length)]),
+  );
   const incoming = new Map<string, string[]>();
   for (const link of graph.links) {
     const sources = incoming.get(link.target) ?? [];
@@ -63,14 +65,17 @@ function pageAuthority(pages: ConfidencePageInput[], graph: GraphSnapshot): Map<
     const next = new Map(graph.pages.map((page) => [page.path, 0]));
     const pageCount = Math.max(1, graph.pages.length);
     const teleport = 0.15 / pageCount;
-    const danglingMass =
-      graph.pages.reduce((total, page) => total + ((outgoing.get(page.path) ?? 0) === 0 ? ranks.get(page.path) ?? 0 : 0), 0);
+    const danglingMass = graph.pages.reduce(
+      (total, page) =>
+        total + ((outgoing.get(page.path) ?? 0) === 0 ? (ranks.get(page.path) ?? 0) : 0),
+      0,
+    );
     const danglingShare = (0.85 * danglingMass) / pageCount;
     for (const page of graph.pages) next.set(page.path, teleport + danglingShare);
     for (const page of graph.pages) {
       const sourceCount = outgoing.get(page.path) ?? 0;
       if (sourceCount === 0) continue;
-      const share = (ranks.get(page.path) ?? 0) * 0.85 / sourceCount;
+      const share = ((ranks.get(page.path) ?? 0) * 0.85) / sourceCount;
       for (const target of outgoingTargets.get(page.path) ?? []) {
         next.set(target, (next.get(target) ?? 0) + share);
       }
@@ -81,19 +86,18 @@ function pageAuthority(pages: ConfidencePageInput[], graph: GraphSnapshot): Map<
   const maxRank = Math.max(...ranks.values(), 0);
   const baseline = 1 / Math.max(1, graph.pages.length);
   const incomingCount = new Map(graph.pages.map((page) => [page.path, 0]));
-  for (const link of graph.links) incomingCount.set(link.target, (incomingCount.get(link.target) ?? 0) + 1);
-  return new Map([...ranks].map(([path, rank]) => {
-    const rankScore = maxRank > baseline ? clamp01((rank - baseline) / (maxRank - baseline)) : 0;
-    const inboundScore = clamp01((incomingCount.get(path) ?? 0) / 5);
-    return [path, clamp01(0.7 * rankScore + 0.3 * inboundScore)];
-  }));
+  for (const link of graph.links)
+    incomingCount.set(link.target, (incomingCount.get(link.target) ?? 0) + 1);
+  return new Map(
+    [...ranks].map(([path, rank]) => {
+      const rankScore = maxRank > baseline ? clamp01((rank - baseline) / (maxRank - baseline)) : 0;
+      const inboundScore = clamp01((incomingCount.get(path) ?? 0) / 5);
+      return [path, clamp01(0.7 * rankScore + 0.3 * inboundScore)];
+    }),
+  );
 }
 
-function factor(
-  key: ConfidenceFactor['key'],
-  score: number,
-  detail: string,
-): ConfidenceFactor {
+function factor(key: ConfidenceFactor['key'], score: number, detail: string): ConfidenceFactor {
   const normalized = clamp01(score);
   const weight = CONFIDENCE_WEIGHTS[key];
   return {
@@ -134,13 +138,19 @@ export function computeConfidenceResults({
     const authorCount = history?.authors ?? 1;
     const authorScore = 0.25 + 0.75 * (Math.log2(Math.max(1, authorCount)) / Math.log2(6));
     const createdValue = Date.parse(history?.firstCommitAt ?? page.createdAt ?? '');
-    const ageDays = Number.isFinite(createdValue) ? Math.max(0, (now.getTime() - createdValue) / 86_400_000) : 0;
+    const ageDays = Number.isFinite(createdValue)
+      ? Math.max(0, (now.getTime() - createdValue) / 86_400_000)
+      : 0;
     const ageScore = Math.log1p(ageDays) / Math.log(366);
     const linkScore = authority.get(page.path) ?? 0;
     const manualScore = page.confidenceBoost === null ? 0.5 : clamp01(page.confidenceBoost / 100);
 
     const factors = [
-      factor('stability', stabilityScore, `${events.length} 次历史改动按近期权重聚合，改动越小越稳定`),
+      factor(
+        'stability',
+        stabilityScore,
+        `${events.length} 次历史改动按近期权重聚合，改动越小越稳定`,
+      ),
       factor('review_count', reviewScore, `${history?.commits ?? 0} 次提交，20 次后饱和`),
       factor('author_count', authorScore, `${authorCount} 位作者，单人保留基础分`),
       factor('age', ageScore, `文档存活 ${Math.floor(ageDays)} 天，按对数增长`),
@@ -148,7 +158,9 @@ export function computeConfidenceResults({
       factor(
         'manual_boost',
         manualScore,
-        page.confidenceBoost === null ? '未设置 confidence_boost，使用中性分' : `confidence_boost=${page.confidenceBoost}`,
+        page.confidenceBoost === null
+          ? '未设置 confidence_boost，使用中性分'
+          : `confidence_boost=${page.confidenceBoost}`,
       ),
     ];
     const score = Math.round(factors.reduce((total, item) => total + item.contribution, 0));
@@ -167,6 +179,7 @@ export class ConfidenceService {
     private readonly git: GitService,
     private readonly onComputed: (paths: string[] | null) => void = () => undefined,
     private readonly onError: (error: unknown) => void = () => undefined,
+    private readonly recordAppWrite?: (absPath: string) => void,
   ) {}
 
   refresh(paths?: string[]): Promise<void> {
@@ -226,6 +239,8 @@ export class ConfidenceService {
       const updated = setFrontmatterNumber(current, 'confidence', result.score);
       if (updated === null) continue;
       await fsp.writeFile(absolute, updated, 'utf8');
+      // frontmatter 同步属于应用写入：登记后 watcher 事件带 origin:'app'，不触发冲突误报。
+      this.recordAppWrite?.(absolute);
       changed = true;
     }
     if (changed) this.git.scheduleAutoCommit('同步置信度到 frontmatter', 0);

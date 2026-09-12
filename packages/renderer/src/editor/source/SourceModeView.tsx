@@ -164,6 +164,32 @@ export function SourceModeView({ tab }: { tab: TabDescriptor }) {
     setPreviewText(text);
   }, []);
 
+  /**
+   * 应用自身写入（origin:'app'）变化：绝不弹冲突，静默刷新基线。
+   * - clean → 静默重载磁盘内容（如 renameWithLinks 联动重写了本页链接）
+   * - dirty → 仅把基线刷新到磁盘当前版本并保持本地 buffer：我们的写入不可能与
+   *   用户意图冲突；buffer 与磁盘不同说明本地有更新输入，继续等 autosave。
+   */
+  const refreshBaselineFromDisk = useCallback(async (): Promise<void> => {
+    try {
+      const [text, info] = await Promise.all([
+        invoke('fs:readTextFile', { path: pathRef.current }),
+        invoke('fs:stat', { path: pathRef.current }),
+      ]);
+      baseVersionRef.current = fileVersionOf(info);
+      baseTextRef.current = text;
+      if (dirtyRef.current) return;
+      // 竞态防护：读取期间用户又开始输入（dirty）则只刷新基线，不动编辑器
+      if (textRef.current !== text) {
+        editorRef.current?.setText(text);
+        textRef.current = text;
+        setPreviewText(text);
+      }
+    } catch {
+      // 文件竞态消失（如被改名/删除）：交给页面树 unlink 流程
+    }
+  }, []);
+
   // ── 加载：原始字节，不做 H1 绑定（无 H1 时不补写，保持原文） ──
   useEffect(() => {
     const nextPath = tab.pagePath ?? `${sanitizePageTitle(tab.title)}.md`;
@@ -249,10 +275,16 @@ export function SourceModeView({ tab }: { tab: TabDescriptor }) {
   }, [flush]);
 
   // ── 外部文件变化：写入前版本检查为准，不只依赖延迟到达的 watcher 事件 ──
+  // origin:'app'（应用自身写入）绝不弹冲突，仅静默刷新基线/重载；
+  // 未带 origin 的真外部事件保持 conflict/reload 语义。
   useEffect(() => {
     const unregister = onEvent('fs:changed', (event) => {
       const current = pathRef.current;
       if (event.kind !== 'change' || event.path !== current) return;
+      if (event.origin === 'app') {
+        void refreshBaselineFromDisk();
+        return;
+      }
       void (async () => {
         const result = await classifyExternalChange({
           io: ipcIo,
@@ -280,7 +312,7 @@ export function SourceModeView({ tab }: { tab: TabDescriptor }) {
       })();
     });
     return unregister;
-  }, [reloadFromDisk]);
+  }, [reloadFromDisk, refreshBaselineFromDisk]);
 
   // ── 模式切换生命周期：flush → 整页解析守卫；失败停留源码模式 ──
   useEffect(() => {

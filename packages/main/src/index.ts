@@ -4,6 +4,7 @@ import { join } from 'node:path';
 import { AppStore } from './vault/app-store';
 import { VaultSession } from './vault/vault-session';
 import { VaultFsService } from './fs/fs-service';
+import { AppWriteTracker } from './fs/app-write-tracker';
 import { VaultWatchService } from './fs/watch-service';
 import { MetadataStore } from './document/metadata-store';
 import { LinkIndexService } from './indexer/index-service';
@@ -90,6 +91,8 @@ async function bootstrap(): Promise<void> {
     },
   );
   // 文件监视（DEV-003）：事件同时驱动树刷新与 DEV-004 的防抖单文件索引。
+  // 应用写入登记（DEV-020）：fs 服务写盘落盘点登记，watcher 事件据此标记 origin:'app'。
+  const appWrites = new AppWriteTracker();
   const watch = new VaultWatchService({
     getRoot: () =>
       initializingRoot !== undefined ? initializingRoot : (vaultSession.getCurrent()?.root ?? null),
@@ -101,6 +104,7 @@ async function bootstrap(): Promise<void> {
         ? value.format
         : undefined;
     },
+    isRecentAppWrite: (absPath) => appWrites.isRecent(absPath),
     emit: (event) => {
       windows?.sendToMainWindow('fs:changed', event);
       const root = vaultSession.getCurrent()?.root ?? null;
@@ -113,7 +117,7 @@ async function bootstrap(): Promise<void> {
     },
     onError: (e) => log('watch error:', e),
   });
-  const fs = new VaultFsService(() => vaultSession.getCurrent()?.root ?? null);
+  const fs = new VaultFsService(() => vaultSession.getCurrent()?.root ?? null, appWrites);
   const git = new GitService({
     useSystemGit: appStore.getUseSystemGit(),
     allowSystemGitFallback: !app.isPackaged,
@@ -124,6 +128,7 @@ async function bootstrap(): Promise<void> {
     git,
     (paths) => windows?.sendToMainWindow('index:confidenceChanged', { paths }),
     (error) => log('confidence error:', error),
+    (absPath) => appWrites.record(absPath),
   );
   confidenceService = confidence;
   git.onCommitted((root, files) => {

@@ -3,6 +3,9 @@ import { tmpdir } from 'node:os';
 import * as path from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import type { FsChangeEvent } from '@nexnote/shared';
+import { AppWriteTracker } from '../src/fs/app-write-tracker';
+import { VaultFsService } from '../src/fs/fs-service';
+import { renameWithLinks } from '../src/fs/page-ops';
 import { VaultWatchService } from '../src/fs/watch-service';
 
 let tmp: string;
@@ -179,6 +182,96 @@ describe('VaultWatchService（真实临时目录 + chokidar）', () => {
     await svc.sync();
     await svc.ready();
     expect(svc.watched).toBe(rootB);
+    await svc.stop();
+  });
+});
+
+describe('VaultWatchService origin 标记（应用自身写入 vs 外部写入）', () => {
+  function makeTrackedService(
+    getRoot: () => string | null,
+    tracker: AppWriteTracker,
+  ): VaultWatchService {
+    return new VaultWatchService({
+      getRoot,
+      emit: (e) => events.push(e),
+      isRecentAppWrite: (absPath) => tracker.isRecent(absPath),
+    });
+  }
+
+  it('应用自身写入（fs 服务落盘）的 add/change 事件带 origin:"app"', async () => {
+    const tracker = new AppWriteTracker();
+    const fs = new VaultFsService(() => rootA, tracker);
+    const svc = makeTrackedService(() => rootA, tracker);
+    await svc.sync();
+    await svc.ready();
+
+    // 首次写入 → add 事件带 origin
+    await fs.writeTextFile('app-note.md', '# v1\n');
+    expect(await untilEvent((e) => e.path === 'app-note.md' && e.origin === 'app')).toBe(true);
+
+    // 后续写入 → change 事件带 origin（awaitWriteFinish 延迟 120ms+ 后到达，TTL 覆盖）
+    await fs.writeTextFile('app-note.md', '# v2\n');
+    expect(
+      await untilEvent(
+        (e) => e.kind === 'change' && e.path === 'app-note.md' && e.origin === 'app',
+      ),
+    ).toBe(true);
+    await svc.stop();
+  });
+
+  it('外部写入（不经 fs 服务）的事件不带 origin，保持外部语义', async () => {
+    const tracker = new AppWriteTracker();
+    const fs = new VaultFsService(() => rootA, tracker);
+    const svc = makeTrackedService(() => rootA, tracker);
+    await svc.sync();
+    await svc.ready();
+
+    // 应用写入外部未曾触碰的路径：首写 add、再写 change，均带 origin
+    await fs.writeTextFile('app-note-2.md', '# by app\n');
+    expect(await untilEvent((e) => e.path === 'app-note-2.md' && e.origin === 'app')).toBe(true);
+    await fs.writeTextFile('app-note-2.md', '# by app v2\n');
+    expect(
+      await untilEvent(
+        (e) => e.kind === 'change' && e.path === 'app-note-2.md' && e.origin === 'app',
+      ),
+    ).toBe(true);
+
+    // 外部直接写盘另一路径：不登记 tracker → 事件无 origin
+    //（同路径在 TTL 窗口内的外部写入按设计归入应用写入，此处用全新路径验证外部语义）
+    await writeFile(path.join(rootA, 'ext-note.md'), '# external\n', 'utf8');
+    expect(
+      await untilEvent(
+        (e) => e.kind === 'add' && e.path === 'ext-note.md' && e.origin === undefined,
+      ),
+    ).toBe(true);
+    await svc.stop();
+  });
+
+  it('renameWithLinks 联动重写的其它文件，change 事件带 origin:"app"', async () => {
+    const tracker = new AppWriteTracker();
+    const fs = new VaultFsService(() => rootA, tracker);
+    const svc = makeTrackedService(() => rootA, tracker);
+    await svc.sync();
+    await svc.ready();
+
+    await fs.writeTextFile('a.md', '# A\n');
+    await fs.writeTextFile('b.md', '# B\n\n[[a]]\n');
+    // 等 b.md 的 add 事件消费完，避免 initial add 事件干扰断言
+    expect(await untilEvent((e) => e.kind === 'add' && e.path === 'b.md')).toBe(true);
+    const baseline = events.length;
+
+    const result = await renameWithLinks(fs, 'a.md', 'a-renamed.md');
+    expect(result.updatedFiles).toContain('b.md');
+    // b.md 的联动重写必须被标记为应用写入：打开中的 b.md 不应弹外部修改冲突
+    expect(
+      await untilEvent(
+        (e) =>
+          events.indexOf(e) >= baseline &&
+          e.kind === 'change' &&
+          e.path === 'b.md' &&
+          e.origin === 'app',
+      ),
+    ).toBe(true);
     await svc.stop();
   });
 });
