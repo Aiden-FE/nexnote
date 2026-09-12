@@ -433,6 +433,8 @@ const saveLayout: PayloadValidator = (payload) => {
     treeCollapsedDirs: 'string-array',
     treeShowAllFiles: 'boolean',
     treeShowExtensions: 'boolean',
+    // 新手引导完成标记；旧配置缺省时读取侧按 false 兜底。
+    guideCompleted: 'boolean',
   };
   if (Object.keys(layout).some((key) => !(key in fields))) return invalid('layout 包含未知字段');
   for (const [key, type] of Object.entries(fields)) {

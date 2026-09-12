@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Settings as SettingsIcon, FileText, Keyboard, GitBranch, Info } from 'lucide-react';
 import { settingsSectionRegistry } from '../../registries';
 import { useSettingsStore } from '../../stores/settings-store';
+import { useUiStore } from '../../stores/ui-store';
 import { invoke } from '../../lib/ipc';
 import { useVaultSettingsEffects } from '../../hooks/use-settings-effects';
 import type {
@@ -256,6 +257,20 @@ function GeneralSection() {
               { value: 'alpha', label: 'Alpha' },
             ]}
           />
+        </Row>
+      </div>
+
+      <div className="border-t pt-6">
+        <SectionHeader title="帮助" description="重新查看产品使用引导" />
+        <Row label="新手引导" description="分步了解页面树、编辑器、AI 与版本时间线等核心区域">
+          <button
+            type="button"
+            data-testid="settings-replay-tour"
+            onClick={() => useUiStore.getState().setTourOpen(true)}
+            className="h-8 rounded-md border bg-background px-3 text-xs font-medium hover:bg-accent"
+          >
+            重新播放
+          </button>
         </Row>
       </div>
 

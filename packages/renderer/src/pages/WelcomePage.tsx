@@ -1,7 +1,15 @@
 import { useEffect, useState } from 'react';
 import { invoke } from '../lib/ipc';
 import type { AppInfo } from '@nexnote/shared';
-import { Command, FolderOpen, Moon, PanelLeft, Sparkles, FileCode2 } from 'lucide-react';
+import {
+  Command,
+  FolderOpen,
+  Moon,
+  PanelLeft,
+  Sparkles,
+  FileCode2,
+  GraduationCap,
+} from 'lucide-react';
 import { openWorkspaceTab } from '../stores/tab-store';
 import { usePaletteStore } from '../stores/palette-store';
 import { useUiStore } from '../stores/ui-store';
@@ -23,6 +31,7 @@ export function WelcomePage() {
   const toggleTheme = useThemeStore((s) => s.setPreference);
   const resolved = useThemeStore((s) => s.resolved);
   const toggleDock = useUiStore((s) => s.toggleDock);
+  const setTourOpen = useUiStore((s) => s.setTourOpen);
   const [appInfo, setAppInfo] = useState<AppInfo | null>(null);
 
   useEffect(() => {
@@ -64,6 +73,15 @@ export function WelcomePage() {
         >
           <FolderOpen className="size-3.5" />
           浏览 Vault 文件
+        </button>
+        <button
+          type="button"
+          data-testid="welcome-start-tour"
+          onClick={() => setTourOpen(true)}
+          className="flex items-center gap-1.5 rounded-md border bg-background px-3.5 py-1.5 text-xs font-medium hover:bg-accent"
+        >
+          <GraduationCap className="size-3.5" />
+          快速上手
         </button>
         <button
           type="button"

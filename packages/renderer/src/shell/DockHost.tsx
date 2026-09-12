@@ -10,8 +10,14 @@ import { cn } from '../lib/utils';
  */
 export function DockHost() {
   const panels = useRegistryItems(dockPanelRegistry);
-  const { dockVisible, dockWidth, activeDockPanelId, setDockWidth, toggleDock, setActiveDockPanel } =
-    useUiStore();
+  const {
+    dockVisible,
+    dockWidth,
+    activeDockPanelId,
+    setDockWidth,
+    toggleDock,
+    setActiveDockPanel,
+  } = useUiStore();
 
   if (!dockVisible) return null;
 
@@ -28,6 +34,7 @@ export function DockHost() {
       />
       <aside
         data-testid="right-dock"
+        data-tour="ai-dock"
         style={{ width: dockWidth }}
         className="flex h-full shrink-0 flex-col border-l bg-card text-card-foreground"
       >
@@ -71,8 +78,15 @@ export function DockHost() {
           </div>
         )}
 
-        <div data-testid={`dock-panel-${active?.id ?? 'empty'}`} className="min-h-0 flex-1 overflow-auto p-3 text-sm">
-          {ActiveContent ? <ActiveContent /> : <p className="text-muted-foreground">暂无 Dock 面板</p>}
+        <div
+          data-testid={`dock-panel-${active?.id ?? 'empty'}`}
+          className="min-h-0 flex-1 overflow-auto p-3 text-sm"
+        >
+          {ActiveContent ? (
+            <ActiveContent />
+          ) : (
+            <p className="text-muted-foreground">暂无 Dock 面板</p>
+          )}
         </div>
       </aside>
     </>

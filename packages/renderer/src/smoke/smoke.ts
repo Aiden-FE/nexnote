@@ -101,6 +101,20 @@ export async function runSmokeIfEnabled(): Promise<void> {
       await waitFor(() => !!document.querySelector('[data-testid="app-sidebar"]')),
     );
 
+    // ── 2b. 新手引导：首次进入自动弹出，跳过后关闭 ────────────
+    check(
+      '首次进入工作区自动弹出新手引导',
+      await waitFor(() => !!document.querySelector('[data-testid="guided-tour"]')),
+    );
+    const tourTitle = document.querySelector('[data-testid="tour-title"]')?.textContent ?? '';
+    check('引导首步聚焦页面树', tourTitle === '页面树与新建', tourTitle);
+    document.querySelector<HTMLButtonElement>('[data-testid="tour-skip"]')?.click();
+    await sleep(200);
+    check(
+      '跳过引导后浮层关闭且不再自动弹出',
+      !document.querySelector('[data-testid="guided-tour"]'),
+    );
+
     // ── 3. 首次工作区布局 ─────────────────────────────────────
     const treeRow = (rel: string): Element | null =>
       document.querySelector(`[data-testid="tree-row"][data-path="${CSS.escape(rel)}"]`);

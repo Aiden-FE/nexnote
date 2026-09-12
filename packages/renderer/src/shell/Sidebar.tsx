@@ -182,6 +182,7 @@ export function Sidebar() {
         <div className="flex items-center gap-1 border-t border-sidebar-border p-1.5">
           <button
             type="button"
+            data-tour="settings"
             onClick={() => void openSettings()}
             title="Git 设置"
             className="flex items-center gap-1.5 rounded px-2 py-1 text-xs text-muted-foreground hover:bg-sidebar-accent hover:text-foreground"
