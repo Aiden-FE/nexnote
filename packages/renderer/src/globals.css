@@ -144,6 +144,13 @@
   min-height: 100%;
 }
 
+/* 编辑器挂载点：selection bubble / slash menu 的 absolute 定位锚点。
+   kernel 以 editorView.dom.parentElement 为参照换算 top/left，
+   本元素必须是其包含块（positioned），否则浮层随文档长度漂移。 */
+.nexnote-editor-host {
+  position: relative;
+}
+
 .nexnote-editor-host .ProseMirror {
   min-height: calc(100vh - 9rem);
   outline: none;
@@ -404,6 +411,11 @@
 }
 
 .nexnote-selection-bubble {
+  /* 绝对定位于编辑器挂载点（.nexnote-editor-host 等定位锚点）：
+     缺失 position 时 top/left 被忽略，浮层落入文档流末尾再 translate，
+     偏移随文档长度增长 */
+  position: absolute;
+  z-index: 45;
   display: flex;
   align-items: center;
   gap: 0.15rem;
