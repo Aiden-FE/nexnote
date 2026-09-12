@@ -627,6 +627,28 @@ export function EditorView({ tab }: EditorViewProps) {
     };
     return onEvent('fs:changed', (event) => {
       if (event.kind !== 'change' || event.path !== pathRef.current) return;
+      // origin:'app'（应用自身写入）绝不弹冲突，仅静默刷新基线；
+      // dirty 时保持本地 buffer（本地可能有更新输入，继续等 autosave），
+      // clean 时静默重载磁盘内容（如 renameWithLinks 联动重写了本页）。
+      if (event.origin === 'app') {
+        void (async () => {
+          try {
+            const [text, info] = await Promise.all([
+              invoke('fs:readTextFile', { path: pathRef.current }),
+              invoke('fs:stat', { path: pathRef.current }),
+            ]);
+            baseVersionRef.current = fileVersionOf(info);
+            baseTextRef.current = text;
+            // 竞态防护：读取期间用户又开始输入（dirty）则只刷新基线，不动编辑器
+            if (!dirtyRef.current && kernelRef.current?.getMarkdown() !== text) {
+              kernelRef.current?.setMarkdown(text);
+            }
+          } catch {
+            // 文件竞态消失（如被改名/删除）：交给页面树 unlink 流程
+          }
+        })();
+        return;
+      }
       void classifyExternalChange({
         io,
         path: pathRef.current,

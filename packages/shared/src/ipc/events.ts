@@ -46,6 +46,12 @@ export interface FsChangeEvent {
   path: string;
   /** sidecar format for added Markdown documents; absent → legacy native-block. */
   format?: 'native-block' | 'markdown';
+  /**
+   * 事件来源：'app' = 应用自身写入（主进程 AppWriteTracker 登记命中）。
+   * 渲染层收到 origin:'app' 时不弹外部修改冲突，仅静默刷新基线/重载。
+   * 缺省 = 外部变化，保持原有 conflict/reload 语义。
+   */
+  origin?: 'app';
 }
 
 export const IPC_EVENT_CHANNELS: readonly string[] = [

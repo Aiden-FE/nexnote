@@ -26,6 +26,12 @@ export class VaultWatchService {
       emit: (event: FsChangeEvent) => void;
       onError?: (error: unknown) => void;
       getFormat?: (path: string) => Promise<'native-block' | 'markdown' | undefined>;
+      /**
+       * 应用写入登记查询（主进程 VaultFsService 维护）：change/add 事件命中时
+       * 附 origin:'app'，渲染层据此不弹外部修改冲突。TTL 覆盖 awaitWriteFinish
+       * 延迟（stabilityThreshold 120ms + 事件分发）远有余量。
+       */
+      isRecentAppWrite?: (absPath: string) => boolean;
     },
   ) {}
 
@@ -53,10 +59,22 @@ export class VaultWatchService {
       if (this.deps.getRoot() !== capturedRoot) return;
       const rel = toRelative(capturedRoot, absPath);
       if (rel === null || rel.length === 0) return;
+      // 应用自身写入（含 renameWithLinks 联动重写的其它文件）：命中登记即标记 origin，
+      // 事件在 awaitWriteFinish 延迟后到达，TTL 足以覆盖。未命中时省略 origin（外部事件）。
+      const origin =
+        (kind === 'change' || kind === 'add') && this.deps.isRecentAppWrite?.(absPath) === true
+          ? ('app' as const)
+          : undefined;
       if (kind === 'add' && /\.(?:md|markdown)$/i.test(rel) && this.deps.getFormat) {
-        void this.deps.getFormat(rel).then((format) => this.deps.emit({ kind, path: rel, format }));
+        void this.deps
+          .getFormat(rel)
+          .then((format) =>
+            this.deps.emit(
+              origin ? { kind, path: rel, format, origin } : { kind, path: rel, format },
+            ),
+          );
       } else {
-        this.deps.emit({ kind, path: rel });
+        this.deps.emit(origin ? { kind, path: rel, origin } : { kind, path: rel });
       }
     };
 
