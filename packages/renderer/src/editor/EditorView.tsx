@@ -10,13 +10,7 @@ import { useIndexStore } from '../stores/index-store';
 import type { FrontmatterData } from '@nexnote/kernel';
 import { parseFrontmatterYaml, serializeFrontmatterYaml, splitFrontmatter } from '@nexnote/kernel';
 import { collectVaultTags, inspectFrontmatter } from '../features/frontmatter/frontmatter-utils';
-import {
-  bindH1ToTitle,
-  firstH1,
-  pagePathForTitle,
-  sanitizePageTitle,
-  titleFromPath,
-} from './title-sync';
+import { bindH1ToTitle, firstH1, sanitizePageTitle, titleFromPath } from './title-sync';
 import { registerAppSaveListener } from './app-save';
 import { registerEditor } from './active-editor';
 import { registerModeSwitchHandler, requestSourceModeToggle } from './source/source-mode-toggle';
@@ -35,6 +29,7 @@ import { onEvent } from '../lib/ipc';
 import {
   classifyExternalChange,
   fileVersionOf,
+  saveSourceText,
   type FileVersion,
   type PageFileIo,
 } from './source/page-source-io';
@@ -261,6 +256,7 @@ export function EditorView({ tab }: EditorViewProps) {
   const [saveError, setSaveError] = useState<string | null>(null);
   const [displayPath, setDisplayPath] = useState(path);
   const [conflict, setConflict] = useState<FileVersion | null>(null);
+  const conflictRef = useRef<FileVersion | null>(null);
   const baseVersionRef = useRef<FileVersion | null>(null);
   const baseTextRef = useRef('');
   const dirtyRef = useRef(false);
@@ -359,55 +355,61 @@ export function EditorView({ tab }: EditorViewProps) {
   const save = useCallback(
     async (markdown: string) => {
       if (unmountedRef.current) return;
+      if (conflictRef.current) throw new Error('外部修改冲突，等待用户选择');
       saveStateRef.current = 'saving';
       setSaveState('saving');
       setSaveError(null);
-
-      // 串行化 rename/write，避免高速输入时旧保存覆盖新保存。
-      saveChainRef.current = saveChainRef.current.then(async () => {
-        let currentPath = pathRef.current;
-        const heading = firstH1(markdown);
-        if (heading) {
-          const desiredTitle = sanitizePageTitle(heading);
-          const desiredPath = pagePathForTitle(currentPath, desiredTitle);
-          if (desiredPath !== currentPath) {
-            const collision = await invoke('fs:exists', { path: desiredPath });
-            if (collision) throw new Error(`无法重命名：${desiredPath} 已存在`);
-            await invoke('fs:renameLinked', { from: currentPath, to: desiredPath });
-            // 应用自身 rename 已确认：立即同步页面树，不等 chokidar 事件回流。
-            const tree = usePageTreeStore.getState();
-            tree.applyEvent({ kind: 'unlink', path: currentPath });
-            tree.applyEvent({ kind: 'add', path: desiredPath });
-            currentPath = desiredPath;
-            pathRef.current = desiredPath;
-            setDisplayPath(desiredPath);
-            useTabStore.getState().updateTab(tab.id, {
-              title: desiredTitle,
-              pagePath: desiredPath,
-            });
-          }
-        }
-        await invoke('fs:writeTextFile', {
-          path: currentPath,
-          content: markdown,
-          createParentDirs: true,
+      const io: PageFileIo = {
+        stat: (p) => invoke('fs:stat', { path: p }),
+        read: (p) => invoke('fs:readTextFile', { path: p }),
+        exists: (p) => invoke('fs:exists', { path: p }),
+        write: (p, content) =>
+          invoke('fs:writeTextFile', { path: p, content, createParentDirs: true }),
+        renameLinked: async (from, to) => {
+          await invoke('fs:renameLinked', { from, to });
+        },
+      };
+      const writeSnapshot = async () => {
+        const fromPath = pathRef.current;
+        const result = await saveSourceText({
+          io,
+          path: fromPath,
+          text: markdown,
+          baseVersion: baseVersionRef.current,
         });
+        if (result.kind === 'conflict') {
+          conflictRef.current = result.diskVersion;
+          setConflict(result.diskVersion);
+          setSaveState('error');
+          setSaveError('磁盘文件已被外部修改，已暂停自动保存');
+          throw new Error('外部修改冲突，等待用户选择');
+        }
         baseTextRef.current = markdown;
-        baseVersionRef.current = fileVersionOf(await invoke('fs:stat', { path: currentPath }));
-        // 保存完成只能确认本次 snapshot；保存期间若又有输入，当前内容仍是 dirty。
+        baseVersionRef.current = result.version;
+        if (result.renamedFrom) {
+          const tree = usePageTreeStore.getState();
+          const format = tree.entries.find((e) => e.path === result.renamedFrom)?.format;
+          tree.applyEvent({ kind: 'unlink', path: result.renamedFrom });
+          tree.applyEvent({ kind: 'add', path: result.path, format });
+          pathRef.current = result.path;
+          setDisplayPath(result.path);
+          useTabStore.getState().updateTab(tab.id, {
+            title: result.title ?? titleFromPath(result.path),
+            pagePath: result.path,
+          });
+        }
         if (kernelRef.current?.getMarkdown() === markdown) dirtyRef.current = false;
-      });
-
+      };
+      saveChainRef.current = saveChainRef.current.then(writeSnapshot, writeSnapshot);
       try {
         await saveChainRef.current;
         saveStateRef.current = 'saved';
         if (!unmountedRef.current) setSaveState('saved');
       } catch (e) {
         if (!unmountedRef.current) {
-          const message = e instanceof Error ? e.message : String(e);
           saveStateRef.current = 'error';
           setSaveState('error');
-          setSaveError(message);
+          if (!conflictRef.current) setSaveError(e instanceof Error ? e.message : String(e));
         }
         throw e;
       }
@@ -438,9 +440,7 @@ export function EditorView({ tab }: EditorViewProps) {
         // 用户文档变更立即置 dirty：不得等防抖保存回调（间隔内退出/外部改盘需保护未落盘内容）。
         dirtyRef.current = true;
       },
-      onContentChange: (markdown) => {
-        void save(markdown);
-      },
+      onContentChange: (markdown) => save(markdown),
       onSaveError: (e) => {
         if (!unmountedRef.current) {
           saveStateRef.current = 'error';
@@ -644,6 +644,7 @@ export function EditorView({ tab }: EditorViewProps) {
           });
           return;
         }
+        conflictRef.current = result.version;
         setConflict(result.version);
       });
     });
@@ -820,8 +821,14 @@ export function EditorView({ tab }: EditorViewProps) {
                 type="button"
                 data-testid="conflict-keep-local"
                 onClick={() => {
-                  setConflict(null);
-                  void kernelRef.current?.flushPendingSave();
+                  void (async () => {
+                    const info = await invoke('fs:stat', { path: pathRef.current });
+                    baseVersionRef.current = fileVersionOf(info);
+                    conflictRef.current = null;
+                    setConflict(null);
+                    dirtyRef.current = true;
+                    await kernelRef.current?.flushPendingSave();
+                  })();
                 }}
               >
                 保留本地
@@ -833,8 +840,12 @@ export function EditorView({ tab }: EditorViewProps) {
                   void invoke('fs:readTextFile', { path: pathRef.current }).then((text) => {
                     baseTextRef.current = text;
                     dirtyRef.current = false;
+                    conflictRef.current = null;
                     kernelRef.current?.setMarkdown(text);
                     setConflict(null);
+                    void invoke('fs:stat', { path: pathRef.current }).then((info) => {
+                      baseVersionRef.current = fileVersionOf(info);
+                    });
                   })
                 }
               >

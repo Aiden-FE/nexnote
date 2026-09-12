@@ -137,7 +137,7 @@ export function LivePreview({ markdown, sourcePath, onNavigate, scrollRef }: Liv
         </div>
       )}
       <div className="mx-auto max-w-[var(--editor-content-width)] px-10 py-10">
-        <div ref={hostRef} data-testid="live-preview-host" />
+        <div ref={hostRef} data-testid="live-preview-host" className="nexnote-markdown-preview" />
       </div>
     </div>
   );

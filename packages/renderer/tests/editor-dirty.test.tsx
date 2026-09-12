@@ -145,7 +145,7 @@ describe('EditorView dirty 生命周期', () => {
     await act(async () => root.unmount());
   });
 
-  it('保存期间的新增输入在旧 snapshot 保存完成后仍保持 dirty', async () => {
+  it('保存期间的新增输入会排队写盘，之后外部修改在 clean 状态静默重载', async () => {
     let releaseFirstWrite!: () => void;
     let firstWriteStarted!: () => void;
     const started = new Promise<void>((resolve) => {
@@ -175,13 +175,13 @@ describe('EditorView dirty 生命周期', () => {
       await bridge.firstSaveStat;
       await Promise.resolve();
     });
-    expect(bridge.writes).toBe(1);
+    expect(bridge.writes).toBe(2);
 
     await act(async () => {
       bridge.emitExternalChange('# 外部版本\n');
     });
     await vi.waitFor(() => {
-      expect(container.querySelector('[data-testid="editor-conflict-banner"]')).not.toBeNull();
+      expect(container.querySelector('[data-testid="editor-conflict-banner"]')).toBeNull();
     });
 
     await act(async () => root.unmount());

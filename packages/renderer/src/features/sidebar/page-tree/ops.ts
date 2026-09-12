@@ -31,8 +31,8 @@ export async function createNoteIn(
 }
 
 /** 按 sidecar 中的持久格式打开页面；统一委托 openDocumentTab，避免第二套路由。 */
-export async function openDocument(path: string): Promise<string> {
-  await openDocumentTab(path);
+export async function openDocument(path: string, knownFormat?: NewNoteFormat): Promise<string> {
+  await openDocumentTab(path, undefined, knownFormat ? { knownFormat } : undefined);
   return path;
 }
 
@@ -84,10 +84,11 @@ export async function renameEntry(
   const toPath = parent.length === 0 ? finalName : `${parent}/${finalName}`;
   if (toPath === fromPath) return;
   await requestAppSave(window);
+  const format = usePageTreeStore.getState().entries.find((e) => e.path === fromPath)?.format;
   await invoke('fs:renameLinked', { from: fromPath, to: toPath });
   const tree = usePageTreeStore.getState();
   tree.applyEvent({ kind: kind === 'directory' ? 'unlinkDir' : 'unlink', path: fromPath });
-  tree.applyEvent({ kind: kind === 'directory' ? 'addDir' : 'add', path: toPath });
+  tree.applyEvent({ kind: kind === 'directory' ? 'addDir' : 'add', path: toPath, format });
   getTabStore().getState().retargetTabs(fromPath, toPath, sanitized.value);
 }
 
@@ -100,12 +101,13 @@ export async function moveEntry(fromPath: string, targetDir: string): Promise<vo
     throw new Error('不能移动到自身或其子目录内');
   }
   await requestAppSave(window);
+  const sourceEntry = usePageTreeStore.getState().entries.find((entry) => entry.path === fromPath);
+  const format = sourceEntry?.format;
   await invoke('fs:renameLinked', { from: fromPath, to: toPath });
-  const kind =
-    usePageTreeStore.getState().entries.find((entry) => entry.path === fromPath)?.kind ?? 'file';
+  const kind = sourceEntry?.kind ?? 'file';
   const tree = usePageTreeStore.getState();
   tree.applyEvent({ kind: kind === 'directory' ? 'unlinkDir' : 'unlink', path: fromPath });
-  tree.applyEvent({ kind: kind === 'directory' ? 'addDir' : 'add', path: toPath });
+  tree.applyEvent({ kind: kind === 'directory' ? 'addDir' : 'add', path: toPath, format });
   const stem = name.replace(/\.md$/i, '');
   getTabStore().getState().retargetTabs(fromPath, toPath, stem);
 }
