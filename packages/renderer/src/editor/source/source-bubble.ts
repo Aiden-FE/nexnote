@@ -152,7 +152,6 @@ export function sourceSelectionBubble(options: SourceBubbleOptions): Extension {
         }
         this.dom.style.display = 'flex';
         this.visible = true;
-        this.ensureMounted();
         this.positionToSelection();
         this.startLoop();
       }
