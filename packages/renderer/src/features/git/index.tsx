@@ -88,7 +88,12 @@ function GitStatusItem() {
     }
   };
   if (!vault) return null;
-  if (!status) return <span data-testid="status-git">Git…</span>;
+  if (!status)
+    return (
+      <span data-testid="status-git" data-tour="git-timeline">
+        Git…
+      </span>
+    );
   const diagnose = async () => {
     setDoctorBusy(true);
     try {
@@ -133,6 +138,7 @@ function GitStatusItem() {
   return (
     <div
       data-testid="status-git"
+      data-tour="git-timeline"
       className="flex items-center gap-1.5 text-muted-foreground"
       title={
         error ?? `${status.usingSystemGit ? '系统' : '捆绑'} Git · ${status.remote ?? '未配置远程'}`

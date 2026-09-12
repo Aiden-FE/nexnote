@@ -27,6 +27,10 @@ export function useVaultLayoutPersistence(vault: VaultInfo | null): void {
       ui.setTreeCollapsedDirs(merged.treeCollapsedDirs ?? []);
       ui.setTreeShowAllFiles(merged.treeShowAllFiles ?? false);
       ui.setTreeShowExtensions(merged.treeShowExtensions ?? false);
+      // 新手引导：vault 就绪且未完成过引导时自动弹出一次（向后兼容缺省 = 未完成）
+      if (!merged.guideCompleted) {
+        useUiStore.getState().setTourOpen(true);
+      }
     })();
     return () => {
       cancelled = true;
@@ -49,6 +53,7 @@ export function useVaultLayoutPersistence(vault: VaultInfo | null): void {
         treeCollapsedDirs: ui.treeCollapsedDirs,
         treeShowAllFiles: ui.treeShowAllFiles,
         treeShowExtensions: ui.treeShowExtensions,
+        guideCompleted: ui.guideCompleted,
       };
     };
     const schedule = () => {

@@ -231,7 +231,11 @@ function PageTreePanel() {
     ) : null;
 
   return (
-    <div data-testid="sidebar-panel-pages" className="flex h-full min-h-0 flex-col">
+    <div
+      data-testid="sidebar-panel-pages"
+      data-tour="page-tree"
+      className="flex h-full min-h-0 flex-col"
+    >
       {/* 工具行：搜索 + 新建 + 显示全部开关 */}
       <div className="mb-1.5 flex items-center gap-1">
         <div className="relative min-w-0 flex-1">

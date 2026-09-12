@@ -46,6 +46,11 @@ export interface VaultLayout {
   treeShowAllFiles: boolean;
   /** 页面树显示文件扩展名（默认隐藏 Markdown 后缀） */
   treeShowExtensions: boolean;
+  /**
+   * 新手引导是否已完成（完成或跳过后置 true，不再自动弹出）。
+   * 旧配置缺省该字段时按 false 处理（读取侧与 defaultVaultLayout 兜底）。
+   */
+  guideCompleted: boolean;
 }
 
 export function defaultVaultLayout(): VaultLayout {
@@ -59,6 +64,7 @@ export function defaultVaultLayout(): VaultLayout {
     treeCollapsedDirs: [],
     treeShowAllFiles: false,
     treeShowExtensions: false,
+    guideCompleted: false,
   };
 }
 

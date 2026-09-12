@@ -21,6 +21,10 @@ interface UiState {
   treeShowAllFiles: boolean;
   /** 页面树显示文件扩展名（默认隐藏 Markdown 后缀） */
   treeShowExtensions: boolean;
+  /** 新手引导是否已完成（完成或跳过后置 true，并经 vault layout 持久化，不再自动弹出） */
+  guideCompleted: boolean;
+  /** 新手引导浮层是否打开（不持久化；首次自动弹出与各入口重播共用） */
+  tourOpen: boolean;
   /** ⌘⇧F 全文搜索面板开关（DEV-004） */
   searchOpen: boolean;
   /** 当前搜索结果视图；标签点击可直接进入标签搜索结果页。 */
@@ -39,6 +43,10 @@ interface UiState {
   setTreeCollapsedDirs(dirs: string[]): void;
   setTreeShowAllFiles(show: boolean): void;
   setTreeShowExtensions(show: boolean): void;
+  setGuideCompleted(completed: boolean): void;
+  setTourOpen(open: boolean): void;
+  /** 结束引导：关闭浮层并持久化「已完成」。 */
+  completeTour(): void;
   setSearchOpen(open: boolean): void;
   showFulltextSearch(): void;
   showTagSearch(tag: string, paths: string[]): void;
@@ -58,6 +66,8 @@ export const useUiStore = create<UiState>((set) => ({
   treeCollapsedDirs: [],
   treeShowAllFiles: false,
   treeShowExtensions: false,
+  guideCompleted: false,
+  tourOpen: false,
   searchOpen: false,
   searchRoute: { kind: 'fulltext' },
   jumpResults: [],
@@ -101,6 +111,15 @@ export const useUiStore = create<UiState>((set) => ({
   },
   setTreeShowExtensions(show) {
     set(() => ({ treeShowExtensions: show }));
+  },
+  setGuideCompleted(completed) {
+    set(() => ({ guideCompleted: completed }));
+  },
+  setTourOpen(open) {
+    set(() => ({ tourOpen: open }));
+  },
+  completeTour() {
+    set(() => ({ tourOpen: false, guideCompleted: true }));
   },
   setSearchOpen(open) {
     set(() => ({ searchOpen: open }));

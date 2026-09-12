@@ -9,6 +9,7 @@ import { bindVaultFsEvents, usePageTreeStore } from '../stores/page-tree-store';
 import { bindIndexEvents, useIndexStore } from '../stores/index-store';
 import { WritingAssistantLayer } from '../features/ai/writing';
 import { PluginHost } from '../features/plugins';
+import { GuidedTour } from '../tour/GuidedTour';
 
 /** 工作区：三面板（侧栏 + 主内容 + 右侧 dock）+ 底部状态栏。 */
 export function WorkspaceView({ vault }: { vault: VaultInfo }) {
@@ -29,7 +30,11 @@ export function WorkspaceView({ vault }: { vault: VaultInfo }) {
     <div data-smoke-ready="workspace" className="flex h-full w-full flex-col overflow-hidden">
       <div className="flex min-h-0 min-w-0 flex-1">
         <Sidebar />
-        <main data-testid="main-content" className="flex min-h-0 min-w-0 flex-1 flex-col bg-background">
+        <main
+          data-testid="main-content"
+          data-tour="editor"
+          className="flex min-h-0 min-w-0 flex-1 flex-col bg-background"
+        >
           <SplitView />
         </main>
         <DockHost />
@@ -37,6 +42,7 @@ export function WorkspaceView({ vault }: { vault: VaultInfo }) {
       <StatusBar />
       <WritingAssistantLayer />
       <PluginHost />
+      <GuidedTour />
     </div>
   );
 }
