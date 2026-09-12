@@ -128,6 +128,7 @@ async function bootstrap(): Promise<void> {
     git,
     (paths) => windows?.sendToMainWindow('index:confidenceChanged', { paths }),
     (error) => log('confidence error:', error),
+    (absPath) => appWrites.record(absPath),
   );
   confidenceService = confidence;
   git.onCommitted((root, files) => {
