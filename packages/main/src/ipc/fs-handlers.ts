@@ -159,7 +159,7 @@ export function registerFsHandlers(registrar: IpcRegistrar): void {
   registrar.register(
     'fs:listTree',
     async ({ showAllFiles }, services): Promise<Result<DirEntry[]>> =>
-      ok(await services.fs.listTree(showAllFiles ?? false)),
+      ok(await enrichTreeFormats(await services.fs.listTree(showAllFiles ?? false), services)),
   );
   registrar.register(
     'fs:renameLinked',
@@ -183,5 +183,25 @@ export function registerFsHandlers(registrar: IpcRegistrar): void {
   });
   registrar.register('fs:scanTags', async (_payload, services): Promise<Result<TagStat[]>> =>
     ok(await scanTags(services.fs)),
+  );
+}
+
+async function enrichTreeFormats(entries: DirEntry[], services: IpcServices): Promise<DirEntry[]> {
+  const root = services.vaultSession.getCurrent()?.root;
+  if (!root) return entries;
+  const metadata = new MetadataStore(root);
+  return Promise.all(
+    entries.map(async (entry) => {
+      if (entry.kind !== 'file' || !isDocumentPath(entry.path) || /\.docx$/i.test(entry.path))
+        return entry;
+      const value = await metadata.read(entry.path).catch(() => null);
+      const format =
+        value?.format === 'markdown'
+          ? 'markdown'
+          : value?.format === 'native-block'
+            ? 'native-block'
+            : undefined;
+      return format ? { ...entry, format } : entry;
+    }),
   );
 }

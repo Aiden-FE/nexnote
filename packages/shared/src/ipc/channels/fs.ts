@@ -16,10 +16,14 @@ export interface FileInfo {
   modifiedAt: string;
 }
 
+export type DocumentFormat = 'native-block' | 'markdown';
+
 export interface DirEntry {
   name: string;
   path: string;
   kind: 'file' | 'directory';
+  /** Markdown sidecar format; absent means legacy native-block. */
+  format?: DocumentFormat;
 }
 
 /** 标签聚合条目（fs:scanTags 返回，DEV-003 简单扫描版）。 */
@@ -141,6 +145,7 @@ export interface FsChannelMap {
   /**
    * 全量列出 vault 树（DEV-003 页面树初始加载）。排除 .nexnote/、.git/、.trash/。
    * showAllFiles=false 时只返回目录与 .md 文件（非 .md 默认隐藏）。
+   * .md 条目附带 sidecar 持久格式（format；legacy 无 sidecar 时缺省 → native-block 兼容）。
    */
   'fs:listTree': {
     request: { showAllFiles?: boolean };

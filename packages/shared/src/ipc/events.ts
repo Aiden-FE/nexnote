@@ -44,6 +44,8 @@ export interface IpcEventMap {
 export interface FsChangeEvent {
   kind: 'add' | 'addDir' | 'unlink' | 'unlinkDir' | 'change';
   path: string;
+  /** sidecar format for added Markdown documents; absent → legacy native-block. */
+  format?: 'native-block' | 'markdown';
 }
 
 export const IPC_EVENT_CHANNELS: readonly string[] = [

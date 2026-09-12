@@ -5,6 +5,7 @@ import {
   EyeOff,
   FileText,
   FileType2,
+  FileCode2,
   Folder,
   FolderPlus,
   FolderTree,
@@ -173,7 +174,7 @@ function PageTreePanel() {
           if (node.kind === 'file') {
             // 所有文档经统一入口按 sidecar / 扩展名分流，避免 Markdown 误入 TipTap。
             if (isMarkdown(node.name) || isDocx(node.name)) {
-              void run(() => ops.openDocument(node.path));
+              void run(() => ops.openDocument(node.path, node.format));
             }
           }
         }}
@@ -407,7 +408,14 @@ function TreeRow(p: TreeRowProps) {
         p.selected ? 'bg-accent text-accent-foreground' : 'text-foreground/90 hover:bg-accent/50',
         isDir && p.dragOver && 'bg-primary/15 ring-1 ring-inset ring-primary/50',
       )}
-      title={p.node.path}
+      title={
+        isDir
+          ? p.node.path
+          : p.node.format === 'markdown'
+            ? `${p.node.path} · Markdown 源码文档`
+            : `${p.node.path} · 块编辑文档`
+      }
+      data-format={!isDir ? (p.node.format ?? 'native-block') : undefined}
     >
       {isDir ? (
         <>
@@ -430,8 +438,11 @@ function TreeRow(p: TreeRowProps) {
       ) : (
         <span className="w-[17px] shrink-0" />
       )}
-      {!isDir && isMarkdown(p.node.name) && (
-        <FileText className="size-3.5 shrink-0 text-muted-foreground" />
+      {!isDir && isMarkdown(p.node.name) && p.node.format !== 'markdown' && (
+        <FileText className="size-3.5 shrink-0 text-muted-foreground" aria-label="块编辑文档" />
+      )}
+      {!isDir && isMarkdown(p.node.name) && p.node.format === 'markdown' && (
+        <FileCode2 className="size-3.5 shrink-0 text-primary" aria-label="Markdown 源码文档" />
       )}
       {!isDir && isDocx(p.node.name) && (
         <FileType2 className="size-3.5 shrink-0 text-primary/80" aria-label="DOCX 文档" />
@@ -457,6 +468,11 @@ function TreeRow(p: TreeRowProps) {
       ) : (
         <span className={cn('truncate', isDir && 'font-medium')}>
           {displayName(p.node, { showExtensions: p.showExtensions })}
+          {!isDir && isMarkdown(p.node.name) && (
+            <span className="ml-1 text-[9px] uppercase text-muted-foreground">
+              {p.node.format === 'markdown' ? 'MD' : '块'}
+            </span>
+          )}
         </span>
       )}
     </div>

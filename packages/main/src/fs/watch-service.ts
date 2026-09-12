@@ -25,6 +25,7 @@ export class VaultWatchService {
       getRoot: () => string | null;
       emit: (event: FsChangeEvent) => void;
       onError?: (error: unknown) => void;
+      getFormat?: (path: string) => Promise<'native-block' | 'markdown' | undefined>;
     },
   ) {}
 
@@ -52,7 +53,11 @@ export class VaultWatchService {
       if (this.deps.getRoot() !== capturedRoot) return;
       const rel = toRelative(capturedRoot, absPath);
       if (rel === null || rel.length === 0) return;
-      this.deps.emit({ kind, path: rel });
+      if (kind === 'add' && /\.(?:md|markdown)$/i.test(rel) && this.deps.getFormat) {
+        void this.deps.getFormat(rel).then((format) => this.deps.emit({ kind, path: rel, format }));
+      } else {
+        this.deps.emit({ kind, path: rel });
+      }
     };
 
     const watcher = watch(capturedRoot, {
