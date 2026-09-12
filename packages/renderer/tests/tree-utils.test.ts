@@ -171,3 +171,29 @@ describe('杂项', () => {
     expect(breadcrumbSegments('a.md')).toEqual(['a']);
   });
 });
+
+describe('applyFsChangeEvent sidecar format 携带', () => {
+  it('add 事件携带 format 时写入条目；未携带时缺省（legacy → native-block 兼容）', () => {
+    const withFormat = applyFsChangeEvent([], { kind: 'add', path: '新页.md', format: 'markdown' });
+    expect(withFormat).toEqual([
+      { name: '新页.md', path: '新页.md', kind: 'file', format: 'markdown' },
+    ]);
+    const legacy = applyFsChangeEvent([], { kind: 'add', path: '旧页.md' });
+    expect(legacy).toEqual([{ name: '旧页.md', path: '旧页.md', kind: 'file' }]);
+    expect(legacy[0]?.format).toBeUndefined();
+  });
+
+  it('rename（unlink + add）携带原条目 format，重命名后不丢格式', () => {
+    let entries = applyFsChangeEvent([], { kind: 'add', path: '旧名.md', format: 'markdown' });
+    entries = applyFsChangeEvent(entries, { kind: 'unlink', path: '旧名.md' });
+    entries = applyFsChangeEvent(entries, { kind: 'add', path: '新名.md', format: 'markdown' });
+    expect(entries).toEqual([
+      { name: '新名.md', path: '新名.md', kind: 'file', format: 'markdown' },
+    ]);
+  });
+
+  it('addDir 事件不携带 format', () => {
+    const entries = applyFsChangeEvent([], { kind: 'addDir', path: '目录' });
+    expect(entries).toEqual([{ name: '目录', path: '目录', kind: 'directory' }]);
+  });
+});

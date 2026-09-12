@@ -10,6 +10,7 @@ export interface TreeNode {
   path: string;
   kind: 'file' | 'directory';
   children: TreeNode[];
+  format?: 'native-block' | 'markdown';
 }
 
 export function parentPath(relPath: string): string {
@@ -73,6 +74,7 @@ export function applyFsChangeEvent(
   event: {
     kind: 'add' | 'addDir' | 'unlink' | 'unlinkDir' | 'change';
     path: string;
+    format?: 'native-block' | 'markdown';
   },
 ): DirEntry[] {
   const name = event.path.slice(event.path.lastIndexOf('/') + 1);
@@ -84,6 +86,7 @@ export function applyFsChangeEvent(
         name,
         path: event.path,
         kind: event.kind === 'addDir' ? ('directory' as const) : ('file' as const),
+        ...(event.kind === 'add' && event.format ? { format: event.format } : {}),
       },
     ];
     return next;

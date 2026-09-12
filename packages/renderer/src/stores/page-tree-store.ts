@@ -109,6 +109,22 @@ export function bindVaultFsEvents(): void {
   if (fsEventsBound) return;
   fsEventsBound = true;
   onEvent('fs:changed', (event) => {
+    if (
+      event.kind === 'add' &&
+      event.format === undefined &&
+      /\.(?:md|markdown)$/i.test(event.path)
+    ) {
+      void invoke('document:getMetadata', { path: event.path })
+        .then((metadata) => {
+          const format =
+            metadata?.format === 'markdown' || metadata?.format === 'native-block'
+              ? metadata.format
+              : undefined;
+          usePageTreeStore.getState().applyEvent({ ...event, format });
+        })
+        .catch(() => usePageTreeStore.getState().applyEvent(event));
+      return;
+    }
     usePageTreeStore.getState().applyEvent(event);
   });
   onEvent('vault:changed', ({ vault }) => {

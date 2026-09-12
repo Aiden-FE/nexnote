@@ -5,6 +5,7 @@ import { AppStore } from './vault/app-store';
 import { VaultSession } from './vault/vault-session';
 import { VaultFsService } from './fs/fs-service';
 import { VaultWatchService } from './fs/watch-service';
+import { MetadataStore } from './document/metadata-store';
 import { LinkIndexService } from './indexer/index-service';
 import { WindowManager } from './window';
 import { registerAllIpcHandlers } from './ipc';
@@ -92,6 +93,14 @@ async function bootstrap(): Promise<void> {
   const watch = new VaultWatchService({
     getRoot: () =>
       initializingRoot !== undefined ? initializingRoot : (vaultSession.getCurrent()?.root ?? null),
+    getFormat: async (relPath) => {
+      const root = vaultSession.getCurrent()?.root;
+      if (!root) return undefined;
+      const value = await new MetadataStore(root).read(relPath).catch(() => null);
+      return value?.format === 'markdown' || value?.format === 'native-block'
+        ? value.format
+        : undefined;
+    },
     emit: (event) => {
       windows?.sendToMainWindow('fs:changed', event);
       const root = vaultSession.getCurrent()?.root ?? null;
