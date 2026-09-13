@@ -72,6 +72,29 @@ export type GitFileHistoryIndex = Map<string, GitFileHistory>;
  * Vault-scoped Git orchestration. This is deliberately the only main-process
  * module that invokes git: renderer code only receives typed IPC data.
  */
+/**
+ * 宿主 shell 可能遗留、且会触发 simple-git block-unsafe-operations 拦截的环境变量。
+ * 这里只剥离 NexNote 内部 Git 操作用不到的：交互式编辑器、外部 diff/代理命令、
+ * GIT_CONFIG_COUNT 环境配置注入。SSH 相关变量（GIT_SSH、GIT_SSH_COMMAND、
+ * GIT_ASKPASS、SSH_ASKPASS）不剥离——vault 远程同步依赖用户的 SSH 配置，
+ * 改由下方 unsafe 豁免放行。
+ */
+const GIT_HOST_ENV_STRIP_VARS = [
+  'GIT_EDITOR',
+  'GIT_SEQUENCE_EDITOR',
+  'EDITOR',
+  'GIT_PROXY_COMMAND',
+  'GIT_EXTERNAL_DIFF',
+  'GIT_CONFIG_COUNT',
+] as const;
+
+/** 剥离宿主遗留的交互式/外部工具变量，避免 simple-git 安全拦截阻断 vault 初始化。 */
+export function sanitizeGitProcessEnv(env: NodeJS.ProcessEnv): NodeJS.ProcessEnv {
+  const result = { ...env };
+  for (const key of GIT_HOST_ENV_STRIP_VARS) delete result[key];
+  return result;
+}
+
 export class GitService {
   private root: string | null = null;
   private useSystemGit: boolean;
@@ -670,7 +693,7 @@ export class GitService {
     // Do not inject dugite paths when its downloaded executable is unavailable.
     // In that development fallback, preserve the user's normal Git environment.
     const binary = runtime.binary;
-    const env = runtime.environment ?? process.env;
+    const env = sanitizeGitProcessEnv(runtime.environment ?? process.env);
     return simpleGit({
       baseDir,
       binary,
@@ -682,6 +705,8 @@ export class GitService {
         allowUnsafePager: true,
         allowUnsafeConfigPaths: true,
         allowUnsafeTemplateDir: true,
+        allowUnsafeSshCommand: true,
+        allowUnsafeAskPass: true,
       },
     }).env(env);
   }

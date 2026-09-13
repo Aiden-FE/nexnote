@@ -6,6 +6,7 @@ import { simpleGit } from 'simple-git';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import {
   GitService,
+  sanitizeGitProcessEnv,
   GitServiceError,
   DEFAULT_DEBOUNCE_MS,
   DEBOUNCE_RANGE_MS,
@@ -72,6 +73,67 @@ describe.runIf(runIfGit())('GitService（系统 Git，临时仓库）', () => {
     expect(log.length).toBe(1);
     expect(log[0]!.kind).toBe('initial');
     expect(log[0]!.isHead).toBe(true);
+  });
+
+  it('继承宿主拦截变量（编辑器/SSH/askpass 等）时 initialize 不被 simple-git 拦截', async () => {
+    // 宿主 shell（如 VS Code 集成终端）遗留的这些变量会被 simple-git
+    // block-unsafe-operations 插件拦截；剥离 + unsafe 豁免后 initialize 必须照常工作。
+    const polluted = [
+      'GIT_EDITOR',
+      'GIT_SEQUENCE_EDITOR',
+      'EDITOR',
+      'GIT_PROXY_COMMAND',
+      'GIT_EXTERNAL_DIFF',
+      'GIT_CONFIG_COUNT',
+      'GIT_SSH_COMMAND',
+      'GIT_SSH',
+      'GIT_ASKPASS',
+      'SSH_ASKPASS',
+    ];
+    const saved: Record<string, string | undefined> = {};
+    for (const key of polluted) {
+      saved[key] = process.env[key];
+      process.env[key] = 'vim';
+    }
+    try {
+      const result = await service.initialize(root);
+      expect(result.status.repository).toBe(true);
+    } finally {
+      for (const [key, value] of Object.entries(saved)) {
+        if (value === undefined) delete process.env[key];
+        else process.env[key] = value;
+      }
+    }
+  });
+
+  it('sanitizeGitProcessEnv 剥离拦截变量、保留 SSH 配置与常规环境', () => {
+    const sanitized = sanitizeGitProcessEnv({
+      GIT_EDITOR: 'vim',
+      GIT_SEQUENCE_EDITOR: 'vim',
+      EDITOR: 'vim',
+      GIT_PROXY_COMMAND: 'proxy.sh',
+      GIT_EXTERNAL_DIFF: 'difftool.sh',
+      GIT_CONFIG_COUNT: '2',
+      GIT_SSH_COMMAND: 'ssh -i ~/.ssh/id_ed25519',
+      SSH_ASKPASS: '/usr/bin/ssh-askpass',
+      PATH: '/usr/bin:/bin',
+      HOME: '/Users/dev',
+    });
+    for (const key of [
+      'GIT_EDITOR',
+      'GIT_SEQUENCE_EDITOR',
+      'EDITOR',
+      'GIT_PROXY_COMMAND',
+      'GIT_EXTERNAL_DIFF',
+      'GIT_CONFIG_COUNT',
+    ]) {
+      expect(sanitized).not.toHaveProperty(key);
+    }
+    // SSH/askpass 是 vault 远程同步的真实依赖，必须原样保留（由 unsafe 豁免放行）。
+    expect(sanitized.GIT_SSH_COMMAND).toBe('ssh -i ~/.ssh/id_ed25519');
+    expect(sanitized.SSH_ASKPASS).toBe('/usr/bin/ssh-askpass');
+    expect(sanitized.PATH).toBe('/usr/bin:/bin');
+    expect(sanitized.HOME).toBe('/Users/dev');
   });
 
   it('initialize 升级旧仓库时 untrack 本地产物但保留 config/layout', async () => {
