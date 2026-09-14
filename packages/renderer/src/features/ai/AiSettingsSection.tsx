@@ -2,7 +2,6 @@ import { useRef, useState } from 'react';
 import type { AiFeatureKey, AiProfileView, ConnectionTestResult } from '@nexnote/shared';
 import { invoke } from '../../lib/ipc';
 import { useAiConfig, useAiWizard } from './ai-config';
-import { AiChatDebug } from './AiChatDebug';
 import { Button } from '../../components/ui/button';
 import { cn } from '../../lib/utils';
 import {
@@ -26,16 +25,16 @@ const FEATURE_LABELS: Array<{ key: AiFeatureKey; label: string; hint: string; ic
     {
       key: 'writing',
       label: '写作辅助',
-      hint: '改写 / 扩写 / 润色（DEV-010 接入）',
+      hint: '改写 / 扩写 / 润色',
       icon: PenLine,
     },
-    { key: 'chat', label: '对话', hint: '对话 dock 与调试面板', icon: MessageSquareText },
-    { key: 'embedding', label: 'Embedding', hint: '向量索引与召回（DEV-011）', icon: Bot },
+    { key: 'chat', label: '对话', hint: '对话与上下文注入', icon: MessageSquareText },
+    { key: 'embedding', label: 'Embedding', hint: '向量索引与召回', icon: Bot },
   ];
 
 /**
  * 设置页 · AI 供应商分区：Profile 管理（增删改/默认/测试）、
- * 分功能指定模型、导入导出（不含密钥）、流式调试面板。
+ * 分功能指定模型与导入导出（不含密钥）。
  */
 export function AiSettingsSection() {
   const state = useAiConfig((s) => s.state);
@@ -364,12 +363,6 @@ export function AiSettingsSection() {
             </div>
           );
         })}
-      </section>
-
-      {/* 调试面板 */}
-      <section className="space-y-2" data-testid="ai-debug-section">
-        <h4 className="text-[13px] font-medium">调试 · 流式补全</h4>
-        <AiChatDebug />
       </section>
     </div>
   );

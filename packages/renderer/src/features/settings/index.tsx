@@ -330,7 +330,7 @@ function EditorSection() {
           ]}
         />
       </Row>
-      <Row label="Vim 模式" description="实验性，重启后生效（占位）">
+      <Row label="Vim 模式" description="实验性功能，当前版本尚未启用">
         <Toggle
           checked={vault.editor.vimMode}
           onChange={(v) => void setVault({ editor: { vimMode: v } })}

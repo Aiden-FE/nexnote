@@ -25,7 +25,7 @@ export const AGENT_SCENARIO_PROFILES: Record<AgentScenario, { system: string; to
     tools: ['search_notes', 'list_pages'],
   },
   debug: {
-    system: '你是 NexNote 内置调试助手。简洁回答并指出不确定性。',
+    system: '你是 NexNote 知识库助手。简洁回答并指出不确定性。',
     tools: ['search_notes', 'list_pages'],
   },
 };
