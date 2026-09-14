@@ -9,17 +9,19 @@
 ## 0. 最新状态（持续更新，优先于下方陈旧冻结段）
 
 - **真实进度：26 / 26** —— DEV-001~DEV-026 全部验收并合入 master（DEV-021~026 为验收反馈追加票，2026-09-14 完成）。
-- master HEAD：`a99babc`（DEV-025 文档属性 Popover 修订 merge）；post-merge typecheck / 124 test files passed（1 skipped，991 tests / 2 skipped）/ eslint / build / release-config / changed-format / diff-check 全过。
-- 属性 Popover 修订后的打包 macOS arm64 unsigned dev app smoke **154/154 PASS**，退出码 0。证据：`.scratch/nexnote-build/smoke/DEV-025-POPOVER-FINAL3/results.json`；原验收轮候选证据见 `smoke/DEV-021..026/`。
+- master 发布基线：`1e1ab79`（发布后 GitHub Release asset 回读校验 merge）；发布策略/Updater 集成后 master 代码基线已通过后续验证。
+- post-merge typecheck / 125 test files passed（1 skipped，1012 tests / 2 skipped）/ eslint / build / release-config **31/31** / changed-format / diff-check 全过。
+- 无 Apple Developer/Windows Authenticode/Ubuntu GPG 私钥的本机 macOS arm64 产物真实构建并验证为 Ad hoc（`NexNote-0.1.0-mac-arm64.dmg/.zip`，codesign `Signature=adhoc`）；打包 Electron smoke **154/154 PASS**，退出码 0。证据：`.scratch/nexnote-build/smoke/RELEASE-FINAL-3/results.json`。
 - 验收反馈六票摘要（详细见各 issues/*.md 与对话共识）：
   - DEV-021（`c12d2ad`）：用户可见文案零 vault →「知识库」（含主进程错误/诊断消息与 git init 消息「nexnote:init: 知识库初始化」）；删除 FilesPage/`'files'` TabKind/欢迎页按钮/`tab.files` 命令；旧布局残留 files tab 经 readVaultConfig 过滤（单测权威）。
   - DEV-022（`5c2643a`）：TabStrip HTML5 拖拽排序（DataTransfer 注入后 smoke 可真实走 React 处理链）+ `tabOrder` 布局持久化（仅限已有 tab 栈恢复；跨重启 tab 会话恢复为既有架构外延）+ Ctrl+Tab / Ctrl+Shift+Tab 循环（mac 物理控制键等价）。
   - DEV-023（`63b6b49`）：Markdown 源码划词 bubble 补格式化五项（`**`/`*`/`~~`/`` ` ``/`[x](url)`，单事务可 undo、无选区骨架）+ 双链按钮两模式统一；ADR-0004 修订已落盘。
   - DEV-024（`4ad2d57`）：CodeMirror `[[` 补全（Link Index 候选、模糊、红链创建、别名）+ 反链面板计数角标（0 隐藏、随 tab 更新）。
-  - DEV-025（`909f88b`）：字段目录选择器（7 标准字段带类型/说明/已添加禁用/tooltip，说明集中 kernel STANDARD_FIELD_CATALOG）+ Markdown 文档常驻 FrontmatterPanel（YAML 头抽离出 CodeMirror、未编辑往返字节不变）；ADR-0004 追加修订。
-  - DEV-026（`ab39ba4`）：右栏「配置 AI」与 ⌘K `ai.setup` 收口 `openSettings('ai')`；`ai:onboarding:dismiss`→`ai:setupPrompt:dismiss` 持久化位控制首启自动弹一次；设置页保留重播。
+  - DEV-025（`a99babc`）：字段目录选择器（7 标准字段带类型/说明/已添加禁用/tooltip）+ Markdown 文档属性编辑改为顶部状态栏按需 Popover；YAML 头持续从 CodeMirror 抽离、未编辑往返字节不变，Popover 关闭前 flush 合法 YAML 编辑；ADR-0004 已追加修订。
+  - DEV-026（`5d49165`）：右栏「配置 AI」与 ⌘K `ai.setup` 收口 `openSettings('ai')`；`ai:setupPrompt:dismiss` 持久化位控制首启自动弹一次；设置页保留重播。
+  - 发布/自动更新对标（`1e1ab79`）：macOS Ad hoc 双架构、artifact contract、无凭据 Windows/Linux 发布路径、Mac Releases fallback、严格 SemVer/禁止降级/失败重试/安装状态恢复、发布后 Release asset 回读。
 - better-sqlite3 ABI：master 最终打包 smoke 后已恢复 Node ABI（`pnpm pretest`）。
-- 外部/跨平台不可验证项沿用 `release-checklist.md` 第 6 节既有 **NOT_RUN** 清单；本轮无新增 NOT_RUN（打包 Electron smoke 均真实执行）。
+- 外部/跨平台不可验证项沿用 `release-checklist.md` 第 6 节既有 **NOT_RUN** 清单：真实 GitHub Actions 运行/发布、Intel runner 产物、Windows/Ubuntu 物理安装、真实 N-1 网络升级、平台签名凭据路径；本机已完成 macOS arm64 Ad hoc 产物与 packaged smoke，但不能替代这些证据。公开 publish 仍要求 `release-qa` Environment、immutable QA evidence 和 required reviewer 审批。
 
 ### DEV-010 · AI 写作辅助（已合并 `ab0b882`，候选 `2c563e4`）
 - kernel：新增框架无关扩展 SelectionBubble（选区浮动工具栏，⌘⌥+R/E/C/P/F/A 快捷键）、ContextMenu（右键 AI 子菜单，二级菜单）、`computeEditorActionContext`；SlashMenu 支持 `extraSlashItems`（`/ai` 六动作）；新增回写原语 `replaceRangeWithMarkdown` / `insertMarkdownBlocks`（单事务，可 undo）。

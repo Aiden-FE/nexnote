@@ -7,8 +7,9 @@
 ## 当前状态（2026-09-14）
 
 - 顶层 Goal：**✅ 已完成**；全局进度：**26 / 26**（DEV-001 ～ DEV-026 全部验收并合入 `master`）。
-- `master` 当前基线：`968290c`（`merge: DEV-022 tab drag reorder and cycling`）。
-- 本轮验收反馈票据：DEV-021～DEV-026 全部完成；最终 master 门禁为 122 个测试文件通过（1 skipped）/ 983 个测试通过（2 skipped）、typecheck、lint、build、release-config、changed-format、diff-check 全绿；打包 macOS arm64 Electron smoke **151/151 PASS**，退出码 0。证据见 `.scratch/nexnote-build/smoke/MASTER-POST-MERGE/results.json`。
+- `master` 当前发布基线：`1e1ab79`（`merge: verify published release assets`）。
+- 发布/自动更新对标切片已完成：产物命名与精确 contract、Ad hoc macOS 签名、无凭据跨平台构建、Updater 平台策略与失败恢复、GitHub Release 发布后 asset 回读校验均已合并。
+- 最新 master 门禁：125 个测试文件通过（1 skipped）/ 1012 个测试通过（2 skipped）、typecheck、lint、build、release-config **31/31**、changed-format、diff-check 全绿。无 Apple Developer、Windows Authenticode、Ubuntu GPG 私钥的本机 macOS arm64 发布包已真实构建，产物名为 `NexNote-0.1.0-mac-arm64.{dmg,zip}`，`codesign` 报告 `Signature=adhoc`；打包 Electron smoke **154/154 PASS**，退出码 0。证据见 `.scratch/nexnote-build/smoke/RELEASE-FINAL-3/results.json` 与 `.scratch/nexnote-build/smoke/RELEASE-MAC-ARM64-FINAL/results.json`。
 - 全部票据已合入；双轴审查（Standards + Spec）均 PASS；未验证项按协议标注 **NOT_RUN** 并附人工步骤（见 [RELEASE-NOTES](./RELEASE-NOTES.md) 与 [release-checklist](./release-checklist.md) 第 6 节）。
 - 本文件是续接入口；历史执行细节、闸门命令与审查证据见 [`.scratch/DEV-STATUS-CHECKPOINT.md`](../DEV-STATUS-CHECKPOINT.md)。票据需求与验收标准以各 `issues/*.md` 为准。
 
@@ -60,10 +61,10 @@
 | **DEV-018** | [打包、自动更新与发布流程](issues/018-packaging-updates-ci.md) | foundation | M | DEV-001 | 全期并行 | ✅ 已合并（`abf52c0`，候选 `dev/DEV-018@ef905ed`，双轴审查 PASS） |
 | **DEV-020** | [源码模式与单栈编辑器](issues/020-source-mode.md) | editor | L | DEV-002, DEV-005, DEV-015, DEV-017, DEV-019 | 追加 | ✅ 已合并（历史基线） |
 | **DEV-021** | [用户文案统一「知识库」并删除文件浏览占位页](issues/021-copy-unify-remove-files-page.md) | shell | M | — | 验收反馈 | ✅ 已合并（`e8a07d3`，候选 `c12d2ad`，smoke 123/123，双轴 PASS） |
-| **DEV-022** | [页签拖拽排序与切换快捷键](issues/022-tab-drag-reorder-hotkeys.md) | shell | M | — | 验收反馈 | ✅ 已合并（`968290c`，候选最终 `5c2643a`，smoke 140/140，双轴 PASS） |
+| **DEV-022** | [页签拖拽排序与切换快捷键](issues/022-tab-drag-reorder-hotkeys.md) | shell | M | — | 验收反馈 | ✅ 已合并（历史基线 `968290c`，smoke 140/140，双轴 PASS） |
 | **DEV-023** | [划词工具栏按钮集统一](issues/023-selection-bubble-parity.md) | editor | M | DEV-010, DEV-020 | 验收反馈 | ✅ 已合并（`2dead70`，候选最终 `63b6b49`，smoke 129/129，双轴 PASS） |
 | **DEV-024** | [双链可发现性：Markdown 源码补全与反向链接角标](issues/024-wikilink-discoverability.md) | editor | M | DEV-020 | 验收反馈 | ✅ 已合并（`9d16284`，候选 `4ad2d57`，smoke 145/145，双轴 PASS） |
-| **DEV-025** | [文档属性感知：字段目录与 Markdown 属性面板](issues/025-field-catalog-md-properties.md) | editor | L | DEV-020 | 验收反馈 | ✅ 已合并（Popover 修订 `a99babc`，候选 `d8f03f7`，smoke 154/154，双轴 PASS） |
+| **DEV-025** | [文档属性感知：字段目录与 Markdown 属性面板](issues/025-field-catalog-md-properties.md) | editor | L | DEV-020 | 验收反馈 | ✅ 已合并（Popover 修订 `a99babc`，YAML flush 修订 `d8f03f7`，smoke 154/154，双轴 PASS） |
 | **DEV-026** | [AI 配置入口收口设置页](issues/026-ai-settings-single-entry.md) | ai | S | DEV-009, DEV-012 | 验收反馈 | ✅ 已合并（`5d49165`，候选 `ab39ba4`，smoke 116/116，双轴 PASS） |
 
 ### P0 · 集成验收（最后）— ✅ 已完成
