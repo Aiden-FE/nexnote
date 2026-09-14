@@ -807,6 +807,11 @@ export async function runSmokeIfEnabled(): Promise<void> {
       withTags.slice(0, 100),
     );
     await capture('21-md-field-catalog');
+    // 属性编辑验收完成后关闭 Popover，恢复正文编辑焦点，避免影响后续源码补全场景。
+    document
+      .querySelector<HTMLButtonElement>('[data-testid="document-properties-trigger"]')
+      ?.click();
+    await waitFor(() => !document.querySelector('[data-testid="frontmatter-panel"]'));
 
     // ── 5b. DEV-024：Markdown 源码 `[[` 补全 + 反链角标 ───────
     const completionCm = document.querySelector<HTMLElement>(
