@@ -120,7 +120,9 @@ async function unmount(root: ReturnType<typeof createRoot>): Promise<void> {
 
 async function openCatalog(): Promise<void> {
   await act(async () => {
-    document.querySelector<HTMLButtonElement>('[data-testid="document-properties-trigger"]')?.click();
+    document
+      .querySelector<HTMLButtonElement>('[data-testid="document-properties-trigger"]')
+      ?.click();
     await Promise.resolve();
   });
   act(() => {
@@ -232,7 +234,9 @@ describe('Markdown 文档属性面板（DEV-025）', () => {
     // 正文仍从编辑框承载，YAML 原文进入锁定的面板源码视图
     expect(initialEditorText).toBe('正文\n');
     act(() => {
-      document.querySelector<HTMLButtonElement>('[data-testid="document-properties-trigger"]')?.click();
+      document
+        .querySelector<HTMLButtonElement>('[data-testid="document-properties-trigger"]')
+        ?.click();
     });
     const panel = document.querySelector('[data-testid="frontmatter-panel"]');
     expect(panel?.textContent).toContain('源码锁定');

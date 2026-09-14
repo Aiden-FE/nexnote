@@ -96,7 +96,11 @@ export function DocumentPropertiesPopover({
             data-testid="document-properties-popover"
             role="dialog"
             aria-label="文档属性"
-            style={{ top: position.top, left: position.left, width: 'min(560px, calc(100vw - 16px))' }}
+            style={{
+              top: position.top,
+              left: position.left,
+              width: 'min(560px, calc(100vw - 16px))',
+            }}
             className="fixed z-50 max-h-[min(75vh,640px)] overflow-y-auto rounded-lg border bg-background p-2 text-foreground shadow-xl"
           >
             <FrontmatterPanel
