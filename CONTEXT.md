@@ -6,7 +6,7 @@
 
 **知识库（Vault）**:
 NexNote 的根工作区，绑定一个 Git 仓库，容纳全部页面、元数据与配置。
-_Avoid_: 工作区、仓库（泛指）、workspace
+_Avoid_: 工作区、仓库（泛指）、workspace、vault（用户可见文案中直接使用英文）
 
 **页面（Page）**:
 知识库中的文档单位，由块组成，可嵌套其他页面。
@@ -26,6 +26,10 @@ _Avoid_: 内链、超链接（指外部链接时）
 **元数据头（Frontmatter）**:
 页面源文件顶部的 YAML 头，承载标签、别名与自定义属性，参与关系计算。
 _Avoid_: 属性面板
+
+**标准字段（Standard Field）**:
+系统预定义的 7 个文档属性键：title、tags、aliases、created、updated、type、confidence；不可删除、不可重命名，与用户自建的自定义字段相对。
+_Avoid_: 内置字段、系统字段
 
 **关系索引（Link Index）**:
 全局双链与元数据的实时索引库，服务图谱、回链查询与 AI 召回。
@@ -68,6 +72,10 @@ _Avoid_: 分屏、Split Pane、双编辑器
 **实时预览（Live Preview）**:
 源码模式中对当前 Markdown 原文的只读富渲染视图，完整呈现 NexNote 支持的块、公式、图表和链接。
 _Avoid_: 右侧 Pane、第二编辑器
+
+**文档属性（Document Properties）**:
+编辑器顶部展示与编辑页面元数据的面板，表格 / YAML 双模式；标准字段与自定义字段在此添加和修改，添加时提供带说明的字段目录。
+_Avoid_: 属性编辑器
 
 **反向链接面板（Linked Mentions）**:
 侧栏中列出引用当前页面（含经别名）的位置。
