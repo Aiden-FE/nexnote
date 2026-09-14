@@ -247,8 +247,8 @@ jobs:
           path: release
       - name: Extract packaged app for smoke
         run: |
-          archive=$(find release -name '*arm64-mac.zip' -print -quit)
-          test -n "$archive" || { echo '::error::macOS zip missing'; exit 1; }
+          archive=$(find release -name '*-mac-arm64.zip' -print -quit)
+          test -n "$archive" || { echo '::error::macOS arm64 zip missing'; exit 1; }
           unzip -q "$archive" -d release/smoke-app
       - run: pnpm smoke:ci
         env:
@@ -293,21 +293,11 @@ jobs:
       - name: Preflight signed artifact set and immutable version
         run: |
           shopt -s nullglob
-          appimages=(release/*.AppImage)
-          debs=(release/*.deb)
-          maczips=(release/*-mac.zip)
-          macdmg=(release/*.dmg)
-          windows=(release/*.exe)
-          blockmaps=(release/*.blockmap)
-          case "${{ needs.prepare.outputs.channel }}" in
-            stable) manifests=(release/latest*.yml) ;;
-            beta) manifests=(release/beta*.yml release/*beta*.yml) ;;
-            alpha) manifests=(release/alpha*.yml release/*alpha*.yml) ;;
-            *) echo '::error::invalid update channel'; exit 1 ;;
-          esac
-          ((${#appimages[@]} && ${#debs[@]} && ${#maczips[@]} && ${#macdmg[@]} && ${#windows[@]} && ${#blockmaps[@]} && ${#manifests[@]})) || { echo '::error::incomplete distributable or auto-update metadata set'; exit 1; }
+          # The exact artifact contract verifier owns required target, metadata, and blockmap checks.
           echo 'Optional Windows Authenticode and Linux GPG signatures do not gate the public Release when credentials are unavailable.'
           node scripts/check-version.mjs --require-tag "${{ needs.prepare.outputs.tag }}"
+          RELEASE_VERSION="${{ needs.prepare.outputs.tag }}"
+          node scripts/verify-artifact-contract.mjs release "${{ needs.prepare.outputs.channel }}" "${RELEASE_VERSION#v}"
           # Bind the exact preflighted bytes; publish verifies this again immediately before upload.
           (cd release && find . -type f ! -name SHA256SUMS -print0 | sort -z | xargs -0 sha256sum > SHA256SUMS)
           test -s release/SHA256SUMS

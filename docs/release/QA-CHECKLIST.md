@@ -3,7 +3,7 @@
 > 每个签名 release 都必须附此清单的**执行记录**，逐项填写【证据】。CI 通过不替代人工安装验证。
 > 下述标 🔒 的项是**公开发布 gate**：signed build、packaged smoke、完整 metadata/artifact preflight 和 machine-readable evidence validation 必须先在无 Environment 权限的 `preflight` dependency job 全部通过；之后 `publish` 才进入 GitHub Actions `release-qa` Environment 等待 required reviewers 审批。审批后才获取 durable publication lease、上传 assets 并创建 Release。
 > **环境配置是实际的、阻断性发布 gate：** 仓库管理员必须在 GitHub repository settings 创建 `release-qa` Environment，配置 required reviewers，并限制其 secrets/branch policy。该环境不存在、未设 reviewers、或 reviewers 未批准时，**不得启动/批准 `publish`，不得公开发布**。自动 tag-push 使用 repository variables `RELEASE_QA_EVIDENCE_URL` / `RELEASE_QA_EVIDENCE_SHA256`（受控 dispatch 使用对应 inputs）；preflight fetch/hash 并把 evidence 与本次 run/tag/commit/channel 绑定为 `release-qa-evidence-<run-id>` artifact 后，publish 才能进入 approval/lease。
-> **事实边界：** 当前环境未进行真实证书/私钥的跨平台物理安装、OS 信任 UI 或 N-1 网络升级验证；这些项目绝不应被表述为已验收。自动流水线先完成 macOS Ad hoc 签名与验证、Windows/Linux 的可选签名路径、产物 preflight 和打包 macOS smoke；随后由目标平台 QA 完成本清单、将不可变 JSON evidence 提交到 canonical repository，并获得 Environment 审批，才可公开发布。Ad hoc macOS 产物未经公证，Gatekeeper 信任、物理安装与真实平台证据仍需如实记录；required-reviewer approval 是不可绕过的 operational gate。
+> **事实边界：** 当前环境未进行真实证书/私钥的跨平台物理安装、OS 信任 UI 或 N-1 网络升级验证；这些项目绝不应被表述为已验收。自动流水线先完成 macOS Ad hoc 签名与验证、Windows/Linux 的可选签名路径、产物 preflight 和打包 macOS smoke；随后由目标平台 QA 完成本清单、将不可变 JSON evidence 提交到 canonical repository，并获得 Environment 审批，才可公开发布。Ad hoc macOS 产物未经公证，Gatekeeper 信任、物理安装与真实平台证据仍需如实记录；Windows Authenticode 与 Ubuntu GPG 凭据缺失时 workflow 继续发布 unsigned artifact，签名状态必须如实记录；required-reviewer approval 是不可绕过的 operational gate。
 
 ## Release record and approval evidence
 

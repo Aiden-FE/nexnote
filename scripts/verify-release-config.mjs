@@ -368,41 +368,57 @@ check('preflight flatten 拒绝 duplicate basename 且禁止 mv -n first-wins', 
     throw new Error('native artifacts must remain isolated until explicit aggregation');
 });
 
-check('mac 双架构产物 basename 区分（dmg/zip 含 arch）', () => {
-  if (
-    !/artifactName: \$\{productName\}-\$\{version\}-\$\{arch\}\.\$\{ext\}/.test(
-      readFileSync(resolve(root, 'electron-builder.yml'), 'utf8'),
-    )
-  ) {
-    throw new Error('mac arm64/x64 dmg+zip must differ by arch in artifactName');
+check('artifact contract：平台、架构、主更新目标命名稳定', () => {
+  const cfgYaml = readFileSync(resolve(root, 'electron-builder.yml'), 'utf8');
+  for (const pattern of [
+    /artifactName: \$\{productName\}-\$\{version\}-mac-\$\{arch\}\.\$\{ext\}/,
+    /artifactName: \$\{productName\}-\$\{version\}-win-x64\.\$\{ext\}/,
+    /artifactName: \$\{productName\}-\$\{version\}-linux-x86_64\.\$\{ext\}/,
+  ]) {
+    if (!pattern.test(cfgYaml)) throw new Error(`missing artifact naming contract: ${pattern}`);
+  }
+  if (!releaseWorkflow.includes('verify-artifact-contract.mjs'))
+    throw new Error('release preflight must execute the reusable artifact contract verifier');
+});
+
+check('artifact contract verifier has exact required targets and metadata checks', () => {
+  const verifier = readFileSync(resolve(root, 'scripts/verify-artifact-contract.mjs'), 'utf8');
+  for (const guard of [
+    'macArm64',
+    'macX64',
+    'windows',
+    'linux',
+    '-mac-arm64.dmg',
+    '-mac-x64.zip',
+    '-win-x64.exe',
+    '-linux-x86_64.AppImage',
+    'sha512',
+    'document?.version',
+    'optional portable/deb',
+    'Differential update metadata is required only',
+    'AppImage updates use the AppImage entry',
+  ]) {
+    if (!verifier.includes(guard)) throw new Error(`artifact contract guard missing: ${guard}`);
   }
 });
 
-check('preflight channel manifest、blockmap 与可选 Linux .asc', () => {
-  if (
-    !/Linux GPG credentials unavailable; continuing without detached signatures/.test(
-      releaseWorkflow,
-    )
-  )
-    throw new Error('Linux signing must remain optional without credentials');
-  if (
-    !/gpg --batch --yes --armor --detach-sign/.test(releaseWorkflow) ||
-    !/gpg --verify/.test(releaseWorkflow)
-  )
-    throw new Error('linux optional signing path must sign and verify when enabled');
-  if (!/release\/\*\.AppImage release\/\*\.deb/.test(releaseWorkflow))
-    throw new Error('AppImage and deb must be covered by optional signing');
+check('preflight 通过统一 contract 校验 channel manifest、blockmap 和主路径', () => {
+  if (!/verify-artifact-contract\.mjs release/.test(releaseWorkflow))
+    throw new Error('preflight must invoke the exact artifact contract verifier');
+  const verifier = readFileSync(resolve(root, 'scripts/verify-artifact-contract.mjs'), 'utf8');
   for (const metadata of [
-    'stable) manifests=(release/latest*.yml)',
-    'beta) manifests=(release/beta*.yml',
-    'alpha) manifests=(release/alpha*.yml',
-    'blockmaps=(release/*.blockmap)',
+    '${prefix}-mac.yml',
+    '${prefix}.yml',
+    '${prefix}-linux.yml',
+    '${artifactName}.blockmap',
   ]) {
-    if (!releaseWorkflow.includes(metadata))
-      throw new Error(`preflight metadata requirement missing: ${metadata}`);
+    if (!verifier.includes(metadata))
+      throw new Error(`artifact contract metadata requirement missing: ${metadata}`);
   }
   if (!/files: release\/\*\*\/\*/.test(releaseWorkflow))
-    throw new Error('publish glob must include release/**/* to capture metadata and .asc');
+    throw new Error(
+      'publish glob must include release/**/* to capture metadata and optional signatures',
+    );
   if (
     !/merge-multiple:\s*false/.test(releaseWorkflow) ||
     !/merge-mac-update-manifests\.mjs/.test(releaseWorkflow)

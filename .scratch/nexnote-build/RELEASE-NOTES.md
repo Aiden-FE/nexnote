@@ -1,6 +1,6 @@
 # NexNote v0.1.0 Release Notes
 
-> 首个 MVP 内测版（dev channel）。所有功能均可本地运行；三平台签名包、跨端物理安装验证、公证均为后续 release pipeline 交付，不在本票范围。
+> 首个 MVP 内测版（dev channel）。本文件只记录已实现能力与当前验证边界；没有真实证据的发布项明确标为 `NOT_RUN`，不以构建、单测或 smoke 结果替代。
 
 **版本号**: `0.1.0`
 **发布类型**: MVP / Alpha 内测
@@ -63,13 +63,16 @@
 - 首启动向导：新建 / 打开 / 克隆 / Obsidian 导入
 - sender 生命周期管理：关闭向导自动回收操作 token / clone token
 
-### 打包与自动更新
+---
 
-- electron-builder 三平台构建（macOS / Windows / Linux）
-- electron-updater 自动更新（stable / beta / alpha 三通道）
-- macOS 公证（`notarize.cjs`）、Linux GPG `.asc` 签名
-- CI：PR 检查 / Nightly / Release 三流水线
-- Release QA Environment 审批门 + immutable evidence
+## 打包、安装与更新边界
+
+- CI 配置三平台发布产物：macOS Intel（x64）与 Apple Silicon（arm64）、Windows x64、Ubuntu x64。
+- macOS 发布形态为 **Ad hoc 签名、未公证**；首次启动可能被 macOS 隔离。用户应核对架构和校验和，将应用拖入 Applications；按安装说明执行首次 `xattr -d com.apple.quarantine /Applications/NexNote.app`，并记录实际结果。
+- macOS Ad hoc 包不承诺应用内自动安装更新。无法自动安装时，应用内入口应引导用户到 GitHub Releases，手动下载匹配 Intel/Apple Silicon 的包。
+- Windows 的 **NSIS installer** 和 Ubuntu 的 **AppImage** 是自动更新主路径；Windows `portable` 和 Ubuntu `deb` 是额外手动格式。
+- 生成的 metadata、CI smoke 或配置校验不等于真实平台安装或升级验收。
+- 发布流程、产物命名和 updater 行为以仓库现有实现为准；本切片只补充文档和 QA 边界。
 
 ---
 
@@ -78,7 +81,7 @@
 - **端到端集成测试**：vault 创建 → 索引 → 搜索 → 双链 → 图谱 → 召回 → 置信度 → Skill → 插件 → Chat 服务，纯逻辑真实代码路径全部走通
 - **性能时间盒**：测试为千页 / 8k 块 / 3k 链接 vault 设置了上限断言（索引 < 30s、搜索 < 150ms、PageRank < 3s、图谱 < 1.5s）；开发机实测远低于上限——全量索引约 210ms、搜索约 8ms、PageRank 约 280ms、图谱约 90ms（实测值不构成性能承诺）
 - **空 vault 边界**：搜索/图谱/召回在空库下安全降级，无抛错
-- **Obsidian 方言回归**：wikilink 大小写不敏感、alias 优先、frontmatter 标签 + 行内标签 统一索引
+- **Obsidian 方言回归**：wikilink 大小写不敏感、alias 优先、frontmatter 标签 + 行内标签统一索引
 - **索引增量更新保护**：相同 hash 文件不触发全量置信度重算（graph 结构不变时只传增量 paths）
 - **文档补齐**：用户手册、快捷键速查表、插件开发文档、FAQ
 
@@ -103,28 +106,26 @@
 | 通过测试 | 600+ |
 | 端到端集成用例 | 4 个 |
 | 性能时间盒用例 | 3 个（含 500→1000 页线性度检查） |
-| Bug bash 回归用例 | 6 个 |
 | 门禁命令 | 7 项全绿（typecheck / lint / test / build / verify-release-config / check-changed-format / diff --check） |
 
-详细门禁结果见 [release-checklist.md](./release-checklist.md)。
+这些结果仅覆盖当前代码基线的可自动化部分。详细发布 gate 与证据要求见 [QA-CHECKLIST.md](../../docs/release/QA-CHECKLIST.md)。
 
 ---
 
-## NOT_RUN（需人工步骤）
+## NOT_RUN（必须人工完成）
 
-以下项无法在本地 Node 单测环境验证，必须人工完成：
+以下项目在当前环境没有完成，任何 Release notes 或发布公告都不得将其写成通过：
 
-| # | 项 | 原因 | 人工步骤 |
+| # | 项 | 当前状态 | 必须补的证据 |
 | --- | --- | --- | --- |
-| 1 | 三平台签名与公证 | 无 Apple/Windows 证书、无公证凭据 | 用开发者证书在各平台签名并完成公证流程 |
-| 2 | 三平台物理安装 | 无三台物理机 / 虚拟机矩阵 | 在 macOS / Windows / Linux 上实际安装并启动 |
-| 3 | 真实 Obsidian vault 导入 | 无真实用户 vault 样本 | 拿一个真实 Obsidian vault 做打开 / 搜索 / 反链 / 图谱走查 |
-| 4 | 崩溃恢复真实验证 | 单测无法模拟进程中途 kill | 在编辑大文件时 kill 进程，重启后验证数据完整、索引可重建 |
-| 5 | 启动时间 < 3s 目标 | 打包后冷启动数据需真实机器 | 在 release 包上用秒表/Time Profiler 测冷启动 |
-| 6 | Electron GUI 走查 | 单测是 headless，无真实浏览器 | 在打包产物上走查 UI 视觉、动画、空态、错误态 |
-| 7 | 大文档编辑流畅度 | 单测不涉及渲染帧 | 在 1 万字 / 100 块长文档上实测输入流畅度 |
-| 8 | 插件第三方安全审计 | 需要独立审计 | 对沙箱模型、RPC 边界、权限提升做专业安全审计 |
-| 9 | 自动更新端到端 | 无发布服务器 | 从 v0.1.0 → 下一版本实测自动更新下载安装重启 |
+| 1 | macOS Ad hoc 签名与首次安装 | `NOT_RUN`：没有目标平台安装记录和完整签名证据 | Intel 与 Apple Silicon 分别安装；记录 `uname -m`、签名模式、首次启动和首次 `xattr` 结果 |
+| 2 | macOS 公证/Gatekeeper | `NOT_RUN` / 不适用当前 Ad hoc 形态：本 release 未公证 | 不得声称 notarization、Gatekeeper 无警告或 `spctl accepted`；若分发策略改变需另行发布证据 |
+| 3 | Windows 真实安装与签名 | `NOT_RUN` | Windows 11 x64 NSIS 安装/卸载、Authenticode 和 SmartScreen 结果 |
+| 4 | Ubuntu 真实安装与签名 | `NOT_RUN` | Ubuntu x64 AppImage 主路径、deb 手动格式和实际 `.asc` 验证 |
+| 5 | N-1 真实网络升级 | `NOT_RUN` | 从公开 N-1 版本分别验证 Windows NSIS、Ubuntu AppImage，以及 macOS 失败时跳 GitHub Releases 的手动路径 |
+| 6 | 失败重试、暂停 feed、前滚修复、人工旧版恢复 | `NOT_RUN` | 按 [QA 清单](../../docs/release/QA-CHECKLIST.md) runbook 演练并记录日志、操作者和结果 |
+
+在上述证据补齐前，现有 smoke、单元测试、构建成功和配置校验只能作为自动化证据，不代表真实平台发布完成。
 
 ---
 
