@@ -36,6 +36,10 @@ export function registerAiHandlers(registrar: IpcRegistrar, ai: AiService): void
     return ok(ai.setFeatureAssignment(payload.feature, payload.assignment));
   });
 
+  registrar.register('ai:setupPrompt:dismiss', async () => {
+    return ok(ai.dismissSetupPrompt());
+  });
+
   registrar.register('ai:testConnection', async (payload) => {
     return ok(await ai.testConnection(payload));
   });
