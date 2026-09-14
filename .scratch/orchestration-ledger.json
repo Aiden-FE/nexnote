@@ -1,0 +1,375 @@
+{
+  "goal": "完成 .scratch/nexnote-build/README.md 全部 26 张开发票据",
+  "master": "/Users/aiden/dev/aiden/nexnote",
+  "worktreeRoot": "/Users/aiden/dev/aiden/nexnote/.wt",
+  "mergeBase": "31ee441 (DEV-001..006+007+009 merged)",
+  "tickets": {
+    "DEV-001": {
+      "title": "项目骨架与 Electron 主进程",
+      "deps": [],
+      "status": "done",
+      "agent": null,
+      "branch": "dev/DEV-001",
+      "merged": "a35a307",
+      "verdict": "验收通过：typecheck/lint/test 39/build/smoke 26/26/dmg"
+    },
+    "DEV-002": {
+      "title": "编辑器内核骨架（TipTap 3 + Markdown 双向）",
+      "deps": [
+        "DEV-001"
+      ],
+      "status": "done",
+      "agent": "sa-3f981277",
+      "branch": "dev/DEV-002",
+      "merged": "684f783",
+      "verdict": "两轴审查：Standards(纯判断项,无硬伤) / Spec(拖拽E2E缺失,其他验收项均通过) — 非阻塞，已合并。跟进：块ID碰撞、inline-code post-processing hack、拖拽E2E。"
+    },
+    "DEV-003": {
+      "title": "页面树、文件管理与基础侧栏",
+      "deps": [
+        "DEV-001"
+      ],
+      "status": "done",
+      "agent": "6b0a3dc0-08d1-416e-8807-a6b9e00496ae",
+      "branch": "dev/DEV-003",
+      "note": null,
+      "merged": "60fa91e",
+      "verdict": "两轴审查通过（非阻塞项记录），合并冲突5文件由子Agent解决；主Agent复跑 typecheck/test 149/lint 全绿"
+    },
+    "DEV-004": {
+      "title": "关系索引（Link Index + FTS5 + 标签）",
+      "deps": [
+        "DEV-002",
+        "DEV-003"
+      ],
+      "status": "done",
+      "agent": "2ec5590a-7ca0-46a1-9509-3e204cb63c12",
+      "branch": "dev/DEV-004",
+      "head": "13f9bff",
+      "isolationResolution": "主控删除唯一未注册外部目录；git worktree list只剩正式worktree，正式DEV-004保持。等待Agent完整验证并提交。",
+      "verification": "主控闸门@13f9bff: typecheck PASS / 196 tests PASS / eslint clean / build PASS / diff-check clean；fresh Standards+Spec 双轴 PASS；千页基准 max search 3.9ms。post-merge@master 全绿。lint 忽略 .wt 嵌套 worktree(567816c)。",
+      "blockReason": null,
+      "merged": "bcc7a65"
+    },
+    "DEV-005": {
+      "title": "元数据：frontmatter 双模式与属性面板",
+      "deps": [
+        "DEV-002"
+      ],
+      "status": "done",
+      "agent": "cce7bd99-f088-4cb7-8868-c462fc28e8b5",
+      "reviewCommit": "dbe89b4",
+      "head": "b0c1915",
+      "blockReason": null,
+      "verification": "rebase onto master(含004); 解决6冲突(index/watch接线/master为准,reveal→revealItem,siderbar装配恢复); DEV-004联调: pageSummary真实inbound/outbound链接计数+实时标签补全; 主控闸门@b0c1915: typecheck/224 tests/eslint/build/diff-check 全PASS; post-merge master 全绿。",
+      "merged": "c74ac89"
+    },
+    "DEV-006": {
+      "title": "图谱视图（全局 + 局部）",
+      "deps": [
+        "DEV-004"
+      ],
+      "status": "done",
+      "agent": null,
+      "branch": "dev/DEV-006",
+      "head": "167b9bbe62b24abc39e22bbd08f3df99ea56efd3",
+      "verification": "主控接管实现；主控闸门@167b9bb: typecheck PASS / 349 tests PASS / eslint PASS / build PASS / diff-check PASS；fresh Standards+Spec 双轴 PASS；production Electron smoke 500页/2000链接 FPS 71.0（63 wheels），过滤/跳页/局部1→2跳全PASS。post-merge@31ee441 全绿。",
+      "blockReason": null,
+      "merged": "31ee441",
+      "verdict": "主控双轴审查 PASS；修复过滤后孤立判定、reset graph race、未索引局部中心占位。剩余 smoke 7项为 DEV-003/004/007 既有基线问题，非 DEV-006 blocker。"
+    },
+    "DEV-007": {
+      "title": "Git 底座：自动提交与版本时间线",
+      "deps": [
+        "DEV-001"
+      ],
+      "status": "done",
+      "agent": "0dfa41ff-de3c-4d43-a23d-62e9371f021e",
+      "branch": "dev/DEV-007",
+      "isolationNote": "本轮检测到写入了 master 或 .wt/ 根目录；主控已纠偏：master 还原，文件已迁回正确 worktree 路径；要求绝对路径定位。",
+      "head": "0148db5",
+      "verification": "rebase master(含004/005)解决11冲突; blocker修复: upstream解析/addRemote URL预检/timeline真实HEAD/GitStatus.conflict红色态/Cmd+S fail-closed; 主控闸门@0148db5: typecheck/256 tests/eslint/build/diff-check 全PASS; post-merge master 全绿。外部验收 NOT_RUN: HTTPS+SSH push/pull。",
+      "blockReason": null,
+      "merged": "09330e1"
+    },
+    "DEV-008": {
+      "title": "置信度计算引擎",
+      "deps": [
+        "DEV-004",
+        "DEV-007"
+      ],
+      "status": "done",
+      "candidate": "2f933b17e09ce9c26c2ea3ec9719aaff83216806",
+      "mergeCommit": "50997927f8ab772efe305d5e2d7a90726aa334bc",
+      "verification": "typecheck PASS; 361 tests PASS with 2 skipped; eslint PASS; build PASS; diff-check PASS; production Electron smoke 62/69 with DEV-008 4/4 PASS; 1000-page full refresh <10s test PASS; watch flake isolated 8/8 then full rerun PASS.",
+      "smoke": {
+        "passed": 62,
+        "total": 69,
+        "dev008Passed": 4,
+        "dev008Total": 4,
+        "remainingBaselineFailures": 7
+      },
+      "notes": "Default does not write frontmatter; explicit vault config sync covered by unit tests but manual settings click is NOT_RUN in smoke."
+    },
+    "DEV-009": {
+      "title": "AI Provider Adapter 与配置系统",
+      "deps": [
+        "DEV-001"
+      ],
+      "status": "done",
+      "agent": null,
+      "branch": "dev/DEV-009",
+      "head": "af65fc6",
+      "verification": "Checkpoint written; clean current branch.",
+      "blockReason": "Need token origin/one-shot, redirect protection, finite embeddings, keyring cross-target dependency and migration/stream durability fixes.",
+      "merged": "bcc962b",
+      "verdict": "两轴审查 PASS（0 blockers，外部 provider/Keychain/三平台打包 NOT_RUN）；恢复后 merge master、修复 ai:testConnection/listModels validators、credential origin binding + one-shot save、redirect=error、embedding 严格校验、legacy enc:v1 保blob、keyring optional dynamic binding；闸门 typecheck/340 tests/eslint/build/diff-check 全PASS；post-merge master 全绿。"
+    },
+    "DEV-010": {
+      "title": "AI 写作辅助（三入口 + diff 回写）",
+      "deps": [
+        "DEV-002",
+        "DEV-009"
+      ],
+      "status": "done",
+      "agent": "主控接管（spawn_agent 不支持）",
+      "branch": "dev/DEV-010",
+      "candidate": "2c563e4",
+      "mergeCommit": "ab0b882f",
+      "verification": "typecheck PASS(3 pkgs); eslint PASS; 393 tests PASS (2 skipped, happy-dom real TipTap kernel + mock IPC streaming); build PASS; diff-check PASS; Electron smoke 60/69 与 master 基线失败集完全一致（无 DEV-010 回归）。fresh Standards/Spec 自审：修复右键二级子菜单定位、stream cancel 竞态、bubble blur 清理。",
+      "smoke": {
+        "passed": 60,
+        "total": 69,
+        "note": "master 与 DEV-010 失败集相同（Git 状态栏/新笔记 frontmatter 面包屑/标签/重命名/图谱FPS/时间线，均 DEV-003/004/006/007 环境基线），DEV-010 无新增失败"
+      },
+      "notes": "三入口：选区浮动工具栏(SelectionBubble,⌘⌥1-6/快捷键)、斜杠 /ai(extraSlashItems)、右键 AI 子菜单(ContextMenu)；六动作 replace(改写/润色/缩写) vs append(扩写/查漏补缺/补充论据)；context 预算截断(选区/块>文档>反链)并提示『上下文过长，已截断』；流式 diff 浮层 Accept 单事务可 undo / Reject 原文不变；对话回答『插入为块』。真实 provider 流式与 Electron 人工交互为 NOT_RUN（smoke AI 未配置写作流；回写/流式链路由 happy-dom 真实 kernel + mock IPC 覆盖）。"
+    },
+    "DEV-011": {
+      "title": "渐进式召回管道与向量索引",
+      "deps": [
+        "DEV-004",
+        "DEV-009",
+        "DEV-008"
+      ],
+      "status": "done",
+      "agent": "主控接管（spawn_agent 不支持）",
+      "branch": "dev/DEV-011",
+      "candidate": "b59d1bf",
+      "mergeCommit": "993fe82",
+      "verification": "typecheck PASS(shared/kernel/renderer; main 仅 2 个 master 既有 tsc 报错与本次无关); eslint PASS; 402 tests PASS(2 skipped); build PASS; diff-check PASS。1200 块召回 <500ms 测试 PASS。",
+      "notes": "schema v5: block_vectors/vector_meta（块粒度，FK CASCADE 清旧向量，JSON 向量，模型指纹分代）；RetrievalService 三阶段 FTS→双链 1 跳→向量重排(精确余弦于候选集)+DEV-008 置信度乘性因子(默认 0.3)；token 预算打包；embedding 失败自动降级两阶段；全量+防抖增量(模型变更全量重建)；BuiltinRetrievalSkill search(query,options) 供 DEV-014；ai:retrieve 通道 + ai:retrievalStatus 事件；renderer RetrievalSources/RetrievalTester(挂 AI dock, 点击开 tab)。向量用 SQL+JS 精确余弦(候选<TopN,千级<500ms)，sqlite-vec ANN 留作可替换后端。真实 embedding provider/Electron 人工检索为 NOT_RUN（bag-of-words fake embedder + 真实 FTS/双链/置信度链路覆盖）。"
+    },
+    "DEV-012": {
+      "title": "AI 对话 dock 与会话即页面",
+      "deps": [
+        "DEV-009",
+        "DEV-011"
+      ],
+      "status": "done",
+      "agent": "主控接管（spawn_agent 不支持）",
+      "branch": "dev/DEV-012",
+      "candidate": "51ce48a",
+      "mergeCommit": "9829e4d",
+      "verification": "post-merge(master 9829e4d): typecheck PASS(shared/kernel/renderer; main 仅 2 个 master 既有 tsc 报错 secret-store Entry / vault-handlers GitStatus.conflict 与本次无关); eslint PASS; 423 tests PASS(2 skipped, 较 DEV-011 的 402 新增 21); build PASS; git diff --check PASS; master ancestry PASS。main chat-format/service 14 测 + renderer context/flow 7 测。",
+      "notes": "会话即页面: <chatFolder>/<name>.md (frontmatter type:chat + HTML 注释 role/meta=base64url JSON)，默认 AI Chats/（VaultConfig.chatFolder 可配 chat:folder:set），每消息后 chat:save 自动保存，list/get 续聊。ChatService(save 越权防护 OUTSIDE_CHAT_FOLDER; saveAsDocument 回答转正文+用户消息转引用/注释, 写 vault 根, 原会话保留)。chat:* 7 IPC + validation + sanitizeChatFolder。renderer features/ai/chat/*: ChatDock/ContextChips(当前文档自动 chip+选区/反链/页面可加+token估算截断)/chat-runtime(流式 feature=chat, 发送前刷新文档 chip+注入 ai:retrieve contextText, 来源持久化 assistant meta)/chat-store/ask-ai。复用 DEV-011 RetrievalSources 内联折叠(点击跳转)与 DEV-010 insertIntoActiveEditor。EditorView bubble+右键『询问 AI』(queueAsk+开 dock+选区 chip)；onWikilinkActivate 先按 frontmatter title 匹配会话命中则开 dock。AiDockPanel 配置后渲染 ChatDock（AiChatDebug/RetrievalTester 文件保留，设置页仍用 AiChatDebug）。NOT_RUN: 真实 provider 流式/embedding、Electron 人工点击三入口/历史/存为文档/双链开 dock E2E（mock bridge + kernel 浮层单测等价覆盖）。"
+    },
+    "DEV-013": {
+      "title": "插件系统基础：沙箱运行时与能力 RPC",
+      "deps": [
+        "DEV-001",
+        "DEV-002"
+      ],
+      "status": "done",
+      "agent": "主控接管（spawn_agent 不支持；旧 WIP 9f283f3 备份为 tag wip/dev-013 后基于 master 重写）",
+      "branch": "dev/DEV-013",
+      "candidate": "74d1dd5",
+      "mergeCommit": "5e9124e",
+      "verification": "post-merge(master 5e9124e): typecheck PASS(shared/kernel/renderer; main 仅 2 个 master 既有 tsc 报错 secret-store Entry / vault-handlers GitStatus.conflict 与本次无关); eslint PASS; 440 tests PASS(2 skipped, 较 DEV-012 的 423 新增 17: main plugin-service 10 + renderer sandbox/permission-flow/contributions 7); build PASS(plugin-runtime 静态文件已拷入 out/renderer); git diff --check PASS; Electron smoke 60/69 与既有环境基线逐名一致(9 失败=git 状态栏 2/时间线 1 SSH-HTTPS + 新笔记/面包屑/标签 2/重命名/500节点FPS 时序性能)，工作区/三面板/状态栏/命令面板(含外部模块注册命令)全 PASS，日志无插件错误。better-sqlite3 smoke 后已切回 Node ABI。",
+      "notes": "shared: PluginManifest/权限六档(read/edit/filesystem/network/external-command/desktop-privileged)/贡献点(commands/menus/views/blockTypes)/版本化 RPC envelope 类型 + PLUGIN_API_VERSION 1.0.0 值导出; plugins:* 20 通道 + plugins:changed 事件。main: 零依赖 semver(version-compat) + manifest 校验 + 零依赖 ZIP 读取器(zip-extract: inflateRaw, 防 zip-slip/炸弹, wrapper-dir 归一化, method 0/8) + 不可变 staging 快照(artifact-intake: sha256 复算防 TOCTOU; zip 分支复用解压只读产物不再回写); PluginService 生命周期(加载/激活/停用/卸载/崩溃隔离), AuthorizationManager 一次性 challenge 授权门禁 + one-shot grant 消费, RPC dispatch(command.register 需 read / transact 需 edit+revision 预留 DEV-014 / capability.call 授权后 NOT_IMPLEMENTED(MVP stretch) / permission.request), 审计日志; plugins:pickSource 走 dialogs; bootstrap/validation/services 接线。renderer: PluginSandboxFrame(iframe sandbox=allow-scripts 无 allow-same-origin, MessageChannel RPC, 2s heartbeat watchdog, crash 上报移除帧, 权限弹窗重试), PluginHost(挂载沙箱帧+注册 command/pluginContribution 注册表+权限弹窗+贡献插槽), PluginsSettingsPage(文件夹/zip 安装预览确认/详情/启停/逐项 revoke/审计), public/plugin-runtime(index.html 严格 CSP default-src none + bootstrap.js: window.nexnotePlugin API、生命周期事件、心跳、crash 上报、blob 入口); bootstrap.ts 注册 + WorkspaceView 挂 PluginHost。NOT_RUN: 真实第三方插件安装/签名(ECDSA 框架未启用)、QuickJS/WASM logic worker(V1 用 iframe UI 沙箱+main-thread logic, stretch)、真实 network/filesystem/external-command 能力执行(capability.call 授权后返 NOT_IMPLEMENTED)、Electron 内人工安装/权限弹窗点击 E2E(由 plugin-service 10 测 + permission-flow/sandbox 7 测等价覆盖)。"
+    },
+    "DEV-014": {
+      "title": "插件扩展点：块类型/视图/命令/菜单 + Skill 系统",
+      "deps": [
+        "DEV-013"
+      ],
+      "status": "done",
+      "agent": "主控接管（spawn_agent 不支持）",
+      "branch": "dev/DEV-014",
+      "candidate": "43a8c80",
+      "mergeCommit": "a01f20e",
+      "lockfileCommit": "(follow-up) @nexnote/plugin-api importer 登记",
+      "verification": "post-merge(master a01f20e): typecheck PASS(shared/kernel/renderer/plugin-api; main 仅 2 个 master 既有 tsc 报错与本票无关); eslint PASS; 455 tests PASS(2 skipped, 较 DEV-013 的 440 新增 15: kernel plugin-block 3 + renderer plugin-extensions 4 + main skill-service 7 + plugin-service 技能发现 1); build PASS; git diff --check PASS; 仅 packages/* + lockfile importer。",
+      "notes": "四类扩展点: kernel pluginBlock 原子 TipTap 节点(attrs pluginId/blockType/data, ```nexnote-plugin:<id>:<type> 围栏 Markdown 往返, insert/setData 命令); renderer extension-points 纯派生(命令合并去重入⌘K按插件分组 buildPluginCommandDefs / 菜单 buildPluginMenuItems 注入编辑器右键插件子菜单(注册表 scopedId 动作→runCommand) / 视图 buildPluginViewPanels 注册侧栏页签 visible 沙箱 iframe / 块类型 buildPluginBlockCommands ⌘K 插入 getActiveEditor.insertPluginBlock); manifest 贡献点增 placement/anchor/when/blockType, manifest-validator 保留这些字段。Skill 系统: shared types/skill + skills:* 6 通道 + skills:changed; RetrievalSource.skillId 溯源 + RetrievalOptions.skillIds; main SkillService(内置三阶段+快速关键词 FTS 两个 builtin, 活跃插件 manifest.skills 自动发现 listPluginSkillContributions; 启停/排序/参数持久化 nexnote-skills.json; 多 Skill 各自召回→mergeSkillResults min-max 归一化/同 path+blockId 去重/并列退回绝对分重排 + packContextText); ai:retrieve 改经 SkillService 路由(默认仅内置, 行为同 DEV-011/012, 无 retrieval 优雅降级; 插件 skill 由宿主以安全参数执行检索); renderer 设置页检索 Skill(启停/上下移/topK/置信度权重 order 62) + ChatDock Skill 组合选择器(多选, 空=全部启用, getSelectedSkillIds 透传 retrieve.skillIds)。@nexnote/plugin-api 类型包(PackageJson + src/index.ts 公共 manifest/权限/贡献点/RPC/nexnotePlugin 类型) + starter 模板(manifest/main/README) + versions.json 兼容矩阵。NOT_RUN: 插件沙箱内自定义块/视图实时渲染与 QuickJS worker、插件自定义检索的 iframe RPC(本票插件 skill 走宿主安全参数化执行)、Electron 内人工装 Skill/右键/视图 E2E(kernel 节点往返+合并重排纯函数+服务测试等价覆盖)。"
+    },
+    "DEV-015": {
+      "title": "内置示范插件：Mermaid + KaTeX",
+      "deps": [
+        "DEV-014"
+      ],
+      "status": "done",
+      "agent": "主控接管（spawn_agent 不支持）",
+      "branch": "dev/DEV-015",
+      "candidate": "e89baf4",
+      "mergeCommit": "e07d65a",
+      "verification": "主控闸门@e89baf4: typecheck PASS(shared/kernel/renderer/plugin-api; main 仅 2 个 master 既有 tsc 报错与本次无关) / 484 tests PASS(2 skipped; kernel+12/main+3/renderer+12) / eslint PASS / build PASS(mermaid/katex 懒加载分包) / diff-check PASS；fresh Standards+Spec 双轴 PASS。production Electron smoke 69/78：DEV-015 专项 9/9 PASS（真实 Mermaid SVG 渲染、KaTeX 块级+行内渲染、```mermaid 围栏与 \\$\\$/\\$ Obsidian 原生语法写盘、设置页内置列表/内置标记/隐藏卸载/禁用-重启启用 state=active）。其余 9 失败为 DEV-003/004/006/007 既有基线（Git 状态 2、新笔记/面包屑 2、标签面板/过滤 2、重命名 wikilink 1、500 节点 FPS 时序 1、时间线 1）。post-merge master e07d65a: typecheck/484 tests/eslint/build 全绿。",
+      "blockReason": null,
+      "notes": "kernel 新增 MermaidBlock(```mermaid fence)/MathBlock($$)/MathInline($) 原生节点承载 Obsidian 方言双向往返（内核始终在线，与插件启停无关）；extraExtensions 供 renderer 同名 extend 覆盖 addNodeView，extraSlashItems 支持函数式实时求值。main seedBuiltins 走 validateManifest 预置，builtin 仅 read 能力、可禁用不可卸载、不挂沙箱帧、启停状态跨重启持久化；listContributions 仅 active。renderer 懒加载 mermaid/katex，NodeView 双击编辑/失焦或⌘Enter 应用/Esc 取消；禁用回退源码视图且斜杠菜单消失；PluginHost 内置不挂沙箱帧、块命令排除内置走原生节点。NOT_RUN：无外部 provider/签名安装项；行内公式在 smoke 中插入到 H1 为脚本插入顺序伪影（用户实际经斜杠菜单在光标处插入）。"
+    },
+    "DEV-016": {
+      "title": "设置系统与首启动向导完善",
+      "deps": [
+        "DEV-001"
+      ],
+      "status": "done",
+      "agent": "1f5b74e0-1437-40aa-8b6d-0e82bf51131e",
+      "head": "e9e4f04",
+      "verification": "fresh 双轴 PASS @e9e4f04；post-merge master b7c6583 + 集成修复 68604c4 全绿（603 tests）。旧 WIP aad90d6 已废弃勿用。",
+      "blockReason": null,
+      "verdict": "已完成合并（2026-09-08）：SettingsService 两级持久化/settings IPC/clone-controller sender+TTL/operations-controller disposeSender/SettingsPage 8 分类 UI/首启向导三路径/shortcut-runtime。NOT_RUN 5 项人工验证见 checkpoint。"
+    },
+    "DEV-017": {
+      "title": "编辑器高级交互",
+      "deps": [
+        "DEV-002"
+      ],
+      "status": "done",
+      "agent": "787004a8-6dc5-4d9b-8f82-bd736ec6d063",
+      "reviewCommit": "71edecf",
+      "secondReviewCommit": "7ec0dcc",
+      "head": "f0b2b8a",
+      "verification": "fresh 双轴 PASS @f0b2b8a；主控闸门 typecheck/529 tests/eslint/build/diff-check 全绿；post-merge master 39b239d 全绿。旧 WIP 506e5f8 已废弃勿用。",
+      "blockReason": null,
+      "verdict": "已完成合并（2026-09-07）：媒体导入原子写、标题折叠、块操作单事务、块菜单、键盘导航、选区浮栏、wikilink/hashtag 建议、插件命令入口。"
+    },
+    "DEV-018": {
+      "title": "打包、自动更新与发布流程",
+      "deps": [
+        "DEV-001"
+      ],
+      "status": "done",
+      "agent": "8521a4e8-d848-4560-b29d-a82e8e9a1f70",
+      "head": "ef905ed",
+      "verification": "fresh 双轴 PASS @ef905ed（修复迭代 f1289a3→7446ab0→595db14→ef905ed）；主控闸门 501 测全绿 + verify-release-config 28/28；post-merge master abf52c0 全绿。旧 WIP b86a6f2 历史勿用。",
+      "blockReason": null,
+      "verdict": "已完成合并（2026-09-08）：electron-builder 三平台、electron-updater 三通道、release CI + QA evidence + durable lease、PR checks、verify-release-config 28 项。真实签名/公证/物理安装/N-1 更新 NOT_RUN 见 release-checklist §6。"
+    },
+    "DEV-019": {
+      "title": "端到端验收与打磨",
+      "deps": [
+        "全部 P0+P1"
+      ],
+      "status": "done",
+      "head": "9c77dba",
+      "agent": "主控接管",
+      "verification": "fresh 双轴 PASS（Spec @480cd66 PASS；Standards 首审 FAIL 4 major 文档失实 → 9c77dba 修复后复审 PASS）；post-merge master d95fb9e 全绿（616 tests）。GUI 验收 follow-up dev/DEV-019-gui@849fa83 merge 2af0166，Electron smoke 83/83。",
+      "verdict": "已完成合并（2026-09-08）🏁：E2E 集成 4 用例、性能时间盒 3 用例（实测远优于盒）、bug-bash 6 回归、docs 四份、RELEASE-NOTES + release-checklist。外部 NOT_RUN 15 项沿 §6。"
+    },
+    "DEV-020": {
+      "title": "源码模式与单栈编辑器（ADR-0004）",
+      "deps": [
+        "DEV-002",
+        "DEV-019"
+      ],
+      "status": "done",
+      "agent": "主控接管",
+      "branch": "dev/DEV-020",
+      "head": "839baf5",
+      "mergeCommit": "（见 post-merge 0f14a49）",
+      "verification": "fresh 双轴 PASS @839baf5（Standards 1 minor / Spec 1–23 PASS）；post-merge master 0f14a49 全绿；真实打包 unsigned dev Electron smoke 102/102 PASS 退出码 0（smoke/DEV-020/results.json + 19 截图）。",
+      "notes": "删除通用双 Pane，tab-store 单栈化 + per-tab editorMode；editor/source/*（SourceModeView/CodeMirror/LivePreview/page-source-io/parse-guard/scroll-sync）；Mod+E 三入口；打开即写盘根治（UniqueID 初始化窗口门控）；smoke 假绿修复（app.exit 退出码）。外部项沿 §6，无新增。"
+    },
+    "DEV-021": {
+      "title": "用户文案统一「知识库」并删除文件浏览占位页",
+      "deps": [],
+      "status": "done",
+      "agent": null,
+      "branch": "dev/DEV-021",
+      "merged": "e8a07d3",
+      "candidate": "c12d2ad",
+      "verdict": "smoke 123/123；Standards + Spec PASS"
+    },
+    "DEV-022": {
+      "title": "页签拖拽排序与切换快捷键",
+      "deps": [],
+      "status": "done",
+      "agent": null,
+      "branch": "dev/DEV-022",
+      "merged": "968290c",
+      "candidate": "5c2643a",
+      "verdict": "smoke 140/140；Standards + Spec PASS"
+    },
+    "DEV-023": {
+      "title": "划词工具栏按钮集统一（格式化 + 双链）",
+      "deps": [],
+      "status": "done",
+      "agent": null,
+      "branch": "dev/DEV-023",
+      "merged": "2dead70",
+      "candidate": "63b6b49",
+      "verdict": "smoke 129/129；Standards + Spec PASS"
+    },
+    "DEV-024": {
+      "title": "双链可发现性：Markdown 源码补全与反向链接角标",
+      "deps": [],
+      "status": "done",
+      "agent": null,
+      "branch": "dev/DEV-024",
+      "merged": "9d16284",
+      "candidate": "4ad2d57",
+      "verdict": "smoke 145/145；Standards + Spec PASS"
+    },
+    "DEV-025": {
+      "title": "文档属性感知：字段目录与 Markdown 属性面板",
+      "deps": [],
+      "status": "done",
+      "agent": null,
+      "branch": "dev/DEV-025",
+      "merged": "f58d25c",
+      "candidate": "909f88b",
+      "verdict": "smoke 128/128；Standards + Spec PASS"
+    },
+    "DEV-026": {
+      "title": "AI 配置入口收口设置页",
+      "deps": [],
+      "status": "done",
+      "agent": null,
+      "branch": "dev/DEV-026",
+      "merged": "5d49165",
+      "candidate": "ab39ba4",
+      "verdict": "smoke 116/116；Standards + Spec PASS"
+    }
+  },
+  "phase": "20/20 全部完成（DEV-001~DEV-020 已合入 master）；仅剩 release-checklist §6 外部人工验收项",
+  "notes": [
+    "调度规则：前置依赖全部合并进 master 后才启动该票据子Agent，worktree 基于 merging 后的 master 新建",
+    "worktree 根已迁至 {master}/.wt/<TICKET>（.git/info/exclude 忽略）——子Agent workspace 仅覆盖主工作区，外部路径会被文件沙箱拒绝（DEV-007/DEV-009 首次修复尝试因此阻塞，已迁移后恢复）",
+    "DEV-007 网络不可达时预授权本地 bare 仓库降级验证并标注",
+    "DEV-009 预授权本地 mock OpenAI 服务器验证",
+    "每张票据验收：主Agent复跑 typecheck/lint/test（必要时 build）+ 审阅 worklog + 逐条对照验收标准",
+    "DEV-002 审查非阻塞项（拖拽E2E、块ID强度、inline-code hack）已记录为后续优化方向，不阻塞合并",
+    "DEV-003 审查非阻塞项（相对链接更新、嵌套tab重定向）已记录，DEV-004 索引升级时再完善",
+    "2026-09-14 台账对齐：DEV-016/017/018/019 终局为 done（此前陈旧冻结态），补录 DEV-020；依据 DEV-STATUS-CHECKPOINT.md 各票「已完成合并」记录与 README 20/20。同日清理 31 个已合并 worktree/36 个已合并分支，仅保留 dev/DEV-016、dev/DEV-017 废弃 WIP 分支引用供考古。"
+  ],
+  "checkpoint": {
+    "file": ".scratch/DEV-STATUS-CHECKPOINT.md",
+    "master": "993fe82",
+    "completedTickets": [
+      "DEV-001",
+      "DEV-002",
+      "DEV-003",
+      "DEV-004",
+      "DEV-005",
+      "DEV-006",
+      "DEV-007",
+      "DEV-009",
+      "DEV-008",
+      "DEV-010",
+      "DEV-011"
+    ],
+    "paused": false,
+    "note": "DEV-010 已完成；外部环境验收不得伪造。"
+  },
+  "updated": "2026-09-14",
+  "status": "done",
+  "completed": "26/26"
+}

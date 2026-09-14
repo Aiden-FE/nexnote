@@ -110,12 +110,13 @@ DEV-008 (置信度) ← DEV-004 + DEV-007
 4. ~~DEV-019~~ ✅ 已合并（`d95fb9e`，→ 19/19）：E2E 纯逻辑集成测试（4 用例，120 页 fixture vault 全链路）、性能时间盒（3 用例，千页/8k 块/3k 链接，实测索引 ~210ms / 搜索 ~8ms / PageRank ~280ms / 图谱 ~90ms）、bug bash 6 个模块交界回归断言、4 份用户文档（user-guide / shortcut-cheatsheet / plugin-development / FAQ）、RELEASE-NOTES + release-checklist（含 NOT_RUN 清单）。双轴审查：Spec @480cd66 PASS（2 minor）、Standards 一审 FAIL（4 major 文档失实）→ 修复 `9c77dba` → 复审 PASS（0 issues）。
 5. ~~DEV-020~~ ✅ 已合并（`0f14a49`，→ 20/20）：删除通用双 Pane 分屏，落地 per-tab 源码模式（CodeMirror 6 左侧原文 + 只读 Live Preview 右侧，三入口：头部按钮 / Mod+E / 命令面板；H1↔文件名联动与预览 Wikilink 同 tab 导航保持源码模式；字节保真写盘与外部冲突防护）。首轮候选 `6ce348d` 后修复 6 项 smoke 失败（kernel UniqueID 初始化补 ID 误触发保存 → 打开即归一化写盘；Mermaid tokenizer 不认 `~~~` 围栏；smoke 陈旧 DOM 竞态与场景顺序断言）+ 加固 smoke 退出码假绿（`app.quit()` → `app.exit(code)`，空报告判失败）。双轴审查 @`839baf5`：Standards PASS（1 minor 时序耦合注释建议）、Spec PASS（1–23 PASS，24 为合并后流程）。证据：`smoke/DEV-020/results.json`（打包产物 102/102，退出码 0）。
 
-## 🏁 终局状态（2026-09-08）
+## 🏁 终局状态（2026-09-14）
 
-- **20 / 20 全部完成并合入 `master`；DEV-020 源码模式已合入（`0f14a49`）**。
-- 最终 master 门禁（含 DEV-020）：typecheck 3 包、82 测试文件通过（1 文件 skip）/ 657 测试通过（2 skip）、eslint、build、verify-release-config 28/28、changed-format、diff --check 全绿；Electron smoke **102/102** 全绿（打包产物，退出码 0；失败时退出码 1 已由 `app.exit` 保证）。
-- GUI follow-up 已完成真实 Electron smoke：默认单栏、Dock 默认关闭、页面树同步、插件裸露 UI 移除、复制 Markdown 排版等 **83/83**。剩余 NOT_RUN 仅为跨平台/外部环境项（完整清单见 [release-checklist 第 6 节](./release-checklist.md)）：三平台签名/公证/物理安装、真实 Obsidian vault 导入、kill -9 崩溃恢复、打包后冷启动 <3s 实测、大文档流畅度、自动更新端到端等。
-- 本次 GUI follow-up 无遗留 smoke 失败；`better-sqlite3` 在 Node/Electron ABI 间切换后需按环境 rebuild（已在 post-merge 恢复 Node ABI）。
+- **26 / 26 全部完成并合入 `master`；DEV-021～DEV-026 验收反馈轮已闭环**（最终代码基线 `968290c`，状态登记提交 `b12a55b`）。
+- 最终 master 门禁：typecheck、122 个测试文件通过（1 文件 skip）/ 983 个测试通过（2 skip）、eslint、build、verify-release-config 29/29、changed-format、diff --check 全绿；打包 macOS arm64 Electron smoke **151/151** 全绿，退出码 0，证据见 `smoke/MASTER-POST-MERGE/results.json`。
+- 本轮新增票据 smoke 证据：DEV-021 123/123、DEV-022 140/140、DEV-023 129/129、DEV-024 145/145、DEV-025 128/128、DEV-026 116/116，均在候选 SHA 上通过 Standards + Spec 双轴审查后合并。
+- 剩余 NOT_RUN 仅为跨平台/外部环境项（完整清单见 [release-checklist 第 6 节](./release-checklist.md)）：三平台签名/公证/物理安装、真实 Obsidian 知识库导入、kill -9 崩溃恢复、打包后冷启动 <3s 实测、大文档流畅度、自动更新端到端等。
+- `better-sqlite3` 在 Node/Electron ABI 间切换后已恢复 Node ABI（`pnpm pretest`）。
 
 ## 统一验收与合并协议
 
