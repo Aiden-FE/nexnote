@@ -4,7 +4,8 @@ import { type EditorView, ViewPlugin, type ViewUpdate } from '@codemirror/view';
 /**
  * 源码模式（CodeMirror）划词浮动工具栏：与块编辑模式 selection bubble 一致的交互。
  *
- * - 非空选区时在选区起点上方浮现（coordsAtPos 视口坐标 → 包含块内坐标）
+ * - 非空选区时在选区起点上方浮现（coordsAtPos 只在 rAF 帧循环读取：
+ *   update() 事务提交期内读取布局会被 CodeMirror 拒绝并销毁本插件）
  * - mousedown 拦截以保留选区；点击触发 onAction(id, ctx) 并隐藏
  * - 选区折叠/为空、编辑器失焦、Esc 时隐藏；滚动后按新视口坐标重算
  * - 复用 .nexnote-selection-bubble 样式（暗色经 CSS 变量自动适配）
@@ -154,7 +155,10 @@ export function sourceSelectionBubble(options: SourceBubbleOptions): Extension {
         }
         this.dom.style.display = 'flex';
         this.visible = true;
-        this.positionToSelection();
+        // 定位只能发生在 rAF 帧循环里：coordsAtPos 属于布局读取，
+        // CodeMirror 在插件 update()（事务提交中）调用会抛
+        // "Reading the editor layout isn't allowed during an update"，
+        // 触发插件被销毁——工具栏自此永久消失。
         this.startLoop();
       }
 

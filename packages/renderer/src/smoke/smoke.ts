@@ -584,16 +584,22 @@ export async function runSmokeIfEnabled(): Promise<void> {
           el.querySelectorAll('[data-bubble-action]').length >= 12
         );
       }, 5_000),
-      `el=${!!bubbleEl()} onBody=${bubbleEl()?.parentElement === document.body} display=${bubbleEl()?.style.display ?? '?'} w=${bubbleEl()?.offsetWidth ?? 0} buttons=${bubbleEl()?.querySelectorAll('[data-bubble-action]').length ?? 0}`,
+      `el=${!!bubbleEl()} onBody=${bubbleEl()?.parentElement === document.body} display=${bubbleEl()?.style.display ?? '?'} w=${bubbleEl()?.offsetWidth ?? 0} buttons=${bubbleEl()?.querySelectorAll('[data-bubble-action]').length ?? 0} bodyKids=${[
+        ...document.body.children,
+      ]
+        .slice(0, 12)
+        .map((el) => el.tagName + '.' + String(el.className || '').slice(0, 24))
+        .join(
+          '|',
+        )} ds=${JSON.stringify(document.documentElement.dataset)} classes=${document.querySelectorAll('.nexnote-selection-bubble').length}`,
     );
     await capture('22-md-selection-bubble');
     const bubbleShown = !!bubbleEl() && bubbleEl()!.style.display !== 'none';
     if (bubbleShown) {
-      document
-        .querySelector('[data-source-editor-pane] .cm-content')
-        ?.dispatchEvent(
-          new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true }),
-        );
+      // Esc 监听挂在编辑器根 DOM（view.dom），与单测路径一致。
+      sourceHandle?.view.dom.dispatchEvent(
+        new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true }),
+      );
       await sleep(200);
       check('md 划词工具栏 Esc 隐藏', !bubbleEl() || bubbleEl()!.style.display === 'none');
     }
