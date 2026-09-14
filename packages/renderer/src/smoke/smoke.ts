@@ -504,8 +504,9 @@ export async function runSmokeIfEnabled(): Promise<void> {
         !!document.querySelector('[data-testid="source-editor-pane"] .cm-content'),
     );
     check(
-      'Markdown 属性面板挂载且 YAML 从正文抽离（DEV-025）',
-      (await waitFor(() => !!document.querySelector('[data-testid="frontmatter-panel"]'))) &&
+      'Markdown 属性 Popover 默认关闭且 YAML 从正文抽离（DEV-025）',
+      (await waitFor(() => !!document.querySelector('[data-testid="document-properties-trigger"]'))) &&
+        !document.querySelector('[data-testid="frontmatter-panel"]') &&
         !(document.querySelector('[data-testid="source-editor-pane"]')?.textContent ?? '').includes(
           'title: 源码模式冒烟',
         ) &&
@@ -513,10 +514,18 @@ export async function runSmokeIfEnabled(): Promise<void> {
           '# 源码模式冒烟',
         ),
     );
+    document.querySelector<HTMLButtonElement>('[data-testid="document-properties-trigger"]')?.click();
     check(
-      '属性面板显示已有标准字段',
-      !!document.querySelector('[data-testid="frontmatter-field-title"]'),
+      '点击属性后打开面板且显示已有标准字段',
+      (await waitFor(() => !!document.querySelector('[data-testid="frontmatter-panel"]'))) &&
+        !!document.querySelector('[data-testid="frontmatter-field-title"]'),
     );
+    document.body.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true }));
+    check(
+      '属性 Popover 点击外部关闭',
+      !document.querySelector('[data-testid="frontmatter-panel"]'),
+    );
+    document.querySelector<HTMLButtonElement>('[data-testid="document-properties-trigger"]')?.click();
     // 划词工具栏可见性改由下方 DEV-023 段在真实 GUI 中断言（选区 → body 挂载 → 按钮集 → Esc 隐藏）。
 
     check(
