@@ -300,7 +300,7 @@ function GitTimeline() {
     }
   };
   const previewRestore = async (commit: TimelineCommit) => {
-    if (!filePath.trim()) return setMessage('请输入要恢复的 vault 内相对文件路径');
+    if (!filePath.trim()) return setMessage('请输入要恢复的知识库内相对文件路径');
     try {
       setRestore({
         commit,

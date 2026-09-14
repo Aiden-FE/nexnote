@@ -54,16 +54,6 @@ commandRegistry.register({
 });
 
 commandRegistry.register({
-  id: 'tab.files',
-  title: '打开 Vault 文件浏览',
-  category: '标签页',
-  keywords: ['files', 'fs', '文件', '浏览'],
-  run: () => {
-    openWorkspaceTab('files', 'Vault 文件');
-  },
-});
-
-commandRegistry.register({
   id: 'editor.toggleSourceMode',
   title: '切换源码模式',
   category: '编辑器',

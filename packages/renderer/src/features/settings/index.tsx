@@ -220,14 +220,14 @@ function GeneralSection() {
 
       <div className="border-t pt-6">
         <SectionHeader title="启动" description="应用打开时的行为" />
-        <Row label="启动时" description="打开上次知识库、走向导或打开特定 vault">
+        <Row label="启动时" description="打开上次知识库、走向导或打开特定知识库">
           <Select
             value={global.startup.behavior}
             onChange={(v) => void setGlobal({ startup: { behavior: v as StartupBehavior } })}
             options={[
-              { value: 'restore', label: '恢复上次 vault' },
+              { value: 'restore', label: '恢复上次知识库' },
               { value: 'welcome', label: '显示欢迎页' },
-              { value: 'specific-vault', label: '打开特定 vault' },
+              { value: 'specific-vault', label: '打开特定知识库' },
             ]}
           />
         </Row>
@@ -275,7 +275,7 @@ function GeneralSection() {
       </div>
 
       <div className="border-t pt-6">
-        <SectionHeader title="Git" description="全局 Git 行为（每 vault 可单独设置）" />
+        <SectionHeader title="Git" description="全局 Git 行为（每个知识库可单独设置）" />
         <Row label="使用系统 Git" description="默认使用 NexNote 内置 Git">
           <Toggle
             checked={global.git.useSystemGit}
@@ -295,9 +295,7 @@ function EditorSection() {
 
   if (!vault) {
     return (
-      <div className="text-sm text-muted-foreground">
-        未打开 vault。打开知识库后可配置编辑器行为。
-      </div>
+      <div className="text-sm text-muted-foreground">尚未打开知识库，打开后可配置编辑器行为。</div>
     );
   }
 
@@ -349,9 +347,7 @@ function GitSection() {
 
   if (!vault) {
     return (
-      <div className="text-sm text-muted-foreground">
-        未打开 vault。打开知识库后可配置 Git 行为。
-      </div>
+      <div className="text-sm text-muted-foreground">尚未打开知识库，打开后可配置 Git 行为。</div>
     );
   }
 
@@ -395,7 +391,7 @@ function GitSection() {
           className="h-8 w-56 rounded-md border bg-background px-2 text-sm"
         />
       </Row>
-      <Row label="默认分支名" description="新建 vault 时使用">
+      <Row label="默认分支名" description="新建知识库时使用">
         <input
           type="text"
           value={vault.git.defaultBranch}
@@ -591,7 +587,7 @@ function AboutSection() {
       </div>
       <div className="pt-4 text-xs text-muted-foreground">
         <p>NexNote — 面向 AI 原生工作流的本地知识库。</p>
-        <p className="mt-2">所有数据保存在本地 vault 目录中。</p>
+        <p className="mt-2">所有数据保存在本地知识库目录中。</p>
       </div>
     </div>
   );

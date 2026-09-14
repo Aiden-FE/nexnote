@@ -10,7 +10,6 @@ const kindIcon: Record<TabKind, typeof Home> = {
   welcome: Home,
   page: FileText,
   docx: FileType2,
-  files: FolderOpen,
   graph: Network,
   settings: Settings,
 };
