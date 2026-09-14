@@ -407,6 +407,43 @@ jobs:
           tag_name: ${{ needs.prepare.outputs.tag }}
           files: release/**/*
           generate_release_notes: true
+      - name: Verify published Release asset set
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ needs.prepare.outputs.tag }}
+          RELEASE_CHANNEL: ${{ needs.prepare.outputs.channel }}
+        run: |
+          set -euo pipefail
+          VERSION="${RELEASE_TAG#v}"
+          # Required auto-update primary set + channel manifests; portable/deb are optional extras.
+          REQUIRED="NexNote-VERSION-mac-arm64.dmg
+          NexNote-VERSION-mac-arm64.zip
+          NexNote-VERSION-mac-x64.dmg
+          NexNote-VERSION-mac-x64.zip
+          NexNote-VERSION-win-x64.exe
+          NexNote-VERSION-linux-x86_64.AppImage
+          latest-mac.yml
+          latest.yml
+          latest-linux.yml"
+          case "$RELEASE_CHANNEL" in
+            beta) REQUIRED="${REQUIRED//latest/beta}" ;;
+            alpha) REQUIRED="${REQUIRED//latest/alpha}" ;;
+            stable) : ;;
+            *) echo '::error::invalid channel'; exit 1 ;;
+          esac
+          # The full asset set is far below gh api's 100-per-page; --paginate guards anyway.
+          PUBLISHED=$(gh api "repos/$GITHUB_REPOSITORY/releases/tags/$RELEASE_TAG" --paginate --jq '.assets[].name' | sort -u)
+          test -n "$PUBLISHED" || { echo '::error::release has no assets'; exit 1; }
+          MISSING=0
+          while IFS= read -r name; do
+            resolved="${name//VERSION/$VERSION}"
+            if ! printf '%s\n' "$PUBLISHED" | grep -Fqx "$resolved"; then
+              echo "::error::published release is missing required asset: $resolved"
+              MISSING=1
+            fi
+          done <<< "$REQUIRED"
+          test "$MISSING" -eq 0 || exit 1
+          echo "published asset set verified for $RELEASE_CHANNEL $VERSION"
       - name: Release durable publication lease
         if: always() && env.PUBLICATION_LEASE_ACQUIRED == 'true'
         run: git push --force-with-lease=refs/heads/release-publication-lock:$PUBLICATION_LEASE_OWNER origin :refs/heads/release-publication-lock
