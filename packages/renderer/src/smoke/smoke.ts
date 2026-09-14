@@ -232,7 +232,7 @@ export async function runSmokeIfEnabled(): Promise<void> {
         let firstFrom = -1;
         let firstTo = -1;
         blockDoc.descendants((node, pos) => {
-          if (firstFrom >= 0 || !node.isText) return false;
+          if (firstFrom >= 0 || !node.isText) return true;
           const at = node.text?.indexOf('第一块') ?? -1;
           if (at >= 0) {
             firstFrom = pos + at;
