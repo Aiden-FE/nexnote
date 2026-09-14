@@ -115,6 +115,17 @@ export async function runSmokeIfEnabled(): Promise<void> {
       !document.querySelector('[data-testid="guided-tour"]'),
     );
 
+    // ── 2b'. 首启动 AI 引导（DEV-026）：未配置时自动弹一次，关闭后不再自动弹出 ──
+    check(
+      '未配置时首启动 AI 引导自动弹出',
+      await waitFor(() => !!document.querySelector('[data-testid="ai-wizard"]')),
+    );
+    document
+      .querySelector<HTMLButtonElement>('[data-testid="ai-wizard"] [aria-label="关闭向导"]')
+      ?.click();
+    await sleep(300);
+    check('AI 引导关闭后不再自动弹出', !document.querySelector('[data-testid="ai-wizard"]'));
+
     // ── 3. 首次工作区布局 ─────────────────────────────────────
     const treeRow = (rel: string): Element | null =>
       document.querySelector(`[data-testid="tree-row"][data-path="${CSS.escape(rel)}"]`);
@@ -504,6 +515,55 @@ export async function runSmokeIfEnabled(): Promise<void> {
     // 运行自定义注册命令
     commandRegistry.get('smoke.custom')?.run();
     check('外部模块可注册新命令并执行', customCommandRan);
+
+    // ── 6b. AI 配置入口收口（DEV-026）：未配置入口统一跳设置页 ──
+    useUiStore.getState().setDockVisible(true);
+    check(
+      '右栏 AI 空态出现（未配置）',
+      await waitFor(() => !!document.querySelector('[data-testid="ai-dock-empty"]')),
+    );
+    document.querySelector<HTMLButtonElement>('[data-testid="ai-dock-configure"]')?.click();
+    check(
+      '右栏配置按钮跳转设置页 AI 分区',
+      (await waitFor(() => !!document.querySelector('[data-testid="settings-section-ai"]'))) &&
+        !document.querySelector('[data-testid="ai-wizard"]'),
+    );
+    await capture('19-ai-settings-entry');
+    const aiNav = document.querySelector('[data-testid="settings-nav-ai"]');
+    check(
+      '设置页导航高亮 AI 供应商分区',
+      !!aiNav && (aiNav.getAttribute('class') ?? '').includes('bg-accent'),
+    );
+    check('旧 ai.setup 命令已并入 ai.settings', commandRegistry.get('ai.setup') === undefined);
+    // ⌘K 正向路径：搜索并执行「AI 供应商设置」同样落在设置页 AI 分区
+    const settingsTabNow = useTabStore.getState().tabs.find((t) => t.kind === 'settings');
+    if (settingsTabNow) useTabStore.getState().closeTab(settingsTabNow.id);
+    window.dispatchEvent(
+      new KeyboardEvent('keydown', { key: 'k', metaKey: true, bubbles: true, cancelable: true }),
+    );
+    const paletteInput = document.querySelector<HTMLInputElement>('[data-testid="palette-input"]');
+    const valueSetter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')?.set;
+    if (paletteInput && valueSetter) {
+      valueSetter.call(paletteInput, 'AI 供应商');
+      paletteInput.dispatchEvent(new Event('input', { bubbles: true }));
+    }
+    await waitFor(() => document.querySelectorAll('[data-testid="palette-item"]').length > 0);
+    const aiCmd = [...document.querySelectorAll('[data-testid="palette-item"]')].find((el) =>
+      el.textContent?.includes('AI 供应商设置'),
+    );
+    check('⌘K 可搜到 AI 供应商设置命令', !!aiCmd);
+    // 直接点击目标条目，避免 Enter 执行过滤列表中的第一条（可能为其他 AI 命令）。
+    aiCmd?.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
+    check(
+      '⌘K 执行 AI 设置命令跳转设置页 AI 分区',
+      await waitFor(() => !!document.querySelector('[data-testid="settings-section-ai"]')),
+    );
+    // 收尾：关闭设置 tab 并收起 dock，避免影响后续用例
+    const tabsNow = useTabStore.getState().tabs;
+    const settingsTab = tabsNow.find((t) => t.kind === 'settings');
+    if (settingsTab) useTabStore.getState().closeTab(settingsTab.id);
+    useUiStore.getState().setDockVisible(false);
+    await sleep(200);
 
     // ── 7. 亮/暗主题 ─────────────────────────────────────────
     useThemeStore.getState().setPreference('dark');

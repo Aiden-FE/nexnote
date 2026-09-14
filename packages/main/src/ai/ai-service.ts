@@ -232,6 +232,12 @@ export class AiService {
     return { state: this.deps.store.getState() };
   }
 
+  dismissSetupPrompt(): { state: AiConfigState } {
+    this.deps.store.dismissSetupPrompt();
+    this.emitConfigChanged();
+    return { state: this.deps.store.getState() };
+  }
+
   // ── 连通性 / 模型 ──────────────────────────────────
 
   /**
