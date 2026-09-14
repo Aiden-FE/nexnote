@@ -29,16 +29,61 @@ export function assertSafeFrontmatterKey(raw: string): string {
   return key;
 }
 
-const STANDARD_FIELDS: Readonly<Record<string, 'string' | 'list' | 'date' | 'number' | 'boolean'>> =
+/** 标准字段的预定义类型（用于字段目录与属性表格选择编辑器）。 */
+export type StandardFieldType = 'string' | 'list' | 'date' | 'number' | 'boolean';
+
+export interface StandardFieldDef {
+  key: string;
+  type: StandardFieldType;
+  /** 一句话说明：字段目录 UI 的唯一文案来源（DEV-025），不散落各组件。 */
+  description: string;
+}
+
+/**
+ * 标准字段目录（DEV-025）：7 个系统预定义文档属性键的集中定义，
+ * 顺序即属性面板展示顺序（title → tags → aliases → created → updated → type → confidence）。
+ */
+export const STANDARD_FIELD_CATALOG: readonly StandardFieldDef[] = [
   {
-    title: 'string',
-    tags: 'list',
-    aliases: 'list',
-    created: 'date',
-    updated: 'date',
+    key: 'title',
     type: 'string',
-    confidence: 'number',
-  };
+    description: '文档标题：双链与搜索中的显示名，可与文件名绑定',
+  },
+  {
+    key: 'tags',
+    type: 'list',
+    description: '标签列表：参与关系索引、树过滤与 AI 召回',
+  },
+  {
+    key: 'aliases',
+    type: 'list',
+    description: '别名列表：双链可经别名指向同一页面',
+  },
+  {
+    key: 'created',
+    type: 'date',
+    description: '创建时间（ISO 日期）：供版本时间线与统计展示',
+  },
+  {
+    key: 'updated',
+    type: 'date',
+    description: '最近修改时间（ISO 日期）：供版本时间线与统计展示',
+  },
+  {
+    key: 'type',
+    type: 'string',
+    description: '文档类型（如 note、chat）：区分普通笔记与会话页面',
+  },
+  {
+    key: 'confidence',
+    type: 'number',
+    description: '由 Git 提交历史计算的可信分数（0-100）',
+  },
+];
+
+const STANDARD_FIELDS: Readonly<Record<string, StandardFieldType>> = Object.fromEntries(
+  STANDARD_FIELD_CATALOG.map((field) => [field.key, field.type]),
+);
 
 /** 推测字段的显示类型（用于属性表格选择编辑器）。 */
 export function fieldTypeOf(
