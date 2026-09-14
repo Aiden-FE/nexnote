@@ -129,6 +129,19 @@ describe('channel resolution', () => {
     expect((await checkForUpdates()).version).toBe('9.9.9');
   });
 
+  it('compares very large SemVer numbers without numeric overflow', async () => {
+    const { adapter } = makeAdapter();
+    adapter.checkForUpdates = vi.fn(async () => ({
+      updateInfo: { version: '1000000000000000000000000000000.0.0' },
+    }));
+    restore = setUpdaterAdapterForTests(adapter, {
+      isPackaged: true,
+      getVersion: () => '999999999999999999999999999999.0.0',
+    });
+    initAutoUpdater(() => {});
+    expect((await checkForUpdates()).status).toBe('available');
+  });
+
   it('normalizeChannel accepts only stable/beta/alpha', () => {
     expect(normalizeChannel('beta')).toBe('beta');
     expect(normalizeChannel(' BETA ')).toBe('beta');
@@ -209,6 +222,48 @@ describe('updater policy', () => {
       action: 'install-started',
     });
     expect(adapter.quitAndInstall).toHaveBeenCalledWith(false, true);
+  });
+
+  it('ignores a stale download completion after channel switch', async () => {
+    const { adapter, listeners } = makeAdapter();
+    let resolveDownload!: () => void;
+    adapter.downloadUpdate = vi.fn(
+      () =>
+        new Promise<void>((resolve) => {
+          resolveDownload = resolve;
+        }),
+    );
+    restore = setUpdaterAdapterForTests(adapter, { isPackaged: true, getVersion: () => '0.1.0' });
+    const statuses: Array<{ status: string; channel?: string }> = [];
+    initAutoUpdater(
+      () => {},
+      (status) => statuses.push(status),
+    );
+    listeners.get('update-available')?.({ version: '9.9.9', channel: 'stable' });
+    const download = downloadUpdate();
+    setUpdateChannel('beta');
+    resolveDownload();
+    await download;
+    expect(statuses.at(-1)).toMatchObject({ status: 'channel-switched', channel: 'beta' });
+    expect(await downloadUpdate()).toMatchObject({ status: 'error', retry: 'check' });
+  });
+
+  it('adapter errors expose download retry while downloading', async () => {
+    const { adapter, listeners } = makeAdapter();
+    let rejectDownload!: (error: Error) => void;
+    adapter.downloadUpdate = vi.fn(
+      () =>
+        new Promise<void>((_resolve, reject) => {
+          rejectDownload = reject;
+        }),
+    );
+    restore = setUpdaterAdapterForTests(adapter, { isPackaged: true, getVersion: () => '0.1.0' });
+    initAutoUpdater(() => {});
+    await checkForUpdates();
+    const promise = downloadUpdate();
+    listeners.get('error')?.(new Error('network'));
+    rejectDownload(new Error('late'));
+    expect(await promise).toMatchObject({ status: 'error', retry: 'download' });
   });
 
   it('deduplicates repeated available events and concurrent download requests', async () => {

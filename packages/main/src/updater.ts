@@ -149,7 +149,7 @@ const lazyAutoUpdater = (): UpdaterAdapter =>
 let adapter: UpdaterAdapter | null = null;
 const getAdapter = (): UpdaterAdapter => (adapter ??= lazyAutoUpdater());
 
-function defaultPlatformAdapter(): UpdaterPlatformAdapter {
+export function createDefaultUpdaterPlatform(): UpdaterPlatformAdapter {
   return {
     platform: process.platform,
     arch: process.arch,
@@ -201,7 +201,7 @@ export function deriveMacAppBundlePath(execPath: string): string | undefined {
     : undefined;
 }
 
-let platformAdapter: UpdaterPlatformAdapter = defaultPlatformAdapter();
+let platformAdapter: UpdaterPlatformAdapter = createDefaultUpdaterPlatform();
 let sendStatus: SendStatus = () => {};
 let logger: Log = () => {};
 let activeChannel: UpdateChannel = resolveChannelFromEnv();
@@ -230,9 +230,9 @@ function clearInstallTimer(): void {
   installing = false;
 }
 interface SemVer {
-  major: number;
-  minor: number;
-  patch: number;
+  major: string;
+  minor: string;
+  patch: string;
   prerelease: string[];
 }
 
@@ -243,13 +243,21 @@ function parseSemVer(value: unknown): SemVer | undefined {
   );
   if (!match) return undefined;
   const prerelease = match[4]?.split('.') ?? [];
-  if (prerelease.some((part) => /^0\d+$/.test(part))) return undefined;
-  return { major: Number(match[1]), minor: Number(match[2]), patch: Number(match[3]), prerelease };
+  if (prerelease.some((part) => /^\d+$/.test(part) && part.length > 1 && part.startsWith('0')))
+    return undefined;
+  return { major: match[1]!, minor: match[2]!, patch: match[3]!, prerelease };
+}
+
+function compareNumericStrings(left: string, right: string): number {
+  if (left.length !== right.length) return left.length > right.length ? 1 : -1;
+  if (left === right) return 0;
+  return left > right ? 1 : -1;
 }
 
 function compareSemVer(a: SemVer, b: SemVer): number {
   for (const key of ['major', 'minor', 'patch'] as const) {
-    if (a[key] !== b[key]) return a[key] > b[key] ? 1 : -1;
+    const comparison = compareNumericStrings(a[key], b[key]);
+    if (comparison !== 0) return comparison;
   }
   if (a.prerelease.length === 0 && b.prerelease.length === 0) return 0;
   if (a.prerelease.length === 0) return 1;
@@ -262,7 +270,7 @@ function compareSemVer(a: SemVer, b: SemVer): number {
     if (left === right) continue;
     const leftNumeric = /^\d+$/.test(left);
     const rightNumeric = /^\d+$/.test(right);
-    if (leftNumeric && rightNumeric) return Number(left) > Number(right) ? 1 : -1;
+    if (leftNumeric && rightNumeric) return compareNumericStrings(left, right);
     if (leftNumeric !== rightNumeric) return leftNumeric ? -1 : 1;
     return left > right ? 1 : -1;
   }
@@ -323,8 +331,14 @@ export function initAutoUpdater(
   const runGeneration = generation;
   a.on('error', (...args) => {
     if (runGeneration !== generation) return;
+    const retry = downloadInFlight ? 'download' : 'check';
     downloadInFlight = false;
-    emit('error', args[0] instanceof Error ? args[0].message : String(args[0] ?? 'unknown error'));
+    emit(
+      'error',
+      args[0] instanceof Error ? args[0].message : String(args[0] ?? 'unknown error'),
+      undefined,
+      { retry },
+    );
   });
   a.on('checking-for-update', () => {
     if (runGeneration === generation) emit('checking', '正在检查更新…');
@@ -439,6 +453,7 @@ export async function checkForUpdates(expectedGeneration = generation): Promise<
   }
 }
 export async function downloadUpdate(): Promise<UpdateCheckResult> {
+  const runGeneration = generation;
   if (!electronApp.isPackaged)
     return {
       status: 'not-configured',
@@ -458,11 +473,15 @@ export async function downloadUpdate(): Promise<UpdateCheckResult> {
     downloadInFlight = true;
     emit('downloading', '正在下载更新…', 0);
     await getAdapter().downloadUpdate();
+    if (runGeneration !== generation)
+      return { status: 'error', message: '更新通道已切换', channel: activeChannel, retry: 'check' };
     downloadInFlight = false;
     return downloadedVersion === availableVersion
       ? emit('downloaded', '更新已下载，可重启安装')
       : emit('downloading', '正在等待下载确认…');
   } catch (e) {
+    if (runGeneration !== generation)
+      return { status: 'error', message: '更新通道已切换', channel: activeChannel, retry: 'check' };
     downloadInFlight = false;
     return emit('error', e instanceof Error ? e.message : String(e), undefined, {
       retry: 'download',
