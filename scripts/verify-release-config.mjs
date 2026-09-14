@@ -16,12 +16,13 @@ const devWorkflow = readFileSync(resolve(root, '.github/workflows/pr-check.yml')
 const nightlyWorkflow = readFileSync(resolve(root, '.github/workflows/nightly.yml'), 'utf8');
 const updater = readFileSync(resolve(root, 'packages/main/src/updater.ts'), 'utf8');
 const runBuilder = readFileSync(resolve(root, 'scripts/run-builder.mjs'), 'utf8');
-const notarize = readFileSync(resolve(root, 'scripts/notarize.cjs'), 'utf8');
+const adHocSign = readFileSync(resolve(root, 'scripts/ad-hoc-sign.mjs'), 'utf8');
 const smoke = readFileSync(resolve(root, 'scripts/ci-smoke.mjs'), 'utf8');
 const appStore = readFileSync(resolve(root, 'packages/main/src/vault/app-store.ts'), 'utf8');
 const qaChecklist = readFileSync(resolve(root, 'docs/release/QA-CHECKLIST.md'), 'utf8');
 const dependabot = readFileSync(resolve(root, '.github/dependabot.yml'), 'utf8');
 const checkVersion = readFileSync(resolve(root, 'scripts/check-version.mjs'), 'utf8');
+const packageJson = readFileSync(resolve(root, 'package.json'), 'utf8');
 const releaseEvidence = readFileSync(resolve(root, 'scripts/release-evidence.mjs'), 'utf8');
 
 // The git origin is the single source of truth for the publish repository.
@@ -117,34 +118,42 @@ check('asar 启用且 unpack 含 dugite', () => {
 check('macOS entitlements 文件已声明', () => {
   if (!cfg.mac?.entitlements) throw new Error('mac entitlements missing');
 });
-check('macOS release 公证强制且 nightly 明确不可发布', () => {
+check('macOS release 使用 Ad hoc 签名且不要求 Apple 凭据', () => {
   if (cfg.mac?.hardenedRuntime !== true)
-    throw new Error('hardenedRuntime required for notarization');
-  if (!cfg.afterSign && !cfg.mac?.afterSign) throw new Error('afterSign hook missing');
-  if (!/NEXNOTE_NOTARIZE_MODE/.test(notarize) || !/mode === 'disabled'/.test(notarize))
-    throw new Error('notarization mode must explicitly distinguish non-publishable builds');
-  if (!/NEXNOTE_NOTARIZE_MODE:\s*required/.test(releaseWorkflow))
-    throw new Error('release mac build must require notarization');
+    throw new Error('macOS hardenedRuntime must remain enabled');
   if (
-    !/NEXNOTE_NOTARIZE_MODE:\s*disabled/.test(nightlyWorkflow) ||
-    !/non-publishable/.test(nightlyWorkflow)
+    cfg.afterSign !== 'scripts/ad-hoc-sign.mjs' &&
+    cfg.mac?.afterSign !== 'scripts/ad-hoc-sign.mjs'
   )
-    throw new Error('nightly must explicitly disable notarization as non-publishable');
-  if (!/throw new Error/.test(notarize))
-    throw new Error('missing release notarization credentials must fail');
+    throw new Error('macOS Ad hoc afterSign hook missing');
+  for (const source of [adHocSign, releaseWorkflow]) {
+    if (!/Ad hoc/.test(source)) throw new Error('Ad hoc strategy must be documented');
+  }
+  for (const command of ['--force', '--deep', '--sign', '-', '--verify']) {
+    if (!adHocSign.includes(command))
+      throw new Error(`Ad hoc hook missing codesign option: ${command}`);
+  }
+  if (!adHocSign.includes('Signature') || !adHocSign.includes('adhoc'))
+    throw new Error('Ad hoc hook must verify the resulting identity');
+  if (!/CSC_IDENTITY_AUTO_DISCOVERY:\s*['"]?false/.test(releaseWorkflow))
+    throw new Error('release mac build must disable certificate auto discovery');
   const macStep =
-    /- name: Package signed and notarized macOS distributables([\s\S]*?)(?=\n\s+- name: Package signed Windows)/.exec(
+    /- name: Package Ad hoc signed macOS distributables([\s\S]*?)(?=\n\s+- name: Package optionally signed Windows)/.exec(
       releaseWorkflow,
     )?.[1] ?? '';
-  if (/base64 --decode/.test(macStep) || !/python3 -c 'import base64/.test(macStep))
-    throw new Error('mac certificate decoding must be portable across BSD/GNU base64');
-  for (const command of [
-    'codesign --verify --deep --strict',
-    'xcrun stapler validate',
-    'spctl --assess',
-  ]) {
+  if (
+    /MACOS_CERTIFICATE|APPLE_ID|APPLE_APP_SPECIFIC_PASSWORD|APPLE_TEAM_ID|NEXNOTE_NOTARIZE_MODE/.test(
+      macStep,
+    )
+  )
+    throw new Error('release mac build must not require Apple signing or notarization credentials');
+  for (const command of ['codesign --verify --deep --strict', 'codesign -dv --verbose=4']) {
     if (!releaseWorkflow.includes(command))
-      throw new Error(`missing macOS verification: ${command}`);
+      throw new Error(`missing macOS Ad hoc verification: ${command}`);
+  }
+  for (const command of ['xcrun stapler validate', 'spctl --assess']) {
+    if (releaseWorkflow.includes(command))
+      throw new Error(`macOS hard gate must not use ${command}`);
   }
 });
 check('channel 接线：build env → 打包发布 → updater 烘焙通道', () => {
@@ -161,10 +170,8 @@ check('channel 接线：build env → 打包发布 → updater 烘焙通道', ()
   if (!/readBakedChannel|app-update\.yml/.test(updater))
     throw new Error('updater must read the baked channel from app-update.yml');
   if (
-    !/"js-yaml"/.test(readFileSync(resolve(root, 'package.json'), 'utf8')) ||
-    /"js-yaml"/.test(
-      readFileSync(resolve(root, 'package.json'), 'utf8').split('"devDependencies"')[1] ?? '',
-    )
+    !/"js-yaml"/.test(packageJson) ||
+    /"js-yaml"/.test(packageJson.split('"devDependencies"')[1] ?? '')
   ) {
     throw new Error('js-yaml must be a production dependency for packaged channel parsing');
   }
@@ -179,7 +186,7 @@ check('channel 接线：build env → 打包发布 → updater 烘焙通道', ()
   if (!/appStore\.get\(\)\.updateChannel/.test(indexTs) && !/extractUpdateSettings/.test(indexTs))
     throw new Error('main updater does not restore persisted channel');
 });
-check('publish 在上传前必须是 hard gate（签名缺失则失败）', () => {
+check('publish 在上传前必须完成 Ad hoc 验证，其他平台签名可选', () => {
   if (!releaseWorkflow.includes('--publish never'))
     throw new Error('build must use --publish never');
   if (releaseWorkflow.includes('--publish always'))
@@ -197,15 +204,18 @@ check('publish 在上传前必须是 hard gate（签名缺失则失败）', () =
     throw new Error('Windows must verify Authenticode before upload');
   }
   if (/runner\.os == 'Linux'/.test(releaseWorkflow) && !/gpg --verify/.test(releaseWorkflow)) {
-    throw new Error('Linux must verify .asc signature before upload');
+    throw new Error('Linux optional signing path must verify signatures when enabled');
   }
+  if (!/continuing without detached signatures/.test(releaseWorkflow))
+    throw new Error('Linux signing must be explicitly optional without credentials');
+  if (!/optional without credentials/.test(releaseWorkflow))
+    throw new Error('Windows signing must be explicitly optional without credentials');
 });
 check('平台密钥最小权限且仅 step 级引用', () => {
   const build = /  build:\n([\s\S]*?)(?=\n  smoke:)/.exec(releaseWorkflow)?.[1] ?? '';
   const jobEnv = /\n    env:\n([\s\S]*?)(?=\n    steps:)/.exec(build)?.[1] ?? '';
   if (/secrets\./.test(jobEnv)) throw new Error('secrets must not appear in build job env');
   const scopes = [
-    ['MACOS_CERTIFICATE', "if: runner.os == 'macOS'"],
     ['WINDOWS_CERTIFICATE', "if: runner.os == 'Windows'"],
     ['LINUX_GPG_PRIVATE_KEY', "if: runner.os == 'Linux'"],
   ];
@@ -216,6 +226,8 @@ check('平台密钥最小权限且仅 step 级引用', () => {
     if (stepStart < 0 || !build.slice(stepStart, index).includes(platformGuard))
       throw new Error(`${secret} is not platform-scoped`);
   }
+  if (/MACOS_CERTIFICATE|APPLE_ID|APPLE_APP_SPECIFIC_PASSWORD|APPLE_TEAM_ID/.test(build))
+    throw new Error('macOS release must not reference Apple credentials');
 });
 check('单个 publish job，经受保护 QA Environment 与 evidence gate 后才公开', () => {
   const wf = yaml.load(releaseWorkflow);
@@ -366,16 +378,20 @@ check('mac 双架构产物 basename 区分（dmg/zip 含 arch）', () => {
   }
 });
 
-check('preflight 强制 channel manifest、blockmap 与 Linux .asc', () => {
-  if (!/Linux GPG private key is required/.test(releaseWorkflow))
-    throw new Error('Linux key may not be optional');
+check('preflight channel manifest、blockmap 与可选 Linux .asc', () => {
+  if (
+    !/Linux GPG credentials unavailable; continuing without detached signatures/.test(
+      releaseWorkflow,
+    )
+  )
+    throw new Error('Linux signing must remain optional without credentials');
   if (
     !/gpg --batch --yes --armor --detach-sign/.test(releaseWorkflow) ||
     !/gpg --verify/.test(releaseWorkflow)
   )
-    throw new Error('linux artifacts must be signed and verified');
+    throw new Error('linux optional signing path must sign and verify when enabled');
   if (!/release\/\*\.AppImage release\/\*\.deb/.test(releaseWorkflow))
-    throw new Error('AppImage and deb must be signed');
+    throw new Error('AppImage and deb must be covered by optional signing');
   for (const metadata of [
     'stable) manifests=(release/latest*.yml)',
     'beta) manifests=(release/beta*.yml',

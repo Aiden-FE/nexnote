@@ -145,33 +145,27 @@ jobs:
           pnpm verify:release-config
       - run: pnpm lint && pnpm typecheck && pnpm test && pnpm build
 
-      - name: Package signed and notarized macOS distributables
+      - name: Package Ad hoc signed macOS distributables
         if: runner.os == 'macOS'
         env:
-          NEXNOTE_NOTARIZE_MODE: required
-          MACOS_CERTIFICATE: ${{ secrets.MACOS_CERTIFICATE }}
-          MACOS_CERTIFICATE_PASSWORD: ${{ secrets.MACOS_CERTIFICATE_PASSWORD }}
-          APPLE_ID: ${{ secrets.APPLE_ID }}
-          APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
-          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
-        run: |
-          test -n "$MACOS_CERTIFICATE" && test -n "$MACOS_CERTIFICATE_PASSWORD" && test -n "$APPLE_ID" && test -n "$APPLE_APP_SPECIFIC_PASSWORD" && test -n "$APPLE_TEAM_ID" || { echo '::error::macOS signing and notarization credentials are required'; exit 1; }
-          python3 -c 'import base64, os, pathlib; pathlib.Path(os.environ["RUNNER_TEMP"], "nexnote.p12").write_bytes(base64.b64decode(os.environ["MACOS_CERTIFICATE"]))'
-          export CSC_LINK="$RUNNER_TEMP/nexnote.p12"
-          export CSC_KEY_PASSWORD="$MACOS_CERTIFICATE_PASSWORD"
-          node scripts/run-builder.mjs ${{ matrix.target }} --publish never
+          CSC_IDENTITY_AUTO_DISCOVERY: 'false'
+        run: node scripts/run-builder.mjs ${{ matrix.target }} --publish never
 
-      - name: Package signed Windows distributables
+      - name: Package optionally signed Windows distributables
         if: runner.os == 'Windows'
         shell: pwsh
         env:
           WINDOWS_CERTIFICATE: ${{ secrets.WINDOWS_CERTIFICATE }}
           WINDOWS_CERTIFICATE_PASSWORD: ${{ secrets.WINDOWS_CERTIFICATE_PASSWORD }}
         run: |
-          if (-not $env:WINDOWS_CERTIFICATE -or -not $env:WINDOWS_CERTIFICATE_PASSWORD) { throw 'Windows Authenticode certificate and password are required' }
-          [IO.File]::WriteAllBytes("$env:RUNNER_TEMP/nexnote.pfx", [Convert]::FromBase64String($env:WINDOWS_CERTIFICATE))
-          $env:CSC_LINK = "$env:RUNNER_TEMP/nexnote.pfx"
-          $env:CSC_KEY_PASSWORD = $env:WINDOWS_CERTIFICATE_PASSWORD
+          if ($env:WINDOWS_CERTIFICATE -and $env:WINDOWS_CERTIFICATE_PASSWORD) {
+            [IO.File]::WriteAllBytes("$env:RUNNER_TEMP/nexnote.pfx", [Convert]::FromBase64String($env:WINDOWS_CERTIFICATE))
+            $env:CSC_LINK = "$env:RUNNER_TEMP/nexnote.pfx"
+            $env:CSC_KEY_PASSWORD = $env:WINDOWS_CERTIFICATE_PASSWORD
+            Write-Host 'Windows Authenticode signing enabled.'
+          } else {
+            Write-Host 'Windows signing credentials unavailable; continuing with an unsigned public artifact.'
+          }
           node scripts/run-builder.mjs ${{ matrix.target }} --publish never
 
       - name: Package Linux distributables
@@ -181,16 +175,16 @@ jobs:
       - name: Verify packaged bundled Git
         run: node scripts/verify-bundled-git.mjs --app release
 
-      - name: Verify macOS signature and notarization staple
+      - name: Verify macOS Ad hoc signature
         if: runner.os == 'macOS'
         run: |
           app=$(find release -maxdepth 3 -name 'NexNote.app' -print -quit)
           test -n "$app" || { echo '::error::no NexNote.app produced'; exit 1; }
           codesign --verify --deep --strict "$app"
-          xcrun stapler validate "$app"
-          spctl --assess --type execute --verbose=4 "$app"
+          codesign -dv --verbose=4 "$app" 2>&1 | tee "$RUNNER_TEMP/nexnote-codesign.txt"
+          grep -Eiq 'Signature[[:space:]]*=[[:space:]]*adhoc' "$RUNNER_TEMP/nexnote-codesign.txt" || { echo '::error::macOS app is not Ad hoc signed'; exit 1; }
 
-      - name: Verify Windows Authenticode signature
+      - name: Optionally verify Windows Authenticode signature
         if: runner.os == 'Windows'
         shell: pwsh
         run: |
@@ -198,20 +192,29 @@ jobs:
           if (-not $executables) { throw 'no .exe produced' }
           foreach ($artifact in $executables) {
             $sig = Get-AuthenticodeSignature $artifact.FullName
-            if ($sig.Status -ne 'Valid') { throw "Not Authenticode-signed: $($artifact.Name) ($($sig.Status))" }
+            if ($sig.Status -eq 'Valid') {
+              Write-Host "Valid Authenticode signature: $($artifact.Name)"
+            } elseif ($sig.Status -eq 'NotSigned') {
+              Write-Host "No Authenticode signature (optional without credentials): $($artifact.Name)"
+            } else {
+              throw "Invalid Authenticode signature: $($artifact.Name) ($($sig.Status))"
+            }
           }
 
-      - name: Sign and verify Linux release artifacts before upload
+      - name: Optionally sign and verify Linux release artifacts
         if: runner.os == 'Linux'
         env:
           LINUX_GPG_PRIVATE_KEY: ${{ secrets.LINUX_GPG_PRIVATE_KEY }}
         run: |
-          test -n "$LINUX_GPG_PRIVATE_KEY" || { echo '::error::Linux GPG private key is required'; exit 1; }
-          printf '%s' "$LINUX_GPG_PRIVATE_KEY" | base64 --decode > "$RUNNER_TEMP/nexnote.gpg"
-          gpg --batch --import "$RUNNER_TEMP/nexnote.gpg"
           shopt -s nullglob
           artifacts=(release/*.AppImage release/*.deb)
           ((${#artifacts[@]})) || { echo '::error::no Linux distributables produced'; exit 1; }
+          if [ -z "$LINUX_GPG_PRIVATE_KEY" ]; then
+            echo 'Linux GPG credentials unavailable; continuing without detached signatures.'
+            exit 0
+          fi
+          printf '%s' "$LINUX_GPG_PRIVATE_KEY" | base64 --decode > "$RUNNER_TEMP/nexnote.gpg"
+          gpg --batch --import "$RUNNER_TEMP/nexnote.gpg"
           for artifact in "${artifacts[@]}"; do
             gpg --batch --yes --armor --detach-sign "$artifact"
             gpg --verify "$artifact.asc" "$artifact"
@@ -303,7 +306,7 @@ jobs:
             *) echo '::error::invalid update channel'; exit 1 ;;
           esac
           ((${#appimages[@]} && ${#debs[@]} && ${#maczips[@]} && ${#macdmg[@]} && ${#windows[@]} && ${#blockmaps[@]} && ${#manifests[@]})) || { echo '::error::incomplete distributable or auto-update metadata set'; exit 1; }
-          for artifact in "${appimages[@]}" "${debs[@]}"; do test -f "$artifact.asc" || { echo "::error::missing GPG signature for $artifact"; exit 1; }; done
+          echo 'Optional Windows Authenticode and Linux GPG signatures do not gate the public Release when credentials are unavailable.'
           node scripts/check-version.mjs --require-tag "${{ needs.prepare.outputs.tag }}"
           # Bind the exact preflighted bytes; publish verifies this again immediately before upload.
           (cd release && find . -type f ! -name SHA256SUMS -print0 | sort -z | xargs -0 sha256sum > SHA256SUMS)

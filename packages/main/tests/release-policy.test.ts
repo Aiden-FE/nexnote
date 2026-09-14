@@ -15,6 +15,33 @@ const run = (script: string, args: string[], env = {}) =>
   });
 
 describe('release policy executable gates', () => {
+  it('configures certificate-free macOS Ad hoc signing and verification', () => {
+    const builderConfig = readFileSync(resolve(root, 'electron-builder.yml'), 'utf8');
+    const hook = readFileSync(resolve(root, 'scripts/ad-hoc-sign.mjs'), 'utf8');
+    const workflow = readFileSync(resolve(root, '.github/workflows/release.yml'), 'utf8');
+
+    expect(builderConfig).toContain('afterSign: scripts/ad-hoc-sign.mjs');
+    expect(hook).toContain("['--force', '--deep', '--sign', '-', appPath]");
+    expect(hook).toContain("['--verify', '--deep', '--strict', appPath]");
+    expect(hook).toContain('Signature\\s*=\\s*adhoc');
+    expect(workflow).toContain("CSC_IDENTITY_AUTO_DISCOVERY: 'false'");
+    expect(workflow).not.toContain('xcrun stapler validate');
+    expect(workflow).not.toContain('spctl --assess');
+    expect(workflow).not.toContain('NEXNOTE_NOTARIZE_MODE: required');
+  });
+
+  it('does not gate Windows or Linux release on missing signing credentials', () => {
+    const workflow = readFileSync(resolve(root, '.github/workflows/release.yml'), 'utf8');
+
+    expect(workflow).toContain('continuing with an unsigned public artifact');
+    expect(workflow).toContain('continuing without detached signatures');
+    expect(workflow).toContain(
+      'if ($env:WINDOWS_CERTIFICATE -and $env:WINDOWS_CERTIFICATE_PASSWORD)',
+    );
+    expect(workflow).not.toContain('Windows Authenticode certificate and password are required');
+    expect(workflow).not.toContain('Linux GPG private key is required');
+  });
+
   it('requires an explicit matching semver release tag', () => {
     expect(run('check-version.mjs', ['--require-tag']).status).toBe(1);
     expect(run('check-version.mjs', ['--require-tag', 'master']).status).toBe(1);
