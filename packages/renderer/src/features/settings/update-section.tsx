@@ -192,18 +192,20 @@ export function UpdateSettingsSection() {
           onClick={() => void action(() => invoke('app:checkForUpdates'))}
           className="inline-flex items-center gap-1 rounded border px-3 py-1.5 disabled:opacity-50"
         >
-          <RefreshCw className="size-3.5" /> 检查更新
+          <RefreshCw className="size-3.5" />{' '}
+          {status.status === 'error' && status.retry === 'check' ? '重新检查' : '检查更新'}
         </button>
-        {status.status === 'available' && !settings.autoDownload && (
+        {(status.status === 'available' && !settings.autoDownload) ||
+        (status.status === 'error' && status.retry === 'download') ? (
           <button
             type="button"
             disabled={busy}
             onClick={() => void action(() => invoke('app:downloadUpdate'))}
             className="inline-flex items-center gap-1 rounded bg-primary px-3 py-1.5 text-primary-foreground disabled:opacity-50"
           >
-            <Download className="size-3.5" /> 下载
+            <Download className="size-3.5" /> {status.retry === 'download' ? '重试下载' : '下载'}
           </button>
-        )}
+        ) : null}
         {(status.status === 'downloaded' || (status.status === 'error' && status.recoverable)) && (
           <button
             type="button"
@@ -225,6 +227,11 @@ export function UpdateSettingsSection() {
         {status.status === 'error' && status.recoverable && (
           <p className="w-full text-xs text-muted-foreground" role="alert">
             安装未完成，更新仍已保留；请重试“重启并安装”。
+          </p>
+        )}
+        {status.status === 'error' && status.retry && (
+          <p className="w-full text-xs text-muted-foreground" role="alert">
+            {status.retry === 'download' ? '下载失败，可重试下载。' : '检查失败，可重新检查更新。'}
           </p>
         )}
       </div>

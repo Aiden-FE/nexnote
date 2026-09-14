@@ -97,6 +97,34 @@ async function mountAndLoad(): Promise<void> {
 }
 
 describe('更新设置', () => {
+  it('错误状态显示区分检查与下载的恢复路径', async () => {
+    const { emit } = installBridge();
+    await act(async () => {
+      root.render(<UpdateSettingsSection />);
+      await tick(20);
+    });
+    await act(async () => {
+      emit('app:updateStatus', {
+        status: 'error',
+        message: '下载失败',
+        channel: 'stable',
+        retry: 'download',
+      });
+      await tick(0);
+    });
+    expect(container.textContent).toContain('重试下载');
+    expect(container.textContent).toContain('下载失败，可重试下载。');
+    emit('app:updateStatus', {
+      status: 'error',
+      message: '检查失败',
+      channel: 'stable',
+      retry: 'check',
+    });
+    await act(async () => tick(0));
+    expect(container.textContent).toContain('重新检查');
+    expect(container.textContent).toContain('检查失败，可重新检查更新。');
+  });
+
   it('从主进程加载更新设置并显示单一权威', async () => {
     const { invokeSpy } = installBridge();
     await act(async () => {

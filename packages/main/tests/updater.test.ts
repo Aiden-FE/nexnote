@@ -119,6 +119,16 @@ describe('channel resolution', () => {
     expect(adapter.setFeedURL).not.toHaveBeenCalled();
   });
 
+  it('accepts strict SemVer precedence and rejects malformed versions', async () => {
+    const { adapter, listeners } = makeAdapter();
+    restore = setUpdaterAdapterForTests(adapter, { isPackaged: true, getVersion: () => '1.2.3' });
+    initAutoUpdater(() => {});
+    for (const version of ['1.2.3', '1.2.3+build.1', '1.2.2', '1.2.3-'])
+      listeners.get('update-available')?.({ version });
+    expect((await checkForUpdates()).status).toBe('available');
+    expect((await checkForUpdates()).version).toBe('9.9.9');
+  });
+
   it('normalizeChannel accepts only stable/beta/alpha', () => {
     expect(normalizeChannel('beta')).toBe('beta');
     expect(normalizeChannel(' BETA ')).toBe('beta');

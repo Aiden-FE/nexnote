@@ -21,6 +21,7 @@ export type UpdateCheckStatus =
   | 'error';
 
 export type UpdateAction = 'manual-download' | 'install-started';
+export type UpdateRetryAction = 'check' | 'download';
 
 export interface UpdateCheckResult {
   status: UpdateCheckStatus;
@@ -33,6 +34,7 @@ export interface UpdateCheckResult {
   arch?: string;
   /** An install failure is recoverable while the downloaded update is retained. */
   recoverable?: boolean;
+  retry?: UpdateRetryAction;
 }
 
 export interface UpdateInstallResult {

@@ -173,10 +173,13 @@ function defaultPlatformAdapter(): UpdaterPlatformAdapter {
         if (authorities.length > 0) return { status: 'signed', authorities };
         return { status: 'unsigned', authorities };
       } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        const stderr =
+          error && typeof error === 'object' && 'stderr' in error ? String(error.stderr) : '';
         return {
           status: 'invalid',
           authorities: [],
-          detail: error instanceof Error ? error.message : String(error),
+          detail: `${message}${stderr ? `: ${stderr}` : ''}`,
         };
       }
     },
@@ -226,38 +229,50 @@ function clearInstallTimer(): void {
   installTimer = undefined;
   installing = false;
 }
+interface SemVer {
+  major: number;
+  minor: number;
+  patch: number;
+  prerelease: string[];
+}
+
+function parseSemVer(value: unknown): SemVer | undefined {
+  if (typeof value !== 'string') return undefined;
+  const match = value.match(
+    /^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:-([0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*))?(?:\+[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?$/,
+  );
+  if (!match) return undefined;
+  const prerelease = match[4]?.split('.') ?? [];
+  if (prerelease.some((part) => /^0\d+$/.test(part))) return undefined;
+  return { major: Number(match[1]), minor: Number(match[2]), patch: Number(match[3]), prerelease };
+}
+
+function compareSemVer(a: SemVer, b: SemVer): number {
+  for (const key of ['major', 'minor', 'patch'] as const) {
+    if (a[key] !== b[key]) return a[key] > b[key] ? 1 : -1;
+  }
+  if (a.prerelease.length === 0 && b.prerelease.length === 0) return 0;
+  if (a.prerelease.length === 0) return 1;
+  if (b.prerelease.length === 0) return -1;
+  for (let i = 0; i < Math.max(a.prerelease.length, b.prerelease.length); i += 1) {
+    const left = a.prerelease[i];
+    const right = b.prerelease[i];
+    if (left === undefined) return -1;
+    if (right === undefined) return 1;
+    if (left === right) continue;
+    const leftNumeric = /^\d+$/.test(left);
+    const rightNumeric = /^\d+$/.test(right);
+    if (leftNumeric && rightNumeric) return Number(left) > Number(right) ? 1 : -1;
+    if (leftNumeric !== rightNumeric) return leftNumeric ? -1 : 1;
+    return left > right ? 1 : -1;
+  }
+  return 0;
+}
+
 function isStrictlyNewer(version: unknown): version is string {
-  if (typeof version !== 'string') return false;
-  const remote = version.match(/^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:-([0-9A-Za-z.-]+))?$/);
-  const current = electronApp
-    .getVersion()
-    .match(/^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:-([0-9A-Za-z.-]+))?$/);
-  if (!remote || !current) return false;
-  for (let i = 1; i <= 3; i++) {
-    const a = Number(remote[i]);
-    const b = Number(current[i]);
-    if (a !== b) return a > b;
-  }
-  const rp = remote[4];
-  const cp = current[4];
-  if (!rp && cp) return true;
-  if (rp && !cp) return false;
-  if (!rp || !cp) return false;
-  const a = rp.split('.');
-  const b = cp.split('.');
-  for (let i = 0; i < Math.max(a.length, b.length); i++) {
-    const x = a[i];
-    const y = b[i];
-    if (x === undefined) return true;
-    if (y === undefined) return false;
-    if (x === y) continue;
-    const xn = /^\d+$/.test(x);
-    const yn = /^\d+$/.test(y);
-    if (xn && yn) return Number(x) > Number(y);
-    if (xn !== yn) return !xn;
-    return x > y;
-  }
-  return false;
+  const remote = parseSemVer(version);
+  const current = parseSemVer(electronApp.getVersion());
+  return remote !== undefined && current !== undefined && compareSemVer(remote, current) > 0;
 }
 function emit(
   status: UpdateCheckResult['status'],
@@ -400,7 +415,12 @@ export async function checkForUpdates(expectedGeneration = generation): Promise<
     emit('checking', '正在检查更新…');
     const result = await getAdapter().checkForUpdates();
     if (expectedGeneration !== generation)
-      return { status: 'error', message: '更新通道已切换', channel: activeChannel };
+      return {
+        status: 'error',
+        message: '更新通道已切换',
+        channel: activeChannel,
+        retry: 'check',
+      };
     const remoteVersion = result?.updateInfo?.version;
     if (isStrictlyNewer(remoteVersion)) {
       if (remoteVersion !== availableVersion) downloadedVersion = undefined;
@@ -413,7 +433,9 @@ export async function checkForUpdates(expectedGeneration = generation): Promise<
     return emit('up-to-date', `当前 ${electronApp.getVersion()} 已是最新`);
   } catch (e) {
     downloadInFlight = false;
-    return emit('error', e instanceof Error ? e.message : String(e));
+    return emit('error', e instanceof Error ? e.message : String(e), undefined, {
+      retry: 'check',
+    });
   }
 }
 export async function downloadUpdate(): Promise<UpdateCheckResult> {
@@ -424,7 +446,12 @@ export async function downloadUpdate(): Promise<UpdateCheckResult> {
       channel: activeChannel,
     };
   if (!availableVersion)
-    return { status: 'error', message: '没有可下载的更新，请先检查更新', channel: activeChannel };
+    return {
+      status: 'error',
+      message: '没有可下载的更新，请先检查更新',
+      channel: activeChannel,
+      retry: 'check',
+    };
   if (downloadedVersion === availableVersion) return emit('downloaded', '更新已下载，可重启安装');
   if (downloadInFlight) return emit('downloading', '更新正在下载…');
   try {
@@ -437,7 +464,9 @@ export async function downloadUpdate(): Promise<UpdateCheckResult> {
       : emit('downloading', '正在等待下载确认…');
   } catch (e) {
     downloadInFlight = false;
-    return emit('error', e instanceof Error ? e.message : String(e));
+    return emit('error', e instanceof Error ? e.message : String(e), undefined, {
+      retry: 'download',
+    });
   }
 }
 export async function installUpdate(): Promise<UpdateInstallResult> {
