@@ -263,6 +263,28 @@ check('单个 publish job，经受保护 QA Environment 与 evidence gate 后才
   )
     throw new Error('publish requires preflight then single uploader');
 });
+check('发布后回读 Release asset 集合并校验主路径', () => {
+  const attachIndex = releaseWorkflow.indexOf('Attach artifacts to GitHub Release');
+  const verifyIndex = releaseWorkflow.indexOf('Verify published Release asset set');
+  const leaseIndex = releaseWorkflow.indexOf('Release durable publication lease');
+  if (attachIndex < 0 || verifyIndex < 0 || leaseIndex < 0)
+    throw new Error('publish must attach, verify published assets, then release the lease');
+  if (!(attachIndex < verifyIndex && verifyIndex < leaseIndex))
+    throw new Error('published-asset verification must run after upload and before lease release');
+  const verifyStep = releaseWorkflow.slice(verifyIndex, leaseIndex);
+  for (const guard of [
+    'gh api',
+    '.assets[].name',
+    'mac-arm64.zip',
+    'mac-x64.zip',
+    'win-x64.exe',
+    'linux-x86_64.AppImage',
+    'missing required asset',
+  ]) {
+    if (!verifyStep.includes(guard))
+      throw new Error(`post-publication asset verification guard missing: ${guard}`);
+  }
+});
 check('tag push 自动触发且只能发布 existing immutable tag', () => {
   const wf = yaml.load(releaseWorkflow);
   if (!wf.on?.push?.tags?.includes('v*.*.*') || !wf.on?.workflow_dispatch)
