@@ -1,5 +1,5 @@
 import { useRef, useState } from 'react';
-import { FileText, FileType2, FolderOpen, Home, Network, Plus, Settings, X } from 'lucide-react';
+import { FileText, FileType2, Home, Network, Plus, Settings, X } from 'lucide-react';
 import { useTabStore, type TabKind } from '../stores/tab-store';
 import { ContextMenu, type ContextMenuItem } from '../components/ContextMenu';
 import { invoke } from '../lib/ipc';
