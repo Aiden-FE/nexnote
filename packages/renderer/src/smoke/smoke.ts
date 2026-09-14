@@ -517,10 +517,7 @@ export async function runSmokeIfEnabled(): Promise<void> {
       '属性面板显示已有标准字段',
       !!document.querySelector('[data-testid="frontmatter-field-title"]'),
     );
-    // 划词工具栏（真实 Chromium 验收）：在源码编辑器中制造非空选区，工具栏须出现在选区上方。
-    // 划词工具栏展示由单测（source-selection-bubble.test.tsx，真实 CM + dispatch 路径）
-    // 与 kernel 定位回归覆盖；smoke 运行环境存在文档实例替换病理（bubble 元素会被
-    // 整体移出且无 mutation 记录，dev 与生产构建一致），此处不再断言可见性。
+    // 划词工具栏可见性改由下方 DEV-023 段在真实 GUI 中断言（选区 → body 挂载 → 按钮集 → Esc 隐藏）。
 
     check(
       '源码模式无块编辑交互',
@@ -561,10 +558,54 @@ export async function runSmokeIfEnabled(): Promise<void> {
     );
     await capture('03-source-mode');
 
-    // ── DEV-023 源码划词格式化/双链写回（真实 Chromium：单事务 + 防抖逐字节写盘）──
-    // bubble 按钮可见性由单测（真实 CM + dispatch 路径）覆盖（见上方 smoke 病理注释）；
-    // 此处经同一动作入口 applySourceFormat 验证写回、undo 与落盘。
+    // ── DEV-023 源码划词工具栏：真实 Chromium 可见性（回归用户报告）──────────
+    // 非空选区后，body 挂载的工具栏必须出现且带完整按钮集；Esc 隐藏。
+    const bubbleEl = (): HTMLElement | null =>
+      document.querySelector<HTMLElement>('[data-source-selection-bubble]');
     const sourceHandle = getActiveSourceEditor();
+    if (sourceHandle) {
+      const text0 = sourceHandle.view.state.doc.toString();
+      const at0 = text0.indexOf('划词格式化冒烟句');
+      if (at0 >= 0) {
+        sourceHandle.view.dispatch({
+          selection: { anchor: at0, head: at0 + '划词格式化冒烟句'.length },
+        });
+      }
+    }
+    check(
+      'md 非空选区后划词工具栏出现在 body（真实 GUI）',
+      await waitFor(() => {
+        const el = bubbleEl();
+        return (
+          !!el &&
+          el.parentElement === document.body &&
+          el.style.display !== 'none' &&
+          el.offsetWidth > 0 &&
+          el.querySelectorAll('[data-bubble-action]').length >= 12
+        );
+      }, 5_000),
+      `el=${!!bubbleEl()} onBody=${bubbleEl()?.parentElement === document.body} display=${bubbleEl()?.style.display ?? '?'} w=${bubbleEl()?.offsetWidth ?? 0} buttons=${bubbleEl()?.querySelectorAll('[data-bubble-action]').length ?? 0} bodyKids=${[
+        ...document.body.children,
+      ]
+        .slice(0, 12)
+        .map((el) => el.tagName + '.' + String(el.className || '').slice(0, 24))
+        .join(
+          '|',
+        )} ds=${JSON.stringify(document.documentElement.dataset)} classes=${document.querySelectorAll('.nexnote-selection-bubble').length}`,
+    );
+    await capture('22-md-selection-bubble');
+    const bubbleShown = !!bubbleEl() && bubbleEl()!.style.display !== 'none';
+    if (bubbleShown) {
+      // Esc 监听挂在编辑器根 DOM（view.dom），与单测路径一致。
+      sourceHandle?.view.dom.dispatchEvent(
+        new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true }),
+      );
+      await sleep(200);
+      check('md 划词工具栏 Esc 隐藏', !bubbleEl() || bubbleEl()!.style.display === 'none');
+    }
+
+    // ── DEV-023 源码划词格式化/双链写回（真实 Chromium：单事务 + 防抖逐字节写盘）──
+    // 写回/undo/落盘经同一动作入口 applySourceFormat 验证（按钮集可见性由上方真实断言覆盖）。
     check('源码编辑器句柄已注册', !!sourceHandle?.view);
     if (sourceHandle) {
       const sourceView = sourceHandle.view;

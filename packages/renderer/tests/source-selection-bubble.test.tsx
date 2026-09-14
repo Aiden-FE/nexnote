@@ -126,6 +126,8 @@ function bubbleOf(): HTMLElement {
 }
 
 const flushMicro = () => new Promise((r) => setTimeout(r, 0));
+/** 等待一帧：工具栏定位发生在 rAF 帧循环（update 事务内禁止布局读取）。 */
+const nextFrame = () => new Promise<void>((r) => requestAnimationFrame(() => r()));
 
 beforeEach(() => {
   useWritingStore.getState().closeSession();
@@ -138,11 +140,12 @@ afterEach(() => {
 });
 
 describe('源码模式划词工具栏（CodeMirror selection bubble）', () => {
-  it('非空选区时在选区上方 8px 出现，水平收在容器内', () => {
+  it('非空选区时在选区上方 8px 出现，水平收在容器内', async () => {
     const { parent, editor } = mount('第一句原文。第二句。');
     selectWithCoords(editor, parent, 0, 6, { top: 3000, left: 700, right: 720, bottom: 3024 });
     const bubble = bubbleOf();
     expect(bubble.style.display).not.toBe('none');
+    await nextFrame();
     // 底边距选区起点 top 8px（3000-8），水平中心钳制在容器半宽内（700+60 ≤ 800）
     expect(bubble.style.top).toBe(`${3000 - 8}px`);
     const center = Number.parseFloat(bubble.style.left);
@@ -180,10 +183,11 @@ describe('源码模式划词工具栏（CodeMirror selection bubble）', () => {
     editor.destroy();
   });
 
-  it('滚动后按新视口坐标重算，仍以包含块为参照', () => {
+  it('滚动后按新视口坐标重算，仍以包含块为参照', async () => {
     const { parent, editor } = mount('第一句原文。第二句。');
     selectWithCoords(editor, parent, 0, 6, { top: 400, left: 100, right: 120, bottom: 424 });
     const bubble = bubbleOf();
+    await nextFrame();
     expect(bubble.style.top).toBe(`${400 - 8}px`);
 
     // 滚动 160px：视口坐标上移，scroll（document 捕获）触发重算
@@ -194,7 +198,37 @@ describe('源码模式划词工具栏（CodeMirror selection bubble）', () => {
       bottom: 264,
     });
     parent.dispatchEvent(new Event('scroll'));
+    await nextFrame();
     expect(bubble.style.top).toBe(`${240 - 8}px`);
+    editor.destroy();
+  });
+
+  it('update() 内不做布局读取：dispatch 期间 coordsAtPos 抛守卫错误也不销毁插件', async () => {
+    const { editor } = mount('第一句原文。第二句。');
+    const bubble = bubbleOf();
+    Object.defineProperty(bubble, 'offsetWidth', { configurable: true, value: 120 });
+    Object.defineProperty(bubble, 'offsetHeight', { configurable: true, value: 32 });
+    // 忠实模拟 CodeMirror 守卫：事务提交（插件 update）期间读取布局即抛错。
+    // 历史缺陷：update→sync→coordsAtPos 违规 → CodeMirror 销毁插件 → 工具栏永久消失。
+    let inDispatch = false;
+    const coords = { top: 300, left: 100, right: 120, bottom: 320 };
+    vi.spyOn(editor.view, 'coordsAtPos').mockImplementation(() => {
+      if (inDispatch) {
+        throw new Error("Reading the editor layout isn't allowed during an update");
+      }
+      return coords;
+    });
+    inDispatch = true;
+    expect(() => editor.view.dispatch({ selection: { anchor: 0, head: 6 } })).not.toThrow();
+    inDispatch = false;
+    // 插件存活：元素仍在 body 且显示
+    expect(document.querySelector('[data-source-selection-bubble]')).not.toBeNull();
+    expect(bubble.style.display).not.toBe('none');
+    await nextFrame();
+    expect(bubble.style.top).toBe(`${300 - 8}px`);
+    // 插件仍响应后续事务（销毁后不会再响应）
+    editor.view.dispatch({ selection: { anchor: 0, head: 0 } });
+    expect(bubble.style.display).toBe('none');
     editor.destroy();
   });
 
