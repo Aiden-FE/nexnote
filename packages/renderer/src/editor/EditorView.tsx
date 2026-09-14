@@ -4,7 +4,7 @@ import { AlertCircle, Check, FileCode2, LoaderCircle, Save } from 'lucide-react'
 import { createEditor } from '@nexnote/kernel';
 import { invoke } from '../lib/ipc';
 import { useTabStore, type TabDescriptor } from '../stores/tab-store';
-import { FrontmatterPanel } from '../features/frontmatter/FrontmatterPanel';
+import { DocumentPropertiesPopover } from '../features/frontmatter/DocumentPropertiesPopover';
 import { useDocumentPropertiesStore } from '../features/frontmatter/document-properties-store';
 import { useIndexStore } from '../stores/index-store';
 import type { FrontmatterData } from '@nexnote/kernel';
@@ -784,6 +784,15 @@ export function EditorView({ tab }: EditorViewProps) {
           <StatusIcon className={`size-3 ${status.className}`} />
           {status.text}
         </span>
+        <DocumentPropertiesPopover
+          data={fmData}
+          source={fmSource}
+          knownTags={effectiveKnownTags}
+          locked={fmLocked}
+          parseError={fmParseError}
+          onChange={applyFrontmatter}
+          onYamlChange={(source, next) => applyFrontmatter(next, source)}
+        />
         {tab.format === 'markdown' && (
           <button
             type="button"
@@ -798,19 +807,6 @@ export function EditorView({ tab }: EditorViewProps) {
       </div>
       <div className="nexnote-editor-scroll min-h-0 flex-1 overflow-auto">
         <div className="nexnote-editor-relative relative mx-auto max-w-[var(--editor-content-width)] px-10 py-10">
-          <FrontmatterPanel
-            data={fmData}
-            source={fmSource}
-            knownTags={effectiveKnownTags}
-            locked={fmLocked}
-            parseError={fmParseError}
-            onChange={(next) => {
-              applyFrontmatter(next);
-            }}
-            onYamlChange={(source, next) => {
-              applyFrontmatter(next, source);
-            }}
-          />
           {conflict && (
             <div
               data-testid="editor-conflict-banner"

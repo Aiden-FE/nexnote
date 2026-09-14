@@ -118,7 +118,13 @@ async function unmount(root: ReturnType<typeof createRoot>): Promise<void> {
   });
 }
 
-function openCatalog(): void {
+async function openCatalog(): Promise<void> {
+  await act(async () => {
+    document
+      .querySelector<HTMLButtonElement>('[data-testid="document-properties-trigger"]')
+      ?.click();
+    await Promise.resolve();
+  });
   act(() => {
     document.querySelector<HTMLButtonElement>('[data-testid="add-field-trigger"]')?.click();
   });
@@ -150,14 +156,71 @@ afterEach(() => {
 });
 
 describe('Markdown 文档属性面板（DEV-025）', () => {
-  it('YAML 头从 CodeMirror 正文抽离，顶部挂载属性面板', async () => {
+  it('YAML 头从 CodeMirror 正文抽离，属性面板默认关闭并按需打开', async () => {
     const { root } = await renderView(WITH_YAML);
     expect(initialEditorText).toBe('# 正文\n\n段落   \n');
     expect(initialEditorText).not.toContain('title:');
-    const panel = document.querySelector('[data-testid="frontmatter-panel"]');
-    expect(panel).not.toBeNull();
+    expect(document.querySelector('[data-testid="frontmatter-panel"]')).toBeNull();
+    const trigger = document.querySelector<HTMLButtonElement>(
+      '[data-testid="document-properties-trigger"]',
+    );
+    expect(trigger?.textContent).toContain('属性');
+    expect(trigger?.getAttribute('title')).toBe('编辑文档属性');
+    act(() => trigger?.click());
+    expect(document.querySelector('[data-testid="frontmatter-panel"]')).not.toBeNull();
     expect(document.querySelector('[data-testid="frontmatter-field-title"]')).not.toBeNull();
     expect(document.querySelector('[data-testid="frontmatter-field-custom"]')).not.toBeNull();
+    await unmount(root);
+  });
+
+  it('属性入口支持再次点击、Escape 与点击外部关闭', async () => {
+    const { root } = await renderView(WITH_YAML);
+    const trigger = document.querySelector<HTMLButtonElement>(
+      '[data-testid="document-properties-trigger"]',
+    );
+    act(() => trigger?.click());
+    expect(document.querySelector('[data-testid="document-properties-popover"]')).not.toBeNull();
+    act(() => trigger?.click());
+    expect(document.querySelector('[data-testid="document-properties-popover"]')).toBeNull();
+    act(() => trigger?.click());
+    act(() => window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' })));
+    expect(document.querySelector('[data-testid="document-properties-popover"]')).toBeNull();
+    act(() => trigger?.click());
+    act(() => document.body.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true })));
+    expect(document.querySelector('[data-testid="document-properties-popover"]')).toBeNull();
+    await unmount(root);
+  });
+
+  it('Popover 立即关闭也不会丢失尚未到 300ms 的 YAML 编辑', async () => {
+    const { bridge, root } = await renderView(WITH_YAML);
+    act(() =>
+      document
+        .querySelector<HTMLButtonElement>('[data-testid="document-properties-trigger"]')
+        ?.click(),
+    );
+    const yamlButton = [
+      ...document.querySelectorAll<HTMLButtonElement>(
+        '[data-testid="document-properties-popover"] button',
+      ),
+    ].find((button) => button.textContent?.includes('YAML'));
+    act(() => yamlButton?.click());
+    const yamlEditor = document.querySelector<HTMLTextAreaElement>(
+      '[data-testid="frontmatter-yaml-editor"]',
+    );
+    expect(yamlEditor).not.toBeNull();
+    const setter = Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, 'value')?.set;
+    act(() => {
+      setter?.call(yamlEditor, 'title: 立即保存\ncustom: keep me');
+      yamlEditor?.dispatchEvent(new Event('input', { bubbles: true }));
+    });
+    // 立即关闭 Popover，尚未经过面板原有 300ms debounce。
+    act(() =>
+      document
+        .querySelector<HTMLButtonElement>('[data-testid="document-properties-trigger"]')
+        ?.click(),
+    );
+    await vi.waitFor(() => expect(bridge.writes.length).toBe(1));
+    expect(bridge.writes[0]).toContain('title: 立即保存');
     await unmount(root);
   });
 
@@ -172,7 +235,7 @@ describe('Markdown 文档属性面板（DEV-025）', () => {
 
   it('面板添加标准字段仅写回 YAML 头，正文字节原样保留', async () => {
     const { bridge, root } = await renderView(WITH_YAML);
-    openCatalog();
+    await openCatalog();
     clickCatalogItem('tags');
     await act(async () => {
       await vi.advanceTimersByTimeAsync(200);
@@ -187,7 +250,7 @@ describe('Markdown 文档属性面板（DEV-025）', () => {
   it('无 YAML 头的 .md 经面板添加首个字段后生成文件头', async () => {
     const { bridge, root } = await renderView(WITHOUT_YAML);
     expect(initialEditorText).toBe(WITHOUT_YAML);
-    openCatalog();
+    await openCatalog();
     clickCatalogItem('title');
     await act(async () => {
       await vi.advanceTimersByTimeAsync(200);
@@ -203,6 +266,11 @@ describe('Markdown 文档属性面板（DEV-025）', () => {
     const { bridge, root } = await renderView(BROKEN_YAML);
     // 正文仍从编辑框承载，YAML 原文进入锁定的面板源码视图
     expect(initialEditorText).toBe('正文\n');
+    act(() => {
+      document
+        .querySelector<HTMLButtonElement>('[data-testid="document-properties-trigger"]')
+        ?.click();
+    });
     const panel = document.querySelector('[data-testid="frontmatter-panel"]');
     expect(panel?.textContent).toContain('源码锁定');
     const yamlEditor = document.querySelector<HTMLTextAreaElement>(

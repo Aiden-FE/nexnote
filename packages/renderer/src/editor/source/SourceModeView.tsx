@@ -29,7 +29,7 @@ import { registerModeSwitchHandler, requestSourceModeToggle } from './source-mod
 import { syncScrollRatio } from './scroll-sync';
 import { sourceWikilinkCompletion } from './wikilink-completion';
 import { createRedlinkPage, currentPageCandidates } from '../wikilink-page-ops';
-import { FrontmatterPanel } from '../../features/frontmatter/FrontmatterPanel';
+import { DocumentPropertiesPopover } from '../../features/frontmatter/DocumentPropertiesPopover';
 import {
   collectVaultTags,
   replaceFrontmatterYaml,
@@ -587,6 +587,17 @@ export function SourceModeView({ tab }: { tab: TabDescriptor }) {
           <StatusIcon className={`size-3 ${status.className}`} />
           {status.text}
         </span>
+        {isMarkdown && (
+          <DocumentPropertiesPopover
+            data={fm.data}
+            source={fm.source}
+            knownTags={knownTags}
+            locked={fm.locked}
+            parseError={fm.parseError}
+            onChange={(next) => applyFrontmatterEdit(serializeFrontmatterYaml(next), next)}
+            onYamlChange={(source, next) => applyFrontmatterEdit(source, next)}
+          />
+        )}
         {tab.format === 'markdown' ? (
           <button
             type="button"
@@ -642,22 +653,6 @@ export function SourceModeView({ tab }: { tab: TabDescriptor }) {
           className="shrink-0 border-b border-destructive/40 bg-destructive/10 px-3 py-1.5 text-xs text-destructive"
         >
           {switchError}
-        </div>
-      )}
-
-      {isMarkdown && (
-        <div className="max-h-[45%] shrink-0 overflow-auto border-b bg-background/50 px-4 pt-3">
-          <div className="mx-auto max-w-[var(--editor-content-width)]">
-            <FrontmatterPanel
-              data={fm.data}
-              source={fm.source}
-              knownTags={knownTags}
-              locked={fm.locked}
-              parseError={fm.parseError}
-              onChange={(next) => applyFrontmatterEdit(serializeFrontmatterYaml(next), next)}
-              onYamlChange={(source, next) => applyFrontmatterEdit(source, next)}
-            />
-          </div>
         </div>
       )}
 

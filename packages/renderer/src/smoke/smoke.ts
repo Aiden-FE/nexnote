@@ -504,8 +504,11 @@ export async function runSmokeIfEnabled(): Promise<void> {
         !!document.querySelector('[data-testid="source-editor-pane"] .cm-content'),
     );
     check(
-      'Markdown 属性面板挂载且 YAML 从正文抽离（DEV-025）',
-      (await waitFor(() => !!document.querySelector('[data-testid="frontmatter-panel"]'))) &&
+      'Markdown 属性 Popover 默认关闭且 YAML 从正文抽离（DEV-025）',
+      (await waitFor(
+        () => !!document.querySelector('[data-testid="document-properties-trigger"]'),
+      )) &&
+        !document.querySelector('[data-testid="frontmatter-panel"]') &&
         !(document.querySelector('[data-testid="source-editor-pane"]')?.textContent ?? '').includes(
           'title: 源码模式冒烟',
         ) &&
@@ -513,10 +516,23 @@ export async function runSmokeIfEnabled(): Promise<void> {
           '# 源码模式冒烟',
         ),
     );
+    document
+      .querySelector<HTMLButtonElement>('[data-testid="document-properties-trigger"]')
+      ?.click();
     check(
-      '属性面板显示已有标准字段',
-      !!document.querySelector('[data-testid="frontmatter-field-title"]'),
+      '点击属性后打开面板且显示已有标准字段',
+      (await waitFor(() => !!document.querySelector('[data-testid="frontmatter-panel"]'))) &&
+        !!document.querySelector('[data-testid="frontmatter-field-title"]'),
     );
+    document.body.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true }));
+    check(
+      '属性 Popover 点击外部关闭',
+      await waitFor(() => !document.querySelector('[data-testid="frontmatter-panel"]')),
+    );
+    document
+      .querySelector<HTMLButtonElement>('[data-testid="document-properties-trigger"]')
+      ?.click();
+    await waitFor(() => !!document.querySelector('[data-testid="frontmatter-panel"]'));
     // 划词工具栏可见性改由下方 DEV-023 段在真实 GUI 中断言（选区 → body 挂载 → 按钮集 → Esc 隐藏）。
 
     check(
@@ -751,6 +767,11 @@ export async function runSmokeIfEnabled(): Promise<void> {
     await capture('04-source-mode-reset');
 
     // ── 5b. DEV-025 字段目录：7 标准字段可见、已添加禁用、面板写回 YAML 头 ──
+    // 按需 Popover 需显式打开才能访问字段目录。
+    document
+      .querySelector<HTMLButtonElement>('[data-testid="document-properties-trigger"]')
+      ?.click();
+    await waitFor(() => !!document.querySelector('[data-testid="frontmatter-panel"]'));
     document.querySelector<HTMLButtonElement>('[data-testid="add-field-trigger"]')?.click();
     check(
       '字段目录打开：7 个标准字段全部可见',
@@ -786,6 +807,11 @@ export async function runSmokeIfEnabled(): Promise<void> {
       withTags.slice(0, 100),
     );
     await capture('21-md-field-catalog');
+    // 属性编辑验收完成后关闭 Popover，恢复正文编辑焦点，避免影响后续源码补全场景。
+    document
+      .querySelector<HTMLButtonElement>('[data-testid="document-properties-trigger"]')
+      ?.click();
+    await waitFor(() => !document.querySelector('[data-testid="frontmatter-panel"]'));
 
     // ── 5b. DEV-024：Markdown 源码 `[[` 补全 + 反链角标 ───────
     const completionCm = document.querySelector<HTMLElement>(
