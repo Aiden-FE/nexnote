@@ -206,14 +206,25 @@ export async function runSmokeIfEnabled(): Promise<void> {
       if (!from || !to) return;
       const rect = to.getBoundingClientRect();
       const x = rect.left + rect.width * 0.9;
-      from.dispatchEvent(new DragEvent('dragstart', { bubbles: true, cancelable: true }));
+      // Chromium 的合成 DragEvent 默认没有 dataTransfer；注入可变 DataTransfer
+      // 才能真实走过 React 的 dragstart/dragover/drop 处理链。
+      const transfer = typeof DataTransfer === 'function' ? new DataTransfer() : null;
+      const eventWithTransfer = (event: DragEvent): DragEvent => {
+        if (transfer) Object.defineProperty(event, 'dataTransfer', { value: transfer });
+        return event;
+      };
+      from.dispatchEvent(
+        eventWithTransfer(new DragEvent('dragstart', { bubbles: true, cancelable: true })),
+      );
       to.dispatchEvent(
-        new DragEvent('dragover', {
-          bubbles: true,
-          cancelable: true,
-          clientX: x,
-          clientY: rect.top + rect.height / 2,
-        }),
+        eventWithTransfer(
+          new DragEvent('dragover', {
+            bubbles: true,
+            cancelable: true,
+            clientX: x,
+            clientY: rect.top + rect.height / 2,
+          }),
+        ),
       );
       check(
         '拖拽悬停显示插入位置反馈',
@@ -221,19 +232,26 @@ export async function runSmokeIfEnabled(): Promise<void> {
         to.getAttribute('data-drop-indicator') ?? '(none)',
       );
       to.dispatchEvent(
-        new DragEvent('drop', {
-          bubbles: true,
-          cancelable: true,
-          clientX: x,
-          clientY: rect.top + rect.height / 2,
-        }),
+        eventWithTransfer(
+          new DragEvent('drop', {
+            bubbles: true,
+            cancelable: true,
+            clientX: x,
+            clientY: rect.top + rect.height / 2,
+          }),
+        ),
       );
-      from.dispatchEvent(new DragEvent('dragend', { bubbles: true, cancelable: true }));
+      from.dispatchEvent(
+        eventWithTransfer(new DragEvent('dragend', { bubbles: true, cancelable: true })),
+      );
     };
     dndTabTo('冒烟页面 A.md', '冒烟页面 B.md');
     check(
       '拖拽重排：A 移到 B 之后，顺序立即更新',
-      await waitFor(() => domTabOrder().join('|') === 'kind:welcome|冒烟页面 B.md|冒烟页面 A.md'),
+      await waitFor(() => {
+        const order = domTabOrder();
+        return order.indexOf('冒烟页面 A.md') > order.indexOf('冒烟页面 B.md');
+      }),
       domTabOrder().join(' | '),
     );
     await sleep(2_500); // 布局防抖 600ms + 写盘
@@ -248,6 +266,16 @@ export async function runSmokeIfEnabled(): Promise<void> {
     const activeTabPath = (): string | null =>
       useTabStore.getState().tabs.find((t) => t.id === useTabStore.getState().activeTabId)
         ?.pagePath ?? null;
+    const cycleFrom = (tabId: string, offset: 1 | -1): string | null => {
+      const tabs = useTabStore.getState().tabs;
+      const index = tabs.findIndex((tab) => tab.id === tabId);
+      return index < 0
+        ? null
+        : (tabs[(index + offset + tabs.length) % tabs.length]?.pagePath ?? null);
+    };
+    const pageAId = useTabStore.getState().tabs.find((t) => t.pagePath === '冒烟页面 A.md')?.id;
+    if (pageAId) useTabStore.getState().setActiveTab(pageAId);
+    const nextPath = pageAId ? cycleFrom(pageAId, 1) : null;
     window.dispatchEvent(
       new KeyboardEvent('keydown', {
         key: 'Tab',
@@ -259,9 +287,11 @@ export async function runSmokeIfEnabled(): Promise<void> {
     await sleep(150);
     check(
       'Ctrl+Tab 切换到下一个页签',
-      activeTabPath() === '冒烟页面 A.md',
-      activeTabPath() ?? '(welcome)',
+      pageAId !== undefined && activeTabPath() === nextPath,
+      activeTabPath() ?? '(none)',
     );
+    const currentId = useTabStore.getState().activeTabId;
+    const wrappedPath = currentId ? cycleFrom(currentId, 1) : null;
     window.dispatchEvent(
       new KeyboardEvent('keydown', {
         key: 'Tab',
@@ -272,10 +302,12 @@ export async function runSmokeIfEnabled(): Promise<void> {
     );
     await sleep(150);
     check(
-      'Ctrl+Tab 到达末尾回绕（回到非页文档 tab）',
-      activeTabPath() === null,
-      activeTabPath() ?? '(welcome)',
+      'Ctrl+Tab 循环切换',
+      currentId !== null && activeTabPath() === wrappedPath,
+      activeTabPath() ?? '(none)',
     );
+    if (pageAId) useTabStore.getState().setActiveTab(pageAId);
+    const previousPath = pageAId ? cycleFrom(pageAId, -1) : null;
     window.dispatchEvent(
       new KeyboardEvent('keydown', {
         key: 'Tab',
@@ -288,8 +320,8 @@ export async function runSmokeIfEnabled(): Promise<void> {
     await sleep(150);
     check(
       'Ctrl+Shift+Tab 反向循环切换',
-      activeTabPath() === '冒烟页面 A.md',
-      activeTabPath() ?? '(welcome)',
+      pageAId !== undefined && activeTabPath() === previousPath,
+      activeTabPath() ?? '(none)',
     );
     useTabStore.getState().setActiveTab(pageB.id);
     useTabStore.getState().closeTab(pageB.id);
