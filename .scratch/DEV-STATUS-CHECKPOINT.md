@@ -8,12 +8,18 @@
 
 ## 0. 最新状态（持续更新，优先于下方陈旧冻结段）
 
-- **真实进度：20 / 20** —— DEV-001~DEV-020 全部验收并合入 master（DEV-020 为原 19 票完成后的追加票）。
-- master HEAD：`0f14a49`（DEV-020 merge；候选 `dev/DEV-020@839baf5`）；post-merge typecheck / 82 test files passed（1 skipped，657 tests / 2 skipped）/ eslint / build / release-config 28/28 / changed-format / diff-check 全过。
-- DEV-020 固定 SHA 双轴审查：Standards PASS（无 blocker/major）+ Spec PASS（1–23 PASS；24 为合并后流程，已执行）。
-- better-sqlite3 ABI：最终打包 Electron smoke 后已恢复 Node ABI。
-- Electron smoke 最终基线：真实打包 macOS arm64 unsigned dev app **102/102 PASS**，runner 退出码 0；失败运行已验证退出码 1，不再假绿。证据：`.scratch/nexnote-build/smoke/DEV-020/results.json`。
-- 外部/跨平台不可验证项沿用 `release-checklist.md` 第 6 节的既有 **NOT_RUN** 清单；DEV-020 本票新增 Electron 验收无 NOT_RUN。
+- **真实进度：26 / 26** —— DEV-001~DEV-026 全部验收并合入 master（DEV-021~026 为验收反馈追加票，2026-09-14 完成）。
+- master HEAD：`968290c`（DEV-022 merge）；post-merge typecheck / 122 test files passed（1 skipped，983 tests / 2 skipped）/ eslint / build / release-config / changed-format / diff-check 全过。
+- Electron smoke 最终基线：master 打包 macOS arm64 unsigned dev app **151/151 PASS**，退出码 0。证据：`.scratch/nexnote-build/smoke/MASTER-POST-MERGE/results.json`；各票候选证据见 `smoke/DEV-021..026/`。
+- 验收反馈六票摘要（详细见各 issues/*.md 与对话共识）：
+  - DEV-021（`c12d2ad`）：用户可见文案零 vault →「知识库」（含主进程错误/诊断消息与 git init 消息「nexnote:init: 知识库初始化」）；删除 FilesPage/`'files'` TabKind/欢迎页按钮/`tab.files` 命令；旧布局残留 files tab 经 readVaultConfig 过滤（单测权威）。
+  - DEV-022（`5c2643a`）：TabStrip HTML5 拖拽排序（DataTransfer 注入后 smoke 可真实走 React 处理链）+ `tabOrder` 布局持久化（仅限已有 tab 栈恢复；跨重启 tab 会话恢复为既有架构外延）+ Ctrl+Tab / Ctrl+Shift+Tab 循环（mac 物理控制键等价）。
+  - DEV-023（`63b6b49`）：Markdown 源码划词 bubble 补格式化五项（`**`/`*`/`~~`/`` ` ``/`[x](url)`，单事务可 undo、无选区骨架）+ 双链按钮两模式统一；ADR-0004 修订已落盘。
+  - DEV-024（`4ad2d57`）：CodeMirror `[[` 补全（Link Index 候选、模糊、红链创建、别名）+ 反链面板计数角标（0 隐藏、随 tab 更新）。
+  - DEV-025（`909f88b`）：字段目录选择器（7 标准字段带类型/说明/已添加禁用/tooltip，说明集中 kernel STANDARD_FIELD_CATALOG）+ Markdown 文档常驻 FrontmatterPanel（YAML 头抽离出 CodeMirror、未编辑往返字节不变）；ADR-0004 追加修订。
+  - DEV-026（`ab39ba4`）：右栏「配置 AI」与 ⌘K `ai.setup` 收口 `openSettings('ai')`；`ai:onboarding:dismiss`→`ai:setupPrompt:dismiss` 持久化位控制首启自动弹一次；设置页保留重播。
+- better-sqlite3 ABI：master 最终打包 smoke 后已恢复 Node ABI（`pnpm pretest`）。
+- 外部/跨平台不可验证项沿用 `release-checklist.md` 第 6 节既有 **NOT_RUN** 清单；本轮无新增 NOT_RUN（打包 Electron smoke 均真实执行）。
 
 ### DEV-010 · AI 写作辅助（已合并 `ab0b882`，候选 `2c563e4`）
 - kernel：新增框架无关扩展 SelectionBubble（选区浮动工具栏，⌘⌥+R/E/C/P/F/A 快捷键）、ContextMenu（右键 AI 子菜单，二级菜单）、`computeEditorActionContext`；SlashMenu 支持 `extraSlashItems`（`/ai` 六动作）；新增回写原语 `replaceRangeWithMarkdown` / `insertMarkdownBlocks`（单事务，可 undo）。
