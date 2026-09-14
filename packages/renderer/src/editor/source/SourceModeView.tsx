@@ -27,6 +27,8 @@ import { LivePreview, type InternalLinkNavigation } from './LivePreview';
 import { parseWholePage } from './parse-guard';
 import { registerModeSwitchHandler, requestSourceModeToggle } from './source-mode-toggle';
 import { syncScrollRatio } from './scroll-sync';
+import { sourceWikilinkCompletion } from './wikilink-completion';
+import { createRedlinkPage, currentPageCandidates } from '../wikilink-page-ops';
 import { FrontmatterPanel } from '../../features/frontmatter/FrontmatterPanel';
 import {
   collectVaultTags,
@@ -357,6 +359,7 @@ export function SourceModeView({ tab }: { tab: TabDescriptor }) {
       // 不经块编辑器序列化）；AI 流式预览经共享 WritingAssistantLayer（WorkspaceView
       // 全局挂载），Accept 单事务写回可 undo。
       extraExtensions: [
+        sourceWikilinkCompletion({ getPages: currentPageCandidates, onPick: createRedlinkPage }),
         sourceSelectionBubble({
           actions: [
             ...sourceFormatBubbleActions(),

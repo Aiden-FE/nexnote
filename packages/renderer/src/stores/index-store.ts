@@ -1,5 +1,12 @@
 import { create } from 'zustand';
-import type { Backlink, GraphSnapshot, IndexStatus, PageSummaryLite, SearchHit, TagIndexEntry } from '@nexnote/shared';
+import type {
+  Backlink,
+  GraphSnapshot,
+  IndexStatus,
+  PageSummaryLite,
+  SearchHit,
+  TagIndexEntry,
+} from '@nexnote/shared';
 import { invoke, onEvent } from '../lib/ipc';
 
 /**
@@ -24,6 +31,8 @@ interface IndexState {
   pageSummaries: Record<string, PageSummaryLite>;
   loadStatus(): Promise<void>;
   loadBacklinks(pagePath: string): Promise<void>;
+  /** 仅在当前路径没有进行中的数据请求时加载反链。 */
+  ensureBacklinks(pagePath: string): void;
   clearBacklinks(): void;
   loadTags(): Promise<void>;
   loadGraph(): Promise<void>;
@@ -90,8 +99,22 @@ export const useIndexStore = create<IndexState>((set, get) => ({
       set({ backlinks, backlinksStatus: 'ready' });
     } catch (e) {
       if (generation !== backlinkGeneration || get().backlinksFor !== pagePath) return;
-      set({ backlinksStatus: 'error', error: e instanceof Error ? e.message : String(e), backlinks: [] });
+      set({
+        backlinksStatus: 'error',
+        error: e instanceof Error ? e.message : String(e),
+        backlinks: [],
+      });
     }
+  },
+
+  ensureBacklinks(pagePath) {
+    const state = get();
+    if (
+      state.backlinksFor === pagePath &&
+      (state.backlinksStatus === 'loading' || state.backlinksStatus === 'ready')
+    )
+      return;
+    void state.loadBacklinks(pagePath);
   },
 
   clearBacklinks() {
@@ -157,7 +180,8 @@ export const useIndexStore = create<IndexState>((set, get) => ({
   applyStatusEvent(status) {
     set((state) => ({
       status,
-      graphStatus: status.phase === 'ready' && state.graphStatus === 'ready' ? 'stale' : state.graphStatus,
+      graphStatus:
+        status.phase === 'ready' && state.graphStatus === 'ready' ? 'stale' : state.graphStatus,
     }));
   },
 

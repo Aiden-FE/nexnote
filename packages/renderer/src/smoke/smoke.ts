@@ -607,6 +607,110 @@ export async function runSmokeIfEnabled(): Promise<void> {
     );
     await capture('21-md-field-catalog');
 
+    // ── 5b. DEV-024：Markdown 源码 `[[` 补全 + 反链角标 ───────
+    const completionCm = document.querySelector<HTMLElement>(
+      '[data-testid="source-editor-pane"] .cm-content',
+    );
+    check('源码补全：CodeMirror 可聚焦', !!completionCm);
+    if (completionCm) {
+      completionCm.focus();
+      document.execCommand('selectAll');
+      document.execCommand('insertText', false, '# 源码模式改名页\n\n链接到[[');
+      const tooltipOpen = await waitFor(
+        () => !!document.querySelector('.cm-tooltip-autocomplete li'),
+      );
+      check(
+        '源码模式输入 [[ 弹出页面候选',
+        tooltipOpen &&
+          [...(document.querySelectorAll('.cm-tooltip-autocomplete li') ?? [])].some((li) =>
+            (li.textContent ?? '').includes('源码模式跳转目标'),
+          ),
+      );
+      await capture('05b-source-wikilink-completion');
+      completionCm.dispatchEvent(
+        new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true }),
+      );
+      check(
+        'Esc 关闭补全且不改动文本',
+        (await waitFor(() => !document.querySelector('.cm-tooltip-autocomplete'))) &&
+          !completionCm.textContent?.includes('源码模式跳转目标]]'),
+      );
+      document.execCommand('insertText', false, '源码模式跳转目标');
+      const filteredOpen = await waitFor(() => {
+        const first = document.querySelector('.cm-tooltip-autocomplete li');
+        return !!first && (first.textContent ?? '').includes('源码模式跳转目标');
+      });
+      check('过滤词命中既有页面候选（置顶）', filteredOpen);
+      // CodeMirror autocomplete 打开后有 75ms interaction delay，真实用户打字间隔
+      // 远大于此；smoke 的合成键需显式等待门限，避免 Enter 被当作普通换行。
+      await sleep(180);
+      completionCm.dispatchEvent(
+        new KeyboardEvent('keydown', { key: 'Enter', bubbles: true, cancelable: true }),
+      );
+      await sleep(300);
+
+      // 红链候选：未创建页面 → 回车创建并出现在页面树
+      document.execCommand('insertText', false, '\n\n红链 [[冒烟红链页');
+      const redlinkOpen = await waitFor(() =>
+        [...(document.querySelectorAll('.cm-tooltip-autocomplete li') ?? [])].some((li) =>
+          (li.textContent ?? '').includes('创建新页面'),
+        ),
+      );
+      check('未命中页面出现「创建新页面」红链候选', redlinkOpen);
+      await sleep(180);
+      completionCm.dispatchEvent(
+        new KeyboardEvent('keydown', { key: 'Enter', bubbles: true, cancelable: true }),
+      );
+      await sleep(2_000);
+      const completionSaved = await invoke('fs:readTextFile', { path: '源码模式改名页.md' });
+      check(
+        '源码补全确认写入 [[页面]] 与 [[红链]] 且防抖落盘',
+        completionSaved.includes('[[源码模式跳转目标]]') &&
+          completionSaved.includes('[[冒烟红链页]]'),
+        completionSaved.slice(0, 80),
+      );
+      check(
+        '红链回车创建页面并出现在页面树',
+        (await waitFor(() => !!treeRow('冒烟红链页.md'), 15_000)) &&
+          (await invoke('fs:exists', { path: '冒烟红链页.md' })),
+      );
+
+      // 反链角标：默认面板不变（页面树），角标只随激活文档出现
+      check(
+        '补全/角标不改变默认面板（仍为页面树）',
+        !!document.querySelector('[data-testid="sidebar-panel-pages"]') &&
+          !document.querySelector('[data-testid="sidebar-panel-backlinks"]'),
+      );
+      await openDocumentTab('源码模式跳转目标.md');
+      const badgeOf = (): string | null =>
+        document.querySelector<HTMLElement>('[data-testid="sidebar-backlink-badge"]')
+          ?.textContent ?? null;
+      check(
+        '打开有反链文档：角标出现且为 1',
+        (await waitFor(() => badgeOf() === '1', 15_000)) &&
+          !!document.querySelector('[data-testid="sidebar-panel-pages"]'),
+        `badge=${badgeOf()}`,
+      );
+      await capture('05b-backlink-badge');
+      useUiStore.getState().setActiveSidebarPanel('backlinks');
+      await sleep(400);
+      const badgeCount = Number.parseInt(badgeOf() ?? '0', 10);
+      check(
+        '角标数字与反链面板列表条目数一致',
+        document.querySelectorAll('[data-testid="backlink-item"]').length === badgeCount,
+        `items=${document.querySelectorAll('[data-testid="backlink-item"]').length} badge=${badgeCount}`,
+      );
+      useUiStore.getState().setActiveSidebarPanel('pages');
+      await sleep(200);
+      await openDocumentTab('冒烟红链页.md');
+      check(
+        '无反链文档不显示角标；切 tab 角标跟随更新',
+        (await waitFor(() => badgeOf() === null, 15_000)) &&
+          (await openDocumentTab('源码模式跳转目标.md'), true) &&
+          (await waitFor(() => badgeOf() === '1', 15_000)),
+      );
+    }
+
     // ── 6. ⌘K 命令面板：唤起 + 过滤 + 键盘执行 ────────────────
     window.dispatchEvent(
       new KeyboardEvent('keydown', { key: 'k', metaKey: true, bubbles: true, cancelable: true }),

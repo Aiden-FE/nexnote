@@ -65,9 +65,10 @@ export function Sidebar() {
               type="button"
               title={panel.title}
               onClick={() => setActiveSidebarPanel(panel.id)}
-              className="rounded p-1.5 text-muted-foreground hover:bg-sidebar-accent hover:text-foreground"
+              className="flex items-center gap-0.5 rounded p-1.5 text-muted-foreground hover:bg-sidebar-accent hover:text-foreground"
             >
               <Icon className="size-4" />
+              {panel.renderBadge ? <panel.renderBadge /> : null}
             </button>
           );
         })}
@@ -119,6 +120,7 @@ export function Sidebar() {
               >
                 <Icon className="size-3.5" />
                 {panel.title}
+                {panel.renderBadge ? <panel.renderBadge /> : null}
               </button>
             );
           })}
