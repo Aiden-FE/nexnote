@@ -1,10 +1,30 @@
 import Database from 'better-sqlite3';
 import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync } from 'node:fs';
 import * as path from 'node:path';
-import type { Backlink, ConfidenceResult, GraphSnapshot, IndexStatus, PageIndexSummary, PageJumpResult, PageSummaryLite, SearchHit, TagIndexEntry } from '@nexnote/shared';
-import { formatForPath, isDocumentPath, metadataPathFor, type DocumentMetadata } from '../document/document-domain';
+import type {
+  Backlink,
+  ConfidenceResult,
+  GraphSnapshot,
+  IndexStatus,
+  PageIndexSummary,
+  PageJumpResult,
+  PageSummaryLite,
+  SearchHit,
+  TagIndexEntry,
+} from '@nexnote/shared';
+import {
+  formatForPath,
+  isDocumentPath,
+  metadataPathFor,
+  type DocumentMetadata,
+} from '../document/document-domain';
 import { EXCLUDED_DIRS } from '../fs/fs-service';
-import { applySidecarMetadata, parsePageMarkdown, projectBinaryPage, type ParsedPage } from './markdown-indexer';
+import {
+  applySidecarMetadata,
+  parsePageMarkdown,
+  projectBinaryPage,
+  type ParsedPage,
+} from './markdown-indexer';
 import { currentBetterSqlite3Options } from './native-binding';
 
 export interface CandidateBlock {
@@ -28,15 +48,21 @@ export interface VectorItem {
 const SCHEMA_VERSION = 6;
 type Db = Database.Database;
 
-function emptyStatus(): IndexStatus { return { phase: 'idle', pagesTotal: 0, pagesIndexed: 0, mode: 'full' }; }
-function escLike(value: string): string { return value.replace(/[\\%_]/g, (char) => `\\${char}`); }
+function emptyStatus(): IndexStatus {
+  return { phase: 'idle', pagesTotal: 0, pagesIndexed: 0, mode: 'full' };
+}
+function escLike(value: string): string {
+  return value.replace(/[\\%_]/g, (char) => `\\${char}`);
+}
 
 // ── CJK/拉丁 FTS 分析器 ─────────────────────────────────────────
 // unicode61 把连续中文当作一个 token，子串（如“搜索基准”里的“基准”）无法前缀命中。
 // 为 CJK run 建 unigram + bigram 索引，查询用 bigram AND，既支持中文子串又走 FTS（无全表 LIKE 扫描）。
 const CJK = '\u3400-\u4DBF\u4E00-\u9FFF\uF900-\uFAFF';
 const TOKEN_RE = new RegExp(`([${CJK}]+)|([a-z0-9]+)`, 'g');
-function quoteToken(token: string): string { return `"${token.replace(/"/g, '""')}"`; }
+function quoteToken(token: string): string {
+  return `"${token.replace(/"/g, '""')}"`;
+}
 /** 索引侧：CJK run → unigram+bigram；拉丁/数字 → 小写词。 */
 function ftsIndexTokens(text: string): string[] {
   const tokens: string[] = [];
@@ -87,13 +113,18 @@ function blockLocalSnippet(content: string, terms: string[]): string {
   return (start > 0 ? '…' : '') + content.slice(start, end) + (end < content.length ? '…' : '');
 }
 
-
 /** Canonical vault-relative path, or null for absolute/traversal input. */
 function vaultRelativePath(root: string, relPath: string): string | null {
   if (!relPath || path.isAbsolute(relPath)) return null;
   const resolved = path.resolve(root, relPath);
   const relative = path.relative(root, resolved);
-  if (!relative || relative === '..' || relative.startsWith(`..${path.sep}`) || path.isAbsolute(relative)) return null;
+  if (
+    !relative ||
+    relative === '..' ||
+    relative.startsWith(`..${path.sep}`) ||
+    path.isAbsolute(relative)
+  )
+    return null;
   return relative.split(path.sep).join('/');
 }
 
@@ -126,37 +157,66 @@ export class LinkIndexService {
   private pendingPaths = new Set<string>();
   private graphStructureChanged = false;
 
-  get status(): IndexStatus { return { ...this._status }; }
-  get rootPath(): string | null { return this.root; }
+  get status(): IndexStatus {
+    return { ...this._status };
+  }
+  get rootPath(): string | null {
+    return this.root;
+  }
   setRoot(root: string | null): void {
     if (this.root === root) return;
-    const prevRoot = this.root; const prevStatus = this._status;
-    this.close(); this.root = root;
-    try { if (root) this.openAndEnsure(); }
-    catch (error) {
+    const prevRoot = this.root;
+    const prevStatus = this._status;
+    this.close();
+    this.root = root;
+    try {
+      if (root) this.openAndEnsure();
+    } catch (error) {
       // 打开失败：不残留失败 root；旧库能恢复则恢复，否则保持 root/db 一致的安全关闭态。
       this.close();
       try {
         this.root = prevRoot;
-        if (prevRoot) { this.db = this.openDatabase(prevRoot); this._status = prevStatus; }
-      } catch { this.root = null; }
+        if (prevRoot) {
+          this.db = this.openDatabase(prevRoot);
+          this._status = prevStatus;
+        }
+      } catch {
+        this.root = null;
+      }
       throw error;
     }
   }
-  close(): void { for (const t of this.timers.values()) clearTimeout(t); this.timers.clear(); this.pendingPaths.clear(); this.rebuildScheduled = false; this.db?.close(); this.db = null; this.root = null; this._status = emptyStatus(); }
-  private requireRoot(): string { if (!this.root) throw Object.assign(new Error('尚未打开任何 vault'), { code: 'NO_VAULT' }); return this.root; }
+  close(): void {
+    for (const t of this.timers.values()) clearTimeout(t);
+    this.timers.clear();
+    this.pendingPaths.clear();
+    this.rebuildScheduled = false;
+    this.db?.close();
+    this.db = null;
+    this.root = null;
+    this._status = emptyStatus();
+  }
+  private requireRoot(): string {
+    if (!this.root) throw Object.assign(new Error('尚未打开任何知识库'), { code: 'NO_VAULT' });
+    return this.root;
+  }
   private openDatabase(root: string): Db {
-    const dir = path.join(root, '.nexnote'); mkdirSync(dir, { recursive: true });
-    const db = new Database(path.join(dir, 'index.db'), currentBetterSqlite3Options()); db.pragma('journal_mode = WAL'); db.pragma('foreign_keys = ON');
+    const dir = path.join(root, '.nexnote');
+    mkdirSync(dir, { recursive: true });
+    const db = new Database(path.join(dir, 'index.db'), currentBetterSqlite3Options());
+    db.pragma('journal_mode = WAL');
+    db.pragma('foreign_keys = ON');
     return db;
   }
   private openAndEnsure(): void {
-    this.db = this.openDatabase(this.requireRoot()); this.migrate();
+    this.db = this.openDatabase(this.requireRoot());
+    this.migrate();
     // 派生缓存：每次打开 vault 与文件系统做一次权威全量同步。
     this.rebuild();
   }
   private migrate(): void {
-    const db = this.db!; const version = db.pragma('user_version', { simple: true }) as number;
+    const db = this.db!;
+    const version = db.pragma('user_version', { simple: true }) as number;
     if (version >= SCHEMA_VERSION) return;
     if (version < 1) {
       db.exec(`
@@ -228,37 +288,97 @@ export class LinkIndexService {
   }
   /** 全量扫描可发现文档（.md/.markdown/.docx，复用 document-domain 的扩展名口径）。 */
   private allDocumentFiles(): string[] {
-    const root = this.requireRoot(); const found: string[] = [];
-    const walk = (rel: string): void => { for (const ent of readdirSync(path.join(root, rel), { withFileTypes: true })) { if (EXCLUDED_DIRS.has(ent.name)) continue; const next = rel ? `${rel}/${ent.name}` : ent.name; if (ent.isDirectory()) walk(next); else if (ent.isFile() && isDocumentPath(ent.name)) found.push(next); } };
-    walk(''); return found.sort();
+    const root = this.requireRoot();
+    const found: string[] = [];
+    const walk = (rel: string): void => {
+      for (const ent of readdirSync(path.join(root, rel), { withFileTypes: true })) {
+        if (EXCLUDED_DIRS.has(ent.name)) continue;
+        const next = rel ? `${rel}/${ent.name}` : ent.name;
+        if (ent.isDirectory()) walk(next);
+        else if (ent.isFile() && isDocumentPath(ent.name)) found.push(next);
+      }
+    };
+    walk('');
+    return found.sort();
   }
   /** 读取 .nexnote/metadata sidecar（canonical id/createdAt/updatedAt）；读取/解析失败按无 sidecar 降级（派生缓存尽力而为）。 */
   private loadSidecar(root: string, relPath: string): DocumentMetadata | null {
     try {
       const value: unknown = JSON.parse(readFileSync(metadataPathFor(root, relPath), 'utf8'));
-      return value && typeof value === 'object' && !Array.isArray(value) ? (value as DocumentMetadata) : null;
-    } catch { return null; }
+      return value && typeof value === 'object' && !Array.isArray(value)
+        ? (value as DocumentMetadata)
+        : null;
+    } catch {
+      return null;
+    }
   }
   /** 按格式解析文档：markdown 走 UTF-8 解析并合并 sidecar；docx 等二进制只做安全投影（不解码正文）。 */
   private parseDocument(root: string, relPath: string): ParsedPage {
     const abs = path.join(root, relPath);
-    if (formatForPath(relPath) === 'docx') return applySidecarMetadata(projectBinaryPage(relPath, readFileSync(abs)), this.loadSidecar(root, relPath));
-    return applySidecarMetadata(parsePageMarkdown(relPath, readFileSync(abs, 'utf8')), this.loadSidecar(root, relPath));
+    if (formatForPath(relPath) === 'docx')
+      return applySidecarMetadata(
+        projectBinaryPage(relPath, readFileSync(abs)),
+        this.loadSidecar(root, relPath),
+      );
+    return applySidecarMetadata(
+      parsePageMarkdown(relPath, readFileSync(abs, 'utf8')),
+      this.loadSidecar(root, relPath),
+    );
   }
   rebuild(): IndexStatus {
     const root = this.requireRoot();
     let files: string[];
-    try { files = this.allDocumentFiles(); }
-    catch (e) { this.publish({ phase: 'error', pagesTotal: 0, pagesIndexed: 0, mode: 'full', error: e instanceof Error ? e.message : String(e) }); return this.status; }
+    try {
+      files = this.allDocumentFiles();
+    } catch (e) {
+      this.publish({
+        phase: 'error',
+        pagesTotal: 0,
+        pagesIndexed: 0,
+        mode: 'full',
+        error: e instanceof Error ? e.message : String(e),
+      });
+      return this.status;
+    }
     this.publish({ phase: 'scanning', pagesTotal: files.length, pagesIndexed: 0, mode: 'full' });
     // 单个文件读取/解析失败不阻断全库重建（派生缓存尽力而为），错误集中到 transaction/边界。
     const pages: ParsedPage[] = [];
     for (const file of files) {
-      try { pages.push(this.parseDocument(root, file)); }
-      catch { /* 跳过不可读/损坏文件 */ }
+      try {
+        pages.push(this.parseDocument(root, file));
+      } catch {
+        /* 跳过不可读/损坏文件 */
+      }
     }
-    const db = this.db!; const run = db.transaction(() => { db.exec('DELETE FROM page_fts; DELETE FROM links; DELETE FROM tags; DELETE FROM blocks; DELETE FROM pages;'); for (const page of pages) { this.upsertPage(page, false); this._status.pagesIndexed += 1; if (this._status.pagesIndexed % 25 === 0 || this._status.pagesIndexed === files.length) this.onStatus(this.status); } this.resolveLinks(); });
-    try { run(); this.publish({ phase: 'ready', pagesTotal: files.length, pagesIndexed: files.length, mode: 'full' }); this.onIndexed(null); } catch (e) { this.publish({ ...this._status, phase: 'error', error: e instanceof Error ? e.message : String(e) }); }
+    const db = this.db!;
+    const run = db.transaction(() => {
+      db.exec(
+        'DELETE FROM page_fts; DELETE FROM links; DELETE FROM tags; DELETE FROM blocks; DELETE FROM pages;',
+      );
+      for (const page of pages) {
+        this.upsertPage(page, false);
+        this._status.pagesIndexed += 1;
+        if (this._status.pagesIndexed % 25 === 0 || this._status.pagesIndexed === files.length)
+          this.onStatus(this.status);
+      }
+      this.resolveLinks();
+    });
+    try {
+      run();
+      this.publish({
+        phase: 'ready',
+        pagesTotal: files.length,
+        pagesIndexed: files.length,
+        mode: 'full',
+      });
+      this.onIndexed(null);
+    } catch (e) {
+      this.publish({
+        ...this._status,
+        phase: 'error',
+        error: e instanceof Error ? e.message : String(e),
+      });
+    }
     return this.status;
   }
   /**
@@ -270,32 +390,63 @@ export class LinkIndexService {
     const safePath = vaultRelativePath(sourceRoot, relPath);
     if (!safePath || !isDocumentPath(safePath) || this.rebuildScheduled) return;
     this.pendingPaths.add(safePath);
-    const key = '__updates__'; const prior = this.timers.get(key); if (prior) clearTimeout(prior);
-    this.timers.set(key, setTimeout(() => {
-      this.timers.delete(key);
-      const paths = [...this.pendingPaths]; this.pendingPaths.clear();
-      this.updateFiles(paths, sourceRoot);
-    }, 160));
+    const key = '__updates__';
+    const prior = this.timers.get(key);
+    if (prior) clearTimeout(prior);
+    this.timers.set(
+      key,
+      setTimeout(() => {
+        this.timers.delete(key);
+        const paths = [...this.pendingPaths];
+        this.pendingPaths.clear();
+        this.updateFiles(paths, sourceRoot);
+      }, 160),
+    );
   }
   /** Coalesce directory churn into one rebuild rather than resolving links per descendant. */
   scheduleRebuild(sourceRoot: string | null = this.root): void {
     if (!sourceRoot) return;
     this.rebuildScheduled = true;
     this.pendingPaths.clear();
-    const updateTimer = this.timers.get('__updates__'); if (updateTimer) clearTimeout(updateTimer); this.timers.delete('__updates__');
-    const key = '__rebuild__'; const prior = this.timers.get(key); if (prior) clearTimeout(prior);
-    this.timers.set(key, setTimeout(() => {
-      this.timers.delete(key);
-      try { if (this.root === sourceRoot) this.rebuild(); } finally { this.rebuildScheduled = false; }
-    }, 200));
+    const updateTimer = this.timers.get('__updates__');
+    if (updateTimer) clearTimeout(updateTimer);
+    this.timers.delete('__updates__');
+    const key = '__rebuild__';
+    const prior = this.timers.get(key);
+    if (prior) clearTimeout(prior);
+    this.timers.set(
+      key,
+      setTimeout(() => {
+        this.timers.delete(key);
+        try {
+          if (this.root === sourceRoot) this.rebuild();
+        } finally {
+          this.rebuildScheduled = false;
+        }
+      }, 200),
+    );
   }
-  updateFile(relPath: string, sourceRoot: string | null = this.root): void { this.updateFiles([relPath], sourceRoot); }
+  updateFile(relPath: string, sourceRoot: string | null = this.root): void {
+    this.updateFiles([relPath], sourceRoot);
+  }
   private updateFiles(relPaths: string[], sourceRoot: string | null): void {
     if (!this.root || this.root !== sourceRoot) return; // switch/close drops stale batches
     const root = this.requireRoot();
-    const paths = [...new Set(relPaths.map((value) => vaultRelativePath(root, value)).filter((value): value is string => !!value && isDocumentPath(value)))];
+    const paths = [
+      ...new Set(
+        relPaths
+          .map((value) => vaultRelativePath(root, value))
+          .filter((value): value is string => !!value && isDocumentPath(value)),
+      ),
+    ];
     if (paths.length === 0) return;
-    this.publish({ phase: 'scanning', pagesTotal: paths.length, pagesIndexed: 0, currentFile: paths[0], mode: 'incremental' });
+    this.publish({
+      phase: 'scanning',
+      pagesTotal: paths.length,
+      pagesIndexed: 0,
+      currentFile: paths[0],
+      mode: 'incremental',
+    });
     const db = this.db!;
     const beforePages = this.pagePathSet(db);
     const beforeEdges = this.resolvedLinkEdges(db);
@@ -304,8 +455,11 @@ export class LinkIndexService {
         const abs = path.join(root, safePath);
         if (!existsSync(abs)) this.deletePath(safePath);
         else {
-          try { this.upsertPage(this.parseDocument(root, safePath), false); }
-          catch { /* 跳过不可读/损坏文件，其余批次照常 */ }
+          try {
+            this.upsertPage(this.parseDocument(root, safePath), false);
+          } catch {
+            /* 跳过不可读/损坏文件，其余批次照常 */
+          }
         }
       }
       this.resolveLinks(); // once per debounce batch, not once per file
@@ -315,21 +469,40 @@ export class LinkIndexService {
     });
     try {
       run();
-      this.publish({ phase: 'ready', pagesTotal: paths.length, pagesIndexed: paths.length, mode: 'incremental' });
+      this.publish({
+        phase: 'ready',
+        pagesTotal: paths.length,
+        pagesIndexed: paths.length,
+        mode: 'incremental',
+      });
       this.onIndexed(this.graphStructureChanged ? null : paths);
-    } catch (e) { this.publish({ ...this._status, phase: 'error', error: e instanceof Error ? e.message : String(e) }); }
+    } catch (e) {
+      this.publish({
+        ...this._status,
+        phase: 'error',
+        error: e instanceof Error ? e.message : String(e),
+      });
+    }
   }
   private pagePathSet(db: Db): Set<string> {
-    return new Set((db.prepare('SELECT path FROM pages').all() as Array<{ path: string }>).map((row) => row.path));
+    return new Set(
+      (db.prepare('SELECT path FROM pages').all() as Array<{ path: string }>).map(
+        (row) => row.path,
+      ),
+    );
   }
   private resolvedLinkEdges(db: Db): Set<string> {
     const edges = new Set<string>();
-    const rows = db.prepare(`
+    const rows = db
+      .prepare(
+        `
       SELECT source.path source, target.path target
       FROM links l
       JOIN pages source ON source.id = l.source_page_id
       JOIN pages target ON target.id = l.target_page_id
-    `).all() as Array<{ source: string; target: string }>;
+    `,
+      )
+      .all() as Array<{ source: string; target: string }>;
     for (const row of rows) edges.add(`${row.source}\u0000${row.target}`);
     return edges;
   }
@@ -338,34 +511,101 @@ export class LinkIndexService {
     for (const edge of left) if (!right.has(edge)) return false;
     return true;
   }
-  private deletePath(relPath: string): void { const db = this.db!; const row = db.prepare('SELECT id FROM pages WHERE path=?').get(relPath) as { id: number } | undefined; if (!row) return; db.prepare('DELETE FROM page_fts WHERE path=?').run(relPath); db.prepare('DELETE FROM pages WHERE id=?').run(row.id); }
+  private deletePath(relPath: string): void {
+    const db = this.db!;
+    const row = db.prepare('SELECT id FROM pages WHERE path=?').get(relPath) as
+      { id: number } | undefined;
+    if (!row) return;
+    db.prepare('DELETE FROM page_fts WHERE path=?').run(relPath);
+    db.prepare('DELETE FROM pages WHERE id=?').run(row.id);
+  }
   private upsertPage(page: ParsedPage, resolve = true): void {
-    type ExistingPage = { id: number; hash: string; stable_id: string | null; created_at: string | null; updated_at: string | null };
-    const db = this.db!; const old = db.prepare('SELECT id, hash, stable_id, created_at, updated_at FROM pages WHERE path=?').get(page.path) as ExistingPage | undefined;
-    if (old?.hash === page.hash && old.stable_id === page.stableId && old.created_at === page.createdAt && old.updated_at === page.updatedAt) return;
-    if (old) { db.prepare('DELETE FROM page_fts WHERE path=?').run(page.path); db.prepare('DELETE FROM links WHERE source_page_id=?').run(old.id); db.prepare('DELETE FROM tags WHERE page_id=?').run(old.id); db.prepare('DELETE FROM blocks WHERE page_id=?').run(old.id); }
-    db.prepare(`INSERT INTO pages(path,title,aliases,created_at,updated_at,stable_id,hash,confidence_boost) VALUES(?,?,?,?,?,?,?,?) ON CONFLICT(path) DO UPDATE SET title=excluded.title,aliases=excluded.aliases,created_at=excluded.created_at,updated_at=excluded.updated_at,stable_id=excluded.stable_id,hash=excluded.hash,confidence_boost=excluded.confidence_boost`).run(page.path,page.title,JSON.stringify(page.aliases),page.createdAt,page.updatedAt,page.stableId,page.hash,page.confidenceBoost);
-    const id = (db.prepare('SELECT id FROM pages WHERE path=?').get(page.path) as {id:number}).id;
-    const block = db.prepare('INSERT INTO blocks(page_id,block_id,block_type,content_text,position) VALUES(?,?,?,?,?)');
+    type ExistingPage = {
+      id: number;
+      hash: string;
+      stable_id: string | null;
+      created_at: string | null;
+      updated_at: string | null;
+    };
+    const db = this.db!;
+    const old = db
+      .prepare('SELECT id, hash, stable_id, created_at, updated_at FROM pages WHERE path=?')
+      .get(page.path) as ExistingPage | undefined;
+    if (
+      old?.hash === page.hash &&
+      old.stable_id === page.stableId &&
+      old.created_at === page.createdAt &&
+      old.updated_at === page.updatedAt
+    )
+      return;
+    if (old) {
+      db.prepare('DELETE FROM page_fts WHERE path=?').run(page.path);
+      db.prepare('DELETE FROM links WHERE source_page_id=?').run(old.id);
+      db.prepare('DELETE FROM tags WHERE page_id=?').run(old.id);
+      db.prepare('DELETE FROM blocks WHERE page_id=?').run(old.id);
+    }
+    db.prepare(
+      `INSERT INTO pages(path,title,aliases,created_at,updated_at,stable_id,hash,confidence_boost) VALUES(?,?,?,?,?,?,?,?) ON CONFLICT(path) DO UPDATE SET title=excluded.title,aliases=excluded.aliases,created_at=excluded.created_at,updated_at=excluded.updated_at,stable_id=excluded.stable_id,hash=excluded.hash,confidence_boost=excluded.confidence_boost`,
+    ).run(
+      page.path,
+      page.title,
+      JSON.stringify(page.aliases),
+      page.createdAt,
+      page.updatedAt,
+      page.stableId,
+      page.hash,
+      page.confidenceBoost,
+    );
+    const id = (db.prepare('SELECT id FROM pages WHERE path=?').get(page.path) as { id: number })
+      .id;
+    const block = db.prepare(
+      'INSERT INTO blocks(page_id,block_id,block_type,content_text,position) VALUES(?,?,?,?,?)',
+    );
     const blockIdRows: number[] = []; // index = position
     for (const item of page.blocks) {
-      const result = block.run(id,item.blockId,item.blockType,item.content,item.position);
+      const result = block.run(id, item.blockId, item.blockType, item.content, item.position);
       blockIdRows[item.position] = Number(result.lastInsertRowid);
     }
-    const linkInsert = db.prepare('INSERT INTO links(source_page_id,target_page_id,target_raw,target_name,link_type,anchor,source_block_id,source_text) VALUES(?,?,?,?,?,?,?,?)');
+    const linkInsert = db.prepare(
+      'INSERT INTO links(source_page_id,target_page_id,target_raw,target_name,link_type,anchor,source_block_id,source_text) VALUES(?,?,?,?,?,?,?,?)',
+    );
     for (const item of page.links) {
       const sourceBlockId = blockIdRows[item.sourceBlockIndex] ?? null;
-      linkInsert.run(id,null,item.targetRaw,item.targetName,item.linkType,item.anchor,sourceBlockId,item.sourceText);
+      linkInsert.run(
+        id,
+        null,
+        item.targetRaw,
+        item.targetName,
+        item.linkType,
+        item.anchor,
+        sourceBlockId,
+        item.sourceText,
+      );
     }
-    const tag = db.prepare('INSERT INTO tags(page_id,tag_name,tag_path) VALUES(?,?,?)'); for (const value of page.tags) tag.run(id,value,value);
-    const tok = ftsIndexTokens([page.title, page.aliases.join(' '), page.tags.join(' '), page.body].join('\n')).join(' ');
-    db.prepare('INSERT INTO page_fts(path,title,aliases,tags,content,tok) VALUES(?,?,?,?,?,?)').run(page.path,page.title,page.aliases.join(' '),page.tags.join(' '),page.body,tok);
+    const tag = db.prepare('INSERT INTO tags(page_id,tag_name,tag_path) VALUES(?,?,?)');
+    for (const value of page.tags) tag.run(id, value, value);
+    const tok = ftsIndexTokens(
+      [page.title, page.aliases.join(' '), page.tags.join(' '), page.body].join('\n'),
+    ).join(' ');
+    db.prepare('INSERT INTO page_fts(path,title,aliases,tags,content,tok) VALUES(?,?,?,?,?,?)').run(
+      page.path,
+      page.title,
+      page.aliases.join(' '),
+      page.tags.join(' '),
+      page.body,
+      tok,
+    );
     if (resolve) this.resolveLinks();
   }
   /** Resolve target; priority required by spec: alias > title > filename/path. */
   private resolveLinks(): void {
     const db = this.db!;
-    const pages = db.prepare('SELECT id,path,title,aliases FROM pages').all() as Array<{ id: number; path: string; title: string; aliases: string }>;
+    const pages = db.prepare('SELECT id,path,title,aliases FROM pages').all() as Array<{
+      id: number;
+      path: string;
+      title: string;
+      aliases: string;
+    }>;
     // 精确 vault 相对 stem（含子目录）→ id。普通链接已归一化到 stem，wiki 的 [[dir/name]] 也走这里。
     const byPath = new Map<string, number>();
     for (const page of pages) {
@@ -375,24 +615,39 @@ export class LinkIndexService {
     // basename：同名 basename 跨多个目录时为歧义，不武断 last-win（保持红链）。
     const basenameOwners = new Map<string, Set<number>>();
     const ownerOf = (map: Map<string, Set<number>>, key: string, id: number): void => {
-      let set = map.get(key); if (!set) { set = new Set(); map.set(key, set); }
+      let set = map.get(key);
+      if (!set) {
+        set = new Set();
+        map.set(key, set);
+      }
       set.add(id);
     };
-    for (const page of pages) ownerOf(basenameOwners, path.posix.basename(page.path, path.posix.extname(page.path)).toLowerCase(), page.id);
+    for (const page of pages)
+      ownerOf(
+        basenameOwners,
+        path.posix.basename(page.path, path.posix.extname(page.path)).toLowerCase(),
+        page.id,
+      );
     const uniqueBasename = new Map<string, number>();
-    for (const [key, owners] of basenameOwners) if (owners.size === 1) uniqueBasename.set(key, [...owners][0]!);
+    for (const [key, owners] of basenameOwners)
+      if (owners.size === 1) uniqueBasename.set(key, [...owners][0]!);
     // alias / title：多页声明同名时为歧义，唯一时才解析（优先级 alias > title）。
     const aliasOwners = new Map<string, Set<number>>();
     const titleOwners = new Map<string, Set<number>>();
     for (const page of pages) {
       ownerOf(titleOwners, page.title.toLowerCase(), page.id);
-      for (const alias of JSON.parse(page.aliases) as string[]) ownerOf(aliasOwners, alias.toLowerCase(), page.id);
+      for (const alias of JSON.parse(page.aliases) as string[])
+        ownerOf(aliasOwners, alias.toLowerCase(), page.id);
     }
     const unique = (map: Map<string, Set<number>>, key: string): number | null => {
-      const owners = map.get(key); return owners && owners.size === 1 ? [...owners][0]! : null;
+      const owners = map.get(key);
+      return owners && owners.size === 1 ? [...owners][0]! : null;
     };
     const update = db.prepare('UPDATE links SET target_page_id=? WHERE id=?');
-    for (const link of db.prepare('SELECT id,target_name FROM links').all() as Array<{ id: number; target_name: string }>) {
+    for (const link of db.prepare('SELECT id,target_name FROM links').all() as Array<{
+      id: number;
+      target_name: string;
+    }>) {
       const name = link.target_name.toLowerCase();
       let target: number | null;
       if (name.includes('/')) {
@@ -400,14 +655,19 @@ export class LinkIndexService {
         target = byPath.get(name) ?? null;
       } else {
         // 短名：alias > title > 唯一 basename；歧义一律留红链。
-        target = unique(aliasOwners, name) ?? unique(titleOwners, name) ?? uniqueBasename.get(name) ?? null;
+        target =
+          unique(aliasOwners, name) ??
+          unique(titleOwners, name) ??
+          uniqueBasename.get(name) ??
+          null;
       }
       update.run(target, link.id);
     }
   }
   backlinks(pagePath: string): Backlink[] {
     const db = this.db!;
-    const target = db.prepare('SELECT id FROM pages WHERE path=?').get(pagePath) as { id: number } | undefined;
+    const target = db.prepare('SELECT id FROM pages WHERE path=?').get(pagePath) as
+      { id: number } | undefined;
     if (!target) return [];
     type Row = {
       fromPath: string;
@@ -420,7 +680,11 @@ export class LinkIndexService {
       blockId: string | null;
       blockPosition: number | null;
     };
-    const rows = db.prepare(`SELECT p.path fromPath,p.title fromTitle,l.link_type linkType,COALESCE(l.anchor,'') anchor,COALESCE(l.source_text,'') sourceText,l.source_block_id sourceBlockId,b.content_text blockContent,b.block_id blockId,b.position blockPosition FROM links l JOIN pages p ON p.id=l.source_page_id LEFT JOIN blocks b ON b.id=l.source_block_id WHERE l.target_page_id=? ORDER BY p.title, COALESCE(b.position,-1)`).all(target.id) as Row[];
+    const rows = db
+      .prepare(
+        `SELECT p.path fromPath,p.title fromTitle,l.link_type linkType,COALESCE(l.anchor,'') anchor,COALESCE(l.source_text,'') sourceText,l.source_block_id sourceBlockId,b.content_text blockContent,b.block_id blockId,b.position blockPosition FROM links l JOIN pages p ON p.id=l.source_page_id LEFT JOIN blocks b ON b.id=l.source_block_id WHERE l.target_page_id=? ORDER BY p.title, COALESCE(b.position,-1)`,
+      )
+      .all(target.id) as Row[];
     return rows.map((row) => {
       const blockText = row.blockContent ?? '';
       const sourceText = row.sourceText || row.fromPath;
@@ -447,27 +711,53 @@ export class LinkIndexService {
     const needle = query.trim().replace(/^#+/, '');
     if (!needle) return [];
     const db = this.db!;
-    type RawHit = { path: string; title: string; aliases: string; tags: string; content: string; rank: number };
+    type RawHit = {
+      path: string;
+      title: string;
+      aliases: string;
+      tags: string;
+      content: string;
+      rank: number;
+    };
     let rows: RawHit[] = [];
     let ftsOk = false;
     const expr = ftsQueryExpr(needle);
     if (expr) {
       try {
-        rows = db.prepare('SELECT path,title,aliases,tags,content,-bm25(page_fts) rank FROM page_fts WHERE page_fts MATCH ?').all(expr) as RawHit[];
+        rows = db
+          .prepare(
+            'SELECT path,title,aliases,tags,content,-bm25(page_fts) rank FROM page_fts WHERE page_fts MATCH ?',
+          )
+          .all(expr) as RawHit[];
         ftsOk = true;
       } catch (e) {
-        this.onStatus({ ...this._status, phase: this._status.phase, error: 'search fts: ' + (e instanceof Error ? e.message : String(e)) });
+        this.onStatus({
+          ...this._status,
+          phase: this._status.phase,
+          error: 'search fts: ' + (e instanceof Error ? e.message : String(e)),
+        });
       }
     }
     if (!ftsOk) {
       // 仅 FTS 异常时的兼容回退（FTS 正常不触发，避免千页级全表 %LIKE% 扫描）。
       try {
         const lt = needle.toLowerCase().split(/\s+/).filter(Boolean);
-        const clauses = lt.map(() => "(lower(title) LIKE ? ESCAPE '\\' OR lower(aliases) LIKE ? ESCAPE '\\' OR lower(tags) LIKE ? ESCAPE '\\' OR lower(content) LIKE ? ESCAPE '\\')").join(' AND ');
+        const clauses = lt
+          .map(
+            () =>
+              "(lower(title) LIKE ? ESCAPE '\\' OR lower(aliases) LIKE ? ESCAPE '\\' OR lower(tags) LIKE ? ESCAPE '\\' OR lower(content) LIKE ? ESCAPE '\\')",
+          )
+          .join(' AND ');
         const values = lt.flatMap((term) => Array(4).fill('%' + escLike(term) + '%'));
-        rows = db.prepare('SELECT path,title,aliases,tags,content,0 rank FROM page_fts WHERE ' + clauses).all(...values) as RawHit[];
+        rows = db
+          .prepare('SELECT path,title,aliases,tags,content,0 rank FROM page_fts WHERE ' + clauses)
+          .all(...values) as RawHit[];
       } catch (e) {
-        this.onStatus({ ...this._status, phase: this._status.phase, error: 'search like: ' + (e instanceof Error ? e.message : String(e)) });
+        this.onStatus({
+          ...this._status,
+          phase: this._status.phase,
+          error: 'search like: ' + (e instanceof Error ? e.message : String(e)),
+        });
       }
     }
     const merged = new Map<string, RawHit>();
@@ -482,28 +772,58 @@ export class LinkIndexService {
       const title = r.title.toLowerCase();
       const tags = title + '\n' + r.tags.toLowerCase();
       const aliases = tags + '\n' + r.aliases.toLowerCase();
-      const tier: SearchHit['tier'] = every(title) ? 'title' : every(tags) ? 'tag' : every(aliases) ? 'alias' : 'content';
+      const tier: SearchHit['tier'] = every(title)
+        ? 'title'
+        : every(tags)
+          ? 'tag'
+          : every(aliases)
+            ? 'alias'
+            : 'content';
       return { r, tier };
     });
-    const blockMap = this.contentBlocksFor(db, prelim.filter((p) => p.tier === 'content').map((p) => p.r.path), terms);
+    const blockMap = this.contentBlocksFor(
+      db,
+      prelim.filter((p) => p.tier === 'content').map((p) => p.r.path),
+      terms,
+    );
     const hits = prelim.map(({ r, tier }): SearchHit => {
       const block = tier === 'content' ? blockMap.get(r.path) : undefined;
       const content = block?.content ?? r.content;
       const snippet = blockLocalSnippet(content, terms);
-      return { path: r.path, title: r.title, tier, snippet, blockId: block?.blockId ?? undefined, rank: r.rank };
+      return {
+        path: r.path,
+        title: r.title,
+        tier,
+        snippet,
+        blockId: block?.blockId ?? undefined,
+        rank: r.rank,
+      };
     });
     return hits.sort((a, b) => order[a.tier] - order[b.tier] || b.rank - a.rank).slice(0, limit);
   }
 
   /** 单查询批量取命中正文块：范围仅限候选页（有界），块需包含全部词（CJK 子串 LIKE）。 */
-  private contentBlocksFor(db: Db, paths: string[], terms: string[]): Map<string, { blockId: string | null; content: string }> {
+  private contentBlocksFor(
+    db: Db,
+    paths: string[],
+    terms: string[],
+  ): Map<string, { blockId: string | null; content: string }> {
     const map = new Map<string, { blockId: string | null; content: string }>();
     if (paths.length === 0 || terms.length === 0) return map;
     const placeholders = paths.map(() => '?').join(',');
     const termClauses = terms.map(() => "lower(b.content_text) LIKE ? ESCAPE '\\'").join(' AND ');
-    const sql = 'SELECT p.path path, b.block_id blockId, b.content_text content FROM blocks b JOIN pages p ON p.id = b.page_id WHERE p.path IN (' + placeholders + ') AND ' + termClauses + ' ORDER BY p.path, b.position';
+    const sql =
+      'SELECT p.path path, b.block_id blockId, b.content_text content FROM blocks b JOIN pages p ON p.id = b.page_id WHERE p.path IN (' +
+      placeholders +
+      ') AND ' +
+      termClauses +
+      ' ORDER BY p.path, b.position';
     const values = [...paths, ...terms.map((t) => '%' + escLike(t) + '%')];
-    for (const row of db.prepare(sql).all(...values) as Array<{ path: string; blockId: string | null; content: string }>) {
+    for (const row of db.prepare(sql).all(...values) as Array<{
+      path: string;
+      blockId: string | null;
+      content: string;
+    }>) {
       if (!map.has(row.path)) map.set(row.path, { blockId: row.blockId, content: row.content });
     }
     return map;
@@ -511,55 +831,138 @@ export class LinkIndexService {
 
   jumpTo(query: string, limit = 20): PageJumpResult[] {
     type JumpRow = { path: string; title: string; aliases: string };
-    const lowered = query.trim().toLowerCase(); if (!lowered) return [];
-    const escaped = escLike(lowered); const q = `%${escaped}%`; const prefix = `${escaped}%`;
-    const rows = this.db!.prepare("SELECT path,title,aliases FROM pages WHERE lower(title) LIKE ? ESCAPE '\\' OR lower(aliases) LIKE ? ESCAPE '\\' OR lower(path) LIKE ? ESCAPE '\\' ORDER BY CASE WHEN lower(title) LIKE ? ESCAPE '\\' THEN 0 WHEN lower(aliases) LIKE ? ESCAPE '\\' THEN 1 ELSE 2 END,title LIMIT ?").all(q, q, q, prefix, prefix, limit) as JumpRow[];
-    return rows.map((page) => ({ path: page.path, title: page.title, subtitle: page.path, match: page.title.toLowerCase().includes(lowered) ? 'title' : (JSON.parse(page.aliases) as string[]).some((alias) => alias.toLowerCase().includes(lowered)) ? 'alias' : 'path' }));
+    const lowered = query.trim().toLowerCase();
+    if (!lowered) return [];
+    const escaped = escLike(lowered);
+    const q = `%${escaped}%`;
+    const prefix = `${escaped}%`;
+    const rows = this.db!.prepare(
+      "SELECT path,title,aliases FROM pages WHERE lower(title) LIKE ? ESCAPE '\\' OR lower(aliases) LIKE ? ESCAPE '\\' OR lower(path) LIKE ? ESCAPE '\\' ORDER BY CASE WHEN lower(title) LIKE ? ESCAPE '\\' THEN 0 WHEN lower(aliases) LIKE ? ESCAPE '\\' THEN 1 ELSE 2 END,title LIMIT ?",
+    ).all(q, q, q, prefix, prefix, limit) as JumpRow[];
+    return rows.map((page) => ({
+      path: page.path,
+      title: page.title,
+      subtitle: page.path,
+      match: page.title.toLowerCase().includes(lowered)
+        ? 'title'
+        : (JSON.parse(page.aliases) as string[]).some((alias) =>
+              alias.toLowerCase().includes(lowered),
+            )
+          ? 'alias'
+          : 'path',
+    }));
   }
   tags(flat = false): TagIndexEntry[] {
     const db = this.db!;
-    const leafRows = db.prepare('SELECT tag_name tag,COUNT(DISTINCT page_id) pageCount FROM tags GROUP BY tag_name').all() as Array<{ tag: string; pageCount: number }>;
+    const leafRows = db
+      .prepare('SELECT tag_name tag,COUNT(DISTINCT page_id) pageCount FROM tags GROUP BY tag_name')
+      .all() as Array<{ tag: string; pageCount: number }>;
     // nodeToPages: 每个节点(叶或中间前缀) → 命中该 tag 或其后代的 distinct page 集合
     const nodeToPages = new Map<string, Set<number>>();
-    const pagesByTag = db.prepare('SELECT DISTINCT page_id, tag_name FROM tags').all() as Array<{ page_id: number; tag_name: string }>;
+    const pagesByTag = db.prepare('SELECT DISTINCT page_id, tag_name FROM tags').all() as Array<{
+      page_id: number;
+      tag_name: string;
+    }>;
     for (const { page_id, tag_name } of pagesByTag) {
       const parts = tag_name.split('/');
       let acc = '';
       for (let i = 0; i < parts.length; i += 1) {
-        acc = i === 0 ? parts[i] ?? '' : `${acc}/${parts[i] ?? ''}`;
-        let set = nodeToPages.get(acc); if (!set) { set = new Set(); nodeToPages.set(acc, set); }
+        acc = i === 0 ? (parts[i] ?? '') : `${acc}/${parts[i] ?? ''}`;
+        let set = nodeToPages.get(acc);
+        if (!set) {
+          set = new Set();
+          nodeToPages.set(acc, set);
+        }
         set.add(page_id);
       }
     }
-    if (flat) return leafRows.map((r) => ({ tag: r.tag, pageCount: r.pageCount, descendantPageCount: r.pageCount, path: r.tag.split('/') }));
+    if (flat)
+      return leafRows.map((r) => ({
+        tag: r.tag,
+        pageCount: r.pageCount,
+        descendantPageCount: r.pageCount,
+        path: r.tag.split('/'),
+      }));
     const out = new Map<string, TagIndexEntry>();
     for (const r of leafRows) {
-      out.set(r.tag, { tag: r.tag, pageCount: r.pageCount, descendantPageCount: r.pageCount, path: r.tag.split('/') });
+      out.set(r.tag, {
+        tag: r.tag,
+        pageCount: r.pageCount,
+        descendantPageCount: r.pageCount,
+        path: r.tag.split('/'),
+      });
     }
     for (const [prefix, pages] of nodeToPages) {
       const existing = out.get(prefix);
-      if (existing) existing.descendantPageCount = Math.max(existing.descendantPageCount, pages.size);
-      else out.set(prefix, { tag: prefix, pageCount: 0, descendantPageCount: pages.size, path: prefix.split('/'), isIntermediate: true });
+      if (existing)
+        existing.descendantPageCount = Math.max(existing.descendantPageCount, pages.size);
+      else
+        out.set(prefix, {
+          tag: prefix,
+          pageCount: 0,
+          descendantPageCount: pages.size,
+          path: prefix.split('/'),
+          isIntermediate: true,
+        });
     }
     return [...out.values()].sort((a, b) => a.tag.localeCompare(b.tag));
   }
   /** 返回命中该 tag 或其任意后代 tag 的页面路径（子树过滤）。 */
   tagPages(tag: string): string[] {
-    return (this.db!.prepare("SELECT DISTINCT p.path FROM tags t JOIN pages p ON p.id=t.page_id WHERE t.tag_name=? OR t.tag_name LIKE ? ESCAPE '\\' ORDER BY p.path").all(tag, `${escLike(tag)}/%`) as Array<{ path: string }>).map((row) => row.path);
+    return (
+      this.db!.prepare(
+        "SELECT DISTINCT p.path FROM tags t JOIN pages p ON p.id=t.page_id WHERE t.tag_name=? OR t.tag_name LIKE ? ESCAPE '\\' ORDER BY p.path",
+      ).all(tag, `${escLike(tag)}/%`) as Array<{ path: string }>
+    ).map((row) => row.path);
   }
   pageSummary(pagePath: string): PageIndexSummary | null {
-    type SummaryRow = { id: number; path: string; title: string; aliases: string; updated_at: string | null; blockCount: number; wordCount: number };
-    const row = this.db!.prepare(`SELECT p.id id,p.path path,p.title title,p.aliases aliases,p.updated_at updated_at,COUNT(DISTINCT b.id) blockCount,COALESCE(SUM(LENGTH(b.content_text)-LENGTH(REPLACE(b.content_text,' ',''))+1),0) wordCount FROM pages p LEFT JOIN blocks b ON b.page_id=p.id WHERE p.path=? GROUP BY p.id`).get(pagePath) as SummaryRow | undefined;
+    type SummaryRow = {
+      id: number;
+      path: string;
+      title: string;
+      aliases: string;
+      updated_at: string | null;
+      blockCount: number;
+      wordCount: number;
+    };
+    const row = this.db!.prepare(
+      `SELECT p.id id,p.path path,p.title title,p.aliases aliases,p.updated_at updated_at,COUNT(DISTINCT b.id) blockCount,COALESCE(SUM(LENGTH(b.content_text)-LENGTH(REPLACE(b.content_text,' ',''))+1),0) wordCount FROM pages p LEFT JOIN blocks b ON b.page_id=p.id WHERE p.path=? GROUP BY p.id`,
+    ).get(pagePath) as SummaryRow | undefined;
     if (!row) return null;
-    const tags = (this.db!.prepare('SELECT tag_name FROM tags t JOIN pages p ON p.id=t.page_id WHERE p.path=? ORDER BY tag_name').all(pagePath) as Array<{ tag_name: string }>).map((item) => item.tag_name);
-    const inboundLinks = (this.db!.prepare('SELECT COUNT(DISTINCT source_page_id) c FROM links WHERE target_page_id=?').get(row.id) as { c: number }).c;
-    const outboundLinks = (this.db!.prepare('SELECT COUNT(DISTINCT target_page_id) c FROM links WHERE source_page_id=? AND target_page_id IS NOT NULL').get(row.id) as { c: number }).c;
-    return { pageId: row.id, path: row.path, title: row.title, aliases: JSON.parse(row.aliases) as string[], tags, updatedAt: row.updated_at ?? '', wordCount: row.wordCount, blockCount: row.blockCount, inboundLinks, outboundLinks };
+    const tags = (
+      this.db!.prepare(
+        'SELECT tag_name FROM tags t JOIN pages p ON p.id=t.page_id WHERE p.path=? ORDER BY tag_name',
+      ).all(pagePath) as Array<{ tag_name: string }>
+    ).map((item) => item.tag_name);
+    const inboundLinks = (
+      this.db!.prepare(
+        'SELECT COUNT(DISTINCT source_page_id) c FROM links WHERE target_page_id=?',
+      ).get(row.id) as { c: number }
+    ).c;
+    const outboundLinks = (
+      this.db!.prepare(
+        'SELECT COUNT(DISTINCT target_page_id) c FROM links WHERE source_page_id=? AND target_page_id IS NOT NULL',
+      ).get(row.id) as { c: number }
+    ).c;
+    return {
+      pageId: row.id,
+      path: row.path,
+      title: row.title,
+      aliases: JSON.parse(row.aliases) as string[],
+      tags,
+      updatedAt: row.updated_at ?? '',
+      wordCount: row.wordCount,
+      blockCount: row.blockCount,
+      inboundLinks,
+      outboundLinks,
+    };
   }
 
   /** 全量轻量摘要（路径/标题/别名）：wikilink 补全同步缓存用（DEV-017）。 */
   pageSummaries(): PageSummaryLite[] {
-    const rows = this.db!.prepare('SELECT path, title, aliases FROM pages ORDER BY path').all() as Array<{ path: string; title: string; aliases: string }>;
+    const rows = this.db!.prepare(
+      'SELECT path, title, aliases FROM pages ORDER BY path',
+    ).all() as Array<{ path: string; title: string; aliases: string }>;
     return rows.map((row) => ({
       path: row.path,
       title: row.title,
@@ -567,10 +970,14 @@ export class LinkIndexService {
     }));
   }
 
-  confidencePages(paths?: string[]): Array<{ id: number; path: string; createdAt: string | null; confidenceBoost: number | null }> {
+  confidencePages(
+    paths?: string[],
+  ): Array<{ id: number; path: string; createdAt: string | null; confidenceBoost: number | null }> {
     const db = this.db;
     if (!db) return [];
-    const rows = db.prepare('SELECT id, path, created_at, confidence_boost FROM pages ORDER BY path').all() as Array<{
+    const rows = db
+      .prepare('SELECT id, path, created_at, confidence_boost FROM pages ORDER BY path')
+      .all() as Array<{
       id: number;
       path: string;
       created_at: string | null;
@@ -600,8 +1007,11 @@ export class LinkIndexService {
         `);
         if (scopePaths.length > 0) deleteStatement.run(...scopePaths);
       }
-      const insert = db.prepare('INSERT INTO confidence(page_id,score,factors_json,computed_at) VALUES(?,?,?,?)');
-      for (const result of results) insert.run(result.pageId, result.score, JSON.stringify(result.factors), result.computedAt);
+      const insert = db.prepare(
+        'INSERT INTO confidence(page_id,score,factors_json,computed_at) VALUES(?,?,?,?)',
+      );
+      for (const result of results)
+        insert.run(result.pageId, result.score, JSON.stringify(result.factors), result.computedAt);
     });
     run();
   }
@@ -609,11 +1019,15 @@ export class LinkIndexService {
   confidence(pageId: number): ConfidenceResult | null {
     const db = this.db;
     if (!db) return null;
-    const row = db.prepare(`
+    const row = db
+      .prepare(
+        `
       SELECT c.page_id, p.path, c.score, c.factors_json, c.computed_at
       FROM confidence c JOIN pages p ON p.id = c.page_id
       WHERE c.page_id = ?
-    `).get(pageId) as
+    `,
+      )
+      .get(pageId) as
       | { page_id: number; path: string; score: number; factors_json: string; computed_at: string }
       | undefined;
     if (!row) return null;
@@ -642,14 +1056,18 @@ export class LinkIndexService {
       outboundLinks: number;
     };
     const pages = (
-      db.prepare(`
+      db
+        .prepare(
+          `
         SELECT p.path, p.title,
           (SELECT GROUP_CONCAT(DISTINCT t.tag_name) FROM tags t WHERE t.page_id = p.id) tags,
           (SELECT COUNT(DISTINCT l.source_page_id) FROM links l WHERE l.target_page_id = p.id) inboundLinks,
           (SELECT COUNT(DISTINCT l.target_page_id) FROM links l WHERE l.source_page_id = p.id AND l.target_page_id IS NOT NULL) outboundLinks
         FROM pages p
         ORDER BY p.path
-      `).all() as PageRow[]
+      `,
+        )
+        .all() as PageRow[]
     ).map((row) => ({
       path: row.path,
       title: row.title,
@@ -659,13 +1077,17 @@ export class LinkIndexService {
       outboundLinks: row.outboundLinks ?? 0,
     }));
     type LinkRow = { source: string; target: string };
-    const links = db.prepare(`
+    const links = db
+      .prepare(
+        `
       SELECT DISTINCT source.path source, target.path target
       FROM links l
       JOIN pages source ON source.id = l.source_page_id
       JOIN pages target ON target.id = l.target_page_id
       ORDER BY source.path, target.path
-    `).all() as LinkRow[];
+    `,
+      )
+      .all() as LinkRow[];
     return { pages, links };
   }
 
@@ -676,26 +1098,34 @@ export class LinkIndexService {
     const db = this.db;
     if (!db || paths.length === 0) return [];
     const placeholders = paths.map(() => '?').join(',');
-    return db.prepare(`
+    return db
+      .prepare(
+        `
       SELECT b.id blockRowid, b.page_id pageId, p.path path, p.title title,
              b.block_id blockId, b.block_type blockType, b.content_text content, b.position position
       FROM blocks b JOIN pages p ON p.id = b.page_id
       WHERE p.path IN (${placeholders}) AND length(b.content_text) > 0
       ORDER BY p.path, b.position
-    `).all(...paths) as CandidateBlock[];
+    `,
+      )
+      .all(...paths) as CandidateBlock[];
   }
 
   /** 全部块（向量全量构建用）。 */
   allBlocks(): CandidateBlock[] {
     const db = this.db;
     if (!db) return [];
-    return db.prepare(`
+    return db
+      .prepare(
+        `
       SELECT b.id blockRowid, b.page_id pageId, p.path path, p.title title,
              b.block_id blockId, b.block_type blockType, b.content_text content, b.position position
       FROM blocks b JOIN pages p ON p.id = b.page_id
       WHERE length(b.content_text) > 0
       ORDER BY p.path, b.position
-    `).all() as CandidateBlock[];
+    `,
+      )
+      .all() as CandidateBlock[];
   }
 
   /** 一跳双链邻居（出链 + 入链）的路径集合，不含输入路径本身。 */
@@ -703,21 +1133,26 @@ export class LinkIndexService {
     const db = this.db;
     if (!db || paths.length === 0) return [];
     const placeholders = paths.map(() => '?').join(',');
-    const rows = db.prepare(`
+    const rows = db
+      .prepare(
+        `
       SELECT DISTINCT p.path path FROM links l
         JOIN pages seed ON seed.id IN (SELECT id FROM pages WHERE path IN (${placeholders}))
         JOIN pages p ON p.id = CASE
           WHEN l.source_page_id = seed.id THEN l.target_page_id
           WHEN l.target_page_id = seed.id THEN l.source_page_id END
       WHERE p.path NOT IN (${placeholders})
-    `).all(...paths, ...paths) as Array<{ path: string }>;
+    `,
+      )
+      .all(...paths, ...paths) as Array<{ path: string }>;
     return rows.map((r) => r.path).filter(Boolean);
   }
 
   /** DEV-011：整页向量替换（事务内 delete + insert）。 */
   replacePageVectors(path: string, items: VectorItem[]): number {
     const db = this.db!;
-    const page = db.prepare('SELECT id FROM pages WHERE path=?').get(path) as { id: number } | undefined;
+    const page = db.prepare('SELECT id FROM pages WHERE path=?').get(path) as
+      { id: number } | undefined;
     if (!page) return 0;
     const run = db.transaction((entries: VectorItem[]) => {
       db.prepare('DELETE FROM block_vectors WHERE page_id=?').run(page.id);
@@ -726,7 +1161,15 @@ export class LinkIndexService {
       );
       let count = 0;
       for (const it of entries) {
-        insert.run(it.blockRowid, page.id, it.blockId, it.blockType, JSON.stringify(it.vector), it.vector.length, it.model);
+        insert.run(
+          it.blockRowid,
+          page.id,
+          it.blockId,
+          it.blockType,
+          JSON.stringify(it.vector),
+          it.vector.length,
+          it.model,
+        );
         count += 1;
       }
       return count;
@@ -739,13 +1182,16 @@ export class LinkIndexService {
   }
 
   vectorMeta(key: string): string | null {
-    const row = this.db?.prepare('SELECT value FROM vector_meta WHERE key=?').get(key) as { value: string } | undefined;
+    const row = this.db?.prepare('SELECT value FROM vector_meta WHERE key=?').get(key) as
+      { value: string } | undefined;
     return row?.value ?? null;
   }
 
   setVectorMeta(key: string, value: string): void {
     this.db
-      ?.prepare('INSERT INTO vector_meta(key,value) VALUES(?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value')
+      ?.prepare(
+        'INSERT INTO vector_meta(key,value) VALUES(?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value',
+      )
       .run(key, value);
   }
 
@@ -756,7 +1202,9 @@ export class LinkIndexService {
     if (!db || rowids.length === 0) return map;
     const placeholders = rowids.map(() => '?').join(',');
     const rows = db
-      .prepare(`SELECT block_rowid rowid, vector FROM block_vectors WHERE block_rowid IN (${placeholders})`)
+      .prepare(
+        `SELECT block_rowid rowid, vector FROM block_vectors WHERE block_rowid IN (${placeholders})`,
+      )
       .all(...rowids) as Array<{ rowid: number; vector: string }>;
     for (const r of rows) {
       try {
@@ -779,5 +1227,9 @@ export class LinkIndexService {
   }
 
   /** Testing hook: delete cache and make a new service auto rebuild at same root. */
-  static removeDatabase(root: string): void { rmSync(path.join(root,'.nexnote','index.db'),{force:true}); rmSync(path.join(root,'.nexnote','index.db-wal'),{force:true}); rmSync(path.join(root,'.nexnote','index.db-shm'),{force:true}); }
+  static removeDatabase(root: string): void {
+    rmSync(path.join(root, '.nexnote', 'index.db'), { force: true });
+    rmSync(path.join(root, '.nexnote', 'index.db-wal'), { force: true });
+    rmSync(path.join(root, '.nexnote', 'index.db-shm'), { force: true });
+  }
 }

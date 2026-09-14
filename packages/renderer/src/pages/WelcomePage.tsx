@@ -1,16 +1,7 @@
 import { useEffect, useState } from 'react';
 import { invoke } from '../lib/ipc';
 import type { AppInfo } from '@nexnote/shared';
-import {
-  Command,
-  FolderOpen,
-  Moon,
-  PanelLeft,
-  Sparkles,
-  FileCode2,
-  GraduationCap,
-} from 'lucide-react';
-import { openWorkspaceTab } from '../stores/tab-store';
+import { Command, Moon, PanelLeft, Sparkles, FileCode2, GraduationCap } from 'lucide-react';
 import { usePaletteStore } from '../stores/palette-store';
 import { useUiStore } from '../stores/ui-store';
 import { useThemeStore } from '../theme/theme-store';
@@ -66,14 +57,6 @@ export function WelcomePage() {
       </div>
 
       <div className="flex flex-wrap items-center justify-center gap-2">
-        <button
-          type="button"
-          onClick={() => openWorkspaceTab('files', 'Vault 文件')}
-          className="flex items-center gap-1.5 rounded-md bg-primary px-3.5 py-1.5 text-xs font-medium text-primary-foreground hover:bg-primary/90"
-        >
-          <FolderOpen className="size-3.5" />
-          浏览 Vault 文件
-        </button>
         <button
           type="button"
           data-testid="welcome-start-tour"

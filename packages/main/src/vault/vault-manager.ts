@@ -65,7 +65,7 @@ export function sanitizeChatFolder(raw: unknown): string | null {
 /** 校验目录是否可作为 vault 根（存在且为目录）。 */
 export async function validateVaultRoot(root: string): Promise<void> {
   if (!path.isAbsolute(root)) {
-    throw new VaultError(`vault 路径必须是绝对路径: ${root}`, 'PATH_NOT_ABSOLUTE');
+    throw new VaultError(`知识库路径必须是绝对路径: ${root}`, 'PATH_NOT_ABSOLUTE');
   }
   let stat;
   try {
@@ -101,7 +101,10 @@ export async function readVaultConfig(root: string): Promise<VaultConfig> {
       chatFolder: sanitizeChatFolder(parsed?.chatFolder) ?? fallback.chatFolder,
       settings: mergeVaultSettings(parsed?.settings),
       layout: { ...fallback.layout, ...(parsed?.layout ?? {}) },
-      lastSession: { ...fallback.lastSession, ...(parsed?.lastSession ?? {}) },
+      // DEV-021：files 占位页已删除，旧配置残留的 files tab 恢复时静默丢弃
+      lastSession: {
+        tabs: (parsed?.lastSession?.tabs ?? []).filter((tab) => tab.kind !== 'files'),
+      },
     };
   } catch {
     return defaultVaultConfig();
@@ -170,7 +173,7 @@ export async function createVault(parentDir: string, name: string): Promise<Vaul
   // 且 root 本身绝不能是符号链接（防止被替换为指向外部目录的链接）。
   const rel = path.relative(parentDir, root);
   if (rel === '' || rel.startsWith('..') || path.isAbsolute(rel)) {
-    throw new VaultError(`vault 名称必须为 ${parentDir} 的直接子目录`, 'INVALID_NAME');
+    throw new VaultError(`知识库名称必须为 ${parentDir} 的直接子目录`, 'INVALID_NAME');
   }
   let exists = false;
   try {
@@ -184,7 +187,7 @@ export async function createVault(parentDir: string, name: string): Promise<Vaul
     const stat = await fsp.lstat(root).catch(() => null);
     if (!stat) throw new VaultError(`无法访问: ${root}`, 'VAULT_EXISTS_FILE');
     if (stat.isSymbolicLink()) {
-      throw new VaultError(`目标位置是符号链接，拒绝创建 vault: ${root}`, 'VAULT_TARGET_SYMLINK');
+      throw new VaultError(`目标位置是符号链接，拒绝创建知识库: ${root}`, 'VAULT_TARGET_SYMLINK');
     }
     if (!stat.isDirectory()) {
       throw new VaultError(`目标位置存在同名文件: ${root}`, 'VAULT_EXISTS_FILE');

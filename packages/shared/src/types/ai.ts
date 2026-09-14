@@ -95,8 +95,10 @@ export interface AiConfigState {
   profiles: AiProfileView[];
   defaultProfileId: string | null;
   features: AiFeatureAssignments;
-  /** 无任何 Profile → 首启动引导向导 */
+  /** 无任何 Profile → AI 空态入口仍显示配置提示 */
   needsOnboarding: boolean;
+  /** 首启动引导是否已被用户看过或跳过；只控制自动弹出，不影响 AI 空态。 */
+  setupPromptDismissed: boolean;
   /** embedding 配置指纹（profileId:model:dimensions:metric）。变更 = 向量索引需重建 */
   embeddingFingerprint: string | null;
   /** embedding generation 单调递增；指纹每次变化 +1。DEV-011 以此标记索引重建 */
