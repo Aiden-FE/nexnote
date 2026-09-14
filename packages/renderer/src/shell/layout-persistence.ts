@@ -1,6 +1,7 @@
 import { useEffect } from 'react';
 import { invoke } from '../lib/ipc';
 import { useUiStore } from '../stores/ui-store';
+import { tabIdentity, useTabStore } from '../stores/tab-store';
 import type { VaultInfo, VaultLayout } from '@nexnote/shared';
 import { defaultVaultLayout } from '@nexnote/shared';
 
@@ -27,6 +28,8 @@ export function useVaultLayoutPersistence(vault: VaultInfo | null): void {
       ui.setTreeCollapsedDirs(merged.treeCollapsedDirs ?? []);
       ui.setTreeShowAllFiles(merged.treeShowAllFiles ?? false);
       ui.setTreeShowExtensions(merged.treeShowExtensions ?? false);
+      // DEV-022：会话内已有 tab（vault 切换）按稳定身份恢复拖拽顺序；tab 本身仍不持久化。
+      if (merged.tabOrder?.length) useTabStore.getState().applyTabOrder(merged.tabOrder);
       // 新手引导：vault 就绪且未完成过引导时自动弹出一次（向后兼容缺省 = 未完成）
       if (!merged.guideCompleted) {
         useUiStore.getState().setTourOpen(true);
@@ -54,6 +57,7 @@ export function useVaultLayoutPersistence(vault: VaultInfo | null): void {
         treeShowAllFiles: ui.treeShowAllFiles,
         treeShowExtensions: ui.treeShowExtensions,
         guideCompleted: ui.guideCompleted,
+        tabOrder: useTabStore.getState().tabs.map(tabIdentity),
       };
     };
     const schedule = () => {
@@ -63,8 +67,19 @@ export function useVaultLayoutPersistence(vault: VaultInfo | null): void {
       }, 600);
     };
     const unsubscribe = useUiStore.subscribe(schedule);
+    // DEV-022：页签顺序变化（拖拽重排/开闭）同样防抖写回；仅激活态切换不写盘。
+    let lastTabOrder = collect().tabOrder;
+    const unsubscribeTabs = useTabStore.subscribe((state) => {
+      const next = state.tabs.map(tabIdentity);
+      const changed =
+        next.length !== lastTabOrder.length || next.some((id, i) => id !== lastTabOrder[i]);
+      if (!changed) return;
+      lastTabOrder = next;
+      schedule();
+    });
     return () => {
       unsubscribe();
+      unsubscribeTabs();
       if (timer) clearTimeout(timer);
     };
   }, [vault]);

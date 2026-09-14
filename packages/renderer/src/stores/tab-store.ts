@@ -45,6 +45,12 @@ export interface WorkspaceState {
   closeTabsToRight(tabId: string): void;
   setActiveTab(tabId: string): void;
   setTabTitle(tabId: string, title: string): void;
+  /** 拖拽排序（DEV-022）：按 id 把 tab 移动到目标下标（越界夹取，原位 no-op）。 */
+  reorderTab(tabId: string, targetIndex: number): void;
+  /** Ctrl+Tab / Ctrl+Shift+Tab（DEV-022）：以激活 tab 为基准循环移动 offset 步（末尾回绕）。 */
+  activateAdjacentTab(offset: 1 | -1): void;
+  /** vault 布局恢复（DEV-022）：按持久化身份序列重排现有 tabs（未知身份保持相对顺序在后）。 */
+  applyTabOrder(order: string[]): void;
   toggleSourceMode(tabId: string, enabled?: boolean): void;
   /** Markdown 文档的源码编辑器分栏预览开关（仅对 format=markdown 的页面 tab 生效）。 */
   togglePreview(tabId: string, visible?: boolean): void;
@@ -56,6 +62,14 @@ let tabSeq = 0;
 function nextTabId(): string {
   tabSeq += 1;
   return `tab-${Date.now().toString(36)}-${tabSeq}`;
+}
+
+/**
+ * tab 的持久化身份（DEV-022 tabOrder）：page/docx 用 pagePath（跨会话稳定）；
+ * 其余单例 kind 用 `kind:<kind>`。tab.id 每次会话生成，不可用于持久化。
+ */
+export function tabIdentity(tab: Pick<TabDescriptor, 'kind' | 'pagePath'>): string {
+  return tab.pagePath ?? `kind:${tab.kind}`;
 }
 
 function initialTabs(): { tabs: TabDescriptor[]; activeTabId: string } {
@@ -144,6 +158,48 @@ export const useTabStore = create<WorkspaceState>()((set, get) => ({
 
   setTabTitle(tabId, title) {
     get().updateTab(tabId, { title });
+  },
+
+  reorderTab(tabId, targetIndex) {
+    set((state) => {
+      const from = state.tabs.findIndex((tab) => tab.id === tabId);
+      if (from < 0) return state;
+      const to = Math.min(state.tabs.length - 1, Math.max(0, Math.trunc(targetIndex)));
+      if (to === from) return state;
+      const tabs = [...state.tabs];
+      const [moved] = tabs.splice(from, 1);
+      if (!moved) return state;
+      tabs.splice(to, 0, moved);
+      return { tabs };
+    });
+  },
+
+  activateAdjacentTab(offset) {
+    set((state) => {
+      if (state.tabs.length === 0 || state.activeTabId === null) return state;
+      const current = state.tabs.findIndex((tab) => tab.id === state.activeTabId);
+      if (current < 0) return state;
+      const next = (current + offset + state.tabs.length) % state.tabs.length;
+      return { activeTabId: state.tabs[next]?.id ?? state.activeTabId };
+    });
+  },
+
+  applyTabOrder(order) {
+    set((state) => {
+      if (order.length === 0) return state;
+      const rank = new Map(order.map((identity, index) => [identity, index]));
+      const tabs = [...state.tabs].sort((a, b) => {
+        const ra = rank.get(tabIdentity(a));
+        const rb = rank.get(tabIdentity(b));
+        // 未知身份（新 tab / 持久化后新增）保持在已知身份之后，组内维持现有相对顺序。
+        if (ra === undefined && rb === undefined) return 0;
+        if (ra === undefined) return 1;
+        if (rb === undefined) return -1;
+        return ra - rb;
+      });
+      // Array.prototype.sort 稳定：仅在顺序真正变化时落新数组
+      return tabs.every((tab, index) => tab === state.tabs[index]) ? state : { tabs };
+    });
   },
 
   toggleSourceMode(tabId, enabled) {

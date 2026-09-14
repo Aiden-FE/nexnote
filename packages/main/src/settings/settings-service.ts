@@ -364,7 +364,9 @@ export function normalizeStoredGlobal(raw: unknown): GlobalSettings {
       useSystemGit: hasKey(git, 'useSystemGit') ? git.useSystemGit === true : base.git.useSystemGit,
     },
     shortcuts: Array.isArray(value.shortcuts)
-      ? normalizeShortcutOverrides(value.shortcuts)
+      ? // DEV-022：旧设置文件缺少新登记的默认命令时按默认键补齐（用户条目覆盖同名默认），
+        // 保证快捷键设置分区始终展示完整绑定。
+        normalizeShortcutOverrides([...base.shortcuts, ...value.shortcuts])
       : base.shortcuts,
   };
 }

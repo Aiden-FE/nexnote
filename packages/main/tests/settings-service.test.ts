@@ -52,10 +52,48 @@ describe('normalizeStoredGlobal', () => {
         { commandId: 'other', key: 'ctrl+k', disabled: false },
       ],
     });
-    expect(global.shortcuts).toEqual([
-      { commandId: 'app.save', key: 'Mod+S', disabled: false },
-      { commandId: 'other', key: 'Ctrl+K', disabled: false },
-    ]);
+    expect(global.shortcuts).toContainEqual({
+      commandId: 'app.save',
+      key: 'Mod+S',
+      disabled: false,
+    });
+    expect(global.shortcuts).toContainEqual({
+      commandId: 'other',
+      key: 'Ctrl+K',
+      disabled: false,
+    });
+    expect(global.shortcuts.some((s) => s.commandId === 'bogus.no.key')).toBe(false);
+  });
+
+  it('旧设置文件缺新默认命令时补齐（设置分区展示 tab.next/tab.prev，DEV-022）', () => {
+    const legacy = normalizeStoredGlobal({
+      shortcuts: [
+        { commandId: 'app.palette', key: 'Mod+K', disabled: false },
+        { commandId: 'tab.new', key: 'Mod+T', disabled: true },
+      ],
+    });
+    // 缺失的默认命令按默认键补齐
+    expect(legacy.shortcuts).toContainEqual({
+      commandId: 'tab.next',
+      key: 'Ctrl+Tab',
+      disabled: false,
+    });
+    expect(legacy.shortcuts).toContainEqual({
+      commandId: 'tab.prev',
+      key: 'Ctrl+Shift+Tab',
+      disabled: false,
+    });
+    // 既有覆盖与禁用状态不被补齐覆盖（disabled 条目 key 归一化为空串是既有语义）
+    expect(legacy.shortcuts).toContainEqual({
+      commandId: 'tab.new',
+      key: '',
+      disabled: true,
+    });
+    expect(legacy.shortcuts).toContainEqual({
+      commandId: 'app.palette',
+      key: 'Mod+K',
+      disabled: false,
+    });
   });
 });
 
@@ -89,7 +127,10 @@ describe('SettingsService', () => {
     ]);
     expect(result[0]?.key).toBe('Ctrl+Shift+F');
     const reloaded = new SettingsService(filePath);
-    expect(reloaded.get().shortcuts[0]?.key).toBe('Ctrl+Shift+F');
+    // DEV-022 起读取归一化会补齐默认命令，按 commandId 查找而非依赖数组首位。
+    expect(reloaded.get().shortcuts.find((s) => s.commandId === 'search.open')?.key).toBe(
+      'Ctrl+Shift+F',
+    );
   });
 
   it('导出/导入快捷键 JSON 往返', () => {

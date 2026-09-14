@@ -328,15 +328,18 @@ describe('IPC 集成（vault + fs，单一注册表）', () => {
         activeSidebarPanelId: null,
         dockVisible: true,
         dockWidth: 320,
+        tabOrder: ['kind:welcome', 'a.md', 'kind:graph'],
       },
     })) as { ok: boolean };
     expect(saved.ok).toBe(true);
     const layout = (await ipc.invoke('vault:getLayout')) as {
       ok: boolean;
-      data: { sidebarWidth: number; dockWidth: number };
+      data: { sidebarWidth: number; dockWidth: number; tabOrder: string[] };
     };
     expect(layout.data.sidebarWidth).toBe(300);
     expect(layout.data.dockWidth).toBe(320);
+    // DEV-022：页签顺序随布局持久化往返
+    expect(layout.data.tabOrder).toEqual(['kind:welcome', 'a.md', 'kind:graph']);
 
     // 关闭 → 回到向导；fs 拒绝
     const closed = (await ipc.invoke('vault:close')) as { ok: boolean };
@@ -627,6 +630,7 @@ describe('IPC 集成（vault + fs，单一注册表）', () => {
       ['vault:saveLayout', { layout: { sidebarWidth: 'wide' } }, 'vault:saveLayout 嵌套字段错误'],
       ['vault:saveLayout', { layout: { unknown: true } }, 'vault:saveLayout 嵌套未知字段'],
       ['vault:saveLayout', { layout: { treeCollapsedDirs: [1] } }, 'vault:saveLayout 嵌套数组错误'],
+      ['vault:saveLayout', { layout: { tabOrder: [1] } }, 'vault:saveLayout tabOrder 非字符串数组'],
       // void channels reject any non-null object
       ['git:getStatus', { sneaky: 'oops' }, 'git:getStatus 不收 payload'],
     ];

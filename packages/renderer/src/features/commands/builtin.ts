@@ -36,6 +36,24 @@ commandRegistry.register({
 });
 
 commandRegistry.register({
+  id: 'tab.next',
+  title: '切换到下一个标签页',
+  category: '标签页',
+  keywords: ['next', 'tab', 'cycle', '切换', '循环', '页签'],
+  shortcut: '⌃Tab / Ctrl+Tab（DEV-022）',
+  run: () => tabs.getState().activateAdjacentTab(1),
+});
+
+commandRegistry.register({
+  id: 'tab.prev',
+  title: '切换到上一个标签页',
+  category: '标签页',
+  keywords: ['previous', 'prev', 'tab', 'cycle', '切换', '循环', '页签'],
+  shortcut: '⌃⇧Tab / Ctrl+Shift+Tab（DEV-022）',
+  run: () => tabs.getState().activateAdjacentTab(-1),
+});
+
+commandRegistry.register({
   id: 'editor.toggleSourceMode',
   title: '切换源码模式',
   category: '编辑器',

@@ -195,6 +195,145 @@ export async function runSmokeIfEnabled(): Promise<void> {
     check('Tab 可打开（单栈多 tab）', tabCount() === before + 2, `count=${tabCount()}`);
     const tabAText = document.querySelector('[data-testid="workspace-tabs"]')?.textContent ?? '';
     check('主区含新 Tab 内容', tabAText.includes('冒烟页面 B'));
+
+    // ── 4a. DEV-022 页签拖拽排序 + Ctrl+Tab 循环切换 ─────────
+    const tabEl = (path: string): HTMLElement | null =>
+      document.querySelector<HTMLElement>(
+        `[data-testid="tab"][data-page-path="${CSS.escape(path)}"]`,
+      );
+    const domTabOrder = (): string[] =>
+      [...document.querySelectorAll<HTMLElement>('[data-testid="tab"]')].map(
+        (el) => el.getAttribute('data-tab-identity') ?? '',
+      );
+    const dndTabTo = async (fromPath: string, toPath: string): Promise<void> => {
+      const from = tabEl(fromPath);
+      const to = tabEl(toPath);
+      if (!from || !to) return;
+      const rect = to.getBoundingClientRect();
+      const x = rect.left + rect.width * 0.9;
+      // Chromium 的合成 DragEvent 默认没有 dataTransfer；注入可变 DataTransfer
+      // 才能真实走过 React 的 dragstart/dragover/drop 处理链。
+      const transfer = typeof DataTransfer === 'function' ? new DataTransfer() : null;
+      const eventWithTransfer = (event: DragEvent): DragEvent => {
+        if (transfer) Object.defineProperty(event, 'dataTransfer', { value: transfer });
+        return event;
+      };
+      from.dispatchEvent(
+        eventWithTransfer(new DragEvent('dragstart', { bubbles: true, cancelable: true })),
+      );
+      // React 18 需要一拍才提交 draggingTabId state；立即派发 dragover 会被拖拽源守卫忽略。
+      await new Promise((resolve) => requestAnimationFrame(() => resolve(null)));
+      to.dispatchEvent(
+        eventWithTransfer(
+          new DragEvent('dragover', {
+            bubbles: true,
+            cancelable: true,
+            clientX: x,
+            clientY: rect.top + rect.height / 2,
+          }),
+        ),
+      );
+      const indicatorReady = await waitFor(
+        () => to.getAttribute('data-drop-indicator') === 'after',
+      );
+      check(
+        '拖拽悬停显示插入位置反馈',
+        indicatorReady,
+        to.getAttribute('data-drop-indicator') ?? '(none)',
+      );
+      to.dispatchEvent(
+        eventWithTransfer(
+          new DragEvent('drop', {
+            bubbles: true,
+            cancelable: true,
+            clientX: x,
+            clientY: rect.top + rect.height / 2,
+          }),
+        ),
+      );
+      from.dispatchEvent(
+        eventWithTransfer(new DragEvent('dragend', { bubbles: true, cancelable: true })),
+      );
+    };
+    await dndTabTo('冒烟页面 A.md', '冒烟页面 B.md');
+    check(
+      '拖拽重排：A 移到 B 之后，顺序立即更新',
+      await waitFor(() => {
+        const order = domTabOrder();
+        return order.indexOf('冒烟页面 A.md') > order.indexOf('冒烟页面 B.md');
+      }),
+      domTabOrder().join(' | '),
+    );
+    await sleep(2_500); // 布局防抖 600ms + 写盘
+    const tabOrderConfig = await invoke('fs:readTextFile', { path: '.nexnote/config.json' });
+    check(
+      '重排顺序持久化到 vault 布局（tabOrder）',
+      tabOrderConfig.includes('"tabOrder"') &&
+        tabOrderConfig.indexOf('冒烟页面 B.md') < tabOrderConfig.indexOf('冒烟页面 A.md'),
+      tabOrderConfig.slice(0, 60),
+    );
+
+    const activeTabPath = (): string | null =>
+      useTabStore.getState().tabs.find((t) => t.id === useTabStore.getState().activeTabId)
+        ?.pagePath ?? null;
+    const cycleFrom = (tabId: string, offset: 1 | -1): string | null => {
+      const tabs = useTabStore.getState().tabs;
+      const index = tabs.findIndex((tab) => tab.id === tabId);
+      return index < 0
+        ? null
+        : (tabs[(index + offset + tabs.length) % tabs.length]?.pagePath ?? null);
+    };
+    const pageAId = useTabStore.getState().tabs.find((t) => t.pagePath === '冒烟页面 A.md')?.id;
+    if (pageAId) useTabStore.getState().setActiveTab(pageAId);
+    const nextPath = pageAId ? cycleFrom(pageAId, 1) : null;
+    window.dispatchEvent(
+      new KeyboardEvent('keydown', {
+        key: 'Tab',
+        ctrlKey: true,
+        bubbles: true,
+        cancelable: true,
+      }),
+    );
+    await sleep(150);
+    check(
+      'Ctrl+Tab 切换到下一个页签',
+      pageAId !== undefined && activeTabPath() === nextPath,
+      activeTabPath() ?? '(none)',
+    );
+    const currentId = useTabStore.getState().activeTabId;
+    const wrappedPath = currentId ? cycleFrom(currentId, 1) : null;
+    window.dispatchEvent(
+      new KeyboardEvent('keydown', {
+        key: 'Tab',
+        ctrlKey: true,
+        bubbles: true,
+        cancelable: true,
+      }),
+    );
+    await sleep(150);
+    check(
+      'Ctrl+Tab 循环切换',
+      currentId !== null && activeTabPath() === wrappedPath,
+      activeTabPath() ?? '(none)',
+    );
+    if (pageAId) useTabStore.getState().setActiveTab(pageAId);
+    const previousPath = pageAId ? cycleFrom(pageAId, -1) : null;
+    window.dispatchEvent(
+      new KeyboardEvent('keydown', {
+        key: 'Tab',
+        ctrlKey: true,
+        shiftKey: true,
+        bubbles: true,
+        cancelable: true,
+      }),
+    );
+    await sleep(150);
+    check(
+      'Ctrl+Shift+Tab 反向循环切换',
+      pageAId !== undefined && activeTabPath() === previousPath,
+      activeTabPath() ?? '(none)',
+    );
+    useTabStore.getState().setActiveTab(pageB.id);
     useTabStore.getState().closeTab(pageB.id);
     await waitFor(() => tabCount() === before + 1);
     check('Tab 可关闭', tabCount() === before + 1, `count=${tabCount()}`);

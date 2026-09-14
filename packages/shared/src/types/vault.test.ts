@@ -13,4 +13,10 @@ describe('defaultVaultLayout', () => {
   it('每次返回独立的目录折叠数组', () => {
     expect(defaultVaultLayout().treeCollapsedDirs).not.toBe(defaultVaultLayout().treeCollapsedDirs);
   });
+
+  it('tab 顺序持久化字段缺省为空数组（DEV-022）', () => {
+    const layout = defaultVaultLayout();
+    expect(layout.tabOrder).toEqual([]);
+    expect(defaultVaultLayout().tabOrder).not.toBe(defaultVaultLayout().tabOrder);
+  });
 });

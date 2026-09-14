@@ -8,12 +8,23 @@ import type { ShortcutOverride } from '@nexnote/shared';
  * - Mod = Cmd（macOS）/ Ctrl（Windows/Linux）
  * - 修饰顺序：Mod + Ctrl + Alt + Shift + Key
  * - 大小写：Key 部分首字母大写（如 K、F、S）
+ *
+ * 平台等价（DEV-022）：绑定为 `Ctrl+…` 的命令（如 Ctrl+Tab 循环切换页签）
+ * 在非 macOS 平台上把 Ctrl 归一为 Mod —— 该平台上 Mod 就是物理 Ctrl 键，
+ * 事件侧 canonical 永远产生 Mod，不产生独立的 Ctrl。
  */
+export type ShortcutPlatform = 'mac' | 'other';
+
 export class ShortcutRuntime {
   private bindings = new Map<string, string>();
   private commandHandlers = new Map<string, () => void>();
   private listener: ((e: KeyboardEvent) => void) | null = null;
-  private isMac = /Mac|iPhone|iPad/.test(navigator.platform);
+  private readonly isMac: boolean;
+
+  constructor(platform?: ShortcutPlatform) {
+    // navigator.platform 在测试环境（happy-dom）可能为空；允许注入以便覆盖两平台分支。
+    this.isMac = platform ? platform === 'mac' : /Mac|iPhone|iPad/.test(navigator.platform);
+  }
 
   /** 从设置（覆盖 + 内置默认）更新全部绑定。 */
   setOverrides(overrides: ShortcutOverride[], defaults: readonly ShortcutOverride[]): void {
@@ -23,14 +34,22 @@ export class ShortcutRuntime {
       const ov = overrideMap.get(def.commandId);
       if (ov?.disabled) continue;
       const key = ov?.key || def.key;
-      if (key) this.bindings.set(def.commandId, key);
+      if (key) this.bindings.set(def.commandId, this.canonicalizeForPlatform(key));
     }
     // 只在 override 中出现的（新增命令）
     for (const ov of overrides) {
       if (!this.bindings.has(ov.commandId) && !ov.disabled && ov.key) {
-        this.bindings.set(ov.commandId, ov.key);
+        this.bindings.set(ov.commandId, this.canonicalizeForPlatform(ov.key));
       }
     }
+  }
+
+  /** 非 macOS：绑定中的 Ctrl 组件归一为 Mod（物理同键），保持修饰顺序去重。 */
+  private canonicalizeForPlatform(key: string): string {
+    if (this.isMac) return key;
+    const parts = key.split('+');
+    if (!parts.includes('Ctrl')) return key;
+    return [...new Set(parts.map((part) => (part === 'Ctrl' ? 'Mod' : part)))].join('+');
   }
 
   /** 注册一个 command 的执行函数。 */
