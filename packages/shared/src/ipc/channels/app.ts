@@ -16,14 +16,31 @@ export type UpdateCheckStatus =
   | 'checking'
   | 'downloading'
   | 'downloaded'
+  | 'installing'
   | 'channel-switched'
   | 'error';
+
+export type UpdateAction = 'manual-download' | 'install-started';
+export type UpdateRetryAction = 'check' | 'download';
 
 export interface UpdateCheckResult {
   status: UpdateCheckStatus;
   message?: string;
   version?: string;
   channel?: UpdateChannel;
+  /** Next user action, when the update flow requires one. */
+  action?: UpdateAction;
+  /** Runtime architecture relevant to a platform-specific install action. */
+  arch?: string;
+  /** An install failure is recoverable while the downloaded update is retained. */
+  recoverable?: boolean;
+  retry?: UpdateRetryAction;
+}
+
+export interface UpdateInstallResult {
+  willRestart: boolean;
+  action: UpdateAction;
+  arch: string;
 }
 
 /**
@@ -53,7 +70,7 @@ export interface AppChannelMap {
   'app:getInfo': { request: void; response: Result<AppInfo> };
   'app:checkForUpdates': { request: void; response: Result<UpdateCheckResult> };
   'app:downloadUpdate': { request: void; response: Result<UpdateCheckResult> };
-  'app:installUpdate': { request: void; response: Result<{ willRestart: true }> };
+  'app:installUpdate': { request: void; response: Result<UpdateInstallResult> };
   'app:setUpdateChannel': {
     request: { channel: UpdateChannel };
     response: Result<UpdateCheckResult>;

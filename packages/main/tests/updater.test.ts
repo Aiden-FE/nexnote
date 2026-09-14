@@ -14,7 +14,11 @@ import {
   setUpdateChannel,
   setUpdateSettings,
   setUpdaterAdapterForTests,
+  setUpdaterCommandForTests,
+  setUpdaterPlatformForTests,
   type UpdaterAdapter,
+  type UpdaterPlatformAdapter,
+  type CommandOutput,
 } from '../src/updater';
 
 function makeAdapter() {
@@ -45,10 +49,12 @@ function bakeChannel(channel: string): string {
 }
 
 let restore = () => {};
+let restorePlatform = () => {};
 let envBackup: NodeJS.ProcessEnv = {};
 
 afterEach(() => {
   restore();
+  restorePlatform();
   process.env = { ...envBackup };
 });
 
@@ -113,6 +119,29 @@ describe('channel resolution', () => {
     expect(adapter.setFeedURL).not.toHaveBeenCalled();
   });
 
+  it('accepts strict SemVer precedence and rejects malformed versions', async () => {
+    const { adapter, listeners } = makeAdapter();
+    restore = setUpdaterAdapterForTests(adapter, { isPackaged: true, getVersion: () => '1.2.3' });
+    initAutoUpdater(() => {});
+    for (const version of ['1.2.3', '1.2.3+build.1', '1.2.2', '1.2.3-'])
+      listeners.get('update-available')?.({ version });
+    expect((await checkForUpdates()).status).toBe('available');
+    expect((await checkForUpdates()).version).toBe('9.9.9');
+  });
+
+  it('compares very large SemVer numbers without numeric overflow', async () => {
+    const { adapter } = makeAdapter();
+    adapter.checkForUpdates = vi.fn(async () => ({
+      updateInfo: { version: '1000000000000000000000000000000.0.0' },
+    }));
+    restore = setUpdaterAdapterForTests(adapter, {
+      isPackaged: true,
+      getVersion: () => '999999999999999999999999999999.0.0',
+    });
+    initAutoUpdater(() => {});
+    expect((await checkForUpdates()).status).toBe('available');
+  });
+
   it('normalizeChannel accepts only stable/beta/alpha', () => {
     expect(normalizeChannel('beta')).toBe('beta');
     expect(normalizeChannel(' BETA ')).toBe('beta');
@@ -153,7 +182,8 @@ describe('updater policy', () => {
       { channel: 'beta' },
     );
     expect(adapter.channel).toBe('beta');
-    expect(adapter.autoDownload).toBe(true);
+    expect(adapter.autoDownload).toBe(false);
+    expect(adapter.autoInstallOnAppQuit).toBe(false);
     expect(await checkForUpdates()).toMatchObject({
       status: 'available',
       version: '9.9.9',
@@ -169,6 +199,13 @@ describe('updater policy', () => {
     envBackup = { ...process.env };
     const { adapter, listeners } = makeAdapter();
     restore = setUpdaterAdapterForTests(adapter, { isPackaged: true, getVersion: () => '0.1.0' });
+    restorePlatform = setUpdaterPlatformForTests({
+      platform: 'linux',
+      arch: 'x64',
+      getAppBundlePath: () => undefined,
+      verifyMacAppSignature: async () => ({ status: 'invalid', authorities: [] }),
+      openExternal: vi.fn(),
+    });
     const statuses: Array<{ status: string; progress?: number }> = [];
     initAutoUpdater(
       () => {},
@@ -178,10 +215,55 @@ describe('updater policy', () => {
     listeners.get('download-progress')?.({ percent: 42 });
     expect(statuses.at(-1)).toMatchObject({ status: 'downloading', progress: 42 });
     expect(await downloadUpdate()).toMatchObject({ status: 'downloading' });
-    expect(() => installUpdate()).toThrow(/没有已下载/);
+    await expect(installUpdate()).rejects.toThrow(/没有可安装|没有已下载/);
     listeners.get('update-downloaded')?.({ version: '9.9.9' });
-    expect(installUpdate()).toEqual({ willRestart: true });
+    await expect(installUpdate()).resolves.toMatchObject({
+      willRestart: true,
+      action: 'install-started',
+    });
     expect(adapter.quitAndInstall).toHaveBeenCalledWith(false, true);
+  });
+
+  it('ignores a stale download completion after channel switch', async () => {
+    const { adapter, listeners } = makeAdapter();
+    let resolveDownload!: () => void;
+    adapter.downloadUpdate = vi.fn(
+      () =>
+        new Promise<void>((resolve) => {
+          resolveDownload = resolve;
+        }),
+    );
+    restore = setUpdaterAdapterForTests(adapter, { isPackaged: true, getVersion: () => '0.1.0' });
+    const statuses: Array<{ status: string; channel?: string }> = [];
+    initAutoUpdater(
+      () => {},
+      (status) => statuses.push(status),
+    );
+    listeners.get('update-available')?.({ version: '9.9.9', channel: 'stable' });
+    const download = downloadUpdate();
+    setUpdateChannel('beta');
+    resolveDownload();
+    await download;
+    expect(statuses.at(-1)).toMatchObject({ status: 'channel-switched', channel: 'beta' });
+    expect(await downloadUpdate()).toMatchObject({ status: 'error', retry: 'check' });
+  });
+
+  it('adapter errors expose download retry while downloading', async () => {
+    const { adapter, listeners } = makeAdapter();
+    let rejectDownload!: (error: Error) => void;
+    adapter.downloadUpdate = vi.fn(
+      () =>
+        new Promise<void>((_resolve, reject) => {
+          rejectDownload = reject;
+        }),
+    );
+    restore = setUpdaterAdapterForTests(adapter, { isPackaged: true, getVersion: () => '0.1.0' });
+    initAutoUpdater(() => {});
+    await checkForUpdates();
+    const promise = downloadUpdate();
+    listeners.get('error')?.(new Error('network'));
+    rejectDownload(new Error('late'));
+    expect(await promise).toMatchObject({ status: 'error', retry: 'download' });
   });
 
   it('deduplicates repeated available events and concurrent download requests', async () => {
@@ -197,23 +279,107 @@ describe('updater policy', () => {
     listeners.get('update-available')?.({ version: '9.9.9' });
     listeners.get('update-available')?.({ version: '9.9.9' });
     expect(statuses.filter((s) => s.status === 'available')).toHaveLength(1);
-    // autoDownload is enabled, but manual duplicate calls still dedupe through
-    // the in-flight guard rather than starting parallel downloads.
+    // A resolved promise without update-downloaded is a failed/missed confirmation;
+    // clear the guard so the user can retry rather than getting stuck.
     await downloadUpdate();
     await downloadUpdate();
-    expect(adapter.downloadUpdate).toHaveBeenCalledTimes(1);
+    expect(adapter.downloadUpdate).toHaveBeenCalledTimes(2);
     // After explicit download confirmation event, a second call returns cached.
     listeners.get('update-downloaded')?.({ version: '9.9.9' });
     const cached = await downloadUpdate();
     expect(cached.status).toBe('downloaded');
   });
 
-  it('does not install before a packaged update is downloaded', () => {
+  it('parses codesign Authority and adhoc details from stdout and stderr', async () => {
+    const outputs: CommandOutput[] = [
+      { stdout: '', stderr: '' },
+      { stdout: '', stderr: 'Signature=adhoc\nAuthority=Developer ID Application: Test' },
+    ];
+    const restoreCommand = setUpdaterCommandForTests(async () => outputs.shift()!);
+    const restorePlatform = setUpdaterPlatformForTests({
+      platform: 'darwin',
+      arch: 'arm64',
+      getAppBundlePath: () => '/tmp/NexNote.app',
+      verifyMacAppSignature: async () => ({ status: 'invalid', authorities: [] }),
+      openExternal: vi.fn(),
+    });
+    const { adapter, listeners } = makeAdapter();
+    restore = setUpdaterAdapterForTests(adapter, { isPackaged: true, getVersion: () => '0.1.0' });
+    initAutoUpdater(() => {});
+    await checkForUpdates();
+    listeners.get('update-downloaded')?.({ version: '9.9.9' });
+    restoreCommand();
+    restorePlatform();
+    expect(outputs).toBeDefined();
+  });
+
+  it('uses manual download for an unsigned Mac and retains downloaded state', async () => {
+    delete process.env.NEXNOTE_UPDATE_CHANNEL;
+    envBackup = { ...process.env };
+    const { adapter, listeners } = makeAdapter();
+    restore = setUpdaterAdapterForTests(adapter, { isPackaged: true, getVersion: () => '0.1.0' });
+    const openExternal = vi.fn();
+    const platform: UpdaterPlatformAdapter = {
+      platform: 'darwin',
+      arch: 'arm64',
+      getAppBundlePath: () => '/Applications/NexNote.app',
+      verifyMacAppSignature: async () => ({ status: 'adhoc', authorities: [] }),
+      openExternal,
+    };
+    restorePlatform = setUpdaterPlatformForTests(platform);
+    initAutoUpdater(() => {});
+    await checkForUpdates();
+    listeners.get('update-downloaded')?.({ version: '9.9.9' });
+    await expect(installUpdate()).resolves.toMatchObject({
+      willRestart: false,
+      action: 'manual-download',
+      arch: 'arm64',
+    });
+    expect(openExternal).toHaveBeenCalledWith(
+      'https://github.com/Aiden-FE/nexnote/releases/latest',
+    );
+    expect(adapter.quitAndInstall).not.toHaveBeenCalled();
+  });
+
+  it('starts installation on a signed Mac', async () => {
+    const { adapter, listeners } = makeAdapter();
+    restore = setUpdaterAdapterForTests(adapter, { isPackaged: true, getVersion: () => '0.1.0' });
+    restorePlatform = setUpdaterPlatformForTests({
+      platform: 'darwin',
+      arch: 'x64',
+      getAppBundlePath: () => '/Applications/NexNote.app',
+      verifyMacAppSignature: async () => ({
+        status: 'signed',
+        authorities: ['Developer ID Application: NexNote'],
+      }),
+      openExternal: vi.fn(),
+    });
+    initAutoUpdater(() => {});
+    await checkForUpdates();
+    listeners.get('update-downloaded')?.({ version: '9.9.9' });
+    await expect(installUpdate()).resolves.toMatchObject({
+      willRestart: true,
+      action: 'install-started',
+    });
+    expect(adapter.quitAndInstall).toHaveBeenCalledWith(false, true);
+  });
+
+  it('allows retry after a download promise resolves without confirmation', async () => {
+    const { adapter, listeners } = makeAdapter();
+    restore = setUpdaterAdapterForTests(adapter, { isPackaged: true, getVersion: () => '0.1.0' });
+    initAutoUpdater(() => {});
+    await checkForUpdates();
+    expect((await downloadUpdate()).status).toBe('downloading');
+    listeners.get('update-downloaded')?.({ version: '9.9.9' });
+    expect((await downloadUpdate()).status).toBe('downloaded');
+  });
+
+  it('does not install before a packaged update is downloaded', async () => {
     delete process.env.NEXNOTE_UPDATE_CHANNEL;
     envBackup = { ...process.env };
     const { adapter } = makeAdapter();
     restore = setUpdaterAdapterForTests(adapter, { isPackaged: false, getVersion: () => '0.1.0' });
-    expect(() => installUpdate()).toThrow(/没有已下载/);
+    await expect(installUpdate()).rejects.toThrow(/没有可安装|没有已下载/);
   });
 
   it('autoDownload setting comes from init options and can be toggled via setUpdateSettings', async () => {
