@@ -1,5 +1,5 @@
 import { createHash } from 'node:crypto';
-import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import {
@@ -61,9 +61,39 @@ describe('artifact contract', () => {
     });
   });
 
-  it('accepts the required set without optional portable/deb', () => {
-    const { dir } = makeRelease();
+  it('accepts the required set without optional portable/deb or AppImage blockmap', () => {
+    const { dir, names } = makeRelease();
     try {
+      rmSync(join(dir, `${names.linux.appImage}.blockmap`));
+      expect(verifyArtifactContract({ releaseDir: dir, channel: 'stable', version })).toBeTruthy();
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it('requires blockmaps for macOS update zips and Windows NSIS', () => {
+    const { dir, names } = makeRelease();
+    try {
+      rmSync(join(dir, `${names.windows.nsis}.blockmap`));
+      expect(() => verifyArtifactContract({ releaseDir: dir, channel: 'stable', version })).toThrow(
+        /blockmap/,
+      );
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it('finds artifacts and manifests recursively in download-artifact directories', () => {
+    const { dir, names } = makeRelease();
+    try {
+      mkdirSync(join(dir, 'nexnote-macos-arm64'), { recursive: true });
+      const macDmg = join(dir, names.macArm64.dmg);
+      const nestedMacDmg = join(dir, 'nexnote-macos-arm64', names.macArm64.dmg);
+      writeFileSync(nestedMacDmg, readFileSync(macDmg));
+      rmSync(macDmg);
+      const macManifest = join(dir, 'latest-mac.yml');
+      writeFileSync(join(dir, 'nexnote-macos-arm64', 'latest-mac.yml'), readFileSync(macManifest));
+      rmSync(macManifest);
       expect(verifyArtifactContract({ releaseDir: dir, channel: 'stable', version })).toBeTruthy();
     } finally {
       rmSync(dir, { recursive: true, force: true });

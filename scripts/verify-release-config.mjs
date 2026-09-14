@@ -383,6 +383,8 @@ check('artifact contract verifier has exact required targets and metadata checks
     'sha512',
     'document?.version',
     'optional portable/deb',
+    'Differential update metadata is required only',
+    'AppImage updates use the AppImage entry',
   ]) {
     if (!verifier.includes(guard)) throw new Error(`artifact contract guard missing: ${guard}`);
   }

@@ -135,12 +135,9 @@ export function verifyArtifactContract({ releaseDir, channel, version, productNa
   assertArtifact(root, names.windows.portable, false);
   assertArtifact(root, names.linux.deb, false);
 
-  for (const name of [
-    names.macArm64.zip,
-    names.macX64.zip,
-    names.windows.nsis,
-    names.linux.appImage,
-  ])
+  // Differential update metadata is required only for the NSIS/macOS ZIP primary paths.
+  // AppImage updates use the AppImage entry in its channel manifest and need no blockmap.
+  for (const name of [names.macArm64.zip, names.macX64.zip, names.windows.nsis])
     assertBlockmap(root, name);
 
   assertManifestRecord(root, manifests.mac, names.macArm64.zip, version);
