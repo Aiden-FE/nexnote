@@ -189,7 +189,7 @@ function ConfidenceDisplay({ value }: { value: ConfidenceResult | null }) {
   if (!value) {
     return (
       <div className="rounded-md border border-dashed px-3 py-2 text-center text-[11px] text-muted-foreground">
-        置信度尚未计算（由 DEV-008 Git 底座提供）
+        置信度尚未计算
       </div>
     );
   }
@@ -200,17 +200,27 @@ function ConfidenceDisplay({ value }: { value: ConfidenceResult | null }) {
         <span className="text-[10px] text-muted-foreground">/ 100</span>
       </div>
       <div className="h-1.5 w-full overflow-hidden rounded-full bg-muted">
-        <div className="h-full rounded-full bg-primary" style={{ width: `${Math.max(0, Math.min(100, value.score))}%` }} />
+        <div
+          className="h-full rounded-full bg-primary"
+          style={{ width: `${Math.max(0, Math.min(100, value.score))}%` }}
+        />
       </div>
       <ul className="space-y-1.5">
         {value.factors.map((item) => (
-          <li key={item.key} title={`${item.label}：${item.detail}`} data-testid={`confidence-factor-${item.key}`}>
+          <li
+            key={item.key}
+            title={`${item.label}：${item.detail}`}
+            data-testid={`confidence-factor-${item.key}`}
+          >
             <div className="flex justify-between">
               <span className="text-[10px] text-muted-foreground">{item.label}</span>
               <span className="text-[10px]">{item.contribution.toFixed(1)}</span>
             </div>
             <div className="h-1 w-full overflow-hidden rounded-full bg-muted">
-              <div className="h-full rounded-full bg-secondary" style={{ width: `${item.score * 100}%` }} />
+              <div
+                className="h-full rounded-full bg-secondary"
+                style={{ width: `${item.score * 100}%` }}
+              />
             </div>
           </li>
         ))}

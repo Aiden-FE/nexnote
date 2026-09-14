@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { FolderGit2, GitBranch, Moon, Sun } from 'lucide-react';
+import { FolderGit2, Moon, Sun } from 'lucide-react';
 import { statusBarRegistry } from '../../registries';
 import { invoke } from '../../lib/ipc';
 import { useVault } from '../../shell/vault-context';
@@ -8,7 +8,7 @@ import type { AppInfo } from '@nexnote/shared';
 
 /**
  * 状态栏内置条目：
- * - 左：vault 名称、Git 占位（DEV-007 接入分支/变更/ahead-behind/pull-push）
+ * - 左：知识库名称
  * - 右：主题切换、版本号
  */
 statusBarRegistry.register({ id: 'vault', align: 'left', render: VaultStatusItem });
@@ -22,20 +22,6 @@ function VaultStatusItem() {
     <span className="flex items-center gap-1.5" title={vault.root} data-testid="status-vault">
       <FolderGit2 className="size-3.5" />
       {vault.name}
-    </span>
-  );
-}
-
-function _GitStatusPlaceholder() {
-  return (
-    <span
-      className="flex items-center gap-1.5 opacity-60"
-      title="Git 底座将在 DEV-007 接入（分支/变更/pull-push）"
-      data-testid="status-git"
-    >
-      <GitBranch className="size-3.5" />
-      main
-      <span className="opacity-70">· Git 待接入 (DEV-007)</span>
     </span>
   );
 }

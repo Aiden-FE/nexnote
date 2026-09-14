@@ -20,7 +20,7 @@ commandRegistry.register({
   title: '新建标签页',
   category: '标签页',
   keywords: ['new', 'tab', '页面'],
-  shortcut: '⌘T（UI 快捷键 DEV-017）',
+  shortcut: '⌘T',
   run: () => void createPage(),
 });
 
@@ -40,7 +40,7 @@ commandRegistry.register({
   title: '切换到下一个标签页',
   category: '标签页',
   keywords: ['next', 'tab', 'cycle', '切换', '循环', '页签'],
-  shortcut: '⌃Tab / Ctrl+Tab（DEV-022）',
+  shortcut: '⌃Tab / Ctrl+Tab',
   run: () => tabs.getState().activateAdjacentTab(1),
 });
 
@@ -49,7 +49,7 @@ commandRegistry.register({
   title: '切换到上一个标签页',
   category: '标签页',
   keywords: ['previous', 'prev', 'tab', 'cycle', '切换', '循环', '页签'],
-  shortcut: '⌃⇧Tab / Ctrl+Shift+Tab（DEV-022）',
+  shortcut: '⌃⇧Tab / Ctrl+Shift+Tab',
   run: () => tabs.getState().activateAdjacentTab(-1),
 });
 
@@ -121,7 +121,7 @@ commandRegistry.register({
   title: '打开设置',
   category: '应用',
   keywords: ['settings', 'preferences', '设置', '首选项'],
-  shortcut: '⌘,（UI 快捷键 DEV-017）',
+  shortcut: '⌘,',
   run: () => openSettings(),
 });
 
@@ -136,7 +136,7 @@ commandRegistry.register({
 
 commandRegistry.register({
   id: 'app.checkUpdates',
-  title: '检查更新（占位）',
+  title: '检查更新',
   category: '应用',
   keywords: ['update', '更新'],
   run: async () => {
