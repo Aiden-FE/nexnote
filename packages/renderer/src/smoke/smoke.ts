@@ -1254,13 +1254,16 @@ export async function runSmokeIfEnabled(): Promise<void> {
     );
     check('旧布局 config（残留 files tab）写入成功', planted.ok, planted.error);
     await invoke('vault:open', { path: created.root });
+    // 规范化（丢弃残留 files tab）由主进程 readVaultConfig 保证，已在
+    // vault-manager 单测中固定为权威证据；此处只验证含旧配置的 vault 可正常打开，
+    // 且渲染层 tab 栈不出现任何 files 残留（防御性断言）。
     check(
-      '含 files tab 的旧布局恢复不崩溃',
+      '含 files tab 的旧配置 vault 可正常打开',
       await waitFor(() => !!document.querySelector('[data-testid="app-sidebar"]')),
     );
     const restoredTabs = useTabStore.getState().tabs;
     check(
-      '旧 files tab 被静默丢弃，无空白 tab',
+      '渲染层 tab 栈无 files 残留',
       restoredTabs.length > 0 && restoredTabs.every((tab) => (tab.kind as string) !== 'files'),
       restoredTabs.map((tab) => `${tab.kind}:${tab.title}`).join(','),
     );

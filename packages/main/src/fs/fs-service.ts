@@ -80,7 +80,7 @@ export class VaultFsService {
     const targetReal = await realpathOrNull(abs);
     const probe = targetReal ?? (await realpathOrNull(path.dirname(abs)));
     if (probe && !probe.startsWith(`${rootReal}${path.sep}`) && probe !== rootReal) {
-      throw new FsError(`路径解析后越出 vault 范围: ${normalized}`, 'OUTSIDE_VAULT');
+      throw new FsError(`路径解析后越出知识库范围: ${normalized}`, 'OUTSIDE_VAULT');
     }
     return { root, abs };
   }

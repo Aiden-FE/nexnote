@@ -17,7 +17,7 @@ import type {
 const AUTO_PREFIX = 'nexnote:auto:';
 const MANUAL_PREFIX = 'nexnote:manual:';
 const RESTORE_PREFIX = 'nexnote:restore:';
-const INITIAL_MESSAGE = 'nexnote:init: initialize vault';
+const INITIAL_MESSAGE = 'nexnote:init: 知识库初始化';
 export const DEFAULT_DEBOUNCE_MS = 30_000;
 export const MIN_COMMIT_INTERVAL_MS = 2_000;
 /** 编辑器防抖窗口允许的最小/最大范围（用户配置受此约束）。 */
