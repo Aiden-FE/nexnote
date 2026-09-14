@@ -45,13 +45,13 @@ export class VaultFsService {
 
   private async requireRoot(): Promise<string> {
     const root = this.getVaultRoot();
-    if (!root) throw new FsError('尚未打开任何 vault', 'NO_VAULT');
+    if (!root) throw new FsError('尚未打开任何知识库', 'NO_VAULT');
     return root;
   }
 
   private assertNotVaultRoot(relPath: string): void {
     if (relPath.trim().length === 0 || relPath.trim() === '.') {
-      throw new FsError('不允许对 vault 根目录执行此操作', 'VAULT_ROOT_OPERATION');
+      throw new FsError('不允许对知识库根目录执行此操作', 'VAULT_ROOT_OPERATION');
     }
   }
 
@@ -72,7 +72,7 @@ export class VaultFsService {
     const abs = path.resolve(root, normalized);
     const relFromRoot = path.relative(root, abs);
     if (relFromRoot.startsWith('..') || path.isAbsolute(relFromRoot)) {
-      throw new FsError(`路径越出 vault 范围: ${normalized}`, 'OUTSIDE_VAULT');
+      throw new FsError(`路径越出知识库范围: ${normalized}`, 'OUTSIDE_VAULT');
     }
     // 符号链接逃逸：目标存在则校验 realpath，不存在则校验其父目录 realpath。
     // 注意 root 自身也需 realpath 规范化（如 macOS /var → /private/var）。

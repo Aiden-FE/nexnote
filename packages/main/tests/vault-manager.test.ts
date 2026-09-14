@@ -102,6 +102,19 @@ describe('ensureVault（打开文件夹即初始化）', () => {
     expect(read.layout.sidebarWidth).toBe(400);
     expect(read.lastSession).toEqual(defaultVaultConfig().lastSession);
   });
+
+  it('旧配置 lastSession 残留的 files tab 恢复时被静默丢弃（DEV-021）', async () => {
+    const config = defaultVaultConfig();
+    config.lastSession = {
+      tabs: [
+        { kind: 'files', title: 'Vault 文件' },
+        { kind: 'page', title: '首页' },
+      ],
+    };
+    await writeVaultConfig(tmp, config);
+    const read = await readVaultConfig(tmp);
+    expect(read.lastSession.tabs).toEqual([{ kind: 'page', title: '首页' }]);
+  });
 });
 
 describe('createVault（新建空 vault）', () => {

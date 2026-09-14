@@ -719,13 +719,13 @@ export class GitService {
   }
 
   private requireRoot(): string {
-    if (!this.root) throw new GitServiceError('尚未打开任何 vault', 'NO_VAULT');
+    if (!this.root) throw new GitServiceError('尚未打开任何知识库', 'NO_VAULT');
     return this.root;
   }
 
   private requireVaultPath(file: string): string {
     if (!file || path.isAbsolute(file) || file.split(/[\\/]/).includes('..')) {
-      throw new GitServiceError('文件路径必须位于当前 vault 内', 'INVALID_PATH');
+      throw new GitServiceError('文件路径必须位于当前知识库内', 'INVALID_PATH');
     }
     return file.replace(/\\/g, '/');
   }
@@ -740,7 +740,7 @@ export class GitService {
       relative.endsWith('/.') ||
       relative.split('/').some((segment) => segment === '.')
     ) {
-      throw new GitServiceError('恢复目标必须是 vault 内的已跟踪文件', 'INVALID_PATH');
+      throw new GitServiceError('恢复目标必须是知识库内的已跟踪文件', 'INVALID_PATH');
     }
 
     // lstat every existing component: neither preview nor restore may follow a vault

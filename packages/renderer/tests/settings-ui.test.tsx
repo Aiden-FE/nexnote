@@ -217,6 +217,39 @@ describe('SettingsPage 搜索', () => {
   });
 });
 
+describe('术语统一「知识库」（DEV-021）', () => {
+  it('常规分区用户可见文案不含 vault / Vault 字样', async () => {
+    installBridge();
+    await mountAndLoad();
+    const navBtn = container.querySelector<HTMLButtonElement>(
+      '[data-testid="settings-nav-general"]',
+    )!;
+    await act(async () => {
+      navBtn.click();
+      await tick(20);
+    });
+    const copy = container.textContent ?? '';
+    expect(copy, copy).not.toMatch(/vault/i);
+    expect(copy).toContain('恢复上次知识库');
+    expect(copy).toContain('打开特定知识库');
+  });
+
+  it('关于分区数据说明改称知识库目录', async () => {
+    installBridge();
+    await mountAndLoad();
+    const navBtn = container.querySelector<HTMLButtonElement>(
+      '[data-testid="settings-nav-about"]',
+    )!;
+    await act(async () => {
+      navBtn.click();
+      await tick(20);
+    });
+    const copy = container.textContent ?? '';
+    expect(copy).toContain('所有数据保存在本地知识库目录中。');
+    expect(copy).not.toMatch(/vault/i);
+  });
+});
+
 describe('快捷键设置可编辑', () => {
   async function openShortcuts(): Promise<void> {
     await mountAndLoad();

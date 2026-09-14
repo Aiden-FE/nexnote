@@ -75,7 +75,7 @@ export class DocumentService {
     const absolute = path.resolve(this.root, documentPath);
     const relative = path.relative(this.root, absolute);
     if (relative.startsWith('..') || path.isAbsolute(relative))
-      throw new Error('文档路径越出 vault');
+      throw new Error('文档路径越出知识库');
     return absolute;
   }
 

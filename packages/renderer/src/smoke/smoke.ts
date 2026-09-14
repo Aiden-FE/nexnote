@@ -115,6 +115,14 @@ export async function runSmokeIfEnabled(): Promise<void> {
       !document.querySelector('[data-testid="guided-tour"]'),
     );
 
+    // ── 2c. 欢迎页占位按钮已删除（DEV-021）───────────────────
+    const welcomeCopy = document.querySelector('[data-testid="workspace-tabs"]')?.textContent ?? '';
+    check(
+      '欢迎页无「浏览 Vault 文件」占位按钮',
+      welcomeCopy.includes('快速上手') && !welcomeCopy.includes('Vault 文件'),
+      welcomeCopy.slice(0, 60),
+    );
+
     // ── 3. 首次工作区布局 ─────────────────────────────────────
     const treeRow = (rel: string): Element | null =>
       document.querySelector(`[data-testid="tree-row"][data-path="${CSS.escape(rel)}"]`);
@@ -504,6 +512,10 @@ export async function runSmokeIfEnabled(): Promise<void> {
     // 运行自定义注册命令
     commandRegistry.get('smoke.custom')?.run();
     check('外部模块可注册新命令并执行', customCommandRan);
+    check(
+      '⌘K 面板无「打开 Vault 文件浏览」命令（DEV-021）',
+      commandRegistry.get('tab.files') === undefined,
+    );
 
     // ── 7. 亮/暗主题 ─────────────────────────────────────────
     useThemeStore.getState().setPreference('dark');
@@ -569,37 +581,23 @@ export async function runSmokeIfEnabled(): Promise<void> {
     useUiStore.getState().toggleSidebar();
     await sleep(250);
 
-    // ── 9. IPC 文件能力（fs:listDir 真实数据进 UI）──────────
-    useTabStore.getState().openTab({ kind: 'files', title: 'Vault 文件' });
-    await waitFor(() => document.querySelectorAll('[data-testid="files-entry"]').length > 0);
-    const entriesText = [...document.querySelectorAll('[data-testid="files-entry"]')]
-      .map((el) => el.textContent ?? '')
-      .join(' ');
+    // ── 9. IPC 文件能力（fs:listDir 真实数据，锚定页面树）────
+    // DEV-021：FilesPage 占位页与 files tab 已删除，改锚侧栏页面树。
+    const rootEntries = await invoke('fs:listDir', { path: '' });
     check(
-      'fs:listDir 经 IPC 返回 vault 内容',
-      entriesText.includes('.nexnote'),
-      entriesText.slice(0, 80),
+      'fs:listDir 经 IPC 返回知识库内容',
+      rootEntries.some((entry) => entry.path === '.nexnote'),
+      rootEntries
+        .slice(0, 5)
+        .map((entry) => entry.path)
+        .join(','),
+    );
+    check(
+      '页面树常驻侧栏（文件浏览入口不受占位页删除影响）',
+      !!document.querySelector('[data-testid="tree-search-input"]'),
     );
 
     // ── 9.5 DEV-003 页面树与文件操作 ─────────────────────
-    // 关闭 FilesPage tab（smoke 前序步骤打开的），避免新 tab 不在前台
-    const filesTab = document.querySelector(
-      '[data-testid="tab"][data-page-path]',
-    ) as HTMLElement | null;
-    if (filesTab) {
-      const tabs = document.querySelectorAll('[data-pane="left"] [data-testid="tab"]');
-      void tabs;
-    }
-    // 关闭之前为了冒烟 section 9 打开的 Vault 文件 tab
-    {
-      const leftPane = (window as unknown as { __store: unknown }).__store;
-      void leftPane;
-    }
-    {
-      const fileTab = useTabStore.getState().tabs.find((t) => t.title === 'Vault 文件');
-      if (fileTab) useTabStore.getState().closeTab(fileTab.id);
-    }
-
     // 新建笔记（IPC）→ fs:changed 事件回流 → 树出现 + tab 打开（带 frontmatter）
     await invoke('fs:createNote', { parentDir: '', name: '冒烟首页' });
     openPage('冒烟首页.md');
@@ -1182,6 +1180,36 @@ export async function runSmokeIfEnabled(): Promise<void> {
     const recentShown = document.querySelector('[data-testid="onboarding"]')?.textContent ?? '';
     check('最近打开列表持久化并显示', recentShown.includes('smoke-vault'));
     await capture('08-recent-list');
+
+    // ── 11b. 旧布局含 files tab 的恢复兼容（DEV-021）────────
+    const legacyConfig = {
+      version: 1,
+      layout: { guideCompleted: true },
+      lastSession: { tabs: [{ kind: 'files', title: 'Vault 文件' }] },
+    };
+    const planted = await bridge.writeFile(
+      created.root,
+      '.nexnote/config.json',
+      JSON.stringify(legacyConfig, null, 2),
+    );
+    check('旧布局 config（残留 files tab）写入成功', planted.ok, planted.error);
+    await invoke('vault:open', { path: created.root });
+    check(
+      '含 files tab 的旧布局恢复不崩溃',
+      await waitFor(() => !!document.querySelector('[data-testid="app-sidebar"]')),
+    );
+    const restoredTabs = useTabStore.getState().tabs;
+    check(
+      '旧 files tab 被静默丢弃，无空白 tab',
+      restoredTabs.length > 0 && restoredTabs.every((tab) => (tab.kind as string) !== 'files'),
+      restoredTabs.map((tab) => `${tab.kind}:${tab.title}`).join(','),
+    );
+    await capture('21-legacy-files-tab-restore');
+    await invoke('vault:close');
+    check(
+      '旧布局恢复后可正常关闭回到向导',
+      await waitFor(() => !!document.querySelector('[data-testid="onboarding"]')),
+    );
   } catch (e) {
     check(
       '冒烟 harness 未抛错',
