@@ -205,7 +205,7 @@ export async function runSmokeIfEnabled(): Promise<void> {
       [...document.querySelectorAll<HTMLElement>('[data-testid="tab"]')].map(
         (el) => el.getAttribute('data-tab-identity') ?? '',
       );
-    const dndTabTo = (fromPath: string, toPath: string): void => {
+    const dndTabTo = async (fromPath: string, toPath: string): Promise<void> => {
       const from = tabEl(fromPath);
       const to = tabEl(toPath);
       if (!from || !to) return;
@@ -221,6 +221,8 @@ export async function runSmokeIfEnabled(): Promise<void> {
       from.dispatchEvent(
         eventWithTransfer(new DragEvent('dragstart', { bubbles: true, cancelable: true })),
       );
+      // React 18 需要一拍才提交 draggingTabId state；立即派发 dragover 会被拖拽源守卫忽略。
+      await new Promise((resolve) => requestAnimationFrame(() => resolve(null)));
       to.dispatchEvent(
         eventWithTransfer(
           new DragEvent('dragover', {
@@ -231,9 +233,12 @@ export async function runSmokeIfEnabled(): Promise<void> {
           }),
         ),
       );
+      const indicatorReady = await waitFor(
+        () => to.getAttribute('data-drop-indicator') === 'after',
+      );
       check(
         '拖拽悬停显示插入位置反馈',
-        to.getAttribute('data-drop-indicator') === 'after',
+        indicatorReady,
         to.getAttribute('data-drop-indicator') ?? '(none)',
       );
       to.dispatchEvent(
@@ -250,7 +255,7 @@ export async function runSmokeIfEnabled(): Promise<void> {
         eventWithTransfer(new DragEvent('dragend', { bubbles: true, cancelable: true })),
       );
     };
-    dndTabTo('冒烟页面 A.md', '冒烟页面 B.md');
+    await dndTabTo('冒烟页面 A.md', '冒烟页面 B.md');
     check(
       '拖拽重排：A 移到 B 之后，顺序立即更新',
       await waitFor(() => {
