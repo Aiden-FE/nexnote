@@ -43,6 +43,7 @@ import {
 import type { BlockMenuContext } from '@nexnote/kernel';
 import type { EditorKernelInstance, SlashMenuItem } from '@nexnote/kernel';
 import { withUncreated, filterTagCandidates } from './interactions/suggestions';
+import { createRedlinkPage, currentPageCandidates } from './wikilink-page-ops';
 import {
   buildBlockMenuItems,
   runBlockMenuAction,
@@ -526,33 +527,11 @@ export function EditorView({ tab }: EditorViewProps) {
         ];
       },
       wikilinkSuggestions: (query) => {
-        const summaries = useIndexStore.getState().pageSummaries;
-        const pages = usePageTreeStore
-          .getState()
-          .entries.filter((e) => e.kind === 'file' && e.path.toLowerCase().endsWith('.md'))
-          .map((e) => ({
-            path: e.path,
-            title: titleFromPath(e.path),
-            aliases: summaries[e.path]?.aliases ?? [],
-          }));
-        return withUncreated(pages, query);
+        return withUncreated(currentPageCandidates(), query);
       },
       // 红链回车创建：原子 create-if-absent 写入 `# 标题` 初始页；已存在则不动（不覆盖）
       onWikilinkSuggestionPick: (item) => {
-        if (item.meta !== 'uncreated') return;
-        const target = item.insert?.target ?? item.id;
-        const pageName = target.split('#')[0] || target;
-        // 逐段清洗保留 folder/Page 嵌套路径（整体清洗会把 '/' 换成 '-'）
-        const segments = pageName.split('/').map((seg) => sanitizePageTitle(seg));
-        const nextPath = `${segments.join('/')}.md`;
-        void invoke('fs:createTextFile', {
-          path: nextPath,
-          content: `# ${segments.at(-1) ?? titleFromPath(nextPath)}\n\n`,
-          createParentDirs: true,
-        }).catch((e) => {
-          // 页面创建失败不阻塞插入（链接仍指向未来的页面），但真实错误需可见
-          console.error('[EditorView] 红链页面创建失败', e);
-        });
+        createRedlinkPage(item);
       },
       hashtagSuggestions: (query) =>
         filterTagCandidates(

@@ -25,6 +25,8 @@ import { LivePreview, type InternalLinkNavigation } from './LivePreview';
 import { parseWholePage } from './parse-guard';
 import { registerModeSwitchHandler, requestSourceModeToggle } from './source-mode-toggle';
 import { syncScrollRatio } from './scroll-sync';
+import { sourceWikilinkCompletion } from './wikilink-completion';
+import { createRedlinkPage, currentPageCandidates } from '../wikilink-page-ops';
 
 type LoadState =
   { phase: 'loading' } | { phase: 'ready'; text: string } | { phase: 'error'; message: string };
@@ -257,6 +259,7 @@ export function SourceModeView({ tab }: { tab: TabDescriptor }) {
       // 划词工具栏（与块编辑一致）：询问 AI + 白名单写作动作，流式预览经共享
       // WritingAssistantLayer（WorkspaceView 全局挂载），Accept 单事务写回可 undo。
       extraExtensions: [
+        sourceWikilinkCompletion({ getPages: currentPageCandidates, onPick: createRedlinkPage }),
         sourceSelectionBubble({
           actions: [...writingBubbleActions(), { id: SOURCE_CHAT_ASK_ACTION, title: '询问 AI' }],
           onAction: (id, ctx) => {

@@ -7,6 +7,8 @@ export interface SidebarPanelDef {
   title: string;
   icon: LucideIcon;
   render: ComponentType;
+  /** 可选标签角标（由面板自身订阅实时数据；DEV-024 反链计数）。 */
+  renderBadge?: ComponentType;
 }
 
 /** 右侧 dock 面板插槽（DEV-012 AI 对话在此挂载）。 */

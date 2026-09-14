@@ -15,22 +15,50 @@ sidebarPanelRegistry.register({
   title: '反向链接',
   icon: Link2,
   render: BacklinksPanel,
+  renderBadge: BacklinksBadge,
 });
+
+/** 当前激活页面的反链数量角标；不主动改变侧栏当前面板。 */
+export function BacklinksBadge() {
+  const backlinks = useIndexStore((s) => s.backlinks);
+  const backlinksFor = useIndexStore((s) => s.backlinksFor);
+  const status = useIndexStore((s) => s.backlinksStatus);
+  const tabs = useTabStore((s) => s.tabs);
+  const activeTabId = useTabStore((s) => s.activeTabId);
+  const activePath = tabs.find((tab) => tab.id === activeTabId)?.pagePath ?? null;
+
+  useEffect(() => {
+    if (activePath) useIndexStore.getState().ensureBacklinks(activePath);
+    else useIndexStore.getState().clearBacklinks();
+  }, [activePath]);
+
+  const count =
+    activePath && backlinksFor === activePath && status === 'ready' ? backlinks.length : 0;
+  if (count === 0) return null;
+  return (
+    <span
+      data-testid="sidebar-backlink-badge"
+      title={`${count} 条反向链接`}
+      className="rounded-full bg-sidebar-accent px-1 text-[10px] leading-4 text-foreground"
+    >
+      {count}
+    </span>
+  );
+}
 
 function BacklinksPanel() {
   const backlinks = useIndexStore((s) => s.backlinks);
   const status = useIndexStore((s) => s.backlinksStatus);
   const forPath = useIndexStore((s) => s.backlinksFor);
-  const load = useIndexStore((s) => s.loadBacklinks);
   const tabs = useTabStore((s) => s.tabs);
   const activeTabId = useTabStore((s) => s.activeTabId);
 
-  // 激活页面变化 → 加载反链（tabs 订阅保证 tab 切换触发重渲）
+  // 激活页面变化 → 加载反链（与角标共用 ensure 去重）
   useEffect(() => {
     const tab = tabs.find((t) => t.id === activeTabId);
-    if (tab?.pagePath) void load(tab.pagePath);
+    if (tab?.pagePath) useIndexStore.getState().ensureBacklinks(tab.pagePath);
     else useIndexStore.getState().clearBacklinks();
-  }, [tabs, activeTabId, load]);
+  }, [tabs, activeTabId]);
 
   const open = (b: Backlink): void => {
     void openDocumentTab(b.fromPath);
