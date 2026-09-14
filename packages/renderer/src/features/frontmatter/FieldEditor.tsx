@@ -1,8 +1,13 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { ChevronDown, ChevronRight, MoreHorizontal, Plus, Trash2 } from 'lucide-react';
 import { cn } from '../../lib/utils';
-import type { FrontmatterData, FrontmatterValue } from '@nexnote/kernel';
-import { fieldTypeOf, isStandardField } from '@nexnote/kernel';
+import type { FrontmatterData, FrontmatterValue, StandardFieldDef } from '@nexnote/kernel';
+import {
+  assertSafeFrontmatterKey,
+  fieldTypeOf,
+  isStandardField,
+  STANDARD_FIELD_CATALOG,
+} from '@nexnote/kernel';
 import { Input } from '../../components/ui/input';
 import { Button } from '../../components/ui/button';
 
@@ -15,7 +20,24 @@ export interface FieldEditorProps {
 
 type FieldType = 'string' | 'number' | 'boolean' | 'date' | 'list' | 'null';
 
-const STANDARD_ORDER = ['title', 'tags', 'aliases', 'created', 'updated', 'type', 'confidence'];
+const STANDARD_ORDER = STANDARD_FIELD_CATALOG.map((field) => field.key);
+const STANDARD_DESCRIPTIONS = new Map(STANDARD_FIELD_CATALOG.map((f) => [f.key, f.description]));
+
+/** 标准字段按预定义类型给出的初始值（日期取当前时间）。 */
+function defaultValueForStandardField(field: StandardFieldDef): FrontmatterValue {
+  switch (field.type) {
+    case 'list':
+      return [];
+    case 'date':
+      return new Date();
+    case 'number':
+      return 0;
+    case 'boolean':
+      return false;
+    default:
+      return '';
+  }
+}
 
 function sortedKeys(data: FrontmatterData): string[] {
   const standard = STANDARD_ORDER.filter((k) => Object.prototype.hasOwnProperty.call(data, k));
@@ -27,8 +49,24 @@ function sortedKeys(data: FrontmatterData): string[] {
 
 export function FieldEditor({ data, onChange, knownTags, onRename }: FieldEditorProps) {
   const [draftKey, setDraftKey] = useState('');
-  const [showAdd, setShowAdd] = useState(false);
+  const [showCatalog, setShowCatalog] = useState(false);
+  const [showCustom, setShowCustom] = useState(false);
+  const catalogRef = useRef<HTMLDivElement>(null);
   const keys = useMemo(() => sortedKeys(data), [data]);
+
+  // 点击目录外关闭浮层
+  useEffect(() => {
+    if (!showCatalog) return;
+    const onPointerDown = (event: PointerEvent) => {
+      if (catalogRef.current && !catalogRef.current.contains(event.target as Node)) {
+        setShowCatalog(false);
+        setShowCustom(false);
+        setDraftKey('');
+      }
+    };
+    document.addEventListener('pointerdown', onPointerDown);
+    return () => document.removeEventListener('pointerdown', onPointerDown);
+  }, [showCatalog]);
 
   const update = (key: string, value: FrontmatterValue) => {
     onChange({ ...data, [key]: value });
@@ -49,17 +87,31 @@ export function FieldEditor({ data, onChange, knownTags, onRename }: FieldEditor
     onRename?.(key, next);
   };
 
-  const addField = () => {
-    const name = draftKey.trim();
-    if (!name) return;
+  const closeCatalog = () => {
+    setShowCatalog(false);
+    setShowCustom(false);
+    setDraftKey('');
+  };
+
+  const addStandardField = (field: StandardFieldDef) => {
+    if (Object.prototype.hasOwnProperty.call(data, field.key)) return;
+    update(field.key, defaultValueForStandardField(field));
+    closeCatalog();
+  };
+
+  const addCustomField = () => {
+    let name: string;
+    try {
+      name = assertSafeFrontmatterKey(draftKey);
+    } catch {
+      return;
+    }
     if (Object.prototype.hasOwnProperty.call(data, name)) {
-      setShowAdd(false);
-      setDraftKey('');
+      closeCatalog();
       return;
     }
     update(name, '');
-    setShowAdd(false);
-    setDraftKey('');
+    closeCatalog();
   };
 
   return (
@@ -75,37 +127,83 @@ export function FieldEditor({ data, onChange, knownTags, onRename }: FieldEditor
           knownTags={knownTags}
         />
       ))}
-      {showAdd ? (
-        <div className="flex items-center gap-2">
-          <Input
-            autoFocus
-            value={draftKey}
-            placeholder="字段名（如 category）"
-            onChange={(e) => setDraftKey(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === 'Enter') addField();
-              if (e.key === 'Escape') {
-                setShowAdd(false);
-                setDraftKey('');
-              }
-            }}
-          />
-          <Button size="sm" variant="secondary" onClick={addField}>
-            添加
-          </Button>
-          <Button
-            variant="ghost"
-            onClick={() => {
-              setShowAdd(false);
-              setDraftKey('');
-            }}
-          >
-            取消
-          </Button>
+      {showCatalog ? (
+        <div
+          ref={catalogRef}
+          data-testid="field-catalog"
+          className="rounded-md border bg-popover p-2 text-xs shadow-md"
+        >
+          <div className="mb-1 px-1 text-[11px] font-medium text-muted-foreground">字段目录</div>
+          <ul className="max-h-64 space-y-0.5 overflow-auto">
+            {STANDARD_FIELD_CATALOG.map((field) => {
+              const added = Object.prototype.hasOwnProperty.call(data, field.key);
+              return (
+                <li key={field.key}>
+                  <button
+                    type="button"
+                    data-testid="field-catalog-item"
+                    data-field={field.key}
+                    disabled={added}
+                    title={field.description}
+                    onClick={() => addStandardField(field)}
+                    className={cn(
+                      'flex w-full items-center gap-2 rounded px-2 py-1.5 text-left',
+                      added ? 'cursor-not-allowed opacity-60' : 'hover:bg-accent',
+                    )}
+                  >
+                    <span className="font-medium text-foreground">{field.key}</span>
+                    <TypeBadge type={field.type} />
+                    <span className="min-w-0 flex-1 truncate text-muted-foreground">
+                      {field.description}
+                    </span>
+                    {added && (
+                      <span className="shrink-0 rounded bg-muted px-1.5 py-0.5 text-[10px] text-muted-foreground">
+                        已添加
+                      </span>
+                    )}
+                  </button>
+                </li>
+              );
+            })}
+          </ul>
+          <div className="mt-1 border-t pt-1.5">
+            {showCustom ? (
+              <div className="flex items-center gap-2 px-1 pb-1">
+                <Input
+                  autoFocus
+                  data-testid="field-catalog-custom-input"
+                  value={draftKey}
+                  placeholder="自定义字段名（如 category）"
+                  onChange={(e) => setDraftKey(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') addCustomField();
+                    if (e.key === 'Escape') closeCatalog();
+                  }}
+                />
+                <Button size="sm" variant="secondary" onClick={addCustomField}>
+                  添加
+                </Button>
+              </div>
+            ) : (
+              <button
+                type="button"
+                data-testid="field-catalog-custom"
+                className="flex w-full items-center gap-2 rounded px-2 py-1.5 text-left text-muted-foreground hover:bg-accent"
+                onClick={() => setShowCustom(true)}
+              >
+                <Plus className="size-3.5" /> 自定义字段…
+              </button>
+            )}
+          </div>
         </div>
       ) : (
-        <Button size="sm" variant="ghost" onClick={() => setShowAdd(true)}>
-          <Plus className="size-3.5" /> 添加自定义字段
+        <Button
+          size="sm"
+          variant="ghost"
+          data-testid="add-field-trigger"
+          onClick={() => setShowCatalog(true)}
+        >
+          <Plus className="size-3.5" /> 添加字段
         </Button>
       )}
     </div>
@@ -181,7 +279,7 @@ function FieldRow({ name, value, onChange, onRemove, onRename, knownTags }: Fiel
                 setEditingKey(true);
               }
             }}
-            title={standard ? '标准字段' : '双击重命名'}
+            title={standard ? (STANDARD_DESCRIPTIONS.get(name) ?? '标准字段') : '双击重命名'}
           >
             {name}
             {standard && <span className="ml-1 text-[10px] text-muted-foreground">标准</span>}

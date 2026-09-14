@@ -8,6 +8,7 @@ import {
   parseFrontmatterYaml,
   serializeFrontmatterYaml,
   splitFrontmatter,
+  STANDARD_FIELD_CATALOG,
 } from '../src';
 
 describe('parseFrontmatterYaml', () => {
@@ -132,6 +133,40 @@ describe('splitFrontmatter 集成', () => {
     const nextYaml = serializeFrontmatterYaml(data);
     expect(nextYaml).toContain('title: B');
     expect(nextYaml).toContain('tags: [t1, t2]');
+  });
+});
+
+describe('标准字段目录（DEV-025）', () => {
+  it('恰好 7 个标准字段，顺序固定', () => {
+    expect(STANDARD_FIELD_CATALOG.map((field) => field.key)).toEqual([
+      'title',
+      'tags',
+      'aliases',
+      'created',
+      'updated',
+      'type',
+      'confidence',
+    ]);
+  });
+
+  it('每个字段带类型与一句话说明（集中定义，不散落字符串）', () => {
+    expect(STANDARD_FIELD_CATALOG.length).toBe(7);
+    for (const field of STANDARD_FIELD_CATALOG) {
+      expect(['string', 'list', 'date', 'number', 'boolean']).toContain(field.type);
+      expect(field.description.trim().length).toBeGreaterThan(4);
+    }
+    expect(STANDARD_FIELD_CATALOG.find((f) => f.key === 'confidence')?.description).toContain(
+      'Git',
+    );
+    expect(STANDARD_FIELD_CATALOG.find((f) => f.key === 'tags')?.type).toBe('list');
+    expect(STANDARD_FIELD_CATALOG.find((f) => f.key === 'created')?.type).toBe('date');
+  });
+
+  it('与 isStandardField 判定一致', () => {
+    for (const field of STANDARD_FIELD_CATALOG) {
+      expect(isStandardField(field.key)).toBe(true);
+    }
+    expect(isStandardField('not_a_standard_field')).toBe(false);
   });
 });
 

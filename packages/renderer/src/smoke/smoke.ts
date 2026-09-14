@@ -365,10 +365,18 @@ export async function runSmokeIfEnabled(): Promise<void> {
         !!document.querySelector('[data-testid="source-editor-pane"] .cm-content'),
     );
     check(
-      '源码包含原始 YAML 且属性面板隐藏',
-      (document.querySelector('[data-testid="source-editor-pane"]')?.textContent ?? '').includes(
-        'title: 源码模式冒烟',
-      ) && !document.querySelector('[data-testid="frontmatter-panel"]'),
+      'Markdown 属性面板挂载且 YAML 从正文抽离（DEV-025）',
+      (await waitFor(() => !!document.querySelector('[data-testid="frontmatter-panel"]'))) &&
+        !(document.querySelector('[data-testid="source-editor-pane"]')?.textContent ?? '').includes(
+          'title: 源码模式冒烟',
+        ) &&
+        (document.querySelector('[data-testid="source-editor-pane"]')?.textContent ?? '').includes(
+          '# 源码模式冒烟',
+        ),
+    );
+    check(
+      '属性面板显示已有标准字段',
+      !!document.querySelector('[data-testid="frontmatter-field-title"]'),
     );
     // 划词工具栏（真实 Chromium 验收）：在源码编辑器中制造非空选区，工具栏须出现在选区上方。
     // 划词工具栏展示由单测（source-selection-bubble.test.tsx，真实 CM + dispatch 路径）
@@ -516,9 +524,9 @@ export async function runSmokeIfEnabled(): Promise<void> {
       await sleep(2_000);
       const renamedSaved = await invoke('fs:readTextFile', { path: '源码模式改名页.md' });
       check(
-        'Markdown 防抖保存逐字节写回',
-        renamedSaved === markdownRenamedRaw,
-        renamedSaved.slice(0, 60),
+        'Markdown 防抖保存逐字节写回正文且保留 YAML 头（DEV-025）',
+        renamedSaved === `---\ntitle: 源码模式冒烟\n---\n\n${markdownRenamedRaw}`,
+        renamedSaved.slice(0, 80),
       );
       check(
         'Markdown H1 改名同步页面树与 Tab',
@@ -561,6 +569,43 @@ export async function runSmokeIfEnabled(): Promise<void> {
         !!document.querySelector('[data-testid="source-editor-pane"] .cm-content'),
     );
     await capture('04-source-mode-reset');
+
+    // ── 5b. DEV-025 字段目录：7 标准字段可见、已添加禁用、面板写回 YAML 头 ──
+    document.querySelector<HTMLButtonElement>('[data-testid="add-field-trigger"]')?.click();
+    check(
+      '字段目录打开：7 个标准字段全部可见',
+      (await waitFor(() => !!document.querySelector('[data-testid="field-catalog"]'))) &&
+        document.querySelectorAll('[data-testid="field-catalog-item"]').length === 7,
+    );
+    const catalogTitleItem = document.querySelector<HTMLButtonElement>(
+      '[data-testid="field-catalog-item"][data-field="title"]',
+    );
+    check(
+      '已添加标准字段禁用并标「已添加」',
+      catalogTitleItem?.disabled === true &&
+        (catalogTitleItem?.textContent ?? '').includes('已添加'),
+      catalogTitleItem?.textContent ?? 'missing',
+    );
+    check(
+      '字段行 hover 说明 tooltip 与目录集中定义一致',
+      (
+        document
+          .querySelector('[data-testid="field-catalog-item"][data-field="confidence"]')
+          ?.getAttribute('title') ?? ''
+      ).includes('Git'),
+    );
+    document
+      .querySelector<HTMLButtonElement>('[data-testid="field-catalog-item"][data-field="tags"]')
+      ?.click();
+    await sleep(2_500); // 面板 onChange → 防抖保存
+    const withTags = await invoke('fs:readTextFile', { path: '源码模式改名页.md' });
+    check(
+      '面板添加标准字段写回 YAML 头且正文字节不动',
+      withTags.startsWith('---\ntitle: 源码模式冒烟\ntags: []\n---') &&
+        withTags.endsWith('# 源码模式改名页\n\n链接到[[源码模式跳转目标]]\n'),
+      withTags.slice(0, 100),
+    );
+    await capture('21-md-field-catalog');
 
     // ── 6. ⌘K 命令面板：唤起 + 过滤 + 键盘执行 ────────────────
     window.dispatchEvent(
