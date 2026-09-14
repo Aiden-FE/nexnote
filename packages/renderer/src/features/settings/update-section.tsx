@@ -1,6 +1,11 @@
 import { useEffect, useState } from 'react';
 import { Download, RefreshCw, Rocket } from 'lucide-react';
-import type { UpdateCheckResult, UpdateSettings, UpdateSettingsPatch } from '@nexnote/shared';
+import type {
+  UpdateCheckResult,
+  UpdateInstallResult,
+  UpdateSettings,
+  UpdateSettingsPatch,
+} from '@nexnote/shared';
 import { settingsSectionRegistry } from '../../registries';
 import { invoke, onEvent } from '../../lib/ipc';
 
@@ -93,12 +98,23 @@ export function UpdateSettingsSection() {
   const handleInstall = async (): Promise<void> => {
     setBusy(true);
     try {
-      await invoke('app:installUpdate');
+      const result = await invoke('app:installUpdate');
+      const install = result as UpdateInstallResult;
+      if (install.action === 'manual-download') {
+        setStatus({
+          status: 'downloaded',
+          message: `当前 Mac 架构 ${install.arch} 未满足自动安装条件；已打开 Releases，请下载对应架构。`,
+          channel: settings.channel,
+          action: 'manual-download',
+          arch: install.arch,
+        });
+      }
     } catch (e) {
       setStatus({
         status: 'error',
         message: e instanceof Error ? e.message : String(e),
         channel: settings.channel,
+        recoverable: true,
       });
     } finally {
       setBusy(false);
@@ -188,7 +204,7 @@ export function UpdateSettingsSection() {
             <Download className="size-3.5" /> 下载
           </button>
         )}
-        {status.status === 'downloaded' && (
+        {(status.status === 'downloaded' || (status.status === 'error' && status.recoverable)) && (
           <button
             type="button"
             disabled={busy}
@@ -198,9 +214,22 @@ export function UpdateSettingsSection() {
             <Rocket className="size-3.5" /> 重启并安装
           </button>
         )}
+        {status.action === 'manual-download' && (
+          <p className="w-full text-xs text-muted-foreground" role="status">
+            Mac {status.arch ?? '当前'} 架构未满足自动安装条件。已打开 GitHub
+            Releases；如系统提示隔离，可在终端执行
+            <code className="mx-1 rounded bg-muted px-1">xattr -d com.apple.quarantine</code>
+            后重新打开下载的应用。
+          </p>
+        )}
+        {status.status === 'error' && status.recoverable && (
+          <p className="w-full text-xs text-muted-foreground" role="alert">
+            安装未完成，更新仍已保留；请重试“重启并安装”。
+          </p>
+        )}
       </div>
       <p className="text-xs text-muted-foreground">
-        自动检查在应用启动 5 秒后执行（若已启用）；下载完成后退出应用也会自动安装。
+        自动检查在应用启动 5 秒后执行（若已启用）；下载完成后始终需要你确认安装。
       </p>
     </section>
   );

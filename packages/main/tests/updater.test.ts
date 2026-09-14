@@ -14,7 +14,9 @@ import {
   setUpdateChannel,
   setUpdateSettings,
   setUpdaterAdapterForTests,
+  setUpdaterPlatformForTests,
   type UpdaterAdapter,
+  type UpdaterPlatformAdapter,
 } from '../src/updater';
 
 function makeAdapter() {
@@ -45,10 +47,12 @@ function bakeChannel(channel: string): string {
 }
 
 let restore = () => {};
+let restorePlatform = () => {};
 let envBackup: NodeJS.ProcessEnv = {};
 
 afterEach(() => {
   restore();
+  restorePlatform();
   process.env = { ...envBackup };
 });
 
@@ -154,6 +158,7 @@ describe('updater policy', () => {
     );
     expect(adapter.channel).toBe('beta');
     expect(adapter.autoDownload).toBe(true);
+    expect(adapter.autoInstallOnAppQuit).toBe(false);
     expect(await checkForUpdates()).toMatchObject({
       status: 'available',
       version: '9.9.9',
@@ -169,6 +174,13 @@ describe('updater policy', () => {
     envBackup = { ...process.env };
     const { adapter, listeners } = makeAdapter();
     restore = setUpdaterAdapterForTests(adapter, { isPackaged: true, getVersion: () => '0.1.0' });
+    restorePlatform = setUpdaterPlatformForTests({
+      platform: 'linux',
+      arch: 'x64',
+      getAppBundlePath: () => undefined,
+      verifyMacAppSignature: () => ({ status: 'invalid', authorities: [] }),
+      openExternal: vi.fn(),
+    });
     const statuses: Array<{ status: string; progress?: number }> = [];
     initAutoUpdater(
       () => {},
@@ -180,7 +192,7 @@ describe('updater policy', () => {
     expect(await downloadUpdate()).toMatchObject({ status: 'downloading' });
     expect(() => installUpdate()).toThrow(/没有已下载/);
     listeners.get('update-downloaded')?.({ version: '9.9.9' });
-    expect(installUpdate()).toEqual({ willRestart: true });
+    expect(installUpdate()).toMatchObject({ willRestart: true, action: 'install-started' });
     expect(adapter.quitAndInstall).toHaveBeenCalledWith(false, true);
   });
 
@@ -197,15 +209,73 @@ describe('updater policy', () => {
     listeners.get('update-available')?.({ version: '9.9.9' });
     listeners.get('update-available')?.({ version: '9.9.9' });
     expect(statuses.filter((s) => s.status === 'available')).toHaveLength(1);
-    // autoDownload is enabled, but manual duplicate calls still dedupe through
-    // the in-flight guard rather than starting parallel downloads.
+    // A resolved promise without update-downloaded is a failed/missed confirmation;
+    // clear the guard so the user can retry rather than getting stuck.
     await downloadUpdate();
     await downloadUpdate();
-    expect(adapter.downloadUpdate).toHaveBeenCalledTimes(1);
+    expect(adapter.downloadUpdate).toHaveBeenCalledTimes(2);
     // After explicit download confirmation event, a second call returns cached.
     listeners.get('update-downloaded')?.({ version: '9.9.9' });
     const cached = await downloadUpdate();
     expect(cached.status).toBe('downloaded');
+  });
+
+  it('uses manual download for an unsigned Mac and retains downloaded state', async () => {
+    delete process.env.NEXNOTE_UPDATE_CHANNEL;
+    envBackup = { ...process.env };
+    const { adapter, listeners } = makeAdapter();
+    restore = setUpdaterAdapterForTests(adapter, { isPackaged: true, getVersion: () => '0.1.0' });
+    const openExternal = vi.fn();
+    const platform: UpdaterPlatformAdapter = {
+      platform: 'darwin',
+      arch: 'arm64',
+      getAppBundlePath: () => '/Applications/NexNote.app',
+      verifyMacAppSignature: () => ({ status: 'adhoc', authorities: [] }),
+      openExternal,
+    };
+    restorePlatform = setUpdaterPlatformForTests(platform);
+    initAutoUpdater(() => {});
+    await checkForUpdates();
+    listeners.get('update-downloaded')?.({ version: '9.9.9' });
+    expect(installUpdate()).toMatchObject({
+      willRestart: false,
+      action: 'manual-download',
+      arch: 'arm64',
+    });
+    expect(openExternal).toHaveBeenCalledWith(
+      'https://github.com/Aiden-FE/nexnote/releases/latest',
+    );
+    expect(adapter.quitAndInstall).not.toHaveBeenCalled();
+  });
+
+  it('starts installation on a signed Mac', async () => {
+    const { adapter, listeners } = makeAdapter();
+    restore = setUpdaterAdapterForTests(adapter, { isPackaged: true, getVersion: () => '0.1.0' });
+    restorePlatform = setUpdaterPlatformForTests({
+      platform: 'darwin',
+      arch: 'x64',
+      getAppBundlePath: () => '/Applications/NexNote.app',
+      verifyMacAppSignature: () => ({
+        status: 'signed',
+        authorities: ['Developer ID Application: NexNote'],
+      }),
+      openExternal: vi.fn(),
+    });
+    initAutoUpdater(() => {});
+    await checkForUpdates();
+    listeners.get('update-downloaded')?.({ version: '9.9.9' });
+    expect(installUpdate()).toMatchObject({ willRestart: true, action: 'install-started' });
+    expect(adapter.quitAndInstall).toHaveBeenCalledWith(false, true);
+  });
+
+  it('allows retry after a download promise resolves without confirmation', async () => {
+    const { adapter, listeners } = makeAdapter();
+    restore = setUpdaterAdapterForTests(adapter, { isPackaged: true, getVersion: () => '0.1.0' });
+    initAutoUpdater(() => {});
+    await checkForUpdates();
+    expect((await downloadUpdate()).status).toBe('downloading');
+    listeners.get('update-downloaded')?.({ version: '9.9.9' });
+    expect((await downloadUpdate()).status).toBe('downloaded');
   });
 
   it('does not install before a packaged update is downloaded', () => {

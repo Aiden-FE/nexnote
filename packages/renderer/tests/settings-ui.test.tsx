@@ -5,6 +5,8 @@ import { createRoot } from 'react-dom/client';
 import { defaultGlobalSettings, type SettingSearchEntry } from '@nexnote/shared';
 import '../src/features/settings';
 import { SettingsPage } from '../src/pages/SettingsPage';
+import { UpdateSettingsSection } from '../src/features/settings/update-section';
+import { useSettingsNav } from '../src/lib/open-settings';
 import { subscribeSettingsChanges, useSettingsStore } from '../src/stores/settings-store';
 
 let container: HTMLDivElement;
@@ -51,6 +53,12 @@ function installBridge(mock?: Record<string, unknown>) {
         },
       } as const);
     }
+    if (channel === 'app:getUpdateSettings') {
+      return Promise.resolve({
+        ok: true,
+        data: { channel: 'stable', autoDownload: true, checkOnLaunch: true },
+      } as const);
+    }
     return Promise.resolve({ ok: true, data: null } as const);
   });
   (window as unknown as { nexnote: unknown }).nexnote = {
@@ -68,6 +76,7 @@ function installBridge(mock?: Record<string, unknown>) {
 }
 
 beforeEach(() => {
+  useSettingsNav.setState({ activeId: null });
   useSettingsStore.setState({ global: null, vault: null, loading: false, error: null });
   container = document.createElement('div');
   document.body.appendChild(container);
@@ -86,6 +95,19 @@ async function mountAndLoad(): Promise<void> {
     await tick(50);
   });
 }
+
+describe('更新设置', () => {
+  it('从主进程加载更新设置并显示单一权威', async () => {
+    const { invokeSpy } = installBridge();
+    await act(async () => {
+      root.render(<UpdateSettingsSection />);
+      await tick(20);
+    });
+    expect(container.querySelector('[data-testid="update-settings"]')).toBeTruthy();
+    expect(invokeSpy).toHaveBeenCalledWith('app:getUpdateSettings', undefined);
+    expect(container.textContent).toContain('所有更新设置保存在主进程');
+  });
+});
 
 describe('SettingsPage 搜索', () => {
   beforeEach(() => {

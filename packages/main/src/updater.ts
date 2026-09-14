@@ -1,6 +1,8 @@
+import { sep } from 'node:path';
 import type {
   UpdateChannel,
   UpdateCheckResult,
+  UpdateInstallResult,
   UpdateSettings,
   UpdateSettingsPatch,
 } from '@nexnote/shared';
@@ -28,16 +30,32 @@ export interface UpdaterAdapter {
   setFeedURL(config: UpdateFeedConfig): void;
 }
 
+/** The small platform seam is deliberately independent of electron-updater. */
+export type MacSignatureStatus = 'signed' | 'adhoc' | 'unsigned' | 'invalid';
+export interface MacSignatureVerification {
+  status: MacSignatureStatus;
+  authorities: string[];
+  detail?: string;
+}
+export interface UpdaterPlatformAdapter {
+  readonly platform: NodeJS.Platform;
+  readonly arch: string;
+  getAppBundlePath(): string | undefined;
+  verifyMacAppSignature(bundlePath: string): MacSignatureVerification;
+  openExternal(url: string): void | Promise<void>;
+}
+
 /** Accepted publish configurations (a subset of what electron-updater supports). */
 export type UpdateFeedConfig =
   | { provider: 'github'; owner: string; repo: string; channel?: string }
   | { provider: 'generic'; url: string; channel?: string };
 
 const VALID_CHANNELS: readonly UpdateChannel[] = ['stable', 'beta', 'alpha'] as const;
-
-/** Must match the git origin, not a hard-coded placeholder. */
+const UPDATE_URL_ALLOWLIST = [`https://github.com/Aiden-FE/nexnote`];
+export const INSTALL_TIMEOUT_MS = 15_000;
 export const REPO_OWNER = 'Aiden-FE';
 export const REPO_NAME = 'nexnote';
+export const RELEASES_LATEST_URL = `https://github.com/${REPO_OWNER}/${REPO_NAME}/releases/latest`;
 
 /** Normalize arbitrary input to a channel, or undefined when not stable|beta|alpha. */
 export function normalizeChannel(raw: unknown): UpdateChannel | undefined {
@@ -45,17 +63,10 @@ export function normalizeChannel(raw: unknown): UpdateChannel | undefined {
   return value && VALID_CHANNELS.includes(value) ? value : undefined;
 }
 
-/** Deterministic env override, pinned by CI so a build never silently drifts to stable. */
 function resolveChannelFromEnv(): UpdateChannel {
   return normalizeChannel(process.env.NEXNOTE_UPDATE_CHANNEL) ?? 'stable';
 }
 
-/**
- * The channel electron-builder baked into app-update.yml at build time.
- * This is the only channel the packaged app knows about: NEXNOTE_UPDATE_CHANNEL is a
- * build-time variable and is *not* present in the shipped process.env. Reading this is
- * what makes stable/beta/alpha packages behave differently instead of all defaulting to stable.
- */
 let getResourcesPath = (): string | undefined => process.resourcesPath;
 
 function readBakedChannel(): UpdateChannel | undefined {
@@ -75,7 +86,6 @@ function readBakedChannel(): UpdateChannel | undefined {
   }
 }
 
-/** Startup channel priority: persisted selection → baked app-update.yml → env → stable. */
 function resolveStartupChannel(persisted: UpdateChannel | undefined): UpdateChannel {
   if (persisted && VALID_CHANNELS.includes(persisted)) return persisted;
   if (electronApp.isPackaged) {
@@ -88,11 +98,25 @@ function resolveStartupChannel(persisted: UpdateChannel | undefined): UpdateChan
 export const updaterChannel = (channel: UpdateChannel): string =>
   channel === 'stable' ? 'latest' : channel;
 
+/** Production ignores arbitrary update endpoints; test/dev may use a local generic feed. */
+function allowedUpdateBase(raw: string | undefined, packaged: boolean): string | undefined {
+  const value = raw?.trim().replace(/\/+$/, '');
+  if (!value) return undefined;
+  try {
+    const url = new URL(value);
+    if (url.protocol !== 'https:') return undefined;
+    if (!packaged || process.env.NODE_ENV !== 'production') return value;
+    return UPDATE_URL_ALLOWLIST.includes(value) ? value : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
 const feedConfig = (channel: UpdateChannel): UpdateFeedConfig => {
   if (!VALID_CHANNELS.includes(channel)) {
     throw new Error(`非法更新通道: ${channel}（必须是 stable/beta/alpha）`);
   }
-  const genericBase = process.env.NEXNOTE_UPDATE_URL?.replace(/\/+$/, '');
+  const genericBase = allowedUpdateBase(process.env.NEXNOTE_UPDATE_URL, electronApp.isPackaged);
   if (genericBase)
     return {
       provider: 'generic',
@@ -107,13 +131,65 @@ const feedConfig = (channel: UpdateChannel): UpdateFeedConfig => {
   };
 };
 
-/** electron-updater 的 autoUpdater 在 import 时即读取 Electron app（Node 环境会崩），按需懒加载。 */
 const lazyAutoUpdater = (): UpdaterAdapter =>
   // eslint-disable-next-line @typescript-eslint/no-require-imports
   require('electron-updater').autoUpdater as unknown as UpdaterAdapter;
 
+function defaultPlatformAdapter(): UpdaterPlatformAdapter {
+  return {
+    platform: process.platform,
+    arch: process.arch,
+    getAppBundlePath() {
+      if (process.platform !== 'darwin') return undefined;
+      return deriveMacAppBundlePath(process.execPath);
+    },
+    verifyMacAppSignature(bundlePath) {
+      // eslint-disable-next-line @typescript-eslint/no-require-imports
+      const { execFileSync } = require('node:child_process') as {
+        execFileSync: (file: string, args: string[], options: Record<string, unknown>) => unknown;
+      };
+      try {
+        execFileSync('codesign', ['--verify', '--deep', '--strict', bundlePath], {
+          stdio: 'pipe',
+        });
+        const details = execFileSync('codesign', ['-dv', '--verbose=4', bundlePath], {
+          encoding: 'utf8',
+          stdio: ['ignore', 'pipe', 'pipe'],
+        }) as string;
+        const authorities = [...details.matchAll(/^Authority=(.+)$/gm)].map((m) => m[1]!.trim());
+        if (/^Signature=adhoc$/m.test(details)) return { status: 'adhoc', authorities };
+        if (authorities.length > 0) return { status: 'signed', authorities };
+        return { status: 'unsigned', authorities };
+      } catch (error) {
+        return {
+          status: 'invalid',
+          authorities: [],
+          detail: error instanceof Error ? error.message : String(error),
+        };
+      }
+    },
+    openExternal(url) {
+      // eslint-disable-next-line @typescript-eslint/no-require-imports
+      const { shell } = require('electron') as {
+        shell?: { openExternal(url: string): Promise<void> };
+      };
+      if (shell?.openExternal) void shell.openExternal(url);
+    },
+  };
+}
+
+/** Derive the distributable .app from Electron's Contents/MacOS executable path. */
+export function deriveMacAppBundlePath(execPath: string): string | undefined {
+  const marker = `${sep}Contents${sep}MacOS${sep}`;
+  const index = execPath.indexOf(marker);
+  return index > 0 && execPath.slice(0, index).endsWith('.app')
+    ? execPath.slice(0, index)
+    : undefined;
+}
+
 let adapter: UpdaterAdapter | null = null;
 const getAdapter = (): UpdaterAdapter => (adapter ??= lazyAutoUpdater());
+let platformAdapter: UpdaterPlatformAdapter = defaultPlatformAdapter();
 let sendStatus: SendStatus = () => {};
 let logger: Log = () => {};
 let activeChannel: UpdateChannel = resolveChannelFromEnv();
@@ -137,19 +213,19 @@ function emit(
   status: UpdateCheckResult['status'],
   message?: string,
   progress?: number,
+  extra: Partial<UpdateCheckResult> = {},
 ): UpdateCheckResult {
   const result: UpdateCheckResult & { channel: UpdateChannel } = {
     status,
     ...(message ? { message } : {}),
     ...(availableVersion ? { version: availableVersion } : {}),
     channel: activeChannel,
+    ...extra,
   };
   sendStatus({ ...result, ...(progress === undefined ? {} : { progress }) });
   return result;
 }
 
-/** Production policy: silent startup check when enabled, automatic download when enabled,
- * explicit user-confirmed restart/install. */
 export function initAutoUpdater(
   log: Log,
   statusSender: SendStatus = () => {},
@@ -173,17 +249,16 @@ export function initAutoUpdater(
   }
 
   const a = getAdapter();
-  // electron-updater owns automatic transfer when enabled; update-downloaded
-  // remains the sole authority that enables the renderer's restart prompt.
   a.autoDownload = autoDownloadSetting;
-  a.autoInstallOnAppQuit = true;
-  // electron-updater's stable metadata is latest*.yml, never stable*.yml.
+  // Never let electron-updater install without the explicit renderer confirmation.
+  a.autoInstallOnAppQuit = false;
   a.channel = updaterChannel(activeChannel);
-  // GitHub 默认交给 electron-updater 读取打包进 app-update.yml 的 provider/channel；
-  // 仅当配置了 generic 静态源时才主动 setFeedURL 覆盖。
-  const genericBase = process.env.NEXNOTE_UPDATE_URL?.replace(/\/+$/, '');
+  const genericBase = allowedUpdateBase(process.env.NEXNOTE_UPDATE_URL, electronApp.isPackaged);
+  if (process.env.NEXNOTE_UPDATE_URL && !genericBase)
+    log('[updater] 忽略不在 production allowlist 的 NEXNOTE_UPDATE_URL');
   if (genericBase) a.setFeedURL(feedConfig(activeChannel));
   a.on('error', (...args: unknown[]) => {
+    downloadInFlight = false;
     const e = args[0];
     emit('error', e instanceof Error ? e.message : String(e ?? 'unknown error'));
   });
@@ -195,9 +270,12 @@ export function initAutoUpdater(
     downloadedVersion = undefined;
     emit('available', info?.version ? `发现新版本 ${info.version}` : '发现新版本');
   });
-  a.on('update-not-available', () =>
-    emit('up-to-date', `当前 ${electronApp.getVersion()} 已是最新`),
-  );
+  a.on('update-not-available', () => {
+    availableVersion = undefined;
+    downloadedVersion = undefined;
+    downloadInFlight = false;
+    emit('up-to-date', `当前 ${electronApp.getVersion()} 已是最新`);
+  });
   a.on('download-progress', (...args: unknown[]) => {
     const progress = args[0] as { percent?: number } | undefined;
     emit('downloading', '正在下载更新…', progress?.percent ?? 0);
@@ -210,10 +288,7 @@ export function initAutoUpdater(
     emit('downloaded', '更新已下载，可重启安装');
   });
 
-  // Do not block startup; errors are surfaced as update status events.
-  if (checkOnLaunchSetting) {
-    setTimeout(() => void checkForUpdates(), 5_000);
-  }
+  if (checkOnLaunchSetting) setTimeout(() => void checkForUpdates(), 5_000);
 }
 
 export function setUpdateChannel(channel: UpdateChannel): UpdateCheckResult {
@@ -227,8 +302,6 @@ export function setUpdateChannel(channel: UpdateChannel): UpdateCheckResult {
   if (electronApp.isPackaged) {
     const a = getAdapter();
     a.channel = updaterChannel(channel);
-    // Explicit switching must also update the provider; stable omits GitHub channel
-    // and resolves electron-updater's generated latest*.yml metadata.
     a.setFeedURL(feedConfig(channel));
   }
   return emit('channel-switched', `已切换至 ${channel} 更新通道`);
@@ -246,13 +319,9 @@ export function setUpdateSettings(patch: UpdateSettingsPatch): UpdateSettings {
   if (patch.channel !== undefined) setUpdateChannel(patch.channel);
   if (patch.autoDownload !== undefined) {
     autoDownloadSetting = patch.autoDownload;
-    if (electronApp.isPackaged) {
-      getAdapter().autoDownload = patch.autoDownload;
-    }
+    if (electronApp.isPackaged) getAdapter().autoDownload = patch.autoDownload;
   }
-  if (patch.checkOnLaunch !== undefined) {
-    checkOnLaunchSetting = patch.checkOnLaunch;
-  }
+  if (patch.checkOnLaunch !== undefined) checkOnLaunchSetting = patch.checkOnLaunch;
   return getUpdateSettings();
 }
 
@@ -272,8 +341,12 @@ export async function checkForUpdates(): Promise<UpdateCheckResult> {
       availableVersion = remoteVersion;
       return emit('available', `发现新版本 ${remoteVersion}`);
     }
+    availableVersion = undefined;
+    downloadedVersion = undefined;
+    downloadInFlight = false;
     return emit('up-to-date', `当前 ${electronApp.getVersion()} 已是最新`);
   } catch (e) {
+    downloadInFlight = false;
     return emit('error', e instanceof Error ? e.message : String(e));
   }
 }
@@ -293,7 +366,9 @@ export async function downloadUpdate(): Promise<UpdateCheckResult> {
     downloadInFlight = true;
     emit('downloading', '正在下载更新…', 0);
     await getAdapter().downloadUpdate();
-    // Some adapters resolve before the event; never enable install until update-downloaded confirms it.
+    // Adapters can resolve before update-downloaded. Clear the guard so a failed/missed
+    // confirmation can be retried; only the event grants the install capability.
+    downloadInFlight = false;
     return downloadedVersion === availableVersion
       ? emit('downloaded', '更新已下载，可重启安装')
       : emit('downloading', '正在等待下载确认…');
@@ -303,12 +378,61 @@ export async function downloadUpdate(): Promise<UpdateCheckResult> {
   }
 }
 
-export function installUpdate(): { willRestart: true } {
+export function installUpdate(): UpdateInstallResult {
   if (!electronApp.isPackaged || !availableVersion || downloadedVersion !== availableVersion)
     throw new Error('没有已下载的更新可安装');
-  logger('[updater] quitAndInstall');
-  getAdapter().quitAndInstall(false, true);
-  return { willRestart: true };
+
+  if (platformAdapter.platform === 'darwin') {
+    const bundlePath = platformAdapter.getAppBundlePath();
+    const signature = bundlePath
+      ? platformAdapter.verifyMacAppSignature(bundlePath)
+      : { status: 'invalid' as const, authorities: [], detail: '无法定位 .app' };
+    if (signature.status !== 'signed') {
+      const reason =
+        signature.status === 'adhoc'
+          ? 'Ad hoc 签名（未公证）'
+          : '未签名或签名异常（可能需要移除 xattr quarantine）';
+      logger(`[updater] Mac ${reason}，改用手动下载 (${platformAdapter.arch})`);
+      platformAdapter.openExternal(RELEASES_LATEST_URL);
+      emit(
+        'downloaded',
+        `当前 Mac 架构 ${platformAdapter.arch}：${reason}；已打开 Releases，请手动下载。`,
+        undefined,
+        {
+          action: 'manual-download',
+          arch: platformAdapter.arch,
+        },
+      );
+      return { willRestart: false, action: 'manual-download', arch: platformAdapter.arch };
+    }
+  }
+
+  try {
+    logger('[updater] quitAndInstall');
+    getAdapter().quitAndInstall(false, true);
+    setTimeout(() => {
+      if (downloadedVersion === availableVersion) {
+        emit('error', '安装启动超时，更新仍已保留，请重试。', undefined, {
+          action: 'install-started',
+          arch: platformAdapter.arch,
+          recoverable: true,
+        });
+      }
+    }, INSTALL_TIMEOUT_MS);
+    emit('downloaded', '正在重启并安装更新…', undefined, {
+      action: 'install-started',
+      arch: platformAdapter.arch,
+    });
+    return { willRestart: true, action: 'install-started', arch: platformAdapter.arch };
+  } catch (error) {
+    // Keep downloadedVersion intact: the user can retry from the visible error state.
+    emit('error', error instanceof Error ? error.message : String(error), undefined, {
+      action: 'install-started',
+      arch: platformAdapter.arch,
+      recoverable: true,
+    });
+    throw error;
+  }
 }
 
 /** Test seam; never call from production code. */
@@ -327,5 +451,14 @@ export function setUpdaterAdapterForTests(
     adapter = previousAdapter;
     electronApp = previousApp;
     getResourcesPath = previousResourcesPath;
+  };
+}
+
+/** Test seam for platform/signature policy; production uses the real OS commands. */
+export function setUpdaterPlatformForTests(next: UpdaterPlatformAdapter): () => void {
+  const previous = platformAdapter;
+  platformAdapter = next;
+  return () => {
+    platformAdapter = previous;
   };
 }

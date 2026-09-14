@@ -2,6 +2,7 @@ import type {
   AppInfo,
   UpdateChannel,
   UpdateCheckResult,
+  UpdateInstallResult,
   UpdateSettings,
   UpdateSettingsPatch,
 } from '@nexnote/shared';
@@ -64,7 +65,7 @@ export interface IpcServices {
   appInfo(): AppInfo;
   checkForUpdates(): Promise<UpdateCheckResult>;
   downloadUpdate(): Promise<UpdateCheckResult>;
-  installUpdate(): { willRestart: true };
+  installUpdate(): UpdateInstallResult;
   setUpdateChannel(channel: UpdateChannel): UpdateCheckResult;
   getUpdateSettings(): UpdateSettings;
   setUpdateSettings(patch: UpdateSettingsPatch): UpdateSettings;
