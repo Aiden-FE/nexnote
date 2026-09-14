@@ -16,6 +16,7 @@ export type UpdateCheckStatus =
   | 'checking'
   | 'downloading'
   | 'downloaded'
+  | 'installing'
   | 'channel-switched'
   | 'error';
 

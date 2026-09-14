@@ -22,7 +22,7 @@ export function registerAppHandlers(registrar: IpcRegistrar): void {
       ok(await services.downloadUpdate()),
   );
   registrar.register('app:installUpdate', async (_payload, services) =>
-    ok(services.installUpdate()),
+    ok(await services.installUpdate()),
   );
   registrar.register(
     'app:setUpdateChannel',

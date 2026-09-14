@@ -65,7 +65,7 @@ export interface IpcServices {
   appInfo(): AppInfo;
   checkForUpdates(): Promise<UpdateCheckResult>;
   downloadUpdate(): Promise<UpdateCheckResult>;
-  installUpdate(): UpdateInstallResult;
+  installUpdate(): Promise<UpdateInstallResult>;
   setUpdateChannel(channel: UpdateChannel): UpdateCheckResult;
   getUpdateSettings(): UpdateSettings;
   setUpdateSettings(patch: UpdateSettingsPatch): UpdateSettings;

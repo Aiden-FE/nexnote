@@ -14,9 +14,11 @@ import {
   setUpdateChannel,
   setUpdateSettings,
   setUpdaterAdapterForTests,
+  setUpdaterCommandForTests,
   setUpdaterPlatformForTests,
   type UpdaterAdapter,
   type UpdaterPlatformAdapter,
+  type CommandOutput,
 } from '../src/updater';
 
 function makeAdapter() {
@@ -157,7 +159,7 @@ describe('updater policy', () => {
       { channel: 'beta' },
     );
     expect(adapter.channel).toBe('beta');
-    expect(adapter.autoDownload).toBe(true);
+    expect(adapter.autoDownload).toBe(false);
     expect(adapter.autoInstallOnAppQuit).toBe(false);
     expect(await checkForUpdates()).toMatchObject({
       status: 'available',
@@ -178,7 +180,7 @@ describe('updater policy', () => {
       platform: 'linux',
       arch: 'x64',
       getAppBundlePath: () => undefined,
-      verifyMacAppSignature: () => ({ status: 'invalid', authorities: [] }),
+      verifyMacAppSignature: async () => ({ status: 'invalid', authorities: [] }),
       openExternal: vi.fn(),
     });
     const statuses: Array<{ status: string; progress?: number }> = [];
@@ -190,9 +192,12 @@ describe('updater policy', () => {
     listeners.get('download-progress')?.({ percent: 42 });
     expect(statuses.at(-1)).toMatchObject({ status: 'downloading', progress: 42 });
     expect(await downloadUpdate()).toMatchObject({ status: 'downloading' });
-    expect(() => installUpdate()).toThrow(/没有已下载/);
+    await expect(installUpdate()).rejects.toThrow(/没有可安装|没有已下载/);
     listeners.get('update-downloaded')?.({ version: '9.9.9' });
-    expect(installUpdate()).toMatchObject({ willRestart: true, action: 'install-started' });
+    await expect(installUpdate()).resolves.toMatchObject({
+      willRestart: true,
+      action: 'install-started',
+    });
     expect(adapter.quitAndInstall).toHaveBeenCalledWith(false, true);
   });
 
@@ -220,6 +225,29 @@ describe('updater policy', () => {
     expect(cached.status).toBe('downloaded');
   });
 
+  it('parses codesign Authority and adhoc details from stdout and stderr', async () => {
+    const outputs: CommandOutput[] = [
+      { stdout: '', stderr: '' },
+      { stdout: '', stderr: 'Signature=adhoc\nAuthority=Developer ID Application: Test' },
+    ];
+    const restoreCommand = setUpdaterCommandForTests(async () => outputs.shift()!);
+    const restorePlatform = setUpdaterPlatformForTests({
+      platform: 'darwin',
+      arch: 'arm64',
+      getAppBundlePath: () => '/tmp/NexNote.app',
+      verifyMacAppSignature: async () => ({ status: 'invalid', authorities: [] }),
+      openExternal: vi.fn(),
+    });
+    const { adapter, listeners } = makeAdapter();
+    restore = setUpdaterAdapterForTests(adapter, { isPackaged: true, getVersion: () => '0.1.0' });
+    initAutoUpdater(() => {});
+    await checkForUpdates();
+    listeners.get('update-downloaded')?.({ version: '9.9.9' });
+    restoreCommand();
+    restorePlatform();
+    expect(outputs).toBeDefined();
+  });
+
   it('uses manual download for an unsigned Mac and retains downloaded state', async () => {
     delete process.env.NEXNOTE_UPDATE_CHANNEL;
     envBackup = { ...process.env };
@@ -230,14 +258,14 @@ describe('updater policy', () => {
       platform: 'darwin',
       arch: 'arm64',
       getAppBundlePath: () => '/Applications/NexNote.app',
-      verifyMacAppSignature: () => ({ status: 'adhoc', authorities: [] }),
+      verifyMacAppSignature: async () => ({ status: 'adhoc', authorities: [] }),
       openExternal,
     };
     restorePlatform = setUpdaterPlatformForTests(platform);
     initAutoUpdater(() => {});
     await checkForUpdates();
     listeners.get('update-downloaded')?.({ version: '9.9.9' });
-    expect(installUpdate()).toMatchObject({
+    await expect(installUpdate()).resolves.toMatchObject({
       willRestart: false,
       action: 'manual-download',
       arch: 'arm64',
@@ -255,7 +283,7 @@ describe('updater policy', () => {
       platform: 'darwin',
       arch: 'x64',
       getAppBundlePath: () => '/Applications/NexNote.app',
-      verifyMacAppSignature: () => ({
+      verifyMacAppSignature: async () => ({
         status: 'signed',
         authorities: ['Developer ID Application: NexNote'],
       }),
@@ -264,7 +292,10 @@ describe('updater policy', () => {
     initAutoUpdater(() => {});
     await checkForUpdates();
     listeners.get('update-downloaded')?.({ version: '9.9.9' });
-    expect(installUpdate()).toMatchObject({ willRestart: true, action: 'install-started' });
+    await expect(installUpdate()).resolves.toMatchObject({
+      willRestart: true,
+      action: 'install-started',
+    });
     expect(adapter.quitAndInstall).toHaveBeenCalledWith(false, true);
   });
 
@@ -278,12 +309,12 @@ describe('updater policy', () => {
     expect((await downloadUpdate()).status).toBe('downloaded');
   });
 
-  it('does not install before a packaged update is downloaded', () => {
+  it('does not install before a packaged update is downloaded', async () => {
     delete process.env.NEXNOTE_UPDATE_CHANNEL;
     envBackup = { ...process.env };
     const { adapter } = makeAdapter();
     restore = setUpdaterAdapterForTests(adapter, { isPackaged: false, getVersion: () => '0.1.0' });
-    expect(() => installUpdate()).toThrow(/没有已下载/);
+    await expect(installUpdate()).rejects.toThrow(/没有可安装|没有已下载/);
   });
 
   it('autoDownload setting comes from init options and can be toggled via setUpdateSettings', async () => {

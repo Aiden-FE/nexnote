@@ -128,7 +128,7 @@ function makeServices(): {
       channel: 'stable' as const,
     }),
     downloadUpdate: async () => ({ status: 'not-configured' as const, channel: 'stable' as const }),
-    installUpdate: () => ({
+    installUpdate: async () => ({
       willRestart: true,
       action: 'install-started' as const,
       arch: 'test',
