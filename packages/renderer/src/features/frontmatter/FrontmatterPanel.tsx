@@ -43,12 +43,31 @@ export function FrontmatterPanel({
   const [yaml, setYaml] = useState(source);
   const [yamlError, setYamlError] = useState<string | null>(parseError);
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const yamlRef = useRef(yaml);
+  const onYamlChangeRef = useRef(onYamlChange);
   const highlightRef = useRef<HTMLPreElement>(null);
   const activeMode: FrontmatterMode = locked ? 'yaml' : mode;
 
+  useEffect(() => {
+    yamlRef.current = yaml;
+    onYamlChangeRef.current = onYamlChange;
+  }, [onYamlChange, yaml]);
+
   useEffect(
     () => () => {
-      if (saveTimer.current) clearTimeout(saveTimer.current);
+      if (saveTimer.current) {
+        // Popover 关闭会卸载面板；先同步提交已通过 YAML 校验的最后一版，
+        // 避免用户在 300ms 防抖窗口内关闭时丢失编辑。
+        clearTimeout(saveTimer.current);
+        saveTimer.current = null;
+        try {
+          const latestYaml = yamlRef.current;
+          const nextData = parseFrontmatterYaml(latestYaml);
+          onYamlChangeRef.current(latestYaml, nextData);
+        } catch {
+          // 非法 YAML 不得覆盖原文，沿用锁定模式的 fail-closed 语义。
+        }
+      }
     },
     [],
   );

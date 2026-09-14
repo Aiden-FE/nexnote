@@ -191,6 +191,39 @@ describe('Markdown 文档属性面板（DEV-025）', () => {
     await unmount(root);
   });
 
+  it('Popover 立即关闭也不会丢失尚未到 300ms 的 YAML 编辑', async () => {
+    const { bridge, root } = await renderView(WITH_YAML);
+    act(() =>
+      document
+        .querySelector<HTMLButtonElement>('[data-testid="document-properties-trigger"]')
+        ?.click(),
+    );
+    const yamlButton = [
+      ...document.querySelectorAll<HTMLButtonElement>(
+        '[data-testid="document-properties-popover"] button',
+      ),
+    ].find((button) => button.textContent?.includes('YAML'));
+    act(() => yamlButton?.click());
+    const yamlEditor = document.querySelector<HTMLTextAreaElement>(
+      '[data-testid="frontmatter-yaml-editor"]',
+    );
+    expect(yamlEditor).not.toBeNull();
+    const setter = Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, 'value')?.set;
+    act(() => {
+      setter?.call(yamlEditor, 'title: 立即保存\ncustom: keep me');
+      yamlEditor?.dispatchEvent(new Event('input', { bubbles: true }));
+    });
+    // 立即关闭 Popover，尚未经过面板原有 300ms debounce。
+    act(() =>
+      document
+        .querySelector<HTMLButtonElement>('[data-testid="document-properties-trigger"]')
+        ?.click(),
+    );
+    await vi.waitFor(() => expect(bridge.writes.length).toBe(1));
+    expect(bridge.writes[0]).toContain('title: 立即保存');
+    await unmount(root);
+  });
+
   it('未编辑的打开 → 保存往返字节不变（不触发任何写盘）', async () => {
     const { bridge, root } = await renderView(WITH_YAML);
     await act(async () => {
