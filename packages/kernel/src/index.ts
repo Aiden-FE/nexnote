@@ -30,12 +30,24 @@ export {
   normalizeList,
   parseFrontmatterYaml,
   serializeFrontmatterYaml,
+  STANDARD_FIELD_CATALOG,
 } from './frontmatter/model';
-export type { FrontmatterData, FrontmatterValue } from './frontmatter/model';
+export type {
+  FrontmatterData,
+  FrontmatterValue,
+  StandardFieldDef,
+  StandardFieldType,
+} from './frontmatter/model';
 export { KernelCodeBlock, KernelTable } from './extensions/code-table';
 export { SlashMenu, defaultSlashMenuItems, slashMenuPluginKey } from './extensions/slash-menu';
 export type { SlashMenuItem, SlashMenuOptions, SlashMenuState } from './extensions/slash-menu';
-export { Fold, foldPluginKey, canFoldBlock, isBlockFolded, toggleBlockFold } from './extensions/fold';
+export {
+  Fold,
+  foldPluginKey,
+  canFoldBlock,
+  isBlockFolded,
+  toggleBlockFold,
+} from './extensions/fold';
 export { createKernelDragHandle } from './extensions/drag-handle';
 export { SelectionBubble, selectionBubblePluginKey } from './extensions/selection-bubble';
 export type { BubbleAction, SelectionBubbleOptions } from './extensions/selection-bubble';
@@ -44,7 +56,11 @@ export type { ContextMenuItem, ContextMenuOptions } from './extensions/context-m
 export { PluginBlock, PLUGIN_BLOCK_FENCE } from './extensions/plugin-block';
 export type { PluginBlockAttributes } from './extensions/plugin-block';
 export { SuggestionMenu } from './extensions/suggestion-menu';
-export type { SuggestionItem, SuggestionKind, SuggestionTrigger } from './extensions/suggestion-menu';
+export type {
+  SuggestionItem,
+  SuggestionKind,
+  SuggestionTrigger,
+} from './extensions/suggestion-menu';
 export { BlockMenu } from './extensions/block-menu';
 export type { BlockMenuContext, BlockMenuState } from './extensions/block-menu';
 export {
@@ -53,12 +69,7 @@ export {
   MERMAID_LANGUAGE,
   MERMAID_DEFAULT_SOURCE,
 } from './extensions/mermaid';
-export {
-  MathBlock,
-  MathInline,
-  MATH_BLOCK_NAME,
-  MATH_INLINE_NAME,
-} from './extensions/math';
+export { MathBlock, MathInline, MATH_BLOCK_NAME, MATH_INLINE_NAME } from './extensions/math';
 export { computeEditorActionContext } from './extensions/action-context';
 export type { EditorActionContext, EditorActionTarget } from './extensions/action-context';
 export { generateBlockId } from './extensions/block-id';

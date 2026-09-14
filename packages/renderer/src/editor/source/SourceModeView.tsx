@@ -29,10 +29,36 @@ import { registerModeSwitchHandler, requestSourceModeToggle } from './source-mod
 import { syncScrollRatio } from './scroll-sync';
 import { sourceWikilinkCompletion } from './wikilink-completion';
 import { createRedlinkPage, currentPageCandidates } from '../wikilink-page-ops';
+import { FrontmatterPanel } from '../../features/frontmatter/FrontmatterPanel';
+import {
+  collectVaultTags,
+  replaceFrontmatterYaml,
+  splitFrontmatterParts,
+  type FrontmatterParts,
+} from '../../features/frontmatter/frontmatter-utils';
+import {
+  parseFrontmatterYaml,
+  serializeFrontmatterYaml,
+  type FrontmatterData,
+} from '@nexnote/kernel';
 
 type LoadState =
   { phase: 'loading' } | { phase: 'ready'; text: string } | { phase: 'error'; message: string };
 type SaveState = 'saved' | 'saving' | 'error';
+
+interface FrontmatterPanelState {
+  data: FrontmatterData;
+  source: string;
+  locked: boolean;
+  parseError: string | null;
+}
+
+const EMPTY_FRONTMATTER: FrontmatterPanelState = {
+  data: {},
+  source: '',
+  locked: false,
+  parseError: null,
+};
 
 /** IPC 适配器：renderer 永不直访 Node fs。 */
 const ipcIo: PageFileIo = {
@@ -57,9 +83,13 @@ function wikilinkPath(pageName: string): string {
  * - 读取/保存均为逐字节原文，不经 TipTap 序列化；首个 H1 ↔ 文件名绑定与块编辑一致
  * - 模式切换前 flush，失败停留源码模式；切回块模式前整页解析守卫
  * - 外部文件变化：无本地修改直接重载；有未保存源码时暂停自动保存并提示选择
+ * - DEV-025：format=markdown 的文档常驻 FrontmatterPanel，YAML 头从 CodeMirror 正文
+ *   抽离、由面板承载；序列化仅发生在经面板实际编辑之后（未编辑往返字节不变）。
+ *   native-block 文档的临时源码模式保持原语义：面板隐藏、YAML 原文在编辑框中。
  */
 export function SourceModeView({ tab }: { tab: TabDescriptor }) {
   const initialPath = tab.pagePath ?? `${sanitizePageTitle(tab.title)}.md`;
+  const isMarkdown = tab.format === 'markdown';
   const [load, setLoad] = useState<LoadState>({ phase: 'loading' });
   const [saveState, setSaveState] = useState<SaveState>('saved');
   const [saveError, setSaveError] = useState<string | null>(null);
@@ -67,6 +97,8 @@ export function SourceModeView({ tab }: { tab: TabDescriptor }) {
   const [switchError, setSwitchError] = useState<string | null>(null);
   const [displayPath, setDisplayPath] = useState(initialPath);
   const [previewText, setPreviewText] = useState('');
+  const [fm, setFm] = useState<FrontmatterPanelState>(EMPTY_FRONTMATTER);
+  const [knownTags, setKnownTags] = useState<string[]>([]);
   const previewVisible = tab.previewVisible !== false;
   const vaultSettings = useSettingsStore((state) => state.vault);
   const autoSaveMs = vaultSettings?.editor.autoSaveMs ?? 1500;
@@ -82,10 +114,72 @@ export function SourceModeView({ tab }: { tab: TabDescriptor }) {
   const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const saveChainRef = useRef<Promise<unknown>>(Promise.resolve());
   const unmountedRef = useRef(false);
+  // DEV-025：markdown 文档的 YAML 拆装状态。parts 始终指向「载入磁盘时」的原始拆分；
+  // 面板编辑只更新 fmYamlRef（序列化结果）并置 fmEdited，正文编辑只更新 textRef（body）。
+  const partsRef = useRef<FrontmatterParts>({ header: null, yaml: null, separator: '', body: '' });
+  const fmEditedRef = useRef(false);
+  const fmYamlRef = useRef<string | null>(null);
+  const ready = load.phase === 'ready';
+
+  /** 载入/重载原文：拆出 YAML 头并刷新面板状态（解析失败锁定源码模式、保留原文）。 */
+  const absorbText = useCallback(
+    (text: string): FrontmatterParts => {
+      const parts = isMarkdown
+        ? splitFrontmatterParts(text)
+        : { header: null, yaml: null, separator: '', body: text };
+      partsRef.current = parts;
+      fmEditedRef.current = false;
+      fmYamlRef.current = parts.yaml;
+      if (!isMarkdown) {
+        setFm(EMPTY_FRONTMATTER);
+        return parts;
+      }
+      if (parts.yaml === null) {
+        setFm(EMPTY_FRONTMATTER);
+        return parts;
+      }
+      try {
+        setFm({
+          data: parseFrontmatterYaml(parts.yaml),
+          source: parts.yaml,
+          locked: false,
+          parseError: null,
+        });
+      } catch (error) {
+        setFm({
+          data: {},
+          source: parts.yaml,
+          locked: true,
+          parseError: error instanceof Error ? error.message : String(error),
+        });
+      }
+      return parts;
+    },
+    [isMarkdown],
+  );
+
+  /**
+   * 组装写盘文本（ADR-0004 / DEV-025 保真语义）：
+   * - 未编辑 YAML：header + separator + 正文逐字节还原（正文编辑也绝不重排 YAML）
+   * - 已编辑 YAML：仅替换 YAML 区域，分隔线风格、头部与正文间空行、正文字节不动
+   */
+  const composeDocument = useCallback((): string => {
+    const parts = partsRef.current;
+    const body = textRef.current;
+    if (!isMarkdown) return body;
+    if (!fmEditedRef.current) {
+      return parts.header !== null ? parts.header + parts.separator + body : body;
+    }
+    const yaml = fmYamlRef.current;
+    if (yaml === null || yaml.trim().length === 0) return body;
+    const base = parts.header !== null ? parts.header + parts.separator + body : body;
+    return replaceFrontmatterYaml(base, yaml);
+  }, [isMarkdown]);
 
   /** 保存当前缓冲（版本检查 → H1 改名 → 逐字节写回）。串行化避免旧保存覆盖新保存。 */
   const runSave = useCallback(async (): Promise<void> => {
-    const text = textRef.current;
+    const bodySnapshot = textRef.current;
+    const text = composeDocument();
     const fromPath = pathRef.current;
     const result = await saveSourceText({
       io: ipcIo,
@@ -106,7 +200,7 @@ export function SourceModeView({ tab }: { tab: TabDescriptor }) {
     }
     baseVersionRef.current = result.version;
     baseTextRef.current = text;
-    if (textRef.current === text) dirtyRef.current = false;
+    if (textRef.current === bodySnapshot) dirtyRef.current = false;
     if (result.renamedFrom) {
       const tree = usePageTreeStore.getState();
       tree.applyEvent({ kind: 'unlink', path: result.renamedFrom });
@@ -120,7 +214,7 @@ export function SourceModeView({ tab }: { tab: TabDescriptor }) {
         pagePath: result.path,
       });
     }
-  }, [tab.id]);
+  }, [tab.id, composeDocument]);
 
   const runSaveTracked = useCallback(async (): Promise<void> => {
     setSaveState('saving');
@@ -166,10 +260,11 @@ export function SourceModeView({ tab }: { tab: TabDescriptor }) {
     baseVersionRef.current = fileVersionOf(info);
     baseTextRef.current = text;
     dirtyRef.current = false;
-    editorRef.current?.setText(text);
-    textRef.current = text;
-    setPreviewText(text);
-  }, []);
+    const parts = absorbText(text);
+    editorRef.current?.setText(parts.body);
+    textRef.current = parts.body;
+    setPreviewText(composeDocument());
+  }, [absorbText, composeDocument]);
 
   /**
    * 应用自身写入（origin:'app'）变化：绝不弹冲突，静默刷新基线。
@@ -187,15 +282,16 @@ export function SourceModeView({ tab }: { tab: TabDescriptor }) {
       baseTextRef.current = text;
       if (dirtyRef.current) return;
       // 竞态防护：读取期间用户又开始输入（dirty）则只刷新基线，不动编辑器
-      if (textRef.current !== text) {
-        editorRef.current?.setText(text);
-        textRef.current = text;
-        setPreviewText(text);
+      if (text !== composeDocument()) {
+        const parts = absorbText(text);
+        editorRef.current?.setText(parts.body);
+        textRef.current = parts.body;
+        setPreviewText(composeDocument());
       }
     } catch {
       // 文件竞态消失（如被改名/删除）：交给页面树 unlink 流程
     }
-  }, []);
+  }, [absorbText, composeDocument]);
 
   // ── 加载：原始字节，不做 H1 绑定（无 H1 时不补写，保持原文） ──
   useEffect(() => {
@@ -213,8 +309,9 @@ export function SourceModeView({ tab }: { tab: TabDescriptor }) {
         baseVersionRef.current = fileVersionOf(info);
         baseTextRef.current = text;
         dirtyRef.current = false;
-        textRef.current = text;
-        setPreviewText(text);
+        const parts = absorbText(text);
+        textRef.current = parts.body;
+        setPreviewText(composeDocument());
         setLoad({ phase: 'ready', text });
       } catch (error) {
         if (!cancelled) {
@@ -233,16 +330,15 @@ export function SourceModeView({ tab }: { tab: TabDescriptor }) {
   }, [tab.pagePath, tab.id]);
 
   // ── 挂载 CodeMirror（每个 ready 周期一次；源码与块编辑 undo 栈天然独立） ──
-  const ready = load.phase === 'ready';
   useEffect(() => {
     if (!ready || !hostRef.current || editorRef.current) return;
     unmountedRef.current = false;
     const editor = createSourceEditor(hostRef.current, {
-      initialText: load.phase === 'ready' ? load.text : '',
+      initialText: load.phase === 'ready' ? partsRef.current.body : '',
       onChange: (text) => {
         dirtyRef.current = true;
         textRef.current = text;
-        setPreviewText(text);
+        setPreviewText(composeDocument());
         scheduleSave();
       },
       onScroll: (scrollDOM) => {
@@ -352,7 +448,7 @@ export function SourceModeView({ tab }: { tab: TabDescriptor }) {
         setSwitchError('保存失败，已停留源码模式');
         return false;
       }
-      const parsed = parseWholePage(textRef.current);
+      const parsed = parseWholePage(composeDocument());
       if (!parsed.ok) {
         setSwitchError(`整页解析失败，已停留源码模式：${parsed.message}`);
         return false;
@@ -360,7 +456,7 @@ export function SourceModeView({ tab }: { tab: TabDescriptor }) {
       setSwitchError(null);
       return true;
     });
-  }, [tab.id, flush]);
+  }, [tab.id, flush, composeDocument]);
 
   // ── 预览导航：先保存，成功后经统一入口按目标文档格式打开 ──
   const navigate = useCallback(
@@ -415,6 +511,42 @@ export function SourceModeView({ tab }: { tab: TabDescriptor }) {
       })
       .catch(() => undefined);
   }, [reloadFromDisk]);
+
+  /**
+   * DEV-025 面板写回：表格 / YAML 两种编辑都走这里。
+   * 序列化仅发生在真实编辑时（fmEditedRef 置位）；不可解析时面板侧不会回调，原文保留。
+   */
+  const applyFrontmatterEdit = useCallback(
+    (yaml: string | null, data: FrontmatterData): void => {
+      fmEditedRef.current = true;
+      fmYamlRef.current = yaml;
+      setFm({ data, source: yaml ?? '', locked: false, parseError: null });
+      dirtyRef.current = true;
+      setPreviewText(composeDocument());
+      scheduleSave();
+    },
+    [composeDocument, scheduleSave],
+  );
+
+  // 标签自动补全：markdown 属性面板做全库扫描（与块编辑 EditorView 的回退扫描同一来源），
+  // 扫描失败降级为空列表，不阻塞属性编辑。
+  useEffect(() => {
+    if (!ready || !isMarkdown) return;
+    let cancelled = false;
+    void collectVaultTags({
+      listDir: (relativePath) => invoke('fs:listDir', { path: relativePath }),
+      readTextFile: (relativePath) => invoke('fs:readTextFile', { path: relativePath }),
+    })
+      .then((tags) => {
+        if (!cancelled) setKnownTags(tags);
+      })
+      .catch(() => {
+        // vault 未就绪等场景忽略；标签自动补全可降级为空
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [ready, isMarkdown]);
 
   const status =
     saveState === 'saving'
@@ -510,6 +642,22 @@ export function SourceModeView({ tab }: { tab: TabDescriptor }) {
           className="shrink-0 border-b border-destructive/40 bg-destructive/10 px-3 py-1.5 text-xs text-destructive"
         >
           {switchError}
+        </div>
+      )}
+
+      {isMarkdown && (
+        <div className="max-h-[45%] shrink-0 overflow-auto border-b bg-background/50 px-4 pt-3">
+          <div className="mx-auto max-w-[var(--editor-content-width)]">
+            <FrontmatterPanel
+              data={fm.data}
+              source={fm.source}
+              knownTags={knownTags}
+              locked={fm.locked}
+              parseError={fm.parseError}
+              onChange={(next) => applyFrontmatterEdit(serializeFrontmatterYaml(next), next)}
+              onYamlChange={(source, next) => applyFrontmatterEdit(source, next)}
+            />
+          </div>
         </div>
       )}
 
