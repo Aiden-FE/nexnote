@@ -63,7 +63,7 @@
 | **DEV-022** | [页签拖拽排序与切换快捷键](issues/022-tab-drag-reorder-hotkeys.md) | shell | M | — | 验收反馈 | ✅ 已合并（`968290c`，候选最终 `5c2643a`，smoke 140/140，双轴 PASS） |
 | **DEV-023** | [划词工具栏按钮集统一](issues/023-selection-bubble-parity.md) | editor | M | DEV-010, DEV-020 | 验收反馈 | ✅ 已合并（`2dead70`，候选最终 `63b6b49`，smoke 129/129，双轴 PASS） |
 | **DEV-024** | [双链可发现性：Markdown 源码补全与反向链接角标](issues/024-wikilink-discoverability.md) | editor | M | DEV-020 | 验收反馈 | ✅ 已合并（`9d16284`，候选 `4ad2d57`，smoke 145/145，双轴 PASS） |
-| **DEV-025** | [文档属性感知：字段目录与 Markdown 属性面板](issues/025-field-catalog-md-properties.md) | editor | L | DEV-020 | 验收反馈 | ✅ 已合并（`f58d25c`，候选 `909f88b`，smoke 128/128，双轴 PASS） |
+| **DEV-025** | [文档属性感知：字段目录与 Markdown 属性面板](issues/025-field-catalog-md-properties.md) | editor | L | DEV-020 | 验收反馈 | ✅ 已合并（Popover 修订 `a99babc`，候选 `d8f03f7`，smoke 154/154，双轴 PASS） |
 | **DEV-026** | [AI 配置入口收口设置页](issues/026-ai-settings-single-entry.md) | ai | S | DEV-009, DEV-012 | 验收反馈 | ✅ 已合并（`5d49165`，候选 `ab39ba4`，smoke 116/116，双轴 PASS） |
 
 ### P0 · 集成验收（最后）— ✅ 已完成
@@ -112,8 +112,8 @@ DEV-008 (置信度) ← DEV-004 + DEV-007
 
 ## 🏁 终局状态（2026-09-14）
 
-- **26 / 26 全部完成并合入 `master`；DEV-021～DEV-026 验收反馈轮已闭环**（最终代码基线 `968290c`，状态登记提交 `b12a55b`）。
-- 最终 master 门禁：typecheck、122 个测试文件通过（1 文件 skip）/ 983 个测试通过（2 skip）、eslint、build、verify-release-config 29/29、changed-format、diff --check 全绿；打包 macOS arm64 Electron smoke **151/151** 全绿，退出码 0，证据见 `smoke/MASTER-POST-MERGE/results.json`。
+- **26 / 26 全部完成并合入 `master`；DEV-021～DEV-026 验收反馈轮已闭环**（文档属性 Popover 修订已合入 `a99babc`，当前代码基线见 master）。
+- 最近 master 门禁：typecheck、124 个测试文件通过（1 文件 skip）/ 991 个测试通过（2 skip）、eslint、build、verify-release-config 29/29、changed-format、diff-check 全绿；属性 Popover 修订的打包 macOS arm64 Electron smoke **154/154** 全绿，退出码 0，证据见 `smoke/DEV-025-POPOVER-FINAL3/results.json`。
 - 本轮新增票据 smoke 证据：DEV-021 123/123、DEV-022 140/140、DEV-023 129/129、DEV-024 145/145、DEV-025 128/128、DEV-026 116/116，均在候选 SHA 上通过 Standards + Spec 双轴审查后合并。
 - 剩余 NOT_RUN 仅为跨平台/外部环境项（完整清单见 [release-checklist 第 6 节](./release-checklist.md)）：三平台签名/公证/物理安装、真实 Obsidian 知识库导入、kill -9 崩溃恢复、打包后冷启动 <3s 实测、大文档流畅度、自动更新端到端等。
 - `better-sqlite3` 在 Node/Electron ABI 间切换后已恢复 Node ABI（`pnpm pretest`）。

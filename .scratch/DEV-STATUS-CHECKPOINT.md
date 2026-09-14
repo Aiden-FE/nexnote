@@ -9,8 +9,8 @@
 ## 0. 最新状态（持续更新，优先于下方陈旧冻结段）
 
 - **真实进度：26 / 26** —— DEV-001~DEV-026 全部验收并合入 master（DEV-021~026 为验收反馈追加票，2026-09-14 完成）。
-- master HEAD：`968290c`（DEV-022 merge）；post-merge typecheck / 122 test files passed（1 skipped，983 tests / 2 skipped）/ eslint / build / release-config / changed-format / diff-check 全过。
-- Electron smoke 最终基线：master 打包 macOS arm64 unsigned dev app **151/151 PASS**，退出码 0。证据：`.scratch/nexnote-build/smoke/MASTER-POST-MERGE/results.json`；各票候选证据见 `smoke/DEV-021..026/`。
+- master HEAD：`a99babc`（DEV-025 文档属性 Popover 修订 merge）；post-merge typecheck / 124 test files passed（1 skipped，991 tests / 2 skipped）/ eslint / build / release-config / changed-format / diff-check 全过。
+- 属性 Popover 修订后的打包 macOS arm64 unsigned dev app smoke **154/154 PASS**，退出码 0。证据：`.scratch/nexnote-build/smoke/DEV-025-POPOVER-FINAL3/results.json`；原验收轮候选证据见 `smoke/DEV-021..026/`。
 - 验收反馈六票摘要（详细见各 issues/*.md 与对话共识）：
   - DEV-021（`c12d2ad`）：用户可见文案零 vault →「知识库」（含主进程错误/诊断消息与 git init 消息「nexnote:init: 知识库初始化」）；删除 FilesPage/`'files'` TabKind/欢迎页按钮/`tab.files` 命令；旧布局残留 files tab 经 readVaultConfig 过滤（单测权威）。
   - DEV-022（`5c2643a`）：TabStrip HTML5 拖拽排序（DataTransfer 注入后 smoke 可真实走 React 处理链）+ `tabOrder` 布局持久化（仅限已有 tab 栈恢复；跨重启 tab 会话恢复为既有架构外延）+ Ctrl+Tab / Ctrl+Shift+Tab 循环（mac 物理控制键等价）。
