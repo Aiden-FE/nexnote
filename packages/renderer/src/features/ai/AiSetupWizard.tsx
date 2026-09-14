@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { AiProviderKind, ConnectionTestResult } from '@nexnote/shared';
 import { invoke } from '../../lib/ipc';
 import { useAiConfig, useAiWizard } from './ai-config';
+import { openSettings } from '../../lib/open-settings';
 import { Button } from '../../components/ui/button';
 import { Input } from '../../components/ui/input';
 import { cn } from '../../lib/utils';
@@ -80,7 +81,7 @@ const CAPABILITY_LABELS: Array<{ key: keyof ConnectionTestResult['capabilities']
   ];
 
 /**
- * 首启动 AI 引导向导（未配置时 AI 入口进入）+ Profile 编辑器（设置页复用）。
+ * AI 供应商配置向导：首启动自动弹一次（此后入口一律跳设置页）+ 设置页可重播/编辑 Profile。
  * 步骤：选 provider → 填 base-url/key → 测连通 → 选默认模型 → 完成。
  */
 export function AiSetupWizard() {
@@ -264,6 +265,8 @@ function WizardBody({
       const finalState = await invoke('ai:getState');
       apply(finalState);
       onClose();
+      // 配置完成统一落点：设置页「AI 供应商」分区（DEV-026 收口）。
+      openSettings('ai');
     } catch (e) {
       setSaveError(e instanceof Error ? e.message : String(e));
     } finally {

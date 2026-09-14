@@ -7,7 +7,7 @@ import {
   titleFromPath,
 } from '../editor/title-sync';
 
-export type TabKind = 'welcome' | 'page' | 'docx' | 'files' | 'graph' | 'settings';
+export type TabKind = 'welcome' | 'page' | 'docx' | 'graph' | 'settings';
 export type EditorMode = 'block' | 'source';
 export type DocumentFormat = 'native-block' | 'markdown';
 
@@ -15,7 +15,7 @@ export interface TabDescriptor {
   id: string;
   kind: TabKind;
   title: string;
-  /** 页面 tab 的 vault 相对 Markdown 路径；welcome/files 无此字段。 */
+  /** 页面 tab 的 vault 相对 Markdown 路径；welcome 无此字段。 */
   pagePath?: string;
   /** 仅存在于当前 tab 生命周期；关闭 tab 后不会持久化。 */
   editorMode?: EditorMode;

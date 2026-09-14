@@ -3,7 +3,6 @@ import { TabStrip } from '../tabs/TabStrip';
 import { useTabStore, type TabDescriptor } from '../stores/tab-store';
 import { WelcomePage } from '../pages/WelcomePage';
 import { PlaceholderPage } from '../pages/PlaceholderPage';
-import { FilesPage } from '../pages/FilesPage';
 import { SettingsPage } from '../pages/SettingsPage';
 import { DocxView } from '../pages/DocxView';
 import { EditorView } from '../editor/EditorView';
@@ -25,8 +24,6 @@ function TabContent({ tab }: { tab: TabDescriptor }) {
   switch (tab.kind) {
     case 'welcome':
       return <WelcomePage />;
-    case 'files':
-      return <FilesPage />;
     case 'graph':
       return <GlobalGraphView />;
     case 'settings':

@@ -126,7 +126,7 @@ export function registerGitHandlers(registrar: IpcRegistrar): void {
   registrar.register('git:setAutoCommitDebounce', async ({ milliseconds }, services) => {
     const root = services.vaultSession.getCurrent()?.root;
     if (!root) {
-      throw new GitServiceError('尚未打开任何 vault', 'NO_VAULT');
+      throw new GitServiceError('尚未打开任何知识库', 'NO_VAULT');
     }
     // legacy channel 仍可用，但写入 vault config 这一唯一权威，再回灌 GitService。
     const { saveVaultSettings } = await import('../vault/vault-manager');

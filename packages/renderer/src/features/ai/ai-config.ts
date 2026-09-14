@@ -35,9 +35,26 @@ export const useAiConfig = create<AiConfigStateStore>((set) => ({
   },
 }));
 
-/** 未配置 AI（首启动引导判定）。 */
+/** 未配置 AI：控制 dock 空态，不因用户已跳过首启提示而改变。 */
 export function needsOnboarding(s: AiConfigState | null): boolean {
   return !s || s.needsOnboarding || s.profiles.length === 0;
+}
+
+/** 首启动自动弹窗只在主进程状态已加载、无 Profile 且从未看过向导时成立。 */
+export function shouldAutoShowSetupPrompt(s: AiConfigState | null): boolean {
+  return !!s && needsOnboarding(s) && !s.setupPromptDismissed;
+}
+
+/** 取一份 AI 配置状态（优先已有缓存；失败返回 null，不触发首启弹窗）。 */
+export async function fetchAiStateOnce(): Promise<AiConfigState | null> {
+  const store = useAiConfig.getState();
+  if (store.state) return store.state;
+  try {
+    await store.load();
+  } catch {
+    /* 保持 null：拉取失败不弹窗 */
+  }
+  return useAiConfig.getState().state;
 }
 
 let subscribed = false;
@@ -63,14 +80,11 @@ export const useAiWizard = create<AiWizardStore>((set) => ({
   open: false,
   editProfileId: null,
   show: (editProfileId = null) => set({ open: true, editProfileId }),
-  close: () => set({ open: false, editProfileId: null }),
+  close: () => {
+    set({ open: false, editProfileId: null });
+    // 关闭、跳过或完成均表示用户已见过向导；主进程写入幂等持久化位。
+    void invoke('ai:setupPrompt:dismiss')
+      .then(({ state }) => useAiConfig.getState().apply(state))
+      .catch(() => undefined);
+  },
 }));
-
-/** 统一入口降级：未配置时打开向导，已配置时执行既有动作。 */
-export function aiEntryOrWizard(action: () => void): void {
-  if (needsOnboarding(useAiConfig.getState().state)) {
-    useAiWizard.getState().show();
-  } else {
-    action();
-  }
-}

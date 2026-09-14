@@ -51,7 +51,7 @@ export class DocxService {
 
   private requireRoot(): string {
     const root = this.getRoot();
-    if (!root) throw new DocxServiceError('当前未打开 vault', 'NO_VAULT');
+    if (!root) throw new DocxServiceError('当前未打开知识库', 'NO_VAULT');
     return root;
   }
 
