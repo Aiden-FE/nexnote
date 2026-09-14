@@ -103,7 +103,7 @@ export function registerFsHandlers(registrar: IpcRegistrar): void {
   });
   registrar.register('fs:delete', async ({ path, toTrash }, services): Promise<Result<void>> => {
     if (path.trim().length === 0 || path.trim() === '.')
-      return err('不允许删除 vault 根目录', 'VAULT_ROOT_OPERATION');
+      return err('不允许删除知识库根目录', 'VAULT_ROOT_OPERATION');
     const before = await services.fs.stat(path);
     if (toTrash) {
       const { abs } = await services.fs.resolve(path);
@@ -151,7 +151,7 @@ export function registerFsHandlers(registrar: IpcRegistrar): void {
     'document:getMetadata',
     async ({ path }, services): Promise<Result<Record<string, unknown> | null>> => {
       const root = services.vaultSession.getCurrent()?.root;
-      if (!root) return err('尚未打开任何 vault', 'NO_VAULT');
+      if (!root) return err('尚未打开任何知识库', 'NO_VAULT');
       if (!isDocumentPath(path)) return ok(null);
       return ok(await new MetadataStore(root).read(path));
     },

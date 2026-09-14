@@ -32,4 +32,19 @@ describe('WelcomePage 产品能力文案', () => {
     expect(copy).toContain('内置 Git 版本历史');
     expect(copy).toContain('AI 对话与写作辅助');
   });
+
+  it('用户可见文案不含 vault / Vault（术语统一「知识库」，DEV-021）', () => {
+    container = document.createElement('div');
+    document.body.append(container);
+    root = createRoot(container);
+    act(() => root!.render(<WelcomePage />));
+
+    const copy = container.textContent ?? '';
+    expect(copy).not.toMatch(/vault/i);
+
+    const buttons = [...container.querySelectorAll('button')].map(
+      (b) => b.textContent?.trim() ?? '',
+    );
+    expect(buttons, buttons.join('|')).not.toContain('浏览 Vault 文件');
+  });
 });

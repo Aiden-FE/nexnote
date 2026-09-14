@@ -304,7 +304,7 @@ export class GitSyncDoctor {
       const issue: GitSyncIssue = {
         category: 'git-missing',
         code: 'NO_VAULT',
-        message: '尚未打开任何 vault',
+        message: '尚未打开任何知识库',
       };
       return {
         issue,
@@ -379,7 +379,7 @@ export class GitSyncDoctor {
         'ACTION_NOT_ALLOWED',
       );
     const root = this.deps.getRoot();
-    if (!root) throw new GitSyncDoctorError('尚未打开任何 vault', 'NO_VAULT');
+    if (!root) throw new GitSyncDoctorError('尚未打开任何知识库', 'NO_VAULT');
     const fingerprint = fingerprintFromSnapshot(diagnosis.status);
     this.sweepExpired();
     const ticket = randomUUID();
@@ -404,7 +404,7 @@ export class GitSyncDoctor {
     if (entry.expiresAt <= this.now())
       throw new GitSyncDoctorError('修复票据已过期，请重新诊断并确认', 'TICKET_EXPIRED');
     if (this.deps.getRoot() !== entry.root)
-      throw new GitSyncDoctorError('vault 已切换，请重新诊断后重试', 'ROOT_CHANGED');
+      throw new GitSyncDoctorError('知识库已切换，请重新诊断后重试', 'ROOT_CHANGED');
     // TOCTOU：execute 前重新取完整快照（含内容指纹），与 prepare 时不一致即拒绝。
     // statusFor 失败时以稳定错误码返回，避免原始异常消息经 IPC 暴露。
     let status;
