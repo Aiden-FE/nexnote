@@ -8,6 +8,11 @@ import { useTagStore } from '../stores/tag-store';
 import { useThemeStore } from '../theme/theme-store';
 import { dockPanelRegistry } from '../registries';
 import { getActiveEditor } from '../editor/active-editor';
+import { getActiveSourceEditor } from '../editor/source/active-source-editor';
+import { applySourceFormat } from '../editor/source/source-formatting';
+import { FORMAT_WIKILINK, runFormatAction } from '../editor/interactions/formatting';
+import { TextSelection } from '@tiptap/pm/state';
+import { undo } from '@codemirror/commands';
 import { openSettings } from '../lib/open-settings';
 import { deleteEntry, moveEntry } from '../features/sidebar/page-tree/ops';
 import { BUILTIN_PLUGIN_IDS } from '@nexnote/shared';
@@ -352,6 +357,44 @@ export async function runSmokeIfEnabled(): Promise<void> {
 
       // 保存后的文档保持原路径；H1 重命名由独立 page-ops 测试覆盖，避免冒烟流程把焦点/防抖验收与命名联动耦合。
       check('编辑后页面路径保持稳定', leftPageTab.pagePath === '冒烟页面 A.md');
+
+      // DEV-023 块编辑「双链」按钮：选中「第一块」经内核 wikilink 节点插入（可 undo）。
+      const blockKernel = getActiveEditor();
+      if (blockKernel) {
+        const blockView = blockKernel.editor.view;
+        const blockDoc = blockView.state.doc;
+        let firstFrom = -1;
+        let firstTo = -1;
+        blockDoc.descendants((node, pos) => {
+          if (firstFrom >= 0 || !node.isText) return true;
+          const at = node.text?.indexOf('第一块') ?? -1;
+          if (at >= 0) {
+            firstFrom = pos + at;
+            firstTo = firstFrom + '第一块'.length;
+          }
+          return false;
+        });
+        if (firstFrom >= 0) {
+          blockView.dispatch(
+            blockView.state.tr.setSelection(
+              TextSelection.create(blockView.state.doc, firstFrom, firstTo),
+            ),
+          );
+          check(
+            '块编辑双链按钮：经内核 wikilink 节点插入且可 undo',
+            runFormatAction(FORMAT_WIKILINK, blockKernel, '第一块') &&
+              !!document.querySelector(
+                '[data-testid="editor-view"] .ProseMirror [data-wikilink-target="第一块"]',
+              ) &&
+              blockKernel.undo() &&
+              !document.querySelector(
+                '[data-testid="editor-view"] .ProseMirror [data-wikilink-target="第一块"]',
+              ),
+          );
+        } else {
+          check('块编辑双链按钮：定位选区文本', false, '第一块 not found');
+        }
+      }
       useTabStore.getState().closeTab(leftPageTab.id);
       useTabStore.getState().openTab({
         kind: 'page',
@@ -427,6 +470,7 @@ export async function runSmokeIfEnabled(): Promise<void> {
       '硬换行后一行\n\n' +
       '~~~mermaid\ngraph TD\n  A --> B\n~~~\n\n' +
       '$$\nE = mc^2\n$$\n\n' +
+      '划词格式化冒烟句\n\n' +
       '链接到[[源码模式跳转目标]]\n\n';
     await invoke('fs:createNote', {
       parentDir: '',
@@ -455,10 +499,18 @@ export async function runSmokeIfEnabled(): Promise<void> {
         !!document.querySelector('[data-testid="source-editor-pane"] .cm-content'),
     );
     check(
-      '源码包含原始 YAML 且属性面板隐藏',
-      (document.querySelector('[data-testid="source-editor-pane"]')?.textContent ?? '').includes(
-        'title: 源码模式冒烟',
-      ) && !document.querySelector('[data-testid="frontmatter-panel"]'),
+      'Markdown 属性面板挂载且 YAML 从正文抽离（DEV-025）',
+      (await waitFor(() => !!document.querySelector('[data-testid="frontmatter-panel"]'))) &&
+        !(document.querySelector('[data-testid="source-editor-pane"]')?.textContent ?? '').includes(
+          'title: 源码模式冒烟',
+        ) &&
+        (document.querySelector('[data-testid="source-editor-pane"]')?.textContent ?? '').includes(
+          '# 源码模式冒烟',
+        ),
+    );
+    check(
+      '属性面板显示已有标准字段',
+      !!document.querySelector('[data-testid="frontmatter-field-title"]'),
     );
     // 划词工具栏（真实 Chromium 验收）：在源码编辑器中制造非空选区，工具栏须出现在选区上方。
     // 划词工具栏展示由单测（source-selection-bubble.test.tsx，真实 CM + dispatch 路径）
@@ -503,6 +555,47 @@ export async function runSmokeIfEnabled(): Promise<void> {
       untouched.slice(0, 60),
     );
     await capture('03-source-mode');
+
+    // ── DEV-023 源码划词格式化/双链写回（真实 Chromium：单事务 + 防抖逐字节写盘）──
+    // bubble 按钮可见性由单测（真实 CM + dispatch 路径）覆盖（见上方 smoke 病理注释）；
+    // 此处经同一动作入口 applySourceFormat 验证写回、undo 与落盘。
+    const sourceHandle = getActiveSourceEditor();
+    check('源码编辑器句柄已注册', !!sourceHandle?.view);
+    if (sourceHandle) {
+      const sourceView = sourceHandle.view;
+      const selectSentence = () => {
+        const text = sourceView.state.doc.toString();
+        const at = text.indexOf('划词格式化冒烟句');
+        if (at < 0) return false;
+        sourceView.dispatch({
+          selection: { anchor: at, head: at + '划词格式化冒烟句'.length },
+        });
+        return true;
+      };
+      check(
+        'md 划词加粗写回 **…**（单事务）',
+        selectSentence() &&
+          applySourceFormat(sourceView, 'format:bold') === true &&
+          sourceView.state.doc.toString().includes('**划词格式化冒烟句**'),
+      );
+      check(
+        'md 划词加粗单次 undo 整体撤销',
+        undo(sourceView) === true && !sourceView.state.doc.toString().includes('**'),
+      );
+      check(
+        'md 划词双链插入 [[…]]',
+        selectSentence() &&
+          applySourceFormat(sourceView, 'format:wikilink') === true &&
+          sourceView.state.doc.toString().includes('[[划词格式化冒烟句]]'),
+      );
+      await sleep(2_000); // 源码防抖保存 + IPC 写盘
+      const formattedSaved = await invoke('fs:readTextFile', { path: markdownPath });
+      check(
+        'md 格式化/双链写回防抖保存到盘',
+        formattedSaved.includes('[[划词格式化冒烟句]]'),
+        formattedSaved.slice(0, 80),
+      );
+    }
 
     // Markdown 的 Cmd/Ctrl+E 是预览分栏开关，不切换为 TipTap。
     window.dispatchEvent(
@@ -565,9 +658,9 @@ export async function runSmokeIfEnabled(): Promise<void> {
       await sleep(2_000);
       const renamedSaved = await invoke('fs:readTextFile', { path: '源码模式改名页.md' });
       check(
-        'Markdown 防抖保存逐字节写回',
-        renamedSaved === markdownRenamedRaw,
-        renamedSaved.slice(0, 60),
+        'Markdown 防抖保存逐字节写回正文且保留 YAML 头（DEV-025）',
+        renamedSaved === `---\ntitle: 源码模式冒烟\n---\n\n${markdownRenamedRaw}`,
+        renamedSaved.slice(0, 80),
       );
       check(
         'Markdown H1 改名同步页面树与 Tab',
@@ -610,6 +703,43 @@ export async function runSmokeIfEnabled(): Promise<void> {
         !!document.querySelector('[data-testid="source-editor-pane"] .cm-content'),
     );
     await capture('04-source-mode-reset');
+
+    // ── 5b. DEV-025 字段目录：7 标准字段可见、已添加禁用、面板写回 YAML 头 ──
+    document.querySelector<HTMLButtonElement>('[data-testid="add-field-trigger"]')?.click();
+    check(
+      '字段目录打开：7 个标准字段全部可见',
+      (await waitFor(() => !!document.querySelector('[data-testid="field-catalog"]'))) &&
+        document.querySelectorAll('[data-testid="field-catalog-item"]').length === 7,
+    );
+    const catalogTitleItem = document.querySelector<HTMLButtonElement>(
+      '[data-testid="field-catalog-item"][data-field="title"]',
+    );
+    check(
+      '已添加标准字段禁用并标「已添加」',
+      catalogTitleItem?.disabled === true &&
+        (catalogTitleItem?.textContent ?? '').includes('已添加'),
+      catalogTitleItem?.textContent ?? 'missing',
+    );
+    check(
+      '字段行 hover 说明 tooltip 与目录集中定义一致',
+      (
+        document
+          .querySelector('[data-testid="field-catalog-item"][data-field="confidence"]')
+          ?.getAttribute('title') ?? ''
+      ).includes('Git'),
+    );
+    document
+      .querySelector<HTMLButtonElement>('[data-testid="field-catalog-item"][data-field="tags"]')
+      ?.click();
+    await sleep(2_500); // 面板 onChange → 防抖保存
+    const withTags = await invoke('fs:readTextFile', { path: '源码模式改名页.md' });
+    check(
+      '面板添加标准字段写回 YAML 头且正文字节不动',
+      withTags.startsWith('---\ntitle: 源码模式冒烟\ntags: []\n---') &&
+        withTags.endsWith('# 源码模式改名页\n\n链接到[[源码模式跳转目标]]\n'),
+      withTags.slice(0, 100),
+    );
+    await capture('21-md-field-catalog');
 
     // ── 6. ⌘K 命令面板：唤起 + 过滤 + 键盘执行 ────────────────
     window.dispatchEvent(

@@ -14,6 +14,70 @@ export interface FrontmatterDocument {
   source: string;
 }
 
+/**
+ * Markdown 文档的字节精确拆装（DEV-025 源码模式属性面板）：
+ * header + separator + body 逐字节还原原文，供「未编辑不重排 YAML」的保真语义使用。
+ * 与 kernel splitFrontmatter 的区别：保留原始 header/separator 字节并兼容 CRLF 行尾。
+ */
+export interface FrontmatterParts {
+  /** 完整原始头部（含 --- 分隔线，不含其后的换行），无 YAML 头时为 null */
+  header: string | null;
+  /** header 内的 YAML 源文本（不含分隔线）；无 YAML 头时为 null */
+  yaml: string | null;
+  /** 头部与正文之间的原文字节（`---` 后的换行与空行） */
+  separator: string;
+  body: string;
+}
+
+const FRONTMATTER_HEADER_RE = /^(---[ \t]*(?:\r?\n))([\s\S]*?)(\r?\n---)(?=\r?\n|$)/;
+
+export function splitFrontmatterParts(markdown: string): FrontmatterParts {
+  const match = FRONTMATTER_HEADER_RE.exec(markdown);
+  if (!match) {
+    return { header: null, yaml: null, separator: '', body: markdown };
+  }
+  const header = match[0];
+  const rest = markdown.slice(header.length);
+  // 分隔线之后的连续换行（含空行）全部计入 separator，正文从首个非换行字节开始
+  const separatorMatch = /^(?:\r?\n)+/.exec(rest);
+  const separator = separatorMatch ? separatorMatch[0] : '';
+  return {
+    header,
+    yaml: match[2] ?? '',
+    separator,
+    body: rest.slice(separator.length),
+  };
+}
+
+/** 检测文本主行尾：任一 CRLF 即按 CRLF 处理，否则 LF。 */
+function detectEol(text: string): '\r\n' | '\n' {
+  return text.includes('\r\n') ? '\r\n' : '\n';
+}
+
+/**
+ * 仅替换文档 YAML 头区域，其余字节（分隔线风格、头部与正文间空行、正文）原样保留。
+ * - yaml 为空/空白：移除整个头部（正文原字节保留）
+ * - 原文档无头部：在文件头生成 `---\nYAML\n---\n\n`，正文字节不变
+ * - 行尾跟随原文档（CRLF 文档写回 CRLF）
+ */
+export function replaceFrontmatterYaml(markdown: string, yaml: string | null): string {
+  const parts = splitFrontmatterParts(markdown);
+  const normalized = (yaml ?? '').trim().length === 0 ? null : (yaml ?? '');
+  if (normalized === null) {
+    return parts.header === null ? markdown : parts.body;
+  }
+  const eol = detectEol(parts.header ?? parts.body);
+  const yamlText = normalized.split(/\r?\n/).join(eol);
+  if (parts.header === null) {
+    const bodyEol = detectEol(parts.body);
+    return `---${bodyEol}${yamlText}${bodyEol}---${bodyEol}${bodyEol}${parts.body}`;
+  }
+  const headerMatch = FRONTMATTER_HEADER_RE.exec(parts.header);
+  if (!headerMatch) return markdown;
+  const rebuilt = `${headerMatch[1] ?? ''}${yamlText}${headerMatch[3] ?? ''}`;
+  return rebuilt + parts.separator + parts.body;
+}
+
 export interface FrontmatterInspection extends FrontmatterDocument {
   /** YAML 不可解析时为错误文本；此时 UI 必须锁定在源码模式，禁止结构化覆盖原文。 */
   parseError: string | null;

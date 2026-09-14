@@ -11,14 +11,50 @@ export const FORMAT_ITALIC = 'format:italic';
 export const FORMAT_STRIKE = 'format:strike';
 export const FORMAT_CODE = 'format:code';
 export const FORMAT_LINK = 'format:link';
+/** 双链（[[页面名]]）：与外链（FORMAT_LINK，外部 URL）互不混淆的独立动作。 */
+export const FORMAT_WIKILINK = 'format:wikilink';
+
+/** 链接动作的 URL 输入提示语（块编辑与源码模式共用同一交互）。 */
+export const LINK_URL_PROMPT = '链接地址（http(s):// 或 obsidian:// 或相对页面路径）：';
 
 export function formatBubbleActions(): BubbleAction[] {
   return [
-    { id: FORMAT_BOLD, title: 'B', hint: '粗体', shortcut: { mod: true, key: 'b' }, shortcutLabel: '⌘B' },
-    { id: FORMAT_ITALIC, title: 'I', hint: '斜体', shortcut: { mod: true, key: 'i' }, shortcutLabel: '⌘I' },
-    { id: FORMAT_STRIKE, title: 'S', hint: '删除线', shortcut: { mod: true, shift: true, key: 'x' }, shortcutLabel: '⌘⇧X' },
-    { id: FORMAT_CODE, title: '`</>', hint: '行内代码', shortcut: { mod: true, key: 'e' }, shortcutLabel: '⌘E' },
-    { id: FORMAT_LINK, title: '🔗', hint: '链接', shortcut: { mod: true, key: 'k' }, shortcutLabel: '⌘K' },
+    {
+      id: FORMAT_BOLD,
+      title: 'B',
+      hint: '粗体',
+      shortcut: { mod: true, key: 'b' },
+      shortcutLabel: '⌘B',
+    },
+    {
+      id: FORMAT_ITALIC,
+      title: 'I',
+      hint: '斜体',
+      shortcut: { mod: true, key: 'i' },
+      shortcutLabel: '⌘I',
+    },
+    {
+      id: FORMAT_STRIKE,
+      title: 'S',
+      hint: '删除线',
+      shortcut: { mod: true, shift: true, key: 'x' },
+      shortcutLabel: '⌘⇧X',
+    },
+    {
+      id: FORMAT_CODE,
+      title: '`</>',
+      hint: '行内代码',
+      shortcut: { mod: true, key: 'e' },
+      shortcutLabel: '⌘E',
+    },
+    {
+      id: FORMAT_LINK,
+      title: '🔗',
+      hint: '链接（外部 URL）',
+      shortcut: { mod: true, key: 'k' },
+      shortcutLabel: '⌘K',
+    },
+    { id: FORMAT_WIKILINK, title: '[[]]', hint: '双链（内部页面 [[页面名]]）' },
   ];
 }
 
@@ -28,8 +64,22 @@ export function runFormatAction(
   kernel: EditorKernelInstance | null,
   selectionText: string,
 ): boolean {
-  if (!kernel || !selectionText.trim()) return false;
+  if (!kernel) return false;
   const editor = kernel.editor;
+
+  // 双链（DEV-023）：有选区经内核 wikilink 节点插入 [[选区]]；
+  // 无选区插入 `[[` 骨架，交由内核 [[ 补全菜单确认目标页面。
+  if (id === FORMAT_WIKILINK) {
+    const target = selectionText.trim();
+    if (target) {
+      void editor.chain().focus().insertWikilink({ target }).run();
+    } else {
+      void editor.chain().focus().insertContent('[[').run();
+    }
+    return true;
+  }
+
+  if (!selectionText.trim()) return false;
   const chain = editor.chain().focus();
   switch (id) {
     case FORMAT_BOLD:
@@ -45,7 +95,7 @@ export function runFormatAction(
       chain.toggleCode();
       break;
     case FORMAT_LINK: {
-      const href = window.prompt('链接地址（http(s):// 或 obsidian:// 或相对页面路径）：');
+      const href = window.prompt(LINK_URL_PROMPT);
       if (!href) return true;
       chain.setLink({ href });
       break;
