@@ -21,7 +21,7 @@ asarUnpack:
   - node_modules/@napi-rs/keyring-*/**
 compression: normal
 removePackageScripts: true
-afterSign: scripts/notarize.cjs
+afterSign: scripts/ad-hoc-sign.mjs
 
 extraResources:
   # 捆绑 dugite-native Git（GPLv2）：随附许可证文本 + 源码 offer（GPLv2 §3 义务）。
@@ -66,21 +66,17 @@ mac:
   target:
     - dmg
     - zip
-  # arm64/x64 同名产物（dmg/zip）必须在 basename 上区分为不同文件，
-  # 否则 preflight flatten 会发现 basename 冲突而失败。
-  artifactName: ${productName}-${version}-${arch}.${ext}
+  # 稳定契约：macOS 产物必须显式包含平台和架构，避免跨 runner 同名冲突。
+  artifactName: ${productName}-${version}-mac-${arch}.${ext}
   category: public.app-category.productivity
   hardenedRuntime: true
   gatekeeperAssess: false
   entitlements: build/entitlements.mac.plist
   entitlementsInherit: build/entitlements.mac.inherit.plist
-  # 签名需要 CI 环境变量（本地开发默认不签名）：
-  #   CSC_LINK / CSC_KEY_PASSWORD                 — Developer ID 证书
-  #   APPLE_ID / APPLE_APP_SPECIFIC_PASSWORD / APPLE_TEAM_ID — 公证
-  # electron-builder 自动从 CSC_LINK / CSC_KEY_PASSWORD 发现 Developer ID；
-  # 所有 distributable 构建必须提供签名与公证凭据；缺失时 afterSign 直接失败。
-  # 仅供开发的 unpacked `--dir` 构建不属于可发布产物。
-  # 顶层 afterSign 钩子在签名后执行 Apple notarization。
+  # 公开发布不依赖 Apple Developer ID 或 notarization 凭据：CI 设置
+  # CSC_IDENTITY_AUTO_DISCOVERY=false，由顶层 afterSign 钩子对完整 .app 使用 Ad hoc 身份签名并 verify。
+  # Ad hoc 产物未经公证，Gatekeeper 可能隔离；用户需按发布说明手动放行。
+  # 若本地/未来 CI 显式提供 CSC_LINK 或 CSC_NAME，afterSign 会保留 electron-builder 的真实证书签名。
 
 dmg:
   title: NexNote ${version}
@@ -103,7 +99,8 @@ win:
     - target: portable
       arch:
         - x64
-  artifactName: ${productName} Setup ${version}.${ext}
+  # NSIS is the updater primary; both Windows formats remain explicit and unique.
+  artifactName: ${productName}-${version}-win-x64.${ext}
   # Authenticode 签名（CI 环境变量，本地默认不签名）：
   #   WIN_CSC_FILE / WIN_CSC_PASSWORD（或 CSC_LINK / CSC_KEY_PASSWORD）
 
@@ -117,7 +114,7 @@ nsis:
   deleteAppDataOnUninstall: false
 
 portable:
-  artifactName: ${productName} ${version} portable.${ext}
+  artifactName: ${productName}-${version}-win-x64-portable.${ext}
 
 # ── Linux ──────────────────────────────────────────────
 linux:
@@ -135,6 +132,7 @@ linux:
   maintainer: NexNote
 
 deb:
+  artifactName: ${productName}-${version}-linux-x86_64.${ext}
   depends:
     - libnss3
     - libatk1.0-0
@@ -152,4 +150,4 @@ deb:
     - libsecret-1-0
 
 appImage:
-  artifactName: ${productName}-${version}-${arch}.${ext}
+  artifactName: ${productName}-${version}-linux-x86_64.${ext}
