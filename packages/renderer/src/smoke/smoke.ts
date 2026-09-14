@@ -171,6 +171,108 @@ export async function runSmokeIfEnabled(): Promise<void> {
     check('Tab 可打开（单栈多 tab）', tabCount() === before + 2, `count=${tabCount()}`);
     const tabAText = document.querySelector('[data-testid="workspace-tabs"]')?.textContent ?? '';
     check('主区含新 Tab 内容', tabAText.includes('冒烟页面 B'));
+
+    // ── 4a. DEV-022 页签拖拽排序 + Ctrl+Tab 循环切换 ─────────
+    const tabEl = (path: string): HTMLElement | null =>
+      document.querySelector<HTMLElement>(
+        `[data-testid="tab"][data-page-path="${CSS.escape(path)}"]`,
+      );
+    const domTabOrder = (): string[] =>
+      [...document.querySelectorAll<HTMLElement>('[data-testid="tab"]')].map(
+        (el) => el.getAttribute('data-tab-identity') ?? '',
+      );
+    const dndTabTo = (fromPath: string, toPath: string): void => {
+      const from = tabEl(fromPath);
+      const to = tabEl(toPath);
+      if (!from || !to) return;
+      const rect = to.getBoundingClientRect();
+      const x = rect.left + rect.width * 0.9;
+      from.dispatchEvent(new DragEvent('dragstart', { bubbles: true, cancelable: true }));
+      to.dispatchEvent(
+        new DragEvent('dragover', {
+          bubbles: true,
+          cancelable: true,
+          clientX: x,
+          clientY: rect.top + rect.height / 2,
+        }),
+      );
+      check(
+        '拖拽悬停显示插入位置反馈',
+        to.getAttribute('data-drop-indicator') === 'after',
+        to.getAttribute('data-drop-indicator') ?? '(none)',
+      );
+      to.dispatchEvent(
+        new DragEvent('drop', {
+          bubbles: true,
+          cancelable: true,
+          clientX: x,
+          clientY: rect.top + rect.height / 2,
+        }),
+      );
+      from.dispatchEvent(new DragEvent('dragend', { bubbles: true, cancelable: true }));
+    };
+    dndTabTo('冒烟页面 A.md', '冒烟页面 B.md');
+    check(
+      '拖拽重排：A 移到 B 之后，顺序立即更新',
+      await waitFor(() => domTabOrder().join('|') === 'kind:welcome|冒烟页面 B.md|冒烟页面 A.md'),
+      domTabOrder().join(' | '),
+    );
+    await sleep(2_500); // 布局防抖 600ms + 写盘
+    const tabOrderConfig = await invoke('fs:readTextFile', { path: '.nexnote/config.json' });
+    check(
+      '重排顺序持久化到 vault 布局（tabOrder）',
+      tabOrderConfig.includes('"tabOrder"') &&
+        tabOrderConfig.indexOf('冒烟页面 B.md') < tabOrderConfig.indexOf('冒烟页面 A.md'),
+      tabOrderConfig.slice(0, 60),
+    );
+
+    const activeTabPath = (): string | null =>
+      useTabStore.getState().tabs.find((t) => t.id === useTabStore.getState().activeTabId)
+        ?.pagePath ?? null;
+    window.dispatchEvent(
+      new KeyboardEvent('keydown', {
+        key: 'Tab',
+        ctrlKey: true,
+        bubbles: true,
+        cancelable: true,
+      }),
+    );
+    await sleep(150);
+    check(
+      'Ctrl+Tab 切换到下一个页签',
+      activeTabPath() === '冒烟页面 A.md',
+      activeTabPath() ?? '(welcome)',
+    );
+    window.dispatchEvent(
+      new KeyboardEvent('keydown', {
+        key: 'Tab',
+        ctrlKey: true,
+        bubbles: true,
+        cancelable: true,
+      }),
+    );
+    await sleep(150);
+    check(
+      'Ctrl+Tab 到达末尾回绕（回到非页文档 tab）',
+      activeTabPath() === null,
+      activeTabPath() ?? '(welcome)',
+    );
+    window.dispatchEvent(
+      new KeyboardEvent('keydown', {
+        key: 'Tab',
+        ctrlKey: true,
+        shiftKey: true,
+        bubbles: true,
+        cancelable: true,
+      }),
+    );
+    await sleep(150);
+    check(
+      'Ctrl+Shift+Tab 反向循环切换',
+      activeTabPath() === '冒烟页面 A.md',
+      activeTabPath() ?? '(welcome)',
+    );
+    useTabStore.getState().setActiveTab(pageB.id);
     useTabStore.getState().closeTab(pageB.id);
     await waitFor(() => tabCount() === before + 1);
     check('Tab 可关闭', tabCount() === before + 1, `count=${tabCount()}`);

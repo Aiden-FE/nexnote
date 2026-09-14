@@ -51,6 +51,12 @@ export interface VaultLayout {
    * 旧配置缺省该字段时按 false 处理（读取侧与 defaultVaultLayout 兜底）。
    */
   guideCompleted: boolean;
+  /**
+   * 页签顺序（DEV-022 拖拽排序）：按 tab 稳定身份（pagePath 或 `kind:<kind>`）记录。
+   * tab 会话本身不持久化（见 lastSession 占位），该顺序供会话内 vault 重开与
+   * 后续会话恢复票据消费；旧配置缺省时按空数组兜底。
+   */
+  tabOrder: string[];
 }
 
 export function defaultVaultLayout(): VaultLayout {
@@ -65,6 +71,7 @@ export function defaultVaultLayout(): VaultLayout {
     treeShowAllFiles: false,
     treeShowExtensions: false,
     guideCompleted: false,
+    tabOrder: [],
   };
 }
 

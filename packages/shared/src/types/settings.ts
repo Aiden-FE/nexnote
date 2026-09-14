@@ -90,6 +90,9 @@ export const DEFAULT_SHORTCUTS: readonly ShortcutOverride[] = [
   { commandId: 'app.save', key: 'Mod+S', disabled: false },
   { commandId: 'editor.toggleSourceMode', key: 'Mod+E', disabled: false },
   { commandId: 'tab.new', key: 'Mod+T', disabled: false },
+  // DEV-022：tab 栈内循环切换。Ctrl 在非 macOS 平台由运行时归一为 Mod（物理同键）。
+  { commandId: 'tab.next', key: 'Ctrl+Tab', disabled: false },
+  { commandId: 'tab.prev', key: 'Ctrl+Shift+Tab', disabled: false },
   { commandId: 'app.settings', key: 'Mod+,', disabled: false },
 ];
 
