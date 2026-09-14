@@ -166,6 +166,32 @@ NexNote 的插件运行在严格的**沙箱（iframe）**里：
 
 ---
 
+## 发布、安装与更新
+
+**Q: macOS 安装包是签名或公证的吗？**
+
+当前发布计划提供 macOS Intel（x64）和 Apple Silicon（arm64）的 Ad hoc 签名包，**未公证**。首次启动可能被 macOS 隔离；确认下载来源和校验和后，将应用拖入 Applications，并按安装说明清除 quarantine 属性：
+
+```sh
+xattr -d com.apple.quarantine /Applications/NexNote.app
+```
+
+这不是 Developer ID 分发，也不代表 Gatekeeper 会无警告放行。每个 release 的真实签名、安装与首次启动结果以 [QA 清单](./release/QA-CHECKLIST.md) 中的 evidence 为准；未执行的项目保持 `NOT_RUN`。
+
+**Q: macOS 为什么没有自动安装更新？**
+
+Ad hoc、未公证的 macOS 包不能依赖应用内自动安装。若应用内检查到更新但无法自动安装，请按提示前往 [GitHub Releases](https://github.com/Aiden-FE/nexnote/releases)，选择与 Intel 或 Apple Silicon 对应的 DMG/ZIP，手动安装新版。没有公开 N-1 到当前版本的真实网络升级 evidence 时，不把更新写成“已验证”。
+
+**Q: Windows 和 Ubuntu 应该下载哪种格式来自动更新？**
+
+Windows 以 NSIS installer 为自动更新主路径；`portable` 是额外的手动运行格式。Ubuntu 以 AppImage 为自动更新主路径；`deb` 是额外的手动安装格式，不能把 deb 的手动安装结果当成自动更新验证。具体版本、channel 和 asset 以 GitHub Release 为准。
+
+**Q: 更新失败或版本有问题怎么办？**
+
+先记录错误和当前版本，使用“重试”再次检查/下载；不要删除 vault。若 feed 暂停或自动更新仍不可用，从 GitHub Releases 选择已知可用的旧版，核对架构、tag 和 SHA-256 后手动安装。维护者会优先通过同一 channel 发布前滚修复版本；每个版本的处理记录见发布 QA evidence。
+
+---
+
 ## 故障排查
 
 **Q: 搜索结果不准 / 找不到应该存在的内容？**
@@ -215,4 +241,4 @@ NexNote 的插件运行在严格的**沙箱（iframe）**里：
 
 **Q: 三端（macOS / Windows / Linux）都支持吗？**
 
-代码层面都支持，CI 也构建三平台产物。v0.1.0 是 MVP 内测版，签名/公证/分发见 [RELEASE-NOTES.md](../.scratch/nexnote-build/RELEASE-NOTES.md)。
+代码层面都支持，CI 也构建三平台产物。v0.1.0 是 MVP 内测版；macOS 当前为 Ad hoc、未公证，Windows/Linux 的真实签名、平台安装和 N-1 网络升级是否完成必须以 [QA 清单](./release/QA-CHECKLIST.md) 的 evidence 为准。发布格式与已知边界见 [Release Notes](../.scratch/nexnote-build/RELEASE-NOTES.md)。
