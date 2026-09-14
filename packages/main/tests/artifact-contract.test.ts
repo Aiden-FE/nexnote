@@ -1,0 +1,120 @@
+import { createHash } from 'node:crypto';
+import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from 'node:fs';
+import { join } from 'node:path';
+import { describe, expect, it } from 'vitest';
+import {
+  expectedArtifactNames,
+  verifyArtifactContract,
+} from '../../../scripts/verify-artifact-contract.mjs';
+
+const version = '0.1.0';
+
+function writeManifest(dir: string, name: string, entries: string[]) {
+  const files = entries.map((entry) => {
+    const path = join(dir, entry);
+    const body = Buffer.from(entry);
+    writeFileSync(path, body);
+    return {
+      url: entry,
+      size: body.length,
+      sha512: createHash('sha512').update(body).digest('base64'),
+    };
+  });
+  writeFileSync(join(dir, name), `version: ${version}\nfiles: ${JSON.stringify(files)}\n`);
+}
+
+function makeRelease() {
+  const dir = mkdtempSync(join('/tmp', 'nexnote-artifact-contract-'));
+  const names = expectedArtifactNames(version);
+  for (const name of [
+    names.macArm64.dmg,
+    names.macArm64.zip,
+    names.macX64.dmg,
+    names.macX64.zip,
+    names.windows.nsis,
+    names.linux.appImage,
+    names.macArm64.zip + '.blockmap',
+    names.macX64.zip + '.blockmap',
+    names.windows.nsis + '.blockmap',
+    names.linux.appImage + '.blockmap',
+  ])
+    writeFileSync(join(dir, name), Buffer.from(name));
+  writeManifest(dir, 'latest-mac.yml', [names.macArm64.zip, names.macX64.zip]);
+  writeManifest(dir, 'latest.yml', [names.windows.nsis]);
+  writeManifest(dir, 'latest-linux.yml', [names.linux.appImage]);
+  return { dir, names };
+}
+
+describe('artifact contract', () => {
+  it('expands stable names with explicit platform and architecture', () => {
+    expect(expectedArtifactNames(version)).toMatchObject({
+      macArm64: {
+        dmg: 'NexNote-0.1.0-mac-arm64.dmg',
+        zip: 'NexNote-0.1.0-mac-arm64.zip',
+      },
+      macX64: {
+        dmg: 'NexNote-0.1.0-mac-x64.dmg',
+        zip: 'NexNote-0.1.0-mac-x64.zip',
+      },
+      windows: { nsis: 'NexNote-0.1.0-win-x64.exe' },
+      linux: { appImage: 'NexNote-0.1.0-linux-x86_64.AppImage' },
+    });
+  });
+
+  it('accepts the required set without optional portable/deb', () => {
+    const { dir } = makeRelease();
+    try {
+      expect(verifyArtifactContract({ releaseDir: dir, channel: 'stable', version })).toBeTruthy();
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it.each([
+    [
+      'missing mac architecture',
+      (dir: string, names: ReturnType<typeof expectedArtifactNames>) =>
+        rmSync(join(dir, names.macX64.zip)),
+    ],
+    ['missing manifest', (dir: string) => rmSync(join(dir, 'latest-linux.yml'))],
+    [
+      'wrong manifest URL',
+      (dir: string, _names: ReturnType<typeof expectedArtifactNames>) =>
+        writeFileSync(
+          join(dir, 'latest.yml'),
+          `version: ${version}\nfiles: [{url: wrong.exe, size: 1, sha512: wrong}]\n`,
+        ),
+    ],
+    [
+      'wrong manifest version',
+      (dir: string, names: ReturnType<typeof expectedArtifactNames>) =>
+        writeFileSync(
+          join(dir, 'latest-linux.yml'),
+          `version: 9.9.9\nfiles: [{url: ${names.linux.appImage}, size: 1, sha512: wrong}]\n`,
+        ),
+    ],
+  ])('rejects %s', (_, mutate) => {
+    const { dir, names } = makeRelease();
+    try {
+      mutate(dir, names);
+      expect(() =>
+        verifyArtifactContract({ releaseDir: dir, channel: 'stable', version }),
+      ).toThrow();
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it('rejects duplicate basenames across preflight directories', () => {
+    const { dir, names } = makeRelease();
+    try {
+      mkdirSync(join(dir, 'other'));
+      writeFileSync(join(dir, 'other', names.macArm64.dmg), 'duplicate');
+      expect(() => verifyArtifactContract({ releaseDir: dir, channel: 'stable', version })).toThrow(
+        /duplicate artifact basename/,
+      );
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+});

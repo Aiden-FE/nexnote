@@ -23,10 +23,10 @@ const files = manifests.flatMap(({ doc }) => doc.files ?? []);
 const urls = new Set(files.map((file) => file.url));
 if (
   urls.size !== files.length ||
-  ![...urls].some((url) => /arm64/.test(url)) ||
-  ![...urls].some((url) => /x64/.test(url))
+  ![...urls].some((url) => /-mac-arm64\.zip(?:$|[?#])/.test(url)) ||
+  ![...urls].some((url) => /-mac-x64\.zip(?:$|[?#])/.test(url))
 ) {
-  throw new Error('merged mac manifest must contain distinct arm64 and x64 files');
+  throw new Error('merged mac manifest must contain distinct mac-arm64 and mac-x64 zip files');
 }
 writeFileSync(join(root, manifestName), yaml.dump({ ...first, files }), 'utf8');
 console.log(`merged ${manifests.length} native mac manifests into ${manifestName}`);
