@@ -13,6 +13,8 @@ import { type EditorView, ViewPlugin, type ViewUpdate } from '@codemirror/view';
 export interface SourceBubbleAction {
   id: string;
   title: string;
+  /** tooltip（与块编辑 bubble 的 hint 对齐，如「双链（内部页面）」） */
+  hint?: string;
 }
 
 export interface SourceBubbleContext {
@@ -174,6 +176,7 @@ export function sourceSelectionBubble(options: SourceBubbleOptions): Extension {
           btn.type = 'button';
           btn.className = 'nexnote-selection-bubble__action';
           btn.dataset.bubbleAction = action.id;
+          btn.title = action.hint ?? action.title;
           btn.textContent = action.title;
           btn.addEventListener('mousedown', (e) => {
             // 阻止 mousedown 抢夺编辑器选区

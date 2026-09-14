@@ -8,6 +8,11 @@ import { useTagStore } from '../stores/tag-store';
 import { useThemeStore } from '../theme/theme-store';
 import { dockPanelRegistry } from '../registries';
 import { getActiveEditor } from '../editor/active-editor';
+import { getActiveSourceEditor } from '../editor/source/active-source-editor';
+import { applySourceFormat } from '../editor/source/source-formatting';
+import { FORMAT_WIKILINK, runFormatAction } from '../editor/interactions/formatting';
+import { TextSelection } from '@tiptap/pm/state';
+import { undo } from '@codemirror/commands';
 import { openSettings } from '../lib/open-settings';
 import { deleteEntry, moveEntry } from '../features/sidebar/page-tree/ops';
 import { BUILTIN_PLUGIN_IDS } from '@nexnote/shared';
@@ -115,6 +120,25 @@ export async function runSmokeIfEnabled(): Promise<void> {
       !document.querySelector('[data-testid="guided-tour"]'),
     );
 
+    // ── 2b'. 首启动 AI 引导（DEV-026）：未配置时自动弹一次，关闭后不再自动弹出 ──
+    check(
+      '未配置时首启动 AI 引导自动弹出',
+      await waitFor(() => !!document.querySelector('[data-testid="ai-wizard"]')),
+    );
+    document
+      .querySelector<HTMLButtonElement>('[data-testid="ai-wizard"] [aria-label="关闭向导"]')
+      ?.click();
+    await sleep(300);
+    check('AI 引导关闭后不再自动弹出', !document.querySelector('[data-testid="ai-wizard"]'));
+
+    // ── 2c. 欢迎页占位按钮已删除（DEV-021）───────────────────
+    const welcomeCopy = document.querySelector('[data-testid="workspace-tabs"]')?.textContent ?? '';
+    check(
+      '欢迎页无「浏览 Vault 文件」占位按钮',
+      welcomeCopy.includes('快速上手') && !welcomeCopy.includes('Vault 文件'),
+      welcomeCopy.slice(0, 60),
+    );
+
     // ── 3. 首次工作区布局 ─────────────────────────────────────
     const treeRow = (rel: string): Element | null =>
       document.querySelector(`[data-testid="tree-row"][data-path="${CSS.escape(rel)}"]`);
@@ -199,6 +223,44 @@ export async function runSmokeIfEnabled(): Promise<void> {
 
       // 保存后的文档保持原路径；H1 重命名由独立 page-ops 测试覆盖，避免冒烟流程把焦点/防抖验收与命名联动耦合。
       check('编辑后页面路径保持稳定', leftPageTab.pagePath === '冒烟页面 A.md');
+
+      // DEV-023 块编辑「双链」按钮：选中「第一块」经内核 wikilink 节点插入（可 undo）。
+      const blockKernel = getActiveEditor();
+      if (blockKernel) {
+        const blockView = blockKernel.editor.view;
+        const blockDoc = blockView.state.doc;
+        let firstFrom = -1;
+        let firstTo = -1;
+        blockDoc.descendants((node, pos) => {
+          if (firstFrom >= 0 || !node.isText) return true;
+          const at = node.text?.indexOf('第一块') ?? -1;
+          if (at >= 0) {
+            firstFrom = pos + at;
+            firstTo = firstFrom + '第一块'.length;
+          }
+          return false;
+        });
+        if (firstFrom >= 0) {
+          blockView.dispatch(
+            blockView.state.tr.setSelection(
+              TextSelection.create(blockView.state.doc, firstFrom, firstTo),
+            ),
+          );
+          check(
+            '块编辑双链按钮：经内核 wikilink 节点插入且可 undo',
+            runFormatAction(FORMAT_WIKILINK, blockKernel, '第一块') &&
+              !!document.querySelector(
+                '[data-testid="editor-view"] .ProseMirror [data-wikilink-target="第一块"]',
+              ) &&
+              blockKernel.undo() &&
+              !document.querySelector(
+                '[data-testid="editor-view"] .ProseMirror [data-wikilink-target="第一块"]',
+              ),
+          );
+        } else {
+          check('块编辑双链按钮：定位选区文本', false, '第一块 not found');
+        }
+      }
       useTabStore.getState().closeTab(leftPageTab.id);
       useTabStore.getState().openTab({
         kind: 'page',
@@ -274,6 +336,7 @@ export async function runSmokeIfEnabled(): Promise<void> {
       '硬换行后一行\n\n' +
       '~~~mermaid\ngraph TD\n  A --> B\n~~~\n\n' +
       '$$\nE = mc^2\n$$\n\n' +
+      '划词格式化冒烟句\n\n' +
       '链接到[[源码模式跳转目标]]\n\n';
     await invoke('fs:createNote', {
       parentDir: '',
@@ -350,6 +413,47 @@ export async function runSmokeIfEnabled(): Promise<void> {
       untouched.slice(0, 60),
     );
     await capture('03-source-mode');
+
+    // ── DEV-023 源码划词格式化/双链写回（真实 Chromium：单事务 + 防抖逐字节写盘）──
+    // bubble 按钮可见性由单测（真实 CM + dispatch 路径）覆盖（见上方 smoke 病理注释）；
+    // 此处经同一动作入口 applySourceFormat 验证写回、undo 与落盘。
+    const sourceHandle = getActiveSourceEditor();
+    check('源码编辑器句柄已注册', !!sourceHandle?.view);
+    if (sourceHandle) {
+      const sourceView = sourceHandle.view;
+      const selectSentence = () => {
+        const text = sourceView.state.doc.toString();
+        const at = text.indexOf('划词格式化冒烟句');
+        if (at < 0) return false;
+        sourceView.dispatch({
+          selection: { anchor: at, head: at + '划词格式化冒烟句'.length },
+        });
+        return true;
+      };
+      check(
+        'md 划词加粗写回 **…**（单事务）',
+        selectSentence() &&
+          applySourceFormat(sourceView, 'format:bold') === true &&
+          sourceView.state.doc.toString().includes('**划词格式化冒烟句**'),
+      );
+      check(
+        'md 划词加粗单次 undo 整体撤销',
+        undo(sourceView) === true && !sourceView.state.doc.toString().includes('**'),
+      );
+      check(
+        'md 划词双链插入 [[…]]',
+        selectSentence() &&
+          applySourceFormat(sourceView, 'format:wikilink') === true &&
+          sourceView.state.doc.toString().includes('[[划词格式化冒烟句]]'),
+      );
+      await sleep(2_000); // 源码防抖保存 + IPC 写盘
+      const formattedSaved = await invoke('fs:readTextFile', { path: markdownPath });
+      check(
+        'md 格式化/双链写回防抖保存到盘',
+        formattedSaved.includes('[[划词格式化冒烟句]]'),
+        formattedSaved.slice(0, 80),
+      );
+    }
 
     // Markdown 的 Cmd/Ctrl+E 是预览分栏开关，不切换为 TipTap。
     window.dispatchEvent(
@@ -608,6 +712,59 @@ export async function runSmokeIfEnabled(): Promise<void> {
     // 运行自定义注册命令
     commandRegistry.get('smoke.custom')?.run();
     check('外部模块可注册新命令并执行', customCommandRan);
+    check(
+      '⌘K 面板无「打开 Vault 文件浏览」命令（DEV-021）',
+      commandRegistry.get('tab.files') === undefined,
+    );
+
+    // ── 6b. AI 配置入口收口（DEV-026）：未配置入口统一跳设置页 ──
+    useUiStore.getState().setDockVisible(true);
+    check(
+      '右栏 AI 空态出现（未配置）',
+      await waitFor(() => !!document.querySelector('[data-testid="ai-dock-empty"]')),
+    );
+    document.querySelector<HTMLButtonElement>('[data-testid="ai-dock-configure"]')?.click();
+    check(
+      '右栏配置按钮跳转设置页 AI 分区',
+      (await waitFor(() => !!document.querySelector('[data-testid="settings-section-ai"]'))) &&
+        !document.querySelector('[data-testid="ai-wizard"]'),
+    );
+    await capture('19-ai-settings-entry');
+    const aiNav = document.querySelector('[data-testid="settings-nav-ai"]');
+    check(
+      '设置页导航高亮 AI 供应商分区',
+      !!aiNav && (aiNav.getAttribute('class') ?? '').includes('bg-accent'),
+    );
+    check('旧 ai.setup 命令已并入 ai.settings', commandRegistry.get('ai.setup') === undefined);
+    // ⌘K 正向路径：搜索并执行「AI 供应商设置」同样落在设置页 AI 分区
+    const settingsTabNow = useTabStore.getState().tabs.find((t) => t.kind === 'settings');
+    if (settingsTabNow) useTabStore.getState().closeTab(settingsTabNow.id);
+    window.dispatchEvent(
+      new KeyboardEvent('keydown', { key: 'k', metaKey: true, bubbles: true, cancelable: true }),
+    );
+    const paletteInput = document.querySelector<HTMLInputElement>('[data-testid="palette-input"]');
+    const valueSetter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')?.set;
+    if (paletteInput && valueSetter) {
+      valueSetter.call(paletteInput, 'AI 供应商');
+      paletteInput.dispatchEvent(new Event('input', { bubbles: true }));
+    }
+    await waitFor(() => document.querySelectorAll('[data-testid="palette-item"]').length > 0);
+    const aiCmd = [...document.querySelectorAll('[data-testid="palette-item"]')].find((el) =>
+      el.textContent?.includes('AI 供应商设置'),
+    );
+    check('⌘K 可搜到 AI 供应商设置命令', !!aiCmd);
+    // 直接点击目标条目，避免 Enter 执行过滤列表中的第一条（可能为其他 AI 命令）。
+    aiCmd?.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
+    check(
+      '⌘K 执行 AI 设置命令跳转设置页 AI 分区',
+      await waitFor(() => !!document.querySelector('[data-testid="settings-section-ai"]')),
+    );
+    // 收尾：关闭设置 tab 并收起 dock，避免影响后续用例
+    const tabsNow = useTabStore.getState().tabs;
+    const settingsTab = tabsNow.find((t) => t.kind === 'settings');
+    if (settingsTab) useTabStore.getState().closeTab(settingsTab.id);
+    useUiStore.getState().setDockVisible(false);
+    await sleep(200);
 
     // ── 7. 亮/暗主题 ─────────────────────────────────────────
     useThemeStore.getState().setPreference('dark');
@@ -673,37 +830,23 @@ export async function runSmokeIfEnabled(): Promise<void> {
     useUiStore.getState().toggleSidebar();
     await sleep(250);
 
-    // ── 9. IPC 文件能力（fs:listDir 真实数据进 UI）──────────
-    useTabStore.getState().openTab({ kind: 'files', title: 'Vault 文件' });
-    await waitFor(() => document.querySelectorAll('[data-testid="files-entry"]').length > 0);
-    const entriesText = [...document.querySelectorAll('[data-testid="files-entry"]')]
-      .map((el) => el.textContent ?? '')
-      .join(' ');
+    // ── 9. IPC 文件能力（fs:listDir 真实数据，锚定页面树）────
+    // DEV-021：FilesPage 占位页与 files tab 已删除，改锚侧栏页面树。
+    const rootEntries = await invoke('fs:listDir', { path: '' });
     check(
-      'fs:listDir 经 IPC 返回 vault 内容',
-      entriesText.includes('.nexnote'),
-      entriesText.slice(0, 80),
+      'fs:listDir 经 IPC 返回知识库内容',
+      rootEntries.some((entry) => entry.path === '.nexnote'),
+      rootEntries
+        .slice(0, 5)
+        .map((entry) => entry.path)
+        .join(','),
+    );
+    check(
+      '页面树常驻侧栏（文件浏览入口不受占位页删除影响）',
+      !!document.querySelector('[data-testid="tree-search-input"]'),
     );
 
     // ── 9.5 DEV-003 页面树与文件操作 ─────────────────────
-    // 关闭 FilesPage tab（smoke 前序步骤打开的），避免新 tab 不在前台
-    const filesTab = document.querySelector(
-      '[data-testid="tab"][data-page-path]',
-    ) as HTMLElement | null;
-    if (filesTab) {
-      const tabs = document.querySelectorAll('[data-pane="left"] [data-testid="tab"]');
-      void tabs;
-    }
-    // 关闭之前为了冒烟 section 9 打开的 Vault 文件 tab
-    {
-      const leftPane = (window as unknown as { __store: unknown }).__store;
-      void leftPane;
-    }
-    {
-      const fileTab = useTabStore.getState().tabs.find((t) => t.title === 'Vault 文件');
-      if (fileTab) useTabStore.getState().closeTab(fileTab.id);
-    }
-
     // 新建笔记（IPC）→ fs:changed 事件回流 → 树出现 + tab 打开（带 frontmatter）
     await invoke('fs:createNote', { parentDir: '', name: '冒烟首页' });
     openPage('冒烟首页.md');
@@ -1286,6 +1429,39 @@ export async function runSmokeIfEnabled(): Promise<void> {
     const recentShown = document.querySelector('[data-testid="onboarding"]')?.textContent ?? '';
     check('最近打开列表持久化并显示', recentShown.includes('smoke-vault'));
     await capture('08-recent-list');
+
+    // ── 11b. 旧布局含 files tab 的恢复兼容（DEV-021）────────
+    const legacyConfig = {
+      version: 1,
+      layout: { guideCompleted: true },
+      lastSession: { tabs: [{ kind: 'files', title: 'Vault 文件' }] },
+    };
+    const planted = await bridge.writeFile(
+      created.root,
+      '.nexnote/config.json',
+      JSON.stringify(legacyConfig, null, 2),
+    );
+    check('旧布局 config（残留 files tab）写入成功', planted.ok, planted.error);
+    await invoke('vault:open', { path: created.root });
+    // 规范化（丢弃残留 files tab）由主进程 readVaultConfig 保证，已在
+    // vault-manager 单测中固定为权威证据；此处只验证含旧配置的 vault 可正常打开，
+    // 且渲染层 tab 栈不出现任何 files 残留（防御性断言）。
+    check(
+      '含 files tab 的旧配置 vault 可正常打开',
+      await waitFor(() => !!document.querySelector('[data-testid="app-sidebar"]')),
+    );
+    const restoredTabs = useTabStore.getState().tabs;
+    check(
+      '渲染层 tab 栈无 files 残留',
+      restoredTabs.length > 0 && restoredTabs.every((tab) => (tab.kind as string) !== 'files'),
+      restoredTabs.map((tab) => `${tab.kind}:${tab.title}`).join(','),
+    );
+    await capture('21-legacy-files-tab-restore');
+    await invoke('vault:close');
+    check(
+      '旧布局恢复后可正常关闭回到向导',
+      await waitFor(() => !!document.querySelector('[data-testid="onboarding"]')),
+    );
   } catch (e) {
     check(
       '冒烟 harness 未抛错',

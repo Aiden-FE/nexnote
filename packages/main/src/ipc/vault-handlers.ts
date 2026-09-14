@@ -318,9 +318,9 @@ export function registerVaultHandlers(registrar: IpcRegistrar): void {
 
   registrar.register('vault:saveLayout', async ({ layout }, services): Promise<Result<void>> => {
     const current = services.vaultSession.getCurrent();
-    if (!current) return { ok: false, error: '尚未打开任何 vault', code: 'NO_VAULT' };
+    if (!current) return { ok: false, error: '尚未打开任何知识库', code: 'NO_VAULT' };
     await saveVaultLayout(current.root, layout);
-    services.git.scheduleAutoCommit('保存 vault 布局');
+    services.git.scheduleAutoCommit('保存知识库布局');
     // Layout persistence is successful even if Git status is temporarily unavailable.
     try {
       services.windows.sendToMainWindow('git:statusChanged', await services.git.status());

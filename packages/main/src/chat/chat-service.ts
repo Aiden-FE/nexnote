@@ -22,7 +22,7 @@ export class ChatService {
 
   private root(): string {
     const root = this.getRoot();
-    if (!root) throw new FsError('尚未打开任何 vault', 'NO_VAULT');
+    if (!root) throw new FsError('尚未打开任何知识库', 'NO_VAULT');
     return root;
   }
 
@@ -53,7 +53,10 @@ export class ChatService {
     try {
       entries = await this.fs.listDir(folder);
     } catch (e) {
-      if ((e as FsError).code === 'READ_DIR_FAILED' || (e as NodeJS.ErrnoException)?.code === 'NO_VAULT') {
+      if (
+        (e as FsError).code === 'READ_DIR_FAILED' ||
+        (e as NodeJS.ErrnoException)?.code === 'NO_VAULT'
+      ) {
         return [];
       }
       throw e;
@@ -114,8 +117,7 @@ export class ChatService {
   private async uniqueName(folder: string, title: string): Promise<string> {
     const sanitized = sanitizeEntryName(title.replace(/\.md$/i, ''));
     const base = sanitized.ok ? sanitized.value : '新对话';
-    const exists = async (name: string): Promise<boolean> =>
-      this.fs.exists(`${folder}/${name}.md`);
+    const exists = async (name: string): Promise<boolean> => this.fs.exists(`${folder}/${name}.md`);
     if (!(await exists(base))) return base;
     for (let i = 2; i < 1000; i += 1) {
       const candidate = `${base} ${i}`;
@@ -178,9 +180,7 @@ export class ChatService {
       if (turn.role === 'assistant') {
         blocks.push(content);
       } else if (userAsQuote) {
-        blocks.push(
-          ['> 提问：', ...content.split('\n').map((line) => `> ${line}`)].join('\n'),
-        );
+        blocks.push(['> 提问：', ...content.split('\n').map((line) => `> ${line}`)].join('\n'));
       } else {
         blocks.push(`<!-- 用户提问\n${content}\n-->`);
       }

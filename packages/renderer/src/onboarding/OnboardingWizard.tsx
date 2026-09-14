@@ -184,8 +184,8 @@ export function OnboardingWizard({ recent, onRecentsChanged }: OnboardingWizardP
             <p className="font-medium">此文件夹还不是 Git 仓库</p>
             {inspectResult?.isObsidian && (
               <p className="mt-1 text-xs text-muted-foreground">
-                检测到 Obsidian vault（.obsidian 目录）。NexNote 不会修改你的 Obsidian 配置， 仅添加
-                .nexnote/ 和 .git。
+                检测到 Obsidian 知识库（.obsidian 目录）。NexNote 不会修改你的 Obsidian 配置，
+                仅添加 .nexnote/ 和 .git。
               </p>
             )}
             <p className="mt-1 text-xs text-muted-foreground">
@@ -221,13 +221,13 @@ export function OnboardingWizard({ recent, onRecentsChanged }: OnboardingWizardP
             <OptionCard
               icon={FolderPlus}
               title="新建知识库"
-              desc="创建一个空的本地 vault"
+              desc="创建一个空的本地知识库"
               onClick={() => setStep('create')}
             />
             <OptionCard
               icon={FolderOpen}
               title="打开本地文件夹"
-              desc="选择已有文件夹作为 vault"
+              desc="选择已有文件夹作为知识库"
               disabled={busy}
               onClick={async () => {
                 try {

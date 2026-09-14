@@ -104,25 +104,30 @@ describe('AiStore（Profile 存储 + 密钥安全）', () => {
   it('legacy encrypted credentials survive when native keyring migration is unavailable', () => {
     const file = path.join(tmp, 'legacy-enc-v1.json');
     const blob = `enc:v1:${Buffer.from('legacy-secret').toString('base64')}`;
-    writeFileSync(file, JSON.stringify({
-      version: 1,
-      profiles: [{
-        id: 'legacy',
-        name: 'Legacy',
-        kind: 'openai-compatible',
-        baseUrl: 'https://api.example.com/v1',
-        defaultModel: 'm',
-        params: {},
-        keyBlob: blob,
-        keyStorage: 'system-credential',
-        createdAt: 1,
-        updatedAt: 1,
-      }],
-      defaultProfileId: null,
-      features: { writing: null, chat: null, embedding: null },
-      embeddingFingerprint: null,
-      embeddingGeneration: 0,
-    }));
+    writeFileSync(
+      file,
+      JSON.stringify({
+        version: 1,
+        profiles: [
+          {
+            id: 'legacy',
+            name: 'Legacy',
+            kind: 'openai-compatible',
+            baseUrl: 'https://api.example.com/v1',
+            defaultModel: 'm',
+            params: {},
+            keyBlob: blob,
+            keyStorage: 'system-credential',
+            createdAt: 1,
+            updatedAt: 1,
+          },
+        ],
+        defaultProfileId: null,
+        features: { writing: null, chat: null, embedding: null },
+        embeddingFingerprint: null,
+        embeddingGeneration: 0,
+      }),
+    );
     new AiStore(file, new UnavailableSecretVault());
     const raw = readFileSync(file, 'utf8');
     expect(raw).toContain(blob);
@@ -356,5 +361,39 @@ describe('AiStore（Profile 存储 + 密钥安全）', () => {
     await writeFile(path.join(tmp, 'ai5.json'), '{broken', 'utf8');
     const s = new AiStore(path.join(tmp, 'ai5.json'), secrets);
     expect(s.getState().needsOnboarding).toBe(true);
+  });
+});
+
+describe('AiStore（首启 AI 引导提示，DEV-026）', () => {
+  it('默认未跳过；dismiss 幂等持久化且不改变未配置空态', () => {
+    expect(store.getState().setupPromptDismissed).toBe(false);
+    expect(store.getState().needsOnboarding).toBe(true);
+
+    store.dismissSetupPrompt();
+    store.dismissSetupPrompt();
+
+    const reloaded = new AiStore(path.join(tmp, 'ai.json'), secrets);
+    expect(reloaded.getState().setupPromptDismissed).toBe(true);
+    expect(reloaded.getState().needsOnboarding).toBe(true);
+    expect(reloaded.getState().profiles).toHaveLength(0);
+  });
+
+  it('旧配置缺字段或字段非布尔值时安全回退为未跳过', () => {
+    const legacyPath = path.join(tmp, 'legacy-onboarding.json');
+    writeFileSync(
+      legacyPath,
+      JSON.stringify({
+        version: 1,
+        profiles: [],
+        defaultProfileId: null,
+        features: { writing: null, chat: null, embedding: null },
+        setupPromptDismissed: 'yes',
+        embeddingFingerprint: null,
+        embeddingGeneration: 0,
+      }),
+      'utf8',
+    );
+
+    expect(new AiStore(legacyPath, secrets).getState().setupPromptDismissed).toBe(false);
   });
 });

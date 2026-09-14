@@ -16,7 +16,7 @@ export function registerSettingsHandlers(registrar: IpcRegistrar): void {
     'settings:getVault',
     async (_payload, services): Promise<Result<VaultSettings>> => {
       const root = services.vaultSession.getCurrent()?.root;
-      if (!root) return err('当前未打开 vault', 'NO_VAULT');
+      if (!root) return err('当前未打开知识库', 'NO_VAULT');
       const settings = await readVaultSettings(root);
       // vault config 是自动提交间隔的唯一权威；每次加载都回灌 GitService，
       // 保证重启/切换 vault 后立即采用持久化值。
@@ -37,7 +37,7 @@ export function registerSettingsHandlers(registrar: IpcRegistrar): void {
     'settings:setVault',
     async (payload, services): Promise<Result<VaultSettings>> => {
       const root = services.vaultSession.getCurrent()?.root;
-      if (!root) return err('当前未打开 vault', 'NO_VAULT');
+      if (!root) return err('当前未打开知识库', 'NO_VAULT');
       const updated = await saveVaultSettings(root, payload.patch);
       // vault config 是自动提交间隔的唯一权威；UI 保存后立即应用。
       services.git.setDebounceMs(updated.git.autoCommitIntervalMs);

@@ -10,7 +10,15 @@ import {
   BLOCK_MENU_PREFIX,
   BLOCK_MENU_CONVERT_PREFIX,
 } from '../src/editor/interactions/block-menu';
-import { formatBubbleActions, FORMAT_BOLD, FORMAT_LINK } from '../src/editor/interactions/formatting';
+import {
+  formatBubbleActions,
+  FORMAT_BOLD,
+  FORMAT_CODE,
+  FORMAT_ITALIC,
+  FORMAT_LINK,
+  FORMAT_STRIKE,
+  FORMAT_WIKILINK,
+} from '../src/editor/interactions/formatting';
 
 describe('DEV-017 wikilink 候选（纯逻辑）', () => {
   const pages = [
@@ -48,8 +56,16 @@ describe('DEV-017 wikilink 别名/锚点语法（[[title|alias]] / [[title#headi
   ];
   it('parseWikilinkQuery 拆分标题/别名/锚点', () => {
     expect(parseWikilinkQuery('计划')).toEqual({ title: '计划', alias: null, heading: null });
-    expect(parseWikilinkQuery('计划|日程')).toEqual({ title: '计划', alias: '日程', heading: null });
-    expect(parseWikilinkQuery('计划#目标')).toEqual({ title: '计划', alias: null, heading: '目标' });
+    expect(parseWikilinkQuery('计划|日程')).toEqual({
+      title: '计划',
+      alias: '日程',
+      heading: null,
+    });
+    expect(parseWikilinkQuery('计划#目标')).toEqual({
+      title: '计划',
+      alias: null,
+      heading: '目标',
+    });
     expect(parseWikilinkQuery('计划|')).toEqual({ title: '计划', alias: null, heading: null });
   });
   it('输入别名后仍按标题过滤候选，选择保留别名', () => {
@@ -94,6 +110,26 @@ describe('DEV-017 悬浮格式化按钮', () => {
     expect(ids).toContain(FORMAT_BOLD);
     expect(ids).toContain(FORMAT_LINK);
     expect(ids.length >= 5).toBe(true);
+  });
+});
+
+describe('DEV-023 悬浮格式化按钮：双链入列', () => {
+  it('按钮集顺序：五项格式化 + 双链；双链与外链图标/tooltip 可区分', () => {
+    const actions = formatBubbleActions();
+    expect(actions.map((a) => a.id)).toEqual([
+      FORMAT_BOLD,
+      FORMAT_ITALIC,
+      FORMAT_STRIKE,
+      FORMAT_CODE,
+      FORMAT_LINK,
+      FORMAT_WIKILINK,
+    ]);
+    const link = actions.find((a) => a.id === FORMAT_LINK);
+    const wikilink = actions.find((a) => a.id === FORMAT_WIKILINK);
+    expect(wikilink?.title).toBe('[[]]');
+    expect(wikilink?.title).not.toBe(link?.title);
+    expect(wikilink?.hint).toContain('双链');
+    expect(link?.hint).toContain('外部');
   });
 });
 

@@ -18,7 +18,9 @@ import {
   type PageFileIo,
 } from './page-source-io';
 import { createSourceEditor, type SourceEditorHandle } from './codemirror-host';
+import { registerSourceEditor } from './active-source-editor';
 import { sourceSelectionBubble } from './source-bubble';
+import { applySourceFormat, sourceFormatBubbleActions } from './source-formatting';
 import { handleSourceBubbleAction, SOURCE_CHAT_ASK_ACTION } from './source-ai-assist';
 import { writingBubbleActions } from '../../features/ai/writing';
 import { LivePreview, type InternalLinkNavigation } from './LivePreview';
@@ -256,22 +258,31 @@ export function SourceModeView({ tab }: { tab: TabDescriptor }) {
         );
         if (preview.scrollTop !== next) preview.scrollTop = next;
       },
-      // 划词工具栏（与块编辑一致）：询问 AI + 白名单写作动作，流式预览经共享
-      // WritingAssistantLayer（WorkspaceView 全局挂载），Accept 单事务写回可 undo。
+      // 划词工具栏（与块编辑一致，DEV-023 按钮集统一）：格式化五项 + 双链 +
+      // 询问 AI + 白名单写作动作。格式化为 Markdown 语法包裹（单事务可 undo，
+      // 不经块编辑器序列化）；AI 流式预览经共享 WritingAssistantLayer（WorkspaceView
+      // 全局挂载），Accept 单事务写回可 undo。
       extraExtensions: [
         sourceWikilinkCompletion({ getPages: currentPageCandidates, onPick: createRedlinkPage }),
         sourceSelectionBubble({
-          actions: [...writingBubbleActions(), { id: SOURCE_CHAT_ASK_ACTION, title: '询问 AI' }],
+          actions: [
+            ...sourceFormatBubbleActions(),
+            ...writingBubbleActions(),
+            { id: SOURCE_CHAT_ASK_ACTION, title: '询问 AI' },
+          ],
           onAction: (id, ctx) => {
             const editor = editorRef.current;
             if (!editor) return;
+            if (applySourceFormat(editor.view, id)) return;
             handleSourceBubbleAction(editor.view, id, ctx, { getDocPath: () => pathRef.current });
           },
         }),
       ],
     });
     editorRef.current = editor;
+    const unregisterSourceEditor = registerSourceEditor(editor);
     return () => {
+      unregisterSourceEditor();
       editorRef.current = null;
       editor.destroy();
       unmountedRef.current = true;
