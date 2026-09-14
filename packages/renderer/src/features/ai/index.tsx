@@ -1,19 +1,24 @@
-import { useEffect } from 'react';
+import { useEffect, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import { Bot } from 'lucide-react';
 import { settingsSectionRegistry, commandRegistry } from '../../registries';
-import { useAiWizard, initAiConfig, aiEntryOrWizard } from './ai-config';
+import {
+  fetchAiStateOnce,
+  initAiConfig,
+  shouldAutoShowSetupPrompt,
+  useAiWizard,
+} from './ai-config';
 import { AiSetupWizard } from './AiSetupWizard';
 import { AiSettingsSection } from './AiSettingsSection';
 import { openSettings } from '../../lib/open-settings';
+import { useVault } from '../../shell/vault-context';
 
 /**
- * AI 域装配点（DEV-009）：
+ * AI 域装配点（DEV-009，DEV-026 收口）：
  * - 设置分区「AI 供应商」（Profile 管理 / 分功能指定 / 导入导出 / 调试）
- * - 首启动引导向导（全局 modal，未配置时由 AI 入口触发）
- * - ⌘K 命令（AI 设置 / AI 引导）
+ * - ⌘K 命令「AI 供应商设置」：一切配置入口统一收口到设置页
+ * - 首启动 AI 引导（全局 modal）：仅 vault 首次就绪且未配置、未跳过时自动弹一次
  * - 订阅主进程 ai:configChanged，初始化脱敏配置状态
- * DEV-010（写作辅助）/ DEV-012（对话）在此追加更多入口与命令。
  */
 
 initAiConfig();
@@ -30,22 +35,43 @@ commandRegistry.register({
   id: 'ai.settings',
   title: 'AI 供应商设置',
   category: 'AI',
-  keywords: ['ai', 'provider', 'profile', 'llm', '配置', '供应商'],
+  keywords: [
+    'ai',
+    'provider',
+    'profile',
+    'llm',
+    '配置',
+    '供应商',
+    'setup',
+    'wizard',
+    'onboarding',
+    '引导',
+    '向导',
+  ],
   run: () => openSettings('ai'),
 });
 
-commandRegistry.register({
-  id: 'ai.setup',
-  title: '配置 AI 供应商（引导向导）',
-  category: 'AI',
-  keywords: ['ai', 'setup', 'wizard', 'onboarding', '向导', '引导'],
-  run: () => aiEntryOrWizard(() => useAiWizard.getState().show()),
-});
-
-/** 全局 AI 覆盖层：引导向导 modal（portal 到 body，避免被 dock 容器裁剪）。 */
+/** 全局 AI 覆盖层：首启动引导 modal（portal 到 body，避免被 dock 容器裁剪）。 */
 export function AiGlobalLayer() {
+  const vault = useVault();
+  // 每个 app 会话只在 vault 第一次就绪时评估一次；后续切换/打开其他知识库不再自动弹。
+  const evaluatedRef = useRef(false);
+
   useEffect(() => {
     initAiConfig();
   }, []);
+
+  useEffect(() => {
+    if (!vault || evaluatedRef.current) return;
+    evaluatedRef.current = true;
+    void (async () => {
+      if (shouldAutoShowSetupPrompt(await fetchAiStateOnce())) {
+        useAiWizard.getState().show();
+      }
+    })();
+    // 只随 vault 是否就绪评估一次；配置状态经 store 异步拉取。
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [vault !== null]);
+
   return createPortal(<AiSetupWizard />, document.body);
 }

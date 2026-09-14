@@ -38,6 +38,8 @@ export interface AiStoreData {
   profiles: AiStoredProfile[];
   defaultProfileId: string | null;
   features: Record<AiFeatureKey, AiFeatureAssignment | null>;
+  /** 用户已看过或跳过首启动 AI 引导；不进入导出捆绑。 */
+  setupPromptDismissed: boolean;
   /** embedding 配置指纹（profileId:model:dimensions:metric） */
   embeddingFingerprint: string | null;
   embeddingGeneration: number;
@@ -49,6 +51,7 @@ export function defaultAiStoreData(): AiStoreData {
     profiles: [],
     defaultProfileId: null,
     features: { writing: null, chat: null, embedding: null },
+    setupPromptDismissed: false,
     embeddingFingerprint: null,
     embeddingGeneration: 0,
   };
@@ -111,6 +114,8 @@ function coerce(raw: unknown): AiStoreData {
       chat: coerceAssignment(features.chat),
       embedding: coerceAssignment(features.embedding),
     },
+    setupPromptDismissed:
+      typeof d.setupPromptDismissed === 'boolean' ? d.setupPromptDismissed : false,
     embeddingFingerprint:
       typeof d.embeddingFingerprint === 'string' ? d.embeddingFingerprint : null,
     embeddingGeneration:
@@ -251,6 +256,7 @@ export class AiStore {
         embedding: this.data.features.embedding,
       },
       needsOnboarding: this.data.profiles.length === 0,
+      setupPromptDismissed: this.data.setupPromptDismissed,
       embeddingFingerprint: this.data.embeddingFingerprint,
       embeddingGeneration: this.data.embeddingGeneration,
     };
@@ -311,6 +317,12 @@ export class AiStore {
   }
 
   // ── 写 ──────────────────────────────────────────────
+
+  dismissSetupPrompt(): void {
+    if (this.data.setupPromptDismissed) return;
+    this.data = { ...this.data, setupPromptDismissed: true };
+    this.persist();
+  }
 
   saveProfile(id: string | undefined, input: AiProfileWriteInput): AiStoredProfile {
     const now = Date.now();
