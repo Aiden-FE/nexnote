@@ -152,6 +152,23 @@ jobs:
         shell: bash
         run: env -u GIT_EDITOR -u GIT_SEQUENCE_EDITOR -u EDITOR CI=true pnpm lint && env -u GIT_EDITOR -u GIT_SEQUENCE_EDITOR -u EDITOR CI=true pnpm typecheck && env -u GIT_EDITOR -u GIT_SEQUENCE_EDITOR -u EDITOR CI=true pnpm exec vitest run --maxWorkers=1 --testTimeout=60000 && env -u GIT_EDITOR -u GIT_SEQUENCE_EDITOR -u EDITOR CI=true pnpm build
 
+      - name: Stage Electron native bindings for packaging
+        shell: bash
+        run: |
+          node scripts/prepare-native-bindings.mjs --electron
+          # The packaged app loads the default better-sqlite3 path; tests leave a Node-ABI
+          # binding there. Copy the freshly validated Electron-ABI cache binding over it.
+          node --input-type=module -e "
+            import { readdirSync, copyFileSync } from 'node:fs';
+            import { join } from 'node:path';
+            const cache = join('node_modules', '.cache', 'nexnote-native-bindings', 'better-sqlite3');
+            const nodeAbi = 'abi' + process.versions.modules;
+            const dirs = readdirSync(cache).filter((d) => d.includes('-abi') && !d.endsWith(nodeAbi));
+            if (dirs.length !== 1) throw new Error('expected exactly one Electron ABI cache dir, got: ' + dirs.join(', '));
+            copyFileSync(join(cache, dirs[0], 'better_sqlite3.node'), join('node_modules', 'better-sqlite3', 'build', 'Release', 'better_sqlite3.node'));
+            console.log('staged Electron binding ' + dirs[0]);
+          "
+
       - name: Package Ad hoc signed macOS distributables
         if: runner.os == 'macOS'
         env:
