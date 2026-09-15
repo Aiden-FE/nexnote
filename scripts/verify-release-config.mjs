@@ -216,15 +216,17 @@ check('平台密钥最小权限且仅 step 级引用', () => {
   const jobEnv = /\n    env:\n([\s\S]*?)(?=\n    steps:)/.exec(build)?.[1] ?? '';
   if (/secrets\./.test(jobEnv)) throw new Error('secrets must not appear in build job env');
   const scopes = [
-    ['WINDOWS_CERTIFICATE', "if: runner.os == 'Windows'"],
-    ['LINUX_GPG_PRIVATE_KEY', "if: runner.os == 'Linux'"],
+    ['WINDOWS_CERTIFICATE', "if: runner.os == 'Windows'", 'Package optionally signed Windows'],
+    ['LINUX_GPG_PRIVATE_KEY', "if: runner.os == 'Linux'", 'Optionally sign and verify Linux'],
   ];
-  for (const [secret, platformGuard] of scopes) {
+  for (const [secret, platformGuard, stepName] of scopes) {
     const index = build.indexOf(secret);
     if (index < 0) throw new Error(`missing ${secret}`);
     const stepStart = build.lastIndexOf('- name:', index);
-    if (stepStart < 0 || !build.slice(stepStart, index).includes(platformGuard))
-      throw new Error(`${secret} is not platform-scoped`);
+    const stepEnd = build.indexOf('\n      - ', index);
+    const step = build.slice(stepStart, stepEnd < 0 ? build.length : stepEnd);
+    if (!step.includes(platformGuard) || !step.includes(stepName))
+      throw new Error(`${secret} is not platform-scoped to its optional signing step`);
   }
   if (/MACOS_CERTIFICATE|APPLE_ID|APPLE_APP_SPECIFIC_PASSWORD|APPLE_TEAM_ID/.test(build))
     throw new Error('macOS release must not reference Apple credentials');
