@@ -3,6 +3,7 @@ import { createHash } from 'node:crypto';
 import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { resolve, join } from 'node:path';
+import packageJson from '../../../package.json';
 import { describe, expect, it, vi } from 'vitest';
 import { create, parseImmutableEvidenceUrl, validate } from '../../../scripts/release-evidence.mjs';
 
@@ -47,7 +48,7 @@ describe('release policy executable gates', () => {
     expect(run('check-version.mjs', ['--require-tag', 'master']).status).toBe(1);
     expect(run('check-version.mjs', ['--require-tag', 'dev/DEV-018']).status).toBe(1);
     expect(run('check-version.mjs', ['--require-tag', 'v9.9.9']).status).toBe(1);
-    expect(run('check-version.mjs', ['--require-tag', 'v0.1.0']).status).toBe(0);
+    expect(run('check-version.mjs', ['--require-tag', `v${packageJson.version}`]).status).toBe(0);
   });
 
   it('rejects SSRF-prone and mutable evidence URLs before fetch', () => {
@@ -69,7 +70,7 @@ describe('release policy executable gates', () => {
     const previous = globalThis.fetch;
     const body = JSON.stringify({
       repository: 'Aiden-FE/nexnote',
-      tag: 'v0.1.0',
+      tag: `v${packageJson.version}`,
       commit: 'a'.repeat(40),
       channel: 'stable',
       allRequiredChecksPassed: true,
@@ -78,7 +79,7 @@ describe('release policy executable gates', () => {
     const env = {
       GITHUB_REPOSITORY: 'Aiden-FE/nexnote',
       GITHUB_RUN_ID: '123',
-      GITHUB_REF_NAME: 'v0.1.0',
+      GITHUB_REF_NAME: `v${packageJson.version}`,
       GITHUB_SHA: 'a'.repeat(40),
       RELEASE_CHANNEL: 'stable',
       QA_EVIDENCE_URL: `https://raw.githubusercontent.com/Aiden-FE/nexnote/${'b'.repeat(40)}/qa.json`,

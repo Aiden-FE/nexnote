@@ -2,7 +2,7 @@
   "id": "com.nexnote.demo",
   "name": "NexNote Demo Plugin",
   "version": "1.0.0",
-  "minAppVersion": "0.1.0",
+  "minAppVersion": "0.0.1",
   "main": "main.js",
   "description": "Registers a test command through the plugin contribution registry.",
   "capabilities": ["read", "edit", "network"],

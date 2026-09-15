@@ -19,11 +19,7 @@ import type {
 } from '@nexnote/shared';
 import { PLUGIN_API_VERSION } from '@nexnote/shared';
 import { AuthorizationManager } from './authorization';
-import {
-  assertStageUnchanged,
-  stageArtifact,
-  toInstallTicket,
-} from './artifact-intake';
+import { assertStageUnchanged, stageArtifact, toInstallTicket } from './artifact-intake';
 import {
   assertHostCompatible,
   CONTRIBUTION_KINDS,
@@ -119,7 +115,7 @@ export class PluginService {
   constructor(options: PluginServiceOptions = {}) {
     this.stateFile = options.stateFile ?? '';
     this.pluginsRoot = options.pluginsRoot ?? '';
-    this.hostVersion = options.hostVersion ?? '0.1.0';
+    this.hostVersion = options.hostVersion ?? '0.0.1';
     this.auth = new AuthorizationManager();
     if (this.pluginsRoot && !existsSync(this.pluginsRoot)) {
       mkdirSync(this.pluginsRoot, { recursive: true });
@@ -349,7 +345,10 @@ export class PluginService {
     const plugin = this.require(session.pluginId);
     if (plugin.state !== 'active') throw new PluginError('插件未激活', 'PLUGIN_NOT_ACTIVE');
     if (request.apiVersion !== PLUGIN_API_VERSION) {
-      throw new PluginError(`插件 API 版本不兼容（需要 ${PLUGIN_API_VERSION}）`, 'API_VERSION_MISMATCH');
+      throw new PluginError(
+        `插件 API 版本不兼容（需要 ${PLUGIN_API_VERSION}）`,
+        'API_VERSION_MISMATCH',
+      );
     }
     switch (request.method) {
       case 'command.register': {
@@ -399,9 +398,16 @@ export class PluginService {
       case 'permission.request': {
         const params = request.params as { permission?: unknown };
         const permission = params.permission as PluginPermission;
-        if (!PERMISSIONS.includes(permission)) throw new PluginError('请求了未知权限', 'BAD_RPC_PARAMS');
+        if (!PERMISSIONS.includes(permission))
+          throw new PluginError('请求了未知权限', 'BAD_RPC_PARAMS');
         if (!plugin.manifest.permissions.includes(permission)) {
-          this.record(plugin.manifest.id, 'permission.request', false, permission, 'manifest 未声明');
+          this.record(
+            plugin.manifest.id,
+            'permission.request',
+            false,
+            permission,
+            'manifest 未声明',
+          );
           throw new PluginError('权限未在 manifest 中声明', 'PERMISSION_UNDECLARED');
         }
         const state = plugin.grants.get(permission);
@@ -430,7 +436,13 @@ export class PluginService {
     this.initialize(previous);
     previous.enabled = true;
     this.activate(previous);
-    this.record(previous.manifest.id, 'install.confirm', true, undefined, stage.artifactHash.slice(0, 16));
+    this.record(
+      previous.manifest.id,
+      'install.confirm',
+      true,
+      undefined,
+      stage.artifactHash.slice(0, 16),
+    );
     this.persist();
     return this.toView(previous);
   }
@@ -462,7 +474,11 @@ export class PluginService {
     return plugin;
   }
 
-  private requirePermission(plugin: InstalledPlugin, permission: PluginPermission, operation: string): void {
+  private requirePermission(
+    plugin: InstalledPlugin,
+    permission: PluginPermission,
+    operation: string,
+  ): void {
     if (!plugin.manifest.permissions.includes(permission)) {
       this.record(plugin.manifest.id, 'permission.request', false, permission, 'undeclared');
       throw new PluginError(`权限未在 manifest 中声明: ${permission}`, 'PERMISSION_UNDECLARED');
@@ -526,7 +542,8 @@ export class PluginService {
   }
 
   private readSource(plugin: InstalledPlugin): string {
-    const source = plugin.approvedSource ?? readFileSync(join(plugin.source.path, plugin.manifest.main), 'utf8');
+    const source =
+      plugin.approvedSource ?? readFileSync(join(plugin.source.path, plugin.manifest.main), 'utf8');
     if (source.length > MAX_PLUGIN_SOURCE_BYTES) {
       throw new PluginError('插件入口超过 1 MiB 资源限制', 'PLUGIN_RESOURCE_LIMIT');
     }
@@ -561,7 +578,10 @@ export class PluginService {
         apiVersion: PLUGIN_API_VERSION,
         id: request.id,
         ok: false,
-        error: { code: err.code ?? 'PLUGIN_ERROR', message: (err.message ?? String(error)).slice(0, 500) },
+        error: {
+          code: err.code ?? 'PLUGIN_ERROR',
+          message: (err.message ?? String(error)).slice(0, 500),
+        },
       };
     }
   }
@@ -599,9 +619,9 @@ export class PluginService {
       plugins: [...this.plugins.values()]
         .filter((plugin) => !plugin.manifest.builtin)
         .map((plugin) => ({
-        source: plugin.source,
-        enabled: plugin.enabled,
-        grants: Object.fromEntries(plugin.grants),
+          source: plugin.source,
+          enabled: plugin.enabled,
+          grants: Object.fromEntries(plugin.grants),
         })),
       ...(builtins.length > 0 ? { builtins } : {}),
     };

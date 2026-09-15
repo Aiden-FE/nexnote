@@ -1,13 +1,15 @@
 import { createHash } from 'node:crypto';
 import { mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
+import packageJson from '../../../package.json';
 import { describe, expect, it } from 'vitest';
+
 import {
   expectedArtifactNames,
   verifyArtifactContract,
 } from '../../../scripts/verify-artifact-contract.mjs';
 
-const version = '0.1.0';
+const version = packageJson.version;
 
 function writeManifest(dir: string, name: string, entries: string[]) {
   const files = entries.map((entry) => {
@@ -49,15 +51,15 @@ describe('artifact contract', () => {
   it('expands stable names with explicit platform and architecture', () => {
     expect(expectedArtifactNames(version)).toMatchObject({
       macArm64: {
-        dmg: 'NexNote-0.1.0-mac-arm64.dmg',
-        zip: 'NexNote-0.1.0-mac-arm64.zip',
+        dmg: `NexNote-${version}-mac-arm64.dmg`,
+        zip: `NexNote-${version}-mac-arm64.zip`,
       },
       macX64: {
-        dmg: 'NexNote-0.1.0-mac-x64.dmg',
-        zip: 'NexNote-0.1.0-mac-x64.zip',
+        dmg: `NexNote-${version}-mac-x64.dmg`,
+        zip: `NexNote-${version}-mac-x64.zip`,
       },
-      windows: { nsis: 'NexNote-0.1.0-win-x64.exe' },
-      linux: { appImage: 'NexNote-0.1.0-linux-x86_64.AppImage' },
+      windows: { nsis: `NexNote-${version}-win-x64.exe` },
+      linux: { appImage: `NexNote-${version}-linux-x86_64.AppImage` },
     });
   });
 

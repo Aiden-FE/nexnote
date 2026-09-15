@@ -4,9 +4,26 @@
     {
       "apiVersion": "1.0.0",
       "status": "stable",
-      "minHostVersion": "0.1.0",
-      "manifestFields": ["id", "name", "version", "minAppVersion", "main", "capabilities", "permissions", "contributions", "skills"],
-      "permissions": ["read", "edit", "filesystem", "network", "external-command", "desktop-privileged"],
+      "minHostVersion": "0.0.1",
+      "manifestFields": [
+        "id",
+        "name",
+        "version",
+        "minAppVersion",
+        "main",
+        "capabilities",
+        "permissions",
+        "contributions",
+        "skills"
+      ],
+      "permissions": [
+        "read",
+        "edit",
+        "filesystem",
+        "network",
+        "external-command",
+        "desktop-privileged"
+      ],
       "contributionKinds": ["commands", "menus", "views", "blockTypes"],
       "rpcMethods": ["command.register", "transact", "permission.request", "capability.call"],
       "notes": "首个稳定插件 API。QuickJS/WASM logic worker 与插件内自定义能力实现为 stretch（capability.call 授权后返回 NOT_IMPLEMENTED）。"
