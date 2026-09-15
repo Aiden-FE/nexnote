@@ -12,7 +12,7 @@ import type { ChatTurn, RetrievalResponse } from '@nexnote/shared';
 import { useChatStore } from './chat-store';
 import { ContextChips } from './ContextChips';
 import { RetrievalSources } from '../retrieval/RetrievalSources';
-import { insertIntoActiveEditor } from '../../../editor/active-editor';
+import { insertAtActiveCursor, useActiveInsertionMode } from '../../../editor/caret-insert';
 import { useTabStore } from '../../../stores/tab-store';
 import { openSettings } from '../../../lib/open-settings';
 import { openDocumentTab } from '../../../lib/open-document';
@@ -47,6 +47,7 @@ function sourcesResponse(turn: ChatTurn): RetrievalResponse | null {
 function TurnView({ turn }: { turn: ChatTurn }) {
   const isUser = turn.role === 'user';
   const sources = !isUser ? sourcesResponse(turn) : null;
+  const insertionMode = useActiveInsertionMode();
   return (
     <div className={cn('group/turn flex flex-col', isUser ? 'items-end' : 'items-start')}>
       <div
@@ -64,11 +65,16 @@ function TurnView({ turn }: { turn: ChatTurn }) {
             <button
               type="button"
               data-testid="chat-insert-block"
-              className="flex items-center gap-1 rounded px-1.5 py-0.5 text-[10px] text-muted-foreground opacity-0 hover:bg-accent hover:text-foreground group-hover/turn:opacity-100"
-              title="将这条回答作为新块插入当前笔记（可撤销）"
-              onClick={() => insertIntoActiveEditor(turn.content, 'end')}
+              className="flex items-center gap-1 rounded px-1.5 py-0.5 text-[10px] text-muted-foreground opacity-0 hover:bg-accent hover:text-foreground group-hover/turn:opacity-100 disabled:cursor-not-allowed disabled:opacity-40"
+              disabled={insertionMode === null}
+              title={
+                insertionMode === null
+                  ? '没有活动编辑器'
+                  : `插入当前${insertionMode === 'source' ? '源码' : '块编辑'}光标（可撤销）`
+              }
+              onClick={() => insertAtActiveCursor(turn.content)}
             >
-              <CornerDownLeft className="size-3" /> 插入为块
+              <CornerDownLeft className="size-3" /> 插入到光标
             </button>
           </div>
           {sources && (
