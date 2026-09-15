@@ -615,7 +615,9 @@ describe('LinkIndexService', () => {
     svc.close();
   });
 
-  it('新 root 与旧 root 都无法重开时保持安全关闭态', async () => {
+  // 该夹具依赖 POSIX「可删除仍被打开的 index.db 文件」语义；Windows 上 SQLite 句柄
+  // 持有文件锁，必须先解除句柄才能删除，等价回滚路径由 Linux/macOS CI 覆盖。
+  it.skipIf(process.platform === 'win32')('新 root 与旧 root 都无法重开时保持安全关闭态', async () => {
     await page('a.md', '', '# A\n');
     const svc = new LinkIndexService();
     svc.setRoot(tmp);
