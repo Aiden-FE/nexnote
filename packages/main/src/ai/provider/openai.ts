@@ -348,11 +348,20 @@ export class OpenAIProtocolAdapter implements ProviderAdapter {
       includeUsage: true,
     });
     const params = req.params;
+    // ai@7 不再接受 messages 里的 system 角色（AI_InvalidPromptError）：
+    // 主进程 gateway 会把 scenario system prompt / 参考上下文作为 system 消息注入，
+    // 这里统一提取为 SDK 的 instructions，保持既有 wire 语义（system 在前）。
+    const systemMessages = req.messages
+      .filter((message) => message.role === 'system')
+      .map((message) => message.content)
+      .filter((content) => content.trim().length > 0);
+    const conversation = req.messages.filter((message) => message.role !== 'system');
     const done = (async (): Promise<void> => {
       try {
         const result = streamText({
           model: provider.chatModel(req.model),
-          messages: req.messages,
+          ...(systemMessages.length > 0 ? { instructions: systemMessages.join('\n\n') } : {}),
+          messages: conversation,
           ...(params?.temperature !== undefined && { temperature: params.temperature }),
           ...(params?.maxTokens !== undefined && { maxOutputTokens: params.maxTokens }),
           ...(params?.reasoningEffort && {

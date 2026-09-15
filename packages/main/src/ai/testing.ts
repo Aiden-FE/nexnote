@@ -20,6 +20,10 @@ export interface MockOpenAiServer {
   server: Server;
   requests: RecordedRequest[];
   failNextChatWith?: number;
+  /** 运行时覆盖 SSE 分段间延迟（冒烟可动态调慢，稳定观察流式中间态）。 */
+  chunkDelayMs?: number;
+  /** 已推送 N 个分段后异常断开连接（模拟流式中途断线，用于「断线保留已显示内容」）。 */
+  failAfterChunks?: number;
   /** 模拟 provider 不支持 SSE 流式（chat stream 请求返回 400） */
   streamingUnsupported?: boolean;
   /** 模拟 SSE 在发送部分 delta 后干净 EOF，但没有 OpenAI [DONE] sentinel。 */
@@ -54,6 +58,7 @@ export async function startMockOpenAiServer(
     url: '',
     server: null as unknown as Server,
     requests,
+    chunkDelayMs: opts.chunkDelayMs,
     close: async () => {},
   };
 
@@ -139,10 +144,15 @@ export async function startMockOpenAiServer(
         ];
         let i = 0;
         const send = () => {
+          if (state.failAfterChunks !== undefined && i >= state.failAfterChunks) {
+            // 中途断线：不发 [DONE]、直接断开 socket
+            res.destroy();
+            return;
+          }
           if (i < pieces.length) {
             res.write(`data: ${JSON.stringify({ id: 'chatcmpl-mock', model, ...pieces[i] })}\n\n`);
             i += 1;
-            setTimeout(send, chunkDelay);
+            setTimeout(send, state.chunkDelayMs ?? chunkDelay);
           } else {
             if (!state.streamingTruncated) res.write('data: [DONE]\n\n');
             res.end();
@@ -250,11 +260,16 @@ export function createProviderRequestSpy(providerBaseUrl: string): ProviderReque
   const origin = new URL(providerBaseUrl).origin;
   const requests: ProviderRequest[] = [];
   const spyFetch: typeof fetch = async (input, init) => {
-    const requestUrl = typeof input === 'string' ? input : input instanceof URL ? input.href : input.url;
+    const requestUrl =
+      typeof input === 'string' ? input : input instanceof URL ? input.href : input.url;
     const url = new URL(requestUrl, origin);
     if (url.origin === origin) {
       requests.push({
-        method: (init?.method ?? (typeof input === 'string' || input instanceof URL ? 'GET' : input.method) ?? 'GET').toUpperCase(),
+        method: (
+          init?.method ??
+          (typeof input === 'string' || input instanceof URL ? 'GET' : input.method) ??
+          'GET'
+        ).toUpperCase(),
         url: url.toString(),
         path: url.pathname,
       });
@@ -264,8 +279,11 @@ export function createProviderRequestSpy(providerBaseUrl: string): ProviderReque
   return {
     requests,
     fetch: spyFetch,
-    count: (path) => path ? requests.filter((request) => request.path === path).length : requests.length,
+    count: (path) =>
+      path ? requests.filter((request) => request.path === path).length : requests.length,
     paths: () => requests.map((request) => request.path),
-    reset: () => { requests.length = 0; },
+    reset: () => {
+      requests.length = 0;
+    },
   };
 }

@@ -591,7 +591,7 @@ describe('DEV-034 划词工具栏 AI 下拉（源码模式）', () => {
     editor.destroy();
   });
 
-  it('生成中停止控件可点击取消上游流，结束后隐藏', async () => {
+  it('生成中停止控件可点击停止上游流：保留内容并标记未完成，结束后隐藏', async () => {
     const bridge = installBridge();
     const { parent, editor } = mount('第一句原文。第二句。');
     selectWithCoords(editor, parent, 0, 6, { top: 300, left: 100, right: 120, bottom: 320 });
@@ -612,8 +612,11 @@ describe('DEV-034 划词工具栏 AI 下拉（源码模式）', () => {
     stop!.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
     await bridge.flush();
     expect(bridge.cancelCalls).toContain('stream-1');
-    expect(useWritingStore.getState().session).toBeNull();
+    // DEV-037：停止不丢弃会话——保留已显示内容并标记未完成（浮层继续提供 Accept/Reject）
+    expect(useWritingStore.getState().session?.status).toBe('cancelled');
     expect(stop!.hidden).toBe(true);
+    useWritingStore.getState().session?.reject();
+    expect(useWritingStore.getState().session).toBeNull();
     editor.destroy();
   });
 

@@ -121,6 +121,22 @@ describe('OpenAI 协议适配器', () => {
     }
   });
 
+  it('流式中途断线：已到达片段保留，终止为 error（不是 done）', async () => {
+    mock.failAfterChunks = 2;
+    try {
+      const events: ChatStreamEvent[] = [];
+      const handle = collectStream(adapter(), events);
+      await handle.done;
+
+      const deltas = events.filter((event) => event.type === 'delta');
+      expect(deltas.length).toBeGreaterThan(0);
+      expect(events.some((event) => event.type === 'done')).toBe(false);
+      expect(events.at(-1)?.type).toBe('error');
+    } finally {
+      mock.failAfterChunks = undefined;
+    }
+  });
+
   it('authenticated model requests reject redirects before following them', async () => {
     mock.redirectNextModels = true;
     try {

@@ -5,8 +5,11 @@ export type { BacklinkSnippet, WritingContextAssembly } from './context';
 export { diffLines, hasVisibleDiff } from './diff';
 export type { DiffOp } from './diff';
 export { startWritingStream } from './stream';
-export { useWritingStore } from './writing-store';
-export type { WritingSession } from './writing-store';
+export type { WritingStreamHandle, WritingStreamHandlers } from './stream';
+export { beginWritingSession } from './session';
+export type { WritingSessionPlan } from './session';
+export { useWritingStore, isIncomplete, nextSessionId } from './writing-store';
+export type { WritingSession, WritingSessionStatus } from './writing-store';
 export { createWritingController } from './controller';
 export type { WritingController, WritingControllerDeps } from './controller';
 export {

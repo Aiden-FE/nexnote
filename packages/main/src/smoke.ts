@@ -42,6 +42,27 @@ export class SmokeController {
     const mock = await startMockOpenAiServer({ chunkDelayMs: 30 });
     console.log('[smoke] ai mock server at', mock.url);
     ipcMain.handle('smoke:aiMock', () => ({ ok: true, url: `${mock.url}/v1` }));
+    // DEV-037：写作流式取消/失败覆盖需要可控的分段延迟与下一次请求失败。
+    ipcMain.handle('smoke:aiMockTune', (_event, payload: unknown) => {
+      try {
+        const tune = (payload ?? {}) as {
+          chunkDelayMs?: number;
+          failNextChatWith?: number;
+          failAfterChunks?: number;
+        };
+        if (typeof tune.chunkDelayMs !== 'number' || tune.chunkDelayMs < 0) {
+          throw new Error('chunkDelayMs must be a non-negative number');
+        }
+        mock.chunkDelayMs = tune.chunkDelayMs;
+        mock.failNextChatWith =
+          typeof tune.failNextChatWith === 'number' ? tune.failNextChatWith : undefined;
+        mock.failAfterChunks =
+          typeof tune.failAfterChunks === 'number' ? tune.failAfterChunks : undefined;
+        return { ok: true };
+      } catch (e) {
+        return { ok: false, error: e instanceof Error ? e.message : String(e) };
+      }
+    });
     ipcMain.handle('smoke:mkdtemp', async () => {
       try {
         const dir = await mkdtemp(path.join(tmpdir(), 'nexnote-smoke-vault-'));

@@ -52,5 +52,11 @@ if (process.env.NEXNOTE_SMOKE === '1') {
     // DEV-009：AI 冒烟场景用的内嵌 mock OpenAI 服务器地址
     aiMock: (): Promise<{ ok: boolean; url?: string; error?: string }> =>
       ipcRenderer.invoke('smoke:aiMock'),
+    // DEV-037：写作流式取消/失败覆盖需要动态调整 mock 分段延迟与下一次请求失败
+    aiMockTune: (tune: {
+      chunkDelayMs: number;
+      failNextChatWith?: number;
+      failAfterChunks?: number;
+    }): Promise<{ ok: boolean; error?: string }> => ipcRenderer.invoke('smoke:aiMockTune', tune),
   });
 }
