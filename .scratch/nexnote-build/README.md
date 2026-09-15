@@ -67,6 +67,20 @@
 | **DEV-025** | [文档属性感知：字段目录与 Markdown 属性面板](issues/025-field-catalog-md-properties.md) | editor | L | DEV-020 | 验收反馈 | ✅ 已合并（Popover 修订 `a99babc`，YAML flush 修订 `d8f03f7`，smoke 154/154，双轴 PASS） |
 | **DEV-026** | [AI 配置入口收口设置页](issues/026-ai-settings-single-entry.md) | ai | S | DEV-009, DEV-012 | 验收反馈 | ✅ 已合并（`5d49165`，候选 `ab39ba4`，smoke 116/116，双轴 PASS） |
 
+### 新一轮验收反馈（DEV-027～DEV-042）— open
+
+> 处理方式：按 Wave 1～5 分批推进；Wave 内无阻塞票并行，依赖边以各票 `Blocked by` 为准。每票使用独立 worktree/`dev/<TICKET>` 分支，合并前执行标准门禁与 Standards + Spec 双轴审查。
+
+| 波次 | 票据 | 主题 | 阻塞关系 |
+|---|---|---|---|
+| Wave 1 | DEV-027～031、DEV-034～036、DEV-043～044 | H1 失焦、Skill 弹窗、代码高亮、零隐式请求、SDK 流式迁移、AI 下拉、工具栏、双模式插入、待办对齐、块 ID 泄漏 | 无（可并行） |
+| Wave 2 | DEV-032、033、037、041 | SDK 工具循环、会话 JSONL、编辑器流式状态机、临时翻译 | 各自依赖 DEV-031；DEV-037 另依赖 DEV-034 |
+| Wave 3 | DEV-038、039 | `/` 快捷插入、Chat Dock 权限模式 | DEV-038 依赖 DEV-035/036/037；DEV-039 依赖 DEV-032/033 |
+| Wave 4 | DEV-040 | Agent 编辑工具与审批批次 | DEV-039 |
+| Wave 5 | DEV-042 | 端到端集成与打包 smoke | DEV-027～041、DEV-043～044 全部 |
+
+票据明细：DEV-027～DEV-042 位于 [`issues/`](issues/)，需求与验收标准以各票据为准。
+
 ### P0 · 集成验收（最后）— ✅ 已完成
 
 | # | 标题 | 模块 | 工作量 | 依赖 | 状态 |
