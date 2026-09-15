@@ -30,6 +30,7 @@ import {
 } from './chat-runtime';
 import { addSelectionContext, refreshAutoDocumentChip } from './chat-context-bridge';
 import { ChatSkillPicker } from '../../skills/ChatSkillPicker';
+import { DockPopover } from './DockPopover';
 
 function sourcesResponse(turn: ChatTurn): RetrievalResponse | null {
   const meta = turn.meta;
@@ -93,46 +94,50 @@ function TurnView({ turn }: { turn: ChatTurn }) {
 function HistoryMenu() {
   const summaries = useChatStore((s) => s.summaries);
   const [open, setOpen] = useState(false);
+  const triggerRef = useRef<HTMLButtonElement>(null);
   return (
-    <div className="relative">
+    <>
       <Button
+        ref={triggerRef}
         variant="ghost"
         size="sm"
         data-testid="chat-history"
+        aria-haspopup="true"
+        aria-expanded={open}
         className="h-7 gap-1 px-2 text-[11px]"
         onClick={() => setOpen((v) => !v)}
       >
         历史 <ChevronDown className="size-3" />
       </Button>
-      {open && (
-        <div
-          data-testid="chat-history-menu"
-          className="absolute right-0 top-full z-30 mt-1 max-h-72 w-60 overflow-auto rounded-md border bg-popover p-1 text-[12px] text-popover-foreground shadow-md"
-        >
-          {summaries.length === 0 && (
-            <p className="px-2 py-2 text-muted-foreground">暂无历史会话</p>
-          )}
-          {summaries.map((s) => (
-            <button
-              key={s.path}
-              type="button"
-              data-testid="chat-history-item"
-              onClick={() => {
-                void openSession(s.path);
-                setOpen(false);
-              }}
-              className="block w-full truncate rounded px-2 py-1.5 text-left hover:bg-accent"
-              title={s.path}
-            >
-              <span className="block truncate font-medium">{s.title}</span>
-              <span className="block text-[10px] text-muted-foreground">
-                {s.turnCount} 条 · {new Date(s.updatedAt).toLocaleString()}
-              </span>
-            </button>
-          ))}
-        </div>
-      )}
-    </div>
+      <DockPopover
+        open={open}
+        anchorRef={triggerRef}
+        onClose={() => setOpen(false)}
+        testId="chat-history-menu"
+        className="max-h-72 w-60 overflow-auto rounded-md border bg-popover p-1 text-[12px] text-popover-foreground shadow-md"
+        placement="bottom"
+      >
+        {summaries.length === 0 && <p className="px-2 py-2 text-muted-foreground">暂无历史会话</p>}
+        {summaries.map((s) => (
+          <button
+            key={s.path}
+            type="button"
+            data-testid="chat-history-item"
+            onClick={() => {
+              void openSession(s.path);
+              setOpen(false);
+            }}
+            className="block w-full truncate rounded px-2 py-1.5 text-left hover:bg-accent"
+            title={s.path}
+          >
+            <span className="block truncate font-medium">{s.title}</span>
+            <span className="block text-[10px] text-muted-foreground">
+              {s.turnCount} 条 · {new Date(s.updatedAt).toLocaleString()}
+            </span>
+          </button>
+        ))}
+      </DockPopover>
+    </>
   );
 }
 

@@ -1,4 +1,4 @@
-import type { ButtonHTMLAttributes } from 'react';
+import { forwardRef, type ButtonHTMLAttributes } from 'react';
 import { cn } from '../../lib/utils';
 
 /** shadcn/ui 风格 Button 基础组件（无 asChild/Slot，按需在后续票扩展）。 */
@@ -26,9 +26,13 @@ export interface ButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
   size?: Size;
 }
 
-export function Button({ className, variant = 'default', size = 'default', ...props }: ButtonProps) {
+export const Button = forwardRef<HTMLButtonElement, ButtonProps>(function Button(
+  { className, variant = 'default', size = 'default', ...props },
+  ref,
+) {
   return (
     <button
+      ref={ref}
       type="button"
       data-slot="button"
       className={cn(
@@ -42,4 +46,4 @@ export function Button({ className, variant = 'default', size = 'default', ...pr
       {...props}
     />
   );
-}
+});
