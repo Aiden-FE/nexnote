@@ -19,7 +19,8 @@ export interface AgentTool {
   source?: 'agent' | 'skill';
   execute(input: unknown, ctx: ToolContext): Promise<unknown>;
 }
-export const WRITE_TOOLS_ENABLED = false;
+/** DEV-040 enables only the explicitly registered document tools. */
+export const WRITE_TOOLS_ENABLED = true;
 export class ToolRegistry {
   private readonly tools = new Map<string, AgentTool>();
   constructor(initial: AgentTool[] = []) {

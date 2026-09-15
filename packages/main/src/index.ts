@@ -195,6 +195,10 @@ async function bootstrap(): Promise<void> {
           .allBlocks()
           .filter((b, i, all) => all.findIndex((x) => x.path === b.path) === i)
           .map((b) => ({ path: b.path, title: b.title })),
+      document: {
+        read: (path) => fs.readTextFile(path),
+        write: (path, content) => fs.writeTextFile(path, content, true),
+      },
     }),
   );
   const agent = new AgentGateway({

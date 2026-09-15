@@ -8,6 +8,7 @@ import type {
 import { invoke, onEvent } from '../../../lib/ipc';
 import { getSelectedSkillIds } from '../../skills/chat-skill-store';
 import { useChatStore } from './chat-store';
+import { activePageRef } from './chat-context-bridge';
 import * as client from './chat-client';
 
 let working: ChatSession | null = null;
@@ -197,6 +198,7 @@ export async function sendMessage(rawText: string): Promise<void> {
       skillIds: getSelectedSkillIds(),
       contextText,
       permissionMode: session.meta.permissionMode ?? 'conversation',
+      contextPaths: activePageRef()?.path ? [activePageRef()!.path] : [],
     });
     runId = sid;
   } catch (e) {

@@ -25,15 +25,15 @@ const TTL_MS = 10 * 60_000;
 export const AGENT_SCENARIO_PROFILES: Record<AgentScenario, { system: string; tools: string[] }> = {
   chat: {
     system: '你是 NexNote 内置知识库对话助手。基于提供的上下文回答，不要编造来源。',
-    tools: ['search_notes', 'list_pages'],
+    tools: ['search_notes', 'list_pages', 'edit_current_selection', 'append_to_document'],
   },
   writing: {
     system: '你是 NexNote Markdown 写作助手。只输出处理后的正文，不要解释。',
-    tools: ['search_notes', 'list_pages'],
+    tools: ['search_notes', 'list_pages', 'edit_current_selection', 'append_to_document'],
   },
   debug: {
     system: '你是 NexNote 知识库助手。简洁回答并指出不确定性。',
-    tools: ['search_notes', 'list_pages'],
+    tools: ['search_notes', 'list_pages', 'edit_current_selection', 'append_to_document'],
   },
   translation: {
     system: TRANSLATION_SYSTEM_PROMPT,
@@ -405,6 +405,17 @@ export class AgentGateway {
       throw Object.assign(new Error('工具未获准执行'), { code: 'TOOL_NOT_ALLOWED' });
     }
     if (tool.access === 'write' || tool.requiresApproval) {
+      if (tool.access === 'write') {
+        const target = typeof input === 'object' && input !== null ? (input as Record<string, unknown>).path : undefined;
+        const inScope = typeof target === 'string' && state.contextPaths.includes(target);
+        const forbidden = /shell|command|delete|remove|rename|config|setting|vault/i.test(name);
+        if (forbidden || !inScope) {
+          const code = forbidden ? 'FULL_MODE_TOOL_FORBIDDEN' : 'FULL_MODE_SCOPE_DENIED';
+          this.audit.append({ runId, scenario, event: 'tool', status: 'denied', tool: name, code, at: Date.now() });
+          emit({ type: 'tool', tool: name, status: 'denied', summary: '护栏拒绝：仅允许当前会话上下文中的文档编辑。' });
+          throw Object.assign(new Error('写操作超出当前会话文档作用域'), { code });
+        }
+      }
       if (tool.access === 'write' && state.permissionMode === 'conversation') {
         this.audit.append({
           runId,
@@ -426,14 +437,16 @@ export class AgentGateway {
         });
       }
       if (state.permissionMode === 'full') {
-        const forbidden = /shell|command|delete|remove|rename|config|setting/i.test(name);
+        // Five hard guardrails: no shell, delete, rename, vault/settings config, or path escape.
+        const forbidden = /shell|command|delete|remove|rename|config|setting|vault/i.test(name);
         const target =
           typeof input === 'object' && input !== null
             ? (input as Record<string, unknown>).path
             : undefined;
         const inScope =
           typeof target !== 'string' ||
-          state.contextPaths.length === 0 ||
+          state.contextPaths.length > 0 &&
+          typeof target === 'string' &&
           state.contextPaths.some((p) => target === p || target.startsWith(`${p}/`));
         if (forbidden || !inScope) {
           this.audit.append({
