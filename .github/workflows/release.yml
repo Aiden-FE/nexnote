@@ -244,6 +244,15 @@ jobs:
             gpg --verify "$artifact.asc" "$artifact"
           done
 
+      # electron-builder leaves unpacked app staging (mac-arm64/, win-unpacked/, ...) and
+      # builder debug files in the output dir. Uploading them would publish whole app trees
+      # and trip the preflight duplicate-basename guard (Info.plist, Electron Framework, ...).
+      - name: Drop unpacked staging before artifact upload
+        shell: bash
+        run: |
+          find release -mindepth 1 -maxdepth 1 -type d -exec rm -rf '{}' +
+          rm -f release/builder-debug.yml release/builder-effective-config.yaml
+          find release -name '.DS_Store' -delete
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: nexnote-${{ matrix.artifact }}
@@ -287,7 +296,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
-          name: nexnote-smoke-evidence
+          name: smoke-evidence-${{ github.run_id }}
           path: ${{ runner.temp }}/nexnote-smoke-results
           if-no-files-found: warn
 
