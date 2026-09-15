@@ -74,7 +74,7 @@ describe('DEV-037 写作请求层零隐式请求', () => {
     kernel.editor.chain().selectAll().run();
     // 4) 斜杠菜单输入（含 AI 分组构建）
     view.dispatch(view.state.tr.insertText('/', view.state.selection.to));
-    expect(writingSlashItems(controller)).toHaveLength(6);
+    expect(writingSlashItems(controller)).toHaveLength(7);
     // 5) 工具栏 / 菜单项构建 + 停止控件挂载（纯 UI，不发请求）
     expect(writingAiMenuActions()).toHaveLength(8);
     expect(writingContextMenu({ target: 'selection' })).toHaveLength(1);

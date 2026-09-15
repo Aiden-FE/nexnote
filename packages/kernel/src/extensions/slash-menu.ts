@@ -128,7 +128,9 @@ export function defaultSlashMenuItems(query: string): SlashMenuItem[] {
         const { schema, selection } = view.state;
         const current = selection.$from.parent;
         if (current.type.name === 'paragraph') return false;
-        view.dispatch(view.state.tr.setBlockType(selection.from, selection.to, schema.nodes.paragraph!, {}));
+        view.dispatch(
+          view.state.tr.setBlockType(selection.from, selection.to, schema.nodes.paragraph!, {}),
+        );
         return true;
       },
     },
@@ -143,7 +145,9 @@ export function defaultSlashMenuItems(query: string): SlashMenuItem[] {
         if (!bulletList || !listItem || !paragraph) return false;
         view.dispatch(
           view.state.tr
-            .replaceSelectionWith(bulletList.create(null, [listItem.create(null, paragraph.create())]))
+            .replaceSelectionWith(
+              bulletList.create(null, [listItem.create(null, paragraph.create())]),
+            )
             .scrollIntoView(),
         );
         return true;
@@ -160,7 +164,9 @@ export function defaultSlashMenuItems(query: string): SlashMenuItem[] {
         if (!orderedList || !listItem || !paragraph) return false;
         view.dispatch(
           view.state.tr
-            .replaceSelectionWith(orderedList.create(null, [listItem.create(null, paragraph.create())]))
+            .replaceSelectionWith(
+              orderedList.create(null, [listItem.create(null, paragraph.create())]),
+            )
             .scrollIntoView(),
         );
         return true;
@@ -197,7 +203,15 @@ export function defaultSlashMenuItems(query: string): SlashMenuItem[] {
       keywords: ['task', 'todo', 'checkbox'],
       action: ({ view }) => {
         const { schema } = view.state;
-        view.dispatch(view.state.tr.replaceSelectionWith(schema.nodes.taskList!.create(null, [schema.nodes.taskItem!.create(null, schema.nodes.paragraph!.create())])).scrollIntoView());
+        view.dispatch(
+          view.state.tr
+            .replaceSelectionWith(
+              schema.nodes.taskList!.create(null, [
+                schema.nodes.taskItem!.create(null, schema.nodes.paragraph!.create()),
+              ]),
+            )
+            .scrollIntoView(),
+        );
         return true;
       },
     },
@@ -209,7 +223,13 @@ export function defaultSlashMenuItems(query: string): SlashMenuItem[] {
       keywords: ['callout', 'admonition', 'biaozhu'],
       action: ({ view }) => {
         const { schema } = view.state;
-        view.dispatch(view.state.tr.replaceSelectionWith(schema.nodes.callout!.create({ type: 'note' }, schema.nodes.paragraph!.create())).scrollIntoView());
+        view.dispatch(
+          view.state.tr
+            .replaceSelectionWith(
+              schema.nodes.callout!.create({ type: 'note' }, schema.nodes.paragraph!.create()),
+            )
+            .scrollIntoView(),
+        );
         return true;
       },
     },
@@ -255,7 +275,11 @@ export function defaultSlashMenuItems(query: string): SlashMenuItem[] {
       keywords: ['hr', 'rule', 'fenge'],
       action: ({ view }) => {
         const { schema } = view.state;
-        view.dispatch(view.state.tr.replaceSelectionWith(schema.nodes.horizontalRule!.create()).scrollIntoView());
+        view.dispatch(
+          view.state.tr
+            .replaceSelectionWith(schema.nodes.horizontalRule!.create())
+            .scrollIntoView(),
+        );
         return true;
       },
     },
@@ -328,7 +352,8 @@ function caretCoords(view: EditorView): { top: number; left: number } {
   const start = view.state.selection.from;
   const domAt = view.domAtPos(start);
   const node = domAt.node;
-  const el = node.nodeType === 1 ? (node as HTMLElement) : (node.parentElement as HTMLElement | null);
+  const el =
+    node.nodeType === 1 ? (node as HTMLElement) : (node.parentElement as HTMLElement | null);
   if (!el) return { top: 0, left: 0 };
   const range = document.createRange();
   range.setStart(domAt.node, domAt.offset);
@@ -393,12 +418,17 @@ export const SlashMenu = Extension.create<SlashMenuOptions, SlashMenuState>({
     };
 
     const applyItem = (view: EditorView, item: SlashMenuItem) => {
-      // 先删掉 `/query` 文本
-      const to = view.state.selection.from;
-      if (slashFrom >= 0 && to > slashFrom) {
-        view.dispatch(view.state.tr.delete(slashFrom, to));
+      // 需要额外确认的动作（AI 插入指令框）先确认，Esc/取消不得消费原文。
+      if (item.id === 'ai-insert') {
+        if (!item.action({ view })) return;
+        const to = view.state.selection.from;
+        if (slashFrom >= 0 && to > slashFrom) view.dispatch(view.state.tr.delete(slashFrom, to));
+      } else {
+        // 普通动作先消费触发文本，再在干净的光标上下文执行。
+        const to = view.state.selection.from;
+        if (slashFrom >= 0 && to > slashFrom) view.dispatch(view.state.tr.delete(slashFrom, to));
+        if (!item.action({ view })) return;
       }
-      item.action({ view });
       close(view);
     };
 
@@ -432,11 +462,21 @@ export const SlashMenu = Extension.create<SlashMenuOptions, SlashMenuState>({
         props: {
           handleTextInput(view, from, _to, text) {
             if (!ext.storage.open) {
-              // 空段落或行尾输入 `/` 触发（限制在段首空行，避免路径/数字里的斜杠）
+              // 仅在行首或空白之后触发。这样 URL、路径、数学表达式及单词内的 `/`
+              // 都保持普通文本；允许已有缩进/空白，但不允许其它可见字符。
               if (text === '/') {
                 const $from = view.state.doc.resolve(from);
-                const textBefore = $from.parent.textBetween(0, $from.parentOffset, undefined, '\ufffc');
-                if ($from.parent.type.name === 'paragraph' && textBefore.trim() === '') {
+                const textBefore = $from.parent.textBetween(
+                  0,
+                  $from.parentOffset,
+                  undefined,
+                  '\ufffc',
+                );
+                const previous = textBefore.slice(-1);
+                if (
+                  $from.parent.type.name === 'paragraph' &&
+                  (textBefore.length === 0 || /\s/.test(previous))
+                ) {
                   open(view, from);
                 }
               }
@@ -449,7 +489,10 @@ export const SlashMenu = Extension.create<SlashMenuOptions, SlashMenuState>({
             }
             ext.storage.query += text;
             ext.storage.items = ext.options.items(ext.storage.query);
-            ext.storage.activeIndex = Math.min(ext.storage.activeIndex, Math.max(0, ext.storage.items.length - 1));
+            ext.storage.activeIndex = Math.min(
+              ext.storage.activeIndex,
+              Math.max(0, ext.storage.items.length - 1),
+            );
             if (ext.storage.items.length === 0) close(view);
             sync(view);
             return false;

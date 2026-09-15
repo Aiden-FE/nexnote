@@ -28,6 +28,23 @@ export interface SourceAiAssistDeps {
   getDocPath(): string;
 }
 
+/** 光标处 AI 插入：流式结果最终插入光标，不替换正文。 */
+export function openSourceCursorInsertSession(
+  view: EditorView,
+  instruction: string,
+  deps: SourceAiAssistDeps,
+): void {
+  if (!instruction.trim()) return;
+  const pos = view.state.selection.main.head;
+  const ctx: SourceBubbleContext = {
+    text: instruction.trim(),
+    from: pos,
+    to: pos,
+    coords: (() => { const c = view.coordsAtPos(pos); return { top: c?.top ?? 0, left: c?.left ?? 0 }; })(),
+  };
+  openSourceWritingSession(view, 'ai:expand', ctx, deps);
+}
+
 /** 询问 AI 动作 id（与块编辑 CHAT_ASK_ACTION 对齐，经 bubble onAction 透传）。 */
 export const SOURCE_CHAT_ASK_ACTION = 'chat:ask-selection';
 

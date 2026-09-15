@@ -44,17 +44,39 @@ export function writingContextMenu(ctx: { target: string }): ContextMenuItem[] {
 
 /** 斜杠 `/ai` 项：空块基于上文生成，选区作用于选区。 */
 export function writingSlashItems(controller: WritingController): SlashMenuItem[] {
-  return WRITING_ACTIONS.map((action) => ({
-    id: `ai-${action.id}`,
-    title: `AI · ${action.label}`,
-    hint: '/ai',
+  const aiInsert: SlashMenuItem = {
+    id: 'ai-insert',
+    title: 'AI 插入',
+    hint: '指令…',
     group: 'AI',
-    keywords: ['ai', '✨', ...action.keywords],
+    keywords: ['ai', 'insert', 'prompt', '生成', '插入'],
     action: ({ view }) => {
-      const target = view.state.selection.empty ? 'cursor' : 'selection';
-      const ctx = computeEditorActionContext(view, target);
-      controller.trigger(toAiActionId(action.id), ctx);
+      const instruction = window.prompt('AI 插入指令', '请基于当前上下文补充内容');
+      if (!instruction?.trim()) return false;
+      const ctx = computeEditorActionContext(view, 'cursor');
+      // expand 是“在光标处追加”的既有白名单动作；指令作为目标传入，正文不会被替换。
+      controller.trigger(toAiActionId('expand'), {
+        ...ctx,
+        text: instruction.trim(),
+        target: 'cursor',
+      });
       return true;
     },
-  }));
+  };
+  return [
+    aiInsert,
+    ...WRITING_ACTIONS.map((action) => ({
+      id: `ai-${action.id}`,
+      title: `AI · ${action.label}`,
+      hint: '/ai',
+      group: 'AI',
+      keywords: ['ai', '✨', ...action.keywords],
+      action: ({ view }) => {
+        const target = view.state.selection.empty ? 'cursor' : 'selection';
+        const ctx = computeEditorActionContext(view, target);
+        controller.trigger(toAiActionId(action.id), ctx);
+        return true;
+      },
+    })),
+  ];
 }

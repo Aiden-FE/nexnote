@@ -77,6 +77,7 @@ import {
   INSERT_ATTACHMENT_ID,
   INSERT_IMAGE_ID,
   VIEW_SOURCE_ID,
+  AI_INSERT_ID,
 } from './toolbar/entries';
 import {
   buildBuiltinSlashItems,
@@ -887,6 +888,19 @@ export function EditorView({ tab }: EditorViewProps) {
           titleFromPath(pathRef.current),
           pathRef.current,
         );
+        return;
+      }
+      case AI_INSERT_ID: {
+        const v = view();
+        if (!v) return;
+        const instruction = window.prompt('AI 插入指令', '请基于当前上下文补充内容');
+        if (!instruction?.trim()) return;
+        const ctx = computeEditorActionContext(v, 'cursor');
+        writingControllerRef.current?.trigger('ai:expand', {
+          ...ctx,
+          text: instruction.trim(),
+          target: 'cursor',
+        });
         return;
       }
       case VIEW_SOURCE_ID:
