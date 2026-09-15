@@ -7,6 +7,11 @@ import type { AgentTool } from './tool-registry';
  */
 
 export interface BuiltinToolDeps {
+  /** Controlled document writes; paths are vault-relative and already sandboxed. */
+  document?: {
+    read(path: string): Promise<string>;
+    write(path: string, content: string): Promise<unknown>;
+  };
   /** 三阶段检索（DEV-011 RetrievalService.retrieve）。 */
   retrieve: (query: string) => Promise<{
     sources: Array<{ path: string; title: string; snippet: string; score: number }>;
@@ -66,5 +71,59 @@ export function createBuiltinTools(deps: BuiltinToolDeps): AgentTool[] {
     },
   };
 
-  return [searchTool, listPagesTool];
+  const editSelectionTool: AgentTool = {
+    source: 'agent',
+    definition: {
+      name: 'edit_current_selection',
+      description: '将当前上下文文档中的指定选区替换为 Markdown 文本。',
+      access: 'write',
+      requiresApproval: true,
+      batchable: true,
+      inputSchema: {
+        type: 'object',
+        properties: {
+          path: { type: 'string' },
+          expectedText: { type: 'string' },
+          content: { type: 'string' },
+        },
+        required: ['path', 'expectedText', 'content'],
+      },
+    },
+    async execute(input) {
+      if (!deps.document) throw new Error('文档写入服务不可用');
+      if (!isRecord(input) || typeof input.path !== 'string' || typeof input.expectedText !== 'string' || typeof input.content !== 'string') {
+        throw new Error('edit_current_selection 输入无效');
+      }
+      const current = await deps.document.read(input.path);
+      const index = current.indexOf(input.expectedText);
+      if (index < 0 || current.indexOf(input.expectedText, index + 1) >= 0) {
+        throw Object.assign(new Error('选区已变化或不唯一'), { code: 'STALE_SELECTION' });
+      }
+      await deps.document.write(input.path, current.slice(0, index) + input.content + current.slice(index + input.expectedText.length));
+      return { path: input.path, operation: 'replace', chars: input.content.length };
+    },
+  };
+  const appendDocumentTool: AgentTool = {
+    source: 'agent',
+    definition: {
+      name: 'append_to_document',
+      description: '向当前上下文文档末尾追加 Markdown 文本。',
+      access: 'write',
+      requiresApproval: true,
+      batchable: true,
+      inputSchema: {
+        type: 'object',
+        properties: { path: { type: 'string' }, content: { type: 'string' } },
+        required: ['path', 'content'],
+      },
+    },
+    async execute(input) {
+      if (!deps.document) throw new Error('文档写入服务不可用');
+      if (!isRecord(input) || typeof input.path !== 'string' || typeof input.content !== 'string') throw new Error('append_to_document 输入无效');
+      const current = await deps.document.read(input.path);
+      await deps.document.write(input.path, current + (current.endsWith('\n') ? '' : '\n') + input.content);
+      return { path: input.path, operation: 'append', chars: input.content.length };
+    },
+  };
+  return [searchTool, listPagesTool, editSelectionTool, appendDocumentTool];
 }

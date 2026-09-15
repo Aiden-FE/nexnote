@@ -57,6 +57,19 @@ export interface AgentToolDefinition {
   access: 'read' | 'write';
   requiresApproval: boolean;
   inputSchema: Record<string, unknown>;
+  /** Writes are grouped by turn so edit mode can approve a complete diff batch. */
+  batchable?: boolean;
+}
+
+/** A single document edit proposed by an agent turn. */
+export interface AgentDocumentEdit {
+  path: string;
+  operation: 'replace' | 'append';
+  content: string;
+  /** Required for replace; protects against stale or out-of-scope writes. */
+  expectedText?: string;
+  start?: number;
+  end?: number;
 }
 
 export interface AgentApprovalRequest {
