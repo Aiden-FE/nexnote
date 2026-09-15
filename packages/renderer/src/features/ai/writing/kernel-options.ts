@@ -53,10 +53,10 @@ export function writingSlashItems(controller: WritingController): SlashMenuItem[
     action: ({ view }) => {
       const instruction = window.prompt('AI 插入指令', '请基于当前上下文补充内容');
       if (!instruction?.trim()) return false;
-      const ctx = computeEditorActionContext(view, 'cursor');
+      const editorContext = computeEditorActionContext(view, 'cursor');
       // expand 是“在光标处追加”的既有白名单动作；指令作为目标传入，正文不会被替换。
       controller.trigger(toAiActionId('expand'), {
-        ...ctx,
+        ...editorContext,
         text: instruction.trim(),
         target: 'cursor',
       });
@@ -65,7 +65,7 @@ export function writingSlashItems(controller: WritingController): SlashMenuItem[
   };
   return [
     aiInsert,
-    ...WRITING_ACTIONS.map((action) => ({
+    ...WRITING_ACTIONS.map((action): SlashMenuItem => ({
       id: `ai-${action.id}`,
       title: `AI · ${action.label}`,
       hint: '/ai',
@@ -73,8 +73,8 @@ export function writingSlashItems(controller: WritingController): SlashMenuItem[
       keywords: ['ai', '✨', ...action.keywords],
       action: ({ view }) => {
         const target = view.state.selection.empty ? 'cursor' : 'selection';
-        const ctx = computeEditorActionContext(view, target);
-        controller.trigger(toAiActionId(action.id), ctx);
+        const editorContext = computeEditorActionContext(view, target);
+        controller.trigger(toAiActionId(action.id), editorContext);
         return true;
       },
     })),

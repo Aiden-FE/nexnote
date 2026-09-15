@@ -1,0 +1,8 @@
+typecheck: PASS
+test: PASS
+lint: PASS (4 pre-existing warnings)
+build: PASS
+release-config: PASS (31/31)
+changed-format: PASS (no changed files to check)
+diff-check: PASS
+electron-smoke: NOT_RUN - offline electron-builder could not fetch electron-v44.2.0 zip; no fabricated PASS

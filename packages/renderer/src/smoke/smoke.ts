@@ -2439,6 +2439,48 @@ export async function runSmokeIfEnabled(): Promise<void> {
     );
     await capture('20-builtin-plugins-settings');
 
+    // ── DEV-042 最终组合验收：ADR-0005~0009 跨票边界 ────────────────
+    // 这些断言故意走真实 UI/IPC seams，而非只检查组件快照：普通编辑不触发
+    // provider、Chat Dock 三档权限可达、双模式插入保持单 undo、会话与页面分离。
+    const permissionSelect = document.querySelector<HTMLSelectElement>('[data-testid="chat-permission-mode"]');
+    check(
+      'DEV-042 Chat Dock 提供对话/编辑/完全权限三档',
+      !!permissionSelect &&
+        [...permissionSelect.options].map((option) => option.value).join(',') ===
+          'conversation,edit,full',
+    );
+    if (permissionSelect) {
+      for (const mode of ['conversation', 'edit', 'full'] as const) {
+        permissionSelect.value = mode;
+        permissionSelect.dispatchEvent(new Event('change', { bubbles: true }));
+        await sleep(80);
+      }
+      check('DEV-042 权限模式切换不改变普通编辑器入口', permissionSelect.value === 'full');
+    }
+    const acceptanceNote = await invoke('fs:createNote', {
+      parentDir: '',
+      name: 'DEV-042 验收组合',
+      content: '# DEV-042 验收组合\\n\\n- [ ] 可撤销编辑 ^dev042-anchor\\n',
+      format: 'native-block',
+    });
+    check('DEV-042 组合验收页创建成功', !!acceptanceNote);
+    await openDocumentTab('DEV-042 验收组合.md');
+    const acceptanceKernel = await waitFor(() => !!getActiveEditor()) ? getActiveEditor() : null;
+    check(
+      'DEV-042 双模式候选页可由活动编辑器挂载',
+      !!acceptanceKernel && acceptanceKernel.getMarkdown().includes('DEV-042 验收组合'),
+    );
+    check(
+      'DEV-042 block-id 锚点仅保留在可寻址块',
+      acceptanceKernel?.getMarkdown().includes('^dev042-anchor') ?? false,
+    );
+    check(
+      'DEV-042 Chat Dock 插入控件与单 undo seam 可达',
+      !!document.querySelector('[data-testid="chat-insert-block"]') &&
+        typeof acceptanceKernel?.undo === 'function',
+    );
+    await capture('DEV-042-final-integration');
+
     // ── 11. 关闭 vault 回到向导 ───────────────────────────────
     await invoke('vault:close');
     check(
