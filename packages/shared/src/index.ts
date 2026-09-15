@@ -12,6 +12,8 @@ export type * from './types/git';
 
 export * from './markdown/wikilink';
 export * from './markdown/links';
+export * from './markdown/code-languages';
+export * from './markdown/code-languages';
 // Settings utils（纯函数，主/渲染共用）
 export { mergeGlobalPatch, mergeVaultPatch, normalizeShortcut } from './settings/settings-utils';
 // IPC
