@@ -19,10 +19,9 @@ export interface VaultConfig {
     confidenceFrontmatter: boolean;
   };
   /**
-   * AI 对话会话存储目录（vault 相对，DEV-012）。默认 `AI Chats`。
-   * 放在普通目录（而非 .nexnote/）以便会话可被双链引用与语义索引。
+   * 已废弃（DEV-033）：会话改为 .nexnote/sessions 内部 JSONL 存储，
+   * 不再有可配置会话目录；读取时静默丢弃旧配置残留。
    */
-  chatFolder: string;
   /** DEV-016：每个 vault 独立的编辑器与 Git 行为设置。 */
   settings: VaultSettings;
   /** 窗口/布局状态（由渲染层经 vault:saveLayout 持久化） */
@@ -79,7 +78,6 @@ export function defaultVaultConfig(): VaultConfig {
   return {
     version: 1,
     features: { confidenceFrontmatter: false },
-    chatFolder: 'AI Chats',
     settings: defaultVaultSettings(),
     layout: defaultVaultLayout(),
     lastSession: { tabs: [] },

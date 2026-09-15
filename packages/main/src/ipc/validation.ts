@@ -459,18 +459,28 @@ const saveLayout: PayloadValidator = (payload) => {
 };
 
 const chatNew = object(['title'], [optionalField('title', 'string')]);
+const chatList = object(['query'], [optionalField('query', 'string')]);
 const chatSave = object(
-  ['session'],
+  ['session', 'status', 'error'],
   [
     (p) =>
       isPlainObject((p as Record<string, unknown>).session) ? null : invalid('session 必须是对象'),
+    (p) => {
+      const status = (p as Record<string, unknown>).status;
+      if (status === undefined) return null;
+      return status === 'complete' ||
+        status === 'streaming' ||
+        status === 'cancelled' ||
+        status === 'failed'
+        ? null
+        : invalid('status 必须是 complete/streaming/cancelled/failed');
+    },
   ],
 );
 const chatSaveAsDoc = object(
   ['path', 'userAsQuote'],
   [stringField('path'), optionalField('userAsQuote', 'boolean')],
 );
-const chatFolderSet = object(['folder'], [stringField('folder')]);
 
 const pluginObjectChannels = [
   'plugins:pickSource',
@@ -546,11 +556,11 @@ const VALIDATORS: Partial<Record<IpcChannel, PayloadValidator>> = {
   'ai:embed': aiEmbed,
   'ai:embedWithMetadata': aiEmbed,
   'ai:import': aiImport,
+  'chat:list': chatList,
   'chat:get': pathOnly,
   'chat:new': chatNew,
   'chat:save': chatSave,
   'chat:saveAsDoc': chatSaveAsDoc,
-  'chat:folder:set': chatFolderSet,
   ...(Object.fromEntries(pluginObjectChannels.map((c) => [c, pluginObject])) as Partial<
     Record<IpcChannel, PayloadValidator>
   >),

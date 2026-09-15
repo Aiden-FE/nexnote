@@ -1,7 +1,4 @@
-/**
- * AI 对话「会话即页面」公共类型（DEV-012）。
- * 每个会话持久化为 vault 内一个 .md 文件（frontmatter type: chat + 消息块）。
- */
+/** AI 会话内部 JSONL 存储公共类型。 */
 import type { RetrievalStageName } from './retrieval';
 
 export type ChatTurnRole = 'user' | 'assistant';
@@ -44,7 +41,7 @@ export interface ChatTurn {
   meta?: ChatTurnMeta;
 }
 
-/** 会话 frontmatter 元数据。 */
+/** 会话元数据。 */
 export interface ChatSessionMeta {
   id: string;
   title: string;
@@ -57,15 +54,15 @@ export interface ChatSessionMeta {
   updatedAt: string;
 }
 
-/** 一次完整对话会话 = vault 内一个 .md 文件。 */
+/** 一次完整 AI 会话。 */
 export interface ChatSession {
-  /** vault 相对 .md 路径。 */
+  /** vault 相对 JSONL 路径。 */
   path: string;
   meta: ChatSessionMeta;
   turns: ChatTurn[];
 }
 
-/** 会话列表条目（dock 顶部历史切换用，不含消息正文）。 */
+/** 会话列表条目（dock 历史面板用，不含消息正文）。 */
 export interface ChatSummary {
   path: string;
   id: string;
@@ -73,10 +70,9 @@ export interface ChatSummary {
   model: string | null;
   turnCount: number;
   updatedAt: string;
+  /** 末次持久化时的流式状态标记。 */
+  status: ChatSessionStatus;
 }
 
-/** 会话存储目录配置。 */
-export interface ChatFolderConfig {
-  /** vault 相对目录（默认 `AI Chats`）。 */
-  folder: string;
-}
+/** 会话持久化状态（ADR-0005 未完成状态标记的 JSONL 表达）。 */
+export type ChatSessionStatus = 'complete' | 'streaming' | 'cancelled' | 'failed';
