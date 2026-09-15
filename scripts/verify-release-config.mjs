@@ -11,9 +11,14 @@ import yaml from 'js-yaml';
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const cfg = yaml.load(readFileSync(resolve(root, 'electron-builder.yml'), 'utf8'));
-const releaseWorkflow = readFileSync(resolve(root, '.github/workflows/release.yml'), 'utf8');
-const devWorkflow = readFileSync(resolve(root, '.github/workflows/pr-check.yml'), 'utf8');
-const nightlyWorkflow = readFileSync(resolve(root, '.github/workflows/nightly.yml'), 'utf8');
+const normalizeText = (value) => value.replace(/\r\n/g, '\n');
+const releaseWorkflow = normalizeText(
+  readFileSync(resolve(root, '.github/workflows/release.yml'), 'utf8'),
+);
+const devWorkflow = normalizeText(readFileSync(resolve(root, '.github/workflows/pr-check.yml'), 'utf8'));
+const nightlyWorkflow = normalizeText(
+  readFileSync(resolve(root, '.github/workflows/nightly.yml'), 'utf8'),
+);
 const updater = readFileSync(resolve(root, 'packages/main/src/updater.ts'), 'utf8');
 const runBuilder = readFileSync(resolve(root, 'scripts/run-builder.mjs'), 'utf8');
 const adHocSign = readFileSync(resolve(root, 'scripts/ad-hoc-sign.mjs'), 'utf8');

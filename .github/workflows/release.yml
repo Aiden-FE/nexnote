@@ -149,7 +149,7 @@ jobs:
           pnpm verify:release-config
       - name: Run lint, typecheck, tests, and build with a non-interactive Git environment
         shell: bash
-        run: env -u GIT_EDITOR -u GIT_SEQUENCE_EDITOR -u EDITOR CI=true pnpm lint && env -u GIT_EDITOR -u GIT_SEQUENCE_EDITOR -u EDITOR CI=true pnpm typecheck && env -u GIT_EDITOR -u GIT_SEQUENCE_EDITOR -u EDITOR CI=true pnpm test -- --maxWorkers=4 --minWorkers=1 --testTimeout=60000 && env -u GIT_EDITOR -u GIT_SEQUENCE_EDITOR -u EDITOR CI=true pnpm build
+        run: env -u GIT_EDITOR -u GIT_SEQUENCE_EDITOR -u EDITOR CI=true pnpm lint && env -u GIT_EDITOR -u GIT_SEQUENCE_EDITOR -u EDITOR CI=true pnpm typecheck && env -u GIT_EDITOR -u GIT_SEQUENCE_EDITOR -u EDITOR CI=true pnpm exec vitest run --maxWorkers=4 --testTimeout=60000 && env -u GIT_EDITOR -u GIT_SEQUENCE_EDITOR -u EDITOR CI=true pnpm build
 
       - name: Package Ad hoc signed macOS distributables
         if: runner.os == 'macOS'

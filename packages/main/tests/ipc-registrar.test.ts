@@ -498,8 +498,12 @@ describe('IPC 集成（vault + fs，单一注册表）', () => {
     // 自动提交排程到期 → 再发一次状态事件
     await ipc.invoke('git:recordAutoCommit', { summary: 'note.md', debounceMs: 20 });
     // Runtime policy clamps call overrides to the same 500ms minimum as settings.
-    await new Promise((r) => setTimeout(r, 750));
-    const afterAuto = win.sent.filter((e) => e.channel === 'git:statusChanged').length;
+    const autoDeadline = Date.now() + 3_000;
+    let afterAuto = win.sent.filter((e) => e.channel === 'git:statusChanged').length;
+    while (Date.now() < autoDeadline && afterAuto <= afterWrite) {
+      await new Promise((r) => setTimeout(r, 50));
+      afterAuto = win.sent.filter((e) => e.channel === 'git:statusChanged').length;
+    }
     expect(afterAuto).toBeGreaterThan(afterWrite);
 
     // 手动提交 → 再次发送
