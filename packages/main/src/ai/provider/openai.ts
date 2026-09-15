@@ -433,6 +433,9 @@ export class OpenAIProtocolAdapter implements ProviderAdapter {
           const { done: readerDone, value } = await reader.read();
           if (readerDone) break;
           parser.feed(decoder.decode(value, { stream: true }));
+          // [DONE] is the protocol terminator; do not depend on transport EOF, which can
+          // arrive later (or never) on a provider connection kept alive after completion.
+          if (streamDone) break;
         }
         parser.feed(decoder.decode());
         parser.flush();
