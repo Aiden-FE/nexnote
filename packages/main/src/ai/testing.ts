@@ -26,6 +26,8 @@ export interface MockOpenAiServer {
   streamingTruncated?: boolean;
   /** 模拟 provider 不支持 tools/function-calling（带 tools 的 chat 返回 400） */
   toolsUnsupported?: boolean;
+  /** 下一次带 tools 的流请求返回一个 function tool call；后续请求返回普通文本。 */
+  nextToolCall?: { name: string; arguments: Record<string, unknown> };
   /** 模拟 provider 无 embeddings 端点（返回 404） */
   embeddingsUnsupported?: boolean;
   /** Simulate an authenticated HTTP redirect; the adapter must fail before following it. */
@@ -108,6 +110,36 @@ export async function startMockOpenAiServer(
           return;
         }
         if (!isStream) {
+          const toolCall = state.nextToolCall;
+          if (toolCall && Array.isArray(b.tools) && b.tools.length > 0) {
+            state.nextToolCall = undefined;
+            json({
+              id: 'chatcmpl-mock-tool',
+              model,
+              choices: [
+                {
+                  index: 0,
+                  message: {
+                    role: 'assistant',
+                    content: null,
+                    tool_calls: [
+                      {
+                        id: 'call_mock_1',
+                        type: 'function',
+                        function: {
+                          name: toolCall.name,
+                          arguments: JSON.stringify(toolCall.arguments),
+                        },
+                      },
+                    ],
+                  },
+                  finish_reason: 'tool_calls',
+                },
+              ],
+              usage: { prompt_tokens: 5, completion_tokens: 3, total_tokens: 8 },
+            });
+            return;
+          }
           json({
             id: 'chatcmpl-mock',
             model,
@@ -127,16 +159,46 @@ export async function startMockOpenAiServer(
           'Cache-Control': 'no-cache',
           Connection: 'keep-alive',
         });
-        const pieces = [
-          { choices: [{ index: 0, delta: { role: 'assistant', content: '' } }] },
-          { choices: [{ index: 0, delta: { content: '你好' } }] },
-          { choices: [{ index: 0, delta: { content: '，' } }] },
-          { choices: [{ index: 0, delta: { content: '流式' } }] },
-          { choices: [{ index: 0, delta: { content: '回复' } }] },
-          ...(!state.streamingTruncated
-            ? [{ choices: [{ index: 0, delta: {}, finish_reason: 'stop' }] }]
-            : []),
-        ];
+        const toolCall =
+          state.nextToolCall && Array.isArray(b.tools) && b.tools.length > 0
+            ? state.nextToolCall
+            : undefined;
+        if (toolCall) state.nextToolCall = undefined;
+        const pieces = toolCall
+          ? [
+              { choices: [{ index: 0, delta: { role: 'assistant', content: null } }] },
+              {
+                choices: [
+                  {
+                    index: 0,
+                    delta: {
+                      tool_calls: [
+                        {
+                          index: 0,
+                          id: 'call_mock_1',
+                          type: 'function',
+                          function: {
+                            name: toolCall.name,
+                            arguments: JSON.stringify(toolCall.arguments),
+                          },
+                        },
+                      ],
+                    },
+                  },
+                ],
+              },
+              { choices: [{ index: 0, delta: {}, finish_reason: 'tool_calls' }] },
+            ]
+          : [
+              { choices: [{ index: 0, delta: { role: 'assistant', content: '' } }] },
+              { choices: [{ index: 0, delta: { content: '你好' } }] },
+              { choices: [{ index: 0, delta: { content: '，' } }] },
+              { choices: [{ index: 0, delta: { content: '流式' } }] },
+              { choices: [{ index: 0, delta: { content: '回复' } }] },
+              ...(!state.streamingTruncated
+                ? [{ choices: [{ index: 0, delta: {}, finish_reason: 'stop' }] }]
+                : []),
+            ];
         let i = 0;
         const send = () => {
           if (i < pieces.length) {
@@ -250,11 +312,16 @@ export function createProviderRequestSpy(providerBaseUrl: string): ProviderReque
   const origin = new URL(providerBaseUrl).origin;
   const requests: ProviderRequest[] = [];
   const spyFetch: typeof fetch = async (input, init) => {
-    const requestUrl = typeof input === 'string' ? input : input instanceof URL ? input.href : input.url;
+    const requestUrl =
+      typeof input === 'string' ? input : input instanceof URL ? input.href : input.url;
     const url = new URL(requestUrl, origin);
     if (url.origin === origin) {
       requests.push({
-        method: (init?.method ?? (typeof input === 'string' || input instanceof URL ? 'GET' : input.method) ?? 'GET').toUpperCase(),
+        method: (
+          init?.method ??
+          (typeof input === 'string' || input instanceof URL ? 'GET' : input.method) ??
+          'GET'
+        ).toUpperCase(),
         url: url.toString(),
         path: url.pathname,
       });
@@ -264,8 +331,11 @@ export function createProviderRequestSpy(providerBaseUrl: string): ProviderReque
   return {
     requests,
     fetch: spyFetch,
-    count: (path) => path ? requests.filter((request) => request.path === path).length : requests.length,
+    count: (path) =>
+      path ? requests.filter((request) => request.path === path).length : requests.length,
     paths: () => requests.map((request) => request.path),
-    reset: () => { requests.length = 0; },
+    reset: () => {
+      requests.length = 0;
+    },
   };
 }

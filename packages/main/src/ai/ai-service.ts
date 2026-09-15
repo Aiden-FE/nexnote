@@ -14,7 +14,7 @@ import type {
 } from '@nexnote/shared';
 import { OpenAIProtocolAdapter } from './provider/openai';
 import { LocalEmbeddingAdapter } from './provider/local-embedding';
-import type { ChatStreamHandle, ProviderAdapter } from './provider/types';
+import type { ChatStreamHandle, ChatTool, ProviderAdapter } from './provider/types';
 import { ProviderError } from './provider/types';
 import type { AiStoredProfile, AiStore } from './ai-store';
 
@@ -319,11 +319,20 @@ export class AiService {
       feature?: 'writing' | 'chat' | 'embedding';
       model?: string;
       params?: ChatParams;
+      tools?: ChatTool[];
     },
     onEvent: (event: ChatStreamEvent) => void,
   ): ChatStreamHandle {
     const { adapter, model, params } = this.resolve(options);
-    return adapter.chatCompletionStream({ model, messages: options.messages, params }, onEvent);
+    return adapter.chatCompletionStream(
+      {
+        model,
+        messages: options.messages,
+        params,
+        ...(options.tools ? { tools: options.tools } : {}),
+      },
+      onEvent,
+    );
   }
 
   /**
@@ -366,6 +375,23 @@ export class AiService {
 
   activeStreamCount(): number {
     return this.streams.size;
+  }
+
+  /**
+   * 目标 profile/协议是否支持 function calling（DEV-032 优雅降级的前置判定）。
+   * 只读 adapter 的协议级声明，绝不为此发起网络探测（DEV-030：不产生计划外 provider 请求）。
+   * 解析失败时按「支持」处理，让运行时错误路径兜底（不静默吞掉配置错误）。
+   */
+  supportsTools(options: {
+    profileId?: string;
+    feature?: 'writing' | 'chat' | 'embedding';
+    model?: string;
+  }): boolean {
+    try {
+      return this.resolve(options).adapter.declaredCapabilities().tools;
+    } catch {
+      return true;
+    }
   }
 
   // ── Embedding ───────────────────────────────────────

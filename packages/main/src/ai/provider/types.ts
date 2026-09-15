@@ -20,11 +20,24 @@ export class ProviderError extends Error {
   }
 }
 
-/** 适配器统一请求（模型解析已在 AiService 完成）。 */
+/** 统一工具描述：注册表 → 适配器 → SDK 原生 function tool。执行经注册表/网关（allowlist/审批/审计）。 */
+export interface ChatTool {
+  name: string;
+  description: string;
+  /** JSON Schema（SDK 侧经 jsonSchema() 包装，保序、不做 zod 转换）。 */
+  inputSchema: Record<string, unknown>;
+  execute: (
+    input: unknown,
+    options: { toolCallId: string; abortSignal?: AbortSignal },
+  ) => Promise<unknown>;
+}
+
 export interface ChatRequest {
   model: string;
   messages: ChatMessage[];
   params?: ChatParams;
+  /** SDK-native function tools. The adapter owns the multi-step tool-call loop. */
+  tools?: ChatTool[];
 }
 
 export interface ChatStreamHandle {
@@ -56,7 +69,7 @@ export interface ProviderAdapter {
 
   chatCompletion(req: ChatRequest): Promise<{ content: string; model: string; usage?: TokenUsage }>;
 
-  /** 启动流式补全：立即返回 handle，事件异步送达 onEvent。 */
+  /** 启动流式补全：立即返回 handle，事件异步送达 onEvent。含 tools 时由 adapter 驱动多轮 tool loop。 */
   chatCompletionStream(
     req: ChatRequest,
     onEvent: (event: ChatStreamEvent) => void,

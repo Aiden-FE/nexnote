@@ -4,13 +4,14 @@ import type {
   AgentRunRequest,
   AgentScenario,
   AgentWritingActionId,
+  ChatMessage,
   IpcEventMap,
 } from '@nexnote/shared';
 import type { AiService } from '../ai/ai-service';
-import type { ChatStreamHandle } from '../ai/provider/types';
+import type { ChatStreamHandle, ChatTool } from '../ai/provider/types';
 import { AuditStore } from './audit-store';
 import { ApprovalStore } from './approval-store';
-import { BuiltinLoopRuntime, PiRuntime, ToolLoopRuntime } from './runtime';
+import { BuiltinLoopRuntime, PiRuntime } from './runtime';
 import type { ToolRegistry } from './tool-registry';
 import type { SkillService } from '../skills/skill-service';
 
@@ -76,6 +77,19 @@ export const AGENT_WRITING_ACTIONS: Record<
   ),
 };
 
+/** 工具结果脱敏摘要：只暴露结构计数，绝不透出原始输入/结果内容（审计与事件流共用）。 */
+function summarizeToolResult(result: unknown): string {
+  if (typeof result === 'string') return `${result.length} chars`;
+  if (result && typeof result === 'object') {
+    const record = result as Record<string, unknown>;
+    for (const key of ['sources', 'pages', 'items', 'results'] as const) {
+      const value = record[key];
+      if (Array.isArray(value)) return `${value.length} ${key}`;
+    }
+  }
+  return 'ok';
+}
+
 type RunState = {
   scenario: AgentScenario;
   started: number;
@@ -102,12 +116,7 @@ export class AgentGateway {
     this.approvals = deps.approvals ?? new ApprovalStore();
     this.audit = deps.audit ?? new AuditStore();
     const builtin = new BuiltinLoopRuntime(deps.ai);
-    const loop = new ToolLoopRuntime(
-      builtin,
-      { allowed: ['search_notes', 'list_pages'] },
-      (runId, name, input) => this.executeTool(runId, name, input),
-    );
-    this.runtime = new PiRuntime(loop, deps.piAvailable ?? false);
+    this.runtime = new PiRuntime(builtin, deps.piAvailable ?? false);
   }
 
   async run(scenario: AgentScenario, request: AgentRunRequest): Promise<{ runId: string }> {
@@ -187,7 +196,7 @@ export class AgentGateway {
     }
     const context = [request.contextText?.trim(), skillContext.trim()].filter(Boolean).join('\n\n');
     // writing 场景：渲染层只带白名单 actionId + 选区/上下文；prompt 模板全部由主进程持有。
-    const messages = request.actionId
+    const messages: ChatMessage[] = request.actionId
       ? [
           { role: 'system' as const, content: profile.system },
           { role: 'system' as const, content: AGENT_WRITING_ACTIONS[request.actionId].system },
@@ -204,33 +213,59 @@ export class AgentGateway {
           ...(context ? [{ role: 'system' as const, content: `参考上下文：\n${context}` }] : []),
           ...incomingMessages.filter((m) => m.role !== 'system'),
         ];
+    const supportsTools = this.aiSupportsTools(scenario);
+    let tools = supportsTools ? this.buildSdkTools(runId, scenario) : [];
     let terminalError: Extract<AgentRunEvent, { type: 'error' }> | undefined;
-    let handle: ChatStreamHandle;
-    try {
-      handle = this.runtime.run({
+    // 只允许一次运行期降级重试，避免供应商持续拒绝时反复发请求。
+    let allowToolFallback = supportsTools && tools.length > 0;
+    if (!supportsTools) this.markToolFallback(runId, scenario, emit, messages);
+    const startAttempt = (attemptTools: ChatTool[]): ChatStreamHandle =>
+      this.runtime.run({
         runId,
         request,
-        toolQueries: this.buildPreToolQueries(scenario, request, lastUser),
+        tools: attemptTools,
         messages,
         scenario,
         onEvent: (event) => {
-          if (event.type === 'error') terminalError = event;
+          if (event.type === 'error') {
+            terminalError = event;
+            // 供应商拒绝 tools：先不把 error 推给渲染层，交由 settle 走一次无工具降级重试。
+            if (allowToolFallback && event.code === 'PROVIDER_TOOLS_UNSUPPORTED') return;
+          }
           emit(event);
         },
       });
+    let handle: ChatStreamHandle;
+    try {
+      handle = startAttempt(tools);
     } catch (error) {
       this.finishError(runId, error, emit);
       return { runId };
     }
     state.handle = handle;
     state.timer = setTimeout(() => this.cancel(runId, scenario, 'TTL_EXPIRED'), TTL_MS);
-    void handle.done
-      .then(() => {
-        if (terminalError?.type === 'error')
-          this.finish(runId, 'error', terminalError.code ?? 'AGENT_RUNTIME_ERROR');
-        else this.finish(runId, 'completed');
-      })
-      .catch((error) => this.finishError(runId, error, emit));
+    const settle = (): void => {
+      const err = terminalError;
+      if (err && allowToolFallback && err.code === 'PROVIDER_TOOLS_UNSUPPORTED') {
+        // 运行期降级：去掉工具重试一次，并显式留痕（不静默失败）。
+        allowToolFallback = false;
+        tools = [];
+        terminalError = undefined;
+        this.markToolFallback(runId, scenario, emit, messages);
+        try {
+          handle = startAttempt(tools);
+        } catch (error) {
+          this.finishError(runId, error, emit);
+          return;
+        }
+        state.handle = handle;
+        void handle.done.then(settle).catch((error) => this.finishError(runId, error, emit));
+        return;
+      }
+      if (err) this.finish(runId, 'error', err.code ?? 'AGENT_RUNTIME_ERROR');
+      else this.finish(runId, 'completed');
+    };
+    void handle.done.then(settle).catch((error) => this.finishError(runId, error, emit));
     return { runId };
   }
   private finish(
@@ -260,20 +295,45 @@ export class AgentGateway {
     const message = error instanceof Error ? error.message : 'Agent runtime failed';
     if (this.finish(runId, 'error', code)) emit({ type: 'error', message, code });
   }
-  /** 受控 pre-tool phase：skill 路径未接管时，经 executeTool 执行只读工具。 */
-  private buildPreToolQueries(
+  /** 前置能力判定：读协议级声明；测试替身未提供 supportsTools 时按支持处理。 */
+  private aiSupportsTools(scenario: AgentScenario): boolean {
+    const ai = this.deps.ai as AiService & { supportsTools?: AiService['supportsTools'] };
+    if (typeof ai.supportsTools !== 'function') return true;
+    return ai.supportsTools({ feature: scenario === 'debug' ? 'chat' : scenario });
+  }
+  /** 工具不可用时的显式降级留痕：事件 + 审计 + 系统提示（不静默失败）。 */
+  private markToolFallback(
+    runId: string,
     scenario: AgentScenario,
-    request: AgentRunRequest,
-    lastUser: string,
-  ): Array<{ name: string; input: unknown }> {
-    if (!this.deps.tools || request.skillIds !== undefined || !lastUser) return [];
-    const profile = AGENT_SCENARIO_PROFILES[scenario];
-    const queries: Array<{ name: string; input: unknown }> = [];
-    if (profile.tools.includes('search_notes'))
-      queries.push({ name: 'search_notes', input: { query: lastUser } });
-    if (scenario === 'debug' && profile.tools.includes('list_pages'))
-      queries.push({ name: 'list_pages', input: {} });
-    return queries;
+    emit: (event: AgentRunEvent) => void,
+    messages: ChatMessage[],
+  ): void {
+    emit({ type: 'fallback', runtime: 'builtin-fallback' });
+    this.audit.append({
+      runId,
+      scenario,
+      event: 'fallback',
+      status: 'started',
+      code: 'PROVIDER_TOOLS_UNSUPPORTED',
+      at: Date.now(),
+    });
+    messages.push({
+      role: 'system',
+      content: '当前模型不支持工具调用；请直接基于已有上下文回答，并明确说明无法实时检索。',
+    });
+  }
+  /** 单注册表 → SDK 原生 tools：仅暴露本场景 allowlist 内条目，执行统一经 executeTool。 */
+  private buildSdkTools(runId: string, scenario: AgentScenario): ChatTool[] {
+    const allowed = new Set(AGENT_SCENARIO_PROFILES[scenario].tools);
+    const registry = this.deps.tools;
+    return (registry?.list() ?? [])
+      .filter((definition) => allowed.has(definition.name))
+      .map((definition) => ({
+        name: definition.name,
+        description: definition.description,
+        inputSchema: definition.inputSchema,
+        execute: (input): Promise<unknown> => this.executeTool(runId, definition.name, input),
+      }));
   }
   cancel(runId: string, _scenario: AgentScenario = 'chat', code = 'CANCELLED'): boolean {
     const state = this.active.get(runId);
@@ -291,12 +351,15 @@ export class AgentGateway {
   async executeTool(runId: string, name: string, input: unknown): Promise<unknown> {
     const state = this.active.get(runId);
     if (!state) throw new Error('RUN_NOT_ACTIVE');
-    const allowed = AGENT_SCENARIO_PROFILES[state.scenario].tools;
-    const tool = this.deps.tools?.list().find((item) => item.name === name);
+    const scenario = state.scenario;
+    const emit = (event: AgentRunEvent) =>
+      this.deps.sendEvent('agent:runEvent', { runId, scenario, event });
+    const allowed = AGENT_SCENARIO_PROFILES[scenario].tools;
+    const tool = this.deps.tools?.get(name)?.definition;
     if (!tool || !allowed.includes(name)) {
       this.audit.append({
         runId,
-        scenario: state.scenario,
+        scenario,
         event: 'tool',
         status: 'denied',
         tool: name,
@@ -308,12 +371,10 @@ export class AgentGateway {
     if (tool.access === 'write' || tool.requiresApproval) {
       const approvalId = randomUUID();
       const expiresAt = this.approvals.request(approvalId, name, runId);
-      const emit = (event: AgentRunEvent) =>
-        this.deps.sendEvent('agent:runEvent', { runId, scenario: state.scenario, event });
       emit({ type: 'approvalRequired', approvalId, tool: name, expiresAt });
       this.audit.append({
         runId,
-        scenario: state.scenario,
+        scenario,
         event: 'approval',
         status: 'started',
         tool: name,
@@ -323,7 +384,7 @@ export class AgentGateway {
       const approved = decision === 'approved' && this.approvals.consume(approvalId, name, runId);
       this.audit.append({
         runId,
-        scenario: state.scenario,
+        scenario,
         event: 'approval',
         status: approved ? 'approved' : 'denied',
         tool: name,
@@ -336,13 +397,40 @@ export class AgentGateway {
     }
     this.audit.append({
       runId,
-      scenario: state.scenario,
+      scenario,
       event: 'tool',
       status: 'allowed',
       tool: name,
       at: Date.now(),
     });
-    return this.deps.tools!.execute(name, input, { runId, scenario: state.scenario });
+    try {
+      const result = await this.deps.tools!.execute(name, input, { runId, scenario });
+      const summary = summarizeToolResult(result);
+      this.audit.append({
+        runId,
+        scenario,
+        event: 'tool',
+        status: 'completed',
+        tool: name,
+        summary,
+        at: Date.now(),
+      });
+      emit({ type: 'tool', tool: name, status: 'completed', summary });
+      return result;
+    } catch (error) {
+      const code = (error as { code?: string })?.code ?? 'TOOL_EXECUTION_FAILED';
+      this.audit.append({
+        runId,
+        scenario,
+        event: 'tool',
+        status: 'failed',
+        tool: name,
+        code,
+        at: Date.now(),
+      });
+      emit({ type: 'tool', tool: name, status: 'failed' });
+      throw error;
+    }
   }
   respondApproval(id: string, decision: 'approved' | 'denied'): boolean {
     return this.approvals.respond(id, decision);

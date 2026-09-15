@@ -35,6 +35,9 @@ export interface TokenUsage {
   totalTokens: number;
 }
 
+/** Agent 工具生命周期（事件流与审计共用）：started → completed | denied | failed。 */
+export type ToolActivityStatus = 'started' | 'completed' | 'denied' | 'failed';
+
 /**
  * 统一内部流事件协议：隔离 OpenAI/兼容服务的 SSE 差异。
  * 渲染层只消费该协议，不接触任何 provider 原生 SSE 格式。
@@ -43,6 +46,7 @@ export type ChatStreamEvent =
   | { type: 'start'; model: string }
   | { type: 'delta'; text: string }
   | { type: 'reasoningDelta'; text: string }
+  | { type: 'tool'; tool: string; status: ToolActivityStatus; summary?: string }
   | { type: 'done'; usage?: TokenUsage }
   | { type: 'error'; message: string; code?: string };
 

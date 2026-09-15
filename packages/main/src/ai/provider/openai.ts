@@ -1,6 +1,6 @@
 import type { ChatStreamEvent, ProviderCapabilities, TokenUsage } from '@nexnote/shared';
 import { createOpenAICompatible } from '@ai-sdk/openai-compatible';
-import { streamText } from 'ai';
+import { jsonSchema, stepCountIs, streamText, tool } from 'ai';
 import {
   ProviderError,
   type AdapterOptions,
@@ -13,6 +13,8 @@ import {
 
 const REQUEST_TIMEOUT_MS = 120_000;
 const CONNECT_TIMEOUT_MS = 15_000;
+/** 单次流式请求内的 SDK 原生工具步数上限（模型↔工具多轮闭环；超限以当前文本收尾）。 */
+const MAX_TOOL_STEPS = 5;
 
 /** 规范化 base URL：去尾部斜杠 + 拒绝 userinfo（URL 中嵌入凭据会泄漏到请求头/日志）。 */
 function normalizeBase(baseUrl: string): string {
@@ -348,11 +350,38 @@ export class OpenAIProtocolAdapter implements ProviderAdapter {
       includeUsage: true,
     });
     const params = req.params;
+    // 注册表工具 → SDK 原生 function tools；execute 回调仍走网关的 allowlist/审批/审计接点。
+    const sdkTools = Object.fromEntries(
+      (req.tools ?? []).map((t) => [
+        t.name,
+        tool({
+          description: t.description,
+          inputSchema: jsonSchema<Record<string, unknown>>(t.inputSchema),
+          execute: (input, { toolCallId, abortSignal }) =>
+            t.execute(input, { toolCallId, abortSignal }),
+        }),
+      ]),
+    );
+    const hasTools = Object.keys(sdkTools).length > 0;
+    // SDK v7 不再接受 messages 中的 system 角色：系统提示（含 gateway 组装的上下文）改走 instructions。
+    const conversation = req.messages.filter((m) => m.role !== 'system');
+    const systemMessages = req.messages.filter((m) => m.role === 'system');
     const done = (async (): Promise<void> => {
       try {
         const result = streamText({
           model: provider.chatModel(req.model),
-          messages: req.messages,
+          ...(conversation.length > 0
+            ? {
+                messages: conversation,
+                ...(systemMessages.length > 0 && {
+                  instructions: systemMessages.map((m) => ({
+                    role: 'system' as const,
+                    content: m.content,
+                  })),
+                }),
+              }
+            : { messages: req.messages, allowSystemInMessages: true }),
+          ...(hasTools && { tools: sdkTools, stopWhen: stepCountIs(MAX_TOOL_STEPS) }),
           ...(params?.temperature !== undefined && { temperature: params.temperature }),
           ...(params?.maxTokens !== undefined && { maxOutputTokens: params.maxTokens }),
           ...(params?.reasoningEffort && {
@@ -364,7 +393,7 @@ export class OpenAIProtocolAdapter implements ProviderAdapter {
         let streamFailed = false;
         for await (const part of result.fullStream) {
           if (part.type === 'error' || part.type === 'abort') streamFailed = true;
-          this.emitSdkPart(part, req.model, onEvent);
+          this.emitSdkPart(part, req.model, hasTools, onEvent);
         }
         if (streamFailed) return;
         const usage = await result.totalUsage;
@@ -386,7 +415,7 @@ export class OpenAIProtocolAdapter implements ProviderAdapter {
         if (abort.signal.aborted) {
           onEvent({ type: 'error', message: '已取消', code: 'CANCELLED' });
         } else {
-          const providerError = this.sdkError(error);
+          const providerError = this.sdkError(error, hasTools);
           onEvent({ type: 'error', message: providerError.message, code: providerError.code });
         }
       }
@@ -395,8 +424,9 @@ export class OpenAIProtocolAdapter implements ProviderAdapter {
   }
 
   private emitSdkPart(
-    part: { type: string; text?: string; error?: unknown },
+    part: { type: string; text?: string; error?: unknown; toolName?: string },
     model: string,
+    hasTools: boolean,
     onEvent: (event: ChatStreamEvent) => void,
   ): void {
     switch (part.type) {
@@ -410,10 +440,15 @@ export class OpenAIProtocolAdapter implements ProviderAdapter {
       case 'reasoning-delta':
         if (part.text) onEvent({ type: 'reasoningDelta', text: part.text });
         break;
+      // 只报告模型发起的工具调用；completed/denied/failed 由网关在工具执行后发出（含脱敏结果摘要）。
+      case 'tool-call': {
+        if (part.toolName) onEvent({ type: 'tool', tool: part.toolName, status: 'started' });
+        break;
+      }
       case 'finish':
         break;
       case 'error':
-        onEvent({ type: 'error', ...this.sdkError(part.error) });
+        onEvent({ type: 'error', ...this.sdkError(part.error, hasTools) });
         break;
       case 'abort':
         onEvent({ type: 'error', message: '已取消', code: 'CANCELLED' });
@@ -421,10 +456,17 @@ export class OpenAIProtocolAdapter implements ProviderAdapter {
     }
   }
 
-  private sdkError(error: unknown): { message: string; code: string } {
+  private sdkError(error: unknown, hasTools = false): { message: string; code: string } {
     const status =
       (error as { statusCode?: number })?.statusCode ?? (error as { status?: number })?.status;
     if (typeof status === 'number') {
+      // 带 tools 的请求被 400 拒绝：区分「工具不受支持」与一般 HTTP 错误，供网关走降级路径。
+      if (hasTools && status === 400) {
+        return {
+          message: '供应商不支持工具调用（function calling），已降级为无工具回答',
+          code: 'PROVIDER_TOOLS_UNSUPPORTED',
+        };
+      }
       return { message: safeMessageFromStatus(status), code: 'PROVIDER_HTTP' };
     }
     // SDK 校验「流结束但没有 finish_reason」的截断语义，对应内部 STREAM_TRUNCATED。

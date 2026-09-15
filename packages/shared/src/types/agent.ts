@@ -1,4 +1,4 @@
-import type { ChatMessage, ChatParams, ChatStreamEvent } from './ai';
+import type { ChatMessage, ChatParams, ChatStreamEvent, ToolActivityStatus } from './ai';
 
 export type AgentScenario = 'chat' | 'writing' | 'debug';
 export type AgentWritingActionId =
@@ -25,7 +25,7 @@ export type AgentRunEvent =
   | { type: 'context'; sources: unknown[]; degraded: boolean; retrievalModel?: string | null }
   | { type: 'delta'; text: string }
   | { type: 'reasoningDelta'; text: string }
-  | { type: 'tool'; tool: string; status: 'started' | 'completed' | 'denied' }
+  | { type: 'tool'; tool: string; status: ToolActivityStatus; summary?: string }
   | { type: 'approvalRequired'; approvalId: string; tool: string; expiresAt: number }
   | { type: 'done'; usage?: unknown }
   | { type: 'error'; message: string; code?: string };
@@ -54,6 +54,11 @@ export interface AgentAuditRecord {
   event: 'run' | 'tool' | 'approval' | 'fallback';
   status: AgentRunStatus | 'allowed' | 'denied' | 'approved' | 'expired';
   tool?: string;
+  /**
+   * 脱敏结果摘要（如「3 sources」），仅用于 UI/审计可读性；
+   * 绝不包含工具输入、原始结果或文档内容。
+   */
+  summary?: string;
   code?: string;
   at: number;
   durationMs?: number;
