@@ -428,8 +428,14 @@ describe('DEV-044 块 ID 锚点泄漏防御', () => {
       });
       expect(kernel.editor.getText()).not.toMatch(/[\uFFF0\uFFF1]/);
       // UniqueID 生成的随机 id 不得出现在正文文本里
-      for (const text of collectTexts(kernel.getJSON())) {
-        expect(text).not.toMatch(/[\uFFF0\uFFF1]/);
+      const generatedIds = collectTexts(kernel.getJSON());
+      expect(generatedIds.join('')).not.toMatch(/[\uFFF0\uFFF1]/);
+      const json = JSON.stringify(kernel.getJSON());
+      const attrIds = [...json.matchAll(/"blockId":"([a-z0-9]+)"/g)].map((m) => m[1]);
+      expect(attrIds.length).toBeGreaterThan(0);
+      const visibleText = kernel.editor.getText();
+      for (const id of attrIds) {
+        expect(visibleText).not.toContain(id);
       }
       const saved = kernel.getMarkdown();
       expect(saved).not.toMatch(/^[ \t]*\^[A-Za-z0-9-]+\s*$/m);
@@ -439,6 +445,29 @@ describe('DEV-044 块 ID 锚点泄漏防御', () => {
       current = saved;
       kernel.destroy();
     }
+  });
+
+  it('历史污染文件往返幂等：首次序列化无空白差异（` ^id2` 回收）', () => {
+    const extensions = buildKernelExtensions({ slashMenu: false, dragHandle: false });
+    const manager = createMarkdownManager(extensions);
+    const doc = parseMarkdown(manager, '- [ ] 待办内容 ^id1\n\n ^id2');
+    const output = serializeMarkdown(manager, doc);
+    expect(output).toBe('- [ ] 待办内容 ^id1');
+    // 幂等：再次 parse→serialize 完全一致
+    const doc2 = parseMarkdown(manager, output);
+    expect(serializeMarkdown(manager, doc2)).toBe(output);
+  });
+
+  it('普通 ASCII 段落不会被误识别为裸锚点', () => {
+    const extensions = buildKernelExtensions({ slashMenu: false, dragHandle: false });
+    const manager = createMarkdownManager(extensions);
+    const source = '中文段落\n\nHello\n\n2024';
+    const doc = parseMarkdown(manager, source);
+    const output = serializeMarkdown(manager, doc);
+    expect(output).not.toContain('^Hello');
+    expect(output).not.toContain('^2024');
+    expect(doc.content?.map((node) => node.attrs?.blockId)).not.toContain('Hello');
+    expect(doc.content?.map((node) => node.attrs?.blockId)).not.toContain('2024');
   });
 
   it('用户手写 ^aonubg8xf 字样保留（锚点形态与行中字面量均不误删）', () => {
