@@ -44,7 +44,10 @@ beforeEach(() => {
 afterEach(() => {
   if (!runIfGit() || !root) return;
   service.cancelAutoCommit();
-  rmSync(root, { recursive: true, force: true });
+  service.setRoot(null);
+  // Windows 上 simple-git 子进程退出与句柄释放存在毫秒级竞态；交给 Node 的
+  // maxRetries 重试（覆盖 EBUSY/ENOTEMPTY/EPERM），而不是在测试里手写 sleep。
+  rmSync(root, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 });
 });
 
 describe.runIf(runIfGit())('GitService（系统 Git，临时仓库）', () => {
@@ -181,9 +184,13 @@ describe.runIf(runIfGit())('GitService（系统 Git，临时仓库）', () => {
     await fsp.writeFile(file, 'v1');
     const started = Date.now();
     service.scheduleAutoCommit('debounce');
-    // The configured 500ms floor fires within ~1s instead of default 30s.
-    await new Promise((r) => setTimeout(r, 1000));
-    const log = await service.timeline();
+    // 500ms floor must fire; on shared runners the commit lands later, so poll until it does.
+    const deadline = Date.now() + 10_000;
+    let log = await service.timeline();
+    while (Date.now() < deadline && !log.some((e) => e.kind === 'auto' && e.message.includes('debounce'))) {
+      await new Promise((r) => setTimeout(r, 50));
+      log = await service.timeline();
+    }
     expect(log.some((e) => e.kind === 'auto' && e.message.includes('debounce'))).toBe(true);
     expect(Date.now() - started).toBeLessThan(30_000);
   });
