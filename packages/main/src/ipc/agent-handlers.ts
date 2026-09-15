@@ -5,6 +5,7 @@ import type { AgentGateway } from '../agent/gateway';
 /**
  * agent:* 命名空间 handler。AgentGateway 是唯一的模型执行入口：
  * 渲染层不能携带 provider/profile/model 选择权，scenario 由通道本身决定。
+ * translation 场景（DEV-041）只读：无工具，reasoning 在 gateway 强制关闭。
  */
 export function registerAgentHandlers(registrar: IpcRegistrar, agent: AgentGateway): void {
   registrar.register('agent:run:chat', async (payload) => ok(await agent.run('chat', payload)));
@@ -12,6 +13,9 @@ export function registerAgentHandlers(registrar: IpcRegistrar, agent: AgentGatew
     ok(await agent.run('writing', payload)),
   );
   registrar.register('agent:run:debug', async (payload) => ok(await agent.run('debug', payload)));
+  registrar.register('agent:run:translation', async (payload) =>
+    ok(await agent.run('translation', payload)),
+  );
 
   registrar.register('agent:cancel', async (payload) => {
     return ok({ cancelled: agent.cancel(payload.runId) });

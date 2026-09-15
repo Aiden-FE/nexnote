@@ -425,7 +425,7 @@ export async function runSmokeIfEnabled(): Promise<void> {
               Array.from(blockBubble.querySelectorAll<HTMLElement>('[data-ai-menu-action]'))
                 .map((el) => el.dataset.aiMenuAction)
                 .join(',') ===
-                'ai:rewrite,ai:polish,ai:condense,ai:expand,ai:fillgaps,ai:evidence,chat:ask-selection',
+                'ai:rewrite,ai:polish,ai:condense,ai:expand,ai:fillgaps,ai:evidence,chat:ask-selection,translate:selection',
           );
           blockTrigger?.dispatchEvent(
             new KeyboardEvent('keydown', { key: 'ArrowDown', bubbles: true, cancelable: true }),
@@ -754,6 +754,8 @@ export async function runSmokeIfEnabled(): Promise<void> {
       'ai:expand',
       'ai:fillgaps',
       'ai:evidence',
+      // DEV-041：全文翻译（临时只读视图）
+      'translate:document',
     ];
 
     check(
@@ -889,6 +891,82 @@ export async function runSmokeIfEnabled(): Promise<void> {
       await waitFor(() => !document.querySelector('[data-testid="toolbar-more"]'), 5_000),
     );
 
+    // ── DEV-041 临时翻译：划词只读浮层 + 全文临时视图，绝不写盘/进文档树 ──────
+    // 冒烟环境不配置真实 Provider：这里验证入口、只读语义与「文件/文档树不变」不变量；
+    // 流式行为由单测（translation 请求层 + 控制器）覆盖。
+    const translatePage = '冒烟页面 A.md';
+    const bytesBeforeTranslate = await invoke('fs:readTextFile', { path: translatePage });
+    const tabsBeforeTranslate = useTabStore.getState().tabs.length;
+
+    const translateKernel = getActiveEditor();
+    let selectionTranslated = false;
+    if (translateKernel) {
+      const translateView = translateKernel.editor.view;
+      const translateDoc = translateView.state.doc;
+      let tFrom = -1;
+      let tTo = -1;
+      translateDoc.descendants((node, pos) => {
+        if (tFrom >= 0 || !node.isText) return true;
+        const at = node.text?.indexOf('第一块') ?? -1;
+        if (at >= 0) {
+          tFrom = pos + at;
+          tTo = tFrom + '第一块'.length;
+        }
+        return false;
+      });
+      if (tFrom >= 0) {
+        translateView.dispatch(
+          translateView.state.tr.setSelection(TextSelection.create(translateDoc, tFrom, tTo)),
+        );
+        await sleep(250);
+        const translateBubble = document.querySelector<HTMLElement>('[data-selection-bubble]');
+        translateBubble
+          ?.querySelector<HTMLButtonElement>('[data-bubble-action="ai:menu"]')
+          ?.click();
+        await sleep(200);
+        translateBubble
+          ?.querySelector<HTMLButtonElement>('[data-ai-menu-action="translate:selection"]')
+          ?.click();
+        await sleep(250);
+        selectionTranslated = !!document.querySelector(
+          '[data-testid="translation-selection-popover"]',
+        );
+        await capture('24-DEV-041-selection-translation');
+        document
+          .querySelector<HTMLButtonElement>('[data-testid="translation-selection-close"]')
+          ?.click();
+        await sleep(200);
+      }
+    }
+    check('划词翻译打开选区旁只读浮层', selectionTranslated);
+    check(
+      '划词翻译不改动文件且关闭即弃',
+      !document.querySelector('[data-testid="translation-selection-popover"]') &&
+        (await invoke('fs:readTextFile', { path: translatePage })) === bytesBeforeTranslate,
+    );
+
+    document.querySelector<HTMLButtonElement>('[data-testid="toolbar-entry-ai"]')?.click();
+    await sleep(200);
+    const documentTranslationMenu = document.querySelector<HTMLButtonElement>(
+      '[data-testid="toolbar-menu-item-translate:document"]',
+    );
+    documentTranslationMenu?.click();
+    await sleep(300);
+    const openDocumentView = document.querySelector<HTMLElement>(
+      '[data-testid="translation-document-view"]',
+    );
+    check('工具栏全文翻译打开临时只读视图', !!documentTranslationMenu && !!openDocumentView);
+    await capture('25-DEV-041-document-translation');
+    document
+      .querySelector<HTMLButtonElement>('[data-testid="translation-document-close"]')
+      ?.click();
+    await sleep(250);
+    check(
+      '全文翻译关闭后结果丢弃，文件与文档树不变',
+      !document.querySelector('[data-testid="translation-document-view"]') &&
+        useTabStore.getState().tabs.length === tabsBeforeTranslate &&
+        (await invoke('fs:readTextFile', { path: translatePage })) === bytesBeforeTranslate,
+    );
 
     // ── 5. 文档格式边界：native-block 不进源码；markdown sidecar 才进源码 ──
     await invoke('fs:createNote', { parentDir: '', name: '原生模式边界页' });
@@ -1068,7 +1146,7 @@ export async function runSmokeIfEnabled(): Promise<void> {
           // DEV-034：平铺动作 = 格式化五项 + 双链 + AI 下拉入口 +（隐藏的）停止控件
           el.querySelectorAll('[data-bubble-action]').length >= 7 &&
           !!el.querySelector('[data-bubble-action="ai:menu"]') &&
-          el.querySelectorAll('[data-ai-menu-action]').length >= 7
+          el.querySelectorAll('[data-ai-menu-action]').length >= 8
         );
       }, 5_000),
       `el=${!!bubbleEl()} onBody=${bubbleEl()?.parentElement === document.body} display=${bubbleEl()?.style.display ?? '?'} w=${bubbleEl()?.offsetWidth ?? 0} buttons=${bubbleEl()?.querySelectorAll('[data-bubble-action]').length ?? 0} bodyKids=${[
@@ -1097,11 +1175,11 @@ export async function runSmokeIfEnabled(): Promise<void> {
     );
     await sleep(150);
     check(
-      'md AI 下拉键盘打开：菜单可见、动作集为六写作 + 询问 AI、含快捷键提示',
+      'md AI 下拉键盘打开：菜单可见、动作集为六写作 + 询问 AI + 划词翻译、含快捷键提示',
       sourceMenu()?.hidden === false &&
         sourceTrigger()?.getAttribute('aria-expanded') === 'true' &&
         aiMenuIds().join(',') ===
-          'ai:rewrite,ai:polish,ai:condense,ai:expand,ai:fillgaps,ai:evidence,chat:ask-selection' &&
+          'ai:rewrite,ai:polish,ai:condense,ai:expand,ai:fillgaps,ai:evidence,chat:ask-selection,translate:selection' &&
         (sourceMenu()?.textContent ?? '').includes('⌘⌥R'),
     );
     (document.activeElement ?? document.body).dispatchEvent(

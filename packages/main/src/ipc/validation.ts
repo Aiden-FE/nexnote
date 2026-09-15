@@ -1,4 +1,5 @@
 import type { IpcChannel, ChannelRequest } from '@nexnote/shared';
+import { TARGET_LANGUAGE_PATTERN, TRANSLATION_MAX_TEXT_CHARS } from '../agent/translation';
 
 /** Stable error returned when renderer-controlled IPC input does not match its contract. */
 export interface ValidationError {
@@ -279,6 +280,35 @@ const agentWritingRun: PayloadValidator = (payload) => {
   return null;
 };
 
+const agentTranslationRun: PayloadValidator = (payload) => {
+  if (!isPlainObject(payload)) return invalid('payload 必须是普通对象');
+  const allowed = ['translation', 'params'];
+  if (Object.keys(payload).some((key) => !allowed.includes(key)))
+    return invalid('translation payload 包含未知字段');
+  if (!isPlainObject(payload.translation)) return invalid('translation 必须是对象');
+  const translation = payload.translation;
+  const translationFields = ['mode', 'targetLanguage', 'text'];
+  if (Object.keys(translation).some((key) => !translationFields.includes(key)))
+    return invalid('translation 包含未知字段');
+  if (translation.mode !== 'selection' && translation.mode !== 'document')
+    return invalid('translation.mode 必须是 selection/document');
+  if (
+    typeof translation.targetLanguage !== 'string' ||
+    !TARGET_LANGUAGE_PATTERN.test(translation.targetLanguage)
+  )
+    return invalid('translation.targetLanguage 无效');
+  if (typeof translation.text !== 'string' || translation.text.trim().length === 0)
+    return invalid('translation.text 不能为空');
+  if (translation.text.length > TRANSLATION_MAX_TEXT_CHARS) return invalid('translation.text 过长');
+  if (payload.params !== undefined) {
+    if (!isPlainObject(payload.params)) return invalid('params 必须是对象');
+    // reasoning 由主进程固定关闭：渲染层连提交该字段都不允许。
+    if ('reasoningEffort' in payload.params)
+      return invalid('translation 不接受 params.reasoningEffort');
+  }
+  return null;
+};
+
 const agentCancel = object(['runId'], [stringField('runId')]);
 const agentApproval = object(
   ['approvalId', 'decision'],
@@ -551,6 +581,7 @@ const VALIDATORS: Partial<Record<IpcChannel, PayloadValidator>> = {
   'agent:run:chat': agentRun,
   'agent:run:writing': agentWritingRun,
   'agent:run:debug': agentRun,
+  'agent:run:translation': agentTranslationRun,
   'agent:cancel': agentCancel,
   'agent:approval:respond': agentApproval,
   'ai:embed': aiEmbed,

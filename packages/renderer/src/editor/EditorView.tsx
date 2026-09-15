@@ -22,6 +22,12 @@ import {
   writingContextMenu,
   writingSlashItems,
 } from '../features/ai/writing';
+import {
+  createTranslationController,
+  TRANSLATE_DOCUMENT_ID,
+  TRANSLATE_SELECTION_ACTION_ID,
+  type TranslationController,
+} from '../features/ai/translation';
 import { CHAT_ASK_ACTION, requestAskAi } from '../features/ai/chat/ask-ai';
 import { useSettingsStore } from '../stores/settings-store';
 import { onEvent } from '../lib/ipc';
@@ -345,6 +351,24 @@ export function EditorView({ tab }: EditorViewProps) {
     };
   }, []);
 
+  // 临时翻译编排器（DEV-041）：划词浮层 + 全文临时视图；经 ref 读取实时文档与路径。
+  // 卸载时关闭两个会话（关闭即弃，绝不写回文档）。
+  const translationControllerRef = useRef<TranslationController | null>(null);
+  useEffect(() => {
+    translationControllerRef.current = createTranslationController({
+      getDocumentText: () => kernelRef.current?.getMarkdown() ?? '',
+      getDocumentMeta: () => ({
+        path: pathRef.current,
+        title: titleFromPath(pathRef.current),
+      }),
+    });
+    return () => {
+      translationControllerRef.current?.closeSelection();
+      translationControllerRef.current?.closeDocument();
+      translationControllerRef.current = null;
+    };
+  }, []);
+
   useEffect(() => {
     pathRef.current = path;
     // eslint-disable-next-line react-hooks/set-state-in-effect -- 外部 tab store 路径同步
@@ -515,6 +539,14 @@ export function EditorView({ tab }: EditorViewProps) {
         extraControl: writingStopControl(),
         onAction: (id, ctx) => {
           if (runFormatAction(id, kernelRef.current, ctx.text)) return;
+          // DEV-041：划词翻译只开只读浮层，不写回、不改选区语义。
+          if (id === TRANSLATE_SELECTION_ACTION_ID) {
+            translationControllerRef.current?.translateSelection({
+              text: ctx.text,
+              coords: ctx.coords,
+            });
+            return;
+          }
           if (id === CHAT_ASK_ACTION) {
             requestAskAi(ctx.text, titleFromPath(pathRef.current), pathRef.current);
             return;
@@ -613,6 +645,12 @@ export function EditorView({ tab }: EditorViewProps) {
       },
     });
     kernelRef.current = kernel;
+    // DEV-041：选区消失（折叠）时关闭划词翻译浮层，避免浮层滞留旧译文。
+    const onSelectionUpdate = () => {
+      const { from, to } = kernel.editor.state.selection;
+      if (from === to) translationControllerRef.current?.closeSelection();
+    };
+    kernel.editor.on('selectionUpdate', onSelectionUpdate);
     const editorRegistration = registerEditor(kernel);
     const unregisterModeSwitch = registerModeSwitchHandler(tab.id, async () => {
       await kernel.flushPendingSave();
@@ -627,6 +665,7 @@ export function EditorView({ tab }: EditorViewProps) {
       unregisterAppSave();
       unregisterModeSwitch();
       window.removeEventListener('blur', flush);
+      kernel.editor.off('selectionUpdate', onSelectionUpdate);
       editorRegistration.unregister();
       // 卸载时取消所有挂起的文件选择器（隐藏 input / 悬挂 promise）。
       // 集合身份稳定，无需进依赖数组。
@@ -852,6 +891,10 @@ export function EditorView({ tab }: EditorViewProps) {
       }
       case VIEW_SOURCE_ID:
         void requestSourceModeToggle(tab.id);
+        return;
+      case TRANSLATE_DOCUMENT_ID:
+        // DEV-041：全文翻译打开临时只读视图，不进入文档树、不写盘。
+        translationControllerRef.current?.translateDocument();
         return;
       default:
         break;

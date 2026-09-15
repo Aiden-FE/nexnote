@@ -16,6 +16,7 @@ import {
   writingAiMenuActions,
   writingStopControl,
 } from '../src/features/ai/writing';
+import { TRANSLATE_SELECTION_ACTION_ID } from '../src/features/ai/translation';
 import { createEditor } from '@nexnote/kernel';
 import { TextSelection } from '@tiptap/pm/state';
 import { formatBubbleActions } from '../src/editor/interactions/formatting';
@@ -315,7 +316,7 @@ describe('源码模式划词工具栏（CodeMirror selection bubble）', () => {
     editor.destroy();
   });
 
-  it('AI 六项与询问 AI 收口为单一入口，两模式共用的按钮集完整且顺序稳定', () => {
+  it('AI 六项 + 询问 AI + 划词翻译收口为单一入口，两模式共用的按钮集完整且顺序稳定', () => {
     const { parent, editor } = mount('第一句原文。第二句。');
     selectWithCoords(editor, parent, 0, 6, { top: 300, left: 100, right: 120, bottom: 320 });
     const bubble = bubbleOf();
@@ -345,6 +346,7 @@ describe('源码模式划词工具栏（CodeMirror selection bubble）', () => {
       'ai:fillgaps',
       'ai:evidence',
       SOURCE_CHAT_ASK_ACTION,
+      TRANSLATE_SELECTION_ACTION_ID,
     ]);
     expect(bubble.querySelector('[data-ai-dropdown]')).not.toBeNull();
     editor.destroy();
@@ -695,7 +697,8 @@ describe('DEV-034 两模式按钮集一致（源码 vs 块编辑）', () => {
     expect(blockFlat).toEqual(sourceFlat);
     expect(blockMenu).toEqual(sourceMenu);
     expect(blockMenuTitles).toEqual(sourceMenuTitles);
-    expect(blockMenu).toHaveLength(7);
+    // 六写作动作 + 询问 AI + 划词翻译（DEV-041）
+    expect(blockMenu).toHaveLength(8);
     kernel.destroy();
   });
 });

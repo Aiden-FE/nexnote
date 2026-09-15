@@ -7,6 +7,7 @@ import type {
 } from '@nexnote/shared';
 import type { AiService } from '../ai/ai-service';
 import type { ChatStreamHandle } from '../ai/provider/types';
+import { scenarioFeature } from './scenario';
 
 export interface AgentRuntimeTask {
   runId: string;
@@ -43,7 +44,7 @@ export class BuiltinLoopRuntime implements AgentRuntime {
     return this.ai.openChatStream(
       {
         messages: task.messages,
-        feature: task.scenario === 'debug' ? 'chat' : (task.scenario ?? 'chat'),
+        feature: task.scenario ? scenarioFeature(task.scenario) : 'chat',
         params: task.request.params,
       },
       task.onEvent,

@@ -43,6 +43,11 @@ export interface SourceBubbleOptions {
   aiMenu?: BubbleAiMenuOptions;
   /** 附加控件（如生成中的停止按钮） */
   extraControl?: BubbleExtraControl;
+  /**
+   * 选区消失（折叠/空文本）导致工具栏隐藏时回调一次。
+   * 用于清理依附选区的只读浮层（DEV-041 划词翻译）；失焦/Esc 隐藏不触发。
+   */
+  onSelectionLost?: () => void;
   onAction(id: string, ctx: SourceBubbleContext): void;
 }
 
@@ -175,7 +180,9 @@ export function sourceSelectionBubble(options: SourceBubbleOptions): Extension {
         const sel = this.view.state.selection.main;
         const text = sel.empty ? '' : this.view.state.sliceDoc(sel.from, sel.to);
         if (sel.empty || !text.trim()) {
+          const wasVisible = this.visible;
           this.hide();
+          if (wasVisible) options.onSelectionLost?.();
           return;
         }
         this.dom.style.display = 'flex';

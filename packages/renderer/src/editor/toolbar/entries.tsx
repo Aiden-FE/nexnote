@@ -13,6 +13,7 @@ import {
   Strikethrough,
 } from 'lucide-react';
 import { WRITING_ACTIONS, toAiActionId } from '../../features/ai/writing';
+import { TRANSLATE_DOCUMENT_ID } from '../../features/ai/translation/actions';
 import {
   FORMAT_BOLD,
   FORMAT_CODE,
@@ -69,7 +70,10 @@ export const VIEW_SOURCE_ID = 'view:source';
 export const VIEW_BLOCK_ID = 'view:block';
 export const VIEW_PREVIEW_ID = 'view:preview';
 
-/** AI 入口的子动作：询问 AI + 六个白名单写作动作（子动作必须键盘可达）。 */
+/**
+ * AI 入口的子动作：询问 AI + 六个白名单写作动作 + 全文翻译（子动作必须键盘可达）。
+ * DEV-041 全文翻译只打开临时只读视图，不写回正文。
+ */
 export function aiSubItems(): ToolbarSubItemSpec[] {
   return [
     { id: AI_ASK_ID, label: '询问 AI（送入对话）' },
@@ -78,6 +82,7 @@ export function aiSubItems(): ToolbarSubItemSpec[] {
       label: `AI · ${action.label}`,
       shortcut: `⌘⌥${action.modKey.toUpperCase()}`,
     })),
+    { id: TRANSLATE_DOCUMENT_ID, label: '翻译全文（临时视图）' },
   ];
 }
 
