@@ -89,6 +89,18 @@ export class SmokeController {
         return { ok: false, error: e instanceof Error ? e.message : String(e) };
       }
     });
+    // DEV-035：窄窗工具栏溢出覆盖需要真实调整窗口尺寸（冒烟专用，不改变窗口下限）。
+    ipcMain.handle('smoke:setWindowSize', async (_event, payload: unknown) => {
+      try {
+        const { width, height } = payload as { width: number; height: number };
+        const win = this.deps.windows.getMainWindow();
+        if (!win) throw new Error('main window is not available');
+        win.setSize(Math.round(width), Math.round(height));
+        return { ok: true };
+      } catch (e) {
+        return { ok: false, error: e instanceof Error ? e.message : String(e) };
+      }
+    });
     ipcMain.handle('smoke:capture', async (_event, name: unknown) => {
       try {
         const file = await this.capture(String(name));

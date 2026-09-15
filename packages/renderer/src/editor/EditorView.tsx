@@ -1,6 +1,6 @@
 import { openDocumentTab } from '../lib/open-document';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { AlertCircle, Check, FileCode2, LoaderCircle, Save } from 'lucide-react';
+import { AlertCircle, Check, LoaderCircle } from 'lucide-react';
 import { createEditor } from '@nexnote/kernel';
 import { invoke } from '../lib/ipc';
 import { useTabStore, type TabDescriptor } from '../stores/tab-store';
@@ -41,7 +41,11 @@ import {
   PLUGIN_MENU_ACTION_PREFIX,
 } from '../features/plugins/extension-points';
 import type { BlockMenuContext } from '@nexnote/kernel';
-import type { EditorKernelInstance, SlashMenuItem } from '@nexnote/kernel';
+import {
+  computeEditorActionContext,
+  type EditorKernelInstance,
+  type SlashMenuItem,
+} from '@nexnote/kernel';
 import { withUncreated, filterTagCandidates } from './interactions/suggestions';
 import { createRedlinkPage, currentPageCandidates } from './wikilink-page-ops';
 import {
@@ -49,9 +53,26 @@ import {
   runBlockMenuAction,
   type BlockNeighbors,
 } from './interactions/block-menu';
-import { formatBubbleActions, runFormatAction } from './interactions/formatting';
+import {
+  formatBubbleActions,
+  FORMAT_BOLD,
+  FORMAT_CODE,
+  FORMAT_ITALIC,
+  FORMAT_LINK,
+  FORMAT_STRIKE,
+  FORMAT_WIKILINK,
+  runFormatAction,
+} from './interactions/formatting';
 import { usePluginStore } from '../features/plugins/plugin-store';
 import { usePageTreeStore } from '../stores/page-tree-store';
+import { EditorToolbar } from './toolbar/EditorToolbar';
+import {
+  AI_ASK_ID,
+  blockToolbarEntries,
+  INSERT_ATTACHMENT_ID,
+  INSERT_IMAGE_ID,
+  VIEW_SOURCE_ID,
+} from './toolbar/entries';
 import {
   buildBuiltinSlashItems,
   buildBuiltinViewExtensions,
@@ -127,13 +148,19 @@ function attachmentTargetPath(file: File, currentPagePath: string): string {
   return `${folder}/${file.name}`;
 }
 
-function createMediaInsertSlashItems(options: {
+interface MediaInsertOptions {
   getPagePath: () => string;
   getEditor: () => EditorKernelInstance | null;
   getDestroyed: () => boolean;
   /** 登记挂起的文件选择 abort；返回反注册函数。编辑器卸载时统一取消。 */
   trackAbort: (abort: () => void) => () => void;
-}): SlashMenuItem[] {
+}
+
+/** 媒体插入（DEV-017）：导入当前 vault 后按类型插入图片节点或附件链接。 */
+function createMediaInsert(options: MediaInsertOptions): {
+  pickImage: () => void;
+  pickAttachment: () => void;
+} {
   const runInsert = async (
     accept: string,
     insert: (kernel: EditorKernelInstance, relPath: string) => void,
@@ -171,6 +198,31 @@ function createMediaInsertSlashItems(options: {
     }
   };
 
+  return {
+    pickImage: () => {
+      void runInsert('image/*', (kernel, relPath) => {
+        const { view } = kernel.editor;
+        const { schema } = view.state;
+        if (!schema.nodes.image) return;
+        view.dispatch(
+          view.state.tr
+            .replaceSelectionWith(schema.nodes.image.create({ src: relPath, alt: '' }))
+            .scrollIntoView(),
+        );
+      });
+    },
+    pickAttachment: () => {
+      void runInsert('*/*', (kernel, relPath) => {
+        const { view } = kernel.editor;
+        view.dispatch(view.state.tr.insertText(`[附件](${relPath})`));
+      });
+    },
+  };
+}
+
+/** 斜杠菜单的「图片 / 附件」项（与工具栏入口共用同一插入实现）。 */
+function createMediaInsertSlashItems(options: MediaInsertOptions): SlashMenuItem[] {
+  const media = createMediaInsert(options);
   return [
     {
       id: 'image',
@@ -178,17 +230,8 @@ function createMediaInsertSlashItems(options: {
       hint: 'img',
       keywords: ['image', 'img', 'picture', 'tupian'],
       group: '媒体',
-      action: ({ view }) => {
-        void runInsert('image/*', (kernel, relPath) => {
-          const { schema } = view.state;
-          if (!schema.nodes.image) return;
-          view.dispatch(
-            view.state.tr
-              .replaceSelectionWith(schema.nodes.image.create({ src: relPath, alt: '' }))
-              .scrollIntoView(),
-          );
-          void kernel;
-        });
+      action: () => {
+        media.pickImage();
         return true;
       },
     },
@@ -198,11 +241,8 @@ function createMediaInsertSlashItems(options: {
       hint: 'file',
       keywords: ['attachment', 'file', 'fujian'],
       group: '媒体',
-      action: ({ view }) => {
-        void runInsert('*/*', (_kernel, relPath) => {
-          // 斜杠触发串已在 action 前被删除，直接在当前选区插入链接文本
-          view.dispatch(view.state.tr.insertText(`[附件](${relPath})`));
-        });
+      action: () => {
+        media.pickAttachment();
         return true;
       },
     },
@@ -280,6 +320,10 @@ export function EditorView({ tab }: EditorViewProps) {
   const knownTagsRef = useRef<string[]>([]);
   const indexTags = useIndexStore((s) => s.tags);
   const setDocument = useDocumentPropertiesStore((s) => s.setDocument);
+
+  // 挂起的文件选择器（工具栏与斜杠菜单共用）：编辑器卸载时统一 abort，
+  // 避免隐藏 input / 悬挂 promise。
+  const pendingFilePicksRef = useRef(new Set<() => void>());
 
   // 写作辅助编排器（DEV-010）：在 mount effect 中创建（effect 内读取 ref 合法），
   // getter 在事件触发时才经 ref 读取实时 kernel/路径；控制器本身稳定。
@@ -435,12 +479,10 @@ export function EditorView({ tab }: EditorViewProps) {
     if (load.phase !== 'ready' || !hostRef.current) return;
     unmountedRef.current = false;
     const writingController = writingControllerRef.current;
-    // 挂起的文件选择器：编辑器卸载时统一 abort，避免隐藏 input / 悬挂 promise
-    const pendingFilePicks = new Set<() => void>();
     const trackAbort = (abort: () => void) => {
-      pendingFilePicks.add(abort);
+      pendingFilePicksRef.current.add(abort);
       return () => {
-        pendingFilePicks.delete(abort);
+        pendingFilePicksRef.current.delete(abort);
       };
     };
     // DEV-015：内置插件（Mermaid/KaTeX）激活时叠加富预览 NodeView；
@@ -594,9 +636,11 @@ export function EditorView({ tab }: EditorViewProps) {
       unregisterModeSwitch();
       window.removeEventListener('blur', flush);
       editorRegistration.unregister();
-      // 卸载时取消所有挂起的文件选择器（隐藏 input / 悬挂 promise）
-      for (const abort of pendingFilePicks) abort();
-      pendingFilePicks.clear();
+      // 卸载时取消所有挂起的文件选择器（隐藏 input / 悬挂 promise）。
+      // 集合身份稳定，无需进依赖数组。
+      // eslint-disable-next-line react-hooks/exhaustive-deps -- 上面的 ref 集合身份稳定
+      for (const abort of pendingFilePicksRef.current) abort();
+      pendingFilePicksRef.current.clear();
       // 先 flush 再 destroy：destroy 会 cancel，不能颠倒。
       void kernel.flushPendingSave().finally(() => kernel.destroy());
       kernelRef.current = null;
@@ -764,6 +808,69 @@ export function EditorView({ tab }: EditorViewProps) {
   }, [saveState]);
   const StatusIcon = status.icon;
 
+  /**
+   * DEV-035 工具栏命令分发（ADR-0006）：动作表由 toolbar/entries 声明，处理在这里按
+   * 当前编辑器实时状态执行——有选区作用于选区，无选区作用于光标所在块。
+   */
+  const runToolbarCommand = (id: string): void => {
+    const view = (): EditorKernelInstance['editor']['view'] | null =>
+      kernelRef.current?.editor.view ?? null;
+    const selectionText = (): string => {
+      const v = view();
+      if (!v) return '';
+      const { from, to } = v.state.selection;
+      return from === to ? '' : v.state.doc.textBetween(from, to, '\n');
+    };
+    switch (id) {
+      case FORMAT_BOLD:
+      case FORMAT_ITALIC:
+      case FORMAT_STRIKE:
+      case FORMAT_CODE:
+      case FORMAT_LINK:
+      case FORMAT_WIKILINK:
+        // 工具栏入口允许空选区：光标处设置存储 mark / 插入 `[[` 骨架。
+        runFormatAction(id, kernelRef.current, selectionText(), { allowEmptySelection: true });
+        return;
+      case INSERT_IMAGE_ID:
+      case INSERT_ATTACHMENT_ID: {
+        const media = createMediaInsert({
+          getPagePath: () => pathRef.current,
+          getEditor: () => kernelRef.current,
+          getDestroyed: () => unmountedRef.current,
+          trackAbort: (abort) => {
+            pendingFilePicksRef.current.add(abort);
+            return () => pendingFilePicksRef.current.delete(abort);
+          },
+        });
+        if (id === INSERT_IMAGE_ID) media.pickImage();
+        else media.pickAttachment();
+        return;
+      }
+      case AI_ASK_ID: {
+        const v = view();
+        if (!v) return;
+        // 无选区时送入当前块正文，避免入口在光标处失效。
+        const target = v.state.selection.empty ? 'block' : 'selection';
+        requestAskAi(
+          computeEditorActionContext(v, target).text,
+          titleFromPath(pathRef.current),
+          pathRef.current,
+        );
+        return;
+      }
+      case VIEW_SOURCE_ID:
+        void requestSourceModeToggle(tab.id);
+        return;
+      default:
+        break;
+    }
+    // 其余为 AI 写作子动作：与斜杠 `/ai` 同语义（无选区时以光标处为目标）。
+    const v = view();
+    if (!v) return;
+    const target = v.state.selection.empty ? 'cursor' : 'selection';
+    writingControllerRef.current?.trigger(id, computeEditorActionContext(v, target));
+  };
+
   if (load.phase === 'loading') {
     return (
       <div className="flex h-full items-center justify-center gap-2 text-sm text-muted-foreground">
@@ -789,34 +896,32 @@ export function EditorView({ tab }: EditorViewProps) {
       data-path={displayPath}
       className="nexnote-editor-view flex h-full min-h-0 flex-col"
     >
-      <div className="flex h-8 shrink-0 items-center gap-1.5 border-b px-3 text-[11px] text-muted-foreground">
-        <Save className="size-3" />
-        <span className="min-w-0 truncate">{displayPath}</span>
-        <span className="ml-auto flex shrink-0 items-center gap-1" title={saveError ?? undefined}>
-          <StatusIcon className={`size-3 ${status.className}`} />
-          {status.text}
-        </span>
-        <DocumentPropertiesPopover
-          data={fmData}
-          source={fmSource}
-          knownTags={effectiveKnownTags}
-          locked={fmLocked}
-          parseError={fmParseError}
-          onChange={applyFrontmatter}
-          onYamlChange={(source, next) => applyFrontmatter(next, source)}
-        />
-        {tab.format === 'markdown' && (
-          <button
-            type="button"
-            data-testid="source-mode-toggle"
-            title="打开源码模式（⌘/Ctrl+E）"
-            className="flex shrink-0 items-center gap-1 rounded px-1.5 py-0.5 hover:bg-accent"
-            onClick={() => void requestSourceModeToggle(tab.id)}
+      <EditorToolbar
+        label="编辑器工具栏"
+        entries={blockToolbarEntries({ sourceModeToggle: tab.format === 'markdown' })}
+        onCommand={runToolbarCommand}
+        tools={
+          <DocumentPropertiesPopover
+            data={fmData}
+            source={fmSource}
+            knownTags={effectiveKnownTags}
+            locked={fmLocked}
+            parseError={fmParseError}
+            onChange={applyFrontmatter}
+            onYamlChange={(source, next) => applyFrontmatter(next, source)}
+          />
+        }
+        status={
+          <span
+            data-testid="editor-save-status"
+            className="flex shrink-0 items-center gap-1"
+            title={saveError ?? undefined}
           >
-            <FileCode2 className="size-3" /> 源码
-          </button>
-        )}
-      </div>
+            <StatusIcon className={`size-3 ${status.className}`} />
+            {status.text}
+          </span>
+        }
+      />
       <div className="nexnote-editor-scroll min-h-0 flex-1 overflow-auto">
         <div className="nexnote-editor-relative relative mx-auto max-w-[var(--editor-content-width)] px-10 py-10">
           {conflict && (
