@@ -25,7 +25,7 @@ export interface AiStoredProfile {
   kind: AiProviderKind;
   baseUrl: string;
   defaultModel: string;
-  params: { temperature?: number; maxTokens?: number };
+  params: { temperature?: number; maxTokens?: number; reasoningEffort?: string };
   /** Opaque OS credential account; never a secret or encrypted blob. */
   keyBlob: string | null;
   keyStorage: 'system-credential';
@@ -65,6 +65,7 @@ function coerceParams(raw: unknown): AiStoredProfile['params'] {
   return {
     ...(typeof p.temperature === 'number' && { temperature: p.temperature }),
     ...(typeof p.maxTokens === 'number' && { maxTokens: p.maxTokens }),
+    ...(typeof p.reasoningEffort === 'string' && { reasoningEffort: p.reasoningEffort }),
   };
 }
 

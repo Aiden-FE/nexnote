@@ -133,7 +133,9 @@ export async function startMockOpenAiServer(
           { choices: [{ index: 0, delta: { content: '，' } }] },
           { choices: [{ index: 0, delta: { content: '流式' } }] },
           { choices: [{ index: 0, delta: { content: '回复' } }] },
-          { choices: [{ index: 0, delta: {}, finish_reason: 'stop' }] },
+          ...(!state.streamingTruncated
+            ? [{ choices: [{ index: 0, delta: {}, finish_reason: 'stop' }] }]
+            : []),
         ];
         let i = 0;
         const send = () => {

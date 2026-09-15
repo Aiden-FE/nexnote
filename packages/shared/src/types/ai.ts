@@ -13,6 +13,8 @@ export interface ChatMessage {
 export interface ChatParams {
   temperature?: number;
   maxTokens?: number;
+  /** Provider-neutral reasoning control, translated by the adapter. */
+  reasoningEffort?: string;
 }
 
 /** 供应商能力探测结果。 */
