@@ -20,7 +20,7 @@ import { createSourceEditor, type SourceEditorHandle } from './codemirror-host';
 import { registerSourceEditor } from './active-source-editor';
 import { sourceSelectionBubble } from './source-bubble';
 import { applySourceFormat, sourceFormatBubbleActions } from './source-formatting';
-import { handleSourceBubbleAction } from './source-ai-assist';
+import { handleSourceBubbleAction, openSourceCursorInsertSession } from './source-ai-assist';
 import type { SourceBubbleContext } from './source-bubble';
 import {
   aiSubActionIds,
@@ -28,6 +28,7 @@ import {
   sourceToolbarEntries,
   VIEW_BLOCK_ID,
   VIEW_PREVIEW_ID,
+  AI_INSERT_ID,
 } from '../toolbar/entries';
 import type { EditorView } from '@codemirror/view';
 import { writingAiMenuActions, writingStopControl } from '../../features/ai/writing';
@@ -623,6 +624,13 @@ export function SourceModeView({ tab }: { tab: TabDescriptor }) {
     };
     if (id === TRANSLATE_DOCUMENT_ID) {
       translationControllerRef.current?.translateDocument();
+      return;
+    }
+    if (id === AI_INSERT_ID) {
+      const v = view();
+      if (!v) return;
+      const instruction = window.prompt('AI 插入指令', '请基于当前上下文补充内容');
+      if (instruction?.trim()) openSourceCursorInsertSession(v, instruction, { getDocPath: () => pathRef.current });
       return;
     }
     if (id === AI_ASK_ID || aiSubActionIds().includes(id)) {

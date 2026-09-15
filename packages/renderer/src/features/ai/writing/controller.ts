@@ -55,9 +55,9 @@ export function createWritingController(deps: WritingControllerDeps): WritingCon
         if (action.kind === 'replace' && ctx.target !== 'cursor') {
           // 替换类：原地替换选区/整块（单事务）
           k.replaceRangeWithMarkdown(ctx.from, ctx.to, generated);
-        } else if (ctx.target === 'cursor' && ctx.blockRange) {
-          // 斜杠在空块触发：用生成内容填充该空块（斜杠菜单仅空块可开）
-          k.replaceRangeWithMarkdown(ctx.blockRange.from, ctx.blockRange.to, generated);
+        } else if (ctx.target === 'cursor') {
+          // 快捷插入的核心语义：流式结果最终在光标处插入，不替换正文。
+          k.editor.view.dispatch(k.editor.state.tr.insertText(generated, ctx.from).scrollIntoView());
         } else {
           // 追加类：在当前块之后插入新块（单事务）
           const pos = ctx.blockRange?.to ?? ctx.to;

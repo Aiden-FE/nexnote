@@ -64,6 +64,8 @@ export type ToolbarEntrySpec = ToolbarActionSpec | ToolbarMenuSpec;
 export const AI_ENTRY_ID = 'ai';
 /** 询问 AI 子动作 id（送入对话）。 */
 export const AI_ASK_ID = 'ai:ask';
+/** 明确的光标处 AI 插入入口，与斜杠菜单「AI 插入」同语义。 */
+export const AI_INSERT_ID = 'ai:insert';
 export const INSERT_IMAGE_ID = 'insert:image';
 export const INSERT_ATTACHMENT_ID = 'insert:attachment';
 export const VIEW_SOURCE_ID = 'view:source';
@@ -77,6 +79,7 @@ export const VIEW_PREVIEW_ID = 'view:preview';
 export function aiSubItems(): ToolbarSubItemSpec[] {
   return [
     { id: AI_ASK_ID, label: '询问 AI（送入对话）' },
+    { id: AI_INSERT_ID, label: 'AI 插入（光标处）' },
     ...WRITING_ACTIONS.map((action) => ({
       id: toAiActionId(action.id),
       label: `AI · ${action.label}`,
