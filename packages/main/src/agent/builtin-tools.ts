@@ -31,6 +31,7 @@ function readSearchInput(input: unknown): { query: string; topK?: number } {
 
 export function createBuiltinTools(deps: BuiltinToolDeps): AgentTool[] {
   const searchTool: AgentTool = {
+    source: 'agent',
     definition: {
       name: 'search_notes',
       description: '在当前知识库内做三阶段检索（FTS + 双链 + 向量重排），返回相关页面片段。',
@@ -52,6 +53,7 @@ export function createBuiltinTools(deps: BuiltinToolDeps): AgentTool[] {
   };
 
   const listPagesTool: AgentTool = {
+    source: 'agent',
     definition: {
       name: 'list_pages',
       description: '列出当前知识库的全部页面（相对路径与标题），用于了解库结构。',

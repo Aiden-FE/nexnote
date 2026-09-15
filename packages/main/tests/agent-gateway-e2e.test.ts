@@ -29,6 +29,7 @@ const aiState: AiConfigState = {
     embedding: null,
   },
   needsOnboarding: false,
+  setupPromptDismissed: true,
   embeddingFingerprint: null,
   embeddingGeneration: 0,
 };
@@ -36,6 +37,7 @@ const aiState: AiConfigState = {
 type StreamFactory = (
   messages?: Array<{ role: string; content: string }>,
   onEvent?: (event: AgentRunEvent) => void,
+  tools?: Array<{ name: string; execute: (input: unknown) => Promise<unknown> }>,
 ) => ChatStreamHandle;
 
 const immediateStream: StreamFactory = () => ({
@@ -99,11 +101,15 @@ function setup(options: SetupOptions = {}) {
     getState: () => aiState,
     // The fake provider stands in for the network; the gateway never sees its internals.
     openChatStream: (
-      opts: { messages: Array<{ role: string; content: string }> },
+      opts: { messages: Array<{ role: string; content: string }>; tools?: unknown[] },
       onEvent: (event: AgentRunEvent) => void,
     ): ChatStreamHandle =>
       options.stream
-        ? options.stream(opts.messages, onEvent)
+        ? options.stream(
+            opts.messages,
+            onEvent,
+            opts.tools as Array<{ name: string; execute: (input: unknown) => Promise<unknown> }>,
+          )
         : immediateStream(opts.messages, onEvent),
   };
   const gateway = new AgentGateway({
@@ -190,31 +196,72 @@ describe('AgentGateway end-to-end lifecycle', () => {
     expect(audit.list().filter((r) => r.event === 'run')).toHaveLength(1); // done after expiry changes nothing
   });
 
-  it('chat and debug drive their scenario allowlisted tools through the real loop', async () => {
-    const executed: Array<{ scenario: string; name: string; input: unknown }> = [];
+  it('passes the scenario-allowlisted registry tools to the provider as SDK tools', async () => {
+    const providerTools: Array<Array<string>> = [];
     const providerMessages: Array<Array<{ role: string; content: string }>> = [];
-    const { gateway } = setup({
-      tools: [
-        readTool('search_notes', (input) =>
-          executed.push({ scenario: '', name: 'search_notes', input }),
-        ),
-        readTool('list_pages', () =>
-          executed.push({ scenario: '', name: 'list_pages', input: {} }),
-        ),
-      ],
-      stream: (messages) => {
+    const { gateway, of } = setup({
+      tools: [readTool('search_notes'), readTool('list_pages')],
+      stream: (messages, onEvent, tools) => {
         providerMessages.push(messages!);
+        providerTools.push((tools ?? []).map((tool) => tool.name));
+        // The model invokes a tool; the runtime hands it back for execution.
+        void tools?.[0]?.execute({ query: 'find notes' }).then((result) => {
+          onEvent?.({ type: 'tool', tool: 'search_notes', status: 'completed' });
+          void result;
+        });
         return immediateStream(messages);
       },
     });
     await gateway.run('chat', request);
     await gateway.run('debug', request);
     await new Promise((r) => setTimeout(r, 10));
-    // chat: only search_notes; debug: search_notes + list_pages (profile-driven).
-    expect(executed.map((e) => e.name)).toEqual(['search_notes', 'search_notes', 'list_pages']);
-    // The system prompt and tool results are main-process constructed context.
+    // Both scenarios expose exactly the scenario profile tools; no pre-tool injection message.
+    expect(providerTools[0]).toEqual(['search_notes', 'list_pages']);
+    expect(providerTools[1]).toEqual(['search_notes', 'list_pages']);
     expect(providerMessages[0]?.[0]).toMatchObject({ role: 'system' });
-    expect(providerMessages[1]?.at(-1)?.content).toContain('【工具结果】');
+    expect(JSON.stringify(providerMessages)).not.toContain('【工具结果】');
+    expect(of('tool').map((e) => e.event)).toContainEqual({
+      type: 'tool',
+      tool: 'search_notes',
+      status: 'completed',
+    });
+  });
+
+  it('degrades explicitly when the provider declares no tool support', async () => {
+    const providerToolSets: Array<Array<string>> = [];
+    const events: Array<{ runId: string; scenario: string; event: AgentRunEvent }> = [];
+    const audit = new AuditStore();
+    const ai = {
+      getState: () => aiState,
+      supportsTools: () => false,
+      openChatStream: (
+        opts: { messages: Array<{ role: string; content: string }>; tools?: unknown[] },
+        onEvent: (event: AgentRunEvent) => void,
+      ): ChatStreamHandle => {
+        providerToolSets.push((opts.tools ?? []).length ? ['<tools>'] : []);
+        onEvent({ type: 'delta', text: '降级回答' });
+        onEvent({ type: 'done' });
+        return immediateStream(opts.messages);
+      },
+    };
+    const gateway = new AgentGateway({
+      ai: ai as never,
+      piAvailable: true,
+      tools: new ToolRegistry([readTool('search_notes')]),
+      audit,
+      sendEvent: (_channel, payload) =>
+        events.push(payload as { runId: string; scenario: string; event: AgentRunEvent }),
+    });
+    await gateway.run('chat', request);
+    await new Promise((r) => setTimeout(r, 10));
+    // No tools reach the provider, but the degradation is explicit in events and audit.
+    expect(providerToolSets).toEqual([[]]);
+    expect(events.some((e) => e.event.type === 'fallback')).toBe(true);
+    const fallback = audit
+      .list()
+      .filter((r) => r.event === 'fallback' && r.code === 'PROVIDER_TOOLS_UNSUPPORTED');
+    expect(fallback).toHaveLength(1);
+    expect(fallback[0]).toMatchObject({ code: 'PROVIDER_TOOLS_UNSUPPORTED' });
   });
 
   it('a tool outside the scenario allowlist fails closed with audit and no input leakage', async () => {
