@@ -43,6 +43,23 @@ interface Check {
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
+function taskFirstLineCenter(root: Element): number | null {
+  const checkbox = root.querySelector<HTMLInputElement>(
+    "ul[data-type='taskList'] > li > label > input[type='checkbox']",
+  );
+  const content = root.querySelector<HTMLElement>("ul[data-type='taskList'] > li > div");
+  const text = content?.firstChild;
+  if (!checkbox || !text || text.nodeType !== Node.TEXT_NODE) return null;
+  const checkboxRect = checkbox.getBoundingClientRect();
+  const range = document.createRange();
+  range.selectNodeContents(text);
+  const lineRect = range.getClientRects()[0];
+  if (!lineRect) return null;
+  return Math.abs(
+    checkboxRect.top + checkboxRect.height / 2 - (lineRect.top + lineRect.height / 2),
+  );
+}
+
 async function waitFor(predicate: () => boolean, timeout = 12000): Promise<boolean> {
   const start = Date.now();
   while (Date.now() - start < timeout) {
@@ -421,6 +438,77 @@ export async function runSmokeIfEnabled(): Promise<void> {
       check('编辑器 DOM 就绪', false, `editor=${!!editorRoot} tab=${!!leftPageTab}`);
     }
     await capture('02b-editor');
+
+    // ── 4c. DEV-043 task checkbox 首行对齐（真实布局几何断言）──────
+    // 以首行行盒中心（Range 文本选区矩形）为基准，断言 checkbox 视觉中心偏差 ≤ 2px；
+    // CSS 方案为 label 高度 1lh + 内部居中，与字号无关。
+    await createPage('DEV-043 对齐');
+    check(
+      'DEV-043 对齐页进入块编辑',
+      await waitFor(
+        () =>
+          !!document.querySelector(
+            '[data-testid="editor-view"][data-path="DEV-043 对齐.md"] .ProseMirror',
+          ),
+      ),
+    );
+    document
+      .querySelector<HTMLElement>(
+        '[data-testid="editor-view"][data-path="DEV-043 对齐.md"] .ProseMirror',
+      )
+      ?.focus();
+    const alignKernel = getActiveEditor();
+    if (alignKernel) {
+      alignKernel.setMarkdown('# DEV-043 对齐\n\n- [ ] 待办首行\n- [x] 已完成\n  第二行');
+      await sleep(150);
+      const alignEditorHost = document.querySelector(
+        '[data-testid="editor-view"][data-path="DEV-043 对齐.md"]',
+      );
+      const defaultDelta = alignEditorHost ? taskFirstLineCenter(alignEditorHost) : null;
+      check(
+        'DEV-043 编辑区 checkbox 与首行行盒中心偏差 ≤ 2px（默认 16px/1.75）',
+        defaultDelta !== null && defaultDelta <= 2,
+        defaultDelta === null ? 'checkbox/首行未找到' : `${defaultDelta.toFixed(2)}px`,
+      );
+
+      document.documentElement.style.setProperty('--editor-font-size', '19px');
+      await sleep(150);
+      const scaledDelta = alignEditorHost ? taskFirstLineCenter(alignEditorHost) : null;
+      check(
+        'DEV-043 编辑区 checkbox 与首行行盒中心偏差 ≤ 2px（自定义字号 19px）',
+        scaledDelta !== null && scaledDelta <= 2,
+        scaledDelta === null ? 'checkbox/首行未找到' : `${scaledDelta.toFixed(2)}px`,
+      );
+      document.documentElement.style.removeProperty('--editor-font-size');
+      await sleep(150);
+    } else {
+      check('DEV-043 编辑区几何断言', false, '活动编辑器不可用');
+    }
+
+    await invoke('fs:createNote', {
+      parentDir: '',
+      name: 'DEV-043 预览',
+      content: '- [ ] 待办首行\n- [x] 已完成\n',
+      format: 'markdown',
+    });
+    await openDocumentTab('DEV-043 预览.md');
+    const previewListReady = await waitFor(
+      () => !!document.querySelector('[data-testid="live-preview"] ul[data-type="taskList"]'),
+    );
+    const previewHost = document.querySelector('[data-testid="live-preview"]');
+    const previewDelta = previewListReady && previewHost ? taskFirstLineCenter(previewHost) : null;
+    check(
+      'DEV-043 预览区 checkbox 与首行行盒中心偏差 ≤ 2px（与编辑区共用对齐规则）',
+      previewDelta !== null && previewDelta <= 2,
+      previewDelta === null ? '预览区 checkbox/首行未找到' : `${previewDelta.toFixed(2)}px`,
+    );
+    // 还原 tab 栈：DEV-043 预览页是 source-mode-view，必须关闭，避免影响第 5 节的
+    // 「native-block 不出现源码视图」等全文档断言。
+    for (const path of ['DEV-043 预览.md', 'DEV-043 对齐.md']) {
+      const tab = useTabStore.getState().tabs.find((t) => t.pagePath === path);
+      if (tab) useTabStore.getState().closeTab(tab.id);
+    }
+    await sleep(150);
 
     // ── 5. 文档格式边界：native-block 不进源码；markdown sidecar 才进源码 ──
     await invoke('fs:createNote', { parentDir: '', name: '原生模式边界页' });
