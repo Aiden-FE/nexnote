@@ -198,8 +198,6 @@ export function ChatDock() {
   const sessionStatus = useChatStore((s) => s.sessionStatus);
   const pendingAsk = useChatStore((s) => s.pendingAsk);
   const permissionMode = useChatStore((s) => s.permissionMode);
-  const permissionMode = useChatStore((s) => s.permissionMode);
-  const permissionMode = useChatStore((s) => s.permissionMode);
   const [input, setInput] = useState('');
   const scrollRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
