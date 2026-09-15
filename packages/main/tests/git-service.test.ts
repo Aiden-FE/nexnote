@@ -20,6 +20,14 @@ function gitBinary(): string {
   return process.env.NEXNOTE_TEST_GIT ?? 'git';
 }
 
+function removeTempTree(dir: string): void {
+  try {
+    rmSync(dir, { recursive: true, force: true, maxRetries: 20, retryDelay: 250 });
+  } catch (error) {
+    if (process.platform !== 'win32' || (error as NodeJS.ErrnoException).code !== 'EBUSY') throw error;
+  }
+}
+
 function systemGitAvailable(): boolean {
   try {
     execFileSync(gitBinary(), ['--version'], { stdio: 'ignore' });
@@ -47,7 +55,7 @@ afterEach(() => {
   service.setRoot(null);
   // Windows 上 simple-git 子进程退出与句柄释放存在毫秒级竞态；交给 Node 的
   // maxRetries 重试（覆盖 EBUSY/ENOTEMPTY/EPERM），而不是在测试里手写 sleep。
-  rmSync(root, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 });
+  removeTempTree(root);
 });
 
 describe.runIf(runIfGit())('GitService（系统 Git，临时仓库）', () => {
@@ -237,7 +245,7 @@ describe.runIf(runIfGit())('GitService（系统 Git，临时仓库）', () => {
         code: 'INVALID_PATH',
       });
     } finally {
-      rmSync(outside, { recursive: true, force: true });
+      removeTempTree(outside);
     }
   });
 
@@ -407,7 +415,7 @@ describe.runIf(runIfGit())('GitService（系统 Git，临时仓库）', () => {
         const afterPull = await fsp.readFile(path.join(root, 'shared.md'), 'utf8');
         expect(afterPull).toBe('hello from local\nadd a new line\n');
       } finally {
-        rmSync(otherRoot, { recursive: true, force: true });
+        removeTempTree(otherRoot);
       }
 
       // 本地再修改推回
@@ -421,7 +429,7 @@ describe.runIf(runIfGit())('GitService（系统 Git，临时仓库）', () => {
       expect(pushed.status.ahead).toBe(0);
       expect(events.length).toBeGreaterThan(beforePushEvents);
     } finally {
-      rmSync(remoteRoot, { recursive: true, force: true });
+      removeTempTree(remoteRoot);
     }
   });
 
@@ -462,7 +470,7 @@ describe.runIf(runIfGit())('GitService（系统 Git，临时仓库）', () => {
         });
         execFileSync(gitBinary(), ['push'], { cwd: shadow, stdio: 'ignore' });
       } finally {
-        rmSync(shadow, { recursive: true, force: true });
+        removeTempTree(shadow);
       }
 
       await expect(service.pull()).rejects.toMatchObject({ code: 'MERGE_CONFLICT' });
@@ -472,7 +480,7 @@ describe.runIf(runIfGit())('GitService（系统 Git，临时仓库）', () => {
       expect(afterAuto).toHaveLength(beforeAuto);
       expect(afterAuto.every((entry) => !entry.message.includes('不得提交未解决冲突'))).toBe(true);
     } finally {
-      rmSync(remoteRoot, { recursive: true, force: true });
+      removeTempTree(remoteRoot);
     }
   });
 
