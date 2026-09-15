@@ -137,6 +137,7 @@ jobs:
         run: |
           git config --global user.name "NexNote CI"
           git config --global user.email "ci@nexnote.invalid"
+          git config --global core.autocrlf false
       - name: Verify bundled Git runner architecture
         if: runner.os == 'macOS'
         run: |
@@ -149,7 +150,7 @@ jobs:
           pnpm verify:release-config
       - name: Run lint, typecheck, tests, and build with a non-interactive Git environment
         shell: bash
-        run: env -u GIT_EDITOR -u GIT_SEQUENCE_EDITOR -u EDITOR CI=true pnpm lint && env -u GIT_EDITOR -u GIT_SEQUENCE_EDITOR -u EDITOR CI=true pnpm typecheck && env -u GIT_EDITOR -u GIT_SEQUENCE_EDITOR -u EDITOR CI=true pnpm exec vitest run --maxWorkers=4 --testTimeout=60000 && env -u GIT_EDITOR -u GIT_SEQUENCE_EDITOR -u EDITOR CI=true pnpm build
+        run: env -u GIT_EDITOR -u GIT_SEQUENCE_EDITOR -u EDITOR CI=true pnpm lint && env -u GIT_EDITOR -u GIT_SEQUENCE_EDITOR -u EDITOR CI=true pnpm typecheck && env -u GIT_EDITOR -u GIT_SEQUENCE_EDITOR -u EDITOR CI=true pnpm exec vitest run --maxWorkers=1 --testTimeout=60000 && env -u GIT_EDITOR -u GIT_SEQUENCE_EDITOR -u EDITOR CI=true pnpm build
 
       - name: Package Ad hoc signed macOS distributables
         if: runner.os == 'macOS'

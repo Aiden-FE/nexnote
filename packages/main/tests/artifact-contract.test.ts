@@ -1,6 +1,7 @@
 import { createHash } from 'node:crypto';
 import { mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
+import { tmpdir } from 'node:os';
 import packageJson from '../../../package.json';
 import { describe, expect, it } from 'vitest';
 
@@ -26,7 +27,7 @@ function writeManifest(dir: string, name: string, entries: string[]) {
 }
 
 function makeRelease() {
-  const dir = mkdtempSync(join('/tmp', 'nexnote-artifact-contract-'));
+  const dir = mkdtempSync(join(tmpdir(), 'nexnote-artifact-contract-'));
   const names = expectedArtifactNames(version);
   for (const name of [
     names.macArm64.dmg,

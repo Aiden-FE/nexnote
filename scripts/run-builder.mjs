@@ -21,7 +21,7 @@ const channel = resolveChannel();
 const REPO_OWNER = 'Aiden-FE';
 const REPO_NAME = 'nexnote';
 // Only insert the override when building distributables; `--dir`/prepackaged don't need it.
-const args = [...process.argv.slice(2)];
+const args = [...process.argv.slice(2), '-c.npmRebuild=false'];
 if (channel !== 'stable') {
   const publish = JSON.stringify([
     { provider: 'github', owner: REPO_OWNER, repo: REPO_NAME, channel },
