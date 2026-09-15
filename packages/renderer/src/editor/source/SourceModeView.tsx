@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { AlertCircle, Check, Code2, Eye, EyeOff, LoaderCircle, Save } from 'lucide-react';
+import { AlertCircle, Check, LoaderCircle } from 'lucide-react';
+import { EditorToolbar } from '../toolbar/EditorToolbar';
 import type { TabDescriptor } from '../../stores/tab-store';
 import { useTabStore } from '../../stores/tab-store';
 import { usePageTreeStore } from '../../stores/page-tree-store';
@@ -21,8 +22,17 @@ import { createSourceEditor, type SourceEditorHandle } from './codemirror-host';
 import { registerSourceEditor } from './active-source-editor';
 import { sourceSelectionBubble } from './source-bubble';
 import { applySourceFormat, sourceFormatBubbleActions } from './source-formatting';
-import { handleSourceBubbleAction } from './source-ai-assist';
-import { writingAiMenuActions, writingStopControl } from '../../features/ai/writing';
+import { handleSourceBubbleAction, SOURCE_CHAT_ASK_ACTION } from './source-ai-assist';
+import type { SourceBubbleContext } from './source-bubble';
+import {
+  aiSubActionIds,
+  AI_ASK_ID,
+  sourceToolbarEntries,
+  VIEW_BLOCK_ID,
+  VIEW_PREVIEW_ID,
+} from '../toolbar/entries';
+import type { EditorView } from '@codemirror/view';
+import { writingBubbleActions } from '../../features/ai/writing';
 import { LivePreview, type InternalLinkNavigation } from './LivePreview';
 import { parseWholePage } from './parse-guard';
 import { registerModeSwitchHandler, requestSourceModeToggle } from './source-mode-toggle';
@@ -107,6 +117,9 @@ export function SourceModeView({ tab }: { tab: TabDescriptor }) {
   const editorRef = useRef<SourceEditorHandle | null>(null);
   const previewScrollRef = useRef<HTMLDivElement | null>(null);
   const pathRef = useRef(initialPath);
+  // H1 rename updates the tab path after the current editor has already saved the document.
+  // Mark that metadata transition so the path-dependent load effect does not remount it.
+  const renameTargetRef = useRef<string | null>(null);
   const textRef = useRef('');
   const baseTextRef = useRef('');
   const baseVersionRef = useRef<FileVersion | null>(null);
@@ -205,6 +218,9 @@ export function SourceModeView({ tab }: { tab: TabDescriptor }) {
       const tree = usePageTreeStore.getState();
       tree.applyEvent({ kind: 'unlink', path: result.renamedFrom });
       tree.applyEvent({ kind: 'add', path: result.path });
+      // The tab pagePath updates next; the load effect consumes this marker and
+      // treats the transition as pure metadata instead of a full source reload.
+      renameTargetRef.current = result.path;
       pathRef.current = result.path;
       setDisplayPath(result.path);
     }
@@ -296,6 +312,12 @@ export function SourceModeView({ tab }: { tab: TabDescriptor }) {
   // ── 加载：原始字节，不做 H1 绑定（无 H1 时不补写，保持原文） ──
   useEffect(() => {
     const nextPath = tab.pagePath ?? `${sanitizePageTitle(tab.title)}.md`;
+    // H1 rename already saved this document and updated pathRef before updateTab.
+    // Keep the existing CodeMirror instance and its selection/scroll state.
+    if (renameTargetRef.current === nextPath) {
+      renameTargetRef.current = null;
+      return;
+    }
     pathRef.current = nextPath;
     setDisplayPath(nextPath);
     setLoad({ phase: 'loading' });
@@ -354,18 +376,18 @@ export function SourceModeView({ tab }: { tab: TabDescriptor }) {
         );
         if (preview.scrollTop !== next) preview.scrollTop = next;
       },
-      // 划词工具栏（与块编辑一致）：格式化五项 + 双链平铺，AI 写作与询问 AI 收口为
-      // 单一「AI」下拉（DEV-034，同一 writingAiMenuActions 按钮集）。格式化为 Markdown
-      // 语法包裹（单事务可 undo，不经块编辑器序列化）；AI 流式预览经共享
-      // WritingAssistantLayer（WorkspaceView 全局挂载），Accept 单事务写回可 undo；
-      // 生成中由注入的停止控件取消会话。
+      // 划词工具栏（与块编辑一致，DEV-023 按钮集统一）：格式化五项 + 双链 +
+      // 询问 AI + 白名单写作动作。格式化为 Markdown 语法包裹（单事务可 undo，
+      // 不经块编辑器序列化）；AI 流式预览经共享 WritingAssistantLayer（WorkspaceView
+      // 全局挂载），Accept 单事务写回可 undo。
       extraExtensions: [
         sourceWikilinkCompletion({ getPages: currentPageCandidates, onPick: createRedlinkPage }),
         sourceSelectionBubble({
-          // DEV-034：与块编辑同一按钮集（格式化/双链平铺 + AI 下拉收口）
-          actions: sourceFormatBubbleActions(),
-          aiMenu: { label: 'AI', actions: writingAiMenuActions() },
-          extraControl: writingStopControl(),
+          actions: [
+            ...sourceFormatBubbleActions(),
+            ...writingBubbleActions(),
+            { id: SOURCE_CHAT_ASK_ACTION, title: '询问 AI' },
+          ],
           onAction: (id, ctx) => {
             const editor = editorRef.current;
             if (!editor) return;
@@ -556,6 +578,44 @@ export function SourceModeView({ tab }: { tab: TabDescriptor }) {
         : { icon: Check, text: '已保存', className: '' };
   const StatusIcon = status.icon;
 
+  /**
+   * DEV-035 工具栏命令分发（ADR-0006）：源码模式下的动作落点。
+   * 格式动作经 CodeMirror 单事务写回（空选区插入语法骨架）；AI 动作以选区为目标，
+   * 无选区时退化到当前行（「当前段落」语义）；视图动作切换块编辑 / 预览。
+   */
+  const runToolbarCommand = (id: string): void => {
+    const view = (): EditorView | null => editorRef.current?.view ?? null;
+    const aiContext = (): SourceBubbleContext | null => {
+      const v = view();
+      if (!v?.state) return null;
+      const selection = v.state.selection.main;
+      const line = v.state.doc.lineAt(selection.from);
+      const from = selection.empty ? line.from : selection.from;
+      const to = selection.empty ? line.to : selection.to;
+      const text = v.state.sliceDoc(from, to);
+      if (!text.trim()) return null;
+      const coords = v.coordsAtPos(from) ?? { top: 0, left: 0 };
+      return { text, from, to, coords: { top: coords.top, left: coords.left } };
+    };
+    if (id === AI_ASK_ID || aiSubActionIds().includes(id)) {
+      const v = view();
+      const ctx = aiContext();
+      if (!v || !ctx) return;
+      handleSourceBubbleAction(v, id, ctx, { getDocPath: () => pathRef.current });
+      return;
+    }
+    if (id === VIEW_BLOCK_ID) {
+      void requestSourceModeToggle(tab.id);
+      return;
+    }
+    if (id === VIEW_PREVIEW_ID) {
+      useTabStore.getState().togglePreview(tab.id);
+      return;
+    }
+    const cv = view();
+    if (cv) applySourceFormat(cv, id);
+  };
+
   if (load.phase === 'loading') {
     return (
       <div className="flex h-full items-center justify-center gap-2 text-sm text-muted-foreground">
@@ -580,48 +640,34 @@ export function SourceModeView({ tab }: { tab: TabDescriptor }) {
       data-path={displayPath}
       className="flex h-full min-h-0 flex-col"
     >
-      <div className="flex h-8 shrink-0 items-center gap-1.5 border-b px-3 text-[11px] text-muted-foreground">
-        <Save className="size-3" />
-        <span className="min-w-0 truncate">{displayPath}</span>
-        <span className="ml-auto flex shrink-0 items-center gap-1" title={saveError ?? undefined}>
-          <StatusIcon className={`size-3 ${status.className}`} />
-          {status.text}
-        </span>
-        {isMarkdown && (
-          <DocumentPropertiesPopover
-            data={fm.data}
-            source={fm.source}
-            knownTags={knownTags}
-            locked={fm.locked}
-            parseError={fm.parseError}
-            onChange={(next) => applyFrontmatterEdit(serializeFrontmatterYaml(next), next)}
-            onYamlChange={(source, next) => applyFrontmatterEdit(source, next)}
-          />
-        )}
-        {tab.format === 'markdown' ? (
-          <button
-            type="button"
-            data-testid="preview-toggle"
-            title={previewVisible ? '隐藏预览（⌘/Ctrl+E）' : '显示预览（⌘/Ctrl+E）'}
-            className="flex shrink-0 items-center gap-1 rounded px-1.5 py-0.5 hover:bg-accent"
-            onClick={() => useTabStore.getState().togglePreview(tab.id)}
+      <EditorToolbar
+        label="编辑器工具栏"
+        entries={sourceToolbarEntries({ isMarkdown, previewVisible })}
+        onCommand={runToolbarCommand}
+        tools={
+          isMarkdown ? (
+            <DocumentPropertiesPopover
+              data={fm.data}
+              source={fm.source}
+              knownTags={knownTags}
+              locked={fm.locked}
+              parseError={fm.parseError}
+              onChange={(next) => applyFrontmatterEdit(serializeFrontmatterYaml(next), next)}
+              onYamlChange={(source, next) => applyFrontmatterEdit(source, next)}
+            />
+          ) : undefined
+        }
+        status={
+          <span
+            data-testid="editor-save-status"
+            className="flex shrink-0 items-center gap-1"
+            title={saveError ?? undefined}
           >
-            {previewVisible ? <EyeOff className="size-3" /> : <Eye className="size-3" />}
-            {previewVisible ? '隐藏预览' : '显示预览'}
-          </button>
-        ) : (
-          <button
-            type="button"
-            data-testid="source-mode-toggle"
-            title="切回块编辑模式（⌘/Ctrl+E）"
-            className="flex shrink-0 items-center gap-1 rounded px-1.5 py-0.5 hover:bg-accent"
-            onClick={() => void requestSourceModeToggle(tab.id)}
-          >
-            <Code2 className="size-3" /> 块编辑
-          </button>
-        )}
-      </div>
-
+            <StatusIcon className={`size-3 ${status.className}`} />
+            {status.text}
+          </span>
+        }
+      />
       {conflict && (
         <div
           data-testid="source-conflict-banner"

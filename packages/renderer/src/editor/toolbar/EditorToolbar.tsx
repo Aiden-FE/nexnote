@@ -36,6 +36,9 @@ interface PanelState {
   entryId: string;
   /** 打开后要聚焦的菜单项位置。 */
   focus: 'first' | 'last' | null;
+  /** 触发按钮矩形（菜单锚定在其下方）。 */
+  left: number;
+  top: number;
 }
 
 /**
@@ -163,7 +166,8 @@ export function EditorToolbar({ label, entries, onCommand, tools, status }: Edit
   }, [panel]);
 
   const openPanel = (entryId: string, focus: PanelState['focus']): void => {
-    setPanel({ entryId, focus });
+    const rect = refs.current.get(entryId)?.getBoundingClientRect();
+    setPanel({ entryId, focus, left: rect?.left ?? 8, top: (rect?.bottom ?? 0) + 4 });
   };
 
   const onToolbarKeyDown = (event: ReactKeyboardEvent<HTMLDivElement>): void => {
@@ -334,7 +338,10 @@ export function EditorToolbar({ label, entries, onCommand, tools, status }: Edit
           aria-label={active?.label ?? '更多'}
           data-testid={panel.entryId === TOOLBAR_MORE_ID ? 'toolbar-more-menu' : 'toolbar-menu'}
           onKeyDown={onPanelKeyDown}
-          style={{ left: 12, top: 36 }}
+          style={{
+            left: Math.min(panel.left, Math.max(8, window.innerWidth - 300)),
+            top: panel.top,
+          }}
           className="fixed z-50 min-w-[200px] max-w-[300px] rounded-md border bg-popover p-1 text-popover-foreground shadow-lg"
         >
           {panel.entryId === TOOLBAR_MORE_ID
