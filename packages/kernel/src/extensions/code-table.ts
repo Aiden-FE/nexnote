@@ -1,15 +1,11 @@
-import CodeBlockLowlight from '@tiptap/extension-code-block-lowlight';
+import CodeBlock from '@tiptap/extension-code-block';
 import { Table, TableCell, TableHeader, TableRow } from '@tiptap/extension-table';
-import { common, createLowlight } from 'lowlight';
 import type { JSONContent, MarkdownToken } from '@tiptap/core';
 import { ANCHOR_OPEN, ANCHOR_CLOSE, BLOCK_ID_RE_SOURCE } from '../markdown/block-id';
+import { createCodeHighlightPlugin } from '../highlight/code-highlight-plugin';
 
-/**
- * 代码块 / 表格的 `^id` 追加（Obsidian：锚点独立成行，挂在块后）。
- * 段落/标题/列表项的锚点由 markdown/block-id.ts 占位符管道处理。
- */
-
-export const KernelCodeBlock = CodeBlockLowlight.extend({
+/** 代码块 / 表格的 `^id` 追加（Obsidian：锚点独立成行，挂在块后）。 */
+export const KernelCodeBlock = CodeBlock.extend({
   addAttributes() {
     return {
       ...this.parent?.(),
@@ -22,7 +18,8 @@ export const KernelCodeBlock = CodeBlockLowlight.extend({
   },
 
   renderMarkdown(node: JSONContent, helpers) {
-    // 复刻 @tiptap/extension-code-block 的 fence 渲染，再追加独立 `^id` 行
+    // 复刻 @tiptap/extension-code-block 的 fence 渲染，再追加独立 `^id` 行。
+    // 保留原始 language（不把 js 改写成 javascript），保证 Markdown 字节往返。
     const language = (node.attrs?.language as string) || '';
     let output: string;
     if (!node.content) {
@@ -35,7 +32,11 @@ export const KernelCodeBlock = CodeBlockLowlight.extend({
     if (blockId) output += `\n^${blockId}`;
     return output;
   },
-}).configure({ lowlight: createLowlight(common), defaultLanguage: 'plaintext' });
+
+  addProseMirrorPlugins() {
+    return [...(this.parent?.() ?? []), createCodeHighlightPlugin()];
+  },
+});
 
 const BaseTableParseMarkdown = Table.config.parseMarkdown!;
 const BaseTableRenderMarkdown = Table.config.renderMarkdown!;
@@ -58,10 +59,8 @@ export const KernelTable = Table.extend({
     const node = parsed as JSONContent;
     if (!Array.isArray(node.content)) return node;
 
-    // Obsidian 表格锚点是紧跟表格的独立 `^id` 行，会被 marked 的表格词法吞成末行。
-    // 预处理已把它换成占位符：末行所有单元格均为空白/仅占位符时，剥掉该行并挂到 table.blockId。
     const placeholderOnly = new RegExp(
-      `^[ \t]*${ANCHOR_OPEN}(${BLOCK_ID_RE_SOURCE})${ANCHOR_CLOSE}[ \t]*$`,
+      `^[ \\t]*${ANCHOR_OPEN}(${BLOCK_ID_RE_SOURCE})${ANCHOR_CLOSE}[ \\t]*$`,
     );
     const rows = node.content.filter((r) => r.type === 'tableRow');
     const lastRow = rows[rows.length - 1];
@@ -69,7 +68,7 @@ export const KernelTable = Table.extend({
       const cellTexts = lastRow.content.map((cell) =>
         (cell.content ?? [])
           .map((p) =>
-            (p.content ?? []).map((t) => (t.type === 'text' ? t.text ?? '' : '')).join(''),
+            (p.content ?? []).map((t) => (t.type === 'text' ? (t.text ?? '') : '')).join(''),
           )
           .join(''),
       );
@@ -84,7 +83,6 @@ export const KernelTable = Table.extend({
   },
 
   renderMarkdown(node: JSONContent, helpers, context) {
-    // 上游表格渲染器会在开头补一个 \n；统一由 doc 级分隔符负责，剥除之
     const parent = BaseTableRenderMarkdown(node, helpers, context);
     const stripped = parent.replace(/^\n+/, '').replace(/\n+$/, '');
     const blockId = node.attrs?.blockId as string | null | undefined;
@@ -93,7 +91,6 @@ export const KernelTable = Table.extend({
   },
 });
 
-// Table 节点的 schema 依赖：行 / 表头 / 单元格必须随内核表格一起注册。
 export const KernelTableRow = TableRow;
 export const KernelTableHeader = TableHeader;
 export const KernelTableCell = TableCell;

@@ -900,6 +900,75 @@ export async function runSmokeIfEnabled(): Promise<void> {
     );
     await capture('04-source-mode-reset');
 
+    // ── 5a. DEV-029 代码块高亮：代表语言在源码围栏与块渲染均高亮 ──────────
+    // 源码围栏：Dockerfile / TOML / PowerShell 走统一覆盖清单（懒加载语法）。
+    const sourceHighlightRaw =
+      '# 高亮冒烟\n\n' +
+      '```dockerfile\nFROM node:22\nRUN echo hi\n```\n\n' +
+      '```toml\n[server]\nport = 8080\n```\n\n' +
+      '```powershell\nWrite-Host "hi"\n```\n';
+    await invoke('fs:createNote', {
+      parentDir: '',
+      name: '语法高亮冒烟',
+      content: sourceHighlightRaw,
+      format: 'markdown',
+    });
+    await openDocumentTab('语法高亮冒烟.md');
+    const sourceTokens = (): number =>
+      document.querySelectorAll('[data-testid="source-editor-pane"] .cm-content [class*="hljs-"]')
+        .length;
+    check(
+      'DEV-029 源码围栏按需加载语法并高亮（Dockerfile/TOML/PowerShell）',
+      (await waitFor(
+        () => !!document.querySelector('[data-testid="source-editor-pane"] .cm-editor'),
+      )) && (await waitFor(() => sourceTokens() >= 3, 15_000)),
+      `tokens=${sourceTokens()}`,
+    );
+    await capture('04a-source-highlight');
+    const highlightTab = useTabStore.getState().tabs.find((t) => t.pagePath === '语法高亮冒烟.md');
+    if (highlightTab) useTabStore.getState().closeTab(highlightTab.id);
+    await sleep(200);
+
+    // 未知语言：降级纯文本，无 token。
+    await invoke('fs:createNote', {
+      parentDir: '',
+      name: '未知语言降级冒烟',
+      content: '# 未知语言\n\n```foo\nsome code\n```\n',
+      format: 'markdown',
+    });
+    await openDocumentTab('未知语言降级冒烟.md');
+    check(
+      'DEV-029 未知语言 ```foo 降级纯文本（无高亮 token）',
+      (await waitFor(
+        () => !!document.querySelector('[data-testid="source-editor-pane"] .cm-content'),
+      )) && sourceTokens() === 0,
+      `tokens=${sourceTokens()}`,
+    );
+    const unknownTab = useTabStore
+      .getState()
+      .tabs.find((t) => t.pagePath === '未知语言降级冒烟.md');
+    if (unknownTab) useTabStore.getState().closeTab(unknownTab.id);
+    await sleep(200);
+
+    // 块渲染：native-block 文档内的围栏代码块同样高亮。
+    await invoke('fs:createNote', {
+      parentDir: '',
+      name: '块高亮冒烟',
+      content:
+        '# 块高亮\n\n```dockerfile\nFROM node:22\nRUN echo hi\n```\n\n```toml\nport = 8080\n```\n',
+      format: 'native-block',
+    });
+    await openDocumentTab('块高亮冒烟.md');
+    const blockTokens = (): number =>
+      document.querySelectorAll('[data-testid="editor-view"] .ProseMirror [class*="hljs-"]').length;
+    check(
+      'DEV-029 块渲染懒加载语言高亮（Dockerfile/TOML）',
+      (await waitFor(() => !!document.querySelector('[data-testid="editor-view"] .ProseMirror'))) &&
+        (await waitFor(() => blockTokens() >= 2, 15_000)),
+      `tokens=${blockTokens()}`,
+    );
+    await capture('04b-block-highlight');
+
     // ── 5b. DEV-025 字段目录：7 标准字段可见、已添加禁用、面板写回 YAML 头 ──
     // 按需 Popover 需显式打开才能访问字段目录。
     document
