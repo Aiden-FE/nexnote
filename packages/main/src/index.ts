@@ -198,6 +198,9 @@ async function bootstrap(): Promise<void> {
       document: {
         read: (path) => fs.readTextFile(path),
         write: (path, content) => fs.writeTextFile(path, content, true),
+        writeTransaction: async (writes) => {
+          for (const write of writes) await fs.writeTextFile(write.path, write.content, true);
+        },
       },
     }),
   );

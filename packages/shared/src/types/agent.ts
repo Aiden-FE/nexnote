@@ -47,7 +47,8 @@ export type AgentRunEvent =
   | { type: 'delta'; text: string }
   | { type: 'reasoningDelta'; text: string }
   | { type: 'tool'; tool: string; status: ToolActivityStatus; summary?: string }
-  | { type: 'approvalRequired'; approvalId: string; tool: string; expiresAt: number }
+  | { type: 'approvalRequired'; approvalId: string; tool: string; expiresAt: number; proposalIds?: string[] }
+  | { type: 'editProposals'; batchId: string; proposals: AgentEditProposal[] }
   | { type: 'done'; usage?: unknown }
   | { type: 'error'; message: string; code?: string };
 
@@ -77,6 +78,21 @@ export interface AgentApprovalRequest {
   runId: string;
   tool: string;
   expiresAt: number;
+  proposalIds?: string[];
+}
+
+export interface AgentEditProposal {
+  proposalId: string;
+  tool: string;
+  input: Record<string, unknown>;
+  summary: string;
+  status: 'pending' | 'accepted' | 'rejected' | 'failed';
+}
+
+export interface AgentEditBatch {
+  batchId: string;
+  runId: string;
+  proposals: AgentEditProposal[];
 }
 export interface AgentApprovalResponse {
   approvalId: string;

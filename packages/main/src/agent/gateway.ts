@@ -408,7 +408,7 @@ export class AgentGateway {
       if (tool.access === 'write') {
         const target = typeof input === 'object' && input !== null ? (input as Record<string, unknown>).path : undefined;
         const inScope = typeof target === 'string' && state.contextPaths.includes(target);
-        const forbidden = /shell|command|delete|remove|rename|config|setting|vault/i.test(name);
+        const forbidden = /shell|command|delete|remove|rename|config|setting|vault/i.test(`${name} ${JSON.stringify(input)}`);
         if (forbidden || !inScope) {
           const code = forbidden ? 'FULL_MODE_TOOL_FORBIDDEN' : 'FULL_MODE_SCOPE_DENIED';
           this.audit.append({ runId, scenario, event: 'tool', status: 'denied', tool: name, code, at: Date.now() });
@@ -438,7 +438,7 @@ export class AgentGateway {
       }
       if (state.permissionMode === 'full') {
         // Five hard guardrails: no shell, delete, rename, vault/settings config, or path escape.
-        const forbidden = /shell|command|delete|remove|rename|config|setting|vault/i.test(name);
+        const forbidden = /shell|command|delete|remove|rename|config|setting|vault/i.test(`${name} ${JSON.stringify(input)}`);
         const target =
           typeof input === 'object' && input !== null
             ? (input as Record<string, unknown>).path

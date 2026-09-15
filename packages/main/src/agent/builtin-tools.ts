@@ -11,6 +11,8 @@ export interface BuiltinToolDeps {
   document?: {
     read(path: string): Promise<string>;
     write(path: string, content: string): Promise<unknown>;
+    /** Shared atomic write seam used by full-mode/batch edits. */
+    writeTransaction?(writes: Array<{ path: string; content: string }>): Promise<unknown>;
   };
   /** 三阶段检索（DEV-011 RetrievalService.retrieve）。 */
   retrieve: (query: string) => Promise<{
@@ -99,7 +101,12 @@ export function createBuiltinTools(deps: BuiltinToolDeps): AgentTool[] {
       if (index < 0 || current.indexOf(input.expectedText, index + 1) >= 0) {
         throw Object.assign(new Error('选区已变化或不唯一'), { code: 'STALE_SELECTION' });
       }
-      await deps.document.write(input.path, current.slice(0, index) + input.content + current.slice(index + input.expectedText.length));
+      const next = current.slice(0, index) + input.content + current.slice(index + input.expectedText.length);
+      if (deps.document.writeTransaction) {
+        await deps.document.writeTransaction([{ path: input.path, content: next }]);
+      } else {
+        await deps.document.write(input.path, next);
+      }
       return { path: input.path, operation: 'replace', chars: input.content.length };
     },
   };
@@ -121,7 +128,12 @@ export function createBuiltinTools(deps: BuiltinToolDeps): AgentTool[] {
       if (!deps.document) throw new Error('文档写入服务不可用');
       if (!isRecord(input) || typeof input.path !== 'string' || typeof input.content !== 'string') throw new Error('append_to_document 输入无效');
       const current = await deps.document.read(input.path);
-      await deps.document.write(input.path, current + (current.endsWith('\n') ? '' : '\n') + input.content);
+      const next = current + (current.endsWith('\n') ? '' : '\n') + input.content;
+      if (deps.document.writeTransaction) {
+        await deps.document.writeTransaction([{ path: input.path, content: next }]);
+      } else {
+        await deps.document.write(input.path, next);
+      }
       return { path: input.path, operation: 'append', chars: input.content.length };
     },
   };
