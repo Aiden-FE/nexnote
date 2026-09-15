@@ -9,14 +9,25 @@ import { Callout } from './callout';
 import { Wikilink } from './wikilink';
 import { Hashtag } from './hashtag';
 import { Frontmatter } from './frontmatter';
-import { KernelCodeBlock, KernelTable, KernelTableCell, KernelTableHeader, KernelTableRow } from './code-table';
+import {
+  KernelCodeBlock,
+  KernelTable,
+  KernelTableCell,
+  KernelTableHeader,
+  KernelTableRow,
+} from './code-table';
 import { createBlockIdExtensions } from './block-id';
-import { SlashMenu, defaultSlashMenuItems, dedupeSlashItems, sortSlashItemsByGroup } from './slash-menu';
+import {
+  SlashMenu,
+  defaultSlashMenuItems,
+  dedupeSlashItems,
+  sortSlashItemsByGroup,
+} from './slash-menu';
 import type { SlashMenuItem } from './slash-menu';
 import { createKernelDragHandle } from './drag-handle';
 import { Fold } from './fold';
 import { SelectionBubble } from './selection-bubble';
-import type { BubbleAction } from './selection-bubble';
+import type { BubbleAction, BubbleAiMenuOptions, BubbleExtraControl } from './selection-bubble';
 import { ContextMenu } from './context-menu';
 import type { ContextMenuItem } from './context-menu';
 import { BlockMenu, blockMenuPluginKey } from './block-menu';
@@ -47,7 +58,14 @@ export interface KernelExtensionsOptions {
   /** 选区浮动工具栏（false/缺省关闭）。 */
   selectionBubble?:
     | false
-    | { actions: BubbleAction[]; onAction: (id: string, ctx: EditorActionContext) => void };
+    | {
+        actions: BubbleAction[];
+        /** DEV-034：AI 动作收口下拉（label 缺省 'AI'）。 */
+        aiMenu?: BubbleAiMenuOptions;
+        /** DEV-034：附加控件（生成中的停止按钮由渲染层注入）。 */
+        extraControl?: BubbleExtraControl;
+        onAction: (id: string, ctx: EditorActionContext) => void;
+      };
   /** 编辑器右键菜单（false/缺省关闭）。 */
   contextMenu?:
     | false
@@ -119,27 +137,27 @@ export function buildKernelExtensions(options: KernelExtensionsOptions = {}): Ex
   // DEV-017：wikilink（[[）/ 标签（#）补全菜单。候选由渲染层注入，节点插入由内核负责。
   const triggers: SuggestionTrigger[] = [];
   if (options.wikilinkSuggestions) {
-      triggers.push({
-        name: 'wikilink',
-        kind: 'wikilink',
-        trigger: '[[',
-        className: 'nexnote-suggestion',
-        modifierClassName: 'nexnote-suggestion--wikilink',
-        suggestions: options.wikilinkSuggestions,
-        onPick: options.onWikilinkSuggestionPick,
-      });
-    }
-    if (options.hashtagSuggestions) {
-      triggers.push({
-        name: 'hashtag',
-        kind: 'hashtag',
-        trigger: '#',
-        requireWhitespaceBefore: true,
-        className: 'nexnote-suggestion',
-        modifierClassName: 'nexnote-suggestion--hashtag',
-        suggestions: options.hashtagSuggestions,
-      });
-    }
+    triggers.push({
+      name: 'wikilink',
+      kind: 'wikilink',
+      trigger: '[[',
+      className: 'nexnote-suggestion',
+      modifierClassName: 'nexnote-suggestion--wikilink',
+      suggestions: options.wikilinkSuggestions,
+      onPick: options.onWikilinkSuggestionPick,
+    });
+  }
+  if (options.hashtagSuggestions) {
+    triggers.push({
+      name: 'hashtag',
+      kind: 'hashtag',
+      trigger: '#',
+      requireWhitespaceBefore: true,
+      className: 'nexnote-suggestion',
+      modifierClassName: 'nexnote-suggestion--hashtag',
+      suggestions: options.hashtagSuggestions,
+    });
+  }
   if (triggers.length > 0) extensions.push(SuggestionMenu.configure({ triggers }));
 
   if (options.slashMenu !== false) {
@@ -181,6 +199,8 @@ export function buildKernelExtensions(options: KernelExtensionsOptions = {}): Ex
     extensions.push(
       SelectionBubble.configure({
         actions: options.selectionBubble.actions,
+        aiMenu: options.selectionBubble.aiMenu,
+        extraControl: options.selectionBubble.extraControl,
         onAction: options.selectionBubble.onAction,
       }),
     );

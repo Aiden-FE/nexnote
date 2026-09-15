@@ -9,5 +9,12 @@ export { useWritingStore } from './writing-store';
 export type { WritingSession } from './writing-store';
 export { createWritingController } from './controller';
 export type { WritingController, WritingControllerDeps } from './controller';
-export { writingBubbleActions, writingContextMenu, writingSlashItems } from './kernel-options';
+export {
+  writingBubbleActions,
+  writingAiMenuActions,
+  writingContextMenu,
+  writingSlashItems,
+} from './kernel-options';
+export { writingStopControl } from './bubble-stop';
+export type { BubbleStopControl } from './bubble-stop';
 export { WritingAssistantLayer } from './WritingAssistantLayer';

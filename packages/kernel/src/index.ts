@@ -49,8 +49,18 @@ export {
   toggleBlockFold,
 } from './extensions/fold';
 export { createKernelDragHandle } from './extensions/drag-handle';
-export { SelectionBubble, selectionBubblePluginKey } from './extensions/selection-bubble';
-export type { BubbleAction, SelectionBubbleOptions } from './extensions/selection-bubble';
+export {
+  SelectionBubble,
+  selectionBubblePluginKey,
+  createBubbleAiMenu,
+} from './extensions/selection-bubble';
+export type {
+  BubbleAction,
+  BubbleAiMenuOptions,
+  BubbleAiMenuView,
+  BubbleExtraControl,
+  SelectionBubbleOptions,
+} from './extensions/selection-bubble';
 export { ContextMenu, contextMenuPluginKey } from './extensions/context-menu';
 export type { ContextMenuItem, ContextMenuOptions } from './extensions/context-menu';
 export { PluginBlock, PLUGIN_BLOCK_FENCE } from './extensions/plugin-block';

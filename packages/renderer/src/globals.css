@@ -440,6 +440,71 @@
   background: var(--accent);
 }
 
+/* DEV-034：AI 动作收口下拉。菜单向上展开（工具栏位于选区上方），不遮挡选区。 */
+.nexnote-selection-bubble__ai {
+  position: relative;
+  display: flex;
+}
+.nexnote-selection-bubble__ai-trigger[aria-expanded='true'] {
+  background: var(--accent);
+}
+.nexnote-selection-bubble__ai-menu {
+  position: absolute;
+  z-index: 46;
+  display: flex;
+  min-width: 11rem;
+  flex-direction: column;
+  gap: 0.1rem;
+  border: 1px solid var(--border);
+  border-radius: 0.5rem;
+  background: var(--popover);
+  color: var(--popover-foreground);
+  padding: 0.25rem;
+  box-shadow: 0 10px 28px rgb(0 0 0 / 18%);
+}
+.nexnote-selection-bubble__ai-menu[hidden] {
+  display: none;
+}
+.nexnote-selection-bubble__ai-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  border: none;
+  border-radius: 0.35rem;
+  background: transparent;
+  color: inherit;
+  padding: 0.32rem 0.45rem;
+  font-size: 0.74rem;
+  text-align: left;
+  white-space: nowrap;
+  cursor: pointer;
+}
+.nexnote-selection-bubble__ai-item:hover,
+.nexnote-selection-bubble__ai-item:focus-visible {
+  background: var(--accent);
+}
+.nexnote-selection-bubble__shortcut {
+  color: var(--muted-foreground);
+  font-size: 0.65rem;
+}
+.nexnote-selection-bubble__stop {
+  border: none;
+  border-radius: 0.35rem;
+  background: transparent;
+  color: var(--destructive);
+  padding: 0.3rem 0.5rem;
+  font-size: 0.74rem;
+  white-space: nowrap;
+  cursor: pointer;
+}
+.nexnote-selection-bubble__stop:hover {
+  background: color-mix(in oklch, var(--destructive) 12%, transparent);
+}
+.nexnote-selection-bubble__stop[hidden] {
+  display: none;
+}
+
 .nexnote-context-menu {
   min-width: 11rem;
   padding: 0.3rem;

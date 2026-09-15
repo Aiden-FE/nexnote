@@ -1,6 +1,7 @@
 import { computeEditorActionContext } from '@nexnote/kernel';
 import type { BubbleAction, ContextMenuItem, SlashMenuItem } from '@nexnote/kernel';
 import { toAiActionId, WRITING_ACTIONS } from './actions';
+import { CHAT_ASK_ACTION } from '../chat/ask-ai';
 import type { WritingController } from './controller';
 
 /** 选区浮动工具栏的六个动作（含 ⌘⌥ 快捷键）。 */
@@ -11,6 +12,14 @@ export function writingBubbleActions(): BubbleAction[] {
     shortcut: { mod: true, alt: true, key: action.modKey },
     shortcutLabel: `⌘⌥${action.modKey.toUpperCase()}`,
   }));
+}
+
+/**
+ * DEV-034：划词工具栏 AI 下拉的完整动作集（六写作动作 + 询问 AI）。
+ * 块编辑与源码模式共用同一函数，按钮集与顺序天然一致。
+ */
+export function writingAiMenuActions(): BubbleAction[] {
+  return [...writingBubbleActions(), { id: CHAT_ASK_ACTION, title: '询问 AI' }];
 }
 
 /** 右键菜单：AI 写作子菜单（选区作用于选区，折叠/块作用于整块）。 */

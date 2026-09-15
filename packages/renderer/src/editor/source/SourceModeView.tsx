@@ -21,8 +21,8 @@ import { createSourceEditor, type SourceEditorHandle } from './codemirror-host';
 import { registerSourceEditor } from './active-source-editor';
 import { sourceSelectionBubble } from './source-bubble';
 import { applySourceFormat, sourceFormatBubbleActions } from './source-formatting';
-import { handleSourceBubbleAction, SOURCE_CHAT_ASK_ACTION } from './source-ai-assist';
-import { writingBubbleActions } from '../../features/ai/writing';
+import { handleSourceBubbleAction } from './source-ai-assist';
+import { writingAiMenuActions, writingStopControl } from '../../features/ai/writing';
 import { LivePreview, type InternalLinkNavigation } from './LivePreview';
 import { parseWholePage } from './parse-guard';
 import { registerModeSwitchHandler, requestSourceModeToggle } from './source-mode-toggle';
@@ -354,18 +354,18 @@ export function SourceModeView({ tab }: { tab: TabDescriptor }) {
         );
         if (preview.scrollTop !== next) preview.scrollTop = next;
       },
-      // 划词工具栏（与块编辑一致，DEV-023 按钮集统一）：格式化五项 + 双链 +
-      // 询问 AI + 白名单写作动作。格式化为 Markdown 语法包裹（单事务可 undo，
-      // 不经块编辑器序列化）；AI 流式预览经共享 WritingAssistantLayer（WorkspaceView
-      // 全局挂载），Accept 单事务写回可 undo。
+      // 划词工具栏（与块编辑一致）：格式化五项 + 双链平铺，AI 写作与询问 AI 收口为
+      // 单一「AI」下拉（DEV-034，同一 writingAiMenuActions 按钮集）。格式化为 Markdown
+      // 语法包裹（单事务可 undo，不经块编辑器序列化）；AI 流式预览经共享
+      // WritingAssistantLayer（WorkspaceView 全局挂载），Accept 单事务写回可 undo；
+      // 生成中由注入的停止控件取消会话。
       extraExtensions: [
         sourceWikilinkCompletion({ getPages: currentPageCandidates, onPick: createRedlinkPage }),
         sourceSelectionBubble({
-          actions: [
-            ...sourceFormatBubbleActions(),
-            ...writingBubbleActions(),
-            { id: SOURCE_CHAT_ASK_ACTION, title: '询问 AI' },
-          ],
+          // DEV-034：与块编辑同一按钮集（格式化/双链平铺 + AI 下拉收口）
+          actions: sourceFormatBubbleActions(),
+          aiMenu: { label: 'AI', actions: writingAiMenuActions() },
+          extraControl: writingStopControl(),
           onAction: (id, ctx) => {
             const editor = editorRef.current;
             if (!editor) return;

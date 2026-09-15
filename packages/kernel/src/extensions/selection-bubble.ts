@@ -22,8 +22,20 @@ export interface BubbleAction {
   shortcut?: { mod: boolean; alt?: boolean; shift?: boolean; key: string };
 }
 
+export interface BubbleAiMenuOptions {
+  label?: string;
+  actions: BubbleAction[];
+}
+
+export interface BubbleExtraControl {
+  dom: HTMLElement;
+  destroy?: () => void;
+}
+
 export interface SelectionBubbleOptions {
   actions: BubbleAction[];
+  aiMenu?: BubbleAiMenuOptions;
+  extraControl?: BubbleExtraControl;
   onAction: (id: string, ctx: EditorActionContext) => void;
   className: string;
 }
@@ -39,9 +51,146 @@ interface BubbleView {
   destroy(): void;
 }
 
+export interface BubbleAiMenuView {
+  dom: HTMLDivElement;
+  close(options?: { restoreFocus?: boolean }): void;
+  destroy(): void;
+}
+
+/** Shared AI dropdown for block and source editors. */
+export function createBubbleAiMenu(
+  className: string,
+  options: BubbleAiMenuOptions,
+  onTrigger: (id: string) => void,
+): BubbleAiMenuView {
+  const wrapper = document.createElement('div');
+  wrapper.className = `${className}__ai`;
+  wrapper.dataset.aiDropdown = '';
+
+  const trigger = document.createElement('button');
+  trigger.type = 'button';
+  trigger.className = `${className}__action ${className}__ai-trigger`;
+  trigger.dataset.bubbleAction = 'ai:menu';
+  trigger.setAttribute('aria-haspopup', 'menu');
+  trigger.setAttribute('aria-expanded', 'false');
+  trigger.setAttribute('aria-label', 'AI 菜单');
+  trigger.textContent = `${options.label ?? 'AI'} ▾`;
+
+  const menu = document.createElement('div');
+  menu.className = `${className}__ai-menu`;
+  menu.dataset.aiMenu = '';
+  menu.setAttribute('role', 'menu');
+  menu.setAttribute('aria-label', 'AI 操作');
+  menu.hidden = true;
+  menu.style.bottom = 'calc(100% + 4px)';
+  menu.style.left = '0px';
+
+  const items: HTMLButtonElement[] = [];
+  for (const action of options.actions) {
+    const item = document.createElement('button');
+    item.type = 'button';
+    item.className = `${className}__ai-item`;
+    item.dataset.aiMenuAction = action.id;
+    item.setAttribute('role', 'menuitem');
+    item.title = action.shortcutLabel
+      ? `${action.title}（${action.shortcutLabel}）`
+      : (action.hint ?? action.title);
+    const label = document.createElement('span');
+    label.textContent = action.title;
+    item.append(label);
+    const hint = action.shortcutLabel ?? action.hint;
+    if (hint) {
+      const hintDom = document.createElement('span');
+      hintDom.className = `${className}__shortcut`;
+      hintDom.textContent = hint;
+      item.append(hintDom);
+    }
+    item.addEventListener('mousedown', (event) => event.preventDefault());
+    item.addEventListener('click', (event) => {
+      event.preventDefault();
+      close();
+      onTrigger(action.id);
+    });
+    items.push(item);
+    menu.append(item);
+  }
+
+  const focusItem = (index: number) => items[(index + items.length) % items.length]?.focus();
+  const open = (focus: 'first' | 'last' = 'first') => {
+    if (items.length === 0) return;
+    menu.hidden = false;
+    trigger.setAttribute('aria-expanded', 'true');
+    menu.style.left = '0px';
+    menu.style.right = '';
+    const triggerRect = trigger.getBoundingClientRect();
+    if (triggerRect.left + menu.offsetWidth > window.innerWidth - 8) {
+      menu.style.left = '';
+      menu.style.right = '0px';
+    }
+    focusItem(focus === 'first' ? 0 : items.length - 1);
+  };
+  const close: BubbleAiMenuView['close'] = (closeOptions) => {
+    menu.hidden = true;
+    trigger.setAttribute('aria-expanded', 'false');
+    if (closeOptions?.restoreFocus) trigger.focus();
+  };
+
+  trigger.addEventListener('mousedown', (event) => event.preventDefault());
+  trigger.addEventListener('click', (event) => {
+    event.preventDefault();
+    if (menu.hidden) open();
+    else close();
+  });
+  trigger.addEventListener('keydown', (event) => {
+    if (event.key === 'ArrowDown' || event.key === 'Enter' || event.key === ' ') {
+      event.preventDefault();
+      open('first');
+    } else if (event.key === 'ArrowUp') {
+      event.preventDefault();
+      open('last');
+    } else if (event.key === 'Escape' && !menu.hidden) {
+      event.preventDefault();
+      close();
+    }
+  });
+  menu.addEventListener('keydown', (event) => {
+    const current = items.indexOf(document.activeElement as HTMLButtonElement);
+    if (event.key === 'ArrowDown') {
+      event.preventDefault();
+      focusItem(current + 1);
+    } else if (event.key === 'ArrowUp') {
+      event.preventDefault();
+      focusItem(current - 1);
+    } else if (event.key === 'Home') {
+      event.preventDefault();
+      focusItem(0);
+    } else if (event.key === 'End') {
+      event.preventDefault();
+      focusItem(items.length - 1);
+    } else if (event.key === 'Escape') {
+      event.preventDefault();
+      event.stopPropagation();
+      close({ restoreFocus: true });
+    } else if (event.key === 'Enter' || event.key === ' ') {
+      event.preventDefault();
+      items[current]?.click();
+    } else if (event.key === 'Tab') {
+      close();
+    }
+  });
+  wrapper.addEventListener('focusout', (event) => {
+    const related = (event as FocusEvent).relatedTarget as Node | null;
+    if (!related || !wrapper.contains(related)) close();
+  });
+  wrapper.append(trigger, menu);
+  return { dom: wrapper, close, destroy: () => wrapper.remove() };
+}
+
 function createBubbleDom(
   className: string,
   actions: BubbleAction[],
+  aiMenuOptions: BubbleAiMenuOptions | undefined,
+  extraControl: BubbleExtraControl | undefined,
   onTrigger: (id: string) => void,
 ): BubbleView {
   const dom = document.createElement('div');
@@ -71,6 +220,10 @@ function createBubbleDom(
     dom.append(btn);
   }
 
+  const aiMenu = aiMenuOptions ? createBubbleAiMenu(className, aiMenuOptions, onTrigger) : null;
+  if (aiMenu) dom.append(aiMenu.dom);
+  if (extraControl) dom.append(extraControl.dom);
+
   const show: BubbleView['show'] = (coords) => {
     dom.style.display = 'flex';
     // 坐标以实际包含块（offsetParent）为参照：锚点容器（parentElement）与包含块
@@ -94,8 +247,13 @@ function createBubbleDom(
   };
   const hide = () => {
     dom.style.display = 'none';
+    aiMenu?.close();
   };
-  const destroy = () => dom.remove();
+  const destroy = () => {
+    aiMenu?.destroy();
+    extraControl?.destroy?.();
+    dom.remove();
+  };
   return { dom, show, hide, destroy };
 }
 
@@ -140,6 +298,8 @@ export const SelectionBubble = Extension.create<SelectionBubbleOptions, { visibl
           let bubble: BubbleView | null = createBubbleDom(
             ext.options.className,
             ext.options.actions,
+            ext.options.aiMenu,
+            ext.options.extraControl,
             (id) => trigger(editorView, id),
           );
           const host = editorView.dom.parentElement;
@@ -188,7 +348,11 @@ export const SelectionBubble = Extension.create<SelectionBubbleOptions, { visibl
         props: {
           handleKeyDown(view, event) {
             if (view.state.selection.empty) return false;
-            for (const action of ext.options.actions) {
+            const shortcutActions = [
+              ...ext.options.actions,
+              ...(ext.options.aiMenu?.actions ?? []),
+            ];
+            for (const action of shortcutActions) {
               if (matchesShortcut(event, action)) {
                 event.preventDefault();
                 trigger(view, action.id);

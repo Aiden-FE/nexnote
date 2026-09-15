@@ -16,7 +16,8 @@ import { registerEditor } from './active-editor';
 import { registerModeSwitchHandler, requestSourceModeToggle } from './source/source-mode-toggle';
 import {
   createWritingController,
-  writingBubbleActions,
+  writingAiMenuActions,
+  writingStopControl,
   type WritingController,
   writingContextMenu,
   writingSlashItems,
@@ -462,11 +463,11 @@ export function EditorView({ tab }: EditorViewProps) {
         });
       },
       selectionBubble: {
-        actions: [
-          ...formatBubbleActions(),
-          ...writingBubbleActions(),
-          { id: CHAT_ASK_ACTION, title: '询问 AI' },
-        ],
+        // DEV-034：AI 动作收口为单一「AI」下拉；格式化/双链等非 AI 动作保持平铺。
+        actions: formatBubbleActions(),
+        aiMenu: { label: 'AI', actions: writingAiMenuActions() },
+        // 生成中的独立停止控件（会话非流式时隐藏）
+        extraControl: writingStopControl(),
         onAction: (id, ctx) => {
           if (runFormatAction(id, kernelRef.current, ctx.text)) return;
           if (id === CHAT_ASK_ACTION) {
