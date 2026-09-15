@@ -1,6 +1,6 @@
 # NexNote 插件开发文档
 
-> 适用版本：v0.1.0，Plugin API v1.0.0。
+> 适用版本：v0.0.1，Plugin API v1.0.0。
 > 所有功能均基于真实代码实现编写；不存在的能力未列出。
 
 ---
@@ -23,8 +23,8 @@ my-plugin/
 {
   "id": "com.example.hello",
   "name": "Hello World",
-  "version": "0.1.0",
-  "minAppVersion": "0.1.0",
+  "version": "0.0.1",
+  "minAppVersion": "0.0.1",
   "main": "main.js",
   "description": "第一个 NexNote 插件",
   "capabilities": ["read"],

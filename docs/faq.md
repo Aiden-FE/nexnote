@@ -1,6 +1,6 @@
 # NexNote FAQ
 
-> 适用版本：v0.1.0。
+> 适用版本：v0.0.1。
 
 ---
 
@@ -8,7 +8,7 @@
 
 **Q: NexNote 需要联网吗？账号呢？**
 
-不需要。NexNote 是本地优先（local-first）的桌面应用：所有数据（笔记、索引、插件设置）都保存在本地 vault 目录和用户配置目录里。不需要注册账号，没有云端同步（v0.1.0 只支持 Git 远程）。
+不需要。NexNote 是本地优先（local-first）的桌面应用：所有数据（笔记、索引、插件设置）都保存在本地 vault 目录和用户配置目录里。不需要注册账号，没有云端同步（v0.0.1 只支持 Git 远程）。
 
 唯一需要联网的场景：
 - 使用基于云端的 AI 模型（如 OpenAI 兼容 API）
@@ -19,7 +19,7 @@
 
 **Q: vault 是什么？**
 
-vault 是一个普通文件夹，里面是 markdown 文件和一个 `.nexnote/` 子目录（放索引 SQLite 等派生数据），v0.1.0 起还必须有 `.git/` 目录（自动版本化）。你可以用任何文件管理器、其他笔记软件直接打开这个文件夹。
+vault 是一个普通文件夹，里面是 markdown 文件和一个 `.nexnote/` 子目录（放索引 SQLite 等派生数据），v0.0.1 起还必须有 `.git/` 目录（自动版本化）。你可以用任何文件管理器、其他笔记软件直接打开这个文件夹。
 
 ---
 
@@ -241,4 +241,4 @@ Windows 以 NSIS installer 为自动更新主路径；`portable` 是额外的手
 
 **Q: 三端（macOS / Windows / Linux）都支持吗？**
 
-代码层面都支持，CI 也构建三平台产物。v0.1.0 是 MVP 内测版；macOS 当前为 Ad hoc、未公证，Windows/Linux 的真实签名、平台安装和 N-1 网络升级是否完成必须以 [QA 清单](./release/QA-CHECKLIST.md) 的 evidence 为准。发布格式与已知边界见 [Release Notes](../.scratch/nexnote-build/RELEASE-NOTES.md)。
+代码层面都支持，CI 也构建三平台产物。v0.0.1 是 MVP 内测版；macOS 当前为 Ad hoc、未公证，Windows/Linux 的真实签名、平台安装和 N-1 网络升级是否完成必须以 [QA 清单](./release/QA-CHECKLIST.md) 的 evidence 为准。发布格式与已知边界见 [Release Notes](../.scratch/nexnote-build/RELEASE-NOTES.md)。

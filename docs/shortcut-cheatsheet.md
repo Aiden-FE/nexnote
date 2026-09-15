@@ -1,6 +1,6 @@
 # NexNote 快捷键速查表
 
-> 适用版本：v0.1.0。Modifier 约定：`Mod` = macOS 上的 `Cmd` ⌘，Windows/Linux 上的 `Ctrl`。
+> 适用版本：v0.0.1。Modifier 约定：`Mod` = macOS 上的 `Cmd` ⌘，Windows/Linux 上的 `Ctrl`。
 > 所有全局快捷键可在「设置 → 快捷键」中自定义或禁用。
 
 ---
