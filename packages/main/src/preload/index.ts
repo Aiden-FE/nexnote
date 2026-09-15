@@ -46,6 +46,9 @@ if (process.env.NEXNOTE_SMOKE === '1') {
       ipcRenderer.invoke('smoke:seedGraph', root),
     finish: (report: unknown): Promise<{ ok: boolean; error?: string }> =>
       ipcRenderer.invoke('smoke:finish', report),
+    // DEV-035：窄窗覆盖需在冒烟过程中调整主窗口尺寸（真实 Electron 窗口）
+    setWindowSize: (width: number, height: number): Promise<{ ok: boolean; error?: string }> =>
+      ipcRenderer.invoke('smoke:setWindowSize', { width, height }),
     // DEV-009：AI 冒烟场景用的内嵌 mock OpenAI 服务器地址
     aiMock: (): Promise<{ ok: boolean; url?: string; error?: string }> =>
       ipcRenderer.invoke('smoke:aiMock'),
