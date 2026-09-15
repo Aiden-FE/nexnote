@@ -8,11 +8,25 @@ import type { SourceEditorHandle } from './codemirror-host';
  */
 
 let active: SourceEditorHandle | null = null;
+const listeners = new Set<() => void>();
+
+export function subscribeActiveSourceEditor(listener: () => void): () => void {
+  listeners.add(listener);
+  return () => listeners.delete(listener);
+}
+
+function notifyActiveSourceEditorChanged(): void {
+  for (const listener of listeners) listener();
+}
 
 export function registerSourceEditor(handle: SourceEditorHandle): () => void {
   active = handle;
+  notifyActiveSourceEditorChanged();
   return () => {
-    if (active === handle) active = null;
+    if (active === handle) {
+      active = null;
+      notifyActiveSourceEditorChanged();
+    }
   };
 }
 

@@ -15,7 +15,8 @@ import { TextSelection } from '@tiptap/pm/state';
 import { undo } from '@codemirror/commands';
 import { openSettings } from '../lib/open-settings';
 import { deleteEntry, moveEntry } from '../features/sidebar/page-tree/ops';
-import { BUILTIN_PLUGIN_IDS } from '@nexnote/shared';
+import { BUILTIN_PLUGIN_IDS, type ChatSession } from '@nexnote/shared';
+import { useChatStore } from '../features/ai/chat/chat-store';
 
 interface SmokeCaptureResult {
   ok: boolean;
@@ -509,6 +510,51 @@ export async function runSmokeIfEnabled(): Promise<void> {
       if (tab) useTabStore.getState().closeTab(tab.id);
     }
     await sleep(150);
+
+    // ── 4c. DEV-036：Chat Dock 使用活动编辑器光标插入（块模式 + 单步 undo） ──
+    const blockForInsert = getActiveEditor();
+    if (blockForInsert) {
+      const blockView = blockForInsert.editor.view;
+      blockView.focus();
+      blockView.dispatch(
+        blockView.state.tr.setSelection(
+          TextSelection.create(blockView.state.doc, blockView.state.doc.content.size - 1),
+        ),
+      );
+      const session: ChatSession = {
+        path: 'AI Chats/DEV-036.md',
+        meta: {
+          id: 'dev-036-smoke',
+          title: 'DEV-036',
+          profileId: null,
+          model: null,
+          createdAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString(),
+        },
+        turns: [{ role: 'assistant', content: 'DEV-036 块回复' }],
+      };
+      useChatStore.getState().setActive(session, false);
+      useUiStore.getState().setActiveDockPanel('ai-chat');
+      check(
+        'Chat Dock 块模式插入按钮可用',
+        await waitFor(() => {
+          const button = document.querySelector<HTMLButtonElement>(
+            '[data-testid="chat-insert-block"]',
+          );
+          return !!button && !button.disabled;
+        }),
+      );
+      document.querySelector<HTMLButtonElement>('[data-testid="chat-insert-block"]')?.click();
+      check(
+        'Chat Dock 块模式写入当前光标且单步 undo',
+        blockForInsert.getMarkdown().includes('DEV-036 块回复') &&
+          blockForInsert.undo() &&
+          !blockForInsert.getMarkdown().includes('DEV-036 块回复'),
+      );
+    } else {
+      check('Chat Dock 块模式活动编辑器存在', false);
+    }
+
 
     // ── 5. 文档格式边界：native-block 不进源码；markdown sidecar 才进源码 ──
     await invoke('fs:createNote', { parentDir: '', name: '原生模式边界页' });
