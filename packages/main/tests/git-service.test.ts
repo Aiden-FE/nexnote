@@ -194,9 +194,17 @@ describe.runIf(runIfGit())('GitService（系统 Git，临时仓库）', () => {
     await fsp.mkdir(path.dirname(file), { recursive: true });
     await fsp.writeFile(file, 'v1');
     service.scheduleAutoCommit('保存 notes/page.md', 50);
-    await new Promise((r) => setTimeout(r, 250));
-    expect(await service.timeline()).toHaveLength(1);
-    await new Promise((r) => setTimeout(r, 450));
+    // CI 共享 runner 的 FS 抖动会让 init/auto 提交落地晚于固定 sleep；按截止时间轮询而非猜时序。
+    const waitForCommits = async (count: number, deadlineMs: number) => {
+      const deadline = Date.now() + deadlineMs;
+      let log = await service.timeline();
+      while (Date.now() < deadline && log.length < count) {
+        await new Promise((r) => setTimeout(r, 50));
+        log = await service.timeline();
+      }
+      return log;
+    };
+    await waitForCommits(2, 10_000);
     const log = await service.timeline();
     expect(log).toHaveLength(2);
     expect(log[0]!.kind).toBe('auto');

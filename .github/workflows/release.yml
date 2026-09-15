@@ -113,7 +113,7 @@ jobs:
           - os: windows-2022
             target: --win --x64
             artifact: windows-x64
-          - os: ubuntu-22.04
+          - os: ubuntu-24.04
             target: --linux --x64
             artifact: linux-x64
     runs-on: ${{ matrix.os }}
