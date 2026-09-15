@@ -58,11 +58,17 @@ export function formatBubbleActions(): BubbleAction[] {
   ];
 }
 
-/** 在编辑器选区上执行格式化动作；返回是否命中格式化 id。 */
+/**
+ * 在编辑器选区上执行格式化动作；返回是否命中格式化 id。
+ *
+ * 工具栏入口传 `allowEmptySelection`：无选区时对光标处设置存储 mark（继续输入
+ * 即生效）；划词 bubble 不传，保持「无选区不动作」的原语义。
+ */
 export function runFormatAction(
   id: string,
   kernel: EditorKernelInstance | null,
   selectionText: string,
+  options?: { allowEmptySelection?: boolean },
 ): boolean {
   if (!kernel) return false;
   const editor = kernel.editor;
@@ -79,7 +85,7 @@ export function runFormatAction(
     return true;
   }
 
-  if (!selectionText.trim()) return false;
+  if (!selectionText.trim() && !options?.allowEmptySelection) return false;
   const chain = editor.chain().focus();
   switch (id) {
     case FORMAT_BOLD:

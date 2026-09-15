@@ -186,7 +186,9 @@ export function TabStrip() {
             title={tab.title}
           >
             <Icon className="size-3.5 shrink-0" />
-            <span className="truncate">{tab.title}</span>
+            <span data-testid="tab-title" className="truncate" title={tab.title}>
+              {tab.title}
+            </span>
             <button
               type="button"
               aria-label={`关闭 ${tab.title}`}

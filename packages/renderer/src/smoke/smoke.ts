@@ -3,7 +3,7 @@ import { openDocumentTab } from '../lib/open-document';
 import { commandRegistry } from '../registries';
 import { useTabStore, openPage } from '../stores/tab-store';
 import { createPage } from '../features/editor/create-page';
-import { useUiStore } from '../stores/ui-store';
+import { SIDEBAR_MAX_WIDTH, useUiStore } from '../stores/ui-store';
 import { useTagStore } from '../stores/tag-store';
 import { useThemeStore } from '../theme/theme-store';
 import { dockPanelRegistry } from '../registries';
@@ -32,6 +32,7 @@ interface SmokeBridge {
     content: string,
   ): Promise<SmokeCaptureResult & { path?: string }>;
   seedGraph(root: string): Promise<SmokeCaptureResult & { pages?: number; links?: number }>;
+  setWindowSize(width: number, height: number): Promise<SmokeCaptureResult>;
   finish(report: unknown): Promise<SmokeCaptureResult>;
 }
 
@@ -422,6 +423,191 @@ export async function runSmokeIfEnabled(): Promise<void> {
     }
     await capture('02b-editor');
 
+    // ── 4c. DEV-035 编辑器工具栏：单行、Tab tooltip、窄窗溢出「更多」可达 ──
+    const toolbarEl = (): HTMLElement | null =>
+      document.querySelector<HTMLElement>('[data-testid="editor-toolbar"]');
+    const toolbarActions = (): HTMLElement | null =>
+      document.querySelector<HTMLElement>('[data-testid="editor-toolbar-actions"]');
+    const rowEntryIds = (): string[] =>
+      [
+        ...(toolbarActions()?.querySelectorAll<HTMLElement>('button[data-toolbar-item="true"]') ??
+          []),
+      ].map((el) => el.dataset.itemId ?? '');
+    const menuItemIds = (): string[] =>
+      [
+        ...(document
+          .querySelector('[data-testid="toolbar-more-menu"]')
+          ?.querySelectorAll<HTMLElement>('[role="menuitem"]') ?? []),
+      ].map((el) => (el.dataset.testid ?? '').replace('toolbar-menu-item-', ''));
+    const findToolbarAction = (id: string): HTMLButtonElement | null =>
+      document.querySelector<HTMLButtonElement>(
+        `[data-testid="toolbar-menu-item-${CSS.escape(id)}"]`,
+      ) ??
+      document.querySelector<HTMLButtonElement>(`[data-testid="toolbar-entry-${CSS.escape(id)}"]`);
+    const clickToolbarAction = (id: string): boolean => {
+      let target = findToolbarAction(id);
+      if (!target) {
+        // 动作已收进「更多」：先展开溢出菜单再点。
+        document.querySelector<HTMLButtonElement>('[data-testid="toolbar-more"]')?.click();
+        target = findToolbarAction(id);
+      }
+      target?.click();
+      return !!target;
+    };
+    const BLOCK_TOOLBAR_ACTIONS = [
+      'format:bold',
+      'format:italic',
+      'format:strike',
+      'format:code',
+      'format:link',
+      'format:wikilink',
+      'insert:image',
+      'insert:attachment',
+      'ai',
+    ];
+    const AI_ACTION_IDS = [
+      'ai:ask',
+      'ai:rewrite',
+      'ai:polish',
+      'ai:condense',
+      'ai:expand',
+      'ai:fillgaps',
+      'ai:evidence',
+    ];
+
+    check(
+      '工具栏为单行且不回显文件名',
+      (await waitFor(() => !!toolbarEl())) &&
+        toolbarEl()?.getAttribute('role') === 'toolbar' &&
+        !(toolbarEl()?.textContent ?? '').includes('冒烟页面 A.md'),
+    );
+    const tabTooltipOk = (() => {
+      const span = document.querySelector<HTMLElement>(
+        '[data-testid="tab"][data-page-path] [data-testid="tab-title"]',
+      );
+      return (
+        !!span &&
+        (span.textContent ?? '').length > 1 &&
+        span.getAttribute('title') === span.textContent &&
+        (span.className ?? '').includes('truncate')
+      );
+    })();
+    check('Tab 标题截断并以 title 展示完整名称', tabTooltipOk);
+
+    // 窄窗：主窗口收到最小宽度 + 侧栏最宽 + Dock 打开 → 编辑区极窄，动作必须收进「更多」。
+    // 恢复用常规尺寸（与主进程默认窗口一致），窄窗断言之外的用例继续在常规宽度下运行。
+    const REGULAR_WINDOW = { width: 1360, height: 860 };
+    useUiStore.getState().setDockVisible(true);
+    useUiStore.getState().setSidebarWidth(SIDEBAR_MAX_WIDTH);
+    const resized = await bridge.setWindowSize(960, 600);
+    check('冒烟可调整主窗口到最小尺寸', resized.ok, resized.error);
+    await sleep(600);
+    const actionsRow = toolbarActions();
+    check(
+      '窄窗下工具栏不横向裁切（单行保持）',
+      !!actionsRow && actionsRow.scrollWidth <= actionsRow.clientWidth + 1,
+      `scroll=${actionsRow?.scrollWidth ?? -1} client=${actionsRow?.clientWidth ?? -1}`,
+    );
+    const moreButton = (): HTMLButtonElement | null =>
+      document.querySelector<HTMLButtonElement>('[data-testid="toolbar-more"]');
+    check('窄窗下出现「更多」溢出入口', !!moreButton());
+    check(
+      '窄窗下 AI 入口整体折叠（工具栏无 AI 触发器）',
+      !document.querySelector('[data-testid="toolbar-entry-ai"]'),
+    );
+
+    moreButton()?.click();
+    await sleep(250);
+    check(
+      '「更多」保留 AI 分组与全部 AI 子动作',
+      !!document.querySelector('[data-testid="toolbar-more-group-ai"]') &&
+        AI_ACTION_IDS.every(
+          (id) => !!document.querySelector(`[data-testid="toolbar-menu-item-${CSS.escape(id)}"]`),
+        ),
+      menuItemIds().join(' | '),
+    );
+    const overflowGroups = [
+      ...(document
+        .querySelector('[data-testid="toolbar-more-menu"]')
+        ?.querySelectorAll<HTMLElement>('[data-testid^="toolbar-more-group-"]') ?? []),
+    ].map((el) => (el.dataset.testid ?? '').replace('toolbar-more-group-', ''));
+    const reachable = new Set([
+      ...rowEntryIds().filter((id) => id !== 'toolbar:more'),
+      ...menuItemIds(),
+      ...overflowGroups,
+    ]);
+    check(
+      '全部动作在窄窗下可达（工具栏或「更多」）',
+      BLOCK_TOOLBAR_ACTIONS.every((id) => reachable.has(id)),
+      [...reachable].join(' | '),
+    );
+    await capture('02c-toolbar-overflow');
+
+    // 键盘：焦点在「更多」上按 ↓ 打开并聚焦首项，逐项可达，Esc 关闭并回到触发器。
+    const more = moreButton();
+    more?.focus();
+    more?.dispatchEvent(
+      new KeyboardEvent('keydown', { key: 'ArrowDown', bubbles: true, cancelable: true }),
+    );
+    await sleep(200);
+    check(
+      '「更多」以键盘打开并聚焦首项',
+      document.activeElement?.getAttribute('role') === 'menuitem',
+      document.activeElement?.getAttribute('data-testid') ?? '(none)',
+    );
+    let menuKeyboardWalk = true;
+    for (let i = 0; i < BLOCK_TOOLBAR_ACTIONS.length; i += 1) {
+      document
+        .querySelector('[data-testid="toolbar-more-menu"]')
+        ?.dispatchEvent(
+          new KeyboardEvent('keydown', { key: 'ArrowDown', bubbles: true, cancelable: true }),
+        );
+      await sleep(40);
+      if (document.activeElement?.getAttribute('role') !== 'menuitem') menuKeyboardWalk = false;
+    }
+    check('「更多」菜单逐项键盘可达', menuKeyboardWalk);
+    document
+      .querySelector('[data-testid="toolbar-more-menu"]')
+      ?.dispatchEvent(
+        new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true }),
+      );
+    await sleep(200);
+    check(
+      'Esc 关闭「更多」并把焦点还给触发器',
+      !document.querySelector('[data-testid="toolbar-more-menu"]') &&
+        document.activeElement === more,
+    );
+
+    // 溢出动作真实执行：打开「更多」→ 点「双链」→ 当前编辑器插入 `[[` 骨架（随后撤销）。
+    moreButton()?.click();
+    await sleep(200);
+    const overflowAction = BLOCK_TOOLBAR_ACTIONS.find(
+      (id) => !rowEntryIds().includes(id) && menuItemIds().includes(id),
+    );
+    let overflowExecuted = false;
+    if (overflowAction) {
+      overflowExecuted = clickToolbarAction(overflowAction);
+      await sleep(250);
+      const kernel = getActiveEditor();
+      overflowExecuted = overflowExecuted && !!kernel;
+      kernel?.undo();
+      await sleep(150);
+      document
+        .querySelector<HTMLElement>('[data-testid="editor-view"] .ProseMirror')
+        ?.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+    }
+    check('溢出动作可从「更多」执行', overflowExecuted, overflowAction ?? '(none overflowed)');
+
+    // 恢复：Dock 收起、侧栏宽度还原、窗口尺寸还原。
+    useUiStore.getState().setDockVisible(false);
+    useUiStore.getState().setSidebarWidth(260);
+    await bridge.setWindowSize(REGULAR_WINDOW.width, REGULAR_WINDOW.height);
+    await sleep(400);
+    check(
+      '恢复常规宽度后工具栏动作重新平铺',
+      await waitFor(() => !document.querySelector('[data-testid="toolbar-more"]'), 5_000),
+    );
+
     // ── 5. 文档格式边界：native-block 不进源码；markdown sidecar 才进源码 ──
     await invoke('fs:createNote', { parentDir: '', name: '原生模式边界页' });
     const nativeBoundary = await invoke('document:getMetadata', { path: '原生模式边界页.md' });
@@ -435,7 +621,7 @@ export async function runSmokeIfEnabled(): Promise<void> {
       'native-block 默认进入块编辑且源码入口不可见',
       (await waitFor(() => !!document.querySelector('[data-testid="editor-view"] .ProseMirror'))) &&
         !document.querySelector('[data-testid="source-mode-view"]') &&
-        !document.querySelector('[data-testid="source-mode-toggle"]'),
+        !document.querySelector('[data-testid="toolbar-entry-view:source"]'),
     );
     const nativeTab = useTabStore.getState().tabs.find((t) => t.pagePath === '原生模式边界页.md');
     const nativeModeBefore = nativeTab?.editorMode;
@@ -668,7 +854,7 @@ export async function runSmokeIfEnabled(): Promise<void> {
         cancelable: true,
       }),
     );
-    document.querySelector<HTMLButtonElement>('[data-testid="preview-toggle"]')?.click();
+    clickToolbarAction('view:preview');
     const markdownTabId = useTabStore.getState().tabs.find((t) => t.pagePath === markdownPath)?.id;
     const hidePreview = async (): Promise<void> => {
       if (markdownTabId) useTabStore.getState().togglePreview(markdownTabId, false);
@@ -1103,12 +1289,19 @@ export async function runSmokeIfEnabled(): Promise<void> {
     openPage('冒烟首页.md');
     check('新建笔记：树实时出现（fs:changed 驱动）', await waitFor(() => !!treeRow('冒烟首页.md')));
     check(
-      '新建笔记：打开 tab，编辑器头显示页面路径',
+      '新建笔记：文件名只在 Tab 显示（工具栏无独立文件名）',
       await waitFor(() => {
         const editor = document.querySelector(
           '[data-testid="editor-view"][data-path="冒烟首页.md"]',
         );
-        return !!editor && editor.textContent?.includes('冒烟首页.md');
+        const toolbar = editor?.querySelector('[data-testid="editor-toolbar"]');
+        const tab = document.querySelector('[data-testid="tab"][data-page-path="冒烟首页.md"]');
+        return (
+          !!editor &&
+          !!toolbar &&
+          !(toolbar.textContent ?? '').includes('冒烟首页.md') &&
+          (tab?.textContent ?? '').includes('冒烟首页')
+        );
       }),
     );
     const createdDocumentMetadata = await invoke('document:getMetadata', {
