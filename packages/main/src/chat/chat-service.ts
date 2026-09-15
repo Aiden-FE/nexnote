@@ -90,7 +90,15 @@ export class ChatService {
     const id = randomUUID();
     return {
       path: this.sessionPathFor(id),
-      meta: { id, title, profileId: null, model: null, createdAt: now, updatedAt: now },
+      meta: {
+        id,
+        title,
+        profileId: null,
+        model: null,
+        permissionMode: 'conversation',
+        createdAt: now,
+        updatedAt: now,
+      },
       turns: [],
     };
   }

@@ -24,7 +24,10 @@ function clone<T>(value: T): T {
 }
 
 function sync(): void {
-  if (working) useChatStore.getState().setActive(clone(working), draft, status);
+  if (working) {
+    useChatStore.getState().setPermissionMode(working.meta.permissionMode ?? 'conversation');
+    useChatStore.getState().setActive(clone(working), draft, status);
+  }
 }
 
 function errorMessage(e: unknown): string {
@@ -143,6 +146,16 @@ export function stopStream(): void {
   });
 }
 
+/** 修改当前会话权限并立即追加 JSONL 快照；仅影响后续 Agent 操作。 */
+export async function setPermissionMode(
+  mode: import('@nexnote/shared').ChatPermissionMode,
+): Promise<void> {
+  if (!working) return;
+  working.meta.permissionMode = mode;
+  useChatStore.getState().setPermissionMode(mode);
+  await persist(working, status);
+}
+
 /** 发送一条用户消息并流式获取回答（含上下文注入与召回来源）。 */
 export async function sendMessage(rawText: string): Promise<void> {
   const store = useChatStore.getState();
@@ -183,6 +196,7 @@ export async function sendMessage(rawText: string): Promise<void> {
       messages,
       skillIds: getSelectedSkillIds(),
       contextText,
+      permissionMode: session.meta.permissionMode ?? 'conversation',
     });
     runId = sid;
   } catch (e) {
