@@ -29,7 +29,12 @@ export class BuiltinLoopRuntime implements AgentRuntime {
     return this.ai.openChatStream(
       {
         messages: task.messages,
-        feature: task.scenario === 'debug' ? 'chat' : (task.scenario ?? 'chat'),
+        feature:
+          task.scenario === 'debug'
+            ? 'chat'
+            : task.scenario === 'translation'
+              ? 'writing'
+              : (task.scenario ?? 'chat'),
         params: task.request.params,
         ...(task.tools ? { tools: task.tools } : {}),
       },

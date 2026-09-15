@@ -14,6 +14,8 @@ import { ApprovalStore } from './approval-store';
 import { BuiltinLoopRuntime, PiRuntime } from './runtime';
 import type { ToolRegistry } from './tool-registry';
 import type { SkillService } from '../skills/skill-service';
+import { scenarioFeature } from './scenario';
+import { buildTranslationMessages, TRANSLATION_SYSTEM_PROMPT, withTranslationParams } from './translation';
 
 const TTL_MS = 10 * 60_000;
 export const AGENT_SCENARIO_PROFILES: Record<AgentScenario, { system: string; tools: string[] }> = {
@@ -28,6 +30,10 @@ export const AGENT_SCENARIO_PROFILES: Record<AgentScenario, { system: string; to
   debug: {
     system: '你是 NexNote 知识库助手。简洁回答并指出不确定性。',
     tools: ['search_notes', 'list_pages'],
+  },
+  translation: {
+    system: TRANSLATION_SYSTEM_PROMPT,
+    tools: [],
   },
 };
 
@@ -126,7 +132,14 @@ export class AgentGateway {
     this.active.set(runId, state);
     const emit = (event: AgentRunEvent) =>
       this.deps.sendEvent('agent:runEvent', { runId, scenario, event });
-    const assignment = this.deps.ai.getState().features[scenario === 'debug' ? 'chat' : scenario];
+    if (scenario === 'translation' && !request.translation) {
+      this.finishError(runId, Object.assign(new Error('翻译请求缺少 translation 字段'), { code: 'BAD_TRANSLATION_REQUEST' }), emit);
+      return { runId };
+    }
+    const effectiveRequest: AgentRunRequest = request.translation
+      ? { ...request, params: withTranslationParams(request.params) }
+      : request;
+    const assignment = this.deps.ai.getState().features[scenarioFeature(scenario)];
     const aiState = this.deps.ai.getState();
     const assignedProfile = assignment
       ? aiState.profiles.find((p) => p.id === assignment.profileId)
@@ -195,8 +208,10 @@ export class AgentGateway {
       emit({ type: 'context', sources: retrieved.sources, degraded: retrieved.degraded });
     }
     const context = [request.contextText?.trim(), skillContext.trim()].filter(Boolean).join('\n\n');
-    // writing 场景：渲染层只带白名单 actionId + 选区/上下文；prompt 模板全部由主进程持有。
-    const messages: ChatMessage[] = request.actionId
+    // translation/writing 场景的 prompt 模板全部由主进程持有。
+    const messages: ChatMessage[] = request.translation
+      ? buildTranslationMessages(request.translation)
+      : request.actionId
       ? [
           { role: 'system' as const, content: profile.system },
           { role: 'system' as const, content: AGENT_WRITING_ACTIONS[request.actionId].system },
@@ -222,7 +237,7 @@ export class AgentGateway {
     const startAttempt = (attemptTools: ChatTool[]): ChatStreamHandle =>
       this.runtime.run({
         runId,
-        request,
+        request: effectiveRequest,
         tools: attemptTools,
         messages,
         scenario,
