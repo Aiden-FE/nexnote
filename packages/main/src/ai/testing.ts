@@ -224,3 +224,46 @@ export async function startMockOpenAiServer(
     new Promise<void>((resolve, reject) => server.close((e) => (e ? reject(e) : resolve())));
   return state;
 }
+
+/**
+ * Provider request spy for main-process tests. It wraps fetch at the network seam,
+ * records only requests to the configured provider origin, and never records body
+ * credentials. Production wiring must continue to use the real global fetch.
+ */
+export interface ProviderRequest {
+  method: string;
+  url: string;
+  path: string;
+}
+
+export interface ProviderRequestSpy {
+  readonly requests: readonly ProviderRequest[];
+  fetch: typeof fetch;
+  count(path?: string): number;
+  paths(): string[];
+  reset(): void;
+}
+
+export function createProviderRequestSpy(providerBaseUrl: string): ProviderRequestSpy {
+  const origin = new URL(providerBaseUrl).origin;
+  const requests: ProviderRequest[] = [];
+  const spyFetch: typeof fetch = async (input, init) => {
+    const requestUrl = typeof input === 'string' ? input : input instanceof URL ? input.href : input.url;
+    const url = new URL(requestUrl, origin);
+    if (url.origin === origin) {
+      requests.push({
+        method: (init?.method ?? (typeof input === 'string' || input instanceof URL ? 'GET' : input.method) ?? 'GET').toUpperCase(),
+        url: url.toString(),
+        path: url.pathname,
+      });
+    }
+    return fetch(input, init);
+  };
+  return {
+    requests,
+    fetch: spyFetch,
+    count: (path) => path ? requests.filter((request) => request.path === path).length : requests.length,
+    paths: () => requests.map((request) => request.path),
+    reset: () => { requests.length = 0; },
+  };
+}

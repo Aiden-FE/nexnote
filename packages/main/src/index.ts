@@ -87,7 +87,9 @@ async function bootstrap(): Promise<void> {
     (status) => windows?.sendToMainWindow('index:statusChanged', status),
     (paths) => {
       if (confidenceService) void confidenceService.refresh(paths === null ? undefined : paths);
-      retrievalService?.invalidate(paths);
+      // AI/embedding 索引只能由显式用户意图触发（ADR-0005）。文件编辑、自动保存和
+      // watcher 的派生索引更新不得偷偷调用 provider；retrievalService 的 invalidate
+      // 仅保留给未来显式「重建语义索引」命令调用。
     },
   );
   // 文件监视（DEV-003）：事件同时驱动树刷新与 DEV-004 的防抖单文件索引。
