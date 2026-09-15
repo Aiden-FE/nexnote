@@ -1,5 +1,10 @@
 import { create } from 'zustand';
-import type { ChatSession, ChatSessionStatus, ChatSummary } from '@nexnote/shared';
+import type {
+  ChatPermissionMode,
+  ChatSession,
+  ChatSessionStatus,
+  ChatSummary,
+} from '@nexnote/shared';
 import type { ChatContextChip } from './context';
 
 /** 从选区「询问 AI」进入对话 dock 的待处理载荷（DEV-012 交付内容 7）。 */
@@ -26,6 +31,8 @@ interface ChatState {
   chips: ChatContextChip[];
   /** 「询问 AI」进入时的选区载荷（dock 打开后消费）。 */
   pendingAsk: AskPayload | null;
+  permissionMode: ChatPermissionMode;
+  setPermissionMode(mode: ChatPermissionMode): void;
   setSummaries(summaries: ChatSummary[]): void;
   setActive(session: ChatSession | null, isDraft: boolean, status?: ChatSessionStatus): void;
   setStreaming(streaming: boolean): void;
@@ -49,7 +56,9 @@ export const useChatStore = create<ChatState>((set, get) => ({
   modelLabel: null,
   chips: [],
   pendingAsk: null,
+  permissionMode: 'conversation',
 
+  setPermissionMode: (permissionMode) => set({ permissionMode }),
   setSummaries: (summaries) => set({ summaries }),
   setActive: (active, isDraft, status = 'complete') =>
     set({ active, isDraft, sessionStatus: status, error: null }),
@@ -69,6 +78,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
   reset: () =>
     set({
       active: null,
+      permissionMode: 'conversation',
       isDraft: false,
       sessionStatus: 'complete',
       streaming: false,

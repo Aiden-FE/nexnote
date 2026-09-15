@@ -11,6 +11,7 @@ export class ToolRegistryError extends Error {
 export interface ToolContext {
   runId: string;
   scenario: AgentScenario;
+  permissionMode?: import('@nexnote/shared').ChatPermissionMode;
 }
 export interface AgentTool {
   definition: AgentToolDefinition;

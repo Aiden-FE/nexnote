@@ -28,6 +28,7 @@ import {
   sendMessage,
   startNewSession,
   stopStream,
+  setPermissionMode,
 } from './chat-runtime';
 import { addSelectionContext, refreshAutoDocumentChip } from './chat-context-bridge';
 import { ChatSkillPicker } from '../../skills/ChatSkillPicker';
@@ -196,6 +197,9 @@ export function ChatDock() {
   const modelLabel = useChatStore((s) => s.modelLabel);
   const sessionStatus = useChatStore((s) => s.sessionStatus);
   const pendingAsk = useChatStore((s) => s.pendingAsk);
+  const permissionMode = useChatStore((s) => s.permissionMode);
+  const permissionMode = useChatStore((s) => s.permissionMode);
+  const permissionMode = useChatStore((s) => s.permissionMode);
   const [input, setInput] = useState('');
   const scrollRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
@@ -262,6 +266,26 @@ export function ChatDock() {
           <MessageSquarePlus className="size-3.5" /> 新会话
         </Button>
         <HistoryMenu />
+        <label
+          className="flex items-center gap-1 text-[11px] text-muted-foreground"
+          title="仅约束 Chat Dock Agent 工具"
+        >
+          权限
+          <select
+            data-testid="chat-permission-mode"
+            aria-label="Chat Dock 权限模式"
+            value={permissionMode}
+            disabled={!active || streaming}
+            onChange={(e) =>
+              void setPermissionMode(e.target.value as import('@nexnote/shared').ChatPermissionMode)
+            }
+            className="h-7 rounded border bg-transparent px-1 text-[11px] text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/40"
+          >
+            <option value="conversation">对话（只读）</option>
+            <option value="edit">编辑（逐项审批）</option>
+            <option value="full">完全权限（自动写回）</option>
+          </select>
+        </label>
         <Button
           variant="ghost"
           size="sm"

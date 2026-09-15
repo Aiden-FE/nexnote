@@ -1,5 +1,6 @@
 /** AI 会话内部 JSONL 存储公共类型。 */
 import type { RetrievalStageName } from './retrieval';
+import type { ChatPermissionMode } from './agent';
 
 export type ChatTurnRole = 'user' | 'assistant';
 
@@ -48,6 +49,8 @@ export interface ChatSessionMeta {
   /** 对话 Profile id；null = 走 chat 功能默认指派。 */
   profileId?: string | null;
   model?: string | null;
+  /** 会话级 Chat Dock Agent 权限；缺省兼容为对话模式。 */
+  permissionMode?: ChatPermissionMode;
   /** ISO-8601 创建时间。 */
   createdAt: string;
   /** ISO-8601 最近更新时间。 */

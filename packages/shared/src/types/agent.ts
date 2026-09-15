@@ -5,6 +5,8 @@ export type AgentWritingActionId =
   'rewrite' | 'expand' | 'condense' | 'polish' | 'fillgaps' | 'evidence';
 export type AgentRunStatus = 'started' | 'completed' | 'cancelled' | 'failed';
 export type AgentApprovalDecision = 'approved' | 'denied';
+/** Chat Dock 会话级 Agent 工具权限。 */
+export type ChatPermissionMode = 'conversation' | 'edit' | 'full';
 
 /** 临时翻译输入形态：划词片段（selection）或整篇文档（document）。 */
 export type AgentTranslationMode = 'selection' | 'document';
@@ -32,6 +34,10 @@ export interface AgentRunRequest {
   target?: string;
   /** translation 场景原文与目标语言；params.reasoningEffort 由主进程强制关闭。 */
   translation?: AgentTranslationRequest;
+  /** Chat Dock only; writing/translation callers intentionally omit this. */
+  permissionMode?: ChatPermissionMode;
+  /** Active document paths used by the full-mode scope guard. */
+  contextPaths?: string[];
 }
 
 export type AgentRunEvent =

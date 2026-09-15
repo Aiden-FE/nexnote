@@ -15,7 +15,11 @@ import { BuiltinLoopRuntime, PiRuntime } from './runtime';
 import type { ToolRegistry } from './tool-registry';
 import type { SkillService } from '../skills/skill-service';
 import { scenarioFeature } from './scenario';
-import { buildTranslationMessages, TRANSLATION_SYSTEM_PROMPT, withTranslationParams } from './translation';
+import {
+  buildTranslationMessages,
+  TRANSLATION_SYSTEM_PROMPT,
+  withTranslationParams,
+} from './translation';
 
 const TTL_MS = 10 * 60_000;
 export const AGENT_SCENARIO_PROFILES: Record<AgentScenario, { system: string; tools: string[] }> = {
@@ -98,6 +102,8 @@ function summarizeToolResult(result: unknown): string {
 
 type RunState = {
   scenario: AgentScenario;
+  permissionMode: import('@nexnote/shared').ChatPermissionMode;
+  contextPaths: string[];
   started: number;
   status: 'active' | 'completed' | 'cancelled' | 'error';
   handle?: ChatStreamHandle;
@@ -128,12 +134,25 @@ export class AgentGateway {
   async run(scenario: AgentScenario, request: AgentRunRequest): Promise<{ runId: string }> {
     const runId = randomUUID();
     const profile = AGENT_SCENARIO_PROFILES[scenario];
-    const state: RunState = { scenario, started: Date.now(), status: 'active' };
+    const state: RunState = {
+      scenario,
+      permissionMode:
+        scenario === 'chat' ? (request.permissionMode ?? 'conversation') : 'conversation',
+      contextPaths: request.contextPaths ?? [],
+      started: Date.now(),
+      status: 'active',
+    };
     this.active.set(runId, state);
     const emit = (event: AgentRunEvent) =>
       this.deps.sendEvent('agent:runEvent', { runId, scenario, event });
     if (scenario === 'translation' && !request.translation) {
-      this.finishError(runId, Object.assign(new Error('翻译请求缺少 translation 字段'), { code: 'BAD_TRANSLATION_REQUEST' }), emit);
+      this.finishError(
+        runId,
+        Object.assign(new Error('翻译请求缺少 translation 字段'), {
+          code: 'BAD_TRANSLATION_REQUEST',
+        }),
+        emit,
+      );
       return { runId };
     }
     const effectiveRequest: AgentRunRequest = request.translation
@@ -212,22 +231,22 @@ export class AgentGateway {
     const messages: ChatMessage[] = request.translation
       ? buildTranslationMessages(request.translation)
       : request.actionId
-      ? [
-          { role: 'system' as const, content: profile.system },
-          { role: 'system' as const, content: AGENT_WRITING_ACTIONS[request.actionId].system },
-          {
-            role: 'user' as const,
-            content: AGENT_WRITING_ACTIONS[request.actionId].buildUserPrompt(
-              request.target ?? '',
-              context,
-            ),
-          },
-        ]
-      : [
-          { role: 'system' as const, content: profile.system },
-          ...(context ? [{ role: 'system' as const, content: `参考上下文：\n${context}` }] : []),
-          ...incomingMessages.filter((m) => m.role !== 'system'),
-        ];
+        ? [
+            { role: 'system' as const, content: profile.system },
+            { role: 'system' as const, content: AGENT_WRITING_ACTIONS[request.actionId].system },
+            {
+              role: 'user' as const,
+              content: AGENT_WRITING_ACTIONS[request.actionId].buildUserPrompt(
+                request.target ?? '',
+                context,
+              ),
+            },
+          ]
+        : [
+            { role: 'system' as const, content: profile.system },
+            ...(context ? [{ role: 'system' as const, content: `参考上下文：\n${context}` }] : []),
+            ...incomingMessages.filter((m) => m.role !== 'system'),
+          ];
     const supportsTools = this.aiSupportsTools(scenario);
     let tools = supportsTools ? this.buildSdkTools(runId, scenario) : [];
     let terminalError: Extract<AgentRunEvent, { type: 'error' }> | undefined;
@@ -314,7 +333,9 @@ export class AgentGateway {
   private aiSupportsTools(scenario: AgentScenario): boolean {
     const ai = this.deps.ai as AiService & { supportsTools?: AiService['supportsTools'] };
     if (typeof ai.supportsTools !== 'function') return true;
-    return ai.supportsTools({ feature: scenario === 'debug' ? 'chat' : scenario });
+    return ai.supportsTools({
+      feature: scenario === 'debug' ? 'chat' : scenario === 'translation' ? 'chat' : scenario,
+    });
   }
   /** 工具不可用时的显式降级留痕：事件 + 审计 + 系统提示（不静默失败）。 */
   private markToolFallback(
@@ -384,30 +405,83 @@ export class AgentGateway {
       throw Object.assign(new Error('工具未获准执行'), { code: 'TOOL_NOT_ALLOWED' });
     }
     if (tool.access === 'write' || tool.requiresApproval) {
-      const approvalId = randomUUID();
-      const expiresAt = this.approvals.request(approvalId, name, runId);
-      emit({ type: 'approvalRequired', approvalId, tool: name, expiresAt });
-      this.audit.append({
-        runId,
-        scenario,
-        event: 'approval',
-        status: 'started',
-        tool: name,
-        at: Date.now(),
-      });
-      const decision = await this.approvals.wait(approvalId, name, runId);
-      const approved = decision === 'approved' && this.approvals.consume(approvalId, name, runId);
-      this.audit.append({
-        runId,
-        scenario,
-        event: 'approval',
-        status: approved ? 'approved' : 'denied',
-        tool: name,
-        at: Date.now(),
-      });
-      if (!approved) {
-        emit({ type: 'tool', tool: name, status: 'denied' });
-        throw Object.assign(new Error('工具审批被拒绝'), { code: 'APPROVAL_DENIED' });
+      if (tool.access === 'write' && state.permissionMode === 'conversation') {
+        this.audit.append({
+          runId,
+          scenario,
+          event: 'tool',
+          status: 'denied',
+          tool: name,
+          code: 'WRITE_REQUIRES_EDIT_MODE',
+          at: Date.now(),
+        });
+        emit({
+          type: 'tool',
+          tool: name,
+          status: 'denied',
+          summary: '对话模式禁止写工具；请切换到编辑模式并逐项审批。',
+        });
+        throw Object.assign(new Error('对话模式禁止写工具，请切换到编辑模式审批'), {
+          code: 'WRITE_REQUIRES_EDIT_MODE',
+        });
+      }
+      if (state.permissionMode === 'full') {
+        const forbidden = /shell|command|delete|remove|rename|config|setting/i.test(name);
+        const target =
+          typeof input === 'object' && input !== null
+            ? (input as Record<string, unknown>).path
+            : undefined;
+        const inScope =
+          typeof target !== 'string' ||
+          state.contextPaths.length === 0 ||
+          state.contextPaths.some((p) => target === p || target.startsWith(`${p}/`));
+        if (forbidden || !inScope) {
+          this.audit.append({
+            runId,
+            scenario,
+            event: 'tool',
+            status: 'denied',
+            tool: name,
+            code: forbidden ? 'FULL_MODE_TOOL_FORBIDDEN' : 'FULL_MODE_SCOPE_DENIED',
+            at: Date.now(),
+          });
+          emit({
+            type: 'tool',
+            tool: name,
+            status: 'denied',
+            summary: '完全权限护栏拒绝：仅允许当前上下文文档的文档编辑。',
+          });
+          throw Object.assign(new Error('完全权限护栏拒绝该写操作'), {
+            code: forbidden ? 'FULL_MODE_TOOL_FORBIDDEN' : 'FULL_MODE_SCOPE_DENIED',
+          });
+        }
+      }
+      if (state.permissionMode !== 'full') {
+        const approvalId = randomUUID();
+        const expiresAt = this.approvals.request(approvalId, name, runId);
+        emit({ type: 'approvalRequired', approvalId, tool: name, expiresAt });
+        this.audit.append({
+          runId,
+          scenario,
+          event: 'approval',
+          status: 'started',
+          tool: name,
+          at: Date.now(),
+        });
+        const decision = await this.approvals.wait(approvalId, name, runId);
+        const approved = decision === 'approved' && this.approvals.consume(approvalId, name, runId);
+        this.audit.append({
+          runId,
+          scenario,
+          event: 'approval',
+          status: approved ? 'approved' : 'denied',
+          tool: name,
+          at: Date.now(),
+        });
+        if (!approved) {
+          emit({ type: 'tool', tool: name, status: 'denied' });
+          throw Object.assign(new Error('工具审批被拒绝'), { code: 'APPROVAL_DENIED' });
+        }
       }
     }
     this.audit.append({
@@ -419,7 +493,11 @@ export class AgentGateway {
       at: Date.now(),
     });
     try {
-      const result = await this.deps.tools!.execute(name, input, { runId, scenario });
+      const result = await this.deps.tools!.execute(name, input, {
+        runId,
+        scenario,
+        permissionMode: state.permissionMode,
+      });
       const summary = summarizeToolResult(result);
       this.audit.append({
         runId,
