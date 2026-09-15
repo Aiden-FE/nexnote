@@ -1,6 +1,9 @@
 import { defaultKeymap, history, historyKeymap } from '@codemirror/commands';
 import { markdown } from '@codemirror/lang-markdown';
 import { defaultHighlightStyle, syntaxHighlighting, syntaxTree } from '@codemirror/language';
+import { CODE_LANGUAGES } from '@nexnote/shared';
+import { codeLanguages } from './fence-languages';
+import { fenceHighlightExtension } from './fence-highlight';
 import { EditorState, type Extension, type Range } from '@codemirror/state';
 import {
   Decoration,
@@ -11,6 +14,8 @@ import {
   ViewPlugin,
   type ViewUpdate,
 } from '@codemirror/view';
+
+export const sourceCodeLanguages = CODE_LANGUAGES;
 
 export interface SourceEditorHandle {
   /** CodeMirror 视图实例（AI 辅助事务写回/坐标查询用）。 */
@@ -90,7 +95,8 @@ export function createSourceEditor(
       extensions: [
         lineNumbers(),
         history(),
-        markdown(),
+        markdown({ codeLanguages }),
+        fenceHighlightExtension,
         syntaxHighlighting(defaultHighlightStyle, { fallback: true }),
         keymap.of([...defaultKeymap, ...historyKeymap]),
         // 块锚点弱化显示（只读元数据）：低透明度，不改变任何字节。
