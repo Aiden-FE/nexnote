@@ -338,6 +338,120 @@ describe('Editor kernel 事务与保存', () => {
   });
 });
 
+describe('DEV-044 块 ID 锚点泄漏防御', () => {
+  const PUA_RE = /[\uFFF0\uFFF1]/;
+  const collectTexts = (node: JSONContent, out: string[] = []): string[] => {
+    if (node.type === 'text' && typeof node.text === 'string') out.push(node.text);
+    for (const child of node.content ?? []) collectTexts(child, out);
+    return out;
+  };
+
+  it('taskList(blockId) + 文档末尾空 paragraph(blockId) 往返：无 ID/PUA 进 text，空尾段不并入 taskItem', () => {
+    const extensions = buildKernelExtensions({ slashMenu: false, dragHandle: false });
+    const manager = createMarkdownManager(extensions);
+    const doc: JSONContent = {
+      type: 'doc',
+      content: [
+        {
+          type: 'taskList',
+          content: [
+            {
+              type: 'taskItem',
+              attrs: { checked: false, blockId: 'task-1' },
+              content: [{ type: 'paragraph', content: [{ type: 'text', text: '待办内容' }] }],
+            },
+          ],
+        },
+        { type: 'paragraph', attrs: { blockId: 'trailing-empty' }, content: [] },
+      ],
+    };
+    const output = serializeMarkdown(manager, doc);
+    // 序列化不得产出可被 lazy continuation 吸收的独立 ` ^id` 锚点行
+    expect(output).not.toMatch(/^[ \t]*\^[A-Za-z0-9-]+\s*$/m);
+    const doc2 = parseMarkdown(manager, output);
+    const texts = collectTexts(doc2);
+    expect(texts.join('\n')).not.toMatch(PUA_RE);
+    expect(texts.join('\n')).not.toContain('trailing-empty');
+    const taskItem = doc2.content?.[0]?.content?.[0];
+    expect(taskItem?.type).toBe('taskItem');
+    expect(taskItem?.attrs?.blockId).toBe('task-1');
+    // 空尾段不得作为续段并入 taskItem
+    expect(taskItem?.content?.every((c) => c.type === 'paragraph')).toBe(true);
+    expect((taskItem?.content ?? []).length).toBe(1);
+    // 二次往返稳定
+    const output2 = serializeMarkdown(manager, doc2);
+    expect(normalizeForCompare(output2)).toBe(normalizeForCompare(output));
+  });
+
+  it('`- [ ] 待办 ^id1` + 空行 + ` ^id2` 直接 parse：id2 不得进入任何 text 节点', () => {
+    const extensions = buildKernelExtensions({ slashMenu: false, dragHandle: false });
+    const manager = createMarkdownManager(extensions);
+    const doc = parseMarkdown(manager, '- [ ] 待办内容 ^id1\n\n ^id2');
+    const texts = collectTexts(doc);
+    expect(texts.join('\n')).not.toMatch(PUA_RE);
+    expect(texts.join('\n')).not.toContain('id2');
+    const taskItem = doc.content?.[0]?.content?.[0];
+    expect(taskItem?.attrs?.blockId).toBe('id1');
+  });
+
+  it('lazy continuation 吸收形态（无空行）也能确定性回收，不泄漏 PUA', () => {
+    const extensions = buildKernelExtensions({ slashMenu: false, dragHandle: false });
+    const manager = createMarkdownManager(extensions);
+    // 历史污染文件形态：` ^id2` 紧随其后，无空行，被吸收进 taskItem 首段
+    const doc = parseMarkdown(manager, '- [ ] 待办内容 ^id1\n ^id2');
+    const texts = collectTexts(doc);
+    expect(texts.join('\n')).not.toMatch(PUA_RE);
+    expect(texts.join('\n')).not.toContain('id1');
+    expect(texts.join('\n')).not.toContain('id2');
+    const taskItem = doc.content?.[0]?.content?.[0];
+    expect(taskItem?.attrs?.blockId).toBe('id1');
+  });
+
+  it('真实 createEditor（trailingNode + UniqueID）：重开循环正文无泄漏、锚点数不增长', async () => {
+    const makeKernel = (md: string) => {
+      const kernel = createEditor(document.createElement('div'), {
+        initialMarkdown: md,
+        slashMenu: false,
+        dragHandle: false,
+      });
+      return kernel;
+    };
+    let current = '- [ ] 任务甲\n';
+    let anchorCount = -1;
+    for (let round = 0; round < 3; round += 1) {
+      const kernel = makeKernel(current);
+      await vi.waitFor(() => {
+        const blocks = kernel.getJSON().content ?? [];
+        expect(
+          blocks.some((b) => typeof b.attrs?.blockId === 'string' && b.attrs.blockId.length > 0),
+        ).toBe(true);
+      });
+      expect(kernel.editor.getText()).not.toMatch(/[\uFFF0\uFFF1]/);
+      // UniqueID 生成的随机 id 不得出现在正文文本里
+      for (const text of collectTexts(kernel.getJSON())) {
+        expect(text).not.toMatch(/[\uFFF0\uFFF1]/);
+      }
+      const saved = kernel.getMarkdown();
+      expect(saved).not.toMatch(/^[ \t]*\^[A-Za-z0-9-]+\s*$/m);
+      const count = (saved.match(/\^[A-Za-z0-9-]+/g) ?? []).length;
+      if (anchorCount === -1) anchorCount = count;
+      else expect(count).toBe(anchorCount);
+      current = saved;
+      kernel.destroy();
+    }
+  });
+
+  it('用户手写 ^aonubg8xf 字样保留（锚点形态与行中字面量均不误删）', () => {
+    const extensions = buildKernelExtensions({ slashMenu: false, dragHandle: false });
+    const manager = createMarkdownManager(extensions);
+    const doc = parseMarkdown(manager, '行中字面 ^aonubg8xf 保留\n\n行尾锚点 ^aonubg8xf');
+    const texts = collectTexts(doc);
+    expect(texts.join('\n')).toContain('^aonubg8xf');
+    const output = serializeMarkdown(manager, doc);
+    expect(output).toContain('aonubg8xf');
+  });
+});
+
 describe('文件名 ↔ H1 标题绑定纯函数', () => {
   it('文件名生成初始 H1，并保留 frontmatter 在首部', async () => {
     const title = (await import('../../renderer/src/stores/tab-store')).titleFromPath(

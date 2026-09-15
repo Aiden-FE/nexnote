@@ -24,13 +24,22 @@ const PLACEHOLDER_GLOBAL_RE = new RegExp(
   `${ANCHOR_OPEN}(${BLOCK_ID_RE_SOURCE})${ANCHOR_CLOSE}`,
   'g',
 );
-const PLACEHOLDER_TAIL_RE = new RegExp(`${ANCHOR_OPEN}(${BLOCK_ID_RE_SOURCE})${ANCHOR_CLOSE}$`);
+const PLACEHOLDER_TAIL_RE = new RegExp(
+  `(?:${ANCHOR_OPEN})?(${BLOCK_ID_RE_SOURCE})${ANCHOR_CLOSE}$`,
+);
 const PLACEHOLDER_WHOLE_LINE_RE = new RegExp(
-  `^${ANCHOR_OPEN}(${BLOCK_ID_RE_SOURCE})${ANCHOR_CLOSE}[ \\t]*$`,
+  `^[ \\t]*${ANCHOR_OPEN}(${BLOCK_ID_RE_SOURCE})${ANCHOR_CLOSE}[ \\t]*$`,
 );
 
 /** 允许携带 blockId 属性的块类型（与 UniqueID 配置保持一致）。 */
-export const BLOCK_ID_TYPES = ['paragraph', 'heading', 'listItem', 'codeBlock', 'table'] as const;
+export const BLOCK_ID_TYPES = [
+  'paragraph',
+  'heading',
+  'listItem',
+  'taskItem',
+  'codeBlock',
+  'table',
+] as const;
 
 /**
  * 从 Markdown 输出剥除块 ID 锚点（原生复制到剪贴板用）。
@@ -125,27 +134,42 @@ function extractTrailingPlaceholder(
   content: JSONContent[] | undefined,
 ): { id: string; content: JSONContent[] } | null {
   if (!content || content.length === 0) return null;
-  const last = content[content.length - 1];
-  if (!isText(last)) return null;
-  const m = PLACEHOLDER_TAIL_RE.exec(last.text);
-  if (!m) return null;
-  const id = m[1] as string;
-  const text = last.text.slice(0, m.index).replace(/[ \t\n]+$/, '');
-  const rest = content.slice(0, -1);
-  if (text.length > 0) rest.push({ ...last, text });
-  return { id, content: rest };
+  let rest = content.slice();
+  const ids: string[] = [];
+  while (rest.length > 0) {
+    const last = rest[rest.length - 1];
+    if (!isText(last)) break;
+    const m = PLACEHOLDER_TAIL_RE.exec(last.text);
+    if (!m) break;
+    ids.unshift(m[1] as string);
+    const text = last.text.slice(0, m.index).replace(/[ \t\n]+$/, '');
+    rest = rest.slice(0, -1);
+    if (text.length > 0) rest.push({ ...last, text });
+  }
+  if (ids.length === 0) return null;
+  return { id: ids[0] as string, content: rest };
 }
 
-/** 占位符整段（standalone 锚点段落）。 */
-function extractOnlyPlaceholderParagraph(node: JSONContent): { id: string } | null {
+/**
+ * 占位符整段（standalone 锚点段落）。
+ *
+ * `allowBareAnchor` 仅用于块级上下文（文档顶层、列表项/引用的直接子级）：那里的
+ * 裸 `^id` 段落是历史产物中被 lazy continuation 拆开的内联锚点，属于内部形态，必须
+ * 回收。表格单元格等嵌套内容保持字面文本，用户写的 `^alpha` 不得被吞掉。
+ */
+function extractOnlyPlaceholderParagraph(
+  node: JSONContent,
+  allowBareAnchor: boolean,
+): { id: string } | null {
   if (node.type !== 'paragraph' || !node.content || node.content.length === 0) return null;
   const texts = node.content;
   if (texts.length > 1) return null;
   const only = texts[0];
   if (!isText(only)) return null;
-  const m = new RegExp(`^${ANCHOR_OPEN}(${BLOCK_ID_RE_SOURCE})${ANCHOR_CLOSE}[ \\t]*$`).exec(
-    only.text,
-  );
+  const body = allowBareAnchor ? `(?:${ANCHOR_OPEN}|\\^)?` : `${ANCHOR_OPEN}`;
+  const m = new RegExp(
+    `^[ \\t]*${body}(${BLOCK_ID_RE_SOURCE})(?:${ANCHOR_CLOSE})?[ \\t]*$`,
+  ).exec(only.text);
   if (!m) return null;
   return { id: m[1] as string };
 }
@@ -158,11 +182,14 @@ function literalAnchorParagraph(id: string): JSONContent {
  * parse 后处理：占位符 → blockId 属性。
  */
 export function liftPlaceholdersToBlockIds(node: JSONContent): JSONContent {
-  const { content } = walkNodes(node.content ?? []);
+  const { content } = walkNodes(node.content ?? [], true);
   return { ...node, content };
 }
 
-function walkNodes(nodes: JSONContent[]): { content: JSONContent[] } {
+function walkNodes(
+  nodes: JSONContent[],
+  allowBareAnchor = false,
+): { content: JSONContent[] } {
   const content: JSONContent[] = [];
   /** standalone 锚点等待挂到「下一个可挂载块」…不，Obsidian 是前一块；此变量表示
    *  「已遇到 standalone 锚点但当前没有可挂载的前块」，后续再遇到块时按字面恢复。 */
@@ -170,11 +197,15 @@ function walkNodes(nodes: JSONContent[]): { content: JSONContent[] } {
 
   for (const node of nodes) {
     // standalone 占位符段落：归属前一个兄弟块
-    const standalone = extractOnlyPlaceholderParagraph(node);
+    const standalone = extractOnlyPlaceholderParagraph(node, allowBareAnchor);
     if (standalone) {
       const target = findAttachable(content);
       if (target) {
-        target.attrs = { ...(target.attrs ?? {}), blockId: standalone.id };
+        if (typeof target.attrs?.blockId !== 'string') {
+          target.attrs = { ...(target.attrs ?? {}), blockId: standalone.id };
+        }
+        // A second anchor for the same preceding block is consumed rather than
+        // becoming visible text (this is the lazy-continuation recovery path).
       } else if (danglingId) {
         // 连续两个无法挂载的 standalone：把上一个按字面恢复
         content.push(literalAnchorParagraph(danglingId));
@@ -205,11 +236,17 @@ function walkNodes(nodes: JSONContent[]): { content: JSONContent[] } {
     }
 
     if (current.content && current.content.length > 0) {
-      const inner = walkNodes(current.content);
+      const inner = walkNodes(
+        current.content,
+        allowBareAnchor && (current.type === 'listItem' || current.type === 'taskItem'),
+      );
       current = { ...current, content: inner.content };
 
-      // listItem：把首段的锚点 id 上移到 listItem（Obsidian：`- 项 ^id` 指向列表项）
-      if (current.type === 'listItem' && !current.attrs?.blockId) {
+      // listItem/taskItem：把首段的锚点 id 上移到列表项（Obsidian：`- 项 ^id` 指向列表项）
+      if (
+        (current.type === 'listItem' || current.type === 'taskItem') &&
+        !current.attrs?.blockId
+      ) {
         const listContent = current.content ?? [];
         const paraIdx = listContent.findIndex(
           (c) => c.type === 'paragraph' && typeof c.attrs?.blockId === 'string',
@@ -257,9 +294,16 @@ export function injectPlaceholderForBlockIds(node: JSONContent): JSONContent {
     let current: JSONContent = { ...child };
     const blockId = current.attrs?.blockId;
     if (typeof blockId === 'string' && blockId.length > 0) {
-      if (current.type === 'paragraph' || current.type === 'heading') {
+      if (
+        current.type === 'paragraph' &&
+        (current.content ?? []).every((item) => isText(item) && item.text.trim().length === 0)
+      ) {
+        // 空段落没有可见内容承载锚点；注入会产出可被列表 lazy continuation
+        // 吸收的独立 ` ^id` 行（DEV-044），因此直接丢弃空段锚点。
+        current = { ...current, attrs: withoutBlockId(current.attrs) };
+      } else if (current.type === 'paragraph' || current.type === 'heading') {
         current = appendInlinePlaceholder(current, blockId);
-      } else if (current.type === 'listItem') {
+      } else if (current.type === 'listItem' || current.type === 'taskItem') {
         current = injectIntoListItem(current, blockId) ?? current;
       }
       // codeBlock/table 由 renderMarkdown 扩展处理，这里保留属性
