@@ -20,7 +20,7 @@ import { createSourceEditor, type SourceEditorHandle } from './codemirror-host';
 import { registerSourceEditor } from './active-source-editor';
 import { sourceSelectionBubble } from './source-bubble';
 import { applySourceFormat, sourceFormatBubbleActions } from './source-formatting';
-import { handleSourceBubbleAction, SOURCE_CHAT_ASK_ACTION } from './source-ai-assist';
+import { handleSourceBubbleAction } from './source-ai-assist';
 import type { SourceBubbleContext } from './source-bubble';
 import {
   aiSubActionIds,
@@ -30,7 +30,13 @@ import {
   VIEW_PREVIEW_ID,
 } from '../toolbar/entries';
 import type { EditorView } from '@codemirror/view';
-import { writingBubbleActions } from '../../features/ai/writing';
+import { writingAiMenuActions, writingStopControl } from '../../features/ai/writing';
+import {
+  createTranslationController,
+  TRANSLATE_DOCUMENT_ID,
+  TRANSLATE_SELECTION_ACTION_ID,
+  type TranslationController,
+} from '../../features/ai/translation';
 import { LivePreview, type InternalLinkNavigation } from './LivePreview';
 import { parseWholePage } from './parse-guard';
 import { registerModeSwitchHandler, requestSourceModeToggle } from './source-mode-toggle';
@@ -113,6 +119,8 @@ export function SourceModeView({ tab }: { tab: TabDescriptor }) {
 
   const hostRef = useRef<HTMLDivElement>(null);
   const editorRef = useRef<SourceEditorHandle | null>(null);
+  // 临时翻译（DEV-041）：划词浮层 + 全文临时视图；生命周期与源码编辑器一致。
+  const translationControllerRef = useRef<TranslationController | null>(null);
   const previewScrollRef = useRef<HTMLDivElement | null>(null);
   const pathRef = useRef(initialPath);
   // H1 rename updates the tab path after the current editor has already saved the document.
@@ -349,6 +357,23 @@ export function SourceModeView({ tab }: { tab: TabDescriptor }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [tab.pagePath, tab.id]);
 
+  // 临时翻译编排器（DEV-041）：经 ref 读取实时源码与路径，控制器本身稳定；
+  // 卸载时关闭两个会话（关闭即弃，绝不写入源码）。
+  useEffect(() => {
+    translationControllerRef.current = createTranslationController({
+      getDocumentText: () => editorRef.current?.view.state.doc.toString() ?? '',
+      getDocumentMeta: () => ({
+        path: pathRef.current,
+        title: titleFromPath(pathRef.current),
+      }),
+    });
+    return () => {
+      translationControllerRef.current?.closeSelection();
+      translationControllerRef.current?.closeDocument();
+      translationControllerRef.current = null;
+    };
+  }, []);
+
   // ── 挂载 CodeMirror（每个 ready 周期一次；源码与块编辑 undo 栈天然独立） ──
   useEffect(() => {
     if (!ready || !hostRef.current || editorRef.current) return;
@@ -374,21 +399,29 @@ export function SourceModeView({ tab }: { tab: TabDescriptor }) {
         );
         if (preview.scrollTop !== next) preview.scrollTop = next;
       },
-      // 划词工具栏（与块编辑一致，DEV-023 按钮集统一）：格式化五项 + 双链 +
-      // 询问 AI + 白名单写作动作。格式化为 Markdown 语法包裹（单事务可 undo，
-      // 不经块编辑器序列化）；AI 流式预览经共享 WritingAssistantLayer（WorkspaceView
-      // 全局挂载），Accept 单事务写回可 undo。
+      // 划词工具栏（与块编辑同一按钮集）：格式化五项 + 双链平铺，AI 写作、询问 AI
+      // 与划词翻译收口为单一「AI」下拉（DEV-034 / DEV-041）。格式化为 Markdown 语法
+      // 包裹（单事务可 undo，不经块编辑器序列化）；AI 流式预览经共享
+      // WritingAssistantLayer（WorkspaceView 全局挂载），Accept 单事务写回可 undo；
+      // 生成中由注入的停止控件取消会话；划词翻译打开只读浮层，无写回路径。
       extraExtensions: [
         sourceWikilinkCompletion({ getPages: currentPageCandidates, onPick: createRedlinkPage }),
         sourceSelectionBubble({
-          actions: [
-            ...sourceFormatBubbleActions(),
-            ...writingBubbleActions(),
-            { id: SOURCE_CHAT_ASK_ACTION, title: '询问 AI' },
-          ],
+          actions: sourceFormatBubbleActions(),
+          aiMenu: { label: 'AI', actions: writingAiMenuActions() },
+          extraControl: writingStopControl(),
+          // 选区消失（折叠/空文本）时关闭划词翻译浮层
+          onSelectionLost: () => translationControllerRef.current?.closeSelection(),
           onAction: (id, ctx) => {
             const editor = editorRef.current;
             if (!editor) return;
+            if (id === TRANSLATE_SELECTION_ACTION_ID) {
+              translationControllerRef.current?.translateSelection({
+                text: ctx.text,
+                coords: ctx.coords,
+              });
+              return;
+            }
             if (applySourceFormat(editor.view, id)) return;
             handleSourceBubbleAction(editor.view, id, ctx, { getDocPath: () => pathRef.current });
           },
@@ -588,6 +621,10 @@ export function SourceModeView({ tab }: { tab: TabDescriptor }) {
       const coords = v.coordsAtPos(from) ?? { top: 0, left: 0 };
       return { text, from, to, coords: { top: coords.top, left: coords.left } };
     };
+    if (id === TRANSLATE_DOCUMENT_ID) {
+      translationControllerRef.current?.translateDocument();
+      return;
+    }
     if (id === AI_ASK_ID || aiSubActionIds().includes(id)) {
       const v = view();
       const ctx = aiContext();

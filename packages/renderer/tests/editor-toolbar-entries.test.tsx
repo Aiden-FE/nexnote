@@ -184,8 +184,11 @@ describe('块编辑工具栏（DEV-035）', () => {
     });
     const menu = document.querySelector('[data-testid="toolbar-menu"]');
     expect(menu).not.toBeNull();
-    // 询问 AI + 六个白名单写作动作
-    expect(menu?.querySelectorAll('[role="menuitem"]').length).toBe(7);
+    // 询问 AI + 六个白名单写作动作 + 全文翻译（DEV-041）
+    expect(menu?.querySelectorAll('[role="menuitem"]').length).toBe(8);
+    expect(
+      menu?.querySelector('[data-testid="toolbar-menu-item-translate:document"]'),
+    ).not.toBeNull();
     expect(document.activeElement).toBe(
       menu?.querySelector<HTMLElement>('[data-testid="toolbar-menu-item-ai:ask"]'),
     );

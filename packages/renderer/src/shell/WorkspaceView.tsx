@@ -8,6 +8,7 @@ import { useVaultLayoutPersistence } from './layout-persistence';
 import { bindVaultFsEvents, usePageTreeStore } from '../stores/page-tree-store';
 import { bindIndexEvents, useIndexStore } from '../stores/index-store';
 import { WritingAssistantLayer } from '../features/ai/writing';
+import { TranslationLayer } from '../features/ai/translation';
 import { PluginHost } from '../features/plugins';
 import { GuidedTour } from '../tour/GuidedTour';
 
@@ -41,6 +42,7 @@ export function WorkspaceView({ vault }: { vault: VaultInfo }) {
       </div>
       <StatusBar />
       <WritingAssistantLayer />
+      <TranslationLayer />
       <PluginHost />
       <GuidedTour />
     </div>
