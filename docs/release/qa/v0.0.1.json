@@ -19,12 +19,11 @@
     "macArm64PackagedSmoke": "154/154 passed"
   },
   "notRun": [
-    "GitHub Actions runner execution for this candidate",
     "Intel macOS physical/package verification",
     "Windows physical installation and SmartScreen verification",
     "Ubuntu physical installation and GPG verification",
     "public N-1 to v0.0.1 network upgrade",
     "post-publication 24-hour monitoring"
   ],
-  "notes": "Initial public bootstrap release requested by the repository owner. The release is intentionally certificate-free: macOS uses Ad hoc signing; Windows and Ubuntu may be unsigned when signing credentials are unavailable. NOT_RUN items remain explicitly unverified and must not be described as passed."
+  "notes": "Initial public bootstrap release requested by the repository owner. The release is intentionally certificate-free: macOS uses Ad hoc signing; Windows and Ubuntu may be unsigned when signing credentials are unavailable. NOT_RUN items remain explicitly unverified and must not be described as passed. Post-publication addendum: the v0.0.1 tag workflow completed on GitHub Actions runners (macOS arm64/Intel, Windows, Ubuntu) including packaged smoke; physical installs and N-1 upgrades remain NOT_RUN."
 }
