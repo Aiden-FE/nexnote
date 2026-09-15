@@ -227,19 +227,26 @@ describe('DEV-019 端到端纯逻辑集成', () => {
     expect(skillResult.usedSkillIds.length).toBeGreaterThan(0);
     expect(skillResult.sources.length).toBeGreaterThan(0);
 
-    // 9) Chat 服务：创建会话 → 保存 → 被索引为双链目标
+    // 9) Chat 服务：会话存于 .nexnote/sessions（JSONL）→ 不进入索引；导出为页面后可索引
     const fs = new VaultFsService(() => vaultRoot);
     const chat = new ChatService(fs, () => vaultRoot);
     const session = await chat.newChat('测试会话');
+    session.turns = [{ role: 'user', content: '端到端会话正文' }];
     const created = await chat.saveChat(session);
-    expect(created.path).toMatch(/^AI Chats\//);
+    expect(created.path).toMatch(/^\.nexnote\/sessions\/[a-f0-9]{64}\.txt$/);
     const chatText = await fs.readTextFile(created.path);
-    expect(chatText).toContain('type: chat');
-    // 会话文件也被索引
-    index.updateFile(created.path);
+    expect(chatText).toContain('"type":"snapshot"');
+    // 会话不在文档树，也不被索引（页面索引只覆盖文档路径）
+    const treeAfterChat = await fs.listTree(true);
+    expect(treeAfterChat.some((e) => e.path.startsWith('.nexnote'))).toBe(false);
+    expect(index.pageSummary(created.path)).toBeNull();
+    expect(index.search('端到端会话正文')).toEqual([]);
+    // 导出为页面才是进入页面体系的唯一路径
+    const exported = await chat.saveAsDocument(created.path, true);
+    index.updateFile(exported.path);
     expect(await waitReady(index)).toBe(true);
-    const chatSummary = index.pageSummary(created.path);
-    expect(chatSummary).not.toBeNull();
+    expect(index.pageSummary(exported.path)).not.toBeNull();
+    expect(index.search('端到端会话正文').some((h) => h.path === exported.path)).toBe(true);
 
     // 10) 标签：fixture 中有 tag 概率 → 至少部分页面带标签
     const tags = index.tags(true);

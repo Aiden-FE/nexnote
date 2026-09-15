@@ -4,10 +4,8 @@ import { EditorToolbar } from '../toolbar/EditorToolbar';
 import type { TabDescriptor } from '../../stores/tab-store';
 import { useTabStore } from '../../stores/tab-store';
 import { usePageTreeStore } from '../../stores/page-tree-store';
-import { useUiStore } from '../../stores/ui-store';
 import { useSettingsStore } from '../../stores/settings-store';
 import { invoke, onEvent } from '../../lib/ipc';
-import { openChatWikilinkOrNull } from '../../features/ai/chat/chat-runtime';
 import { sanitizePageTitle, titleFromPath } from '../title-sync';
 import { registerAppSaveListener } from '../app-save';
 import { openDocumentTab } from '../../lib/open-document';
@@ -484,13 +482,6 @@ export function SourceModeView({ tab }: { tab: TabDescriptor }) {
   const navigate = useCallback(
     (link: InternalLinkNavigation): void => {
       void (async () => {
-        if (link.wikilink) {
-          const hit = await openChatWikilinkOrNull(link.target);
-          if (hit) {
-            useUiStore.getState().setActiveDockPanel('ai-chat');
-            return;
-          }
-        }
         const nextPath = link.wikilink ? wikilinkPath(link.target) : `${link.target}.md`;
         try {
           await flush(); // 保存失败则取消导航

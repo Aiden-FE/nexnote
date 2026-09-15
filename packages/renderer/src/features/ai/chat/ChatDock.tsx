@@ -1,14 +1,16 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ChevronDown,
+  AlertTriangle,
   CornerDownLeft,
   FileDown,
   Loader2,
   MessageSquarePlus,
+  Search,
   Settings2,
   Sparkles,
 } from 'lucide-react';
-import type { ChatTurn, RetrievalResponse } from '@nexnote/shared';
+import type { ChatSessionStatus, ChatTurn, RetrievalResponse } from '@nexnote/shared';
 import { useChatStore } from './chat-store';
 import { ContextChips } from './ContextChips';
 import { RetrievalSources } from '../retrieval/RetrievalSources';
@@ -21,9 +23,8 @@ import { Button } from '../../../components/ui/button';
 import {
   initChatRuntime,
   openSession,
-  refreshFolder,
-  refreshSummaries,
   saveActiveAsDocument,
+  searchSessions,
   sendMessage,
   startNewSession,
   stopStream,
@@ -97,10 +98,25 @@ function TurnView({ turn }: { turn: ChatTurn }) {
   );
 }
 
+const STATUS_LABEL: Record<ChatSessionStatus, string> = {
+  complete: '',
+  streaming: '未完成',
+  cancelled: '已取消',
+  failed: '失败',
+};
+
 function HistoryMenu() {
   const summaries = useChatStore((s) => s.summaries);
   const [open, setOpen] = useState(false);
+  const [query, setQuery] = useState('');
   const triggerRef = useRef<HTMLButtonElement>(null);
+
+  // 打开历史面板或修改搜索词时由主进程过滤（会话量可增长，不在渲染层全量持有）。
+  useEffect(() => {
+    if (!open) return;
+    void searchSessions(query);
+  }, [open, query]);
+
   return (
     <>
       <Button
@@ -120,15 +136,30 @@ function HistoryMenu() {
         anchorRef={triggerRef}
         onClose={() => setOpen(false)}
         testId="chat-history-menu"
-        className="max-h-72 w-60 overflow-auto rounded-md border bg-popover p-1 text-[12px] text-popover-foreground shadow-md"
+        className="max-h-72 w-64 overflow-auto rounded-md border bg-popover p-1 text-[12px] text-popover-foreground shadow-md"
         placement="bottom"
       >
-        {summaries.length === 0 && <p className="px-2 py-2 text-muted-foreground">暂无历史会话</p>}
+        <div className="relative mb-1 px-1">
+          <Search className="pointer-events-none absolute left-2.5 top-1/2 size-3 -translate-y-1/2 text-muted-foreground" />
+          <input
+            data-testid="chat-history-search"
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            placeholder="搜索会话标题…"
+            className="w-full rounded border bg-transparent py-1 pl-7 pr-2 text-[12px] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/40"
+          />
+        </div>
+        {summaries.length === 0 && (
+          <p className="px-2 py-2 text-muted-foreground">
+            {query.trim() ? '没有匹配的会话' : '暂无历史会话'}
+          </p>
+        )}
         {summaries.map((s) => (
           <button
             key={s.path}
             type="button"
             data-testid="chat-history-item"
+            data-status={s.status}
             onClick={() => {
               void openSession(s.path);
               setOpen(false);
@@ -136,7 +167,18 @@ function HistoryMenu() {
             className="block w-full truncate rounded px-2 py-1.5 text-left hover:bg-accent"
             title={s.path}
           >
-            <span className="block truncate font-medium">{s.title}</span>
+            <span className="flex items-center gap-1">
+              <span className="truncate font-medium">{s.title}</span>
+              {s.status !== 'complete' && (
+                <span
+                  data-testid="chat-history-status"
+                  className="flex shrink-0 items-center gap-0.5 rounded bg-amber-500/15 px-1 text-[9px] text-amber-700"
+                >
+                  <AlertTriangle className="size-2.5" />
+                  {STATUS_LABEL[s.status]}
+                </span>
+              )}
+            </span>
             <span className="block text-[10px] text-muted-foreground">
               {s.turnCount} 条 · {new Date(s.updatedAt).toLocaleString()}
             </span>
@@ -152,7 +194,7 @@ export function ChatDock() {
   const streaming = useChatStore((s) => s.streaming);
   const error = useChatStore((s) => s.error);
   const modelLabel = useChatStore((s) => s.modelLabel);
-  const folder = useChatStore((s) => s.folder);
+  const sessionStatus = useChatStore((s) => s.sessionStatus);
   const pendingAsk = useChatStore((s) => s.pendingAsk);
   const [input, setInput] = useState('');
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -160,8 +202,7 @@ export function ChatDock() {
 
   useEffect(() => {
     initChatRuntime();
-    void refreshFolder();
-    void refreshSummaries();
+    void searchSessions();
     refreshAutoDocumentChip();
     // 激活 tab / 面板切换时刷新「当前文档」自动 chip。
     const unsubTab = useTabStore.subscribe(() => refreshAutoDocumentChip());
@@ -228,9 +269,9 @@ export function ChatDock() {
           className="h-7 gap-1 px-2 text-[11px] disabled:opacity-40"
           disabled={!hasTurns || streaming}
           onClick={() => void saveAsDoc()}
-          title="将会话转换为普通文档并在当前标签打开"
+          title="将会话导出为普通文档并在当前标签打开（导出后与会话脱钩）"
         >
-          <FileDown className="size-3.5" /> 存为文档
+          <FileDown className="size-3.5" /> 导出为页面
         </Button>
         <ChatSkillPicker />
         <Button
@@ -254,7 +295,8 @@ export function ChatDock() {
           </div>
           <p className="text-sm font-medium">AI 对话</p>
           <p className="max-w-60 text-[11px] leading-relaxed text-muted-foreground">
-            提问会自动附带当前笔记上下文与知识库召回；会话保存为「{folder}」中的笔记，可被双链引用。
+            提问会自动附带当前笔记上下文与知识库召回；会话保存在知识库内部存储（不进入文档树、不参与双链），
+            可从「历史」续聊或「导出为页面」转为普通文档。
           </p>
           <Button data-testid="chat-empty-start" size="sm" onClick={() => void startNewSession()}>
             <MessageSquarePlus className="size-3.5" /> 开始新对话
@@ -281,6 +323,14 @@ export function ChatDock() {
                 className="rounded-md border border-destructive/40 bg-destructive/10 p-2 text-[11px] text-destructive"
               >
                 {error}
+              </div>
+            )}
+            {!streaming && sessionStatus !== 'complete' && (
+              <div
+                data-testid="chat-unfinished"
+                className="rounded-md border border-amber-500/40 bg-amber-500/10 p-2 text-[11px] text-amber-700"
+              >
+                上次回复{STATUS_LABEL[sessionStatus]}；直接继续提问即可续聊。
               </div>
             )}
           </div>

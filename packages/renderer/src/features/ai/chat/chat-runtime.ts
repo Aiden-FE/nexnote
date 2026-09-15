@@ -1,4 +1,10 @@
-import type { ChatMessage, ChatSession, ChatTurn, ChatTurnMeta } from '@nexnote/shared';
+import type {
+  ChatMessage,
+  ChatSession,
+  ChatSessionStatus,
+  ChatTurn,
+  ChatTurnMeta,
+} from '@nexnote/shared';
 import { invoke, onEvent } from '../../../lib/ipc';
 import { getSelectedSkillIds } from '../../skills/chat-skill-store';
 import { useChatStore } from './chat-store';
@@ -8,6 +14,9 @@ let working: ChatSession | null = null;
 let draft = false;
 let runId: string | null = null;
 let pendingMeta: ChatTurnMeta | null = null;
+/** 当前会话末次持久化状态（重启后从 JSONL 读回，用于未完成提示与续聊）。 */
+let status: ChatSessionStatus = 'complete';
+let lastError: string | undefined;
 let subscribed = false;
 
 function clone<T>(value: T): T {
@@ -15,33 +24,40 @@ function clone<T>(value: T): T {
 }
 
 function sync(): void {
-  if (working) useChatStore.getState().setActive(clone(working), draft);
+  if (working) useChatStore.getState().setActive(clone(working), draft, status);
 }
 
 function errorMessage(e: unknown): string {
   return e instanceof Error ? e.message : String(e);
 }
 
-async function persist(session: ChatSession): Promise<void> {
+/** 持久化会话（追加/重写 JSONL 快照）；状态标记随写入一并落盘。 */
+async function persist(
+  session: ChatSession,
+  nextStatus: ChatSessionStatus = status,
+  error?: string,
+): Promise<void> {
   session.meta.updatedAt = new Date().toISOString();
+  status = nextStatus;
+  lastError = nextStatus === 'failed' ? error : undefined;
   try {
-    await client.saveChat(session);
+    await client.saveChat(session, nextStatus, error);
     draft = false;
     sync();
-    await refreshSummaries();
+    await searchSessions();
   } catch (e) {
     useChatStore.getState().setError(`会话自动保存失败：${errorMessage(e)}`);
   }
 }
 
-function finalizeStream(_attachMeta: boolean): void {
+function finalizeStream(nextStatus: ChatSessionStatus, error?: string): void {
   runId = null;
   useChatStore.getState().setStreaming(false);
   if (working) {
     const assistant = working.turns[working.turns.length - 1];
     if (assistant?.role === 'assistant' && pendingMeta) assistant.meta = pendingMeta;
     pendingMeta = null;
-    void persist(working);
+    void persist(working, nextStatus, error);
   }
 }
 
@@ -66,10 +82,11 @@ export function initChatRuntime(): void {
       assistant.content += event.text;
       sync();
     } else if (event.type === 'done') {
-      finalizeStream(true);
+      finalizeStream('complete');
     } else if (event.type === 'error') {
-      useChatStore.getState().setError(`${event.message}${event.code ? `（${event.code}）` : ''}`);
-      finalizeStream(true);
+      const message = `${event.message}${event.code ? `（${event.code}）` : ''}`;
+      useChatStore.getState().setError(message);
+      finalizeStream('failed', message);
     }
   });
 }
@@ -81,19 +98,12 @@ async function cancelActiveStream(): Promise<void> {
   useChatStore.getState().setStreaming(false);
 }
 
-export async function refreshSummaries(): Promise<void> {
+/** 刷新历史列表；传入 query 时由主进程按标题过滤。 */
+export async function searchSessions(query?: string): Promise<void> {
   try {
-    useChatStore.getState().setSummaries(await client.listChats());
+    useChatStore.getState().setSummaries(await client.listChats(query));
   } catch {
     // vault 未就绪等场景静默
-  }
-}
-
-export async function refreshFolder(): Promise<void> {
-  try {
-    useChatStore.getState().setFolder((await client.getChatFolder()).folder);
-  } catch {
-    // 忽略
   }
 }
 
@@ -101,48 +111,35 @@ export async function startNewSession(): Promise<void> {
   await cancelActiveStream();
   working = await client.newChat();
   draft = true;
+  status = 'complete';
+  lastError = undefined;
   useChatStore.getState().setError(null);
   useChatStore.getState().setModelLabel(null);
   sync();
 }
 
+/** 打开历史会话续聊；读回其未完成/失败状态标记。 */
 export async function openSession(path: string): Promise<void> {
   await cancelActiveStream();
-  working = await client.getChat(path);
+  const session = await client.getChat(path);
+  working = session;
   draft = false;
-  useChatStore.getState().setError(null);
+  status = session.status ?? 'complete';
+  lastError = session.error;
+  useChatStore
+    .getState()
+    .setError(status === 'failed' && session.error ? `上次回复失败：${session.error}` : null);
   useChatStore.getState().setModelLabel(working.meta.model ?? null);
   sync();
 }
 
-/** 按标题匹配历史会话（双链 [[会话标题]] 打开 dock 用）。命中返回 true。 */
-export function openChatByTitle(title: string): boolean {
-  const target = title.trim();
-  if (!target) return false;
-  const match = useChatStore
-    .getState()
-    .summaries.find((s) => s.title === target || s.title.replace(/\.md$/i, '') === target);
-  if (!match) return false;
-  void openSession(match.path);
-  return true;
-}
-
-/** 双链 [[会话标题]]：确保会话列表最新后按标题匹配；命中打开会话并返回 true。 */
-export async function openChatWikilinkOrNull(pageName: string): Promise<boolean> {
-  const name = pageName.trim();
-  if (!name) return false;
-  await refreshSummaries();
-  return openChatByTitle(name);
-}
-
 export function stopStream(): void {
   void cancelActiveStream().then(() => {
-    if (working) {
-      const assistant = working.turns[working.turns.length - 1];
-      if (assistant?.role === 'assistant' && pendingMeta) assistant.meta = pendingMeta;
-      pendingMeta = null;
-      void persist(working);
-    }
+    if (!working) return;
+    const assistant = working.turns[working.turns.length - 1];
+    if (assistant?.role === 'assistant' && pendingMeta) assistant.meta = pendingMeta;
+    pendingMeta = null;
+    void persist(working, 'cancelled');
   });
 }
 
@@ -167,8 +164,8 @@ export async function sendMessage(rawText: string): Promise<void> {
   sync();
   store.setStreaming(true);
 
-  // 自动保存：用户消息落盘（重启可续聊）。
-  await persist(session);
+  // 自动保存：用户消息与「streaming」未完成标记落盘（重启可续聊，并可见未完成状态）。
+  await persist(session, 'streaming');
 
   // 上下文正文与 skill 选择透传给主进程；主进程负责 Skill 验证、召回和 prompt 组装。
   const contextText = useChatStore
@@ -192,16 +189,16 @@ export async function sendMessage(rawText: string): Promise<void> {
     runId = null;
     useChatStore.getState().setStreaming(false);
     useChatStore.getState().setError(errorMessage(e));
-    if (working) await persist(working);
+    if (working) await persist(working, 'failed', errorMessage(e));
   }
 }
 
-/** 会话转普通文档并在当前 tab 打开；返回新文档路径。 */
+/** 将会话导出为普通页面并在当前 tab 打开；返回新文档路径。 */
 export async function saveActiveAsDocument(userAsQuote: boolean): Promise<string | null> {
   if (!working) return null;
-  await persist(working);
+  await persist(working, status === 'streaming' ? 'cancelled' : status, lastError);
   const info = await client.saveChatAsDocument(working.path, userAsQuote);
-  await refreshSummaries();
+  await searchSessions();
   return info.path;
 }
 

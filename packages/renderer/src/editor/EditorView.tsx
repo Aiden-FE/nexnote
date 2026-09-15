@@ -23,8 +23,6 @@ import {
   writingSlashItems,
 } from '../features/ai/writing';
 import { CHAT_ASK_ACTION, requestAskAi } from '../features/ai/chat/ask-ai';
-import { openChatWikilinkOrNull } from '../features/ai/chat/chat-runtime';
-import { useUiStore } from '../stores/ui-store';
 import { useSettingsStore } from '../stores/settings-store';
 import { onEvent } from '../lib/ipc';
 import {
@@ -506,15 +504,8 @@ export function EditorView({ tab }: EditorViewProps) {
       },
       onWikilinkActivate: (target) => {
         const pageName = target.split('#')[0] || target;
-        // DEV-012：双链指向会话（type: chat）时打开对话 dock 并加载该会话。
-        void openChatWikilinkOrNull(pageName).then((hit) => {
-          if (hit) {
-            useUiStore.getState().setActiveDockPanel('ai-chat');
-            return;
-          }
-          const nextPath = `${sanitizePageTitle(pageName)}.md`;
-          void openDocumentTab(nextPath, titleFromPath(nextPath));
-        });
+        const nextPath = `${sanitizePageTitle(pageName)}.md`;
+        void openDocumentTab(nextPath, titleFromPath(nextPath));
       },
       selectionBubble: {
         // DEV-034：AI 动作收口为单一「AI」下拉；格式化/双链等非 AI 动作保持平铺。

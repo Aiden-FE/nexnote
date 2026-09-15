@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import type { ChatSession, ChatSummary } from '@nexnote/shared';
+import type { ChatSession, ChatSessionStatus, ChatSummary } from '@nexnote/shared';
 import type { ChatContextChip } from './context';
 
 /** 从选区「询问 AI」进入对话 dock 的待处理载荷（DEV-012 交付内容 7）。 */
@@ -10,14 +10,14 @@ export interface AskPayload {
 }
 
 interface ChatState {
-  /** 历史会话列表（dock 顶部切换）。 */
+  /** 历史会话列表（dock 历史面板；按搜索词过滤后的结果）。 */
   summaries: ChatSummary[];
-  /** 会话存储目录（vault 相对）。 */
-  folder: string;
   /** 当前会话；null = 尚未开始（欢迎空态）。 */
   active: ChatSession | null;
   /** true = 当前会话还未落盘（首条消息后才写文件）。 */
   isDraft: boolean;
+  /** 当前会话末次持久化状态（未完成/取消/失败可见并可恢复）。 */
+  sessionStatus: ChatSessionStatus;
   streaming: boolean;
   error: string | null;
   /** 流式回答使用的模型标签。 */
@@ -27,8 +27,7 @@ interface ChatState {
   /** 「询问 AI」进入时的选区载荷（dock 打开后消费）。 */
   pendingAsk: AskPayload | null;
   setSummaries(summaries: ChatSummary[]): void;
-  setFolder(folder: string): void;
-  setActive(session: ChatSession | null, isDraft: boolean): void;
+  setActive(session: ChatSession | null, isDraft: boolean, status?: ChatSessionStatus): void;
   setStreaming(streaming: boolean): void;
   setError(error: string | null): void;
   setModelLabel(label: string | null): void;
@@ -42,9 +41,9 @@ interface ChatState {
 
 export const useChatStore = create<ChatState>((set, get) => ({
   summaries: [],
-  folder: 'AI Chats',
   active: null,
   isDraft: false,
+  sessionStatus: 'complete',
   streaming: false,
   error: null,
   modelLabel: null,
@@ -52,8 +51,8 @@ export const useChatStore = create<ChatState>((set, get) => ({
   pendingAsk: null,
 
   setSummaries: (summaries) => set({ summaries }),
-  setFolder: (folder) => set({ folder }),
-  setActive: (active, isDraft) => set({ active, isDraft, error: null }),
+  setActive: (active, isDraft, status = 'complete') =>
+    set({ active, isDraft, sessionStatus: status, error: null }),
   setStreaming: (streaming) => set({ streaming }),
   setError: (error) => set({ error }),
   setModelLabel: (modelLabel) => set({ modelLabel }),
@@ -71,6 +70,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
     set({
       active: null,
       isDraft: false,
+      sessionStatus: 'complete',
       streaming: false,
       error: null,
       modelLabel: null,

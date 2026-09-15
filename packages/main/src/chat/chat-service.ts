@@ -1,18 +1,20 @@
-import { randomUUID } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
 import { sanitizeEntryName, type FileInfo } from '@nexnote/shared';
 import type { ChatSession, ChatSummary, ChatTurn } from '@nexnote/shared';
 import { FsError, type VaultFsService } from '../fs/fs-service';
 import { defaultNoteMetadata } from '../fs/page-ops';
 import { MetadataStore } from '../document/metadata-store';
-import { parseChatFile, serializeChatFile } from './chat-format';
-import { readVaultConfig, sanitizeChatFolder, writeVaultConfig } from '../vault/vault-manager';
+import { parseChatJsonl, serializeChatRecord, type ParsedChatSession } from './chat-format';
 
-export const DEFAULT_CHAT_FOLDER = 'AI Chats';
+/** 会话内部存储目录（vault 相对，ADR-0007）。 */
+export const SESSION_DIR = '.nexnote/sessions';
+/** 会话文件名模式：sha256(sessionId).txt（hash 由 id 派生且终生不变）。 */
+const SESSION_FILE_RE = /^\.nexnote\/sessions\/[a-f0-9]{64}\.txt$/;
 
 /**
- * 会话即页面存储服务（DEV-012）。
- * 会话持久化为 vault 内 `<chatFolder>/<name>.md`（frontmatter type: chat）。
- * 放在普通目录（默认 `AI Chats/`）而非 .nexnote/，使会话可被双链引用与语义索引。
+ * AI 会话内部存储服务（ADR-0007）。
+ * 会话以 JSONL 存于 `.nexnote/sessions/{hash}.txt`：不进入文档树、索引、反链与双链；
+ * 「导出为页面」是会话进入页面体系的唯一路径。
  */
 export class ChatService {
   constructor(
@@ -26,127 +28,90 @@ export class ChatService {
     return root;
   }
 
-  /** 当前会话存储目录（vault 相对；配置损坏/缺失回退默认）。 */
-  async folder(): Promise<string> {
-    const config = await readVaultConfig(this.root());
-    return sanitizeChatFolder(config.chatFolder) ?? DEFAULT_CHAT_FOLDER;
+  /** 会话 id → 不变的 hash 文件名（重命名不改名）。 */
+  sessionPathFor(id: string): string {
+    return `${SESSION_DIR}/${createHash('sha256').update(id).digest('hex')}.txt`;
   }
 
-  async getFolderConfig(): Promise<{ folder: string }> {
-    return { folder: await this.folder() };
+  private assertSessionPath(relPath: string): void {
+    if (!SESSION_FILE_RE.test(relPath)) {
+      throw new FsError(`会话必须位于 ${SESSION_DIR}/ 内: ${relPath}`, 'INVALID_SESSION_PATH');
+    }
   }
 
-  /** 设置会话存储目录（仅影响后续新会话；不迁移已有会话）。 */
-  async setFolder(raw: string): Promise<{ folder: string }> {
-    const folder = sanitizeChatFolder(raw);
-    if (!folder) throw new FsError('会话目录名不合法', 'INVALID_NAME');
-    const root = this.root();
-    const config = await readVaultConfig(root);
-    await writeVaultConfig(root, { ...config, chatFolder: folder });
-    return { folder };
-  }
-
-  /** 列出会话目录下全部 type: chat 会话（按更新时间倒序）。 */
-  async listChats(): Promise<ChatSummary[]> {
-    const folder = await this.folder();
+  /** 枚举 sessions 目录（按更新时间倒序）；query 非空时按标题子串过滤。 */
+  async listChats(query?: string): Promise<ChatSummary[]> {
     let entries;
     try {
-      entries = await this.fs.listDir(folder);
+      entries = await this.fs.listDir(SESSION_DIR);
     } catch (e) {
-      if (
-        (e as FsError).code === 'READ_DIR_FAILED' ||
-        (e as NodeJS.ErrnoException)?.code === 'NO_VAULT'
-      ) {
-        return [];
-      }
+      if ((e as FsError).code === 'READ_DIR_FAILED') return [];
       throw e;
     }
+    const needle = query?.trim().toLocaleLowerCase() ?? '';
     const summaries: ChatSummary[] = [];
     for (const entry of entries) {
-      if (entry.kind !== 'file' || !entry.name.toLowerCase().endsWith('.md')) continue;
-      const rel = `${folder}/${entry.name}`;
-      let text: string;
+      if (entry.kind !== 'file' || !entry.name.endsWith('.txt')) continue;
+      const rel = `${SESSION_DIR}/${entry.name}`;
+      if (!SESSION_FILE_RE.test(rel)) continue;
+      let session: ParsedChatSession | null;
       try {
-        text = await this.fs.readTextFile(rel);
+        session = parseChatJsonl(rel, await this.fs.readTextFile(rel));
       } catch {
         continue;
       }
-      const session = parseChatFile(rel, text);
       if (!session) continue;
+      if (needle && !session.meta.title.toLocaleLowerCase().includes(needle)) continue;
       summaries.push({
-        path: session.path,
+        path: rel,
         id: session.meta.id,
         title: session.meta.title,
         model: session.meta.model ?? null,
         turnCount: session.turns.length,
         updatedAt: session.meta.updatedAt,
+        status: session.status,
       });
     }
     return summaries.sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
   }
 
-  /** 读取单个会话；非会话文件/损坏时抛错。 */
-  async getChat(relPath: string): Promise<ChatSession> {
-    const text = await this.fs.readTextFile(relPath);
-    const session = parseChatFile(relPath, text);
+  /** 读取单个会话（含未完成状态标记）；路径越权/损坏时抛错。 */
+  async getChat(relPath: string): Promise<ParsedChatSession> {
+    this.assertSessionPath(relPath);
+    const session = parseChatJsonl(relPath, await this.fs.readTextFile(relPath));
     if (!session) throw new FsError(`不是有效的会话文件: ${relPath}`, 'NOT_A_CHAT');
     return session;
   }
 
-  /** 分配新会话（id + 唯一路径），不落盘；首条消息后由 saveChat 写入。 */
+  /** 分配新会话（id + 不变 hash 路径），不落盘；首条消息后由 saveChat 写入。 */
   async newChat(titleInput?: string): Promise<ChatSession> {
-    const folder = await this.folder();
     const now = new Date().toISOString();
-    const baseTitle = (titleInput ?? '').trim() || '新对话';
-    const fileName = await this.uniqueName(folder, baseTitle);
+    const title = titleInput?.trim() || '新对话';
+    const id = randomUUID();
     return {
-      path: `${folder}/${fileName}.md`,
-      meta: {
-        id: randomUUID(),
-        title: baseTitle === '新对话' ? '新对话' : titleInput!.trim(),
-        profileId: null,
-        model: null,
-        createdAt: now,
-        updatedAt: now,
-      },
+      path: this.sessionPathFor(id),
+      meta: { id, title, profileId: null, model: null, createdAt: now, updatedAt: now },
       turns: [],
     };
   }
 
-  /** 生成目录内不冲突的文件名（无后缀）：名、名 2、名 3… */
-  private async uniqueName(folder: string, title: string): Promise<string> {
-    const sanitized = sanitizeEntryName(title.replace(/\.md$/i, ''));
-    const base = sanitized.ok ? sanitized.value : '新对话';
-    const exists = async (name: string): Promise<boolean> => this.fs.exists(`${folder}/${name}.md`);
-    if (!(await exists(base))) return base;
-    for (let i = 2; i < 1000; i += 1) {
-      const candidate = `${base} ${i}`;
-      if (!(await exists(candidate))) return candidate;
-    }
-    throw new FsError('无法生成不冲突的会话文件名', 'NAME_CONFLICT');
-  }
-
-  /** 持久化会话（自动保存）。路径必须位于会话存储目录内，防止越权写任意文件。 */
-  async saveChat(session: ChatSession): Promise<FileInfo> {
-    const folder = await this.folder();
-    this.assertInFolder(session.path, folder);
+  /** 写入会话快照（JSONL）；path 必须与 id 派生的 hash 路径一致。 */
+  async saveChat(
+    session: ChatSession,
+    status?: ParsedChatSession['status'],
+    error?: string,
+  ): Promise<FileInfo> {
     if (session.meta.id.trim() === '') throw new FsError('会话缺少 id', 'INVALID_CHAT');
-    const content = serializeChatFile(session);
-    return this.fs.writeTextFile(session.path, content, true);
-  }
-
-  private assertInFolder(relPath: string, folder: string): void {
-    const normalized = relPath.replace(/\\/g, '/').replace(/^\/+|\/+$/g, '');
-    const dir = normalized.includes('/') ? normalized.slice(0, normalized.lastIndexOf('/')) : '';
-    const base = normalized.slice(normalized.lastIndexOf('/') + 1);
-    if (dir !== folder || !base.toLowerCase().endsWith('.md')) {
-      throw new FsError(`会话文件必须位于 ${folder}/ 目录: ${relPath}`, 'OUTSIDE_CHAT_FOLDER');
+    this.assertSessionPath(session.path);
+    if (this.sessionPathFor(session.meta.id) !== session.path) {
+      throw new FsError(`会话路径与 id 不匹配: ${session.path}`, 'SESSION_PATH_MISMATCH');
     }
+    return this.fs.appendTextFile(session.path, serializeChatRecord(session, status, error), true);
   }
 
   /**
-   * 会话转普通文档：AI 回答 → 正文块；用户消息 → 引用块（默认）或 HTML 注释。
-   * 写入 vault 根下唯一文件名；原会话保留。
+   * 导出为页面：AI 回答 → 正文块；用户消息 → 引用块（默认）或 HTML 注释。
+   * 产物是普通文档（vault 根下唯一文件名），与会话脱钩；原会话保留。
    */
   async saveAsDocument(relPath: string, userAsQuote = true): Promise<FileInfo> {
     const session = await this.getChat(relPath);
@@ -163,11 +128,10 @@ export class ChatService {
   private async uniqueRootName(title: string): Promise<string> {
     const sanitized = sanitizeEntryName(title.replace(/\.md$/i, ''));
     const base = sanitized.ok ? sanitized.value : '对话笔记';
-    const exists = async (name: string): Promise<boolean> => this.fs.exists(`${name}.md`);
-    if (!(await exists(base))) return base;
+    if (!(await this.fs.exists(`${base}.md`))) return base;
     for (let i = 2; i < 1000; i += 1) {
       const candidate = `${base} ${i}`;
-      if (!(await exists(candidate))) return candidate;
+      if (!(await this.fs.exists(`${candidate}.md`))) return candidate;
     }
     throw new FsError('无法生成不冲突的文档文件名', 'NAME_CONFLICT');
   }

@@ -566,7 +566,7 @@ export async function runSmokeIfEnabled(): Promise<void> {
         ),
       );
       const session: ChatSession = {
-        path: 'AI Chats/DEV-036.md',
+        path: `.nexnote/sessions/${'0'.repeat(64)}.txt`,
         meta: {
           id: 'dev-036-smoke',
           title: 'DEV-036',
@@ -599,6 +599,110 @@ export async function runSmokeIfEnabled(): Promise<void> {
       check('Chat Dock 块模式活动编辑器存在', false);
     }
 
+    // ── 4d. DEV-033：会话内部 JSONL 存储（历史续聊 + 导出为页面）──
+    {
+      const draft = await invoke('chat:new', { title: 'DEV-033 会话' });
+      const seeded: ChatSession = {
+        ...draft,
+        turns: [
+          { role: 'user', content: 'DEV-033 提问' },
+          { role: 'assistant', content: 'DEV-033 回答' },
+        ],
+      };
+      await invoke('chat:save', { session: seeded, status: 'cancelled' });
+      check(
+        'DEV-033 会话文件为 .nexnote/sessions/{hash}.txt',
+        /^\.nexnote\/sessions\/[a-f0-9]{64}\.txt$/.test(seeded.path),
+        seeded.path,
+      );
+      const raw = await invoke('fs:readTextFile', { path: seeded.path });
+      check(
+        'DEV-033 会话内容为 JSONL 快照（非 type: chat 页面）',
+        raw.includes('"type":"snapshot"') && !raw.includes('type: chat'),
+        raw.slice(0, 80),
+      );
+      const listed = (await invoke('chat:list', {})) as Array<{
+        path: string;
+        status: string;
+      }>;
+      const entry = listed.find((item) => item.path === seeded.path);
+      check(
+        'DEV-033 重启后历史可列出且带未完成状态',
+        entry?.status === 'cancelled',
+        JSON.stringify(entry),
+      );
+      const searched = (await invoke('chat:list', { query: 'DEV-033' })) as Array<{ path: string }>;
+      check(
+        'DEV-033 历史可按标题搜索',
+        searched.some((item) => item.path === seeded.path),
+        `hits=${searched.length}`,
+      );
+      const tree = (await invoke('fs:listTree', { showAllFiles: true })) as Array<{ path: string }>;
+      check('DEV-033 会话不进入文档树', !tree.some((item) => item.path.startsWith('.nexnote')));
+
+      useUiStore.getState().setActiveDockPanel('ai-chat');
+      await waitFor(() => !!document.querySelector('[data-testid="chat-history"]'));
+      document.querySelector<HTMLButtonElement>('[data-testid="chat-history"]')?.click();
+      check(
+        'DEV-033 历史面板列出会话并标记未完成状态',
+        await waitFor(() => {
+          const menu = document.querySelector('[data-testid="chat-history-menu"]');
+          return (
+            !!menu &&
+            (menu.textContent ?? '').includes('DEV-033 会话') &&
+            (menu.textContent ?? '').includes('已取消')
+          );
+        }),
+      );
+      check(
+        'DEV-033 历史面板提供搜索框',
+        !!document.querySelector('[data-testid="chat-history-search"]'),
+      );
+      document.querySelector<HTMLButtonElement>('[data-testid="chat-history-item"]')?.click();
+      check(
+        'DEV-033 点击历史会话载入续聊',
+        await waitFor(
+          () =>
+            (document.querySelector('[data-testid="chat-turn-user"]')?.textContent ?? '') ===
+            'DEV-033 提问',
+        ),
+      );
+      await capture('22-DEV-033-chat-history');
+
+      await waitFor(
+        () => !document.querySelector<HTMLButtonElement>('[data-testid="chat-save-doc"]')?.disabled,
+      );
+      document.querySelector<HTMLButtonElement>('[data-testid="chat-save-doc"]')?.click();
+      const exportedPath = 'DEV-033 会话.md';
+      check(
+        'DEV-033 导出为页面并作为普通文档打开',
+        await waitFor(() =>
+          useTabStore.getState().tabs.some((tab) => tab.pagePath === exportedPath),
+        ),
+      );
+      const exportedMeta = await invoke('document:getMetadata', { path: exportedPath });
+      check(
+        'DEV-033 导出产物是普通页面（native-block）',
+        exportedMeta?.format === 'native-block',
+        JSON.stringify(exportedMeta),
+      );
+      const exportedText = await invoke('fs:readTextFile', { path: exportedPath });
+      check(
+        'DEV-033 导出产物与会话脱钩（正文为普通 markdown）',
+        exportedText.includes('DEV-033 回答') &&
+          exportedText.includes('> 提问：') &&
+          !exportedText.includes('"type":"snapshot"'),
+      );
+      const treeAfterExport = (await invoke('fs:listTree', { showAllFiles: true })) as Array<{
+        path: string;
+      }>;
+      check(
+        'DEV-033 导出页进入文档树，会话仍不在树中',
+        treeAfterExport.some((item) => item.path === exportedPath) &&
+          !treeAfterExport.some((item) => item.path.startsWith('.nexnote')),
+      );
+      await capture('23-DEV-033-export-page');
+    }
 
     // ── 4c. DEV-035 编辑器工具栏：单行、Tab tooltip、窄窗溢出「更多」可达 ──
     const toolbarEl = (): HTMLElement | null =>

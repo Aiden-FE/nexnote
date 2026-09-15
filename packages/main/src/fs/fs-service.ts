@@ -128,6 +128,25 @@ export class VaultFsService {
    * 原子创建文本文件（create-if-absent）：目标已存在时不覆盖并报告 created:false。
    * 使用 open 的排他创建（wx）保证无 exists+write 的 TOCTOU 窗口；父目录需先存在。
    */
+  /** 追加文本（JSONL 等内部 append-only 存储使用）；路径仍经过 vault 沙箱校验。 */
+  async appendTextFile(
+    relPath: string,
+    content: string,
+    createParentDirs = true,
+  ): Promise<FileInfo> {
+    const { abs } = await this.resolve(relPath);
+    const dir = path.dirname(abs);
+    if (createParentDirs) await fsp.mkdir(dir, { recursive: true });
+    try {
+      await fsp.appendFile(abs, content, 'utf8');
+    } catch (e) {
+      throw new FsError(`追加失败: ${relPath}（${(e as Error).message}）`, 'APPEND_FAILED');
+    }
+    this.appWrites.record(abs);
+    const st = await fsp.stat(abs);
+    return toFileInfo(relPath, st);
+  }
+
   async createTextFile(
     relPath: string,
     content: string,
