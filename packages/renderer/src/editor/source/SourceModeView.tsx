@@ -107,6 +107,9 @@ export function SourceModeView({ tab }: { tab: TabDescriptor }) {
   const editorRef = useRef<SourceEditorHandle | null>(null);
   const previewScrollRef = useRef<HTMLDivElement | null>(null);
   const pathRef = useRef(initialPath);
+  // H1 rename updates the tab path after the current editor has already saved the document.
+  // Mark that metadata transition so the path-dependent load effect does not remount it.
+  const renameTargetRef = useRef<string | null>(null);
   const textRef = useRef('');
   const baseTextRef = useRef('');
   const baseVersionRef = useRef<FileVersion | null>(null);
@@ -205,6 +208,9 @@ export function SourceModeView({ tab }: { tab: TabDescriptor }) {
       const tree = usePageTreeStore.getState();
       tree.applyEvent({ kind: 'unlink', path: result.renamedFrom });
       tree.applyEvent({ kind: 'add', path: result.path });
+      // The tab pagePath updates next; the load effect consumes this marker and
+      // treats the transition as pure metadata instead of a full source reload.
+      renameTargetRef.current = result.path;
       pathRef.current = result.path;
       setDisplayPath(result.path);
     }
@@ -296,6 +302,12 @@ export function SourceModeView({ tab }: { tab: TabDescriptor }) {
   // ── 加载：原始字节，不做 H1 绑定（无 H1 时不补写，保持原文） ──
   useEffect(() => {
     const nextPath = tab.pagePath ?? `${sanitizePageTitle(tab.title)}.md`;
+    // H1 rename already saved this document and updated pathRef before updateTab.
+    // Keep the existing CodeMirror instance and its selection/scroll state.
+    if (renameTargetRef.current === nextPath) {
+      renameTargetRef.current = null;
+      return;
+    }
     pathRef.current = nextPath;
     setDisplayPath(nextPath);
     setLoad({ phase: 'loading' });

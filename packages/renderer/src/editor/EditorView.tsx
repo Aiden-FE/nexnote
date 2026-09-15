@@ -266,6 +266,9 @@ export function EditorView({ tab }: EditorViewProps) {
   const hostRef = useRef<HTMLDivElement>(null);
   const kernelRef = useRef<EditorKernelInstance | null>(null);
   const pathRef = useRef(path);
+  // H1 rename updates the tab path after the current kernel has already saved the document.
+  // Mark that metadata transition so the path-dependent load effect does not remount it.
+  const renameTargetRef = useRef<string | null>(null);
   const saveChainRef = useRef<Promise<void>>(Promise.resolve());
   const unmountedRef = useRef(false);
   const [fmData, setFmData] = useState<FrontmatterData>({});
@@ -307,6 +310,12 @@ export function EditorView({ tab }: EditorViewProps) {
 
   // 新建页：不存在则写入包含 H1 的初始 Markdown；已有文件则读取。
   useEffect(() => {
+    // H1 rename already saved this document and updated pathRef before updateTab.
+    // Keep the existing kernel and its selection/scroll state; only metadata changed.
+    if (renameTargetRef.current === path) {
+      renameTargetRef.current = null;
+      return;
+    }
     let cancelled = false;
     queueMicrotask(() => {
       if (!cancelled) {
@@ -392,6 +401,9 @@ export function EditorView({ tab }: EditorViewProps) {
           const format = tree.entries.find((e) => e.path === result.renamedFrom)?.format;
           tree.applyEvent({ kind: 'unlink', path: result.renamedFrom });
           tree.applyEvent({ kind: 'add', path: result.path, format });
+          // The tab pagePath updates next; the load effect consumes this marker and
+          // treats the transition as pure metadata instead of a full page reload.
+          renameTargetRef.current = result.path;
           pathRef.current = result.path;
           setDisplayPath(result.path);
           useTabStore.getState().updateTab(tab.id, {
