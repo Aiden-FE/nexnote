@@ -374,10 +374,7 @@ export class OpenAIProtocolAdapter implements ProviderAdapter {
             ? {
                 messages: conversation,
                 ...(systemMessages.length > 0 && {
-                  instructions: systemMessages.map((m) => ({
-                    role: 'system' as const,
-                    content: m.content,
-                  })),
+                  instructions: systemMessages.map((m) => m.content).join('\n\n'),
                 }),
               }
             : { messages: req.messages, allowSystemInMessages: true }),

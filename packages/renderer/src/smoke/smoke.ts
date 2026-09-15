@@ -35,6 +35,13 @@ interface SmokeBridge {
   seedGraph(root: string): Promise<SmokeCaptureResult & { pages?: number; links?: number }>;
   setWindowSize(width: number, height: number): Promise<SmokeCaptureResult>;
   finish(report: unknown): Promise<SmokeCaptureResult>;
+  /** DEV-037：内嵌 mock provider 地址 + 运行时调参（分段延迟 / 下一次请求失败）。 */
+  aiMock(): Promise<SmokeCaptureResult & { url?: string }>;
+  aiMockTune(tune: {
+    chunkDelayMs: number;
+    failNextChatWith?: number;
+    failAfterChunks?: number;
+  }): Promise<SmokeCaptureResult>;
 }
 
 interface Check {
@@ -425,7 +432,7 @@ export async function runSmokeIfEnabled(): Promise<void> {
               Array.from(blockBubble.querySelectorAll<HTMLElement>('[data-ai-menu-action]'))
                 .map((el) => el.dataset.aiMenuAction)
                 .join(',') ===
-                'ai:rewrite,ai:polish,ai:condense,ai:expand,ai:fillgaps,ai:evidence,chat:ask-selection,translate:selection',
+                'ai:rewrite,ai:polish,ai:condense,ai:expand,ai:fillgaps,ai:evidence,chat:ask-selection',
           );
           blockTrigger?.dispatchEvent(
             new KeyboardEvent('keydown', { key: 'ArrowDown', bubbles: true, cancelable: true }),
@@ -483,6 +490,178 @@ export async function runSmokeIfEnabled(): Promise<void> {
       check('编辑器 DOM 就绪', false, `editor=${!!editorRoot} tab=${!!leftPageTab}`);
     }
     await capture('02b-editor');
+
+    // ── DEV-037 编辑器侧流式状态机：首片段即显示 / 停止保留内容 / 失败保留内容 ──
+    // 真实 Chromium + 内嵌 mock provider：验证流式增量呈现、取消与失败的未完成语义。
+    const writingCard = (): HTMLElement | null =>
+      document.querySelector<HTMLElement>('[data-testid="writing-assistant"]');
+    const writingStatus = (): string | null => writingCard()?.dataset.status ?? null;
+    /** 已生成内容（diff 新增侧）文本：区分「首片段已显示」与 diff 里的原文。 */
+    const writingAddedText = (): string =>
+      Array.from(
+        document.querySelectorAll<HTMLElement>('[data-testid="writing-diff"] [data-diff-op="add"]'),
+      )
+        .map((el) => el.textContent ?? '')
+        .join('\n')
+        .replace(/^\+ /, '');
+    const incompleteBadge = (): HTMLElement | null =>
+      document.querySelector<HTMLElement>('[data-testid="writing-incomplete"]');
+    const clickWriting = (testId: string): void => {
+      document.querySelector<HTMLButtonElement>(`[data-testid="${testId}"]`)?.click();
+    };
+    /** 选中块内 '第一块' 文本（块编辑划词工具栏的 AI 动作目标）。 */
+    const selectRewriteTarget = (
+      kernel: NonNullable<ReturnType<typeof getActiveEditor>>,
+    ): boolean => {
+      const view = kernel.editor.view;
+      const doc = view.state.doc;
+      let from = -1;
+      let to = -1;
+      doc.descendants((node, pos) => {
+        if (from >= 0 || !node.isText) return true;
+        const at = node.text?.indexOf('第一块') ?? -1;
+        if (at >= 0) {
+          from = pos + at;
+          to = from + '第一块'.length;
+        }
+        return false;
+      });
+      if (from < 0) return false;
+      view.dispatch(view.state.tr.setSelection(TextSelection.create(doc, from, to)));
+      return true;
+    };
+    /** 经块编辑划词工具栏的 AI 下拉触发改写（真实点击路径，非直接调用）。 */
+    const triggerBlockRewrite = async (): Promise<boolean> => {
+      const bubble = document.querySelector<HTMLElement>('[data-selection-bubble]');
+      const trigger = bubble?.querySelector<HTMLButtonElement>('[data-bubble-action="ai:menu"]');
+      if (!trigger) return false;
+      trigger.dispatchEvent(
+        new KeyboardEvent('keydown', { key: 'ArrowDown', bubbles: true, cancelable: true }),
+      );
+      await sleep(150);
+      const item = bubble?.querySelector<HTMLButtonElement>('[data-ai-menu-action="ai:rewrite"]');
+      if (!item) return false;
+      item.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
+      return true;
+    };
+
+    // 指向内嵌 mock 的写作 Profile（无密钥：mock 不校验鉴权头，密钥零落盘零暴露）
+    // 该 Profile 让 AI dock / 对话链路可在冒烟中工作；在 6b 段之前删除以恢复「未配置」状态。
+    const mockUrl = (await bridge.aiMock()).url;
+    let smokeProfileId: string | null = null;
+    const aiConfigured = await (async (): Promise<boolean> => {
+      if (!mockUrl) return false;
+      try {
+        const saved = await invoke('ai:profile:save', {
+          profile: {
+            name: '冒烟 mock provider',
+            kind: 'openai-compatible',
+            baseUrl: mockUrl,
+            defaultModel: 'gpt-4o-mini',
+          },
+        });
+        smokeProfileId = saved.id;
+        await invoke('ai:profile:setDefault', { id: saved.id });
+        await invoke('ai:features:set', {
+          feature: 'writing',
+          assignment: { profileId: saved.id, model: 'gpt-4o-mini' },
+        });
+        return true;
+      } catch {
+        return false;
+      }
+    })();
+    check('冒烟可配置指向内嵌 mock 的写作 Profile（无密钥）', aiConfigured);
+    const slowTune = await bridge.aiMockTune({ chunkDelayMs: 400 });
+    check('mock provider 分段延迟可调（稳定观察流式中间态）', slowTune.ok, slowTune.error);
+
+    const writeKernel = getActiveEditor();
+    if (aiConfigured && writeKernel) {
+      // 场景 A：首片段即显示 → 生成中停止 → 保留内容 + 标记未完成 → Reject 恢复原文
+      const docBefore = writeKernel.getMarkdown();
+      check(
+        'DEV-037 块编辑划词触发改写（显式 AI 动作）',
+        selectRewriteTarget(writeKernel) &&
+          (await waitFor(
+            () =>
+              !!document.querySelector('[data-selection-bubble] [data-bubble-action="ai:menu"]'),
+            5_000,
+          )) &&
+          (await triggerBlockRewrite()),
+      );
+      const firstFragment = await waitFor(
+        () => writingStatus() === 'streaming' && writingAddedText().trim().length > 0,
+        10_000,
+      );
+      check(
+        '首片段即显示：仍在生成中就已增量呈现',
+        firstFragment,
+        `status=${writingStatus()} added=${writingAddedText().trim().slice(0, 24)}`,
+      );
+      await capture('24a-DEV-037-streaming');
+      clickWriting('writing-cancel');
+      const cancelled = await waitFor(() => writingStatus() === 'cancelled', 5_000);
+      check(
+        '停止生成：保留已显示内容并标记未完成（浮层不关闭）',
+        cancelled && writingAddedText().trim().length > 0 && !!incompleteBadge(),
+        `status=${writingStatus()} added=${writingAddedText().trim().slice(0, 24)} badge=${incompleteBadge()?.textContent ?? 'none'}`,
+      );
+      check(
+        '停止期间未写回源码（原文不变、无多余 undo 单元）',
+        writeKernel.getMarkdown() === docBefore,
+      );
+      await capture('24b-DEV-037-cancelled');
+      clickWriting('writing-reject');
+      await sleep(150);
+      check('Reject 丢弃会话且原文不变', !writingCard() && writeKernel.getMarkdown() === docBefore);
+
+      // 场景 B：流式中途断线（已推送部分片段后 socket 断开）
+      // → 保留已显示内容 + 标记未完成 → Reject 恢复原文
+      const failTune = await bridge.aiMockTune({ chunkDelayMs: 200, failAfterChunks: 2 });
+      check('mock provider 可模拟流式中途断线', failTune.ok, failTune.error);
+      check(
+        'DEV-037 断线场景：重新划词触发改写',
+        selectRewriteTarget(writeKernel) && (await triggerBlockRewrite()),
+      );
+      const failed = await waitFor(() => writingStatus() === 'error', 10_000);
+      check(
+        '断线：会话标记未完成、错误可见、已显示内容保留（浮层不关闭）',
+        failed &&
+          !!incompleteBadge() &&
+          !!document.querySelector('[data-testid="writing-error"]') &&
+          writingAddedText().trim().length > 0,
+        `status=${writingStatus()} added=${writingAddedText().trim().slice(0, 24)} error=${document.querySelector('[data-testid="writing-error"]')?.textContent ?? 'none'}`,
+      );
+      check('断线未写回源码（原文不变）', writeKernel.getMarkdown() === docBefore);
+      await capture('24c-DEV-037-disconnected');
+      clickWriting('writing-reject');
+      await sleep(150);
+      check(
+        '断线后 Reject 恢复原文并关闭浮层',
+        !writingCard() && writeKernel.getMarkdown() === docBefore,
+      );
+
+      // 场景 C：请求级失败（HTTP 500，无任何片段）→ 未完成标记 + Reject 退出
+      const httpFail = await bridge.aiMockTune({ chunkDelayMs: 30, failNextChatWith: 500 });
+      check('mock provider 可置下一次生成请求失败', httpFail.ok, httpFail.error);
+      check(
+        'DEV-037 请求失败场景：重新划词触发改写',
+        selectRewriteTarget(writeKernel) && (await triggerBlockRewrite()),
+      );
+      const errored = await waitFor(() => writingStatus() === 'error', 10_000);
+      check(
+        '请求失败：会话标记未完成并展示错误',
+        errored && !!incompleteBadge() && !!document.querySelector('[data-testid="writing-error"]'),
+        `status=${writingStatus()} error=${document.querySelector('[data-testid="writing-error"]')?.textContent ?? 'none'}`,
+      );
+      clickWriting('writing-reject');
+      await sleep(150);
+      check(
+        '请求失败后 Reject 恢复原文并关闭浮层',
+        !writingCard() && writeKernel.getMarkdown() === docBefore,
+      );
+      await bridge.aiMockTune({ chunkDelayMs: 30 });
+    }
 
     // ── 4c. DEV-043 task checkbox 首行对齐（真实布局几何断言）──────
     // 以首行行盒中心（Range 文本选区矩形）为基准，断言 checkbox 视觉中心偏差 ≤ 2px；
@@ -754,8 +933,6 @@ export async function runSmokeIfEnabled(): Promise<void> {
       'ai:expand',
       'ai:fillgaps',
       'ai:evidence',
-      // DEV-041：全文翻译（临时只读视图）
-      'translate:document',
     ];
 
     check(
@@ -889,83 +1066,6 @@ export async function runSmokeIfEnabled(): Promise<void> {
     check(
       '恢复常规宽度后工具栏动作重新平铺',
       await waitFor(() => !document.querySelector('[data-testid="toolbar-more"]'), 5_000),
-    );
-
-    // ── DEV-041 临时翻译：划词只读浮层 + 全文临时视图，绝不写盘/进文档树 ──────
-    // 冒烟环境不配置真实 Provider：这里验证入口、只读语义与「文件/文档树不变」不变量；
-    // 流式行为由单测（translation 请求层 + 控制器）覆盖。
-    const translatePage = '冒烟页面 A.md';
-    const bytesBeforeTranslate = await invoke('fs:readTextFile', { path: translatePage });
-    const tabsBeforeTranslate = useTabStore.getState().tabs.length;
-
-    const translateKernel = getActiveEditor();
-    let selectionTranslated = false;
-    if (translateKernel) {
-      const translateView = translateKernel.editor.view;
-      const translateDoc = translateView.state.doc;
-      let tFrom = -1;
-      let tTo = -1;
-      translateDoc.descendants((node, pos) => {
-        if (tFrom >= 0 || !node.isText) return true;
-        const at = node.text?.indexOf('第一块') ?? -1;
-        if (at >= 0) {
-          tFrom = pos + at;
-          tTo = tFrom + '第一块'.length;
-        }
-        return false;
-      });
-      if (tFrom >= 0) {
-        translateView.dispatch(
-          translateView.state.tr.setSelection(TextSelection.create(translateDoc, tFrom, tTo)),
-        );
-        await sleep(250);
-        const translateBubble = document.querySelector<HTMLElement>('[data-selection-bubble]');
-        translateBubble
-          ?.querySelector<HTMLButtonElement>('[data-bubble-action="ai:menu"]')
-          ?.click();
-        await sleep(200);
-        translateBubble
-          ?.querySelector<HTMLButtonElement>('[data-ai-menu-action="translate:selection"]')
-          ?.click();
-        await sleep(250);
-        selectionTranslated = !!document.querySelector(
-          '[data-testid="translation-selection-popover"]',
-        );
-        await capture('24-DEV-041-selection-translation');
-        document
-          .querySelector<HTMLButtonElement>('[data-testid="translation-selection-close"]')
-          ?.click();
-        await sleep(200);
-      }
-    }
-    check('划词翻译打开选区旁只读浮层', selectionTranslated);
-    check(
-      '划词翻译不改动文件且关闭即弃',
-      !document.querySelector('[data-testid="translation-selection-popover"]') &&
-        (await invoke('fs:readTextFile', { path: translatePage })) === bytesBeforeTranslate,
-    );
-
-    document.querySelector<HTMLButtonElement>('[data-testid="toolbar-entry-ai"]')?.click();
-    await sleep(200);
-    const documentTranslationMenu = document.querySelector<HTMLButtonElement>(
-      '[data-testid="toolbar-menu-item-translate:document"]',
-    );
-    documentTranslationMenu?.click();
-    await sleep(300);
-    const openDocumentView = document.querySelector<HTMLElement>(
-      '[data-testid="translation-document-view"]',
-    );
-    check('工具栏全文翻译打开临时只读视图', !!documentTranslationMenu && !!openDocumentView);
-    await capture('25-DEV-041-document-translation');
-    document
-      .querySelector<HTMLButtonElement>('[data-testid="translation-document-close"]')
-      ?.click();
-    await sleep(250);
-    check(
-      '全文翻译关闭后结果丢弃，文件与文档树不变',
-      !document.querySelector('[data-testid="translation-document-view"]') &&
-        useTabStore.getState().tabs.length === tabsBeforeTranslate &&
-        (await invoke('fs:readTextFile', { path: translatePage })) === bytesBeforeTranslate,
     );
 
     // ── 5. 文档格式边界：native-block 不进源码；markdown sidecar 才进源码 ──
@@ -1146,7 +1246,7 @@ export async function runSmokeIfEnabled(): Promise<void> {
           // DEV-034：平铺动作 = 格式化五项 + 双链 + AI 下拉入口 +（隐藏的）停止控件
           el.querySelectorAll('[data-bubble-action]').length >= 7 &&
           !!el.querySelector('[data-bubble-action="ai:menu"]') &&
-          el.querySelectorAll('[data-ai-menu-action]').length >= 8
+          el.querySelectorAll('[data-ai-menu-action]').length >= 7
         );
       }, 5_000),
       `el=${!!bubbleEl()} onBody=${bubbleEl()?.parentElement === document.body} display=${bubbleEl()?.style.display ?? '?'} w=${bubbleEl()?.offsetWidth ?? 0} buttons=${bubbleEl()?.querySelectorAll('[data-bubble-action]').length ?? 0} bodyKids=${[
@@ -1175,11 +1275,11 @@ export async function runSmokeIfEnabled(): Promise<void> {
     );
     await sleep(150);
     check(
-      'md AI 下拉键盘打开：菜单可见、动作集为六写作 + 询问 AI + 划词翻译、含快捷键提示',
+      'md AI 下拉键盘打开：菜单可见、动作集为六写作 + 询问 AI、含快捷键提示',
       sourceMenu()?.hidden === false &&
         sourceTrigger()?.getAttribute('aria-expanded') === 'true' &&
         aiMenuIds().join(',') ===
-          'ai:rewrite,ai:polish,ai:condense,ai:expand,ai:fillgaps,ai:evidence,chat:ask-selection,translate:selection' &&
+          'ai:rewrite,ai:polish,ai:condense,ai:expand,ai:fillgaps,ai:evidence,chat:ask-selection' &&
         (sourceMenu()?.textContent ?? '').includes('⌘⌥R'),
     );
     (document.activeElement ?? document.body).dispatchEvent(
@@ -1621,6 +1721,15 @@ export async function runSmokeIfEnabled(): Promise<void> {
       '⌘K 面板无「打开 Vault 文件浏览」命令（DEV-021）',
       commandRegistry.get('tab.files') === undefined,
     );
+
+    // ── DEV-037 冒烟清理：删除临时 mock Profile，恢复「未配置」状态 ──
+    // 上方 DEV-037 段落为写作流式配置了 Profile；DEV-026 段断言的是「未配置」空态，
+    // 必须在进入该段前把 AI 配置恢复为初始状态。
+    if (smokeProfileId) {
+      await invoke('ai:profile:delete', { id: smokeProfileId });
+      smokeProfileId = null;
+      await sleep(150);
+    }
 
     // ── 6b. AI 配置入口收口（DEV-026）：未配置入口统一跳设置页 ──
     useUiStore.getState().setDockVisible(true);

@@ -7,7 +7,8 @@ import { useWritingStore, type WritingSession } from './writing-store';
  *   同一时刻只可能有一个编辑器在跑会话（一个 DOM 节点不能挂在两处）
  * - 仅在 status === 'streaming' 时显示并可用；其余状态隐藏（disabled + hidden）
  * - 原生 button：Tab 可达，Enter/Space 触发停止（无需自定义键盘处理）
- * - 点击走会话 cancel（取消上游流 + 关闭会话），与 WritingAssistantLayer 的取消同语义
+ * - 点击走会话 stop（DEV-037）：取消上游流后保留已显示内容并标记未完成，
+ *   浮层继续提供 Accept/Reject；与浮层「停止生成」按钮同语义
  */
 
 export interface BubbleStopControl {
@@ -29,7 +30,7 @@ export function writingStopControl(): BubbleStopControl {
   dom.addEventListener('click', (event) => {
     event.preventDefault();
     const session = useWritingStore.getState().session;
-    if (session?.status === 'streaming') session.cancel();
+    if (session?.status === 'streaming') session.stop();
   });
 
   const render = (session: WritingSession | null) => {

@@ -3,11 +3,13 @@ import { Check, Loader2, Sparkles, TriangleAlert, X } from 'lucide-react';
 import { Button } from '../../../components/ui/button';
 import { cn } from '../../../lib/utils';
 import { diffLines } from './diff';
-import { useWritingStore } from './writing-store';
+import { isIncomplete, useWritingStore } from './writing-store';
 
 /**
- * AI 写作辅助 diff 预览浮层（DEV-010 交付内容 5）。
- * position:fixed 锚定选区视口坐标；流式实时刷新 diff；Accept 走控制器绑定的单事务回写。
+ * AI 写作辅助 diff 预览浮层（DEV-010 交付内容 5；DEV-037 状态机可见化）。
+ * position:fixed 锚定选区视口坐标；流式实时刷新 diff（首片段即显示）。
+ * 终态一律停在浮层：done 直接 Accept/Reject；cancelled/error 保留已显示内容并标记未完成，
+ * 仍可 Accept（写入已生成部分，单事务单 undo）或 Reject（丢弃，原文不变）。
  */
 export function WritingAssistantLayer() {
   const session = useWritingStore((s) => s.session);
@@ -23,10 +25,15 @@ export function WritingAssistantLayer() {
   const width = 480;
   const left = Math.max(
     8,
-    Math.min((session.coords?.left ?? window.innerWidth / 2) - width / 2, window.innerWidth - width - 8),
+    Math.min(
+      (session.coords?.left ?? window.innerWidth / 2) - width / 2,
+      window.innerWidth - width - 8,
+    ),
   );
   const top = Math.min(session.coords?.top ?? 80, window.innerHeight - 220) + 12;
   const streaming = session.status === 'streaming';
+  const incomplete = isIncomplete(session.status);
+  const hasContent = session.generated.trim().length > 0;
 
   return (
     <div
@@ -39,13 +46,34 @@ export function WritingAssistantLayer() {
       <div className="flex items-center gap-2 border-b px-3 py-2 text-xs font-medium">
         <Sparkles className="size-3.5 text-primary" />
         <span data-testid="writing-label">AI · {session.label}</span>
-        {streaming && <Loader2 className="size-3.5 animate-spin text-muted-foreground" />}
+        {streaming && (
+          <>
+            <Loader2
+              data-testid="writing-spinner"
+              className="size-3.5 animate-spin text-muted-foreground"
+            />
+            <span data-testid="writing-progress" className="text-[11px] text-muted-foreground">
+              生成中…
+            </span>
+          </>
+        )}
+        {incomplete && (
+          <span
+            data-testid="writing-incomplete"
+            className="rounded bg-amber-500/15 px-1.5 py-0.5 text-[11px] font-normal text-amber-600 dark:text-amber-400"
+            title={
+              session.status === 'cancelled' ? '已停止生成，内容未完成' : '生成失败，内容未完成'
+            }
+          >
+            未完成 · {session.status === 'cancelled' ? '已停止' : '生成失败'}
+          </span>
+        )}
         <button
           type="button"
           data-testid="writing-close"
           aria-label="关闭"
           className="ml-auto rounded p-0.5 text-muted-foreground hover:bg-accent hover:text-foreground"
-          onClick={() => session.cancel()}
+          onClick={() => session.reject()}
         >
           <X className="size-3.5" />
         </button>
@@ -65,9 +93,7 @@ export function WritingAssistantLayer() {
         data-testid="writing-diff"
         className="max-h-64 min-h-[3rem] overflow-auto whitespace-pre-wrap break-words px-3 py-2 text-[13px] leading-relaxed"
       >
-        {ops.length === 0 && streaming && (
-          <span className="text-muted-foreground">生成中…</span>
-        )}
+        {ops.length === 0 && streaming && <span className="text-muted-foreground">生成中…</span>}
         {ops.map((op, i) => (
           <div
             key={i}
@@ -102,9 +128,9 @@ export function WritingAssistantLayer() {
             variant="ghost"
             size="sm"
             className="h-7 px-2 text-xs"
-            onClick={() => session.cancel()}
+            onClick={() => session.stop()}
           >
-            <X className="size-3" /> 取消
+            <X className="size-3" /> 停止生成
           </Button>
         ) : (
           <>
@@ -114,7 +140,6 @@ export function WritingAssistantLayer() {
               size="sm"
               className="h-7 px-2 text-xs"
               onClick={() => session.reject()}
-              disabled={session.status === 'error'}
             >
               <X className="size-3" /> 拒绝
             </Button>
@@ -123,7 +148,7 @@ export function WritingAssistantLayer() {
               size="sm"
               className="h-7 px-2 text-xs"
               onClick={() => session.accept()}
-              disabled={session.status === 'error' || !session.generated.trim()}
+              disabled={!hasContent}
             >
               <Check className="size-3" /> 接受
             </Button>

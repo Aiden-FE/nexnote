@@ -5,13 +5,10 @@ import { titleFromPath } from '../title-sync';
 import { requestAskAi } from '../../features/ai/chat/ask-ai';
 import {
   assembleWritingContext,
+  beginWritingSession,
   fromAiActionId,
-  startWritingStream,
-  useWritingStore,
   WRITING_ACTION_MAP,
 } from '../../features/ai/writing';
-import type { WritingStreamHandle } from '../../features/ai/writing/stream';
-import { nextSessionId } from '../../features/ai/writing/writing-store';
 import type { SourceBubbleContext } from './source-bubble';
 
 /**
@@ -20,8 +17,10 @@ import type { SourceBubbleContext } from './source-bubble';
  * - 「询问 AI」复用 requestAskAi（chat queueAsk 带选区）
  * - 白名单写作动作走 agent:run:writing（prompt 由主进程 writing scenario 持有，
  *   渲染层只传 actionId + 选区），流式结果经共享 WritingAssistantLayer 预览
+ * - 状态机（首片段即显示 / 停止保留内容 / 失败保留内容）由 beginWritingSession 统一持有，
+ *   与块编辑路径共用同一份语义
  * - Accept：单个 CodeMirror 事务写回（replace 替换选区；append 追加到末行后），可 undo
- * - Reject/Cancel：取消上游流，源码不变
+ * - Reject/停止：取消上游流，源码不变
  */
 
 export interface SourceAiAssistDeps {
@@ -54,58 +53,15 @@ export function openSourceWritingSession(
     backlinks,
   });
 
-  let stream: WritingStreamHandle | null = null;
-  const sessionId = nextSessionId();
-  useWritingStore.getState().openSession({
-    id: sessionId,
-    actionId,
-    label: action.label,
-    kind: action.kind,
-    status: 'streaming',
+  beginWritingSession({
+    action,
+    request: { actionId, target: ctx.text, contextText: assembly.contextBlock },
     original: action.kind === 'replace' ? ctx.text : '',
-    generated: '',
+    coords: ctx.coords,
     truncated: assembly.truncated,
     note: assembly.note,
-    error: null,
-    coords: ctx.coords,
-    accept: () => {
-      const generated = useWritingStore.getState().session?.generated ?? '';
-      stream?.cancel();
-      if (generated.trim()) applyGenerated(view, action.kind, ctx, generated);
-      useWritingStore.getState().closeSession();
-    },
-    reject: () => {
-      stream?.cancel();
-      useWritingStore.getState().closeSession();
-    },
-    cancel: () => {
-      stream?.cancel();
-      useWritingStore.getState().closeSession();
-    },
+    apply: (generated) => applyGenerated(view, action.kind, ctx, generated),
   });
-
-  stream = startWritingStream(
-    { actionId, target: ctx.text, contextText: assembly.contextBlock },
-    {
-      onDelta: (text) => {
-        const current = useWritingStore.getState().session;
-        if (!current || current.id !== sessionId) return;
-        useWritingStore.getState().patchSession({ generated: current.generated + text });
-      },
-      onDone: () => {
-        const current = useWritingStore.getState().session;
-        if (!current || current.id !== sessionId) return;
-        useWritingStore.getState().patchSession({ status: 'done' });
-      },
-      onError: (message, code) => {
-        const current = useWritingStore.getState().session;
-        if (!current || current.id !== sessionId) return;
-        useWritingStore
-          .getState()
-          .patchSession({ status: 'error', error: `${message}${code ? `（${code}）` : ''}` });
-      },
-    },
-  );
 }
 
 /** 单事务写回：replace 替换选区；append 在选区末行之后追加新段落。 */
