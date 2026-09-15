@@ -404,6 +404,49 @@ export async function runSmokeIfEnabled(): Promise<void> {
               TextSelection.create(blockView.state.doc, firstFrom, firstTo),
             ),
           );
+          // DEV-034：块编辑划词工具栏同样以单一 AI 入口收口，键盘可开合。
+          const blockBubble = document.querySelector<HTMLElement>('[data-selection-bubble]');
+          const blockTrigger = blockBubble?.querySelector<HTMLButtonElement>(
+            '[data-bubble-action="ai:menu"]',
+          );
+          const blockMenu = blockBubble?.querySelector<HTMLElement>('[data-ai-menu]');
+          const blockStop = blockBubble?.querySelector<HTMLButtonElement>(
+            '[data-testid="bubble-stop"]',
+          );
+          check(
+            '块编辑划词工具栏：AI 单一入口 + 七项动作 + 平铺格式化/双链',
+            !!blockBubble &&
+              blockBubble.style.display !== 'none' &&
+              !!blockTrigger &&
+              Array.from(blockBubble.querySelectorAll<HTMLElement>('[data-bubble-action]'))
+                .map((el) => el.dataset.bubbleAction)
+                .join(',') ===
+                'format:bold,format:italic,format:strike,format:code,format:link,format:wikilink,ai:menu,ai:stop' &&
+              Array.from(blockBubble.querySelectorAll<HTMLElement>('[data-ai-menu-action]'))
+                .map((el) => el.dataset.aiMenuAction)
+                .join(',') ===
+                'ai:rewrite,ai:polish,ai:condense,ai:expand,ai:fillgaps,ai:evidence,chat:ask-selection',
+          );
+          blockTrigger?.dispatchEvent(
+            new KeyboardEvent('keydown', { key: 'ArrowDown', bubbles: true, cancelable: true }),
+          );
+          await sleep(150);
+          check(
+            '块编辑 AI 下拉键盘打开；Esc 只关菜单、工具栏保持；停止控件非生成态隐藏',
+            blockMenu?.hidden === false &&
+              blockTrigger?.getAttribute('aria-expanded') === 'true' &&
+              !!blockStop &&
+              blockStop.hidden === true,
+          );
+          (document.activeElement ?? document.body).dispatchEvent(
+            new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true }),
+          );
+          await sleep(150);
+          check(
+            '块编辑 AI 下拉 Esc 关闭且工具栏保持',
+            blockMenu?.hidden === true && blockBubble?.style.display !== 'none',
+          );
+
           check(
             '块编辑双链按钮：经内核 wikilink 节点插入且可 undo',
             runFormatAction(FORMAT_WIKILINK, blockKernel, '第一块') &&
@@ -918,7 +961,10 @@ export async function runSmokeIfEnabled(): Promise<void> {
           el.parentElement === document.body &&
           el.style.display !== 'none' &&
           el.offsetWidth > 0 &&
-          el.querySelectorAll('[data-bubble-action]').length >= 12
+          // DEV-034：平铺动作 = 格式化五项 + 双链 + AI 下拉入口 +（隐藏的）停止控件
+          el.querySelectorAll('[data-bubble-action]').length >= 7 &&
+          !!el.querySelector('[data-bubble-action="ai:menu"]') &&
+          el.querySelectorAll('[data-ai-menu-action]').length >= 7
         );
       }, 5_000),
       `el=${!!bubbleEl()} onBody=${bubbleEl()?.parentElement === document.body} display=${bubbleEl()?.style.display ?? '?'} w=${bubbleEl()?.offsetWidth ?? 0} buttons=${bubbleEl()?.querySelectorAll('[data-bubble-action]').length ?? 0} bodyKids=${[
@@ -931,6 +977,42 @@ export async function runSmokeIfEnabled(): Promise<void> {
         )} ds=${JSON.stringify(document.documentElement.dataset)} classes=${document.querySelectorAll('.nexnote-selection-bubble').length}`,
     );
     await capture('22-md-selection-bubble');
+
+    // ── DEV-034 源码模式 AI 下拉：键盘开合 + 动作集一致 + 独立停止控件 ─────────
+    const sourceTrigger = (): HTMLButtonElement | null =>
+      bubbleEl()?.querySelector<HTMLButtonElement>('[data-bubble-action="ai:menu"]') ?? null;
+    const sourceMenu = (): HTMLElement | null =>
+      bubbleEl()?.querySelector<HTMLElement>('[data-ai-menu]') ?? null;
+    const aiMenuIds = (): string[] =>
+      Array.from(bubbleEl()?.querySelectorAll<HTMLElement>('[data-ai-menu-action]') ?? []).map(
+        (el) => el.dataset.aiMenuAction ?? '',
+      );
+
+    sourceTrigger()?.dispatchEvent(
+      new KeyboardEvent('keydown', { key: 'ArrowDown', bubbles: true, cancelable: true }),
+    );
+    await sleep(150);
+    check(
+      'md AI 下拉键盘打开：菜单可见、动作集为六写作 + 询问 AI、含快捷键提示',
+      sourceMenu()?.hidden === false &&
+        sourceTrigger()?.getAttribute('aria-expanded') === 'true' &&
+        aiMenuIds().join(',') ===
+          'ai:rewrite,ai:polish,ai:condense,ai:expand,ai:fillgaps,ai:evidence,chat:ask-selection' &&
+        (sourceMenu()?.textContent ?? '').includes('⌘⌥R'),
+    );
+    (document.activeElement ?? document.body).dispatchEvent(
+      new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true }),
+    );
+    await sleep(150);
+    check(
+      'md AI 下拉 Esc 关闭菜单、工具栏与选区保持；停止控件未生成时隐藏',
+      sourceMenu()?.hidden === true &&
+        bubbleEl()?.style.display !== 'none' &&
+        (bubbleEl()?.querySelector<HTMLButtonElement>('[data-testid="bubble-stop"]')?.hidden ??
+          false) === true,
+    );
+    await capture('22b-md-ai-dropdown');
+
     const bubbleShown = !!bubbleEl() && bubbleEl()!.style.display !== 'none';
     if (bubbleShown) {
       // Esc 监听挂在编辑器根 DOM（view.dom），与单测路径一致。

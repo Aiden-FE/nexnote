@@ -11,7 +11,14 @@ import {
   handleSourceBubbleAction,
   SOURCE_CHAT_ASK_ACTION,
 } from '../src/editor/source/source-ai-assist';
-import { useWritingStore } from '../src/features/ai/writing';
+import {
+  useWritingStore,
+  writingAiMenuActions,
+  writingStopControl,
+} from '../src/features/ai/writing';
+import { createEditor } from '@nexnote/kernel';
+import { TextSelection } from '@tiptap/pm/state';
+import { formatBubbleActions } from '../src/editor/interactions/formatting';
 import { useChatStore } from '../src/features/ai/chat/chat-store';
 import { useUiStore } from '../src/stores/ui-store';
 
@@ -81,12 +88,10 @@ function mount(initialText: string) {
     onChange: () => undefined,
     extraExtensions: [
       sourceSelectionBubble({
-        // 与 SourceModeView 相同的按钮集装配：格式化五项 + 双链 + AI + 询问 AI
-        actions: [
-          ...sourceFormatBubbleActions(),
-          { id: 'ai:rewrite', title: '改写' },
-          { id: SOURCE_CHAT_ASK_ACTION, title: '询问 AI' },
-        ],
+        // 与 SourceModeView 相同：格式化/双链平铺，写作与询问 AI 收口下拉。
+        actions: sourceFormatBubbleActions(),
+        aiMenu: { label: 'AI', actions: writingAiMenuActions() },
+        extraControl: writingStopControl(),
         onAction: (id, ctx) => {
           if (applySourceFormat(editor.view, id)) return;
           handleSourceBubbleAction(editor.view, id, ctx, { getDocPath: () => 'Notes/测试.md' });
@@ -237,7 +242,7 @@ describe('源码模式划词工具栏（CodeMirror selection bubble）', () => {
     selectWithCoords(editor, parent, 0, 6, { top: 300, left: 100, right: 120, bottom: 320 });
     const bubble = bubbleOf();
     const btn = bubble.querySelector<HTMLButtonElement>(
-      `[data-bubble-action="${SOURCE_CHAT_ASK_ACTION}"]`,
+      `[data-ai-menu-action="${SOURCE_CHAT_ASK_ACTION}"]`,
     );
     expect(btn).toBeTruthy();
     btn?.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, cancelable: true }));
@@ -258,7 +263,7 @@ describe('源码模式划词工具栏（CodeMirror selection bubble）', () => {
     const { parent, editor } = mount('第一句原文。第二句。');
     selectWithCoords(editor, parent, 0, 6, { top: 300, left: 100, right: 120, bottom: 320 });
     const bubble = bubbleOf();
-    const btn = bubble.querySelector<HTMLButtonElement>('[data-bubble-action="ai:rewrite"]');
+    const btn = bubble.querySelector<HTMLButtonElement>('[data-ai-menu-action="ai:rewrite"]');
     btn?.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, cancelable: true }));
     btn?.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
     await bridge.flush();
@@ -291,7 +296,7 @@ describe('源码模式划词工具栏（CodeMirror selection bubble）', () => {
     const { parent, editor } = mount('第一句原文。第二句。');
     selectWithCoords(editor, parent, 0, 6, { top: 300, left: 100, right: 120, bottom: 320 });
     const bubble = bubbleOf();
-    const btn = bubble.querySelector<HTMLButtonElement>('[data-bubble-action="ai:rewrite"]');
+    const btn = bubble.querySelector<HTMLButtonElement>('[data-ai-menu-action="ai:rewrite"]');
     btn?.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, cancelable: true }));
     btn?.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
     await bridge.flush();
@@ -310,14 +315,14 @@ describe('源码模式划词工具栏（CodeMirror selection bubble）', () => {
     editor.destroy();
   });
 
-  it('AI 六项与询问 AI 不回归：格式化入列后按钮集完整且顺序稳定', () => {
+  it('AI 六项与询问 AI 收口为单一入口，两模式共用的按钮集完整且顺序稳定', () => {
     const { parent, editor } = mount('第一句原文。第二句。');
     selectWithCoords(editor, parent, 0, 6, { top: 300, left: 100, right: 120, bottom: 320 });
     const bubble = bubbleOf();
-    const ids = Array.from(bubble.querySelectorAll('[data-bubble-action]')).map(
+    const flatIds = Array.from(bubble.querySelectorAll('[data-bubble-action]')).map(
       (b) => (b as HTMLElement).dataset.bubbleAction,
     );
-    expect(ids.slice(0, 6)).toEqual([
+    expect(flatIds.slice(0, 6)).toEqual([
       'format:bold',
       'format:italic',
       'format:strike',
@@ -325,9 +330,23 @@ describe('源码模式划词工具栏（CodeMirror selection bubble）', () => {
       'format:link',
       'format:wikilink',
     ]);
-    expect(ids).toContain('ai:rewrite');
-    expect(ids).toContain(SOURCE_CHAT_ASK_ACTION);
-    expect(ids.filter((i) => i === SOURCE_CHAT_ASK_ACTION)).toHaveLength(1);
+    expect(flatIds).toContain('ai:menu');
+    expect(flatIds).not.toContain('ai:rewrite');
+    expect(flatIds).not.toContain(SOURCE_CHAT_ASK_ACTION);
+
+    const menuIds = Array.from(bubble.querySelectorAll('[data-ai-menu-action]')).map(
+      (b) => (b as HTMLElement).dataset.aiMenuAction,
+    );
+    expect(menuIds).toEqual([
+      'ai:rewrite',
+      'ai:polish',
+      'ai:condense',
+      'ai:expand',
+      'ai:fillgaps',
+      'ai:evidence',
+      SOURCE_CHAT_ASK_ACTION,
+    ]);
+    expect(bubble.querySelector('[data-ai-dropdown]')).not.toBeNull();
     editor.destroy();
   });
 });
@@ -490,5 +509,193 @@ describe('DEV-023 无选区格式化骨架（applySourceFormat 直接作用于�
     expect(applySourceFormat(editor.view, SOURCE_CHAT_ASK_ACTION)).toBe(false);
     expect(editor.getText()).toBe('第一句原文。');
     editor.destroy();
+  });
+});
+
+describe('DEV-034 划词工具栏 AI 下拉（源码模式）', () => {
+  const menuOf = (): HTMLElement => {
+    const menu = bubbleOf().querySelector<HTMLElement>('[data-ai-menu]');
+    expect(menu).toBeTruthy();
+    return menu as HTMLElement;
+  };
+  const triggerOf = (): HTMLButtonElement => {
+    const trigger = bubbleOf().querySelector<HTMLButtonElement>('[data-bubble-action="ai:menu"]');
+    expect(trigger).toBeTruthy();
+    return trigger as HTMLButtonElement;
+  };
+  const key = (el: HTMLElement, k: string) =>
+    el.dispatchEvent(new KeyboardEvent('keydown', { key: k, bubbles: true, cancelable: true }));
+
+  it('单一 AI 入口：六个写作动作 + 询问 AI 收在菜单内，工具栏只剩平铺格式化/双链', () => {
+    const { parent, editor } = mount('第一句原文。第二句。');
+    selectWithCoords(editor, parent, 0, 6, { top: 300, left: 100, right: 120, bottom: 320 });
+    const bubble = bubbleOf();
+    const flat = Array.from(bubble.querySelectorAll('[data-bubble-action]')).map(
+      (b) => (b as HTMLElement).dataset.bubbleAction,
+    );
+    expect(flat).toEqual([
+      'format:bold',
+      'format:italic',
+      'format:strike',
+      'format:code',
+      'format:link',
+      'format:wikilink',
+      'ai:menu',
+      // 停止控件也是工具栏动作（非流式时 hidden+disabled）
+      'ai:stop',
+    ]);
+    const menuIds = Array.from(bubble.querySelectorAll('[data-ai-menu-action]')).map(
+      (b) => (b as HTMLElement).dataset.aiMenuAction,
+    );
+    expect(menuIds).toEqual(writingAiMenuActions().map((a) => a.id));
+    // 快捷键提示保留在菜单项上（下拉不吞掉可发现性）
+    const rewrite = bubble.querySelector<HTMLElement>('[data-ai-menu-action="ai:rewrite"]');
+    expect(rewrite?.querySelector('.nexnote-selection-bubble__shortcut')?.textContent).toBe('⌘⌥R');
+    expect(menuOf().hidden).toBe(true);
+    editor.destroy();
+  });
+
+  it('键盘：向下键打开并聚焦首项、方向键移动、Enter 执行、Esc 关闭且工具栏保留', async () => {
+    const bridge = installBridge();
+    const { parent, editor } = mount('第一句原文。第二句。');
+    selectWithCoords(editor, parent, 0, 6, { top: 300, left: 100, right: 120, bottom: 320 });
+    const trigger = triggerOf();
+    const menu = menuOf();
+
+    key(trigger, 'ArrowDown');
+    expect(menu.hidden).toBe(false);
+    expect(trigger.getAttribute('aria-expanded')).toBe('true');
+    expect(document.activeElement).toBe(menu.querySelector('[data-ai-menu-action="ai:rewrite"]'));
+
+    key(menu, 'ArrowDown');
+    expect(document.activeElement).toBe(menu.querySelector('[data-ai-menu-action="ai:polish"]'));
+    key(menu, 'ArrowUp');
+    expect(document.activeElement).toBe(menu.querySelector('[data-ai-menu-action="ai:rewrite"]'));
+
+    // Esc 只关菜单，工具栏保持可见（选区仍在）
+    key(document.activeElement as HTMLElement, 'Escape');
+    expect(menu.hidden).toBe(true);
+    expect(trigger.getAttribute('aria-expanded')).toBe('false');
+    expect(document.activeElement).toBe(trigger);
+    expect(bubbleOf().style.display).not.toBe('none');
+
+    // 再次打开 → Enter 执行首项（改写）
+    key(trigger, 'ArrowDown');
+    key(document.activeElement as HTMLElement, 'Enter');
+    await bridge.flush();
+    expect(bridge.startCalls).toHaveLength(1);
+    expect(bridge.startCalls[0]).toMatchObject({ actionId: 'rewrite', target: '第一句原文。' });
+    expect(menu.hidden).toBe(true);
+    // AI 写作动作保留工具栏：生成中停止控件必须可点
+    expect(bubbleOf().style.display).not.toBe('none');
+    editor.destroy();
+  });
+
+  it('生成中停止控件可点击取消上游流，结束后隐藏', async () => {
+    const bridge = installBridge();
+    const { parent, editor } = mount('第一句原文。第二句。');
+    selectWithCoords(editor, parent, 0, 6, { top: 300, left: 100, right: 120, bottom: 320 });
+    const stop = bubbleOf().querySelector<HTMLButtonElement>('[data-testid="bubble-stop"]');
+    expect(stop).toBeTruthy();
+    expect(stop!.hidden).toBe(true);
+    expect(stop!.disabled).toBe(true);
+    // 原生 button：Tab 可达、Enter/Space 触发，无需自定义 keydown
+    expect(stop!.tagName).toBe('BUTTON');
+    expect(stop!.getAttribute('aria-label')).toBe('停止生成');
+
+    const item = bubbleOf().querySelector<HTMLButtonElement>('[data-ai-menu-action="ai:rewrite"]');
+    item?.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
+    await bridge.flush();
+    expect(stop!.hidden).toBe(false);
+    expect(stop!.disabled).toBe(false);
+
+    stop!.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
+    await bridge.flush();
+    expect(bridge.cancelCalls).toContain('stream-1');
+    expect(useWritingStore.getState().session).toBeNull();
+    expect(stop!.hidden).toBe(true);
+    editor.destroy();
+  });
+
+  it('浮层不遮挡选区：工具栏底边在选区上方，菜单自工具栏向上展开', () => {
+    const { parent, editor } = mount('第一句原文。第二句。');
+    selectWithCoords(editor, parent, 0, 6, { top: 300, left: 100, right: 120, bottom: 320 });
+    const bubble = bubbleOf();
+    // 工具栏 translate(-50%,-100%)：style.top 即底边，距选区起点 8px（300-8）
+    return nextFrame().then(() => {
+      expect(bubble.style.top).toBe('292px');
+      const menu = menuOf();
+      // 菜单向上展开：位于工具栏之上 ⇒ 不可能覆盖下方的选区文本
+      expect(menu.style.bottom).toBe('calc(100% + 4px)');
+      expect(menu.style.top).toBe('');
+      expect(menu.parentElement?.dataset.aiDropdown).toBe('');
+      editor.destroy();
+    });
+  });
+
+  it('无选区时不显示工具栏（含 AI 入口）', () => {
+    const { editor } = mount('第一句原文。第二句。');
+    const bubble = bubbleOf();
+    expect(bubble.style.display).toBe('none');
+    // 折叠光标：工具栏整体隐藏 ⇒ AI 入口不可见也不可点
+    editor.view.dispatch({ selection: { anchor: 3, head: 3 } });
+    expect(bubble.style.display).toBe('none');
+    expect(bubble.querySelector('[data-bubble-action="ai:menu"]')).toBeTruthy();
+    editor.destroy();
+  });
+});
+
+describe('DEV-034 两模式按钮集一致（源码 vs 块编辑）', () => {
+  it('平铺动作与 AI 下拉动作完全一致（同一装配函数）', () => {
+    // 源码模式实际装配
+    const { parent, editor } = mount('第一句原文。第二句。');
+    selectWithCoords(editor, parent, 0, 6, { top: 300, left: 100, right: 120, bottom: 320 });
+    const sourceBubble = bubbleOf();
+    const sourceFlat = Array.from(sourceBubble.querySelectorAll('[data-bubble-action]')).map(
+      (b) => (b as HTMLElement).dataset.bubbleAction,
+    );
+    const sourceMenu = Array.from(sourceBubble.querySelectorAll('[data-ai-menu-action]')).map(
+      (b) => (b as HTMLElement).dataset.aiMenuAction,
+    );
+    const sourceMenuTitles = Array.from(sourceBubble.querySelectorAll('[data-ai-menu-action]')).map(
+      (b) => b.textContent,
+    );
+    editor.destroy();
+
+    // 块编辑实际装配（EditorView 使用同一平铺动作与同一 AI 菜单函数）
+    const host = document.createElement('div');
+    document.body.append(host);
+    const kernel = createEditor(host, {
+      initialMarkdown: '第一句原文。第二句。',
+      slashMenu: false,
+      dragHandle: false,
+      selectionBubble: {
+        actions: formatBubbleActions(),
+        aiMenu: { label: 'AI', actions: writingAiMenuActions() },
+        extraControl: writingStopControl(),
+        onAction: () => undefined,
+      },
+    });
+    const doc = kernel.editor.view.state.doc;
+    kernel.editor.view.dispatch(
+      kernel.editor.view.state.tr.setSelection(TextSelection.create(doc, 1, 6)),
+    );
+    const blockBubble = host.querySelector<HTMLElement>('[data-selection-bubble]');
+    expect(blockBubble).toBeTruthy();
+    const blockFlat = Array.from(blockBubble!.querySelectorAll('[data-bubble-action]')).map(
+      (b) => (b as HTMLElement).dataset.bubbleAction,
+    );
+    const blockMenu = Array.from(blockBubble!.querySelectorAll('[data-ai-menu-action]')).map(
+      (b) => (b as HTMLElement).dataset.aiMenuAction,
+    );
+    const blockMenuTitles = Array.from(blockBubble!.querySelectorAll('[data-ai-menu-action]')).map(
+      (b) => b.textContent,
+    );
+
+    expect(blockFlat).toEqual(sourceFlat);
+    expect(blockMenu).toEqual(sourceMenu);
+    expect(blockMenuTitles).toEqual(sourceMenuTitles);
+    expect(blockMenu).toHaveLength(7);
+    kernel.destroy();
   });
 });

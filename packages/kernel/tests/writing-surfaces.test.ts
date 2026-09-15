@@ -307,6 +307,146 @@ describe('选区浮动工具栏（SelectionBubble）', () => {
   });
 });
 
+describe('DEV-034 划词工具栏 AI 下拉（块编辑）', () => {
+  function mountWithMenu(onAction = vi.fn()) {
+    const mounted = mount('第一段示例文字\n\n第二段', {
+      selectionBubble: {
+        actions: [{ id: 'format:bold', title: 'B' }],
+        aiMenu: {
+          label: 'AI',
+          actions: [
+            {
+              id: 'ai:rewrite',
+              title: '改写',
+              shortcut: { mod: true, alt: true, key: 'r' },
+              shortcutLabel: '⌘⌥R',
+            },
+            { id: 'ai:polish', title: '润色' },
+            { id: 'chat:ask-selection', title: '询问 AI' },
+          ],
+        },
+        onAction,
+      },
+    });
+    return { ...mounted, onAction };
+  }
+
+  const bubbleOf = (container: HTMLElement) =>
+    container.querySelector<HTMLElement>('[data-selection-bubble]');
+  const menuOf = (container: HTMLElement) => container.querySelector<HTMLElement>('[data-ai-menu]');
+  const triggerOf = (container: HTMLElement) =>
+    container.querySelector<HTMLButtonElement>('[data-bubble-action="ai:menu"]');
+  const key = (el: Element, k: string) =>
+    el.dispatchEvent(new KeyboardEvent('keydown', { key: k, bubbles: true, cancelable: true }));
+
+  it('AI 动作收口为单一入口，平铺按钮只剩非 AI 动作', () => {
+    const { container, kernel } = mountWithMenu();
+    selectText(kernel, 1, 6);
+    const bubble = bubbleOf(container);
+    expect(bubble).toBeTruthy();
+    const flat = Array.from(bubble!.querySelectorAll('[data-bubble-action]')).map(
+      (b) => (b as HTMLElement).dataset.bubbleAction,
+    );
+    expect(flat).toEqual(['format:bold', 'ai:menu']);
+    const menuIds = Array.from(bubble!.querySelectorAll('[data-ai-menu-action]')).map(
+      (b) => (b as HTMLElement).dataset.aiMenuAction,
+    );
+    expect(menuIds).toEqual(['ai:rewrite', 'ai:polish', 'chat:ask-selection']);
+    expect(menuOf(container)!.hidden).toBe(true);
+    // 快捷键提示保留在菜单项
+    expect(
+      menuOf(container)!.querySelector(
+        '[data-ai-menu-action="ai:rewrite"] .nexnote-selection-bubble__shortcut',
+      )?.textContent,
+    ).toBe('⌘⌥R');
+    kernel.destroy();
+  });
+
+  it('键盘打开/方向键/Enter 执行/Esc 关闭；Esc 不隐藏工具栏', () => {
+    const { container, kernel, onAction } = mountWithMenu();
+    selectText(kernel, 1, 6);
+    const trigger = triggerOf(container)!;
+    const menu = menuOf(container)!;
+
+    key(trigger, 'ArrowDown');
+    expect(menu.hidden).toBe(false);
+    expect(trigger.getAttribute('aria-expanded')).toBe('true');
+    expect(document.activeElement).toBe(menu.querySelector('[data-ai-menu-action="ai:rewrite"]'));
+    key(menu, 'ArrowDown');
+    expect(document.activeElement).toBe(menu.querySelector('[data-ai-menu-action="ai:polish"]'));
+    key(menu, 'ArrowUp');
+    expect(document.activeElement).toBe(menu.querySelector('[data-ai-menu-action="ai:rewrite"]'));
+
+    key(document.activeElement!, 'Escape');
+    expect(menu.hidden).toBe(true);
+    expect(trigger.getAttribute('aria-expanded')).toBe('false');
+    expect(document.activeElement).toBe(trigger);
+    // Esc 只关菜单：工具栏与选区保持
+    expect(bubbleOf(container)!.style.display).not.toBe('none');
+    expect(kernel.editor.view.state.selection.empty).toBe(false);
+
+    key(trigger, 'ArrowDown');
+    key(document.activeElement!, 'Enter');
+    expect(onAction).toHaveBeenCalledWith(
+      'ai:rewrite',
+      expect.objectContaining({ target: 'selection' }),
+    );
+    expect(menu.hidden).toBe(true);
+    expect(kernel.editor.view.state.selection.empty).toBe(false);
+    kernel.destroy();
+  });
+
+  it('菜单动作仍可用 ⌘⌥ 快捷键直接触发（快捷键提示不回归）', () => {
+    const { kernel, onAction } = mountWithMenu();
+    selectText(kernel, 1, 6);
+    const handled = kernel.editor.view.someProp('handleKeyDown', (f) =>
+      f(
+        kernel.editor.view,
+        new KeyboardEvent('keydown', { metaKey: true, altKey: true, key: 'r' }) as KeyboardEvent,
+      ),
+    );
+    expect(handled).toBe(true);
+    expect(onAction).toHaveBeenCalledWith(
+      'ai:rewrite',
+      expect.objectContaining({ target: 'selection' }),
+    );
+    kernel.destroy();
+  });
+
+  it('注入的附加控件（停止按钮）挂在工具栏内；选区折叠时不遮挡也不显示', () => {
+    const onAction = vi.fn();
+    const extra = document.createElement('button');
+    extra.type = 'button';
+    extra.dataset.testid = 'bubble-stop';
+    extra.textContent = '停止';
+    let clicked = 0;
+    extra.addEventListener('click', () => {
+      clicked += 1;
+    });
+    const { container, kernel } = mount('第一段示例文字', {
+      selectionBubble: {
+        actions: [{ id: 'format:bold', title: 'B' }],
+        aiMenu: { label: 'AI', actions: [{ id: 'ai:rewrite', title: '改写' }] },
+        extraControl: { dom: extra },
+        onAction,
+      },
+    });
+    selectText(kernel, 1, 4);
+    const bubble = bubbleOf(container)!;
+    expect(bubble.contains(extra)).toBe(true);
+    extra.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
+    expect(clicked).toBe(1);
+    // 选区折叠 → 工具栏隐藏（含附加控件）
+    kernel.editor.view.dispatch(
+      kernel.editor.view.state.tr.setSelection(
+        TextSelection.create(kernel.editor.view.state.doc, 1),
+      ),
+    );
+    expect(bubble.style.display).toBe('none');
+    kernel.destroy();
+  });
+});
+
 describe('右键上下文菜单（ContextMenu）', () => {
   it('选中右键构建子菜单并触发动作', () => {
     const onAction = vi.fn();
