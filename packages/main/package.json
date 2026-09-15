@@ -1,7 +1,9 @@
 {
   "name": "@nexnote/main",
   "dependencies": {
+    "@ai-sdk/openai-compatible": "^3.0.48",
     "@nexnote/shared": "workspace:*",
+    "ai": "^7.0.99",
     "better-sqlite3": "^12.11.1",
     "chokidar": "^5.0.0",
     "simple-git": "^3.36.0"

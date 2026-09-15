@@ -77,6 +77,19 @@ describe('OpenAI 协议适配器', () => {
     expect(req.body.max_tokens).toBe(8);
   });
 
+  it('reasoningEffort 请求级覆盖被翻译为 provider reasoning_effort', async () => {
+    await adapter().chatCompletionStream(
+      {
+        model: 'gpt-4o-mini',
+        messages: [{ role: 'user', content: 'reason' }],
+        params: { reasoningEffort: 'high' },
+      },
+      () => undefined,
+    ).done;
+    const req = mock.requests.at(-1) as { body: { reasoning_effort?: string } };
+    expect(req.body.reasoning_effort).toBe('high');
+  });
+
   it('chatCompletionStream 发出统一内部事件协议（start→delta*→done）', async () => {
     const events: ChatStreamEvent[] = [];
     const handle = collectStream(adapter(), events);
@@ -120,7 +133,9 @@ describe('OpenAI 协议适配器', () => {
     } finally {
       mock.redirectNextModels = false;
     }
-    expect(mock.requests.filter((request) => request.url === '/v1/redirect/models')).toHaveLength(1);
+    expect(mock.requests.filter((request) => request.url === '/v1/redirect/models')).toHaveLength(
+      1,
+    );
   });
 
   it('HTTP 错误映射为 error 事件（含状态提示）', async () => {

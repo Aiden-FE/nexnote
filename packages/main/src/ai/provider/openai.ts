@@ -1,5 +1,6 @@
 import type { ChatStreamEvent, ProviderCapabilities, TokenUsage } from '@nexnote/shared';
-import { createSseParser } from './sse';
+import { createOpenAICompatible } from '@ai-sdk/openai-compatible';
+import { streamText } from 'ai';
 import {
   ProviderError,
   type AdapterOptions,
@@ -36,21 +37,6 @@ function normalizeBase(baseUrl: string): string {
 
 function joinUrl(base: string, path: string): string {
   return `${base}${path}`;
-}
-
-interface OpenAiChatChunkChoiceDelta {
-  content?: string | null;
-  reasoning_content?: string | null;
-  tool_calls?: unknown[];
-}
-
-interface OpenAiChatChunk {
-  model?: string;
-  choices?: Array<{
-    delta?: OpenAiChatChunkChoiceDelta;
-    finish_reason?: string | null;
-  }>;
-  usage?: TokenUsage | null;
 }
 
 function extractUsage(raw: unknown): TokenUsage | undefined {
@@ -296,11 +282,7 @@ export class OpenAIProtocolAdapter implements ProviderAdapter {
     }
     if (!res.ok) {
       logRedactedProviderError(res, 'provider');
-      throw new ProviderError(
-        safeMessageFromStatus(res.status),
-        'PROVIDER_HTTP',
-        res.status,
-      );
+      throw new ProviderError(safeMessageFromStatus(res.status), 'PROVIDER_HTTP', res.status);
     }
     const body = (await res.json()) as { data?: Array<{ id?: string }> };
     return (body.data ?? [])
@@ -330,11 +312,7 @@ export class OpenAIProtocolAdapter implements ProviderAdapter {
     }
     if (!res.ok) {
       logRedactedProviderError(res, 'provider');
-      throw new ProviderError(
-        safeMessageFromStatus(res.status),
-        'PROVIDER_HTTP',
-        res.status,
-      );
+      throw new ProviderError(safeMessageFromStatus(res.status), 'PROVIDER_HTTP', res.status);
     }
     const body = (await res.json()) as {
       model?: string;
@@ -352,124 +330,111 @@ export class OpenAIProtocolAdapter implements ProviderAdapter {
     const abort = new AbortController();
     const timeout = setTimeout(() => abort.abort(new Error('timeout')), REQUEST_TIMEOUT_MS);
     let settled = false;
-
     const finish = () => {
       if (!settled) {
         settled = true;
         clearTimeout(timeout);
       }
     };
-
+    const provider = createOpenAICompatible({
+      name: 'nexnote-provider',
+      baseURL:
+        this.kind === 'azure-openai'
+          ? `${this.base}/openai/deployments/${encodeURIComponent(req.model)}`
+          : this.base,
+      apiKey: this.apiKey,
+      queryParams: this.kind === 'azure-openai' ? { 'api-version': this.apiVersion } : undefined,
+      fetch: (input, init) => this.fetchImpl(input, { ...init, redirect: 'error' }),
+      includeUsage: true,
+    });
+    const params = req.params;
     const done = (async (): Promise<void> => {
-      let res: Response;
       try {
-        res = await this.request(this.chatUrl(req.model, true), {
-          method: 'POST',
-          headers: this.headers(true),
-          body: JSON.stringify({
-            model: req.model,
-            messages: req.messages,
-            stream: true,
-            ...(req.params?.temperature !== undefined && { temperature: req.params.temperature }),
-            ...(req.params?.maxTokens !== undefined && { max_tokens: req.params.maxTokens }),
+        const result = streamText({
+          model: provider.chatModel(req.model),
+          messages: req.messages,
+          ...(params?.temperature !== undefined && { temperature: params.temperature }),
+          ...(params?.maxTokens !== undefined && { maxOutputTokens: params.maxTokens }),
+          ...(params?.reasoningEffort && {
+            providerOptions: { 'nexnote-provider': { reasoningEffort: params.reasoningEffort } },
           }),
-          signal: abort.signal,
+          abortSignal: abort.signal,
+          maxRetries: 0,
         });
-      } catch (e) {
+        let streamFailed = false;
+        for await (const part of result.fullStream) {
+          if (part.type === 'error' || part.type === 'abort') streamFailed = true;
+          this.emitSdkPart(part, req.model, onEvent);
+        }
+        if (streamFailed) return;
+        const usage = await result.totalUsage;
+        onEvent({
+          type: 'done',
+          ...((usage.inputTokens ?? 0) || (usage.outputTokens ?? 0) || (usage.totalTokens ?? 0)
+            ? {
+                usage: {
+                  promptTokens: usage.inputTokens ?? 0,
+                  completionTokens: usage.outputTokens ?? 0,
+                  totalTokens: usage.totalTokens ?? 0,
+                },
+              }
+            : {}),
+        });
+        finish();
+      } catch (error) {
         finish();
         if (abort.signal.aborted) {
           onEvent({ type: 'error', message: '已取消', code: 'CANCELLED' });
         } else {
-          const netErr = this.networkError(e);
-          onEvent({ type: 'error', message: netErr.message, code: netErr.code });
+          const providerError = this.sdkError(error);
+          onEvent({ type: 'error', message: providerError.message, code: providerError.code });
         }
-        return;
-      }
-      if (!res.ok) {
-        finish();
-        logRedactedProviderError(res, 'chatStream');
-        onEvent({
-          type: 'error',
-          message: safeMessageFromStatus(res.status),
-          code: 'PROVIDER_HTTP',
-        });
-        return;
-      }
-      if (!res.body) {
-        finish();
-        onEvent({ type: 'error', message: '供应商未返回流式响应体', code: 'EMPTY_BODY' });
-        return;
-      }
-
-      // 连接已建立：先发 start（统一内部协议由协议层负责完整生命周期）
-      onEvent({ type: 'start', model: req.model });
-
-      let streamDone = false;
-      const parser = createSseParser((data) => {
-        if (streamDone) return;
-        if (data === '[DONE]') {
-          streamDone = true;
-          onEvent({ type: 'done' });
-          void abort.abort(new Error('done'));
-          return;
-        }
-        let chunk: OpenAiChatChunk;
-        try {
-          chunk = JSON.parse(data) as OpenAiChatChunk;
-        } catch {
-          return; // 非 JSON 心跳等，忽略
-        }
-        const choice = chunk.choices?.[0];
-        const delta = choice?.delta;
-        if (delta?.reasoning_content)
-          onEvent({ type: 'reasoningDelta', text: delta.reasoning_content });
-        if (delta?.content) onEvent({ type: 'delta', text: delta.content });
-      });
-
-      const reader = res.body.getReader();
-      const decoder = new TextDecoder();
-      try {
-        for (;;) {
-          const { done: readerDone, value } = await reader.read();
-          if (readerDone) break;
-          parser.feed(decoder.decode(value, { stream: true }));
-          // [DONE] is the protocol terminator; do not depend on transport EOF, which can
-          // arrive later (or never) on a provider connection kept alive after completion.
-          if (streamDone) break;
-        }
-        parser.feed(decoder.decode());
-        parser.flush();
-        if (!streamDone) {
-          streamDone = true;
-          // A transport EOF is not a successful completion: only the OpenAI SSE sentinel
-          // commits the partial deltas. Consumers must keep the partial text visibly failed.
-          onEvent({
-            type: 'error',
-            message: '流式响应在收到完成标记前结束，请重试',
-            code: 'STREAM_TRUNCATED',
-          });
-        }
-      } catch (e) {
-        if (!streamDone) {
-          streamDone = true;
-          const msg = abort.signal.aborted ? '已取消' : e instanceof Error ? e.message : String(e);
-          onEvent({
-            type: 'error',
-            message: msg,
-            code: abort.signal.aborted ? 'CANCELLED' : 'STREAM_READ',
-          });
-        }
-      } finally {
-        finish();
       }
     })();
+    return { abort: () => abort.abort(new Error('aborted')), done };
+  }
 
-    return {
-      abort: () => {
-        void abort.abort(new Error('aborted'));
-      },
-      done,
-    };
+  private emitSdkPart(
+    part: { type: string; text?: string; error?: unknown },
+    model: string,
+    onEvent: (event: ChatStreamEvent) => void,
+  ): void {
+    switch (part.type) {
+      case 'start':
+      case 'start-step':
+        onEvent({ type: 'start', model });
+        break;
+      case 'text-delta':
+        if (part.text) onEvent({ type: 'delta', text: part.text });
+        break;
+      case 'reasoning-delta':
+        if (part.text) onEvent({ type: 'reasoningDelta', text: part.text });
+        break;
+      case 'finish':
+        break;
+      case 'error':
+        onEvent({ type: 'error', ...this.sdkError(part.error) });
+        break;
+      case 'abort':
+        onEvent({ type: 'error', message: '已取消', code: 'CANCELLED' });
+        break;
+    }
+  }
+
+  private sdkError(error: unknown): { message: string; code: string } {
+    const status =
+      (error as { statusCode?: number })?.statusCode ?? (error as { status?: number })?.status;
+    if (typeof status === 'number') {
+      return { message: safeMessageFromStatus(status), code: 'PROVIDER_HTTP' };
+    }
+    // SDK 校验「流结束但没有 finish_reason」的截断语义，对应内部 STREAM_TRUNCATED。
+    if (error instanceof Error && error.name === 'AI_InvalidResponseDataError') {
+      return { message: '流式响应在收到完成标记前结束，请重试', code: 'STREAM_TRUNCATED' };
+    }
+    // Provider bodies are untrusted (may echo credentials or document content) and SDK error
+    // messages can carry them; only the operation name enters logs, never the message.
+    console.warn('[ai:chatStream] streaming failed before completion (details redacted)');
+    return { message: '供应商流式请求失败，请稍后重试', code: 'STREAM_READ' };
   }
 
   async embeddings(req: EmbedRequest): Promise<EmbedResponse> {
@@ -486,11 +451,7 @@ export class OpenAIProtocolAdapter implements ProviderAdapter {
     }
     if (!res.ok) {
       logRedactedProviderError(res, 'embeddings');
-      throw new ProviderError(
-        safeMessageFromStatus(res.status),
-        'PROVIDER_HTTP',
-        res.status,
-      );
+      throw new ProviderError(safeMessageFromStatus(res.status), 'PROVIDER_HTTP', res.status);
     }
     const body = (await res.json()) as {
       model?: string;
