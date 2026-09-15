@@ -67,7 +67,11 @@
 | **DEV-025** | [文档属性感知：字段目录与 Markdown 属性面板](issues/025-field-catalog-md-properties.md) | editor | L | DEV-020 | 验收反馈 | ✅ 已合并（Popover 修订 `a99babc`，YAML flush 修订 `d8f03f7`，smoke 154/154，双轴 PASS） |
 | **DEV-026** | [AI 配置入口收口设置页](issues/026-ai-settings-single-entry.md) | ai | S | DEV-009, DEV-012 | 验收反馈 | ✅ 已合并（`5d49165`，候选 `ab39ba4`，smoke 116/116，双轴 PASS） |
 
-### 新一轮验收反馈（DEV-027～DEV-042）— open
+### 新一轮验收反馈（DEV-027～DEV-044）— 已实现；发布/最终 smoke 待完成
+
+> DEV-027～DEV-044 已按依赖拓扑实现并合入当前 master。可执行门禁全绿（145 test files / 1152 tests；typecheck、lint、build、release-config 31/31、diff-check）。DEV-042 追踪测试已合入，但真实 macOS arm64 packaged smoke 报告为 194/204，仍有 10 项 UI/既有基线失败，详见 `.scratch/nexnote-build/smoke/RELEASE-0.0.2/results.json`；因此不得宣称本轮 packaged smoke 全绿。
+>
+> 版本已升级至 `0.0.2`（`4d24a76`）。真实 GitHub Release `v0.0.2` 尚未完成：GitHub 网络访问当前失败；恢复后须按 `.github/workflows/release.yml` 的 immutable tag/evidence/asset 回读流程完成发布。
 
 > 处理方式：按 Wave 1～5 分批推进；Wave 内无阻塞票并行，依赖边以各票 `Blocked by` 为准。每票使用独立 worktree/`dev/<TICKET>` 分支，合并前执行标准门禁与 Standards + Spec 双轴审查。
 
