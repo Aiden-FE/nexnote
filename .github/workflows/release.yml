@@ -248,6 +248,11 @@ jobs:
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with: { node-version: 22, cache: pnpm }
       - run: pnpm install --frozen-lockfile
+      - name: Configure Git identity for the smoke vault fixture
+        run: |
+          git config --global user.name "NexNote CI"
+          git config --global user.email "ci@nexnote.invalid"
+          git config --global core.autocrlf false
       - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
         with:
           name: nexnote-macos-arm64
@@ -260,6 +265,14 @@ jobs:
       - run: pnpm smoke:ci
         env:
           NEXNOTE_APP_PATH: release/smoke-app/NexNote.app/Contents/MacOS/NexNote
+          NEXNOTE_SMOKE_OUTPUT_DIR: ${{ runner.temp }}/nexnote-smoke-results
+      - name: Upload packaged smoke evidence
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: nexnote-smoke-evidence
+          path: ${{ runner.temp }}/nexnote-smoke-results
+          if-no-files-found: warn
 
   # All machine-checkable artifact/evidence gates complete BEFORE protected approval.
   preflight:
