@@ -72,7 +72,10 @@ export class ChatService {
         status: session.status,
       });
     }
-    return summaries.sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
+    return summaries.sort((a, b) => {
+      const updated = b.updatedAt.localeCompare(a.updatedAt);
+      return updated !== 0 ? updated : b.title.localeCompare(a.title);
+    });
   }
 
   /** 读取单个会话（含未完成状态标记）；路径越权/损坏时抛错。 */
