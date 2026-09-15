@@ -50,7 +50,7 @@ export class ToolRegistry {
     const tool = this.tools.get(name);
     if (!tool) throw new ToolRegistryError(`工具不存在: ${name}`, 'TOOL_NOT_FOUND');
     const def = tool.definition;
-    if (def.access === 'write' && !WRITE_TOOLS_ENABLED)
+    if (def.access === 'write' && (!WRITE_TOOLS_ENABLED || ctx.permissionMode === undefined))
       throw new ToolRegistryError(`写工具已禁用: ${name}`, 'TOOL_WRITE_DISABLED');
     return tool.execute(input, ctx);
   }

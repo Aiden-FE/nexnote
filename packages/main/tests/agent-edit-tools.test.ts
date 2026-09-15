@@ -17,7 +17,7 @@ describe('DEV-040 document write tools', () => {
   it('rejects an ambiguous selection without writing', async () => {
     const document = { read: vi.fn(async () => 'x selected x selected'), write: vi.fn() };
     const registry = new ToolRegistry(createBuiltinTools({ retrieve: async () => ({ sources: [], degraded: false }), listPages: () => [], document }));
-    await expect(registry.execute('edit_current_selection', { path: 'note.md', expectedText: 'selected', content: 'new' }, { runId: 'r', scenario: 'chat' })).rejects.toMatchObject({ code: 'STALE_SELECTION' });
+    await expect(registry.execute('edit_current_selection', { path: 'note.md', expectedText: 'selected', content: 'new' }, { runId: 'r', scenario: 'chat', permissionMode: 'full' })).rejects.toMatchObject({ code: 'STALE_SELECTION' });
     expect(document.write).not.toHaveBeenCalled();
   });
 });
