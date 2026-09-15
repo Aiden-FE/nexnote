@@ -341,11 +341,18 @@ export class AiService {
     onEvent?: (event: ChatStreamEvent) => void,
   ): string {
     const streamId = randomUUID();
+    let terminal = false;
     const handle = this.openChatStream(options, (event) => {
       if (onEvent) onEvent(event);
       this.deps.sendEvent('ai:streamEvent', { streamId, event });
+      if (event.type === 'done' || event.type === 'error') {
+        terminal = true;
+        // Remove on the terminal protocol event, before the adapter promise's microtask settles.
+        this.streams.delete(streamId);
+      }
     });
-    this.streams.set(streamId, handle);
+    // A synchronous adapter is valid too; do not re-add a stream that already terminated.
+    if (!terminal) this.streams.set(streamId, handle);
     void handle.done.finally(() => this.streams.delete(streamId));
     return streamId;
   }

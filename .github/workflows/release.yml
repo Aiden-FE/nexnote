@@ -143,7 +143,9 @@ jobs:
         run: |
           node scripts/check-version.mjs --require-tag "${{ needs.prepare.outputs.tag }}"
           pnpm verify:release-config
-      - run: pnpm lint && pnpm typecheck && pnpm test && pnpm build
+      - name: Run lint, typecheck, tests, and build with a non-interactive Git environment
+        shell: bash
+        run: env -u GIT_EDITOR -u GIT_SEQUENCE_EDITOR -u EDITOR CI=true pnpm lint && env -u GIT_EDITOR -u GIT_SEQUENCE_EDITOR -u EDITOR CI=true pnpm typecheck && env -u GIT_EDITOR -u GIT_SEQUENCE_EDITOR -u EDITOR CI=true pnpm test && env -u GIT_EDITOR -u GIT_SEQUENCE_EDITOR -u EDITOR CI=true pnpm build
 
       - name: Package Ad hoc signed macOS distributables
         if: runner.os == 'macOS'
