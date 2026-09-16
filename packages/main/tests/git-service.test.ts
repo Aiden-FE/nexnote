@@ -37,6 +37,17 @@ function systemGitAvailable(): boolean {
   }
 }
 
+function configureTestIdentity(repository: string): void {
+  execFileSync(gitBinary(), ['config', 'user.name', 'NexNote Tests'], {
+    cwd: repository,
+    stdio: 'ignore',
+  });
+  execFileSync(gitBinary(), ['config', 'user.email', 'tests@nexnote.local'], {
+    cwd: repository,
+    stdio: 'ignore',
+  });
+}
+
 const runIfGit = (): boolean => !SKIP && systemGitAvailable();
 
 let root: string;
@@ -398,6 +409,7 @@ describe.runIf(runIfGit())('GitService（系统 Git，临时仓库）', () => {
       const otherRoot = mkdtempSync(path.join(tmpdir(), 'nexnote-clone-'));
       try {
         execFileSync(gitBinary(), ['clone', remoteRoot, otherRoot], { stdio: 'ignore' });
+        configureTestIdentity(otherRoot);
         const newRemoteLog = path.join(otherRoot, 'shared.md');
         await fsp.writeFile(newRemoteLog, 'hello from local\nadd a new line\n');
         execFileSync(gitBinary(), ['add', '.'], { cwd: otherRoot, stdio: 'ignore' });
@@ -462,6 +474,7 @@ describe.runIf(runIfGit())('GitService（系统 Git，临时仓库）', () => {
       const shadow = mkdtempSync(path.join(tmpdir(), 'nexnote-shadow-'));
       try {
         execFileSync(gitBinary(), ['clone', remoteRoot, shadow], { stdio: 'ignore' });
+        configureTestIdentity(shadow);
         await fsp.writeFile(path.join(shadow, 'c.md'), 'A\nremote-edited\nC\n');
         execFileSync(gitBinary(), ['add', '.'], { cwd: shadow, stdio: 'ignore' });
         execFileSync(gitBinary(), ['commit', '-m', 'remote edit'], {
