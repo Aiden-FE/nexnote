@@ -1592,11 +1592,19 @@ export async function runSmokeIfEnabled(): Promise<void> {
     const completionCm = document.querySelector<HTMLElement>(
       '[data-testid="source-editor-pane"] .cm-content',
     );
-    check('源码补全：CodeMirror 可聚焦', !!completionCm);
-    if (completionCm) {
+    const completionView = getActiveSourceEditor()?.view ?? null;
+    check('源码补全：CodeMirror 可聚焦', !!completionCm && !!completionView);
+    if (completionCm && completionView) {
       completionCm.focus();
-      document.execCommand('selectAll');
-      document.execCommand('insertText', false, '# 源码模式改名页\n\n链接到[[');
+      // 经真实 EditorView 事务写回：execCommand('insertText') 在 CI runner 上
+      // 不保证触发 CodeMirror 变更事件，导致补全源拿不到查询词。
+      completionView.dispatch({
+        changes: {
+          from: 0,
+          to: completionView.state.doc.length,
+          insert: '# 源码模式改名页\n\n链接到[[',
+        },
+      });
       const tooltipOpen = await waitFor(
         () => !!document.querySelector('.cm-tooltip-autocomplete li'),
         15_000,
@@ -1617,7 +1625,9 @@ export async function runSmokeIfEnabled(): Promise<void> {
         (await waitFor(() => !document.querySelector('.cm-tooltip-autocomplete'))) &&
           !completionCm.textContent?.includes('源码模式跳转目标]]'),
       );
-      document.execCommand('insertText', false, '源码模式跳转目标');
+      completionView.dispatch({
+        changes: { from: completionView.state.doc.length, insert: '源码模式跳转目标' },
+      });
       const filteredOpen = await waitFor(() => {
         const first = document.querySelector('.cm-tooltip-autocomplete li');
         return !!first && (first.textContent ?? '').includes('源码模式跳转目标');
@@ -1632,7 +1642,7 @@ export async function runSmokeIfEnabled(): Promise<void> {
       await sleep(300);
 
       // 红链候选：未创建页面 → 回车创建并出现在页面树
-      document.execCommand('insertText', false, '\n\n红链 [[冒烟红链页');
+      completionView.dispatch({ changes: { from: completionView.state.doc.length, insert: '\n\n红链 [[冒烟红链页' } });
       const redlinkOpen = await waitFor(() =>
         [...(document.querySelectorAll('.cm-tooltip-autocomplete li') ?? [])].some((li) =>
           (li.textContent ?? '').includes('创建新页面'),
