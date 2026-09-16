@@ -39,9 +39,53 @@ function Chrome({ lang, text, children, gallery = false }: { lang: Lang; text: T
 function Mock({ kind, text }: { kind: string; text: Text }) { return <div className={`mock mock-${kind}`}><div className="mock-top"><span className="dots">● ● ●</span><span>NexNote / Demo Vault</span><span>⌘K</span></div><div className="mock-body">{kind === 'editor' && <><aside><b>Pages</b><span>◈ Home</span><span>◈ Research</span><span>◈ Ideas</span></aside><main><small>PAGE · RESEARCH</small><h3>Patterns that compound</h3><p className="line wide" /><p className="line" /><p className="line medium" /><div className="tag">[[Progressive Recall]]</div></main><aside className="mentions"><b>Linked mentions</b><span>3 references</span><span>confidence 0.86</span></aside></>}{kind === 'graph' && <div className="graph-art"><i/><i/><i/><i/><i/><b/><b/><b/><strong>Relation Index</strong></div>}{kind === 'chat' && <><main><small>CONTEXT INJECTION</small><h3>Ask your knowledge</h3><p className="line wide" /><p className="line medium" /></main><aside className="chat"><b>AI session</b><span>3 cited sources</span><p>Progressive recall found 8 related pages.</p><button>Accept edit proposal</button></aside></>}</div><div className="placeholder-label">{text.placeholder}</div></div> }
 function Faq({ text }: { text: Text }) { return <section id="faq" className="faq section"><p className="eyebrow">FAQ</p><h2>{text.faq}</h2><div className="faq-grid">{text.faqs.map(([q, a]) => <details key={q}><summary>{q}<span>+</span></summary><p>{a}</p></details>)}</div></section>; }
 function Cta({ text, lang }: { text: Text; lang: Lang }) { return <section className="cta section"><div><p className="eyebrow">NEXNOTE · v0.0.11</p><h2>{lang === 'zh' ? '把知识带回本地。' : 'Bring your knowledge home.'}</h2></div><div className="cta-actions"><Link href="https://github.com/Aiden-FE/nexnote/releases/latest" className="button primary">{text.download} ↗</Link><Link href="https://github.com/Aiden-FE/nexnote" className="button secondary">{text.github}</Link></div></section>; }
-function Footer({ text, lang }: { text: Text; lang: Lang }) { return <footer><div className="brand footer-brand"><Mark /><span>NexNote</span></div><p>{text.footer}</p><span>© 2026 NexNote contributors</span><Link href={pathFor(lang)}>{text.gallery}</Link></footer>; }
+function Footer({ text, lang }: { text: Text; lang: Lang }) { return <footer><div className="brand footer-brand"><img className="wordmark" src="/brand/wordmark.svg" alt="NexNote" /></div><p>{text.footer}</p><span>© 2026 NexNote contributors</span><Link href={pathFor(lang)}>{text.gallery}</Link></footer>; }
 function Gallery({ lang, text }: { lang: Lang; text: Text }) { const [mobile, setMobile] = useState(false); return <Chrome lang={lang} text={text} gallery><main className="gallery section"><div className="gallery-intro"><p className="eyebrow">NEXNOTE / PROTOTYPE GALLERY</p><h1>{lang === 'zh' ? '一个产品，四种方向。' : 'One product, four directions.'}</h1><p>{lang === 'zh' ? '探索四个整案原型。共享同一套产品事实，仅视觉与叙事不同。' : 'Explore four full-stack prototypes. The product facts stay constant; the visual language changes.'}</p><div className="preview-toggle"><button className={!mobile ? 'active' : ''} onClick={() => setMobile(false)}>Desktop</button><button className={mobile ? 'active' : ''} onClick={() => setMobile(true)}>Mobile</button></div></div><div className={`gallery-grid ${mobile ? 'mobile-previews' : ''}`}>{themes.map((theme, i) => <article className={`gallery-card card-${theme}`} key={theme}><div className="mini-preview"><div className="mini-bar"/><div className="mini-copy"><b>∕∕ {String(i + 1).padStart(2, '0')}</b><strong>{text.directions[theme]}</strong><span>{text.sub}</span></div><div className="mini-lines"/></div><div className="card-body"><p className="card-index">0{i + 1} / 04</p><h2>{text.directions[theme]}</h2><p>{text.descriptions[theme]}</p><Link className="text-link" href={pathFor(lang, theme)}>{text.open} <span>↗</span></Link></div></article>)}</div></main><Footer text={text} lang={lang} /></Chrome>; }
 function Prototype({ lang, text, theme }: { lang: Lang; text: Text; theme: Theme }) { const accent = { editorial: 'Read deeply. Link widely.', workbench: 'A workbench for thinking in public and private.', graph: 'Every page is an edge waiting to be followed.', quiet: 'Less interface. More signal.' }[theme]; return <Chrome lang={lang} text={text}><main className={`prototype theme-${theme}`}><section className="hero section"><div className="hero-copy"><Link className="back-link" href={pathFor(lang)}>← {text.back}</Link><p className="eyebrow">{text.directions[theme]}</p><h1>{lang === 'zh' ? ({ editorial: '让想法像文章一样生长。', workbench: '知识，是一件可依赖的工具。', graph: '看见知识之间的下一条边。', quiet: '清晰，是一种生产力。' }[theme]) : accent}</h1><p>{text.descriptions[theme]} {text.sub}</p><div className="hero-actions"><Link href="https://github.com/Aiden-FE/nexnote/releases/latest" className="button primary">{text.download} ↗</Link><Link href="#features" className="button ghost">{lang === 'zh' ? '探索功能' : 'Explore features'} ↓</Link></div></div><div className="hero-visual"><div className="visual-label">NEXNOTE / {theme.toUpperCase()}</div>{theme === 'editorial' ? <div className="editorial-paper"><span>FIELD NOTES / 001</span><h2>Knowledge<br /><em>in context.</em></h2><div className="paper-rule"/><p>Pages become a practice when every reference can lead somewhere useful.</p></div> : theme === 'workbench' ? <Mock kind="editor" text={text} /> : theme === 'graph' ? <Mock kind="graph" text={text} /> : <div className="quiet-specimen"><span>01—04</span><strong>NEX<br />NOTE</strong><i>the quiet system for connected thought</i></div>}</div></section><section id="features" className="section feature-section"><p className="eyebrow">{text.features}</p><div className="feature-grid">{text.facts.map(([title, body], i) => <article key={title}><b>0{i + 1}</b><h3>{title}</h3><p>{body}</p></article>)}</div></section><section id="scenes" className="section scenes"><div className="section-heading"><p className="eyebrow">{text.scenes}</p><h2>{lang === 'zh' ? '不是截图，是可触摸的方向。' : 'Not screenshots. A direction you can touch.'}</h2></div><div className="scene-grid"><Mock kind="editor" text={text} /><Mock kind="graph" text={text} /><Mock kind="chat" text={text} /></div></section><Cta text={text} lang={lang} /><Faq text={text} /></main><Footer text={text} lang={lang} /></Chrome>; }
-function App() { const [route, setRoute] = useState(currentRoute); useEffect(() => { const onPop = () => setRoute(currentRoute()); const onClick = (event: MouseEvent) => { const target = (event.target as HTMLElement).closest('a'); if (!target || !target.href || target.origin !== location.origin || target.target === '_blank') return; event.preventDefault(); history.pushState({}, '', target.pathname + target.hash); onPop(); window.scrollTo(0, 0); }; addEventListener('popstate', onPop); document.addEventListener('click', onClick); return () => { removeEventListener('popstate', onPop); document.removeEventListener('click', onClick); }; }, []); const text = copy[route.lang]; useEffect(() => { document.documentElement.lang = route.lang === 'zh' ? 'zh-CN' : 'en'; document.title = route.theme ? `${text.directions[route.theme]} — NexNote` : `NexNote — ${route.lang === 'zh' ? '本地优先的知识' : 'local-first knowledge'}`; }, [route, text]); return route.theme ? <Prototype lang={route.lang} text={text} theme={route.theme} /> : <Gallery lang={route.lang} text={text} />; }
+function App() {
+  const [route, setRoute] = useState(currentRoute);
+  useEffect(() => {
+    const onPop = () => setRoute(currentRoute());
+    const onClick = (event: MouseEvent) => {
+      const target = (event.target as HTMLElement).closest('a');
+      if (!target || !target.href || target.origin !== location.origin || target.target === '_blank') return;
+      event.preventDefault();
+      history.pushState({}, '', target.pathname + target.hash);
+      onPop();
+      window.scrollTo(0, 0);
+    };
+    addEventListener('popstate', onPop);
+    document.addEventListener('click', onClick);
+    return () => {
+      removeEventListener('popstate', onPop);
+      document.removeEventListener('click', onClick);
+    };
+  }, []);
+  const text = copy[route.lang];
+  useEffect(() => {
+    const isZh = route.lang === 'zh';
+    const title = route.theme
+      ? `${text.directions[route.theme]} — NexNote`
+      : `NexNote — ${isZh ? '本地优先的知识' : 'local-first knowledge'}`;
+    const description = isZh
+      ? 'NexNote：本地优先的知识库，连接块编辑、双链、Git 与显式 AI。'
+      : 'NexNote — a local-first knowledge base for pages, wikilinks, Git, and explicit AI.';
+    document.documentElement.lang = isZh ? 'zh-CN' : 'en';
+    document.title = title;
+    document.querySelector('meta[name="description"]')?.setAttribute('content', description);
+    document.querySelector('meta[property="og:title"]')?.setAttribute('content', title);
+    document.querySelector('meta[property="og:description"]')?.setAttribute('content', description);
+    document.querySelectorAll('link[data-language-alternate]').forEach((node) => node.remove());
+    for (const [hreflang, href] of [['en', '/'], ['zh-CN', '/zh']] as const) {
+      const link = document.createElement('link');
+      link.rel = 'alternate';
+      link.hreflang = hreflang;
+      link.href = new URL(href, window.location.origin).href;
+      link.dataset.languageAlternate = 'true';
+      document.head.append(link);
+    }
+  }, [route, text]);
+  return route.theme ? <Prototype lang={route.lang} text={text} theme={route.theme} /> : <Gallery lang={route.lang} text={text} />;
+}
 
 createRoot(document.getElementById('root')!).render(<StrictMode><App /></StrictMode>);

@@ -153,6 +153,10 @@ export function SourceModeView({ tab }: { tab: TabDescriptor }) {
   const fmYamlRef = useRef<string | null>(null);
   const ready = load.phase === 'ready';
 
+  useEffect(() => {
+    hostRef.current?.toggleAttribute('inert', previewOnly);
+  }, [previewOnly]);
+
   /** 载入/重载原文：拆出 YAML 头并刷新面板状态（解析失败锁定源码模式、保留原文）。 */
   const absorbText = useCallback(
     (text: string): FrontmatterParts => {
@@ -799,6 +803,7 @@ export function SourceModeView({ tab }: { tab: TabDescriptor }) {
           style={previewOnly ? undefined : { flex: `0 0 ${previewVisible ? `${splitRatio * 100}%` : '100%'}` }}
           ref={hostRef}
           aria-hidden={previewOnly}
+          tabIndex={previewOnly ? -1 : undefined}
         />
         {markdownView === 'split' && (
           <Resizer
