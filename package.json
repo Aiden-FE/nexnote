@@ -10,6 +10,7 @@
     "type": "git",
     "url": "https://github.com/Aiden-FE/nexnote.git"
   },
+  "homepage": "https://nexnote-app.vercel.app",
   "keywords": [
     "markdown",
     "note-taking",
