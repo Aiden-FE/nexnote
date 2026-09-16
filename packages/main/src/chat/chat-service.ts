@@ -72,9 +72,10 @@ export class ChatService {
         status: session.status,
       });
     }
+    const titleCollator = new Intl.Collator('zh-CN');
     return summaries.sort((a, b) => {
       const updated = b.updatedAt.localeCompare(a.updatedAt);
-      return updated !== 0 ? updated : b.title.localeCompare(a.title);
+      return updated !== 0 ? updated : titleCollator.compare(b.title, a.title);
     });
   }
 
