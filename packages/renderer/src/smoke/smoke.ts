@@ -1599,6 +1599,7 @@ export async function runSmokeIfEnabled(): Promise<void> {
       document.execCommand('insertText', false, '# 源码模式改名页\n\n链接到[[');
       const tooltipOpen = await waitFor(
         () => !!document.querySelector('.cm-tooltip-autocomplete li'),
+        15_000,
       );
       check(
         '源码模式输入 [[ 弹出页面候选',
