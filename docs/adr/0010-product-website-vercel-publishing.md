@@ -6,7 +6,7 @@ status: accepted
 
 为支撑 GitHub 传播与产品叙事，决定在 monorepo 内新建 `apps/website`（React + Vite + TypeScript 纯静态站），经 Vercel 发布至 `*.vercel.app` 子域，作为产品的公开主页。官网无账号、无后台、零追踪：不启用 Vercel Analytics，不接入任何第三方统计或营销脚本，不设置营销 Cookie；下载 CTA 统一指向 GitHub Releases latest，官网不托管安装包（GPL 分发义务因此不落在官网）。语言策略为 `/` 英文 + `/zh` 简体中文双版本，页头显式切换，不按 IP 或浏览器语言自动跳转，hreflang、标题与 OG 元数据分语言本地化，语言选择只在浏览器本地记忆。
 
-正式实现前先产出 4 个**整案原型**（Editorial Knowledge、Local-first Workbench、Graph Intelligence、Quiet Precision）：共享同一真实产品内容、页面结构与响应式断点，仅视觉与叙事方向不同，经本地 Prototype Gallery 评审选定一案，其余原型不进入生产站。原型阶段允许以现有截图占位但必须标记；正式站产品截图一律来自专用**演示知识库**重截，禁用含冒烟种子数据或 mock 调试数据的图。品牌沿用 NexNote 名称与现有靛蓝 `#312E81` 起点，本轮只制作最小资产集：文字 wordmark、由现有 "N" 方块衍生的简化 mark、favicon 全套与 OG 模板；不做完整品牌体系。
+正式实现前先产出 4 个**整案原型**（Editorial Knowledge、Local-first Workbench、Graph Intelligence、Quiet Precision）：共享同一真实产品内容、页面结构与响应式断点，仅视觉与叙事方向不同，经本地 Prototype Gallery 评审选定一案，其余原型不进入生产站。评审结果已确定 **Editorial Knowledge** 为正式官网方向；其余三个方向作为废案移除，不进入生产构建。原型阶段允许以现有截图占位但必须标记；正式站产品截图一律来自专用**演示知识库**重截，禁用含冒烟种子数据或 mock 调试数据的图。品牌沿用 NexNote 名称与现有靛蓝 `#312E81` 起点，本轮只制作最小资产集：文字 wordmark、由现有 "N" 方块衍生的简化 mark、favicon 全套与 OG 模板；不做完整品牌体系。
 
 ## Considered Options
 

@@ -3,7 +3,7 @@
   "private": true,
   "version": "0.0.11",
   "type": "module",
-  "description": "NexNote static product website and prototype gallery",
+  "description": "NexNote static Editorial product website",
   "scripts": {
     "dev": "vite",
     "build": "tsc --noEmit && vite build",

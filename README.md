@@ -56,7 +56,7 @@ The repository is a pnpm monorepo:
 - `packages/main` — Electron main process and IPC
 - `packages/shared` — shared types and domain logic
 - `packages/plugin-api` — plugin contracts
-- `apps/website` — static product website and prototype gallery
+- `apps/website` — static Editorial product website and landing page
 
 Product vocabulary lives in [CONTEXT.md](CONTEXT.md). Architectural decisions live in [docs/adr](docs/adr). See the issue files under `.scratch/nexnote-build/issues/` for the current delivery tickets.
 

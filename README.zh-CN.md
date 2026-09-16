@@ -56,7 +56,7 @@ pnpm build
 - `packages/main` — Electron 主进程与 IPC
 - `packages/shared` — 共享类型与领域逻辑
 - `packages/plugin-api` — 插件契约
-- `apps/website` — 产品官网与原型 Gallery
+- `apps/website` — Editorial 产品官网
 
 产品词汇见 [CONTEXT.md](CONTEXT.md)，架构决策见 [docs/adr](docs/adr)。当前交付票据位于 `.scratch/nexnote-build/issues/`。
 

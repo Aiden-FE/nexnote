@@ -2,7 +2,7 @@
 
 Type: dev
 Module: website
-Status: open
+Status: closed
 Blocked by: 无（可立即开始；与 DEV-045 无依赖）
 Depends: 无
 Effort: L
@@ -10,12 +10,12 @@ Priority: P1
 
 ## Scope
 
-按 ADR-0010/0011 建立产品官网与发布绑定：monorepo 内 `apps/website` 静态站、四个整案原型 + 本地 Prototype Gallery、品牌最小资产集、双语结构、零追踪；同时落地 MIT 许可与仓库元数据/README。
+按 ADR-0010/0011 建立产品官网与发布绑定：monorepo 内 `apps/website` 静态站，已从四个整案原型收敛为正式 **Editorial Knowledge** 单页方案，保留双语结构、品牌最小资产集与零追踪；同时落地 MIT 许可与仓库元数据/README。
 
 ### 交付内容
 
 1. **脚手架**：`apps/website`（React + Vite + TypeScript 纯静态，无 SSR/无运行时后台）；`pnpm-workspace.yaml` 扩为 `apps/* + packages/*`；复用仓库 prettier/eslint 规则；构建产物纯静态可托管。
-2. **四原型 + Gallery**：Editorial Knowledge / Local-first Workbench / Graph Intelligence / Quiet Precision 四个完整可点击页面，共享同一真实产品内容与响应式断点，仅视觉与叙事方向不同；本地 Prototype Gallery 并排入口（桌面/移动预览）；原型阶段允许以现有截图占位但必须在页面标记占位。评审选定后仅保留一案进生产（本票只交付原型阶段）。
+2. **正式 Editorial 方案**：评审已选定 Editorial Knowledge；正式站保留其阅读室式 hero、产品实景、功能、FAQ 与下载 CTA。Local-first Workbench、Graph Intelligence、Quiet Precision 已移除，不进入生产构建。
 3. **品牌最小集**：文字 wordmark、由现有靛蓝 `#312E81` "N" 方块衍生的简化 mark、favicon 全套（.ico + PNG/SVG）、OG 模板；不做完整品牌体系，不重命名产品。
 4. **双语与零追踪**：`/` 英文 + `/zh` 简体中文，页头显式切换，不自动跳转；hreflang/标题/OG 分语言；不启用任何统计、营销脚本与 Cookie。
 5. **下载 CTA 与宣称边界**：下载指向 `https://github.com/Aiden-FE/nexnote/releases/latest`；平台仅 macOS（Apple Silicon/Intel）、Windows x64、Linux x64；不写最低 OS 版本、不称签名/公证；Gatekeeper 说明链 FAQ。
@@ -31,7 +31,7 @@ Priority: P1
 
 ## 验收标准
 
-1. `pnpm --filter website build`（或等价）产出静态 dist；四原型 + Gallery 可本地预览且内容一致、断点一致。
+1. `pnpm --filter website build`（或等价）产出静态 dist；Editorial 正式页可本地预览，双语路由与响应式断点一致。
 2. 双语路由 `/` 与 `/zh` 内容对齐，语言切换不跳转、无自动重定向；页面无任何外发请求（构建产物 grep 无 analytics/pixel 域名）。
 3. 品牌最小集四件齐全（wordmark/mark/favicon/OG）并实际用于原型。
 4. LICENSE 落地且 package.json license=MIT；`pnpm lint`、typecheck 对 website 生效；主仓既有门禁不回归。
