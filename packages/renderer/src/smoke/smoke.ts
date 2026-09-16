@@ -1622,16 +1622,13 @@ export async function runSmokeIfEnabled(): Promise<void> {
         userEvent: 'input.type',
       });
       const tooltipOpen = await waitFor(
-        () => !!document.querySelector('.cm-tooltip-autocomplete li'),
-        15_000,
-      );
-      check(
-        '源码模式输入 [[ 弹出页面候选',
-        tooltipOpen &&
+        () =>
           [...(document.querySelectorAll('.cm-tooltip-autocomplete li') ?? [])].some((li) =>
             (li.textContent ?? '').includes('源码模式跳转目标'),
           ),
+        30_000,
       );
+      check('源码模式输入 [[ 弹出页面候选', tooltipOpen);
       await capture('05b-source-wikilink-completion');
       completionCm.dispatchEvent(
         new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true }),
