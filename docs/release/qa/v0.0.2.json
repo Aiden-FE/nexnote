@@ -1,0 +1,35 @@
+{
+  "schema": "nexnote-release-qa/v1",
+  "repository": "Aiden-FE/nexnote",
+  "tag": "v0.0.2",
+  "commit": "PENDING_FINAL_COMMIT",
+  "channel": "stable",
+  "allRequiredChecksPassed": true,
+  "scope": "v0.0.2-release-candidate",
+  "machineChecks": {
+    "typecheck": "passed",
+    "lint": "passed (0 errors, 4 pre-existing warnings)",
+    "tests": "145 files passed, 1152 tests passed, 1 file skipped, 2 tests skipped",
+    "build": "passed",
+    "releaseConfig": "31/31 passed",
+    "macArm64AdHocPackage": "passed (Electron 44.2.0, Ad hoc codesign verified)",
+    "macArm64BundledGit": "passed",
+    "macArm64PackagedSmoke": "215/215 passed (results: .scratch/nexnote-build/smoke/RELEASE-0.0.2-final2/results.json; exit code 0)"
+  },
+  "smokeFixes": [
+    "smoke helper taskFirstLineCenter now locates first text descendant instead of assuming div.firstChild is a bare text node (DEV-043 geometry checks: 0.00px/0.38px/0.20px deltas)",
+    "block-edit bubble assertion updated to the shared 8-action AI menu (adds translate:selection) and waits for the bubble before asserting",
+    "markdown AI dropdown assertion updated to the shared 8-action set",
+    "field-catalog scenario reopens 源码模式改名页.md and waits for the source-mode view plus document-properties trigger before opening the catalog (previous run operated on a native-block page)",
+    "DEV-042 final scenario explicitly opens the AI dock and re-establishes an isolated mock profile after the DEV-026 empty-state cleanup, then waits for ai-dock-ready/chat-permission-mode"
+  ],
+  "notRun": [
+    "GitHub Actions runner execution for this candidate",
+    "Intel macOS physical/package verification",
+    "Windows physical installation and SmartScreen verification",
+    "Ubuntu physical installation and GPG verification",
+    "public N-1 to v0.0.2 network upgrade",
+    "post-publication 24-hour monitoring"
+  ],
+  "notes": "macOS artifacts are Ad hoc signed without notarization; Windows Authenticode and Linux GPG may publish unsigned when credentials are unavailable. NOT_RUN items remain explicitly unverified and must not be described as passed."
+}

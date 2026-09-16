@@ -57,8 +57,9 @@ function taskFirstLineCenter(root: Element): number | null {
     "ul[data-type='taskList'] > li > label > input[type='checkbox']",
   );
   const content = root.querySelector<HTMLElement>("ul[data-type='taskList'] > li > div");
-  const text = content?.firstChild;
-  if (!checkbox || !text || text.nodeType !== Node.TEXT_NODE) return null;
+  if (!checkbox || !content) return null;
+  const text = document.createTreeWalker(content, NodeFilter.SHOW_TEXT).nextNode();
+  if (!text || !text.textContent?.trim()) return null;
   const checkboxRect = checkbox.getBoundingClientRect();
   const range = document.createRange();
   range.selectNodeContents(text);
@@ -412,6 +413,12 @@ export async function runSmokeIfEnabled(): Promise<void> {
             ),
           );
           // DEV-034：块编辑划词工具栏同样以单一 AI 入口收口，键盘可开合。
+          await waitFor(
+            () =>
+              !!document.querySelector(
+                '[data-selection-bubble] [data-bubble-action="ai:menu"]',
+              ),
+          );
           const blockBubble = document.querySelector<HTMLElement>('[data-selection-bubble]');
           const blockTrigger = blockBubble?.querySelector<HTMLButtonElement>(
             '[data-bubble-action="ai:menu"]',
@@ -432,7 +439,7 @@ export async function runSmokeIfEnabled(): Promise<void> {
               Array.from(blockBubble.querySelectorAll<HTMLElement>('[data-ai-menu-action]'))
                 .map((el) => el.dataset.aiMenuAction)
                 .join(',') ===
-                'ai:rewrite,ai:polish,ai:condense,ai:expand,ai:fillgaps,ai:evidence,chat:ask-selection',
+                'ai:rewrite,ai:polish,ai:condense,ai:expand,ai:fillgaps,ai:evidence,chat:ask-selection,translate:selection',
           );
           blockTrigger?.dispatchEvent(
             new KeyboardEvent('keydown', { key: 'ArrowDown', bubbles: true, cancelable: true }),
@@ -1279,7 +1286,7 @@ export async function runSmokeIfEnabled(): Promise<void> {
       sourceMenu()?.hidden === false &&
         sourceTrigger()?.getAttribute('aria-expanded') === 'true' &&
         aiMenuIds().join(',') ===
-          'ai:rewrite,ai:polish,ai:condense,ai:expand,ai:fillgaps,ai:evidence,chat:ask-selection' &&
+          'ai:rewrite,ai:polish,ai:condense,ai:expand,ai:fillgaps,ai:evidence,chat:ask-selection,translate:selection' &&
         (sourceMenu()?.textContent ?? '').includes('⌘⌥R'),
     );
     (document.activeElement ?? document.body).dispatchEvent(
@@ -1521,6 +1528,15 @@ export async function runSmokeIfEnabled(): Promise<void> {
     await capture('04b-block-highlight');
 
     // ── 5b. DEV-025 字段目录：7 标准字段可见、已添加禁用、面板写回 YAML 头 ──
+    // 前一场景打开的是 native-block 代码高亮页；字段目录只属于 Markdown 源码页。
+    await openDocumentTab('源码模式改名页.md');
+    await waitFor(
+      () =>
+        useTabStore.getState().tabs.find((t) => t.id === useTabStore.getState().activeTabId)
+          ?.pagePath === '源码模式改名页.md' &&
+        !!document.querySelector('[data-testid="source-mode-view"] .cm-content') &&
+        !!document.querySelector('[data-testid="document-properties-trigger"]'),
+    );
     // 按需 Popover 需显式打开才能访问字段目录。
     document
       .querySelector<HTMLButtonElement>('[data-testid="document-properties-trigger"]')
@@ -1532,13 +1548,18 @@ export async function runSmokeIfEnabled(): Promise<void> {
       (await waitFor(() => !!document.querySelector('[data-testid="field-catalog"]'))) &&
         document.querySelectorAll('[data-testid="field-catalog-item"]').length === 7,
     );
+    const titleReady = await waitFor(() => {
+      const item = document.querySelector<HTMLButtonElement>(
+        '[data-testid="field-catalog-item"][data-field="title"]',
+      );
+      return item?.disabled === true && (item.textContent ?? '').includes('已添加');
+    });
     const catalogTitleItem = document.querySelector<HTMLButtonElement>(
       '[data-testid="field-catalog-item"][data-field="title"]',
     );
     check(
       '已添加标准字段禁用并标「已添加」',
-      catalogTitleItem?.disabled === true &&
-        (catalogTitleItem?.textContent ?? '').includes('已添加'),
+      titleReady,
       catalogTitleItem?.textContent ?? 'missing',
     );
     check(
@@ -2439,10 +2460,46 @@ export async function runSmokeIfEnabled(): Promise<void> {
     );
     await capture('20-builtin-plugins-settings');
 
+    // DEV-042 需要正式 ChatDock；前面的 DEV-026 已验证并清理了未配置空态，重新建立隔离 mock profile。
+    if (mockUrl && !smokeProfileId) {
+      const saved = await invoke('ai:profile:save', {
+        profile: {
+          name: '冒烟 mock provider final',
+          kind: 'openai-compatible',
+          baseUrl: mockUrl,
+          defaultModel: 'gpt-4o-mini',
+        },
+      });
+      smokeProfileId = saved.id;
+      await invoke('ai:profile:setDefault', { id: saved.id });
+      await invoke('ai:features:set', {
+        feature: 'writing',
+        assignment: { profileId: saved.id, model: 'gpt-4o-mini' },
+      });
+    }
+
     // ── DEV-042 最终组合验收：ADR-0005~0009 跨票边界 ────────────────
     // 这些断言故意走真实 UI/IPC seams，而非只检查组件快照：普通编辑不触发
     // provider、Chat Dock 三档权限可达、双模式插入保持单 undo、会话与页面分离。
-    const permissionSelect = document.querySelector<HTMLSelectElement>('[data-testid="chat-permission-mode"]');
+    // Chat Dock 默认收起是产品合同；本场景需要显式打开后再检查其内容。
+    useChatStore.getState().setActive({
+      path: `.nexnote/sessions/${'1'.repeat(64)}.txt`,
+      meta: {
+        id: 'dev-042-smoke',
+        title: 'DEV-042',
+        profileId: null,
+        model: null,
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+      },
+      turns: [{ role: 'assistant', content: 'DEV-042 回复' }],
+    }, false);
+    useUiStore.getState().setActiveDockPanel('ai-chat');
+    await waitFor(() => !!document.querySelector('[data-testid="ai-dock-ready"]'));
+    const permissionSelect = await (async () => {
+      await waitFor(() => !!document.querySelector('[data-testid="chat-permission-mode"]'));
+      return document.querySelector<HTMLSelectElement>('[data-testid="chat-permission-mode"]');
+    })();
     check(
       'DEV-042 Chat Dock 提供对话/编辑/完全权限三档',
       !!permissionSelect &&
