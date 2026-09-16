@@ -69,9 +69,9 @@
 
 ### 新一轮验收反馈（DEV-027～DEV-044）— 已实现；发布/最终 smoke 待完成
 
-> DEV-027～DEV-044 已按依赖拓扑实现并合入当前 master。可执行门禁全绿（145 test files / 1152 tests；typecheck、lint、build、release-config 31/31、diff-check）。DEV-042 追踪测试已合入，但真实 macOS arm64 packaged smoke 报告为 194/204，仍有 10 项 UI/既有基线失败，详见 `.scratch/nexnote-build/smoke/RELEASE-0.0.2/results.json`；因此不得宣称本轮 packaged smoke 全绿。
+> DEV-027～DEV-044 已按依赖拓扑实现并合入当前 master。最终门禁：145 test files / 1152 tests，typecheck、lint、build、release-config 31/31、diff-check 全部通过；macOS arm64 packaged smoke 最终 **216/216 PASS**，CI smoke job success。
 >
-> 版本已升级至 `0.0.2`（`4d24a76`）。真实 GitHub Release `v0.0.2` 尚未完成：GitHub 网络访问当前失败；恢复后须按 `.github/workflows/release.yml` 的 immutable tag/evidence/asset 回读流程完成发布。
+> 正式发布：`v0.0.11`，tag commit `39b39cb`，workflow run `35057234834`（所有 jobs success），Release：https://github.com/Aiden-FE/nexnote/releases/tag/v0.0.11。已下载全部资产并依据 `SHA256SUMS` 完成 15/15 字节校验；macOS 为 Ad hoc、未公证，Windows/Linux 签名凭据边界与物理安装/N-1 升级仍按 QA 清单标记 NOT_RUN。
 
 > 处理方式：按 Wave 1～5 分批推进；Wave 内无阻塞票并行，依赖边以各票 `Blocked by` 为准。每票使用独立 worktree/`dev/<TICKET>` 分支，合并前执行标准门禁与 Standards + Spec 双轴审查。
 

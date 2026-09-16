@@ -8,10 +8,10 @@
 
 ## 0. 最新状态（持续更新，优先于下方陈旧冻结段）
 
-- **续接状态（2026-09-15）**：DEV-027～DEV-044 已全部实现并合入当前 `master`；DEV-040 经 `9430a5b` 补齐 transaction seam/拒绝审计后合入，DEV-042 经 `b5b7992`/`8d07aa6` 合入最终集成追踪测试与门禁证据。当前 master 版本已升级为 **0.0.2**（提交 `4d24a76`）。
+- **续接状态（2026-09-16）**：DEV-027～DEV-044 已全部实现并合入；packaged smoke 与发布门禁已完成。最终正式发布基线为 **v0.0.11**，tag commit `39b39cb`，master 当前 `b12c009`。
 - **当前可执行门禁**：`CI=true pnpm -r typecheck`、`env -u GIT_EDITOR -u GIT_SEQUENCE_EDITOR -u EDITOR CI=true pnpm test`、lint、build、release-config 31/31、diff-check 全部通过；最新全量结果为 145 test files passed / 1 skipped，1152 tests passed / 2 skipped。
 - **DEV-042 packaged smoke**：使用真实 macOS arm64 Electron 44.2.0 产物运行；首次发现 better-sqlite3 ABI 147/149 不匹配，按仓库 staging 配方修复。修正 smoke 的 DOM helper、AI 菜单动作合同、Markdown 字段场景 active tab、AI Dock profile/ready 前置后，最终 `.scratch/nexnote-build/smoke/RELEASE-0.0.2-final2/results.json` 为 **215/215 PASS**，退出码 0。
-- **GitHub Release v0.0.2**：尚未发布。已确认 `gh auth status` 为 Aiden-FE 且具有 `repo/workflow` scope，但发布前 `gh release view`/远端访问遇到 `github.com:443` 连接失败；待网络恢复后必须推送精确 `v0.0.2` tag，触发/执行 release workflow，完成 immutable evidence、产物 SHA/asset 回读校验后才能把本目标标为完成。
+- **GitHub Release v0.0.11**：已正式发布（非 draft、stable、published `2026-09-16T05:18:56Z`）。workflow run `35057234834` 全部 success（prepare/四平台 build/smoke/preflight/publish）；Release URL：https://github.com/Aiden-FE/nexnote/releases/tag/v0.0.11。`SHA256SUMS` asset digest 为 `9d5b3e9fe936ff6146c8a39399bc25c96e5f8c02029849c5d2594623008ab764`，下载后 `sha256sum --check` 全部 15/15 OK。
 - **真实进度：26 / 26** —— DEV-001~DEV-026 全部验收并合入 master（DEV-021~026 为验收反馈追加票，2026-09-14 完成）。
 - master 发布基线：`1e1ab79`（发布后 GitHub Release asset 回读校验 merge）；发布策略/Updater 集成后 master 代码基线已通过后续验证。
 - post-merge typecheck / 125 test files passed（1 skipped，1012 tests / 2 skipped）/ eslint / build / release-config **31/31** / changed-format / diff-check 全过。
