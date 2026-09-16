@@ -2,7 +2,7 @@
   "schema": "nexnote-release-qa/v1",
   "repository": "Aiden-FE/nexnote",
   "tag": "v0.0.2",
-  "commit": "PENDING_FINAL_COMMIT",
+  "commit": "26bea46f04546d09a1429948d011b5defbf4da32",
   "channel": "stable",
   "allRequiredChecksPassed": true,
   "scope": "v0.0.2-release-candidate",
