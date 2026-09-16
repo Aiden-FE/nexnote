@@ -67,4 +67,39 @@ describe('Live Preview 首帧（DEV-020 GUI 反馈：初次进入右侧不得空
     });
     expect(container.querySelector('.ProseMirror')?.textContent).toContain('第二版正文');
   });
+
+  it('渲染正文目录块并在 Markdown 标题变化后动态更新', async () => {
+    vi.useFakeTimers();
+    mount('# 一级标题\n\n<!-- nexnote:toc -->\n\n## 二级标题\n');
+
+    const toc = container.querySelector('[data-testid="live-preview"] [data-table-of-contents]');
+    expect(toc?.querySelector('.nexnote-table-of-contents-title')?.textContent).toBe('目录');
+    expect(
+      [...(toc?.querySelectorAll('[data-table-of-contents-item]') ?? [])].map(
+        (item) => item.textContent,
+      ),
+    ).toEqual(['一级标题', '二级标题']);
+
+    act(() => {
+      root!.render(
+        <LivePreview
+          markdown={'# 更新后的一级标题\n\n<!-- nexnote:toc -->\n\n## 更新后的二级标题\n'}
+          sourcePath="预览页.md"
+          onNavigate={() => undefined}
+          scrollRef={{ current: null }}
+        />,
+      );
+    });
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(250);
+    });
+
+    expect(
+      [
+        ...container.querySelectorAll(
+          '[data-testid="live-preview"] [data-table-of-contents-item]',
+        ),
+      ].map((item) => item.textContent),
+    ).toEqual(['更新后的一级标题', '更新后的二级标题']);
+  });
 });

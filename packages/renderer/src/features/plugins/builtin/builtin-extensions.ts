@@ -6,7 +6,6 @@ import {
   MathInline,
   MermaidBlock,
   MERMAID_BLOCK_NAME,
-  MERMAID_DEFAULT_SOURCE,
   MATH_BLOCK_NAME,
   MATH_INLINE_NAME,
 } from '@nexnote/kernel';
@@ -63,25 +62,45 @@ export function buildBuiltinViewExtensions(flags: BuiltinBlockFlags): Extension[
   return extensions;
 }
 
+function mermaidSlashItem(
+  id: string,
+  title: string,
+  source: string,
+  keywords: string[],
+): SlashMenuItem {
+  return {
+    id,
+    title,
+    hint: '```mermaid',
+    group: '高级',
+    keywords,
+    action: ({ view }) => {
+      const node = view.state.schema.nodes[MERMAID_BLOCK_NAME]?.create({ source });
+      if (!node) return false;
+      view.dispatch(view.state.tr.replaceSelectionWith(node).scrollIntoView());
+      return true;
+    },
+  };
+}
+
 /** 斜杠菜单入口：与内核默认项同口径过滤，action 直接派发到 schema 节点。 */
 export function buildBuiltinSlashItems(flags: BuiltinBlockFlags): SlashMenuItem[] {
   const items: SlashMenuItem[] = [];
   if (flags.mermaid) {
-    items.push({
-      id: 'builtin:mermaid',
-      title: 'Mermaid 图表',
-      hint: '```mermaid',
-      group: '高级',
-      keywords: ['mermaid', '图', 'flow', 'chart', '时序', '甘特'],
-      action: ({ view }) => {
-        const node = view.state.schema.nodes[MERMAID_BLOCK_NAME]?.create({
-          source: MERMAID_DEFAULT_SOURCE,
-        });
-        if (!node) return false;
-        view.dispatch(view.state.tr.replaceSelectionWith(node).scrollIntoView());
-        return true;
-      },
-    });
+    items.push(
+      mermaidSlashItem('builtin:mermaid-flowchart', '流程图', MermaidBlock.options.flowchartSource, [
+        'mermaid',
+        '流程',
+        'flow',
+        'flowchart',
+        'chart',
+      ]),
+      mermaidSlashItem('builtin:mermaid-gantt', '甘特图', MermaidBlock.options.ganttSource, [
+        'mermaid',
+        '甘特',
+        'gantt',
+      ]),
+    );
   }
   if (flags.katex) {
     items.push(

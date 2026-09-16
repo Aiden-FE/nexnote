@@ -1,6 +1,7 @@
 import type { ReactNode } from 'react';
 import {
   Bold,
+  ChartGantt,
   Code,
   Columns2,
   Eye,
@@ -9,9 +10,17 @@ import {
   Image,
   Italic,
   Link,
+  ListTree,
+  PanelRight,
   Paperclip,
+  Redo2,
   Sparkles,
   Strikethrough,
+  Table,
+  TextSelect,
+  Undo2,
+  WandSparkles,
+  Workflow,
 } from 'lucide-react';
 import { WRITING_ACTIONS, toAiActionId } from '../../features/ai/writing';
 import { TRANSLATE_DOCUMENT_ID } from '../../features/ai/translation/actions';
@@ -69,6 +78,15 @@ export const AI_ASK_ID = 'ai:ask';
 export const AI_INSERT_ID = 'ai:insert';
 export const INSERT_IMAGE_ID = 'insert:image';
 export const INSERT_ATTACHMENT_ID = 'insert:attachment';
+export const UNDO_ID = 'edit:undo';
+export const REDO_ID = 'edit:redo';
+export const INSERT_TABLE_ID = 'insert:table';
+export const FORMAT_SELECTION_ID = 'format:selection';
+export const FORMAT_DOCUMENT_ID = 'format:document';
+export const INSERT_FLOWCHART_ID = 'insert:mermaid-flowchart';
+export const INSERT_GANTT_ID = 'insert:mermaid-gantt';
+export const INSERT_TOC_ID = 'insert:toc';
+export const TOGGLE_OUTLINE_ID = 'view:outline';
 export const VIEW_SOURCE_ID = 'view:source';
 export const VIEW_SPLIT_ID = 'view:split';
 export const VIEW_BLOCK_ID = 'view:block';
@@ -148,6 +166,90 @@ function formatEntries(): ToolbarEntrySpec[] {
   ];
 }
 
+/** 撤销/重做（分别由 TipTap 与 CodeMirror 分发）。 */
+function historyEntries(): ToolbarEntrySpec[] {
+  return [
+    {
+      kind: 'action',
+      id: UNDO_ID,
+      label: '撤销',
+      hint: '撤销（⌘Z）',
+      shortcut: '⌘Z',
+      icon: <Undo2 className="size-3.5" />,
+    },
+    {
+      kind: 'action',
+      id: REDO_ID,
+      label: '重做',
+      hint: '重做（⌘⇧Z）',
+      shortcut: '⌘⇧Z',
+      icon: <Redo2 className="size-3.5" />,
+    },
+  ];
+}
+
+/** 两种编辑模式都支持的结构插入动作。 */
+function structuralEntries(): ToolbarEntrySpec[] {
+  return [
+    {
+      kind: 'action',
+      id: INSERT_TABLE_ID,
+      label: '表格',
+      hint: '插入 2×2 Markdown 表格',
+      icon: <Table className="size-3.5" />,
+    },
+    {
+      kind: 'action',
+      id: INSERT_FLOWCHART_ID,
+      label: '流程图',
+      hint: '插入 Mermaid 流程图',
+      icon: <Workflow className="size-3.5" />,
+    },
+    {
+      kind: 'action',
+      id: INSERT_GANTT_ID,
+      label: '甘特图',
+      hint: '插入 Mermaid 甘特图',
+      icon: <ChartGantt className="size-3.5" />,
+    },
+    {
+      kind: 'action',
+      id: INSERT_TOC_ID,
+      label: '正文目录',
+      hint: '在正文中插入目录',
+      icon: <ListTree className="size-3.5" />,
+    },
+  ];
+}
+
+/** 源码 Markdown 的格式整理动作。 */
+function sourceFormatEntries(): ToolbarEntrySpec[] {
+  return [
+    {
+      kind: 'action',
+      id: FORMAT_SELECTION_ID,
+      label: '格式化选区',
+      icon: <TextSelect className="size-3.5" />,
+    },
+    {
+      kind: 'action',
+      id: FORMAT_DOCUMENT_ID,
+      label: '格式化全文',
+      icon: <WandSparkles className="size-3.5" />,
+    },
+  ];
+}
+
+function outlineEntry(): ToolbarActionSpec {
+  return {
+    kind: 'action',
+    id: TOGGLE_OUTLINE_ID,
+    label: '悬浮目录',
+    hint: '显示或隐藏悬浮目录',
+    icon: <PanelRight className="size-3.5" />,
+  };
+}
+
 /** AI 入口（两种模式共用）。 */
 function aiEntry(): ToolbarMenuSpec {
   return {
@@ -163,7 +265,9 @@ function aiEntry(): ToolbarMenuSpec {
 /** 块编辑工具栏动作：格式 + 插入（图片/附件）+ AI 入口（+ Markdown 页的源码入口）。 */
 export function blockToolbarEntries(options: { sourceModeToggle: boolean }): ToolbarEntrySpec[] {
   const entries: ToolbarEntrySpec[] = [
+    ...historyEntries(),
     ...formatEntries(),
+    ...structuralEntries(),
     {
       kind: 'action',
       id: INSERT_IMAGE_ID,
@@ -190,6 +294,7 @@ export function blockToolbarEntries(options: { sourceModeToggle: boolean }): Too
       icon: <FileCode2 className="size-3.5" />,
     });
   }
+  entries.push(outlineEntry());
   return entries;
 }
 
@@ -204,9 +309,18 @@ export function sourceToolbarEntries(options: {
   const entries: ToolbarEntrySpec[] = options.isMarkdown
     ? options.previewOnly
       ? []
-      : [...formatEntries(), aiEntry()]
+      : [
+          ...historyEntries(),
+          ...formatEntries(),
+          ...sourceFormatEntries(),
+          ...structuralEntries(),
+          aiEntry(),
+        ]
     : [
+        ...historyEntries(),
         ...formatEntries(),
+        ...sourceFormatEntries(),
+        ...structuralEntries(),
         aiEntry(),
         {
           kind: 'action',
@@ -242,5 +356,6 @@ export function sourceToolbarEntries(options: {
       },
     );
   }
+  entries.push(outlineEntry());
   return entries;
 }

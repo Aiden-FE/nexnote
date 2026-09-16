@@ -7,7 +7,12 @@ import {
   FORMAT_STRIKE,
   FORMAT_WIKILINK,
 } from '../src/editor/interactions/formatting';
-import { planSourceFormat, SOURCE_FORMAT_IDS } from '../src/editor/source/source-formatting';
+import {
+  formatSourceMarkdown,
+  planSourceFormat,
+  planSourceMarkdown,
+  SOURCE_FORMAT_IDS,
+} from '../src/editor/source/source-formatting';
 
 /**
  * DEV-023 源码模式划词格式化（纯逻辑，不依赖编辑器环境）：
@@ -126,5 +131,37 @@ describe('planSourceFormat：无选区骨架与光标落点', () => {
       FORMAT_LINK,
       FORMAT_WIKILINK,
     ]);
+  });
+});
+
+describe('Markdown 安全格式化', () => {
+  it('规范标题、列表前缀、缩进及连续空行，并保留 CRLF', () => {
+    expect(formatSourceMarkdown('#   标题\r\n\r\n \r\n   *   项目\r\n正文')).toBe(
+      '# 标题\r\n\r\n  - 项目\r\n正文',
+    );
+  });
+
+  it('跳过 YAML frontmatter 与 fenced code 内容', () => {
+    const input =
+      '---\ntitle:   x\n---\n\n\n#   标题\n```md\n#   代码\n   *   原样\n\n\n```\n+ 项目';
+    expect(formatSourceMarkdown(input)).toBe(
+      '---\ntitle:   x\n---\n\n# 标题\n```md\n#   代码\n   *   原样\n\n\n```\n- 项目',
+    );
+  });
+
+  it('不把 thematic break、setext underline 或普通 hashtag 误格式化', () => {
+    const input = '---\n标题\n---\n###hash\n#\t标题\n***';
+    expect(formatSourceMarkdown(input)).toBe('---\n标题\n---\n###hash\n# 标题\n***');
+    expect(formatSourceMarkdown('正文\n---\n###hash\n#\t标题\n***')).toBe(
+      '正文\n---\n###hash\n# 标题\n***',
+    );
+  });
+
+  it('selection 仅产生与相交行有关的 edits，并需要非空范围', () => {
+    const text = '#   一\n+ 二\n#   三';
+    expect(planSourceMarkdown(text, { from: 7, to: 10 })).toEqual([
+      { from: 6, to: 7, insert: '-' },
+    ]);
+    expect(planSourceMarkdown(text, { from: 0, to: 0 })).toEqual([]);
   });
 });

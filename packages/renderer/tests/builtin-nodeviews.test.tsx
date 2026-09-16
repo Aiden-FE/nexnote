@@ -104,7 +104,13 @@ describe('内置块 NodeView（DEV-015）', () => {
     const byId = (id: string) => items.find((i) => i.id === id)!;
     const fakeCtx = { view: kernel.editor.view };
 
-    expect(byId('builtin:mermaid').action(fakeCtx as never)).toBe(true);
+    expect(byId('builtin:mermaid-flowchart').action(fakeCtx as never)).toBe(true);
+    const md = kernel.getMarkdown();
+    expect(md).toContain('```mermaid\nflowchart TD');
+    expect(md).toContain('A[开始]');
+
+    expect(byId('builtin:mermaid-gantt').action(fakeCtx as never)).toBe(true);
+    expect(kernel.getMarkdown()).toContain('```mermaid\ngantt\n');
     expect(kernel.getJSON().content?.some((n) => n.type === 'mermaidBlock')).toBe(true);
 
     expect(byId('builtin:math-block').action(fakeCtx as never)).toBe(true);
@@ -114,5 +120,23 @@ describe('内置块 NodeView（DEV-015）', () => {
     expect(kernel.editor.view.dom.querySelector('.nexnote-math-inline-view')).toBeTruthy();
     kernel.destroy();
     container.remove();
+  });
+
+  it('Mermaid 插件关闭时流程图/甘特图围栏仍可解析与往返（无 NodeView 覆盖）', () => {
+    const md = '```mermaid\nflowchart TD\n  A[开始] --> B{是否继续}\n```\n';
+    const { kernel, container } = makeEditor(md, { mermaid: false, katex: false });
+    expect(container.querySelector('[data-mermaid-view]')).toBeNull();
+    expect(container.querySelector('.nexnote-mermaid-block .nexnote-mermaid-source')).toBeTruthy();
+    expect(kernel.getMarkdown()).toBe('```mermaid\nflowchart TD\n  A[开始] --> B{是否继续}\n```');
+
+    const gantt = makeEditor('```mermaid\ngantt\n  title 项目计划\n```\n', {
+      mermaid: false,
+      katex: false,
+    });
+    expect(gantt.kernel.getMarkdown()).toBe('```mermaid\ngantt\n  title 项目计划\n```');
+    kernel.destroy();
+    container.remove();
+    gantt.kernel.destroy();
+    gantt.container.remove();
   });
 });

@@ -1,6 +1,11 @@
 // @vitest-environment happy-dom
 import { afterEach, describe, expect, it } from 'vitest';
 import { createEditor } from '../src/editor';
+import {
+  MERMAID_DEFAULT_SOURCE,
+  MERMAID_FLOWCHART_SOURCE,
+  MERMAID_GANTT_SOURCE,
+} from '../src/extensions/mermaid';
 import { TextSelection } from '@tiptap/pm/state';
 
 function make(markdown: string) {
@@ -41,6 +46,59 @@ describe('Mermaid 块（DEV-015）', () => {
     expect(kernel.getJSON().content?.some((b) => b.type === 'mermaidBlock')).toBe(true);
     kernel.destroy();
     container.remove();
+  });
+
+  it('缺省插入源码仍为 MERMAID_DEFAULT_SOURCE（兼容不变）', () => {
+    const { kernel, container } = make('段落\n\n');
+    kernel.editor.commands.insertMermaidBlock();
+    const block = (kernel.getJSON().content ?? []).find((b) => b.type === 'mermaidBlock');
+    expect(block?.attrs?.source).toBe(MERMAID_DEFAULT_SOURCE);
+    expect(MERMAID_DEFAULT_SOURCE).toBe('graph TD\n  A --> B');
+    kernel.destroy();
+    container.remove();
+  });
+
+  it('insertMermaidFlowchart 插入流程图模板并序列化为标准 ```mermaid 围栏', () => {
+    const { kernel, container } = make('段落\n\n');
+    expect(kernel.editor.commands.insertMermaidFlowchart()).toBe(true);
+    const block = (kernel.getJSON().content ?? []).find((b) => b.type === 'mermaidBlock');
+    expect(block?.attrs?.source).toBe(MERMAID_FLOWCHART_SOURCE);
+    expect(MERMAID_FLOWCHART_SOURCE).toContain('flowchart TD');
+    const md = kernel.getMarkdown();
+    expect(md.startsWith('```mermaid\nflowchart TD\n')).toBe(true);
+    expect(md).toContain(`${MERMAID_FLOWCHART_SOURCE}\n\`\`\``);
+    kernel.destroy();
+    container.remove();
+  });
+
+  it('insertMermaidGantt 插入甘特图模板并序列化为标准 ```mermaid 围栏', () => {
+    const { kernel, container } = make('段落\n\n');
+    expect(kernel.editor.commands.insertMermaidGantt()).toBe(true);
+    const block = (kernel.getJSON().content ?? []).find((b) => b.type === 'mermaidBlock');
+    expect(block?.attrs?.source).toBe(MERMAID_GANTT_SOURCE);
+    expect(MERMAID_GANTT_SOURCE).toContain('gantt\n');
+    const md = kernel.getMarkdown();
+    expect(md.startsWith('```mermaid\ngantt\n')).toBe(true);
+    expect(md).toContain('dateFormat YYYY-MM-DD');
+    expect(md).toContain(`${MERMAID_GANTT_SOURCE}\n\`\`\``);
+    kernel.destroy();
+    container.remove();
+  });
+
+  it('流程图/甘特图模板经围栏解析往返稳定（二次 round-trip 不变）', () => {
+    for (const source of [MERMAID_FLOWCHART_SOURCE, MERMAID_GANTT_SOURCE]) {
+      const serialized = '```mermaid\n' + source + '\n```';
+      const first = make(`${serialized}\n`);
+      const block = (first.kernel.getJSON().content ?? []).find((b) => b.type === 'mermaidBlock');
+      expect(block?.attrs?.source).toBe(source);
+      expect(first.kernel.getMarkdown()).toBe(serialized);
+      const second = make(`${first.kernel.getMarkdown()}\n`);
+      expect(second.kernel.getMarkdown()).toBe(serialized);
+      first.kernel.destroy();
+      first.container.remove();
+      second.kernel.destroy();
+      second.container.remove();
+    }
   });
 
   it('~~~mermaid 波浪线围栏同样解析（CommonMark/Obsidian 合法），序列化归一为 ```', () => {

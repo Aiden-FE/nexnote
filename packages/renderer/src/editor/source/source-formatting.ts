@@ -1,4 +1,153 @@
 import type { EditorView } from '@codemirror/view';
+import { isolateHistory } from '@codemirror/commands';
+import type { ChangeSpec } from '@codemirror/state';
+
+export type SourceFormatScope = 'selection' | 'document';
+
+export interface SourceTextEdit {
+  from: number;
+  to: number;
+  insert: string;
+}
+
+/** Full-document context is required even when formatting only selected lines. */
+export function planSourceMarkdown(
+  text: string,
+  range?: { from: number; to: number },
+): SourceTextEdit[] {
+  const edits: SourceTextEdit[] = [];
+  let frontmatter = false;
+  let fence: { marker: string; length: number } | undefined;
+  let previousBlank = false;
+  const lines = text.matchAll(/([^\r\n]*)(\r\n|\n|\r|$)/g);
+  for (const match of lines) {
+    const from = match.index;
+    if (from === text.length) break;
+    const line = match[1]!;
+    const ending = match[2]!;
+    const selected =
+      !range ||
+      (range.from < range.to && from < range.to && from + line.length + ending.length > range.from);
+    if (from === 0 && /^\uFEFF?---[ \t]*$/.test(line)) {
+      frontmatter = true;
+      previousBlank = false;
+      continue;
+    }
+    if (frontmatter) {
+      if (/^(---|\.\.\.)[ \t]*$/.test(line)) frontmatter = false;
+      continue;
+    }
+    // Conservatively protect fences, including indented/container fences.
+    const fenceLine = line.replace(/^(?:[ \t]*>[ \t]?)+/, '');
+    const marker = /^[ \t]*(`{3,}|~{3,})(.*)$/.exec(fenceLine);
+    if (fence) {
+      if (
+        marker &&
+        marker[1]![0] === fence.marker &&
+        marker[1]!.length >= fence.length &&
+        !marker[2]!.trim()
+      )
+        fence = undefined;
+      previousBlank = false;
+      continue;
+    }
+    if (marker && (marker[1]![0] !== '`' || !marker[2]!.includes('`'))) {
+      fence = { marker: marker[1]![0]!, length: marker[1]!.length };
+      previousBlank = false;
+      continue;
+    }
+    const blank = /^[ \t]*$/.test(line);
+    if (blank && previousBlank && selected) {
+      edits.push({ from, to: from + line.length + ending.length, insert: '' });
+    } else if (selected) {
+      let formatted = blank ? '' : line;
+      // Only valid ATX headings: do not turn hashtags into headings.
+      formatted = formatted.replace(/^( {0,3}#{1,6})[ \t]+(?=\S)/, '$1 ');
+      // Keep thematic breaks and setext underlines intact.
+      if (!/^ {0,3}(?:(?:\*[ \t]*){3,}|(?:-[ \t]*){3,}|(?:_[ \t]*){3,})$/.test(line)) {
+        formatted = formatted.replace(
+          /^( *)([-+*])[ \t]+(?=\S)/,
+          (_, indent: string) => ' '.repeat(indent.length - (indent.length % 2)) + '- ',
+        );
+      }
+      if (formatted !== line) {
+        // Restrict the edit to the changed prefix to preserve caret/content positions.
+        let suffix = 0;
+        while (
+          suffix < line.length &&
+          suffix < formatted.length &&
+          line[line.length - 1 - suffix] === formatted[formatted.length - 1 - suffix]
+        )
+          suffix++;
+        edits.push({
+          from,
+          to: from + line.length - suffix,
+          insert: formatted.slice(0, formatted.length - suffix),
+        });
+      }
+    }
+    previousBlank = blank;
+  }
+  return edits;
+}
+
+/** Lightweight, deterministic formatter; line endings and protected regions stay byte-identical. */
+export function formatSourceMarkdown(text: string): string {
+  let result = text;
+  for (const edit of planSourceMarkdown(text).reverse()) {
+    result = result.slice(0, edit.from) + edit.insert + result.slice(edit.to);
+  }
+  return result;
+}
+
+/** Apply prefix edits in one isolated undo event, retaining selection direction. */
+function applySourceEdits(view: EditorView, edits: ChangeSpec): void {
+  const changes = view.state.changes(edits);
+  if (changes.empty) return;
+  view.dispatch({
+    changes,
+    selection: view.state.selection.map(changes, 1),
+    annotations: isolateHistory.of('full'),
+    scrollIntoView: true,
+  });
+}
+
+export function applySourceMarkdownFormat(
+  view: EditorView,
+  scope: SourceFormatScope = 'document',
+): boolean {
+  if (view.state.readOnly) return false;
+  const selection = view.state.selection.main;
+  if (scope === 'selection' && selection.empty) return false;
+  applySourceEdits(
+    view,
+    planSourceMarkdown(view.state.doc.toString(), scope === 'selection' ? selection : undefined),
+  );
+  return true;
+}
+
+/** Tab only owns nonempty selections spanning multiple physical lines. */
+export function indentSourceSelection(view: EditorView, outdent = false): boolean {
+  if (view.state.readOnly) return false;
+  const { state } = view;
+  const selectedLines = new Set<number>();
+  for (const range of state.selection.ranges) {
+    if (range.empty || state.doc.lineAt(range.from).number === state.doc.lineAt(range.to).number)
+      return false;
+    const first = state.doc.lineAt(range.from).number;
+    const last = state.doc.lineAt(range.to - 1).number;
+    for (let number = first; number <= last; number++) selectedLines.add(number);
+  }
+  const edits: SourceTextEdit[] = [];
+  for (const number of [...selectedLines].sort((a, b) => a - b)) {
+    const line = state.doc.line(number);
+    const count = outdent ? /^ {0,2}/.exec(line.text)![0].length : 0;
+    if (!outdent || count)
+      edits.push({ from: line.from, to: line.from + count, insert: outdent ? '' : '  ' });
+  }
+  applySourceEdits(view, edits);
+  return true;
+}
 
 import type { SourceBubbleAction } from './source-bubble';
 import {

@@ -17,11 +17,20 @@ import { useTabStore, type TabDescriptor } from '../src/stores/tab-store';
 
 globalThis.IS_REACT_ACT_ENVIRONMENT = true;
 
+const sourceCommands = vi.hoisted(() => ({
+  insertBlock: vi.fn(),
+  formatMarkdown: vi.fn(),
+}));
+
 vi.mock('../src/editor/source/codemirror-host', () => ({
   createSourceEditor: (_parent: HTMLElement, options: { initialText: string }) => ({
     scrollDOM: document.createElement('div'),
     getText: () => options.initialText,
     setText: () => undefined,
+    insertText: () => undefined,
+    insertBlock: sourceCommands.insertBlock,
+    formatMarkdown: sourceCommands.formatMarkdown,
+    indentSelection: () => false,
     focus: () => undefined,
     destroy: () => undefined,
   }),
@@ -101,6 +110,8 @@ const entry = (id: string): HTMLButtonElement | null =>
   document.querySelector<HTMLButtonElement>(`[data-testid="toolbar-entry-${id}"]`);
 
 beforeEach(() => {
+  sourceCommands.insertBlock.mockReset();
+  sourceCommands.formatMarkdown.mockReset();
   useTabStore.setState({ tabs: [], activeTabId: null });
 });
 
@@ -135,6 +146,13 @@ describe('块编辑工具栏（DEV-035）', () => {
       'format:code',
       'format:link',
       'format:wikilink',
+      'edit:undo',
+      'edit:redo',
+      'insert:table',
+      'insert:mermaid-flowchart',
+      'insert:mermaid-gantt',
+      'insert:toc',
+      'view:outline',
       'insert:image',
       'insert:attachment',
       'ai',
@@ -213,11 +231,22 @@ describe('Markdown 预览视图（DEV-045）', () => {
 
     const bar = toolbar();
     expect(bar).not.toBeNull();
-    for (const id of ['view:source', 'view:split', 'view:preview']) {
+    for (const id of ['view:source', 'view:split', 'view:preview', 'view:outline']) {
       expect(entry(id), id).not.toBeNull();
     }
     // 零编辑态：格式化 / AI / 属性 Popover 入口全部消失
-    for (const id of ['format:bold', 'ai']) {
+    for (const id of [
+      'format:bold',
+      'format:selection',
+      'format:document',
+      'edit:undo',
+      'edit:redo',
+      'insert:table',
+      'insert:mermaid-flowchart',
+      'insert:mermaid-gantt',
+      'insert:toc',
+      'ai',
+    ]) {
       expect(entry(id), id).toBeNull();
     }
     expect(document.querySelector('[data-testid="document-properties-trigger"]')).toBeNull();
@@ -243,6 +272,15 @@ describe('源码模式工具栏（DEV-035）', () => {
       'format:code',
       'format:link',
       'format:wikilink',
+      'edit:undo',
+      'edit:redo',
+      'insert:table',
+      'format:selection',
+      'format:document',
+      'insert:mermaid-flowchart',
+      'insert:mermaid-gantt',
+      'insert:toc',
+      'view:outline',
       'ai',
       'view:source',
       'view:split',
@@ -255,5 +293,26 @@ describe('源码模式工具栏（DEV-035）', () => {
     expect(
       document.querySelector('[data-testid="source-mode-view"]')?.getAttribute('data-path'),
     ).toBe('源码页.md');
+  });
+
+  it('表格/mermaid/正文目录与格式化 scope 分发到 SourceEditorHandle', async () => {
+    installBridge('# 源码页\n\n正文\n');
+    await mount(<SourceModeView tab={sourceTab} />);
+
+    await act(async () => {
+      entry('insert:table')?.click();
+      entry('insert:mermaid-flowchart')?.click();
+      entry('insert:mermaid-gantt')?.click();
+      entry('insert:toc')?.click();
+      entry('format:selection')?.click();
+      entry('format:document')?.click();
+    });
+
+    expect(sourceCommands.insertBlock).toHaveBeenCalledTimes(4);
+    expect(sourceCommands.insertBlock.mock.calls[0]?.[0]).toContain('| 列 1 | 列 2 |');
+    expect(sourceCommands.insertBlock.mock.calls[1]?.[0]).toContain('```mermaid\nflowchart TD');
+    expect(sourceCommands.insertBlock.mock.calls[2]?.[0]).toContain('```mermaid\ngantt');
+    expect(sourceCommands.insertBlock.mock.calls[3]?.[0]).toBe('<!-- nexnote:toc -->');
+    expect(sourceCommands.formatMarkdown.mock.calls).toEqual([['selection'], ['document']]);
   });
 });

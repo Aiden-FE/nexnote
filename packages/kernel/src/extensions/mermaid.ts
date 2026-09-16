@@ -18,22 +18,63 @@ export const MERMAID_LANGUAGE = 'mermaid';
 /** 新插入块的示例源码（首次即进入可预览状态，双击可改）。 */
 export const MERMAID_DEFAULT_SOURCE = 'graph TD\n  A --> B';
 
+/**
+ * 流程图模板（DEV-047）：slash 菜单「流程图」与 insertMermaidFlowchart 命令共用。
+ * 同为 Mermaid 源码，序列化仍是标准 ```mermaid 围栏。
+ */
+export const MERMAID_FLOWCHART_SOURCE = [
+  'flowchart TD',
+  '  A[开始] --> B{是否继续}',
+  '  B -- 是 --> C[执行任务]',
+  '  C --> D[结束]',
+  '  B -- 否 --> D',
+].join('\n');
+
+/** 甘特图模板（DEV-047）：slash 菜单「甘特图」与 insertMermaidGantt 命令共用。 */
+export const MERMAID_GANTT_SOURCE = [
+  'gantt',
+  '  title 项目计划',
+  '  dateFormat YYYY-MM-DD',
+  '  section 阶段一',
+  '  需求分析 :done, a1, 2026-01-05, 7d',
+  '  开发实现 :active, a2, after a1, 10d',
+  '  section 阶段二',
+  '  测试验收 :b1, after a2, 5d',
+  '  正式发布 :milestone, b2, after b1, 0d',
+].join('\n');
+
 // CommonMark 与 Obsidian 都允许 ``` / ~~~ 围栏；开闭标记必须相同。
 const FENCE_RE = new RegExp('^(?:(```|~~~)' + MERMAID_LANGUAGE + '[ \\t]*\\n([\\s\\S]*?)\\n?\\1)');
+
+export interface MermaidBlockOptions {
+  flowchartSource: string;
+  ganttSource: string;
+}
 
 declare module '@tiptap/core' {
   interface Commands<ReturnType> {
     mermaidBlock: {
       /** 在光标处插入 Mermaid 图表块（缺省带示例源码）。 */
       insertMermaidBlock: (attributes?: { source?: string }) => ReturnType;
+      /** 在光标处插入流程图模板块。 */
+      insertMermaidFlowchart: () => ReturnType;
+      /** 在光标处插入甘特图模板块。 */
+      insertMermaidGantt: () => ReturnType;
       /** 更新当前 Mermaid 块源码。 */
       setMermaidSource: (attributes: { source: string }) => ReturnType;
     };
   }
 }
 
-export const MermaidBlock = Node.create({
+export const MermaidBlock = Node.create<MermaidBlockOptions>({
   name: MERMAID_BLOCK_NAME,
+
+  addOptions() {
+    return {
+      flowchartSource: MERMAID_FLOWCHART_SOURCE,
+      ganttSource: MERMAID_GANTT_SOURCE,
+    };
+  },
 
   group: 'block',
   atom: true,
@@ -77,6 +118,15 @@ export const MermaidBlock = Node.create({
               attrs: { source: attributes?.source ?? MERMAID_DEFAULT_SOURCE },
             })
             .run(),
+      // 模板命令复用 insertMermaidBlock，保证插入/序列化路径单源。
+      insertMermaidFlowchart:
+        () =>
+        ({ commands }) =>
+          commands.insertMermaidBlock({ source: this.options.flowchartSource }),
+      insertMermaidGantt:
+        () =>
+        ({ commands }) =>
+          commands.insertMermaidBlock({ source: this.options.ganttSource }),
       setMermaidSource:
         (attributes) =>
         ({ commands }) =>

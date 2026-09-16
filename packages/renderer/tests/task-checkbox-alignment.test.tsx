@@ -88,6 +88,7 @@ describe('DEV-043 task checkbox CSS 合同', () => {
     expect(css).toMatch(
       /label\s*\{[^}]*display:\s*flex;[^}]*align-items:\s*center;[^}]*height:\s*1lh;/s,
     );
+    expect(css).toMatch(/label input\s*\{[^}]*width:\s*0\.7lh;[^}]*height:\s*0\.7lh;/s);
     expect(css).not.toMatch(/taskList['\]]+\s+label\s*\{[^}]*margin-top\s*:/s);
   });
 });
