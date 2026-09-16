@@ -5,7 +5,25 @@
   "private": true,
   "description": "NexNote - local-first knowledge base desktop app (block editor x wikilinks x git x AI)",
   "author": "NexNote",
-  "license": "UNLICENSED",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/Aiden-FE/nexnote.git"
+  },
+  "keywords": [
+    "markdown",
+    "note-taking",
+    "knowledge-base",
+    "local-first",
+    "git",
+    "electron",
+    "tiptap",
+    "wikilinks",
+    "knowledge-graph",
+    "ai",
+    "desktop-app",
+    "open-source"
+  ],
   "main": "out/main/index.js",
   "scripts": {
     "predev": "node scripts/prepare-native-bindings.mjs --electron",

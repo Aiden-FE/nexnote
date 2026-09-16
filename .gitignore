@@ -13,6 +13,7 @@ dist/
 .env
 .env.*
 .vite/
+.vercel/
 
 # 冒烟测试证据输出目录（截图由 smoke 模式生成后按需提交）
 .scratch/nexnote-build/smoke/tmp/
