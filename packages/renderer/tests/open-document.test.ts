@@ -61,6 +61,8 @@ describe('openDocumentTab 统一打开入口', () => {
     expect(tabState.updateTab).toHaveBeenCalledWith('t1', {
       format: 'markdown',
       editorMode: 'source',
+      markdownView: 'split',
+      splitRatio: 0.5,
     });
   });
 

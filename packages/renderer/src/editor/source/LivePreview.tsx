@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
+import { cn } from '../../lib/utils';
 import { AlertTriangle } from 'lucide-react';
 import type { EditorKernelInstance } from '@nexnote/kernel';
 import { createEditor } from '@nexnote/kernel';
@@ -25,6 +26,7 @@ interface LivePreviewProps {
   onNavigate: (target: InternalLinkNavigation) => void;
   /** 预览滚动容器；父层据此做源码 → 预览单向滚动同步。 */
   scrollRef: React.RefObject<HTMLDivElement | null>;
+  className?: string;
 }
 
 /**
@@ -33,7 +35,7 @@ interface LivePreviewProps {
  * - 输入防抖 ~200ms 后 setMarkdown 更新同一实例，过期异步结果一律丢弃
  * - 内部链接 / Wikilink 普通点击即导航；外链沿用应用安全打开策略
  */
-export function LivePreview({ markdown, sourcePath, onNavigate, scrollRef }: LivePreviewProps) {
+export function LivePreview({ markdown, sourcePath, onNavigate, scrollRef, className }: LivePreviewProps) {
   const hostRef = useRef<HTMLDivElement>(null);
   const kernelRef = useRef<EditorKernelInstance | null>(null);
   const schedulerRef = useRef<PreviewScheduler | null>(null);
@@ -121,7 +123,10 @@ export function LivePreview({ markdown, sourcePath, onNavigate, scrollRef }: Liv
   return (
     <div
       data-testid="live-preview"
-      className="nexnote-editor-scope relative min-h-0 min-w-0 flex-1 overflow-auto bg-background"
+      className={cn(
+        'nexnote-editor-scope relative min-h-0 min-w-0 flex-1 overflow-auto bg-background',
+        className,
+      )}
       ref={scrollRef}
       onClick={handleClick}
     >

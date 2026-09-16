@@ -48,21 +48,26 @@ describe('tab store 源码模式（DEV-020）', () => {
     });
   });
 
-  it('Markdown 预览开关独立于源码编辑器模式', () => {
+  it('Markdown 三视图与 tab 级分栏比例独立于源码编辑器模式', () => {
     const markdown = useTabStore.getState().openTab({
       kind: 'page',
       title: 'Markdown',
       pagePath: 'markdown.md',
     });
     useTabStore.getState().updateTab(markdown.id, { format: 'markdown', editorMode: 'source' });
-    useTabStore.getState().togglePreview(markdown.id, false);
-    expect(useTabStore.getState().tabs.find((t) => t.id === markdown.id)?.previewVisible).toBe(
-      false,
-    );
-    useTabStore.getState().togglePreview(markdown.id, true);
-    expect(useTabStore.getState().tabs.find((t) => t.id === markdown.id)?.previewVisible).toBe(
-      true,
-    );
+    useTabStore.getState().setMarkdownView(markdown.id, 'source');
+    expect(useTabStore.getState().tabs.find((t) => t.id === markdown.id)?.markdownView).toBe('source');
+    useTabStore.getState().setMarkdownView(markdown.id, 'preview');
+    expect(useTabStore.getState().tabs.find((t) => t.id === markdown.id)).toMatchObject({
+      markdownView: 'preview',
+      lastMarkdownEditView: 'source',
+    });
+    useTabStore.getState().toggleMarkdownPreview(markdown.id);
+    expect(useTabStore.getState().tabs.find((t) => t.id === markdown.id)?.markdownView).toBe('source');
+    useTabStore.getState().setSplitRatio(markdown.id, 0.1);
+    expect(useTabStore.getState().tabs.find((t) => t.id === markdown.id)?.splitRatio).toBe(0.2);
+    useTabStore.getState().setSplitRatio(markdown.id, 0.9);
+    expect(useTabStore.getState().tabs.find((t) => t.id === markdown.id)?.splitRatio).toBe(0.8);
   });
 
   it('updateTab 可同步模式（切换入口共用同一状态）', () => {

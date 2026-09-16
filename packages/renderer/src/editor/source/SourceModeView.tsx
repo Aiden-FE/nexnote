@@ -27,6 +27,8 @@ import {
   AI_ASK_ID,
   sourceToolbarEntries,
   VIEW_BLOCK_ID,
+  VIEW_SOURCE_ID,
+  VIEW_SPLIT_ID,
   VIEW_PREVIEW_ID,
   AI_INSERT_ID,
 } from '../toolbar/entries';
@@ -40,11 +42,17 @@ import {
 } from '../../features/ai/translation';
 import { LivePreview, type InternalLinkNavigation } from './LivePreview';
 import { parseWholePage } from './parse-guard';
-import { registerModeSwitchHandler, requestSourceModeToggle } from './source-mode-toggle';
+import {
+  registerModeSwitchHandler,
+  registerPreviewEnterHandler,
+  requestMarkdownViewChange,
+  requestSourceModeToggle,
+} from './source-mode-toggle';
 import { syncScrollRatio } from './scroll-sync';
 import { sourceWikilinkCompletion } from './wikilink-completion';
 import { createRedlinkPage, currentPageCandidates } from '../wikilink-page-ops';
 import { DocumentPropertiesPopover } from '../../features/frontmatter/DocumentPropertiesPopover';
+import { Resizer } from '../../shell/Resizer';
 import {
   collectVaultTags,
   replaceFrontmatterYaml,
@@ -114,11 +122,15 @@ export function SourceModeView({ tab }: { tab: TabDescriptor }) {
   const [previewText, setPreviewText] = useState('');
   const [fm, setFm] = useState<FrontmatterPanelState>(EMPTY_FRONTMATTER);
   const [knownTags, setKnownTags] = useState<string[]>([]);
-  const previewVisible = tab.previewVisible !== false;
+  const markdownView = tab.markdownView ?? (tab.previewVisible === false ? 'source' : 'split');
+  const previewVisible = markdownView !== 'source';
+  const previewOnly = markdownView === 'preview';
+  const splitRatio = tab.splitRatio ?? 0.5;
   const vaultSettings = useSettingsStore((state) => state.vault);
   const autoSaveMs = vaultSettings?.editor.autoSaveMs ?? 1500;
 
   const hostRef = useRef<HTMLDivElement>(null);
+  const splitHostRef = useRef<HTMLDivElement>(null);
   const editorRef = useRef<SourceEditorHandle | null>(null);
   // 临时翻译（DEV-041）：划词浮层 + 全文临时视图；生命周期与源码编辑器一致。
   const translationControllerRef = useRef<TranslationController | null>(null);
@@ -512,15 +524,31 @@ export function SourceModeView({ tab }: { tab: TabDescriptor }) {
     });
   }, [tab.id, flush, composeDocument]);
 
+  // ── 进入预览视图前的 flush 守卫（编辑界面即将隐藏；失败停留当前视图）──
+  useEffect(() => {
+    return registerPreviewEnterHandler(tab.id, async () => {
+      try {
+        await flush();
+      } catch {
+        setSwitchError('保存失败，已停留当前视图');
+        return false;
+      }
+      setSwitchError(null);
+      return true;
+    });
+  }, [tab.id, flush]);
+
   // ── 预览导航：先保存，成功后经统一入口按目标文档格式打开 ──
   const navigate = useCallback(
     (link: InternalLinkNavigation): void => {
       void (async () => {
         const nextPath = link.wikilink ? wikilinkPath(link.target) : `${link.target}.md`;
-        try {
-          await flush(); // 保存失败则取消导航
-        } catch {
-          return;
+        if (!previewOnly) {
+          try {
+            await flush(); // 保存失败则取消导航
+          } catch {
+            return;
+          }
         }
         if (!(await invoke('fs:exists', { path: nextPath }))) {
           await invoke('fs:writeTextFile', {
@@ -529,11 +557,14 @@ export function SourceModeView({ tab }: { tab: TabDescriptor }) {
             createParentDirs: true,
           });
         }
-        // 经统一文档入口导航（ADR-0004）：sidecar markdown 保持在源码编辑器，绝不挂 TipTap。
-        await openDocumentTab(nextPath, titleFromPath(nextPath));
+        // 经统一文档入口导航（ADR-0004）：sidecar markdown 保持在源码编辑器，绝不挂 TipTap；
+        // 预览视图内的导航保持预览视图（无编辑界面可 flush）。
+        await openDocumentTab(nextPath, titleFromPath(nextPath), {
+          initialMarkdownView: previewOnly ? 'preview' : undefined,
+        });
       })();
     },
-    [flush],
+    [flush, previewOnly],
   );
 
   // ── 冲突选择：保留本地（以本地覆盖磁盘）/ 读取磁盘并重载 ──
@@ -595,6 +626,21 @@ export function SourceModeView({ tab }: { tab: TabDescriptor }) {
     };
   }, [ready, isMarkdown]);
 
+  const adjustSplitRatio = useCallback(
+    (delta: number): void => {
+      useTabStore.getState().setSplitRatio(tab.id, splitRatio + delta);
+    },
+    [splitRatio, tab.id],
+  );
+
+  const handleSplitDrag = useCallback(
+    (movement: number): void => {
+      const width = splitHostRef.current?.getBoundingClientRect().width ?? 0;
+      if (width > 0) adjustSplitRatio(movement / width);
+    },
+    [adjustSplitRatio],
+  );
+
   const status =
     saveState === 'saving'
       ? { icon: LoaderCircle, text: '保存中…', className: 'animate-spin' }
@@ -644,8 +690,16 @@ export function SourceModeView({ tab }: { tab: TabDescriptor }) {
       void requestSourceModeToggle(tab.id);
       return;
     }
+    if (id === VIEW_SOURCE_ID) {
+      useTabStore.getState().setMarkdownView(tab.id, 'source');
+      return;
+    }
+    if (id === VIEW_SPLIT_ID) {
+      useTabStore.getState().setMarkdownView(tab.id, 'split');
+      return;
+    }
     if (id === VIEW_PREVIEW_ID) {
-      useTabStore.getState().togglePreview(tab.id);
+      void requestMarkdownViewChange(tab.id, 'preview');
       return;
     }
     const cv = view();
@@ -678,10 +732,10 @@ export function SourceModeView({ tab }: { tab: TabDescriptor }) {
     >
       <EditorToolbar
         label="编辑器工具栏"
-        entries={sourceToolbarEntries({ isMarkdown, previewVisible })}
+        entries={sourceToolbarEntries({ isMarkdown, markdownView, previewVisible, previewOnly })}
         onCommand={runToolbarCommand}
         tools={
-          isMarkdown ? (
+          isMarkdown && !previewOnly ? (
             <DocumentPropertiesPopover
               data={fm.data}
               source={fm.source}
@@ -738,18 +792,30 @@ export function SourceModeView({ tab }: { tab: TabDescriptor }) {
         </div>
       )}
 
-      <div className="flex min-h-0 flex-1">
+      <div ref={splitHostRef} className="flex min-h-0 flex-1">
         <div
           data-testid="source-editor-pane"
-          className="relative min-h-0 min-w-0 flex-1 overflow-hidden border-r"
+          className={`relative min-h-0 min-w-0 overflow-hidden ${previewOnly ? 'absolute size-px overflow-hidden opacity-0' : ''}`}
+          style={previewOnly ? undefined : { flex: `0 0 ${previewVisible ? `${splitRatio * 100}%` : '100%'}` }}
           ref={hostRef}
+          aria-hidden={previewOnly}
         />
+        {markdownView === 'split' && (
+          <Resizer
+            orientation="vertical"
+            testId="markdown-split-resizer"
+            onDrag={handleSplitDrag}
+            onDoubleClick={() => useTabStore.getState().setSplitRatio(tab.id, 0.5)}
+            onKeyAdjust={(direction, coarse) => adjustSplitRatio(direction * (coarse ? 0.1 : 0.02))}
+          />
+        )}
         {previewVisible && (
           <LivePreview
             markdown={previewText}
             sourcePath={displayPath}
             onNavigate={navigate}
             scrollRef={previewScrollRef}
+            className={previewOnly ? 'flex-1' : undefined}
           />
         )}
       </div>

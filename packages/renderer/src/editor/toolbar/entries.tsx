@@ -2,6 +2,7 @@ import type { ReactNode } from 'react';
 import {
   Bold,
   Code,
+  Columns2,
   Eye,
   EyeOff,
   FileCode2,
@@ -69,6 +70,7 @@ export const AI_INSERT_ID = 'ai:insert';
 export const INSERT_IMAGE_ID = 'insert:image';
 export const INSERT_ATTACHMENT_ID = 'insert:attachment';
 export const VIEW_SOURCE_ID = 'view:source';
+export const VIEW_SPLIT_ID = 'view:split';
 export const VIEW_BLOCK_ID = 'view:block';
 export const VIEW_PREVIEW_ID = 'view:preview';
 
@@ -191,32 +193,54 @@ export function blockToolbarEntries(options: { sourceModeToggle: boolean }): Too
   return entries;
 }
 
-/** 源码模式工具栏动作：格式 + AI 入口 + 视图切换（块编辑 / 预览）。 */
+/** 源码模式工具栏动作：格式 + AI 入口 + Markdown 三态视图切换。 */
 export function sourceToolbarEntries(options: {
   isMarkdown: boolean;
-  previewVisible: boolean;
+  markdownView?: 'source' | 'split' | 'preview';
+  previewVisible?: boolean;
+  previewOnly?: boolean;
 }): ToolbarEntrySpec[] {
-  const entries: ToolbarEntrySpec[] = [
-    ...formatEntries(),
-    aiEntry(),
-    {
-      kind: 'action',
-      id: VIEW_BLOCK_ID,
-      label: '块编辑',
-      hint: '切回块编辑模式（⌘/Ctrl+E）',
-      shortcut: '⌘E',
-      icon: <Code className="size-3.5" />,
-    },
-  ];
+  const view = options.markdownView ?? (options.previewVisible === false ? 'source' : 'split');
+  const entries: ToolbarEntrySpec[] = options.isMarkdown
+    ? options.previewOnly
+      ? []
+      : [...formatEntries(), aiEntry()]
+    : [
+        ...formatEntries(),
+        aiEntry(),
+        {
+          kind: 'action',
+          id: VIEW_BLOCK_ID,
+          label: '块编辑',
+          hint: '切回块编辑模式（⌘/Ctrl+E）',
+          shortcut: '⌘E',
+          icon: <Code className="size-3.5" />,
+        },
+      ];
   if (options.isMarkdown) {
-    entries.push({
-      kind: 'action',
-      id: VIEW_PREVIEW_ID,
-      label: options.previewVisible ? '隐藏预览' : '显示预览',
-      hint: options.previewVisible ? '隐藏预览（⌘/Ctrl+E）' : '显示预览（⌘/Ctrl+E）',
-      shortcut: '⌘E',
-      icon: options.previewVisible ? <EyeOff className="size-3.5" /> : <Eye className="size-3.5" />,
-    });
+    entries.push(
+      {
+        kind: 'action',
+        id: VIEW_SOURCE_ID,
+        label: '源码',
+        hint: '仅显示 Markdown 源码',
+        icon: <FileCode2 className="size-3.5" />,
+      },
+      {
+        kind: 'action',
+        id: VIEW_SPLIT_ID,
+        label: '分栏',
+        hint: '源码与实时预览',
+        icon: <Columns2 className="size-3.5" />,
+      },
+      {
+        kind: 'action',
+        id: VIEW_PREVIEW_ID,
+        label: '预览',
+        hint: '仅显示只读预览',
+        icon: view === 'preview' ? <EyeOff className="size-3.5" /> : <Eye className="size-3.5" />,
+      },
+    );
   }
   return entries;
 }

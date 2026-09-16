@@ -5,6 +5,8 @@ interface ResizerProps {
   orientation: 'vertical' | 'horizontal';
   /** 拖拽回调：movementX/movementY（像素增量） */
   onDrag: (movement: number) => void;
+  /** 键盘调整回调；传入方向与 Shift 状态。 */
+  onKeyAdjust?: (direction: 1 | -1, coarse: boolean) => void;
   /** 双击行为（如折叠/重置） */
   onDoubleClick?: () => void;
   className?: string;
@@ -18,6 +20,7 @@ interface ResizerProps {
 export function Resizer({
   orientation,
   onDrag,
+  onKeyAdjust,
   onDoubleClick,
   className,
   testId,
@@ -40,12 +43,29 @@ export function Resizer({
     [onDrag, orientation],
   );
 
+  const handleKeyDown = useCallback(
+    (event: React.KeyboardEvent<HTMLDivElement>) => {
+      if (!onKeyAdjust) return;
+      const key = event.key;
+      const positive = orientation === 'vertical' ? 'ArrowRight' : 'ArrowDown';
+      const negative = orientation === 'vertical' ? 'ArrowLeft' : 'ArrowUp';
+      if (key !== positive && key !== negative) return;
+      event.preventDefault();
+      onKeyAdjust(key === positive ? 1 : -1, event.shiftKey);
+    },
+    [onKeyAdjust, orientation],
+  );
+
   return (
     <div
       role="separator"
       aria-orientation={orientation}
+      aria-valuemin={onKeyAdjust ? 20 : undefined}
+      aria-valuemax={onKeyAdjust ? 80 : undefined}
+      tabIndex={onKeyAdjust ? 0 : undefined}
       data-testid={testId}
       onPointerDown={handlePointerDown}
+      onKeyDown={handleKeyDown}
       onDoubleClick={onDoubleClick}
       className={cn(
         'group relative z-10 shrink-0 bg-border transition-colors',
