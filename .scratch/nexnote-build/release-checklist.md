@@ -122,4 +122,7 @@
 - [ ] `v0.1.0` tag 已推送且 `scripts/check-version.mjs --require-tag v0.1.0` 通过
 - [ ] GitHub Release assets 校验和与 preflight 匹配
 - [ ] 官网 / 下载页文案更新（如适用）
+- [ ] Vercel CLI 生产部署完成，记录实际 `*.vercel.app` URL；确认 `.vercel/` 未进入 Git
+- [ ] 根 `package.json.homepage`、README 双语官网链接与 GitHub About Website 回填为实际 Vercel URL
+- [ ] GitHub Topics 与根 `package.json.keywords` 对齐（仅宣称已兑现能力）
 - [ ] 内测用户邀请邮件 / 社群公告 ready
