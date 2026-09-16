@@ -5,6 +5,7 @@ import { useTabStore, openPage } from '../stores/tab-store';
 import { createPage } from '../features/editor/create-page';
 import { SIDEBAR_MAX_WIDTH, useUiStore } from '../stores/ui-store';
 import { useTagStore } from '../stores/tag-store';
+import { usePageTreeStore } from '../stores/page-tree-store';
 import { useThemeStore } from '../theme/theme-store';
 import { dockPanelRegistry } from '../registries';
 import { getActiveEditor } from '../editor/active-editor';
@@ -1596,19 +1597,29 @@ export async function runSmokeIfEnabled(): Promise<void> {
     const completionView = getActiveSourceEditor()?.view ?? null;
     check('源码补全：CodeMirror 可聚焦', !!completionCm && !!completionView);
     if (completionCm && completionView) {
-      await waitFor(
+      // 候选数据源 = 页面树 entries；runner 上 fs:changed 驱动的树刷新存在延迟，
+      // 直接补全会拿到空候选并级联失败。显式重载树，并把就绪作为硬门禁。
+      if (
+        !usePageTreeStore
+          .getState()
+          .entries.some((e) => e.path === '源码模式跳转目标.md')
+      ) {
+        await usePageTreeStore.getState().load();
+      }
+      const candidatesReady = await waitFor(
         () => currentPageCandidates().some((page) => page.title === '源码模式跳转目标'),
         15_000,
       );
+      check('源码补全候选就绪（页面树含目标页）', candidatesReady);
       completionCm.focus();
       // 经真实 EditorView 事务写回：execCommand('insertText') 在 CI runner 上
       // 不保证触发 CodeMirror 变更事件，导致补全源拿不到查询词。
+      const opening = '# 源码模式改名页\n\n链接到[[';
       completionView.dispatch({
-        changes: {
-          from: 0,
-          to: completionView.state.doc.length,
-          insert: '# 源码模式改名页\n\n链接到[[',
-        },
+        changes: { from: 0, to: completionView.state.doc.length, insert: opening },
+        selection: { anchor: opening.length },
+        // CodeMirror autocompletion 只对 input.* 用户事件触发；纯程序事务不会开候选。
+        userEvent: 'input.type',
       });
       const tooltipOpen = await waitFor(
         () => !!document.querySelector('.cm-tooltip-autocomplete li'),
@@ -1632,6 +1643,8 @@ export async function runSmokeIfEnabled(): Promise<void> {
       );
       completionView.dispatch({
         changes: { from: completionView.state.doc.length, insert: '源码模式跳转目标' },
+        selection: { anchor: completionView.state.doc.length + '源码模式跳转目标'.length },
+        userEvent: 'input.type',
       });
       const filteredOpen = await waitFor(() => {
         const first = document.querySelector('.cm-tooltip-autocomplete li');
@@ -1647,7 +1660,12 @@ export async function runSmokeIfEnabled(): Promise<void> {
       await sleep(300);
 
       // 红链候选：未创建页面 → 回车创建并出现在页面树
-      completionView.dispatch({ changes: { from: completionView.state.doc.length, insert: '\n\n红链 [[冒烟红链页' } });
+      const redlink = '\n\n红链 [[冒烟红链页';
+      completionView.dispatch({
+        changes: { from: completionView.state.doc.length, insert: redlink },
+        selection: { anchor: completionView.state.doc.length + redlink.length },
+        userEvent: 'input.type',
+      });
       const redlinkOpen = await waitFor(() =>
         [...(document.querySelectorAll('.cm-tooltip-autocomplete li') ?? [])].some((li) =>
           (li.textContent ?? '').includes('创建新页面'),
