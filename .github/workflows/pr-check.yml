@@ -36,6 +36,8 @@ jobs:
       - run: pnpm typecheck
       - run: pnpm test
       - run: pnpm build
+      - name: Build static product website
+        run: pnpm --filter website build
       - name: Validate release configuration
         run: pnpm verify:release-config
       - name: Build unpacked Linux application
