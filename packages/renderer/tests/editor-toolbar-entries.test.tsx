@@ -46,7 +46,7 @@ const sourceTab: TabDescriptor = {
   pagePath: '源码页.md',
   format: 'markdown',
   editorMode: 'source',
-  previewVisible: false,
+  markdownView: 'source',
   createdAt: 1,
 };
 
@@ -195,6 +195,38 @@ describe('块编辑工具栏（DEV-035）', () => {
   });
 });
 
+describe('Markdown 预览视图（DEV-045）', () => {
+  const previewTab: TabDescriptor = {
+    id: 'toolbar-preview',
+    kind: 'page',
+    title: '预览页',
+    pagePath: '预览页.md',
+    format: 'markdown',
+    editorMode: 'source',
+    markdownView: 'preview',
+    createdAt: 1,
+  };
+
+  it('预览视图只保留视图切换器，无编辑动作与属性入口', async () => {
+    installBridge('# 预览页\n\n正文\n');
+    await mount(<SourceModeView tab={previewTab} />);
+
+    const bar = toolbar();
+    expect(bar).not.toBeNull();
+    for (const id of ['view:source', 'view:split', 'view:preview']) {
+      expect(entry(id), id).not.toBeNull();
+    }
+    // 零编辑态：格式化 / AI / 属性 Popover 入口全部消失
+    for (const id of ['format:bold', 'ai']) {
+      expect(entry(id), id).toBeNull();
+    }
+    expect(document.querySelector('[data-testid="document-properties-trigger"]')).toBeNull();
+    // 编辑器实例保留但不展示（隐藏 host 仍挂载，aria-hidden 标记不可达）
+    const pane = document.querySelector('[data-testid="source-editor-pane"]');
+    expect(pane?.getAttribute('aria-hidden')).toBe('true');
+  });
+});
+
 describe('源码模式工具栏（DEV-035）', () => {
   it('顶部为单行工具栏：无独立文件名，编辑/AI/视图动作齐备', async () => {
     installBridge('---\ntitle: 源码页\n---\n\n# 源码页\n\n正文\n');
@@ -212,7 +244,8 @@ describe('源码模式工具栏（DEV-035）', () => {
       'format:link',
       'format:wikilink',
       'ai',
-      'view:block',
+      'view:source',
+      'view:split',
       'view:preview',
     ]) {
       expect(entry(id), id).not.toBeNull();

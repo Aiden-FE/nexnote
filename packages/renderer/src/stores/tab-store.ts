@@ -10,6 +10,8 @@ import {
 export type TabKind = 'welcome' | 'page' | 'docx' | 'graph' | 'settings';
 export type EditorMode = 'block' | 'source';
 export type DocumentFormat = 'native-block' | 'markdown';
+export type MarkdownView = 'source' | 'split' | 'preview';
+export type MarkdownEditView = Exclude<MarkdownView, 'preview'>;
 
 export interface TabDescriptor {
   id: string;
@@ -25,8 +27,14 @@ export interface TabDescriptor {
    * - native-block / 缺省（legacy 无 sidecar）：块编辑，且不提供源码模式入口。
    */
   format?: DocumentFormat;
-  /** Markdown 源码编辑器的实时预览面板是否显示。 */
+  /** Markdown 文件的 tab 临时视图；不写入 vault，关闭 tab 后丢弃。 */
+  markdownView?: MarkdownView;
+  /** @deprecated 仅兼容旧调用；请使用 markdownView。 */
   previewVisible?: boolean;
+  /** Markdown 分栏视图的左侧比例；仅当前 tab 生命周期有效。 */
+  splitRatio?: number;
+  /** 进入预览前最近一次编辑视图，用于 Mod+Shift+E 返回。 */
+  lastMarkdownEditView?: MarkdownEditView;
   createdAt: number;
 }
 
@@ -38,7 +46,15 @@ export interface WorkspaceState {
   openDocxTab(pagePath: string, title?: string): TabDescriptor;
   updateTab(
     tabId: string,
-    patch: { title?: string; pagePath?: string; editorMode?: EditorMode; format?: DocumentFormat },
+    patch: {
+      title?: string;
+      pagePath?: string;
+      editorMode?: EditorMode;
+      format?: DocumentFormat;
+      markdownView?: MarkdownView;
+      splitRatio?: number;
+      lastMarkdownEditView?: MarkdownEditView;
+    },
   ): void;
   closeTab(tabId: string): void;
   closeOtherTabs(tabId: string): void;
@@ -52,7 +68,15 @@ export interface WorkspaceState {
   /** vault 布局恢复（DEV-022）：按持久化身份序列重排现有 tabs（未知身份保持相对顺序在后）。 */
   applyTabOrder(order: string[]): void;
   toggleSourceMode(tabId: string, enabled?: boolean): void;
-  /** Markdown 文档的源码编辑器分栏预览开关（仅对 format=markdown 的页面 tab 生效）。 */
+  /** 设置 Markdown 临时视图；进入 preview 前记录最近一次编辑视图。 */
+  setMarkdownView(tabId: string, view: MarkdownView): void;
+  /** Mod+E：Markdown 在源码与分栏之间切换；native-block 维持原有语义。 */
+  toggleMarkdownEditView(tabId: string): void;
+  /** Mod+Shift+E：预览与最近一次编辑视图之间切换。 */
+  toggleMarkdownPreview(tabId: string): void;
+  /** 分栏左侧比例（0.2–0.8），仅当前 tab 生命周期有效。 */
+  setSplitRatio(tabId: string, ratio: number): void;
+  /** 兼容旧 smoke/插件调用：boolean 映射为 source/split。 */
   togglePreview(tabId: string, visible?: boolean): void;
   retargetTabs(fromPath: string, toPath: string, title: string): void;
   closeTabsForPath(removedPath: string): void;
@@ -214,14 +238,59 @@ export const useTabStore = create<WorkspaceState>()((set, get) => ({
     }));
   },
 
-  togglePreview(tabId, visible) {
+  setMarkdownView(tabId, view) {
     set((state) => ({
       tabs: state.tabs.map((tab) => {
         if (tab.id !== tabId || tab.kind !== 'page' || tab.format !== 'markdown') return tab;
-        const next = visible ?? tab.previewVisible !== true;
-        return { ...tab, previewVisible: next };
+        if (view === 'preview') {
+          const current = tab.markdownView === 'source' ? 'source' : 'split';
+          return { ...tab, markdownView: 'preview', lastMarkdownEditView: current };
+        }
+        return { ...tab, markdownView: view, lastMarkdownEditView: view };
       }),
     }));
+  },
+
+  toggleMarkdownEditView(tabId) {
+    set((state) => ({
+      tabs: state.tabs.map((tab) => {
+        if (tab.id !== tabId || tab.kind !== 'page' || tab.format !== 'markdown') return tab;
+        const current = tab.markdownView === 'source' ? 'split' : 'source';
+        return { ...tab, markdownView: current, lastMarkdownEditView: current };
+      }),
+    }));
+  },
+
+  toggleMarkdownPreview(tabId) {
+    set((state) => ({
+      tabs: state.tabs.map((tab) => {
+        if (tab.id !== tabId || tab.kind !== 'page' || tab.format !== 'markdown') return tab;
+        if (tab.markdownView === 'preview') {
+          const next = tab.lastMarkdownEditView ?? 'split';
+          return { ...tab, markdownView: next };
+        }
+        const current = tab.markdownView === 'source' ? 'source' : 'split';
+        return { ...tab, markdownView: 'preview', lastMarkdownEditView: current };
+      }),
+    }));
+  },
+
+  setSplitRatio(tabId, ratio) {
+    const next = Math.max(0.2, Math.min(0.8, ratio));
+    set((state) => ({
+      tabs: state.tabs.map((tab) =>
+        tab.id === tabId && tab.kind === 'page' && tab.format === 'markdown'
+          ? { ...tab, splitRatio: next }
+          : tab,
+      ),
+    }));
+  },
+
+  togglePreview(tabId, visible) {
+    const state = get();
+    const tab = state.tabs.find((candidate) => candidate.id === tabId);
+    if (!tab || tab.format !== 'markdown') return;
+    state.setMarkdownView(tabId, visible === false ? 'source' : 'split');
   },
 
   retargetTabs(fromPath, toPath, title) {

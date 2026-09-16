@@ -28,7 +28,8 @@ describe('工作区初始布局默认值', () => {
     expect(tabs.splitEnabled).toBeUndefined();
     expect(tabs.splitRatio).toBeUndefined();
     expect(tabs.toggleSplit).toBeUndefined();
-    expect(tabs.setSplitRatio).toBeUndefined();
+    // 分栏比例 action 只存在于 tab-store API，不是旧的 vault split 布局字段。
+    expect(typeof tabs.setSplitRatio).toBe('function');
   });
 
   it('初始只有一个欢迎 tab 且激活', () => {

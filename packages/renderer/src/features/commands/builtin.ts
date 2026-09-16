@@ -6,7 +6,11 @@ import { usePaletteStore } from '../../stores/palette-store';
 import { invoke } from '../../lib/ipc';
 import { openSettings } from '../../lib/open-settings';
 import { createPage } from '../editor/create-page';
-import { requestActiveSourceModeToggle } from '../../editor/source/source-mode-toggle';
+import {
+  requestActiveMarkdownPreviewToggle,
+  requestActiveMarkdownView,
+  requestActiveSourceModeToggle,
+} from '../../editor/source/source-mode-toggle';
 
 /**
  * 内置命令（⌘K 面板）。后续票据的命令：
@@ -57,10 +61,33 @@ commandRegistry.register({
   id: 'editor.toggleSourceMode',
   title: '切换源码模式',
   category: '编辑器',
-  keywords: ['source', 'markdown', '源码', '预览', '编辑器'],
+  keywords: ['source', 'markdown', '源码', '分栏', '编辑器'],
   shortcut: '⌘/Ctrl+E',
   run: requestActiveSourceModeToggle,
 });
+
+commandRegistry.register({
+  id: 'editor.togglePreviewView',
+  title: '切换预览视图',
+  category: '编辑器',
+  keywords: ['preview', 'read', '预览', '阅读'],
+  shortcut: '⌘/Ctrl+Shift+E',
+  run: requestActiveMarkdownPreviewToggle,
+});
+
+for (const [id, title, keywords, view] of [
+  ['editor.viewSource', '切换到源码视图', ['source', '源码'], 'source'],
+  ['editor.viewSplit', '切换到分栏视图', ['split', '分栏'], 'split'],
+  ['editor.viewPreview', '切换到预览视图', ['preview', '预览'], 'preview'],
+] as const) {
+  commandRegistry.register({
+    id,
+    title,
+    category: '编辑器',
+    keywords: [...keywords],
+    run: () => requestActiveMarkdownView(view),
+  });
+}
 
 commandRegistry.register({
   id: 'view.graph',

@@ -6,6 +6,7 @@ import { StatusBar } from './StatusBar';
 import { SplitView } from '../split/SplitView';
 import { useVaultLayoutPersistence } from './layout-persistence';
 import { bindVaultFsEvents, usePageTreeStore } from '../stores/page-tree-store';
+import { useTabStore } from '../stores/tab-store';
 import { bindIndexEvents, useIndexStore } from '../stores/index-store';
 import { WritingAssistantLayer } from '../features/ai/writing';
 import { TranslationLayer } from '../features/ai/translation';
@@ -15,6 +16,10 @@ import { GuidedTour } from '../tour/GuidedTour';
 /** 工作区：三面板（侧栏 + 主内容 + 右侧 dock）+ 底部状态栏。 */
 export function WorkspaceView({ vault }: { vault: VaultInfo }) {
   useVaultLayoutPersistence(vault);
+  const previewOnly = useTabStore((state) => {
+    const tab = state.tabs.find((candidate) => candidate.id === state.activeTabId);
+    return tab?.format === 'markdown' && (tab.markdownView ?? 'split') === 'preview';
+  });
 
   // vault 就绪：拉取页面树 + 绑定 fs:changed / index:statusChanged（幂等，进程内一次）
   useEffect(() => {
@@ -41,8 +46,8 @@ export function WorkspaceView({ vault }: { vault: VaultInfo }) {
         <DockHost />
       </div>
       <StatusBar />
-      <WritingAssistantLayer />
-      <TranslationLayer />
+      {!previewOnly && <WritingAssistantLayer />}
+      {!previewOnly && <TranslationLayer />}
       <PluginHost />
       <GuidedTour />
     </div>
