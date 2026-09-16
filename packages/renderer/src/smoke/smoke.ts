@@ -9,6 +9,7 @@ import { useThemeStore } from '../theme/theme-store';
 import { dockPanelRegistry } from '../registries';
 import { getActiveEditor } from '../editor/active-editor';
 import { getActiveSourceEditor } from '../editor/source/active-source-editor';
+import { currentPageCandidates } from '../editor/wikilink-page-ops';
 import { applySourceFormat } from '../editor/source/source-formatting';
 import { FORMAT_WIKILINK, runFormatAction } from '../editor/interactions/formatting';
 import { TextSelection } from '@tiptap/pm/state';
@@ -1595,6 +1596,10 @@ export async function runSmokeIfEnabled(): Promise<void> {
     const completionView = getActiveSourceEditor()?.view ?? null;
     check('源码补全：CodeMirror 可聚焦', !!completionCm && !!completionView);
     if (completionCm && completionView) {
+      await waitFor(
+        () => currentPageCandidates().some((page) => page.title === '源码模式跳转目标'),
+        15_000,
+      );
       completionCm.focus();
       // 经真实 EditorView 事务写回：execCommand('insertText') 在 CI runner 上
       // 不保证触发 CodeMirror 变更事件，导致补全源拿不到查询词。
