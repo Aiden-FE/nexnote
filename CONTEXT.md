@@ -67,6 +67,10 @@ _Avoid_: 一次性生成、等待完整回复
 产品形态 + UI 交互 + 技术栈组合的一体化可点击 HTML 方案；评审后仅保留一案。
 _Avoid_: demo、mockup（泛指）
 
+**演示知识库（Demo Vault）**:
+为官网截图与产品演示维护的小型示例知识库，内容为可公开的真实示例。
+_Avoid_: 冒烟库、测试种子数据
+
 ### 产品信息架构
 
 **命令面板（Command Palette）**:
@@ -94,16 +98,32 @@ _Avoid_: 审批开关、Agent 开关
 _Avoid_: 翻译写回、译文文档
 
 **块编辑模式（Block Editing Mode）**:
-页面的默认编辑模式，以所见即所得的结构化块呈现 Markdown，不显示大部分源语法。
+原生块页面的编辑模式，以所见即所得的结构化块呈现 Markdown，不显示大部分源语法。
 _Avoid_: 预览模式、富文本文件
 
-**源码模式（Source Mode）**:
-页面 tab 的临时编辑模式；左侧编辑完整 Markdown 原文，右侧显示同一页面的只读实时预览，关闭 tab 后恢复块编辑模式。
-_Avoid_: 分屏、Split Pane、双编辑器
+**Markdown 视图（Markdown View）**:
+Markdown 页面 tab 的临时呈现状态，三种互斥视图为源码视图、分栏视图和预览视图；状态仅在当前 tab 生命周期内有效。
+_Avoid_: 编辑器模式、文件格式
+
+**源码视图（Source View）**:
+仅显示完整 Markdown 原文编辑器的 Markdown 视图，不显示实时预览。
+_Avoid_: 源码模式（泛指三种 Markdown 视图）、块编辑模式
+
+**分栏视图（Split View）**:
+左侧编辑完整 Markdown 原文、右侧显示同一页面实时预览的 Markdown 视图；用户可拖动分割线调整两侧宽度，比例仅在当前 tab 生命周期内保留。
+_Avoid_: 通用分屏、Split Pane、双编辑器
+
+**预览视图（Preview View）**:
+仅显示 Markdown 页面只读富渲染结果的 Markdown 视图，不显示编辑器或编辑态操作。
+_Avoid_: 块编辑模式、只读源码
 
 **实时预览（Live Preview）**:
-源码模式中对当前 Markdown 原文的只读富渲染视图，完整呈现 NexNote 支持的块、公式、图表和链接。
+分栏视图与预览视图共用的只读富渲染结果，完整呈现 NexNote 支持的块、公式、图表和链接。
 _Avoid_: 右侧 Pane、第二编辑器
+
+**视图切换器（View Switcher）**:
+在三种 Markdown 视图间切换的常驻入口；源码与分栏视图中位于编辑器工具栏，预览视图中以仅含视图动作的极简形态出现在工具栏原位。
+_Avoid_: 模式按钮（泛指）、编辑动作工具栏
 
 **文档属性（Document Properties）**:
 编辑器顶部展示与编辑页面元数据的面板，表格 / YAML 双模式；标准字段与自定义字段在此添加和修改，添加时提供带说明的字段目录。
