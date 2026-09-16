@@ -1622,12 +1622,11 @@ export async function runSmokeIfEnabled(): Promise<void> {
         userEvent: 'input.type',
       });
       const tooltipOpen = await waitFor(
-        () =>
-          [...(document.querySelectorAll('.cm-tooltip-autocomplete li') ?? [])].some((li) =>
-            (li.textContent ?? '').includes('源码模式跳转目标'),
-          ),
+        () => !!document.querySelector('.cm-tooltip-autocomplete li'),
         30_000,
       );
+      // 空查询只验证候选菜单出现；具体目标页命中由下一步过滤词断言验证，
+      // 避免依赖页面树返回顺序与前 8 项截断。
       check('源码模式输入 [[ 弹出页面候选', tooltipOpen);
       await capture('05b-source-wikilink-completion');
       completionCm.dispatchEvent(
