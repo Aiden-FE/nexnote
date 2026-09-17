@@ -14,7 +14,9 @@ Priority: P1
 - 实现共享快捷插入动作定义（分组、中文/英文/Markdown 记号别名、编辑模式能力），块编辑菜单按“基础块、插入、AI、插件”分组并在组内按匹配度排序。
 - 真实 TipTap contenteditable DOM 的 KeyboardEvent/InputEvent + DOMObserver 验收覆盖段落、标题、列表、引用触发；代码块、行内代码、URL、路径、数学和单词内部不触发；以及 Tab 确认、Escape、Backspace、空态和 undo/redo。
 - 块类型在已有正文时过滤；结构动作在当前顶层块后插入，双链/AI/插件按能力分组；普通交互不触发 AI。
-- 候选提交：`f4c8343`。Electron smoke：`NOT_RUN`。
+- 初始候选 `f4c8343` 的 Standards/Spec 审查发现触发词 eligibility、数学 fail-closed、结构安全插入、共享模型与测试真实性缺口；追加 `2339b40` 修复为 shared catalog 投影、execution/context contract、插件能力过滤与拆分的 quick-insert 模块。
+- 最终验证记录（候选 `2339b40`）：定向 4 files / 32 tests passed；`CI=true pnpm typecheck`、完整 `pnpm test`（152 files passed / 1 skipped，1292 tests passed / 2 skipped）、`pnpm lint`（0 errors，4 个既有 warnings）、`pnpm build`、`bash scripts/check-changed-format.sh master`、`git diff --check master...HEAD` 均通过。
+- happy-dom 验收使用明确的浏览器默认输入 helper（keydown → DOM selection mutation → InputEvent → DOMObserver flush），断言实际节点与选区；最终真实 Chromium packaged 链路保留给 DEV-057 smoke。Electron smoke：`NOT_RUN`。
 
 ## Scope
 
