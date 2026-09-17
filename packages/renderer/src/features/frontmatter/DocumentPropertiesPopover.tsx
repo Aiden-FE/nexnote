@@ -3,6 +3,7 @@ import { useEffect, useId, useRef, useState } from 'react';
 import { ClipboardList } from 'lucide-react';
 import type { FrontmatterData } from '@nexnote/kernel';
 import { FrontmatterPanel } from './FrontmatterPanel';
+import { ToolbarTooltip } from '../../editor/toolbar/Tooltip';
 
 export interface DocumentPropertiesPopoverProps {
   data: FrontmatterData;
@@ -74,20 +75,21 @@ export function DocumentPropertiesPopover({
 
   return (
     <>
-      <button
-        ref={triggerRef}
-        type="button"
-        data-testid="document-properties-trigger"
-        title="编辑文档属性"
-        aria-label="属性"
-        aria-expanded={open}
-        aria-controls={popoverId}
-        className="flex shrink-0 items-center gap-1 rounded px-1.5 py-0.5 hover:bg-accent"
-        onClick={() => setOpen((current) => !current)}
-      >
-        <ClipboardList className="size-3" aria-hidden="true" />
-        属性
-      </button>
+      <ToolbarTooltip text="编辑文档属性">
+        <button
+          ref={triggerRef}
+          type="button"
+          data-testid="document-properties-trigger"
+          aria-label="属性"
+          aria-expanded={open}
+          aria-controls={popoverId}
+          className="flex shrink-0 items-center gap-1 rounded px-1.5 py-0.5 hover:bg-accent focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-ring"
+          onClick={() => setOpen((current) => !current)}
+        >
+          <ClipboardList className="size-3" aria-hidden="true" />
+          属性
+        </button>
+      </ToolbarTooltip>
       {open &&
         createPortal(
           <div

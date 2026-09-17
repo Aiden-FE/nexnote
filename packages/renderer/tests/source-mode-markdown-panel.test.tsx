@@ -165,7 +165,14 @@ describe('Markdown 文档属性面板（DEV-025）', () => {
       '[data-testid="document-properties-trigger"]',
     );
     expect(trigger?.textContent).toContain('属性');
-    expect(trigger?.getAttribute('title')).toBe('编辑文档属性');
+    // DEV-050：统一 Tooltip 取代原生 title；说明经 aria/tooltip 交互提供。
+    act(() => {
+      trigger?.dispatchEvent(new PointerEvent('pointerover', { bubbles: true }));
+    });
+    expect(document.querySelector('[data-testid="toolbar-tooltip"]')?.textContent).toBe(
+      '编辑文档属性',
+    );
+    expect(trigger?.hasAttribute('title')).toBe(false);
     act(() => trigger?.click());
     expect(document.querySelector('[data-testid="frontmatter-panel"]')).not.toBeNull();
     expect(document.querySelector('[data-testid="frontmatter-field-title"]')).not.toBeNull();

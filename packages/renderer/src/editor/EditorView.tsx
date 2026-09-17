@@ -13,7 +13,7 @@ import { parseFrontmatterYaml, serializeFrontmatterYaml, splitFrontmatter } from
 import { collectVaultTags, inspectFrontmatter } from '../features/frontmatter/frontmatter-utils';
 import { bindH1ToTitle, firstH1, sanitizePageTitle, titleFromPath } from './title-sync';
 import { registerAppSaveListener } from './app-save';
-import { registerEditor } from './active-editor';
+import { getActiveEditor, registerEditor } from './active-editor';
 import { registerModeSwitchHandler, requestSourceModeToggle } from './source/source-mode-toggle';
 import {
   createWritingController,
@@ -87,7 +87,13 @@ import {
   INSERT_GANTT_ID,
   INSERT_TOC_ID,
   TOGGLE_OUTLINE_ID,
+  PARAGRAPH_ID,
 } from './toolbar/entries';
+import {
+  applyBlockTypeAction,
+  blockHeadingCapability,
+  headingLevelFromAction,
+} from './toolbar/heading-actions';
 import { parseBlockOutline, type OutlineEntry } from './outline';
 import {
   buildBuiltinSlashItems,
@@ -863,6 +869,16 @@ export function EditorView({ tab }: EditorViewProps) {
   }, [saveState]);
   const StatusIcon = status.icon;
 
+  // 标题工具能力随选区实时变化：以惰性 getter 交给工具栏在交互时求值，
+  // 避免每次选区变化重渲工具栏（refs 只在事件/渲染求值时读取）。
+  const blockHeadingState = useMemo(
+    () => ({
+      disabled: () => !blockHeadingCapability(getActiveEditor()).enabled,
+      disabledReason: () => blockHeadingCapability(getActiveEditor()).reason,
+    }),
+    [],
+  );
+
   /**
    * DEV-035 工具栏命令分发（ADR-0006）：动作表由 toolbar/entries 声明，处理在这里按
    * 当前编辑器实时状态执行——有选区作用于选区，无选区作用于光标所在块。
@@ -876,6 +892,10 @@ export function EditorView({ tab }: EditorViewProps) {
       const { from, to } = v.state.selection;
       return from === to ? '' : v.state.doc.textBetween(from, to, '\n');
     };
+    if (id === PARAGRAPH_ID || headingLevelFromAction(id) !== null) {
+      if (kernelRef.current) applyBlockTypeAction(kernelRef.current, id);
+      return;
+    }
     switch (id) {
       case TOGGLE_OUTLINE_ID: {
         const next = !outlineVisibleRef.current;
@@ -960,8 +980,6 @@ export function EditorView({ tab }: EditorViewProps) {
         // DEV-041：全文翻译打开临时只读视图，不进入文档树、不写盘。
         translationControllerRef.current?.translateDocument();
         return;
-      default:
-        break;
     }
     // 其余为 AI 写作子动作：与斜杠 `/ai` 同语义（无选区时以光标处为目标）。
     const v = view();
@@ -997,7 +1015,10 @@ export function EditorView({ tab }: EditorViewProps) {
     >
       <EditorToolbar
         label="编辑器工具栏"
-        entries={blockToolbarEntries({ sourceModeToggle: tab.format === 'markdown' })}
+        entries={blockToolbarEntries({
+          sourceModeToggle: tab.format === 'markdown',
+          headingState: blockHeadingState,
+        })}
         onCommand={runToolbarCommand}
         tools={
           <DocumentPropertiesPopover
@@ -1014,7 +1035,7 @@ export function EditorView({ tab }: EditorViewProps) {
           <span
             data-testid="editor-save-status"
             className="flex shrink-0 items-center gap-1"
-            title={saveError ?? undefined}
+            aria-label={saveError ? `${status.text}：${saveError}` : status.text}
           >
             <StatusIcon className={`size-3 ${status.className}`} />
             {status.text}

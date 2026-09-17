@@ -166,6 +166,18 @@ function sourceTab(): TabDescriptor {
   };
 }
 
+function openToolbarHeadingMenu(): void {
+  document
+    .querySelector<HTMLButtonElement>('[data-testid="toolbar-entry-block:type"]')
+    ?.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowDown', bubbles: true }));
+}
+
+function clickToolbarHeading(level: number): void {
+  document
+    .querySelector<HTMLButtonElement>(`[data-testid="toolbar-menu-item-block:heading:${level}"]`)
+    ?.click();
+}
+
 function replaceFirstHeading(kernel: EditorKernelInstance, title: string): void {
   const { state, dispatch } = kernel.editor.view;
   const heading = state.doc.firstChild;
@@ -240,6 +252,44 @@ describe('rename keeps editor instances alive', () => {
     });
     expect(bridge.files.get('新标题.md')).toContain('续写');
     expect(bridge.files.has('测试页.md')).toBe(false);
+    await act(async () => root.unmount());
+  });
+
+  it('块编辑工具栏把首个正文块转 H1 后沿既有链路同步文件名', async () => {
+    const tab = blockTab();
+    const bridge = installBridge({ '测试页.md': '测试页\n\n正文\n' });
+    const { root } = await mount(tab, false);
+    await vi.waitFor(() => expect(getActiveEditor()).not.toBeNull());
+    const kernel = getActiveEditor()!;
+    act(() => {
+      kernel.editor.commands.setTextSelection(1);
+      openToolbarHeadingMenu();
+    });
+    act(() => clickToolbarHeading(1));
+    await act(async () => vi.advanceTimersByTimeAsync(80));
+    await vi.waitFor(() => expect(useTabStore.getState().tabs[0]?.pagePath).toBe('测试页.md'));
+    expect(bridge.files.get('测试页.md')).toContain('# 测试页');
+    await act(async () => root.unmount());
+  });
+
+  it('块编辑工具栏转换后续段落为 H1 不误触发文件名同步', async () => {
+    const tab = blockTab();
+    const bridge = installBridge({ '测试页.md': '# 测试页\n\n后续标题\n' });
+    const { root } = await mount(tab, false);
+    await vi.waitFor(() => expect(getActiveEditor()).not.toBeNull());
+    const kernel = getActiveEditor()!;
+    const second = kernel.editor.state.doc.child(1);
+    const secondPos = kernel.editor.state.doc.child(0).nodeSize + 1;
+    expect(second.textContent).toBe('后续标题');
+    act(() => {
+      kernel.editor.commands.setTextSelection(secondPos);
+      openToolbarHeadingMenu();
+    });
+    act(() => clickToolbarHeading(1));
+    await act(async () => vi.advanceTimersByTimeAsync(80));
+    expect(useTabStore.getState().tabs[0]?.pagePath).toBe('测试页.md');
+    expect(bridge.files.has('后续标题.md')).toBe(false);
+    expect(bridge.files.get('测试页.md')).toContain('# 后续标题');
     await act(async () => root.unmount());
   });
 
