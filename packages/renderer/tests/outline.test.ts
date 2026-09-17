@@ -244,6 +244,13 @@ describe('parseMarkdownOutline（DEV-047 共享标题目录）', () => {
     ]);
   });
 
+  it('跨引用边界的下划线不伪造 Setext 标题（正文段落 + `> ---` / `> ===`）', () => {
+    expect(parseMarkdownOutline('总结段落\n> ---\n尾部')).toEqual([]);
+    expect(parseMarkdownOutline('总结段落\n> ===')).toEqual([]);
+    // 引用内段落 + 顶层下划线同样深度不符，不是标题。
+    expect(parseMarkdownOutline('> 引用段落\n---')).toEqual([]);
+  });
+
   it('块引用内 fence 先剥引用前缀识别：其中伪标题不产生条目，未闭合到文末均为代码', () => {
     const markdown = [
       '# 实标题',

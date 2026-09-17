@@ -51,6 +51,14 @@ describe('matchPreviewHeading（预览悬浮目录定位纯函数）', () => {
     const nullText = [{ textContent: null }];
     expect(matchPreviewHeading(nullText, { text: 'x', ordinal: 0 })).toBe(nullText[0]);
   });
+
+  it('重名标题：ordinal 位置文本一致时命中该位置，而非恒命中首个同名者', () => {
+    const duplicated = [{ textContent: '同名' }, { textContent: '其他' }, { textContent: '同名' }];
+    expect(matchPreviewHeading(duplicated, { text: '同名', ordinal: 2 })).toBe(duplicated[2]);
+    // ordinal 位置文本失配（被引用/HTML 标题挤偏）时才全量扫描首个同名者。
+    const shifted = [{ textContent: '别的' }, { textContent: '同名' }, { textContent: '同名' }];
+    expect(matchPreviewHeading(shifted, { text: '同名', ordinal: 0 })).toBe(shifted[1]);
+  });
 });
 
 /** 预览态页面：HTML 标题渲染为预览 heading 但没有源码目录条目，会打乱 ordinal 对应。 */

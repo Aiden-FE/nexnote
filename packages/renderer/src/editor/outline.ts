@@ -87,6 +87,13 @@ function stripBlockquotePrefix(text: string): string {
   return text.replace(BLOCKQUOTE_PREFIX_RE, '');
 }
 
+/** 行首块引用嵌套深度（`> > x` 为 2；非引用行为 0）。 */
+function blockquoteDepth(text: string): number {
+  const match = BLOCKQUOTE_PREFIX_RE.exec(text);
+  if (!match) return 0;
+  return (match[0].match(/>/g) ?? []).length;
+}
+
 function splitMarkdownLines(markdown: string): MarkdownLine[] {
   const lines: MarkdownLine[] = [];
   let pos = 0;
@@ -430,11 +437,18 @@ export function parseMarkdownOutline(markdown: string): OutlineEntry[] {
   }
 
   let fence: { close: RegExp } | null = null;
-  let pending: { texts: string[]; start: number; end: number; number: number } | null = null;
+  let pending: {
+    texts: string[];
+    start: number;
+    end: number;
+    number: number;
+    depth: number;
+  } | null = null;
 
   for (const line of lines.slice(first)) {
     // 块引用内标题/围栏：识别基于剥掉引用前缀的内容，from/to 仍指向原始行。
     const content = stripBlockquotePrefix(line.text);
+    const depth = blockquoteDepth(line.text);
 
     if (fence) {
       if (fence.close.test(content)) fence = null;
@@ -465,8 +479,9 @@ export function parseMarkdownOutline(markdown: string): OutlineEntry[] {
 
     const underline = SETEXT_UNDERLINE_RE.exec(content);
     if (underline) {
-      // 有待定段落则是 Setext 标题；否则 --- 是主题分隔线，只终结段落。
-      const paragraph = pending;
+      // 有待定段落且引用深度一致才是 Setext 标题：跨引用边界（正文段落 + `> ---`）
+      // 不是标题，kernel 同样不产生 heading；深度不符或无段落时按分隔线终结段落。
+      const paragraph = pending?.depth === depth ? pending : null;
       if (paragraph) {
         push(
           (underline[1] ?? '').startsWith('=') ? 1 : 2,
@@ -484,11 +499,18 @@ export function parseMarkdownOutline(markdown: string): OutlineEntry[] {
       continue;
     }
 
-    const paragraph: { texts: string[]; start: number; end: number; number: number } = pending ?? {
+    const paragraph: {
+      texts: string[];
+      start: number;
+      end: number;
+      number: number;
+      depth: number;
+    } = pending ?? {
       texts: [],
       start: line.start,
       end: line.end,
       number: line.number,
+      depth,
     };
     paragraph.texts.push(content);
     paragraph.end = line.end;
