@@ -23,7 +23,7 @@ export interface QuickInsertItem {
   kind?: QuickInsertKind;
   contract?: SlashExecutionContract;
   available?: (context: SlashExecutionContext) => boolean;
-  action: (ctx: { view: EditorView; context: SlashExecutionContext }) => boolean;
+  action: (ctx: { view: EditorView; context: SlashExecutionContext }) => boolean | Promise<boolean>;
 }
 
 export interface SlashMenuState {
@@ -124,6 +124,7 @@ export const QuickInsert = Extension.create<QuickInsertOptions, SlashMenuState>(
     const extension = this;
     let menu: QuickInsertView | null = null;
     let context: SlashExecutionContext | null = null;
+    let composing = false;
     const sync = (view: EditorView) => {
       if (!menu) return;
       if (extension.storage.open && !menu.dom.isConnected) view.dom.parentElement?.append(menu.dom);
@@ -171,11 +172,20 @@ export const QuickInsert = Extension.create<QuickInsertOptions, SlashMenuState>(
       )
         return;
       const executingContext = context;
-      // All action classes consume only the tracked `/query` span. Structural handlers
-      // themselves insert at a top-level boundary and never replace current body text.
-      consumeSlashTrigger(view, executingContext);
-      if (!item.action({ view, context: executingContext })) return;
-      close(view);
+      // A false/rejected/cancelled action must leave `/query` untouched.
+      // Explicit AI prompts run before consumption; other actions retain the same rule.
+      try {
+        const outcome = item.action({ view, context: executingContext });
+        const finish = (success: boolean) => {
+          if (!success) return;
+          consumeSlashTrigger(view, executingContext);
+          close(view);
+        };
+        if (outcome instanceof Promise) void outcome.then(finish, () => undefined);
+        else finish(outcome);
+      } catch {
+        // Keep original text after an action failure.
+      }
     };
     return [
       new Plugin<SlashMenuState>({
@@ -192,15 +202,35 @@ export const QuickInsert = Extension.create<QuickInsertOptions, SlashMenuState>(
           view.dom.parentElement?.append(menu.dom);
           return {
             update(view, previousState) {
-              // A typing transaction maps the active selection. Only selection-only moves
-              // may invalidate a trigger; closing during a doc change loses the next query char.
-              if (
-                extension.storage.open &&
-                previousState.doc.eq(view.state.doc) &&
-                !selectionMatchesTrigger(view)
-              )
+              if (!extension.storage.open || !context) {
+                sync(view);
+                return;
+              }
+              if (!previousState.doc.eq(view.state.doc)) {
+                // Browser typing keeps the document prefix before the tracked slash intact.
+                // Any other transaction, including an insertion before the slash, fails closed.
+                const from = context.triggerFrom;
+                const oldPrefix = previousState.doc.textBetween(
+                  0,
+                  Math.min(from, previousState.doc.content.size),
+                  '\n',
+                  '\ufffc',
+                );
+                const newPrefix = view.state.doc.textBetween(
+                  0,
+                  Math.min(from, view.state.doc.content.size),
+                  '\n',
+                  '\ufffc',
+                );
+                if (oldPrefix !== newPrefix) {
+                  close(view);
+                  return;
+                }
+              } else if (!selectionMatchesTrigger(view)) {
                 close(view);
-              else sync(view);
+                return;
+              }
+              sync(view);
             },
             destroy: () => {
               menu?.destroy();
@@ -209,7 +239,18 @@ export const QuickInsert = Extension.create<QuickInsertOptions, SlashMenuState>(
           };
         },
         props: {
+          handleDOMEvents: {
+            compositionstart() {
+              composing = true;
+              return false;
+            },
+            compositionend() {
+              composing = false;
+              return false;
+            },
+          },
           handleTextInput(view, from, _to, text) {
+            if (composing || view.composing) return false;
             if (!extension.storage.open) {
               const index = text.indexOf('/');
               if (index >= 0) {
@@ -224,7 +265,13 @@ export const QuickInsert = Extension.create<QuickInsertOptions, SlashMenuState>(
               }
               return false;
             }
-            extension.storage.query += text.startsWith('/') ? text.slice(1) : text;
+            // A second slash turns this into a path/URL-like token. Close and retain
+            // ordinary text; subsequent characters cannot reopen from inside the token.
+            if (text.includes('/')) {
+              close(view);
+              return false;
+            }
+            extension.storage.query += text;
             if (context)
               context = {
                 ...context,

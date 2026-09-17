@@ -200,6 +200,67 @@ describe('斜杠快捷输入真实 TipTap DOM 链路（DEV-052）', () => {
     expect(moved.kernel.getMarkdown().trimEnd()).toBe(before);
     expect(moved.kernel.getMarkdown()).toContain('第二段');
   });
+  it('逐字路径输入关闭菜单并保留文本，IME 合成不触发', async () => {
+    const path = mount('\u00a0');
+    selectAt(path.kernel, path.kernel.editor.state.doc.content.size - 1);
+    await type(path.kernel, '/Users');
+    await type(path.kernel, '/path');
+    expect(path.host.querySelector('[data-slash-menu]')?.getAttribute('style')).toContain(
+      'display: none',
+    );
+    expect(path.kernel.getMarkdown()).toContain('/Users/path');
+
+    const ime = mount('\u00a0');
+    selectAt(ime.kernel, ime.kernel.editor.state.doc.content.size - 1);
+    ime.dom.dispatchEvent(new CompositionEvent('compositionstart', { bubbles: true }));
+    await type(ime.kernel, '/');
+    ime.dom.dispatchEvent(new CompositionEvent('compositionend', { bubbles: true }));
+    expect(ime.host.querySelector('[data-slash-menu]')?.getAttribute('style')).toContain(
+      'display: none',
+    );
+    expect(ime.kernel.getMarkdown()).toContain('/');
+  });
+
+  it('外部前置事务不允许旧菜单消费正文；失败动作保留 trigger', async () => {
+    const moved = mount('前文 ');
+    selectAt(moved.kernel, moved.kernel.editor.state.doc.content.size - 1);
+    await type(moved.kernel, '/h2');
+    moved.kernel.editor.view.dispatch(moved.kernel.editor.state.tr.insertText('前置', 1));
+    expect(moved.host.querySelector('[data-slash-menu]')?.getAttribute('style')).toContain(
+      'display: none',
+    );
+    const original = moved.kernel.getMarkdown().trimEnd();
+    press(moved.dom, 'Enter');
+    expect(moved.kernel.getMarkdown().trimEnd()).toBe(original);
+
+    const failed = mount('\u00a0', () => [
+      {
+        id: 'plugin:fail',
+        title: '失败动作',
+        group: '插件',
+        kind: 'plugin',
+        contract: { execution: 'insert-at-cursor', capability: 'plugin-defined' },
+        action: () => false,
+      },
+    ]);
+    selectAt(failed.kernel, failed.kernel.editor.state.doc.content.size - 1);
+    await type(failed.kernel, '/失败动作');
+    press(failed.dom, 'Enter');
+    expect(failed.kernel.getMarkdown()).toContain('/失败动作');
+  });
+
+  it('光标移入 query 内部后菜单关闭且确认不再执行', async () => {
+    const { kernel, dom, host } = mount('\u00a0');
+    selectAt(kernel, kernel.editor.state.doc.content.size - 1);
+    await type(kernel, '/h2');
+    selectAt(kernel, kernel.editor.state.selection.from - 1);
+    expect(host.querySelector('[data-slash-menu]')?.getAttribute('style')).toContain(
+      'display: none',
+    );
+    press(dom, 'Tab');
+    expect(kernel.getMarkdown()).toContain('/h2');
+  });
+
   it('Escape/Backspace/空态及插件能力过滤', async () => {
     const { kernel, dom, host } = mount('\u00a0', () => [
       {
