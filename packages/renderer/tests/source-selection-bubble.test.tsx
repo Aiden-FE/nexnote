@@ -80,7 +80,13 @@ function makeRect(init: {
   } as DOMRect;
 }
 
-function mount(initialText: string) {
+function mount(
+  initialText: string,
+  overrides: {
+    actions?: ReturnType<typeof sourceFormatBubbleActions>;
+    onAction?: Parameters<typeof sourceSelectionBubble>[0]['onAction'];
+  } = {},
+) {
   const parent = document.createElement('div');
   document.body.append(parent);
   // 模拟定位锚点（source-editor-pane）在视口原点、宽 800
@@ -92,13 +98,15 @@ function mount(initialText: string) {
     extraExtensions: [
       sourceSelectionBubble({
         // 与 SourceModeView 相同：格式化/双链平铺，写作与询问 AI 收口下拉。
-        actions: sourceFormatBubbleActions(),
+        actions: overrides.actions ?? sourceFormatBubbleActions(),
         aiMenu: { label: 'AI', actions: writingAiMenuActions() },
         extraControl: writingStopControl(),
-        onAction: (id, ctx) => {
-          if (applySourceFormat(editor.view, id)) return;
-          handleSourceBubbleAction(editor.view, id, ctx, { getDocPath: () => 'Notes/测试.md' });
-        },
+        onAction:
+          overrides.onAction ??
+          ((id, ctx) => {
+            if (applySourceFormat(editor.view, id)) return;
+            handleSourceBubbleAction(editor.view, id, ctx, { getDocPath: () => 'Notes/测试.md' });
+          }),
       }),
     ],
   });
@@ -599,6 +607,85 @@ describe('DEV-034 划词工具栏 AI 下拉（源码模式）', () => {
     editor.destroy();
   });
 
+  it('CodeMirror real DOM dispatches format and AI shortcuts, consumes Mod+E, and honors dynamic disabled', () => {
+    const onAction = vi.fn();
+    let disabled = false;
+    const actions = sourceFormatBubbleActions().map((action) =>
+      action.id === 'format:code' ? { ...action, disabled: () => disabled } : action,
+    );
+    const { parent, editor } = mount('第一句原文。第二句。', { actions, onAction });
+    selectWithCoords(editor, parent, 0, 6, { top: 300, left: 100, right: 120, bottom: 320 });
+
+    const code = new KeyboardEvent('keydown', {
+      key: 'e',
+      metaKey: true,
+      bubbles: true,
+      cancelable: true,
+    });
+    editor.view.dom.dispatchEvent(code);
+    expect(code.defaultPrevented).toBe(true);
+    expect(onAction).toHaveBeenCalledWith(
+      'format:code',
+      expect.objectContaining({ text: '第一句原文。' }),
+    );
+
+    disabled = true;
+    const blocked = new KeyboardEvent('keydown', {
+      key: 'e',
+      metaKey: true,
+      bubbles: true,
+      cancelable: true,
+    });
+    editor.view.dom.dispatchEvent(blocked);
+    expect(blocked.defaultPrevented).toBe(true);
+    expect(onAction).toHaveBeenCalledTimes(1);
+
+    const ai = new KeyboardEvent('keydown', {
+      key: 'r',
+      metaKey: true,
+      altKey: true,
+      bubbles: true,
+      cancelable: true,
+    });
+    editor.view.dom.dispatchEvent(ai);
+    expect(ai.defaultPrevented).toBe(true);
+    expect(onAction).toHaveBeenLastCalledWith('ai:rewrite', expect.any(Object));
+    editor.destroy();
+  });
+
+  it('CodeMirror uses one top-level tabstop, repairs it after hidden/disabled changes, and closes on external focusout', () => {
+    const { parent, editor } = mount('第一句原文。第二句。');
+    selectWithCoords(editor, parent, 0, 6, { top: 300, left: 100, right: 120, bottom: 320 });
+    const bubble = bubbleOf();
+    const top = () =>
+      Array.from(
+        bubble.querySelectorAll<HTMLButtonElement>(
+          ':scope > button:not([hidden]), :scope > [data-ai-dropdown] > button:not([hidden])',
+        ),
+      );
+    expect(top().filter((button) => button.tabIndex === 0)).toHaveLength(1);
+    const first = top().find((button) => button.tabIndex === 0)!;
+    first.focus();
+    first.dispatchEvent(new KeyboardEvent('keydown', { key: 'End', bubbles: true }));
+    const last = top().at(-1)!;
+    expect(document.activeElement).toBe(last);
+    expect(last.tabIndex).toBe(0);
+    expect(top().filter((button) => button.tabIndex === 0)).toEqual([last]);
+    last.hidden = true;
+    first.dispatchEvent(new KeyboardEvent('keydown', { key: 'Home', bubbles: true }));
+    expect(first.tabIndex).toBe(0);
+    expect(top().filter((button) => button.tabIndex === 0)).toEqual([first]);
+
+    const italic = bubble.querySelector<HTMLButtonElement>('[data-bubble-action="format:italic"]')!;
+    first.dispatchEvent(new FocusEvent('focusout', { bubbles: true, relatedTarget: italic }));
+    expect(bubble.style.display).not.toBe('none');
+    const outside = document.createElement('button');
+    document.body.append(outside);
+    italic.dispatchEvent(new FocusEvent('focusout', { bubbles: true, relatedTarget: outside }));
+    expect(bubble.style.display).toBe('none');
+    editor.destroy();
+  });
+
   it('stop button Tooltip has hover/focus/Escape DOM behavior and matching CSS selectors', () => {
     const control = writingStopControl();
     document.body.append(control.dom);
@@ -685,6 +772,18 @@ describe('DEV-034 划词工具栏 AI 下拉（源码模式）', () => {
     expect(menu.hidden).toBe(true);
     expect(document.activeElement).toBe(trigger);
     expect(bubble.style.display).not.toBe('none');
+
+    trigger.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowDown', bubbles: true }));
+    const activeItem = document.activeElement as HTMLButtonElement;
+    activeItem.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
+    expect(menu.hidden).toBe(true);
+    expect(document.activeElement).toBe(trigger);
+
+    trigger.dispatchEvent(
+      new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true }),
+    );
+    expect(bubble.style.display).toBe('none');
+    expect(document.activeElement).toBe(editor.view.contentDOM);
     editor.destroy();
   });
 
@@ -776,6 +875,30 @@ describe('DEV-034 划词工具栏 AI 下拉（源码模式）', () => {
       expect(menu.parentElement?.dataset.aiDropdown).toBe('');
       editor.destroy();
     });
+  });
+
+  it('preview capability excludes the bubble even when a real CodeMirror text selection exists', () => {
+    const parent = document.createElement('div');
+    document.body.append(parent);
+    let previewOnly = true;
+    const editor = createSourceEditor(parent, {
+      initialText: '第一句原文。第二句。',
+      onChange: () => undefined,
+      extraExtensions: [
+        sourceSelectionBubble({
+          actions: sourceFormatBubbleActions(),
+          isEnabled: () => !previewOnly,
+          onAction: () => undefined,
+        }),
+      ],
+    });
+    editor.view.dispatch({ selection: { anchor: 0, head: 6 } });
+    const bubble = bubbleOf();
+    expect(bubble.style.display).toBe('none');
+    previewOnly = false;
+    editor.view.dispatch({ selection: { anchor: 1, head: 6 } });
+    expect(bubble.style.display).not.toBe('none');
+    editor.destroy();
   });
 
   it('无选区时不显示工具栏（含 AI 入口）', () => {

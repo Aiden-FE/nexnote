@@ -3,7 +3,10 @@ import { type EditorView, ViewPlugin, type ViewUpdate } from '@codemirror/view';
 import {
   createBubbleAiMenu,
   decorateBubbleButton,
+  bindSelectionBubbleToolbarRoving,
+  dispatchBubbleShortcut,
   moveSelectionBubbleToolbarFocus,
+  syncSelectionBubbleToolbarTabStop,
   type BubbleAiMenuOptions,
   type BubbleAiMenuView,
   type BubbleExtraControl,
@@ -41,6 +44,8 @@ export interface SourceBubbleOptions {
   aiMenu?: BubbleAiMenuOptions;
   /** 附加控件（如生成中的停止按钮） */
   extraControl?: BubbleExtraControl;
+  /** 所属源码编辑器当前是否允许显示划词 UI（预览视图返回 false）。 */
+  isEnabled?: () => boolean;
   /**
    * 选区消失（折叠/空文本）导致工具栏隐藏时回调一次。
    * 用于清理依附选区的只读浮层（DEV-041 划词翻译）；失焦/Esc 隐藏不触发。
@@ -71,17 +76,26 @@ export function sourceSelectionBubble(options: SourceBubbleOptions): Extension {
     class {
       readonly dom: HTMLDivElement;
       private visible = false;
+      private dismissed = false;
       private destroyed = false;
       private rafId: number | null = null;
       private readonly aiMenu: BubbleAiMenuView | null;
+      private readonly disposeRoving: () => void;
 
       constructor(readonly view: EditorView) {
         this.dom = this.createDom();
         this.aiMenu = options.aiMenu
-          ? createBubbleAiMenu(BUBBLE_CLASS, options.aiMenu, (id) => this.emitAction(id))
+          ? createBubbleAiMenu(
+              BUBBLE_CLASS,
+              options.aiMenu,
+              (id) => this.emitAction(id),
+              () => this.view.focus(),
+            )
           : null;
         if (this.aiMenu) this.dom.append(this.aiMenu.dom);
         if (options.extraControl) this.dom.append(options.extraControl.dom);
+        this.disposeRoving = bindSelectionBubbleToolbarRoving(this.dom);
+        this.dom.addEventListener('focusout', this.onBubbleBlur);
         // 固定挂载 document.body：React 重建任何编辑器容器都不影响工具栏存续。
         this.dom.style.position = 'fixed';
         document.body.append(this.dom);
@@ -93,6 +107,7 @@ export function sourceSelectionBubble(options: SourceBubbleOptions): Extension {
       }
 
       update(update: ViewUpdate) {
+        if (update.selectionSet) this.dismissed = false;
         if (update.selectionSet || update.docChanged) this.sync();
       }
 
@@ -105,6 +120,8 @@ export function sourceSelectionBubble(options: SourceBubbleOptions): Extension {
         this.view.dom.removeEventListener('focusout', this.onBlur);
         this.view.dom.removeEventListener('keydown', this.onKeyDown);
         this.dom.removeEventListener('keydown', this.onToolbarKeyDown);
+        this.dom.removeEventListener('focusout', this.onBubbleBlur);
+        this.disposeRoving();
         this.dom.remove();
       }
 
@@ -116,21 +133,38 @@ export function sourceSelectionBubble(options: SourceBubbleOptions): Extension {
         // relatedTarget 在 bubble 内：焦点移到工具栏按钮上，保持可见
         const related = (event as FocusEvent).relatedTarget as Node | null;
         if (related && this.dom.contains(related)) return;
-        this.hide();
+        this.dismiss();
+      };
+
+      private onBubbleBlur = (event: FocusEvent) => {
+        const related = event.relatedTarget as Node | null;
+        if (related && this.dom.contains(related)) return;
+        this.dismiss();
       };
 
       /** Escape 关闭（仅 bubble 可见时拦截，不吞编辑器其他 Escape 语义）。 */
       private onKeyDown = (event: KeyboardEvent) => {
         const eventFromBubble = this.dom.contains(event.target as Node | null);
-        if (event.key === 'Escape' && this.visible && !eventFromBubble) {
+        if (eventFromBubble) return false;
+        const shortcutActions = [...options.actions, ...(options.aiMenu?.actions ?? [])];
+        if (dispatchBubbleShortcut(event, shortcutActions, (id) => this.emitAction(id)))
+          return true;
+        if (event.key === 'Escape' && this.visible) {
           event.preventDefault();
-          this.hide();
+          this.dismiss();
           return true;
         }
         return false;
       };
 
       private onToolbarKeyDown = (event: KeyboardEvent) => {
+        if (event.key === 'Escape') {
+          event.preventDefault();
+          event.stopPropagation();
+          this.dismiss();
+          this.view.focus();
+          return;
+        }
         moveSelectionBubbleToolbarFocus(this.dom, event);
       };
 
@@ -183,14 +217,16 @@ export function sourceSelectionBubble(options: SourceBubbleOptions): Extension {
         this.ensureMounted();
         const sel = this.view.state.selection.main;
         const text = sel.empty ? '' : this.view.state.sliceDoc(sel.from, sel.to);
-        if (sel.empty || !text.trim()) {
+        if (options.isEnabled?.() === false || sel.empty || !text.trim()) {
           const wasVisible = this.visible;
           this.hide();
           if (wasVisible) options.onSelectionLost?.();
           return;
         }
+        if (this.dismissed) return;
         this.dom.style.display = 'flex';
         this.visible = true;
+        syncSelectionBubbleToolbarTabStop(this.dom);
         // 定位只能发生在 rAF 帧循环里：coordsAtPos 属于布局读取，
         // CodeMirror 在插件 update()（事务提交中）调用会抛
         // "Reading the editor layout isn't allowed during an update"，
@@ -213,6 +249,11 @@ export function sourceSelectionBubble(options: SourceBubbleOptions): Extension {
         if (!coords) return;
         if (!id.startsWith(AI_ACTION_PREFIX)) this.hide();
         options.onAction(id, { text, from: sel.from, to: sel.to, coords });
+      }
+
+      private dismiss(): void {
+        this.dismissed = true;
+        this.hide();
       }
 
       private hide(): void {

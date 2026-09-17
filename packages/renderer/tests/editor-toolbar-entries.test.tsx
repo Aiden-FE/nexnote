@@ -383,6 +383,9 @@ describe('Markdown 预览视图（DEV-045）', () => {
     // 编辑器实例保留但不展示（隐藏 host 仍挂载，aria-hidden 标记不可达）
     const pane = document.querySelector('[data-testid="source-editor-pane"]');
     expect(pane?.getAttribute('aria-hidden')).toBe('true');
+    // Renderer 挂载态也不允许遗留可见划词工具栏（CodeMirror 实例可保留但 selection UI 排除）。
+    expect(document.querySelector('[data-source-selection-bubble]')).toBeNull();
+    expect(document.querySelector('[data-selection-bubble]')).toBeNull();
   });
 });
 

@@ -3,7 +3,12 @@ import { Plugin, PluginKey } from '@tiptap/pm/state';
 import type { EditorView } from '@tiptap/pm/view';
 
 import { computeEditorActionContext, type EditorActionContext } from './action-context';
-import { moveSelectionBubbleToolbarFocus } from './selection-bubble-roving';
+import {
+  bindSelectionBubbleToolbarRoving,
+  dispatchBubbleShortcut,
+  moveSelectionBubbleToolbarFocus,
+  syncSelectionBubbleToolbarTabStop,
+} from './selection-bubble-roving';
 
 /**
  * 选区浮动工具栏（框架无关 DOM 实现）。
@@ -136,6 +141,7 @@ export function createBubbleAiMenu(
   className: string,
   options: BubbleAiMenuOptions,
   onTrigger: (id: string) => void,
+  restoreEditorFocus?: () => void,
 ): BubbleAiMenuView {
   const wrapper = document.createElement('div');
   wrapper.className = `${className}__ai`;
@@ -204,8 +210,14 @@ export function createBubbleAiMenu(
     item.addEventListener('click', (event) => {
       event.preventDefault();
       if (resolveBoolean(action.disabled)) return;
-      close();
+      close({ restoreFocus: true });
       onTrigger(action.id);
+      queueMicrotask(() => {
+        const toolbar = wrapper.closest<HTMLElement>(
+          '[data-selection-bubble], [data-source-selection-bubble]',
+        );
+        if (!toolbar || toolbar.style.display === 'none') restoreEditorFocus?.();
+      });
     });
     items.push(item);
     menu.append(item);
@@ -233,7 +245,10 @@ export function createBubbleAiMenu(
   const close: BubbleAiMenuView['close'] = (closeOptions) => {
     menu.hidden = true;
     trigger.setAttribute('aria-expanded', 'false');
-    if (closeOptions?.restoreFocus) trigger.focus({ preventScroll: true });
+    if (closeOptions?.restoreFocus) {
+      trigger.focus({ preventScroll: true });
+      triggerTooltip.hidden = true;
+    }
   };
 
   trigger.addEventListener('mousedown', (event) => event.preventDefault());
@@ -249,6 +264,7 @@ export function createBubbleAiMenu(
       triggerTooltip.hidden = true;
       return;
     }
+    if (event.key === 'Escape' && menu.hidden) return;
     if (!['ArrowDown', 'ArrowUp', 'Enter', ' ', 'Escape'].includes(event.key)) return;
     event.stopPropagation();
     if (event.key === 'ArrowDown' || event.key === 'Enter' || event.key === ' ') {
@@ -303,7 +319,8 @@ function createBubbleDom(
   aiMenuOptions: BubbleAiMenuOptions | undefined,
   extraControl: BubbleExtraControl | undefined,
   onTrigger: (id: string) => void,
-  onDismiss: () => void,
+  onDismiss: (options?: { focusEditor?: boolean }) => void,
+  restoreEditorFocus: () => void,
 ): BubbleView {
   const dom = document.createElement('div');
   dom.className = className;
@@ -332,14 +349,23 @@ function createBubbleDom(
     dom.append(btn);
   }
 
-  const aiMenu = aiMenuOptions ? createBubbleAiMenu(className, aiMenuOptions, onTrigger) : null;
+  const aiMenu = aiMenuOptions
+    ? createBubbleAiMenu(className, aiMenuOptions, onTrigger, restoreEditorFocus)
+    : null;
   if (aiMenu) dom.append(aiMenu.dom);
   if (extraControl) dom.append(extraControl.dom);
+  const disposeRoving = bindSelectionBubbleToolbarRoving(dom);
+  dom.addEventListener('focusout', (event) => {
+    const related = event.relatedTarget as Node | null;
+    if (related && dom.contains(related)) return;
+    onDismiss();
+  });
 
   dom.addEventListener('keydown', (event) => {
-    if (event.key === 'Escape' && event.target === dom) {
+    if (event.key === 'Escape') {
       event.preventDefault();
-      onDismiss();
+      event.stopPropagation();
+      onDismiss({ focusEditor: true });
       return;
     }
     moveSelectionBubbleToolbarFocus(dom, event);
@@ -347,6 +373,7 @@ function createBubbleDom(
 
   const show: BubbleView['show'] = (coords) => {
     dom.style.display = 'flex';
+    syncSelectionBubbleToolbarTabStop(dom);
     // 坐标以实际包含块（offsetParent）为参照：锚点容器（parentElement）与包含块
     // 不一致时（如宿主未定位），absolute 的 top/left 相对包含块解析，
     // 按锚点换算会随文档长度漂移；offsetParent 缺失时退回锚点矩形。
@@ -371,6 +398,7 @@ function createBubbleDom(
     aiMenu?.close();
   };
   const destroy = () => {
+    disposeRoving();
     aiMenu?.destroy();
     extraControl?.destroy?.();
     dom.remove();
@@ -397,15 +425,6 @@ export const SelectionBubble = Extension.create<SelectionBubbleOptions, { visibl
     // eslint-disable-next-line @typescript-eslint/no-this-alias
     const ext = this;
 
-    const matchesShortcut = (event: KeyboardEvent, action: BubbleAction): boolean => {
-      const sc = action.shortcut;
-      if (!sc) return false;
-      const modOk = sc.mod ? event.metaKey || event.ctrlKey : true;
-      const altOk = sc.alt ? event.altKey : !event.altKey;
-      const shiftOk = sc.shift ? event.shiftKey : !event.shiftKey;
-      return modOk && altOk && shiftOk && event.key.toLowerCase() === sc.key.toLowerCase();
-    };
-
     const trigger = (view: EditorView, id: string) => {
       const ctx = computeEditorActionContext(view, 'selection');
       if (ctx.target !== 'selection' || ctx.text.trim().length === 0) return;
@@ -416,17 +435,20 @@ export const SelectionBubble = Extension.create<SelectionBubbleOptions, { visibl
       new Plugin({
         key: selectionBubblePluginKey,
         view(editorView) {
+          let manuallyDismissed = false;
           let bubble: BubbleView | null = createBubbleDom(
             ext.options.className,
             ext.options.actions,
             ext.options.aiMenu,
             ext.options.extraControl,
             (id) => trigger(editorView, id),
-            () => {
+            (options) => {
+              manuallyDismissed = true;
               ext.storage.visible = false;
               bubble?.hide();
-              editorView.focus();
+              if (options?.focusEditor) editorView.focus();
             },
+            () => editorView.focus(),
           );
           const host = editorView.dom.parentElement;
           if (host && bubble) host.append(bubble.dom);
@@ -451,7 +473,7 @@ export const SelectionBubble = Extension.create<SelectionBubbleOptions, { visibl
             let text = '';
             if (hasSel)
               text = view.state.doc.textBetween(selection.from, selection.to, '\n', '\ufffc');
-            const visible = hasSel && text.trim().length > 0;
+            const visible = hasSel && text.trim().length > 0 && !manuallyDismissed;
             ext.storage.visible = visible;
             if (!bubble) return;
             if (visible) {
@@ -463,7 +485,8 @@ export const SelectionBubble = Extension.create<SelectionBubbleOptions, { visibl
           };
 
           return {
-            update(view) {
+            update(view, previousState) {
+              if (!view.state.selection.eq(previousState.selection)) manuallyDismissed = false;
               sync(view);
             },
             destroy() {
@@ -487,14 +510,7 @@ export const SelectionBubble = Extension.create<SelectionBubbleOptions, { visibl
               ...ext.options.actions,
               ...(ext.options.aiMenu?.actions ?? []),
             ];
-            for (const action of shortcutActions) {
-              if (matchesShortcut(event, action) && !resolveBoolean(action.disabled)) {
-                event.preventDefault();
-                trigger(view, action.id);
-                return true;
-              }
-            }
-            return false;
+            return dispatchBubbleShortcut(event, shortcutActions, (id) => trigger(view, id));
           },
           handleDOMEvents: {
             blur(view, event) {

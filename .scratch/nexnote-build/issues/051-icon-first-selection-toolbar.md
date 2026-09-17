@@ -49,10 +49,20 @@ Priority: P1
 
 - DEV-051 首次 Standards + Spec 双轴/专项审查结论：**FAIL**。本节只记录审查事实和修复证据，不预填最终两轴 PASS；最终双轴验收项继续保持未勾选。
 - 修复独立停止按钮 Tooltip 的 hover/focus 可见 CSS 与 Escape 关闭行为，并补 DOM class、hidden 状态和 CSS selector 回归测试。
-- TipTap shortcut 分派现在执行时动态检查 `action.disabled`；禁用动作不消费快捷键、不触发 action，真实 TipTap DOM `keydown` 覆盖禁用→恢复可用。
+- TipTap shortcut 分派现在执行时动态检查 `action.disabled`；禁用动作不触发 action。二审进一步统一为共享 dispatcher，并明确消费匹配但禁用的 shortcut，防止泄漏到全局命令；真实 TipTap DOM `keydown` 覆盖禁用→恢复可用。
 - Tooltip、AI 菜单与工具栏 Escape 分层：编辑器级 Escape 忽略来自工具栏后代的事件；Tooltip Escape 只关闭 Tooltip；菜单 Escape 只关闭菜单并归还触发器；工具栏/编辑器自身 Escape 保持原关闭语义。TipTap 与 CodeMirror 均由真实编辑器 DOM 事件链覆盖。
 - TipTap 与 CodeMirror 顶层工具栏共用 `moveSelectionBubbleToolbarFocus()`，统一 ArrowLeft/ArrowRight/Home/End 和 hidden/disabled 过滤策略，消除两份 roving 实现。
 - 修复候选门禁（追加提交前）：定向 `vitest` 3 files / 64 tests、全项目 `typecheck`、完整 `test` 151 files（150 passed / 1 skipped）、1283 tests（1281 passed / 2 skipped）、`lint`（0 errors、4 个既有 warnings）、`build`、changed-format、diff-check 均通过；最终独立双轴结果仍不预填。Electron smoke：`NOT_RUN`。
+
+## 二审 FAIL 与修复记录（2026-09-18）
+
+- DEV-051 二次专项复审结论：**FAIL**。继续只记录结论和修复证据，最终 Standards + Spec 双轴验收项保持未勾选。
+- CodeMirror 与 TipTap 现共用 selection shortcut dispatcher：格式动作及 AI 动作经真实编辑器 DOM `keydown` 分派，动态 disabled 不触发；匹配但禁用的 shortcut 仍被明确消费，尤其 `Mod+E` 不再泄漏到全局视图切换。
+- AI 菜单 Enter/Space 成功执行先关闭菜单并归还 trigger；若动作同步关闭了 bubble，则微任务将焦点归还所属编辑器，activeElement 不停留在 hidden menuitem。
+- 顶层控件实现真实 roving tabindex：可用控件只有一个 `tabIndex=0`，ArrowLeft/ArrowRight/Home/End 同步 tabindex 与焦点；MutationObserver 在 hidden/disabled/aria-disabled 动态变化后修复有效 tabstop。
+- Escape 分层完成：首次 Escape 只关闭可见 Tooltip；菜单 Escape 只关菜单并归还 trigger；trigger/工具栏控件上的后续 Escape 关闭 bubble 并归还编辑器。TipTap 与 CodeMirror 均由真实 DOM 冒泡链覆盖。
+- 两种 bubble 均监听自身 focusout：内部焦点移动保留，移到外部立即关闭；Renderer 挂载测试明确断言 preview 视图没有 selection bubble DOM。
+- 二审修复候选门禁（追加提交前）：定向 `vitest` 3 files / 64 tests、全项目 `typecheck`、完整 `test` 151 files（150 passed / 1 skipped）、1287 tests（1285 passed / 2 skipped）、`lint`（0 errors、4 个既有 warnings）、`build`、changed-format、diff-check 均通过；最终独立双轴结果仍不预填。Electron smoke：`NOT_RUN`。
 
 ## 关联决策
 

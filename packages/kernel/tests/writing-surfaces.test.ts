@@ -398,6 +398,38 @@ describe('DEV-034 划词工具栏 AI 下拉（块编辑）', () => {
     kernel.destroy();
   });
 
+  it('TipTap uses one top-level tabstop, repairs hidden/disabled controls, and closes on external focusout', () => {
+    const { container, kernel } = mountWithMenu();
+    selectText(kernel, 1, 6);
+    const bubble = bubbleOf(container)!;
+    const top = () =>
+      Array.from(
+        bubble.querySelectorAll<HTMLButtonElement>(
+          ':scope > button:not([hidden]), :scope > [data-ai-dropdown] > button:not([hidden])',
+        ),
+      );
+    expect(top().filter((button) => button.tabIndex === 0)).toHaveLength(1);
+    const first = top().find((button) => button.tabIndex === 0)!;
+    first.focus();
+    first.dispatchEvent(new KeyboardEvent('keydown', { key: 'End', bubbles: true }));
+    const last = top().at(-1)!;
+    expect(document.activeElement).toBe(last);
+    expect(top().filter((button) => button.tabIndex === 0)).toEqual([last]);
+    last.setAttribute('aria-disabled', 'true');
+    first.dispatchEvent(new KeyboardEvent('keydown', { key: 'Home', bubbles: true }));
+    expect(first.tabIndex).toBe(0);
+    expect(top().filter((button) => button.tabIndex === 0)).toEqual([first]);
+
+    const trigger = triggerOf(container)!;
+    first.dispatchEvent(new FocusEvent('focusout', { bubbles: true, relatedTarget: trigger }));
+    expect(bubble.style.display).not.toBe('none');
+    const outside = document.createElement('button');
+    document.body.append(outside);
+    trigger.dispatchEvent(new FocusEvent('focusout', { bubbles: true, relatedTarget: outside }));
+    expect(bubble.style.display).toBe('none');
+    kernel.destroy();
+  });
+
   it('actual TipTap toolbar DOM Escape only closes nested Tooltip or menu, not the bubble', () => {
     const { container, kernel } = mountWithMenu();
     selectText(kernel, 1, 6);
@@ -422,6 +454,19 @@ describe('DEV-034 划词工具栏 AI 下拉（块编辑）', () => {
     expect(menu.hidden).toBe(true);
     expect(document.activeElement).toBe(trigger);
     expect(bubble.style.display).not.toBe('none');
+
+    trigger.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowDown', bubbles: true }));
+    const activeItem = document.activeElement as HTMLButtonElement;
+    activeItem.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
+    expect(menu.hidden).toBe(true);
+    expect(document.activeElement).toBe(trigger);
+    expect(trigger.querySelector<HTMLElement>('[role="tooltip"]')?.hidden).toBe(true);
+
+    trigger.dispatchEvent(
+      new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true }),
+    );
+    expect(bubble.style.display).toBe('none');
+    expect(document.activeElement).toBe(kernel.editor.view.dom);
     kernel.destroy();
   });
 

@@ -151,6 +151,8 @@ export function SourceModeView({ tab }: { tab: TabDescriptor }) {
   const markdownView = tab.markdownView ?? (tab.previewVisible === false ? 'source' : 'split');
   const previewVisible = markdownView !== 'source';
   const previewOnly = markdownView === 'preview';
+  const previewOnlyRef = useRef(previewOnly);
+  previewOnlyRef.current = previewOnly;
   const splitRatio = tab.splitRatio ?? 0.5;
   const vaultSettings = useSettingsStore((state) => state.vault);
   const autoSaveMs = vaultSettings?.editor.autoSaveMs ?? 1500;
@@ -479,6 +481,7 @@ export function SourceModeView({ tab }: { tab: TabDescriptor }) {
           actions: sourceFormatBubbleActions(),
           aiMenu: { label: 'AI', actions: writingAiMenuActions() },
           extraControl: writingStopControl(),
+          isEnabled: () => !previewOnlyRef.current,
           // 选区消失（折叠/空文本）时关闭划词翻译浮层
           onSelectionLost: () => translationControllerRef.current?.closeSelection(),
           onAction: (id, ctx) => {
