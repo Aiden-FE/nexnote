@@ -271,6 +271,47 @@ describe('选区浮动工具栏（SelectionBubble）', () => {
     kernel.destroy();
   });
 
+  it('动态 disabled/reason 随 TipTap selection update 刷新 aria 和唯一 tabstop', () => {
+    let disabled = true;
+    let reason: string | undefined = '复杂选区';
+    const { container, kernel } = mount('第一段', {
+      selectionBubble: {
+        actions: [
+          {
+            id: 'format:bold',
+            title: '粗体',
+            icon: 'bold',
+            disabled: () => disabled,
+            disabledReason: () => reason,
+          },
+        ],
+        onAction: vi.fn(),
+      },
+    });
+    selectText(kernel, 1, 4);
+    const button = container.querySelector<HTMLButtonElement>(
+      '[data-bubble-action="format:bold"]',
+    )!;
+    expect(button.getAttribute('aria-disabled')).toBe('true');
+    expect(button.getAttribute('aria-label')).toContain('复杂选区');
+    expect(button.tabIndex).toBe(-1);
+
+    disabled = false;
+    reason = undefined;
+    selectText(kernel, 1, 3);
+    expect(button.getAttribute('aria-disabled')).toBe('false');
+    expect(button.getAttribute('aria-label')).toBe('粗体');
+    expect(button.tabIndex).toBe(0);
+
+    disabled = true;
+    reason = '只读';
+    selectText(kernel, 1, 4);
+    expect(button.getAttribute('aria-disabled')).toBe('true');
+    expect(button.getAttribute('aria-label')).toContain('只读');
+    expect(button.tabIndex).toBe(-1);
+    kernel.destroy();
+  });
+
   // 定位回归：CSS/包含块不一致曾导致 top/left 被忽略、浮层落入文档流末尾，
   // 距离随文档长度增长。bubble 底边应始终距选区起点 top 8px，水平收在容器内。
   it('长文档（大量空行）中部划词：底边距选区起点 8px，水平收在容器内', () => {

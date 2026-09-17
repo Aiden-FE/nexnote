@@ -1,3 +1,4 @@
+import { attachBubbleTooltip } from '@nexnote/kernel';
 import { useWritingStore, type WritingSession } from './writing-store';
 
 /**
@@ -28,29 +29,7 @@ export function writingStopControl(): BubbleStopControl {
   icon.dataset.icon = 'stop';
   icon.setAttribute('aria-hidden', 'true');
   icon.textContent = '■';
-  const tooltip = document.createElement('span');
-  tooltip.className = 'nexnote-selection-bubble__tooltip';
-  tooltip.dataset.bubbleTooltip = '';
-  tooltip.setAttribute('role', 'tooltip');
-  tooltip.textContent = '停止生成';
-  tooltip.hidden = true;
-  dom.append(icon, tooltip);
-  const showTooltip = () => {
-    tooltip.hidden = false;
-  };
-  const hideTooltip = () => {
-    tooltip.hidden = true;
-  };
-  dom.addEventListener('pointerenter', showTooltip);
-  dom.addEventListener('focus', showTooltip);
-  dom.addEventListener('pointerleave', hideTooltip);
-  dom.addEventListener('blur', hideTooltip);
-  dom.addEventListener('keydown', (event) => {
-    if (event.key !== 'Escape' || tooltip.hidden) return;
-    event.preventDefault();
-    event.stopPropagation();
-    tooltip.hidden = true;
-  });
+  attachBubbleTooltip(dom, 'nexnote-selection-bubble', () => '停止生成');
   // 与其它工具栏按钮一致：mousedown 不抢编辑器选区
   dom.addEventListener('mousedown', (event) => event.preventDefault());
   dom.addEventListener('click', (event) => {

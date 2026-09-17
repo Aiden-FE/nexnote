@@ -16,6 +16,12 @@ function toolbarControls(root: HTMLElement): HTMLButtonElement[] {
   );
 }
 
+export function disableSelectionBubbleToolbarTabStops(root: HTMLElement): void {
+  allToolbarControls(root).forEach((button) => {
+    button.tabIndex = -1;
+  });
+}
+
 /** Maintain a single tabbable control, falling back when the prior one becomes hidden or disabled. */
 export function syncSelectionBubbleToolbarTabStop(
   root: HTMLElement,

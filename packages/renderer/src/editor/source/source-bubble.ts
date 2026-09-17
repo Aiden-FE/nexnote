@@ -5,7 +5,9 @@ import {
   decorateBubbleButton,
   bindSelectionBubbleToolbarRoving,
   dispatchBubbleShortcut,
+  disableSelectionBubbleToolbarTabStops,
   moveSelectionBubbleToolbarFocus,
+  refreshBubbleButton,
   syncSelectionBubbleToolbarTabStop,
   type BubbleAiMenuOptions,
   type BubbleAiMenuView,
@@ -220,10 +222,17 @@ export function sourceSelectionBubble(options: SourceBubbleOptions): Extension {
         if (options.isEnabled?.() === false || sel.empty || !text.trim()) {
           const wasVisible = this.visible;
           this.hide();
+          disableSelectionBubbleToolbarTabStops(this.dom);
           if (wasVisible) options.onSelectionLost?.();
           return;
         }
         if (this.dismissed) return;
+        for (const action of options.actions) {
+          const button = this.dom.querySelector<HTMLButtonElement>(
+            `[data-bubble-action="${action.id}"]`,
+          );
+          if (button) refreshBubbleButton(button, action);
+        }
         this.dom.style.display = 'flex';
         this.visible = true;
         syncSelectionBubbleToolbarTabStop(this.dom);
@@ -261,6 +270,7 @@ export function sourceSelectionBubble(options: SourceBubbleOptions): Extension {
         this.stopLoop();
         this.aiMenu?.close();
         this.dom.style.display = 'none';
+        disableSelectionBubbleToolbarTabStops(this.dom);
       }
 
       private createDom(): HTMLDivElement {

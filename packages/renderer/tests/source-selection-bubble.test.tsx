@@ -1,5 +1,7 @@
 // @vitest-environment happy-dom
 import { describe, expect, it, vi, beforeEach, afterEach } from 'vitest';
+import { act } from 'react';
+import { createRoot } from 'react-dom/client';
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { undo } from '@codemirror/commands';
@@ -24,6 +26,11 @@ import { TextSelection } from '@tiptap/pm/state';
 import { formatBubbleActions } from '../src/editor/interactions/formatting';
 import { useChatStore } from '../src/features/ai/chat/chat-store';
 import { useUiStore } from '../src/stores/ui-store';
+import { SourceModeView } from '../src/editor/source/SourceModeView';
+import { getActiveSourceEditor } from '../src/editor/source/active-source-editor';
+import type { TabDescriptor } from '../src/stores/tab-store';
+
+globalThis.IS_REACT_ACT_ENVIRONMENT = true;
 
 interface StreamListener {
   (payload: unknown): void;
@@ -875,6 +882,114 @@ describe('DEV-034 划词工具栏 AI 下拉（源码模式）', () => {
       expect(menu.parentElement?.dataset.aiDropdown).toBe('');
       editor.destroy();
     });
+  });
+
+  it('dynamic disabled and reason refresh from configuration updates without DOM mutation', () => {
+    const parent = document.createElement('div');
+    document.body.append(parent);
+    let disabled = true;
+    let reason = '配置暂不可用';
+    const editor = createSourceEditor(parent, {
+      initialText: '第一句原文。第二句。',
+      onChange: () => undefined,
+      extraExtensions: [
+        sourceSelectionBubble({
+          actions: [
+            {
+              id: 'format:bold',
+              title: '粗体',
+              icon: 'bold',
+              disabled: () => disabled,
+              disabledReason: () => reason,
+            },
+          ],
+          onAction: () => undefined,
+        }),
+      ],
+    });
+    editor.view.dispatch({ selection: { anchor: 0, head: 6 } });
+    const button = bubbleOf().querySelector<HTMLButtonElement>(
+      '[data-bubble-action="format:bold"]',
+    )!;
+    expect(button.getAttribute('aria-disabled')).toBe('true');
+    expect(button.getAttribute('aria-label')).toContain('配置暂不可用');
+    expect(button.tabIndex).toBe(-1);
+
+    disabled = false;
+    reason = undefined as unknown as string;
+    editor.view.dispatch({ selection: { anchor: 1, head: 6 } });
+    expect(button.getAttribute('aria-disabled')).toBe('false');
+    expect(button.getAttribute('aria-label')).toBe('粗体');
+    expect(button.tabIndex).toBe(0);
+
+    disabled = true;
+    reason = '权限已收回';
+    editor.view.dispatch({ selection: { anchor: 0, head: 6 } });
+    expect(button.getAttribute('aria-disabled')).toBe('true');
+    expect(button.getAttribute('aria-label')).toContain('权限已收回');
+    expect(button.tabIndex).toBe(-1);
+    editor.destroy();
+  });
+
+  it('SourceModeView preview mounts real CodeMirror but keeps selected-text bubble hidden and unreachable', async () => {
+    const markdown = '# 预览页\n\n第一句原文。第二句。';
+    (window as unknown as { nexnote: unknown }).nexnote = {
+      invoke: vi.fn(async (channel: string) => {
+        if (channel === 'fs:readTextFile') return { ok: true, data: markdown };
+        if (channel === 'fs:stat') {
+          return {
+            ok: true,
+            data: {
+              path: '预览页.md',
+              name: '预览页.md',
+              kind: 'file',
+              size: markdown.length,
+              modifiedAt: 'v1',
+            },
+          };
+        }
+        if (channel === 'fs:exists') return { ok: true, data: false };
+        if (channel === 'fs:listDir' || channel === 'index:pageSummaries') {
+          return { ok: true, data: [] };
+        }
+        return { ok: true, data: null };
+      }),
+      on: () => () => undefined,
+    };
+    const tab: TabDescriptor = {
+      id: 'selection-preview-real',
+      kind: 'page',
+      title: '预览页',
+      pagePath: '预览页.md',
+      format: 'markdown',
+      editorMode: 'source',
+      markdownView: 'preview',
+      createdAt: 1,
+    };
+    const host = document.createElement('div');
+    document.body.append(host);
+    const root = createRoot(host);
+    await act(async () => {
+      root.render(<SourceModeView tab={tab} />);
+      await Promise.resolve();
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+    await vi.waitFor(() => expect(getActiveSourceEditor()).not.toBeNull());
+    const editor = getActiveSourceEditor()!;
+    editor.view.dispatch({ selection: { anchor: 8, head: 14 } });
+    const bubble = document.querySelector<HTMLElement>('[data-source-selection-bubble]')!;
+    expect(bubble).not.toBeNull();
+    expect(bubble.style.display).toBe('none');
+    expect(
+      document.querySelector('[data-testid="source-editor-pane"]')?.getAttribute('aria-hidden'),
+    ).toBe('true');
+    expect(
+      Array.from(bubble.querySelectorAll<HTMLButtonElement>('button')).every(
+        (button) => button.tabIndex === -1 || button.hidden,
+      ),
+    ).toBe(true);
+    await act(async () => root.unmount());
   });
 
   it('preview capability excludes the bubble even when a real CodeMirror text selection exists', () => {

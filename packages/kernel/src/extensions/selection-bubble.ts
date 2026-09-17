@@ -6,6 +6,7 @@ import { computeEditorActionContext, type EditorActionContext } from './action-c
 import {
   bindSelectionBubbleToolbarRoving,
   dispatchBubbleShortcut,
+  disableSelectionBubbleToolbarTabStops,
   moveSelectionBubbleToolbarFocus,
   syncSelectionBubbleToolbarTabStop,
 } from './selection-bubble-roving';
@@ -92,16 +93,53 @@ function createBubbleIcon(className: string, icon: BubbleIconName): HTMLSpanElem
   return span;
 }
 
+export function attachBubbleTooltip(
+  button: HTMLButtonElement,
+  className: string,
+  text: () => string,
+): HTMLSpanElement {
+  const tooltip = document.createElement('span');
+  tooltip.className = `${className}__tooltip`;
+  tooltip.dataset.bubbleTooltip = '';
+  tooltip.setAttribute('role', 'tooltip');
+  tooltip.textContent = text();
+  tooltip.hidden = true;
+  button.append(tooltip);
+  const show = () => {
+    tooltip.textContent = text();
+    tooltip.hidden = false;
+  };
+  const hide = () => {
+    tooltip.hidden = true;
+  };
+  button.addEventListener('pointerenter', show);
+  button.addEventListener('focus', show);
+  button.addEventListener('pointerleave', hide);
+  button.addEventListener('blur', hide);
+  button.addEventListener('keydown', (event) => {
+    if (event.key !== 'Escape' || tooltip.hidden) return;
+    event.preventDefault();
+    event.stopPropagation();
+    hide();
+  });
+  return tooltip;
+}
+
+/** Refresh dynamically-computed action accessibility state without rebuilding its DOM. */
+export function refreshBubbleButton(button: HTMLButtonElement, action: BubbleAction): void {
+  const disabled = resolveBoolean(action.disabled);
+  const reason = resolveText(action.disabledReason);
+  button.setAttribute('aria-label', reason ? `${action.title}（${reason}）` : action.title);
+  button.setAttribute('aria-disabled', disabled ? 'true' : 'false');
+}
+
 export function decorateBubbleButton(
   button: HTMLButtonElement,
   className: string,
   action: BubbleAction,
   options: { menuItem?: boolean; tooltip?: boolean } = {},
 ): void {
-  const disabled = resolveBoolean(action.disabled);
-  const reason = resolveText(action.disabledReason);
-  button.setAttribute('aria-label', reason ? `${action.title}（${reason}）` : action.title);
-  button.setAttribute('aria-disabled', disabled ? 'true' : 'false');
+  refreshBubbleButton(button, action);
   if (action.icon) button.append(createBubbleIcon(className, action.icon));
   if (!action.icon || options.menuItem) {
     const label = document.createElement('span');
@@ -109,31 +147,8 @@ export function decorateBubbleButton(
     label.textContent = action.title;
     button.append(label);
   }
-  if (options.tooltip !== false) {
-    const tooltip = document.createElement('span');
-    tooltip.className = `${className}__tooltip`;
-    tooltip.dataset.bubbleTooltip = '';
-    tooltip.setAttribute('role', 'tooltip');
-    tooltip.textContent = bubbleTooltipText(action);
-    tooltip.hidden = true;
-    button.append(tooltip);
-    const revealTooltip = () => {
-      tooltip.hidden = false;
-    };
-    const hideTooltip = () => {
-      tooltip.hidden = true;
-    };
-    button.addEventListener('pointerenter', revealTooltip);
-    button.addEventListener('focus', revealTooltip);
-    button.addEventListener('pointerleave', hideTooltip);
-    button.addEventListener('blur', hideTooltip);
-    button.addEventListener('keydown', (event) => {
-      if (event.key !== 'Escape' || tooltip.hidden) return;
-      event.preventDefault();
-      event.stopPropagation();
-      tooltip.hidden = true;
-    });
-  }
+  if (options.tooltip !== false)
+    attachBubbleTooltip(button, className, () => bubbleTooltipText(action));
 }
 
 /** Shared AI dropdown for block and source editors. */
@@ -163,23 +178,7 @@ export function createBubbleAiMenu(
   chevron.setAttribute('aria-hidden', 'true');
   chevron.textContent = '⌄';
   trigger.append(triggerLabel, chevron);
-  const triggerTooltip = document.createElement('span');
-  triggerTooltip.className = `${className}__tooltip`;
-  triggerTooltip.dataset.bubbleTooltip = '';
-  triggerTooltip.setAttribute('role', 'tooltip');
-  triggerTooltip.textContent = 'AI 写作、询问与翻译';
-  triggerTooltip.hidden = true;
-  trigger.append(triggerTooltip);
-  const revealTriggerTooltip = () => {
-    triggerTooltip.hidden = false;
-  };
-  const hideTriggerTooltip = () => {
-    triggerTooltip.hidden = true;
-  };
-  trigger.addEventListener('pointerenter', revealTriggerTooltip);
-  trigger.addEventListener('focus', revealTriggerTooltip);
-  trigger.addEventListener('pointerleave', hideTriggerTooltip);
-  trigger.addEventListener('blur', hideTriggerTooltip);
+  const triggerTooltip = attachBubbleTooltip(trigger, className, () => 'AI 写作、询问与翻译');
 
   const menu = document.createElement('div');
   menu.className = `${className}__ai-menu`;
@@ -229,6 +228,7 @@ export function createBubbleAiMenu(
     enabled[(index + enabled.length) % enabled.length]?.focus();
   };
   const open = (focus: 'first' | 'last' = 'first') => {
+    items.forEach((item, index) => refreshBubbleButton(item, options.actions[index]!));
     const enabled = enabledItems();
     if (enabled.length === 0) return;
     menu.hidden = false;
@@ -371,8 +371,18 @@ function createBubbleDom(
     moveSelectionBubbleToolbarFocus(dom, event);
   });
 
+  const refreshActions = () => {
+    const actionById = new Map(actions.map((action) => [action.id, action]));
+    for (const button of Array.from(
+      dom.querySelectorAll<HTMLButtonElement>('[data-bubble-action]'),
+    )) {
+      const action = actionById.get(button.dataset.bubbleAction ?? '');
+      if (action) refreshBubbleButton(button, action);
+    }
+  };
   const show: BubbleView['show'] = (coords) => {
     dom.style.display = 'flex';
+    refreshActions();
     syncSelectionBubbleToolbarTabStop(dom);
     // 坐标以实际包含块（offsetParent）为参照：锚点容器（parentElement）与包含块
     // 不一致时（如宿主未定位），absolute 的 top/left 相对包含块解析，
@@ -396,6 +406,7 @@ function createBubbleDom(
   const hide = () => {
     dom.style.display = 'none';
     aiMenu?.close();
+    disableSelectionBubbleToolbarTabStops(dom);
   };
   const destroy = () => {
     disposeRoving();

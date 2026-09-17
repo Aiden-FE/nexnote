@@ -57,7 +57,9 @@ export {
   SelectionBubble,
   selectionBubblePluginKey,
   createBubbleAiMenu,
+  attachBubbleTooltip,
   decorateBubbleButton,
+  refreshBubbleButton,
 } from './extensions/selection-bubble';
 export type {
   BubbleAction,
@@ -70,6 +72,7 @@ export type {
 export {
   bindSelectionBubbleToolbarRoving,
   dispatchBubbleShortcut,
+  disableSelectionBubbleToolbarTabStops,
   moveSelectionBubbleToolbarFocus,
   syncSelectionBubbleToolbarTabStop,
 } from './extensions/selection-bubble-roving';

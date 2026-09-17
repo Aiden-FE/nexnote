@@ -1,4 +1,5 @@
 import type { ReactNode } from 'react';
+import type { BubbleIconName } from '@nexnote/kernel';
 import {
   Bold,
   ChartGantt,
@@ -76,6 +77,9 @@ export interface EditorActionDefinition {
   semantic: EditorActionSemantic;
   modes: readonly EditorActionMode[];
   priority: ToolbarPriority;
+  /** Selection-bubble-only DOM icon/order projection; toolbar still consumes icon above. */
+  selectionIcon?: BubbleIconName;
+  selectionOrder?: number;
 }
 
 /** 唯一共享动作定义：名称、图标、分组、模式能力、优先级和执行语义均在此声明。 */
@@ -122,6 +126,8 @@ export const EDITOR_ACTION_MODEL: readonly EditorActionDefinition[] = [
     semantic: 'format',
     modes: ['block', 'source'],
     priority: 'persistent',
+    selectionIcon: 'bold',
+    selectionOrder: 1,
   },
   {
     id: FORMAT_ITALIC,
@@ -133,6 +139,8 @@ export const EDITOR_ACTION_MODEL: readonly EditorActionDefinition[] = [
     semantic: 'format',
     modes: ['block', 'source'],
     priority: 'persistent',
+    selectionIcon: 'italic',
+    selectionOrder: 2,
   },
   {
     id: FORMAT_WIKILINK,
@@ -143,6 +151,8 @@ export const EDITOR_ACTION_MODEL: readonly EditorActionDefinition[] = [
     semantic: 'format',
     modes: ['block', 'source'],
     priority: 'persistent',
+    selectionIcon: 'wikilink',
+    selectionOrder: 6,
   },
   {
     id: FORMAT_STRIKE,
@@ -154,16 +164,21 @@ export const EDITOR_ACTION_MODEL: readonly EditorActionDefinition[] = [
     semantic: 'format',
     modes: ['block', 'source'],
     priority: 'secondary',
+    selectionIcon: 'strike',
+    selectionOrder: 3,
   },
   {
     id: FORMAT_CODE,
     label: '行内代码',
-    hint: '行内代码',
+    hint: '行内代码（⌘E）',
+    shortcut: '⌘E',
     icon: <Code className="size-3.5" />,
     group: 'format',
     semantic: 'format',
     modes: ['block', 'source'],
     priority: 'secondary',
+    selectionIcon: 'code',
+    selectionOrder: 4,
   },
   {
     id: FORMAT_LINK,
@@ -175,6 +190,8 @@ export const EDITOR_ACTION_MODEL: readonly EditorActionDefinition[] = [
     semantic: 'format',
     modes: ['block', 'source'],
     priority: 'secondary',
+    selectionIcon: 'link',
+    selectionOrder: 5,
   },
   {
     id: FORMAT_SELECTION_ID,

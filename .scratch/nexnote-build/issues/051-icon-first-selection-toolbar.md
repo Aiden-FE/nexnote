@@ -64,6 +64,16 @@ Priority: P1
 - 两种 bubble 均监听自身 focusout：内部焦点移动保留，移到外部立即关闭；Renderer 挂载测试明确断言 preview 视图没有 selection bubble DOM。
 - 二审修复候选门禁（追加提交前）：定向 `vitest` 3 files / 64 tests、全项目 `typecheck`、完整 `test` 151 files（150 passed / 1 skipped）、1287 tests（1285 passed / 2 skipped）、`lint`（0 errors、4 个既有 warnings）、`build`、changed-format、diff-check 均通过；最终独立双轴结果仍不预填。Electron smoke：`NOT_RUN`。
 
+## 三审 FAIL 与修复记录（2026-09-18）
+
+- DEV-051 三次专项复审结论：**FAIL**。本节记录修复，最终 Standards + Spec 双轴验收项继续不勾选。
+- 动态 `disabled()` / `disabledReason()` 在 TipTap/CodeMirror 的 selection 更新中实时刷新 `aria-disabled`、`aria-label`/Tooltip 和 roving tabstop；disabled ↔ enabled 均通过真实编辑器 DOM 选区更新覆盖，未由测试直接改写控件 DOM。
+- `selectionFormatBubbleActions()` 仅从 DEV-050 `EDITOR_ACTION_MODEL` 投影 label、icon、shortcut 及显式 `selectionOrder`；`⌘E` 现在由模型提供真实 Tooltip 快捷键，匹配 shortcut（含 disabled `Mod+E`）明确消费以避免全局冲突。
+- 普通格式动作、AI trigger 与 stop 控件改用内核 `attachBubbleTooltip()`，统一 Tooltip 创建、hover/focus、pointer/blur 和 Escape 生命周期。
+- 新增真实 `SourceModeView` + 未 mock CodeMirror 的 preview renderer 测试：存在真实选区时 bubble 仍隐藏，所有内部按钮 `tabIndex=-1` / 不可访问；同时保留 preview capability 单元覆盖。
+- AI 菜单成功执行会归还 trigger；若执行同步关闭 bubble，焦点回所属 TipTap/CodeMirror 编辑器，真实 DOM 断言覆盖。
+- 三审修复候选门禁（追加提交前）：定向 `vitest` 5 files / 86 tests、全项目 `typecheck`、完整 `test` 151 files（150 passed / 1 skipped）、1290 tests（1288 passed / 2 skipped）、`lint`（0 errors、4 个既有 warnings）、`build`、changed-format、diff-check 均通过；最终独立双轴结果仍不预填。Electron smoke：`NOT_RUN`。
+
 ## 关联决策
 
 - [ADR-0006](../../../docs/adr/0006-editor-toolbar-and-quick-insert-boundaries.md)
