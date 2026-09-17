@@ -128,7 +128,6 @@
   font-family: var(--editor-font-family);
   font-size: var(--editor-font-size);
   line-height: var(--editor-line-height);
-  max-width: var(--editor-content-width);
 }
 
 .nexnote-editor-scope ::selection {
