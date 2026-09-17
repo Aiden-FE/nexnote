@@ -274,7 +274,7 @@ function createMediaInsertSlashItems(options: MediaInsertOptions): SlashMenuItem
   ];
 }
 
-function buildPluginBlockSlashItems(kernel: EditorKernelInstance): SlashMenuItem[] {
+function buildPluginBlockSlashItems(_kernel: EditorKernelInstance): SlashMenuItem[] {
   // PluginContributionDef 与 PluginContributionView 形状同源（scopedId/pluginId/kind/title/id）
   const contributions = pluginContributionRegistry.all() as unknown as Parameters<
     typeof buildDispatchableBlockCommands
