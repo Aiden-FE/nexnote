@@ -7,6 +7,13 @@ import { TextSelection } from '@tiptap/pm/state';
 import { EditorView } from '../src/editor/EditorView';
 import { SourceModeView } from '../src/editor/source/SourceModeView';
 import { getActiveEditor } from '../src/editor/active-editor';
+import {
+  EDITOR_ACTION_MODEL,
+  blockToolbarEntries,
+  editorAction,
+  editorActionsForMode,
+  sourceToolbarEntries,
+} from '../src/editor/toolbar/entries';
 import { useSettingsStore } from '../src/stores/settings-store';
 import { useTabStore, type TabDescriptor } from '../src/stores/tab-store';
 
@@ -129,6 +136,28 @@ afterEach(async () => {
   document.body.innerHTML = '';
   delete (window as unknown as { nexnote?: unknown }).nexnote;
   useTabStore.setState({ tabs: [], activeTabId: null });
+});
+
+describe('DEV-050 共享动作模型单一数据源', () => {
+  it('toolbar 名称/图标/模式能力从共享定义投影，不出现重复漂移', () => {
+    const block = blockToolbarEntries({ sourceModeToggle: false });
+    const source = sourceToolbarEntries({ isMarkdown: true, markdownView: 'source' });
+    for (const entry of [...block, ...source]) {
+      if (entry.id.startsWith('menu:') || entry.id.startsWith('view:')) continue;
+      const action = editorAction(entry.id);
+      expect(entry.label, entry.id).toBe(action.label);
+      expect(entry.icon, entry.id).toBe(action.icon);
+    }
+    expect(editorAction('format:code').label).toBe('行内代码');
+    expect(editorAction('format:link').label).toBe('外链');
+    expect(editorActionsForMode('source').some((action) => action.id === 'insert:image')).toBe(
+      false,
+    );
+    expect(editorActionsForMode('block').some((action) => action.id === 'format:document')).toBe(
+      false,
+    );
+    expect(EDITOR_ACTION_MODEL.every((action) => action.semantic && action.priority)).toBe(true);
+  });
 });
 
 describe('块编辑工具栏（DEV-035）', () => {
@@ -281,9 +310,42 @@ describe('块编辑工具栏（DEV-035）', () => {
   });
 });
 
+describe('DEV-050 工具栏普通交互无副作用', () => {
+  it('hover/focus/menu 键盘导航不改正文、不写盘、不改名、不发 AI', async () => {
+    installBridge('# 测试页\n\n正文一段\n');
+    const invokeSpy = vi.mocked(
+      (window as unknown as { nexnote: { invoke: ReturnType<typeof vi.fn> } }).nexnote.invoke,
+    );
+    await mount(<EditorView tab={blockTab} />);
+    await vi.waitFor(() => expect(getActiveEditor()).not.toBeNull());
+    const kernel = getActiveEditor()!;
+    const markdown = kernel.getMarkdown();
+    const revision = kernel.getRevision();
+    const calls = invokeSpy.mock.calls.length;
+    const bold = entry('format:bold')!;
+    act(() => {
+      bold.dispatchEvent(new PointerEvent('pointerover', { bubbles: true }));
+      bold.focus();
+    });
+    press(entry('menu:format')!, 'ArrowDown');
+    press(document.querySelector('[data-testid="toolbar-menu"]')!, 'ArrowDown');
+    press(document.querySelector('[data-testid="toolbar-menu"]')!, 'Escape');
+    press(entry('ai')!, 'ArrowDown');
+    press(document.querySelector('[data-testid="toolbar-menu"]')!, 'ArrowDown');
+    press(document.querySelector('[data-testid="toolbar-menu"]')!, 'Escape');
+    await Promise.resolve();
+    expect(kernel.getMarkdown()).toBe(markdown);
+    expect(kernel.getRevision()).toBe(revision);
+    expect(invokeSpy.mock.calls.length).toBe(calls);
+    expect(document.querySelector('[data-testid="editor-view"]')?.getAttribute('data-path')).toBe(
+      '测试页.md',
+    );
+  });
+});
+
 describe('Markdown 预览视图（DEV-045）', () => {
   const previewTab: TabDescriptor = {
-    id: 'toolbar-preview',
+    id: 'preview-tab',
     kind: 'page',
     title: '预览页',
     pagePath: '预览页.md',
@@ -321,6 +383,38 @@ describe('Markdown 预览视图（DEV-045）', () => {
     // 编辑器实例保留但不展示（隐藏 host 仍挂载，aria-hidden 标记不可达）
     const pane = document.querySelector('[data-testid="source-editor-pane"]');
     expect(pane?.getAttribute('aria-hidden')).toBe('true');
+  });
+});
+
+describe('DEV-050 预览视图只读边界', () => {
+  const previewTab: TabDescriptor = {
+    id: 'preview-tab',
+    kind: 'page',
+    title: '预览页',
+    pagePath: '预览页.md',
+    format: 'markdown',
+    editorMode: 'source',
+    markdownView: 'preview',
+    createdAt: 1,
+  };
+
+  it('预览视图工具栏交互不触碰源码缓冲与磁盘', async () => {
+    installBridge('# 预览页\n\n正文\n');
+    const invokeSpy = vi.mocked(
+      (window as unknown as { nexnote: { invoke: ReturnType<typeof vi.fn> } }).nexnote.invoke,
+    );
+    await mount(<SourceModeView tab={previewTab} />);
+    const calls = invokeSpy.mock.calls.length;
+    for (const id of ['view:source', 'view:split']) {
+      act(() => entry(id)?.dispatchEvent(new MouseEvent('click', { bubbles: true })));
+    }
+    act(() => {
+      useTabStore.getState().setMarkdownView('preview-tab', 'preview');
+    });
+    await act(async () => Promise.resolve());
+    expect(invokeSpy.mock.calls.length).toBe(calls);
+    expect(sourceCommands.insertBlock).not.toHaveBeenCalled();
+    expect(sourceCommands.formatMarkdown).not.toHaveBeenCalled();
   });
 });
 

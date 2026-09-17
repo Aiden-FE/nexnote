@@ -1035,7 +1035,7 @@ export function EditorView({ tab }: EditorViewProps) {
           <span
             data-testid="editor-save-status"
             className="flex shrink-0 items-center gap-1"
-            title={saveError ?? undefined}
+            aria-label={saveError ? `${status.text}：${saveError}` : status.text}
           >
             <StatusIcon className={`size-3 ${status.className}`} />
             {status.text}

@@ -141,6 +141,19 @@ describe('工具栏 Priority+ 布局（resolveToolbarLayout）', () => {
     });
   });
 
+  it('空间不足优先溢出低频组，常驻集合含 AI 得到保留', () => {
+    const entries = [
+      { id: 'undo', width: 20, priority: 'persistent' as const },
+      { id: 'format', width: 20, priority: 'secondary' as const },
+      { id: 'insert', width: 20, priority: 'secondary' as const },
+      { id: 'ai', width: 20, priority: 'persistent' as const },
+    ];
+    expect(resolveToolbarLayout(entries, 72, 24)).toEqual({
+      visibleIds: ['undo', 'ai'],
+      overflowIds: ['format', 'insert'],
+    });
+  });
+
   it('同一响应式动作组不会被拆散', () => {
     const entries = [
       { id: 'edit', width: 20 },
@@ -230,6 +243,15 @@ describe('Icon-first 与统一 Tooltip（DEV-050）', () => {
     expect(byTestId('toolbar-entry-bold')?.textContent).toBe('bold');
     expect(byTestId('toolbar-entry-bold')?.hasAttribute('title')).toBe(false);
     expect(byTestId('toolbar-entry-ai')?.textContent).toContain('AI');
+  });
+
+  it('AI 下拉每一项都有图标与可读文案', () => {
+    mount(makeEntries());
+    press(byTestId('toolbar-entry-ai')!, 'ArrowDown');
+    for (const item of document.querySelectorAll('[data-testid^="toolbar-menu-item-ai:"]')) {
+      expect(item.textContent?.trim()).not.toBe('');
+      expect(item.querySelector('span svg, span')).not.toBeNull();
+    }
   });
 
   it('hover 与 keyboard focus 打开 Tooltip，Escape 关闭', () => {

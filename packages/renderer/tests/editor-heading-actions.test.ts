@@ -12,6 +12,7 @@ import {
   blockHeadingCapability,
   COMPLEX_HEADING_SELECTION_REASON,
   sourceHeadingCapability,
+  UNSAFE_MARKDOWN_HEADING_CONTEXT_REASON,
 } from '../src/editor/toolbar/heading-actions';
 
 describe('DEV-050 TipTap 标题/段落转换', () => {
@@ -67,6 +68,23 @@ describe('DEV-050 CodeMirror 标题/段落转换', () => {
     expect(editor.state.doc.toString()).toBe('before\n#### 正文\nafter');
     expect(applySourceBlockTypeAction(editor, 'block:paragraph')).toBe(true);
     expect(editor.state.doc.toString()).toBe(original);
+    editor.destroy();
+  });
+
+  it.each([
+    ['代码围栏', '```ts\nconst x = 1\n```', 8],
+    ['表格', '| a | b |\n| --- | --- |', 2],
+  ])('%s 上下文禁用且零事务/零字节', (_label, text, anchor) => {
+    const editor = view(text);
+    editor.dispatch({ selection: { anchor } });
+    const before = editor.state.doc.toString();
+    expect(sourceHeadingCapability(editor)).toEqual({
+      enabled: false,
+      reason: UNSAFE_MARKDOWN_HEADING_CONTEXT_REASON,
+    });
+    expect(applySourceBlockTypeAction(editor, 'block:heading:2')).toBe(false);
+    expect(editor.state.doc.toString()).toBe(before);
+    expect(undo(editor)).toBe(false);
     editor.destroy();
   });
 

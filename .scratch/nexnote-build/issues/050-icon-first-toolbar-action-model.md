@@ -2,7 +2,7 @@
 
 Type: dev
 Module: editor
-Status: in-review
+Status: implementation-complete
 Blocked by: 无（可立即开始）
 Depends: DEV-020（Markdown 编辑）、DEV-023（双模式划词动作）、DEV-038（快捷插入）、DEV-047（目录与结构插入）
 Effort: L
@@ -22,17 +22,13 @@ Priority: P1
 6. H1 显示为“页面标题 H1”，说明首个正文 H1 与文件名同步；执行沿用现有冲突与错误反馈，不新增打断式确认。
 7. 共享动作定义提供后续顶部工具栏、划词工具栏和 `/` 快捷输入复用的稳定语义与编辑模式能力判断。
 
-## 验收记录（2026-09-17，dev/DEV-050）
+## 实施记录（2026-09-17，dev/DEV-050）
 
-- 共享动作模型：`EDITOR_ACTION_MODEL`（id/label/分组/模式能力）+ `editorActionsForMode`，块编辑与 CodeMirror 同 id 同文案；模式专属动作按能力过滤（图片/附件仅块编辑，格式化选区/全文仅 Markdown 编辑）。
-- 常驻集合：撤销、重做、标题/段落、粗体、斜体、双链、AI（Sparkles+`AI`+chevron 唯一带文案入口）；删除线/行内代码/外链/（源码模式另含格式化选区/全文）归「格式」，表格/图片/附件/流程图/甘特图/正文目录归「插入」；视图切换器与悬浮目录按视图保留。
-- Icon-first：顶层仅图标；统一 `ToolbarTooltip`（hover + keyboard focus + Escape 关闭），禁用原因进入 Tooltip 文案与 `aria-label`；移除工具栏触发器与菜单项上的原生 `title`；触发器与菜单项均有 `focus-visible` 轮廓。
-- 标题/段落：正文 + H1–H6（H1 显示「页面标题 H1 · 首个正文 H1 与文件名同步」）；TipTap 经 `convertBlock`（内核已扩展 h1–h6），CodeMirror 仅替换当前行 ATX 前缀（单事务、isolateHistory、未触及字节与换行风格不变）；跨复杂结构选区禁用并在菜单/Tooltip 解释，不产生任何编辑事务。
-- 文件名同步：沿用既有 first-H1 rename 链路（未改动），`rename-focus` / `source-mode-io` / `title-sync` 回归通过；后续 H1 仍由 `firstH1` 只认首个正文 H1，不触发重命名。
-- 响应式溢出：`resolveToolbarLayout` 以布局单元收纳同 `overflowGroup` 相邻入口，三态视图切换器等动作组整体进出「更多」，不与固定分类混同。
-- 安全不变量：无动作不写内容（打开菜单/Tooltip/键盘导航不产生事务与 AI 请求，AI 仅在点击子动作时走既有显式链路）；预览视图工具栏仅视图切换 + 悬浮目录（既有测试断言不变）。
-- 测试：`editor-heading-actions.test.ts`（TipTap/CodeMirror 转换、撤销重做、复杂禁用、字节保持）、`editor-toolbar-overflow.test.tsx`（Tooltip hover/focus/Esc、动作组不拆散、原有溢出与键盘用例）、`editor-toolbar-entries.test.tsx`（常驻集合、分组菜单、H1 标注、能力过滤、预览只读、分发）。
-- 门禁：typecheck、完整 vitest（150 文件 1232 通过）、lint（仅存量 4 warning）、build、changed-format（prettier 通过）、`git diff --check` 均通过；Electron smoke `NOT_RUN`（本轮未执行 GUI 冒烟）。
+- 初次独立 Standards + Spec 审查未通过。本轮已逐项修复审查发现：共享模型成为 toolbar 的生产单一数据源；AI/全部菜单项统一 icon + label；低频语义组优先整体溢出并保留常驻集合（含 AI）；移除工具栏、保存状态、属性入口原生 `title`，属性/更多/菜单按钮补齐 Tooltip/focus-visible；CodeMirror 在围栏/表格等复杂上下文 fail closed。
+- `EDITOR_ACTION_MODEL` 现在声明 id、统一名称、图标、语义分组、执行 semantic、模式 availability 与 overflow priority，toolbar 直接按模型投影；`HeadingLevel` 收窄为 H1–H6。
+- 判别测试新增/强化：模型投影与名称防漂移；全部 AI/菜单项 icon + label；常驻优先响应式布局；hover/focus/menu 导航对 AI/写盘/改名零副作用；源码围栏/表格零事务零字节；首个/后续 H1 经真实 toolbar 的文件名同步边界；预览只读无副作用。
+- Electron smoke：`NOT_RUN`。
+- 下列验收复选框与最终 Standards + Spec PASS **保留给主代理独立重审填写**；本分支不预先宣称审查通过。
 
 ## 安全不变量
 
@@ -43,14 +39,14 @@ Priority: P1
 
 ## 验收标准
 
-- [x] 块编辑和 Markdown 编辑的共享动作在名称、图标、可用状态及结果语义上保持一致；模式专属动作按能力隐藏或禁用。
-- [x] 顶部工具栏符合常驻集合及“格式 / 插入 / AI”分组；窄窗口溢出不拆散动作组。
-- [x] Tooltip 可由 hover 和键盘焦点触发，Escape 关闭；禁用按钮解释原因；不再依赖原生 `title` 完成交互。
-- [x] 正文与 H1–H6 转换在 TipTap 和 CodeMirror 均可撤销/重做，保留文字；复杂跨块范围得到明确禁用反馈。
-- [x] 首个正文 H1 的文件名同步及冲突处理不回归，后续 H1 不误触发重命名。
-- [x] 单元与 Renderer 测试覆盖动作分组、能力过滤、Tooltip、键盘菜单、响应式溢出、标题转换和预览只读边界。
-- [x] 候选 SHA 上通过 typecheck、完整测试、lint、build、changed-format 与 diff-check；Electron smoke 未执行时明确记录 `NOT_RUN`。
-- [x] 在 `.wt/DEV-050` / `dev/DEV-050` 隔离实现，完成 Standards + Spec 双轴审查后方可合并。
+- [ ] 块编辑和 Markdown 编辑的共享动作在名称、图标、可用状态及结果语义上保持一致；模式专属动作按能力隐藏或禁用。
+- [ ] 顶部工具栏符合常驻集合及“格式 / 插入 / AI”分组；窄窗口溢出不拆散动作组。
+- [ ] Tooltip 可由 hover 和键盘焦点触发，Escape 关闭；禁用按钮解释原因；不再依赖原生 `title` 完成交互。
+- [ ] 正文与 H1–H6 转换在 TipTap 和 CodeMirror 均可撤销/重做，保留文字；复杂跨块范围得到明确禁用反馈。
+- [ ] 首个正文 H1 的文件名同步及冲突处理不回归，后续 H1 不误触发重命名。
+- [ ] 单元与 Renderer 测试覆盖动作分组、能力过滤、Tooltip、键盘菜单、响应式溢出、标题转换和预览只读边界。
+- [ ] 候选 SHA 上通过 typecheck、完整测试、lint、build、changed-format 与 diff-check；Electron smoke 未执行时明确记录 `NOT_RUN`。
+- [ ] 在 `.wt/DEV-050` / `dev/DEV-050` 隔离实现，完成 Standards + Spec 双轴审查后方可合并。
 
 ## 关联决策
 

@@ -108,6 +108,7 @@ export function EditorToolbar({ label, entries, onCommand, tools, status }: Edit
       id: entry.id,
       width: widths.current.get(entry.id) ?? 0,
       overflowGroup: entry.overflowGroup,
+      priority: entry.priority,
     }));
     // 容器或动作尚未测得宽度（首帧、无布局环境）：保持全部平铺。
     if (available <= 0 || measured.some((entry) => entry.width <= 0)) return;
@@ -242,7 +243,9 @@ export function EditorToolbar({ label, entries, onCommand, tools, status }: Edit
     const isMenu = entry.kind === 'menu';
     const expanded = panel?.entryId === entry.id;
     const disabled = entry.kind === 'action' && resolveDisabled(entry.disabled);
-    const reason = resolveDisabledReason(entry.disabledReason);
+    const reason = resolveDisabledReason(
+      entry.kind === 'action' ? entry.disabledReason : undefined,
+    );
     const tooltipLabel = entry.shortcut ? `${entry.label}（${entry.shortcut}）` : entry.label;
     const tooltipText = reason ? `${tooltipLabel} — ${reason}` : (entry.hint ?? tooltipLabel);
     const labeled = entry.id === AI_ENTRY_ID;
@@ -358,7 +361,7 @@ export function EditorToolbar({ label, entries, onCommand, tools, status }: Edit
                 openPanel(TOOLBAR_MORE_ID, event.key === 'ArrowDown' ? 'first' : 'last');
               }}
               className={cn(
-                'flex h-6 shrink-0 items-center justify-center rounded px-1.5 text-muted-foreground hover:bg-accent hover:text-foreground',
+                'flex h-6 shrink-0 items-center justify-center rounded px-1.5 text-muted-foreground hover:bg-accent hover:text-foreground focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-ring',
                 panel?.entryId === TOOLBAR_MORE_ID && 'bg-accent text-foreground',
               )}
             >
