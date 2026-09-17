@@ -155,6 +155,10 @@ export function SourceModeView({ tab }: { tab: TabDescriptor }) {
   // 临时翻译（DEV-041）：划词浮层 + 全文临时视图；生命周期与源码编辑器一致。
   const translationControllerRef = useRef<TranslationController | null>(null);
   const previewScrollRef = useRef<HTMLDivElement | null>(null);
+  // DEV-048：悬浮目录直接定位后的短窗内挂起源码→预览比例同步。CM 的 scrollIntoView
+  // 会在当前任务结束后才派发 scroll 事件，晚于直接定位启动的 smooth 滚动，若不挂起
+  // 会用比例位置覆盖标题定位（真实滚动下 smoke 复现；jsdom 单测无法覆盖该时序）。
+  const outlineNavSyncSuppressedUntilRef = useRef(0);
   const pathRef = useRef(initialPath);
   // H1 rename updates the tab path after the current editor has already saved the document.
   // Mark that metadata transition so the path-dependent load effect does not remount it.
@@ -444,6 +448,7 @@ export function SourceModeView({ tab }: { tab: TabDescriptor }) {
       onScroll: (scrollDOM) => {
         const preview = previewScrollRef.current;
         if (!preview) return;
+        if (performance.now() < outlineNavSyncSuppressedUntilRef.current) return;
         const next = syncScrollRatio(
           {
             scrollTop: scrollDOM.scrollTop,
@@ -615,15 +620,16 @@ export function SourceModeView({ tab }: { tab: TabDescriptor }) {
   );
 
   /**
-   * 悬浮目录定位（DEV-047）：
+   * 悬浮目录定位（DEV-047 / DEV-048）：
    * - 源码/分栏：OutlineEntry 的 from/to 相对 CodeMirror 正文（无 YAML 头），单事务
-   *   重设选区并滚动；分栏下预览经既有单向滚动同步跟随。
+   *   重设选区并滚动；分栏下预览同时按归一化文本直接滚到对应 heading——比例滚动同步
+   *   只服务连续滚动场景，内容高度分布不同时无法保证落在标题处（DEV-048 反馈）。
    * - 预览视图：正文只读，收集预览 heading 元素后优先按文本匹配定位（引用/HTML 标题
    *   会使纯 ordinal 索引错位），匹配不到再回退 ordinal。
    */
   const locateOutlineEntry = useCallback(
     (entry: OutlineEntry): void => {
-      if (previewOnly) {
+      const scrollPreviewToEntry = (): void => {
         const headings = [
           ...(previewScrollRef.current?.querySelectorAll('h1,h2,h3,h4,h5,h6') ?? []),
         ];
@@ -631,19 +637,27 @@ export function SourceModeView({ tab }: { tab: TabDescriptor }) {
           behavior: 'smooth',
           block: 'start',
         });
+      };
+      if (previewOnly) {
+        scrollPreviewToEntry();
         return;
       }
       const editor = editorRef.current;
       if (!editor) return;
       const from = entry.from ?? 0;
       const to = entry.to ?? from;
+      // 先挂起比例同步再滚动编辑器：让随后的 scroll 事件不覆盖下面的直接定位。
+      // 窗口需覆盖 CM 滚动事件派发 + 预览 smooth 滚动全程（按距离自适应可达数百毫秒）。
+      // 用 performance.now 单调钟：墙钟回拨（NTP/手动校时）不应拉长挂起窗口。
+      outlineNavSyncSuppressedUntilRef.current = performance.now() + 1_200;
       editor.view.dispatch({
         selection: { anchor: from, head: Math.max(from, to) },
         scrollIntoView: true,
       });
       editor.focus();
+      if (previewVisible) scrollPreviewToEntry();
     },
-    [previewOnly],
+    [previewOnly, previewVisible],
   );
 
   // ── 冲突选择：保留本地（以本地覆盖磁盘）/ 读取磁盘并重载 ──
@@ -907,7 +921,7 @@ export function SourceModeView({ tab }: { tab: TabDescriptor }) {
       <div ref={splitHostRef} className="flex min-h-0 flex-1">
         <div
           data-testid="source-editor-pane"
-          className={`relative min-h-0 min-w-0 overflow-hidden ${previewOnly ? 'absolute size-px overflow-hidden opacity-0' : ''}`}
+          className={`min-h-0 min-w-0 overflow-hidden ${previewOnly ? 'absolute size-px opacity-0' : 'relative'}`}
           style={
             previewOnly
               ? undefined
@@ -933,6 +947,7 @@ export function SourceModeView({ tab }: { tab: TabDescriptor }) {
             onNavigate={navigate}
             scrollRef={previewScrollRef}
             className={previewOnly ? 'flex-1' : undefined}
+            fillContent={previewOnly}
           />
         )}
       </div>

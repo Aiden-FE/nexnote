@@ -27,6 +27,8 @@ interface LivePreviewProps {
   /** 预览滚动容器；父层据此做源码 → 预览单向滚动同步。 */
   scrollRef: React.RefObject<HTMLDivElement | null>;
   className?: string;
+  /** 预览视图（独占内容区）时内容列不再受 --editor-content-width 限制，占满可用宽度。 */
+  fillContent?: boolean;
 }
 
 /**
@@ -35,7 +37,14 @@ interface LivePreviewProps {
  * - 输入防抖 ~200ms 后 setMarkdown 更新同一实例，过期异步结果一律丢弃
  * - 内部链接 / Wikilink 普通点击即导航；外链沿用应用安全打开策略
  */
-export function LivePreview({ markdown, sourcePath, onNavigate, scrollRef, className }: LivePreviewProps) {
+export function LivePreview({
+  markdown,
+  sourcePath,
+  onNavigate,
+  scrollRef,
+  className,
+  fillContent = false,
+}: LivePreviewProps) {
   const hostRef = useRef<HTMLDivElement>(null);
   const kernelRef = useRef<EditorKernelInstance | null>(null);
   const schedulerRef = useRef<PreviewScheduler | null>(null);
@@ -141,7 +150,13 @@ export function LivePreview({ markdown, sourcePath, onNavigate, scrollRef, class
           </span>
         </div>
       )}
-      <div className="mx-auto max-w-[var(--editor-content-width)] px-10 py-10">
+      <div
+        data-testid="live-preview-content"
+        className={cn(
+          'mx-auto px-10 py-10',
+          fillContent ? 'max-w-none' : 'max-w-[var(--editor-content-width)]',
+        )}
+      >
         <div ref={hostRef} data-testid="live-preview-host" className="nexnote-markdown-preview" />
       </div>
     </div>
