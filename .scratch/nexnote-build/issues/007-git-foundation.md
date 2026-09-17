@@ -2,7 +2,7 @@
 
 Type: dev
 Module: git
-Status: open
+Status: closed
 Blocked by: DEV-001
 Depends: DEV-001
 Effort: L

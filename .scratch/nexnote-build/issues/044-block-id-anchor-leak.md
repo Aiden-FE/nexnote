@@ -2,7 +2,7 @@
 
 Type: dev
 Module: editor
-Status: open
+Status: closed
 Blocked by: 无（可立即开始）
 Depends: DEV-002（编辑器内核）
 Effort: M

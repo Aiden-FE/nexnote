@@ -2,7 +2,7 @@
 
 Type: dev
 Module: ai
-Status: open
+Status: closed
 Blocked by: DEV-031（SDK 流式迁移）
 Depends: DEV-014（Skill 系统）
 Effort: L

@@ -2,7 +2,7 @@
 
 Type: dev
 Module: ai
-Status: open
+Status: closed
 Blocked by: DEV-009, DEV-011
 Depends: DEV-009, DEV-011
 Effort: L

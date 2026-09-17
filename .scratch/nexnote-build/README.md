@@ -85,6 +85,32 @@
 
 票据明细：DEV-027～DEV-042 位于 [`issues/`](issues/)，需求与验收标准以各票据为准。
 
+### 标题折叠、Icon-first 工具栏与 `/` 快捷输入（DEV-050～DEV-057）— 待实施
+
+> 来源：2026-09-17 `grill-with-docs` 三轮 Q1～Q30 全部定案；权威边界见 ADR-0006、ADR-0013，以及 ADR-0004 的 2026-09-17 修订。处理方式仍遵循单票据 worktree、固定候选 SHA、标准门禁与 Standards + Spec 双轴审查。
+
+| 波次 | 票据 | 主题 | 阻塞关系 | 状态 |
+|---|---|---|---|---|
+| Wave 1A | **DEV-050** | [统一编辑器动作模型与 Icon-first 顶部工具栏](issues/050-icon-first-toolbar-action-model.md) | 无 | open，可立即开始 |
+| Wave 1B | **DEV-054** | [完成块文档标题章节折叠交互](issues/054-block-heading-section-folding.md) | 无 | open，可立即开始 |
+| Wave 2A | **DEV-051** | [划词工具栏 Icon-first 与 AI 入口统一](issues/051-icon-first-selection-toolbar.md) | DEV-050 | blocked |
+| Wave 2A | **DEV-052** | [块编辑器接入共享 `/` 快捷输入](issues/052-block-editor-shared-slash-menu.md) | DEV-050 | blocked |
+| Wave 2B | **DEV-055** | [Markdown 标题章节折叠](issues/055-markdown-heading-section-folding.md) | DEV-054 | blocked |
+| Wave 3A | **DEV-053** | [Markdown 编辑器实现 `/` 快捷输入菜单](issues/053-markdown-slash-quick-input.md) | DEV-052 | blocked |
+| Wave 3B | **DEV-056** | [标题目录跳转与“全部展开”](issues/056-outline-reveal-and-expand-all.md) | DEV-054、DEV-055 | blocked |
+| Wave 4 | **DEV-057** | [工具栏、快捷输入与标题折叠集成 smoke](issues/057-toolbar-slash-folding-integration-smoke.md) | DEV-051、DEV-053、DEV-056 | blocked |
+
+依赖拓扑：
+
+```text
+DEV-050 ──┬── DEV-051 ─────────────────┐
+          └── DEV-052 ── DEV-053 ──────┤
+                                        ├── DEV-057
+DEV-054 ───── DEV-055 ── DEV-056 ──────┘
+```
+
+当前 frontier：**DEV-050、DEV-054**，两票可并行实施。
+
 ### P0 · 集成验收（最后）— ✅ 已完成
 
 | # | 标题 | 模块 | 工作量 | 依赖 | 状态 |

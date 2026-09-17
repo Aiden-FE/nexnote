@@ -2,7 +2,7 @@
 
 Type: dev
 Module: editor
-Status: open
+Status: closed
 Blocked by: DEV-019
 Depends: DEV-002, DEV-005, DEV-015, DEV-017, DEV-019
 Effort: L

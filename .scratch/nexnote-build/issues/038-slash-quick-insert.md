@@ -2,7 +2,7 @@
 
 Type: dev
 Module: editor
-Status: open
+Status: closed
 Blocked by: DEV-035（工具栏统一）、DEV-036（光标插入基座）、DEV-037（流式状态机）
 Depends: DEV-020（源码模式）
 Effort: M

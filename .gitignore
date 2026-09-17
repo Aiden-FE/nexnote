@@ -15,6 +15,10 @@ dist/
 .vite/
 .vercel/
 
-# 冒烟测试证据输出目录（截图由 smoke 模式生成后按需提交）
-.scratch/nexnote-build/smoke/tmp/
+# 本地 ZCode 会话产物
+.zcode/
+.zocde/
+
+# 冒烟测试生成物（最终精选证据需要入库时使用 git add -f）
+.scratch/nexnote-build/smoke/
 packages/*/.scratch-smoke-*/
