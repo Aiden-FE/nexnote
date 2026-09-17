@@ -171,11 +171,13 @@ function PageTreePanel() {
         onToggleDir={() => useUiStore.getState().toggleTreeDir(node.path)}
         onClick={() => {
           usePageTreeStore.getState().setSelected(node.path);
-          if (node.kind === 'file') {
-            // 所有文档经统一入口按 sidecar / 扩展名分流，避免 Markdown 误入 TipTap。
-            if (isMarkdown(node.name) || isDocx(node.name)) {
-              void run(() => ops.openDocument(node.path, node.format));
-            }
+          if (node.kind === 'directory') {
+            useUiStore.getState().toggleTreeDir(node.path);
+            return;
+          }
+          // 所有文档经统一入口按 sidecar / 扩展名分流，避免 Markdown 误入 TipTap。
+          if (isMarkdown(node.name) || isDocx(node.name)) {
+            void run(() => ops.openDocument(node.path, node.format));
           }
         }}
         onContextMenu={(e) => openMenuFor(e, node)}

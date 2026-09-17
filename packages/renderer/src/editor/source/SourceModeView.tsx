@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { AlertCircle, Check, LoaderCircle } from 'lucide-react';
+import { undo as cmUndo, redo as cmRedo } from '@codemirror/commands';
 import { EditorToolbar } from '../toolbar/EditorToolbar';
+import { OutlinePanel } from '../OutlinePanel';
 import type { TabDescriptor } from '../../stores/tab-store';
 import { useTabStore } from '../../stores/tab-store';
 import { usePageTreeStore } from '../../stores/page-tree-store';
@@ -31,7 +33,25 @@ import {
   VIEW_SPLIT_ID,
   VIEW_PREVIEW_ID,
   AI_INSERT_ID,
+  UNDO_ID,
+  REDO_ID,
+  INSERT_TABLE_ID,
+  INSERT_FLOWCHART_ID,
+  INSERT_GANTT_ID,
+  INSERT_TOC_ID,
+  FORMAT_SELECTION_ID,
+  FORMAT_DOCUMENT_ID,
+  TOGGLE_OUTLINE_ID,
 } from '../toolbar/entries';
+import {
+  MARKDOWN_TABLE_SNIPPET,
+  MERMAID_FLOWCHART_SOURCE,
+  MERMAID_GANTT_SOURCE,
+  TABLE_OF_CONTENTS_MARKER,
+  mermaidFence,
+} from '../toolbar/snippets';
+import { parseMarkdownOutline, type OutlineEntry } from '../outline';
+import { matchPreviewHeading } from './preview-outline';
 import type { EditorView } from '@codemirror/view';
 import { writingAiMenuActions, writingStopControl } from '../../features/ai/writing';
 import {
@@ -152,10 +172,24 @@ export function SourceModeView({ tab }: { tab: TabDescriptor }) {
   const fmEditedRef = useRef(false);
   const fmYamlRef = useRef<string | null>(null);
   const ready = load.phase === 'ready';
+  // DEV-047 悬浮目录：局部 UI 状态，不落 store；切换三视图不重建 CodeMirror。
+  const [outlineVisible, setOutlineVisible] = useState(false);
+  const outlineVisibleRef = useRef(false);
+  const [outline, setOutline] = useState<OutlineEntry[]>([]);
 
   useEffect(() => {
     hostRef.current?.toggleAttribute('inert', previewOnly);
   }, [previewOnly]);
+
+  useEffect(() => {
+    outlineVisibleRef.current = outlineVisible;
+  }, [outlineVisible]);
+
+  /** 悬浮目录数据源：与 CodeMirror 正文（无 YAML 头）同源，点击定位偏移可直接使用。 */
+  const refreshOutline = useCallback((body: string): void => {
+    if (!outlineVisibleRef.current) return;
+    setOutline(parseMarkdownOutline(body));
+  }, []);
 
   /** 载入/重载原文：拆出 YAML 头并刷新面板状态（解析失败锁定源码模式、保留原文）。 */
   const absorbText = useCallback(
@@ -302,8 +336,9 @@ export function SourceModeView({ tab }: { tab: TabDescriptor }) {
     const parts = absorbText(text);
     editorRef.current?.setText(parts.body);
     textRef.current = parts.body;
+    refreshOutline(parts.body);
     setPreviewText(composeDocument());
-  }, [absorbText, composeDocument]);
+  }, [absorbText, composeDocument, refreshOutline]);
 
   /**
    * 应用自身写入（origin:'app'）变化：绝不弹冲突，静默刷新基线。
@@ -325,12 +360,13 @@ export function SourceModeView({ tab }: { tab: TabDescriptor }) {
         const parts = absorbText(text);
         editorRef.current?.setText(parts.body);
         textRef.current = parts.body;
+        refreshOutline(parts.body);
         setPreviewText(composeDocument());
       }
     } catch {
       // 文件竞态消失（如被改名/删除）：交给页面树 unlink 流程
     }
-  }, [absorbText, composeDocument]);
+  }, [absorbText, composeDocument, refreshOutline]);
 
   // ── 加载：原始字节，不做 H1 绑定（无 H1 时不补写，保持原文） ──
   useEffect(() => {
@@ -356,6 +392,7 @@ export function SourceModeView({ tab }: { tab: TabDescriptor }) {
         dirtyRef.current = false;
         const parts = absorbText(text);
         textRef.current = parts.body;
+        refreshOutline(parts.body);
         setPreviewText(composeDocument());
         setLoad({ phase: 'ready', text });
       } catch (error) {
@@ -401,6 +438,7 @@ export function SourceModeView({ tab }: { tab: TabDescriptor }) {
         dirtyRef.current = true;
         textRef.current = text;
         setPreviewText(composeDocument());
+        refreshOutline(text);
         scheduleSave();
       },
       onScroll: (scrollDOM) => {
@@ -456,6 +494,11 @@ export function SourceModeView({ tab }: { tab: TabDescriptor }) {
     // scheduleSave 闭包经 ref 读实时值，此处只需随 ready 周期挂载
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [ready]);
+
+  // ready 且目录可见时初始化目录数据（面板关闭期间不解析）。
+  useEffect(() => {
+    if (ready && outlineVisible) refreshOutline(textRef.current);
+  }, [ready, outlineVisible, refreshOutline]);
 
   // ── 保存契约：app-wide save / 窗口 blur / 卸载（tab 关闭或切回块模式） ──
   useEffect(() => {
@@ -571,6 +614,38 @@ export function SourceModeView({ tab }: { tab: TabDescriptor }) {
     [flush, previewOnly],
   );
 
+  /**
+   * 悬浮目录定位（DEV-047）：
+   * - 源码/分栏：OutlineEntry 的 from/to 相对 CodeMirror 正文（无 YAML 头），单事务
+   *   重设选区并滚动；分栏下预览经既有单向滚动同步跟随。
+   * - 预览视图：正文只读，收集预览 heading 元素后优先按文本匹配定位（引用/HTML 标题
+   *   会使纯 ordinal 索引错位），匹配不到再回退 ordinal。
+   */
+  const locateOutlineEntry = useCallback(
+    (entry: OutlineEntry): void => {
+      if (previewOnly) {
+        const headings = [
+          ...(previewScrollRef.current?.querySelectorAll('h1,h2,h3,h4,h5,h6') ?? []),
+        ];
+        matchPreviewHeading(headings, entry)?.scrollIntoView({
+          behavior: 'smooth',
+          block: 'start',
+        });
+        return;
+      }
+      const editor = editorRef.current;
+      if (!editor) return;
+      const from = entry.from ?? 0;
+      const to = entry.to ?? from;
+      editor.view.dispatch({
+        selection: { anchor: from, head: Math.max(from, to) },
+        scrollIntoView: true,
+      });
+      editor.focus();
+    },
+    [previewOnly],
+  );
+
   // ── 冲突选择：保留本地（以本地覆盖磁盘）/ 读取磁盘并重载 ──
   const keepLocal = useCallback((): void => {
     void (async () => {
@@ -672,6 +747,38 @@ export function SourceModeView({ tab }: { tab: TabDescriptor }) {
       const coords = v.coordsAtPos(from) ?? { top: 0, left: 0 };
       return { text, from, to, coords: { top: coords.top, left: coords.left } };
     };
+    if (id === TOGGLE_OUTLINE_ID) {
+      const next = !outlineVisibleRef.current;
+      outlineVisibleRef.current = next;
+      setOutlineVisible(next);
+      if (next) setOutline(parseMarkdownOutline(textRef.current));
+      return;
+    }
+    // 预览态是严格只读边界：导航动作在上方已处理，其余编辑命令一律忽略。
+    if (previewOnly && ![VIEW_SOURCE_ID, VIEW_SPLIT_ID, VIEW_PREVIEW_ID].includes(id)) return;
+    if (id === UNDO_ID || id === REDO_ID) {
+      const v = view();
+      if (v) (id === UNDO_ID ? cmUndo : cmRedo)(v);
+      return;
+    }
+    if (id === FORMAT_SELECTION_ID || id === FORMAT_DOCUMENT_ID) {
+      editorRef.current?.formatMarkdown(id === FORMAT_SELECTION_ID ? 'selection' : 'document');
+      return;
+    }
+    if (id === INSERT_TABLE_ID) {
+      editorRef.current?.insertBlock(MARKDOWN_TABLE_SNIPPET);
+      return;
+    }
+    if (id === INSERT_FLOWCHART_ID || id === INSERT_GANTT_ID) {
+      editorRef.current?.insertBlock(
+        mermaidFence(id === INSERT_FLOWCHART_ID ? MERMAID_FLOWCHART_SOURCE : MERMAID_GANTT_SOURCE),
+      );
+      return;
+    }
+    if (id === INSERT_TOC_ID) {
+      editorRef.current?.insertBlock(TABLE_OF_CONTENTS_MARKER);
+      return;
+    }
     if (id === TRANSLATE_DOCUMENT_ID) {
       translationControllerRef.current?.translateDocument();
       return;
@@ -680,7 +787,8 @@ export function SourceModeView({ tab }: { tab: TabDescriptor }) {
       const v = view();
       if (!v) return;
       const instruction = window.prompt('AI 插入指令', '请基于当前上下文补充内容');
-      if (instruction?.trim()) openSourceCursorInsertSession(v, instruction, { getDocPath: () => pathRef.current });
+      if (instruction?.trim())
+        openSourceCursorInsertSession(v, instruction, { getDocPath: () => pathRef.current });
       return;
     }
     if (id === AI_ASK_ID || aiSubActionIds().includes(id)) {
@@ -732,7 +840,7 @@ export function SourceModeView({ tab }: { tab: TabDescriptor }) {
     <div
       data-testid="source-mode-view"
       data-path={displayPath}
-      className="flex h-full min-h-0 flex-col"
+      className="relative flex h-full min-h-0 flex-col"
     >
       <EditorToolbar
         label="编辑器工具栏"
@@ -800,7 +908,11 @@ export function SourceModeView({ tab }: { tab: TabDescriptor }) {
         <div
           data-testid="source-editor-pane"
           className={`relative min-h-0 min-w-0 overflow-hidden ${previewOnly ? 'absolute size-px overflow-hidden opacity-0' : ''}`}
-          style={previewOnly ? undefined : { flex: `0 0 ${previewVisible ? `${splitRatio * 100}%` : '100%'}` }}
+          style={
+            previewOnly
+              ? undefined
+              : { flex: `0 0 ${previewVisible ? `${splitRatio * 100}%` : '100%'}` }
+          }
           ref={hostRef}
           aria-hidden={previewOnly}
           tabIndex={previewOnly ? -1 : undefined}
@@ -824,6 +936,14 @@ export function SourceModeView({ tab }: { tab: TabDescriptor }) {
           />
         )}
       </div>
+      {outlineVisible && (
+        <OutlinePanel
+          entries={outline}
+          onNavigate={locateOutlineEntry}
+          onClose={() => setOutlineVisible(false)}
+          className="absolute right-3 top-10 z-20"
+        />
+      )}
     </div>
   );
 }

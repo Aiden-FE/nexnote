@@ -229,8 +229,8 @@
 }
 .nexnote-editor-host .ProseMirror ul[data-type='taskList'] label input,
 .nexnote-markdown-preview .ProseMirror ul[data-type='taskList'] label input {
-  width: 0.875lh;
-  height: 0.875lh;
+  width: 0.7lh;
+  height: 0.7lh;
   margin: 0;
   flex: 0 0 auto;
   accent-color: var(--primary);
@@ -595,6 +595,43 @@
 .hljs-quote {
   color: var(--editor-muted-foreground);
   font-style: italic;
+}
+
+/* 正文目录：条目由 kernel NodeView 从当前文档实时派生。 */
+.nexnote-table-of-contents {
+  margin: 0.75rem 0;
+  padding: 0.75rem 0.9rem;
+  border: 1px solid var(--border);
+  border-radius: 0.6rem;
+  background: var(--card, var(--popover));
+}
+.nexnote-table-of-contents-title {
+  margin-bottom: 0.4rem;
+  font-weight: 600;
+  color: var(--foreground);
+}
+.nexnote-table-of-contents-list {
+  display: grid;
+  gap: 0.15rem;
+}
+.nexnote-table-of-contents-item {
+  display: block;
+  width: 100%;
+  padding: 0.2rem 0.3rem 0.2rem calc(0.3rem + (var(--toc-level, 1) - 1) * 1rem);
+  border: 0;
+  border-radius: 0.3rem;
+  background: transparent;
+  color: var(--editor-link);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.nexnote-table-of-contents-item:hover {
+  background: var(--accent);
+}
+.nexnote-table-of-contents-empty {
+  color: var(--editor-muted-foreground);
+  font-size: 0.85rem;
 }
 
 /* DEV-015 内置插件块：Mermaid / KaTeX */

@@ -7,7 +7,12 @@ import {
   FORMAT_STRIKE,
   FORMAT_WIKILINK,
 } from '../src/editor/interactions/formatting';
-import { planSourceFormat, SOURCE_FORMAT_IDS } from '../src/editor/source/source-formatting';
+import {
+  formatSourceMarkdown,
+  planSourceFormat,
+  planSourceMarkdown,
+  SOURCE_FORMAT_IDS,
+} from '../src/editor/source/source-formatting';
 
 /**
  * DEV-023 源码模式划词格式化（纯逻辑，不依赖编辑器环境）：
@@ -126,5 +131,76 @@ describe('planSourceFormat：无选区骨架与光标落点', () => {
       FORMAT_LINK,
       FORMAT_WIKILINK,
     ]);
+  });
+});
+
+describe('Markdown 安全格式化', () => {
+  it('规范标题与列表标记后空白、折叠连续空行，并保留 CRLF；标记字符与无上下文依据的缩进不动', () => {
+    expect(formatSourceMarkdown('#   标题\r\n\r\n \r\n   *   项目\r\n正文')).toBe(
+      '# 标题\r\n\r\n   * 项目\r\n正文',
+    );
+  });
+
+  it('跳过 YAML frontmatter 与 fenced code 内容', () => {
+    const input =
+      '---\ntitle:   x\n---\n\n\n#   标题\n```md\n#   代码\n   *   原样\n\n\n```\n+ 项目';
+    expect(formatSourceMarkdown(input)).toBe(
+      '---\ntitle:   x\n---\n\n# 标题\n```md\n#   代码\n   *   原样\n\n\n```\n+ 项目',
+    );
+  });
+
+  it('不把 thematic break、setext underline 或普通 hashtag 误格式化', () => {
+    const input = '---\n标题\n---\n###hash\n#\t标题\n***';
+    expect(formatSourceMarkdown(input)).toBe('---\n标题\n---\n###hash\n# 标题\n***');
+    expect(formatSourceMarkdown('正文\n---\n###hash\n#\t标题\n***')).toBe(
+      '正文\n---\n###hash\n# 标题\n***',
+    );
+  });
+
+  it('有序父项内容列下的子列表不被取整：`1. a` 下 3 空格缩进保持原样', () => {
+    // `1. ` 内容列在第 3 列，3 空格缩进的 `   - b` 是其子列表；
+    // 旧实现无条件取整到 2 会使其脱嵌（2 < 3 变成顶层兄弟列表）。
+    expect(formatSourceMarkdown('1. a\n   - b')).toBe('1. a\n   - b');
+    expect(planSourceMarkdown('1. a\n   - b')).toEqual([]);
+    expect(formatSourceMarkdown('1.   a\n    - b')).toBe('1.   a\n    - b');
+  });
+
+  it('无序列表标记字符绝不被改写（`-`/`+`/`*` 混用是两个列表），仅规范标记后空白', () => {
+    // 改写 `*`→`-` 会把 `- a` 与 `* b` 两个列表静默合并为一个。
+    expect(formatSourceMarkdown('- a\n* b\n+ c')).toBe('- a\n* b\n+ c');
+    expect(formatSourceMarkdown('-   a\n*\tb\n+  c')).toBe('- a\n* b\n+ c');
+    expect(formatSourceMarkdown('  +   嵌套')).toBe('  + 嵌套');
+  });
+
+  it('有序列表标记（`1.`）后的空白同样保持原样，不纳入规范范围', () => {
+    expect(formatSourceMarkdown('1.   a\n2.\tb')).toBe('1.   a\n2.\tb');
+  });
+
+  it('标记后紧跟非空白视为漏空格笔误补一个空格；疑似正文（数字开头/行内再出现标记）不动', () => {
+    expect(formatSourceMarkdown('*item')).toBe('* item');
+    expect(formatSourceMarkdown('+条目')).toBe('+ 条目');
+    // `-3 度` 更可能是负数文本，`*斜体*` 是强调：补空格会改变语义。
+    expect(formatSourceMarkdown('-3 度')).toBe('-3 度');
+    expect(formatSourceMarkdown('*斜体* 续行')).toBe('*斜体* 续行');
+  });
+
+  it('缩进取整仅在安全上下文执行：顶层 1 空格归 0，或对齐取整值上的同级无序项', () => {
+    // 顶层 1 空格笔误归 0：CommonMark 中 1 与 0 空格同为顶层项，语义不变；
+    // 若归 2 则在 `- a` 这类 0 缩进兄弟后会把兄弟变成子项，改变嵌套。
+    expect(formatSourceMarkdown(' -   x')).toBe('- x');
+    expect(formatSourceMarkdown('- a\n - b')).toBe('- a\n- b');
+    // 奇数缩进 3 且前一个非空行恰为 2 空格缩进的无序项：对齐为同级 2 空格。
+    expect(formatSourceMarkdown('- a\n  - b\n   - c')).toBe('- a\n  - b\n  - c');
+    // 无同级项佐证时一律不动：`- a` 下的 3 空格子列表（内容列 2 ≤ 3，是子项）保持原缩进。
+    expect(formatSourceMarkdown('- a\n   - b')).toBe('- a\n   - b');
+    expect(formatSourceMarkdown('* a\n   - b')).toBe('* a\n   - b');
+  });
+
+  it('selection 仅产生与相交行有关的 edits，并需要非空范围', () => {
+    const text = '#   一\n*   二\n#   三';
+    expect(planSourceMarkdown(text, { from: 7, to: 11 })).toEqual([
+      { from: 6, to: 9, insert: '*' },
+    ]);
+    expect(planSourceMarkdown(text, { from: 0, to: 0 })).toEqual([]);
   });
 });

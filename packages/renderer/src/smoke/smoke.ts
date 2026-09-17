@@ -14,7 +14,7 @@ import { currentPageCandidates } from '../editor/wikilink-page-ops';
 import { applySourceFormat } from '../editor/source/source-formatting';
 import { FORMAT_WIKILINK, runFormatAction } from '../editor/interactions/formatting';
 import { TextSelection } from '@tiptap/pm/state';
-import { undo } from '@codemirror/commands';
+import { redo, undo } from '@codemirror/commands';
 import { openSettings } from '../lib/open-settings';
 import { deleteEntry, moveEntry } from '../features/sidebar/page-tree/ops';
 import { BUILTIN_PLUGIN_IDS, type ChatSession } from '@nexnote/shared';
@@ -417,9 +417,7 @@ export async function runSmokeIfEnabled(): Promise<void> {
           // DEV-034：块编辑划词工具栏同样以单一 AI 入口收口，键盘可开合。
           await waitFor(
             () =>
-              !!document.querySelector(
-                '[data-selection-bubble] [data-bubble-action="ai:menu"]',
-              ),
+              !!document.querySelector('[data-selection-bubble] [data-bubble-action="ai:menu"]'),
           );
           const blockBubble = document.querySelector<HTMLElement>('[data-selection-bubble]');
           const blockTrigger = blockBubble?.querySelector<HTMLButtonElement>(
@@ -1599,11 +1597,7 @@ export async function runSmokeIfEnabled(): Promise<void> {
     if (completionCm && completionView) {
       // 候选数据源 = 页面树 entries；runner 上 fs:changed 驱动的树刷新存在延迟，
       // 直接补全会拿到空候选并级联失败。显式重载树，并把就绪作为硬门禁。
-      if (
-        !usePageTreeStore
-          .getState()
-          .entries.some((e) => e.path === '源码模式跳转目标.md')
-      ) {
+      if (!usePageTreeStore.getState().entries.some((e) => e.path === '源码模式跳转目标.md')) {
         await usePageTreeStore.getState().load();
       }
       const candidatesReady = await waitFor(
@@ -2512,18 +2506,21 @@ export async function runSmokeIfEnabled(): Promise<void> {
     // 这些断言故意走真实 UI/IPC seams，而非只检查组件快照：普通编辑不触发
     // provider、Chat Dock 三档权限可达、双模式插入保持单 undo、会话与页面分离。
     // Chat Dock 默认收起是产品合同；本场景需要显式打开后再检查其内容。
-    useChatStore.getState().setActive({
-      path: `.nexnote/sessions/${'1'.repeat(64)}.txt`,
-      meta: {
-        id: 'dev-042-smoke',
-        title: 'DEV-042',
-        profileId: null,
-        model: null,
-        createdAt: new Date().toISOString(),
-        updatedAt: new Date().toISOString(),
+    useChatStore.getState().setActive(
+      {
+        path: `.nexnote/sessions/${'1'.repeat(64)}.txt`,
+        meta: {
+          id: 'dev-042-smoke',
+          title: 'DEV-042',
+          profileId: null,
+          model: null,
+          createdAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString(),
+        },
+        turns: [{ role: 'assistant', content: 'DEV-042 回复' }],
       },
-      turns: [{ role: 'assistant', content: 'DEV-042 回复' }],
-    }, false);
+      false,
+    );
     useUiStore.getState().setActiveDockPanel('ai-chat');
     await waitFor(() => !!document.querySelector('[data-testid="ai-dock-ready"]'));
     const permissionSelect = await (async () => {
@@ -2552,7 +2549,7 @@ export async function runSmokeIfEnabled(): Promise<void> {
     });
     check('DEV-042 组合验收页创建成功', !!acceptanceNote);
     await openDocumentTab('DEV-042 验收组合.md');
-    const acceptanceKernel = await waitFor(() => !!getActiveEditor()) ? getActiveEditor() : null;
+    const acceptanceKernel = (await waitFor(() => !!getActiveEditor())) ? getActiveEditor() : null;
     check(
       'DEV-042 双模式候选页可由活动编辑器挂载',
       !!acceptanceKernel && acceptanceKernel.getMarkdown().includes('DEV-042 验收组合'),
@@ -2567,6 +2564,375 @@ export async function runSmokeIfEnabled(): Promise<void> {
         typeof acceptanceKernel?.undo === 'function',
     );
     await capture('DEV-042-final-integration');
+
+    // ── DEV-047 源码模式编辑增强：工具栏、缩进、格式化、图表/目录/悬浮目录、页面树 ──
+    // 独立 Markdown 文档承载全部场景：真实 CodeMirror 事务 + 工具栏点击 + 预览渲染。
+    // H1 与文件名保持一致，避免 H1→文件名绑定在防抖保存时自动重命名 fixture。
+    useUiStore.getState().setDockVisible(false);
+    const dev047Path = 'DEV-047 冒烟.md';
+    await invoke('fs:createNote', {
+      parentDir: '',
+      name: 'DEV-047 冒烟',
+      content:
+        '---\ntitle: DEV-047\n---\n\n# DEV-047 冒烟\n\n## 章节 甲\n\n正文甲\n\n## 章节 乙\n\n正文乙\n',
+      format: 'markdown',
+    });
+    await openDocumentTab(dev047Path);
+    check(
+      'DEV-047 Markdown 源码页打开（源码模式 + 双栏预览）',
+      (await waitFor(
+        () => !!document.querySelector('[data-testid="source-mode-view"] .cm-content'),
+      )) && !!document.querySelector('[data-testid="live-preview"]'),
+    );
+
+    // 1) 源码页工具栏动作集（平铺或「更多」溢出菜单均视为可达）。
+    const toolbarReachableIds = async (): Promise<string[]> => {
+      const ids = new Set(rowEntryIds().filter((id) => id !== 'toolbar:more'));
+      if (moreButton()) {
+        moreButton()?.click();
+        await sleep(250);
+        for (const id of menuItemIds()) ids.add(id);
+        document
+          .querySelector('[data-testid="toolbar-more-menu"]')
+          ?.dispatchEvent(
+            new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true }),
+          );
+        await sleep(150);
+      }
+      return [...ids];
+    };
+    // 与 clickToolbarAction 不同：动作收进「更多」时先开菜单并等 React 渲染一拍再点
+    // （同步 click 后菜单尚未挂载，立即查找会落空）。
+    const clickToolbarEntry = async (id: string): Promise<boolean> => {
+      const inline = findToolbarAction(id);
+      if (inline) {
+        inline.click();
+        return true;
+      }
+      moreButton()?.click();
+      await sleep(250);
+      const target = findToolbarAction(id);
+      target?.click();
+      return !!target;
+    };
+    const dev047ToolbarIds = await toolbarReachableIds();
+    check(
+      'DEV-047 源码页工具栏含 撤销/重做/表格/流程图/甘特图/正文目录/格式化选区/格式化全文',
+      [
+        'edit:undo',
+        'edit:redo',
+        'insert:table',
+        'insert:mermaid-flowchart',
+        'insert:mermaid-gantt',
+        'insert:toc',
+        'format:selection',
+        'format:document',
+      ].every((id) => dev047ToolbarIds.includes(id)),
+      dev047ToolbarIds.join(' | '),
+    );
+
+    // 预览视图是只读边界：工具栏收敛为「视图切换 + 悬浮目录」。
+    const dev047TabId = useTabStore.getState().tabs.find((t) => t.pagePath === dev047Path)?.id;
+    const previewSwitched = await clickToolbarEntry('view:preview');
+    check(
+      'DEV-047 预览视图工具栏仅剩视图切换 + 悬浮目录',
+      previewSwitched &&
+        (await waitFor(
+          () =>
+            useTabStore.getState().tabs.find((t) => t.id === dev047TabId)?.markdownView ===
+            'preview',
+        )) &&
+        (await waitFor(() => {
+          const ids = rowEntryIds().filter((id) => id !== 'toolbar:more');
+          return (
+            !moreButton() && ids.join(',') === 'view:source,view:split,view:preview,view:outline'
+          );
+        })),
+      rowEntryIds().join(' | '),
+    );
+    await clickToolbarEntry('view:split');
+    await waitFor(
+      () => useTabStore.getState().tabs.find((t) => t.id === dev047TabId)?.markdownView === 'split',
+    );
+
+    // 2) 多行缩进：跨两行非空选区 Tab +2 / Shift+Tab -2，单事务一次撤销。
+    const dev047Source = getActiveSourceEditor();
+    check('DEV-047 源码编辑器句柄可用', !!dev047Source?.view);
+    if (dev047Source) {
+      const dev047View = dev047Source.view;
+      const dev047Text = (): string => dev047View.state.doc.toString();
+      dev047View.focus();
+      dev047View.dispatch({
+        changes: { from: dev047View.state.doc.length, insert: '缩进行甲\n缩进行乙' },
+      });
+      const indentAnchor = dev047Text().indexOf('缩进行甲');
+      const indentHead = dev047Text().indexOf('缩进行乙') + '缩进行乙'.length;
+      dev047View.dispatch({ selection: { anchor: indentAnchor, head: indentHead } });
+      const indentKey = (shift: boolean): void => {
+        dev047View.contentDOM.dispatchEvent(
+          new KeyboardEvent('keydown', {
+            key: 'Tab',
+            shiftKey: shift,
+            bubbles: true,
+            cancelable: true,
+          }),
+        );
+      };
+      indentKey(false);
+      await sleep(200);
+      check(
+        'DEV-047 Tab：跨两行选区每行 +2 空格',
+        /(^|\n) {2}缩进行甲\n {2}缩进行乙$/.test(dev047Text()),
+        JSON.stringify(dev047Text().slice(-24)),
+      );
+      indentKey(true);
+      await sleep(200);
+      check(
+        'DEV-047 Shift+Tab：每行 -2 空格回到原文',
+        /(^|\n)缩进行甲\n缩进行乙$/.test(dev047Text()),
+      );
+      check(
+        'DEV-047 缩进为单事务：一次撤销恢复 +2 状态，重做回到无缩进',
+        undo(dev047View) === true &&
+          /(^|\n) {2}缩进行甲\n {2}缩进行乙$/.test(dev047Text()) &&
+          redo(dev047View) === true &&
+          /(^|\n)缩进行甲\n缩进行乙$/.test(dev047Text()),
+      );
+      await sleep(250);
+
+      // 3) 轻量格式化：空行合并 / 标题与列表标记规范化；frontmatter 与围栏内容不动。
+      const messy =
+        '\n\n##  章节  丙\n\n正文一\n\n\n\n\n正文二\n\n*item\n\n' +
+        '```text\n##  围栏内标题\n*  围栏内列表\n\n\n```\n';
+      dev047View.dispatch({
+        changes: { from: dev047View.state.doc.length, insert: messy },
+      });
+      await sleep(250);
+      const beforeFormat = dev047Text();
+      await clickToolbarEntry('format:document');
+      await sleep(250);
+      check(
+        'DEV-047 格式化全文：标题标记单空格、*item 补空格、连续空行合并',
+        dev047Text().includes('## 章节  丙') &&
+          dev047Text().includes('* item') &&
+          dev047Text().includes('正文一\n\n正文二'),
+        JSON.stringify(dev047Text().slice(-160)),
+      );
+      check(
+        'DEV-047 格式化全文：围栏代码内容逐字节不变',
+        dev047Text().includes('```text\n##  围栏内标题\n*  围栏内列表\n\n\n```'),
+      );
+      check(
+        'DEV-047 格式化全文：一次撤销恢复格式化前原文',
+        undo(dev047View) === true && dev047Text() === beforeFormat,
+      );
+      redo(dev047View); // 保留格式化后状态，供后续场景使用
+      await sleep(2_500); // 防抖保存 + IPC 写盘
+      const dev047FormattedOnDisk = await invoke('fs:readTextFile', { path: dev047Path });
+      check(
+        'DEV-047 格式化全文写盘：frontmatter 原样、规范化正文落盘',
+        dev047FormattedOnDisk.startsWith('---\ntitle: DEV-047\n---\n') &&
+          dev047FormattedOnDisk.includes('* item'),
+        dev047FormattedOnDisk.slice(0, 60),
+      );
+
+      // 4) 图表插入：mermaid 围栏模板 + 预览渲染 + 单事务撤销整块移除。
+      await clickToolbarEntry('insert:mermaid-flowchart');
+      await sleep(250);
+      check(
+        'DEV-047 流程图插入：源码出现 ```mermaid 与 flowchart TD 模板',
+        dev047Text().includes('```mermaid\nflowchart TD') && dev047Text().includes('A[开始]'),
+      );
+      check(
+        'DEV-047 流程图插入：LivePreview 渲染 SVG 图表',
+        await waitFor(
+          () => !!document.querySelector('[data-testid="live-preview"] .nexnote-mermaid-view svg'),
+          15_000,
+        ),
+      );
+      check(
+        'DEV-047 流程图插入：一次撤销整块移除',
+        undo(dev047View) === true &&
+          !dev047Text().includes('flowchart TD') &&
+          !dev047Text().includes('```mermaid'),
+      );
+      // 预览防抖刷新为无图状态后再插入甘特图，避免命中上一张 SVG。
+      await waitFor(
+        () => !document.querySelector('[data-testid="live-preview"] .nexnote-mermaid-view svg'),
+        10_000,
+      );
+      await clickToolbarEntry('insert:mermaid-gantt');
+      await sleep(250);
+      check(
+        'DEV-047 甘特图插入：源码出现 gantt 模板',
+        dev047Text().includes('```mermaid\ngantt') && dev047Text().includes('title 项目计划'),
+      );
+      check(
+        'DEV-047 甘特图插入：LivePreview 渲染 SVG 图表',
+        await waitFor(
+          () => !!document.querySelector('[data-testid="live-preview"] .nexnote-mermaid-view svg'),
+          15_000,
+        ),
+      );
+      check(
+        'DEV-047 甘特图插入：一次撤销整块移除',
+        undo(dev047View) === true && !dev047Text().includes('gantt'),
+      );
+      await sleep(400);
+
+      // 5) 正文目录：磁盘只有标记行，条目由渲染层实时派生；撤销/重做正确。
+      await clickToolbarEntry('insert:toc');
+      await sleep(250);
+      const tocMarkerCount = (text: string): number =>
+        text.split('\n').filter((line) => line === '<!-- nexnote:toc -->').length;
+      check(
+        'DEV-047 正文目录插入：源码恰有一行 <!-- nexnote:toc -->',
+        tocMarkerCount(dev047Text()) === 1,
+        `markers=${tocMarkerCount(dev047Text())}`,
+      );
+      check(
+        'DEV-047 正文目录：预览渲染目录容器与派生标题条目',
+        (await waitFor(
+          () => !!document.querySelector('[data-testid="live-preview"] [data-table-of-contents]'),
+          10_000,
+        )) &&
+          (await waitFor(() => {
+            const items = document.querySelectorAll(
+              '[data-testid="live-preview"] [data-table-of-contents-item]',
+            );
+            return items.length >= 3 && (items[0]?.textContent ?? '').includes('DEV-047 冒烟');
+          }, 10_000)),
+        `items=${document.querySelectorAll('[data-testid="live-preview"] [data-table-of-contents-item]').length}`,
+      );
+      check(
+        'DEV-047 正文目录：一次撤销移除标记、重做恢复',
+        undo(dev047View) === true &&
+          tocMarkerCount(dev047Text()) === 0 &&
+          redo(dev047View) === true &&
+          tocMarkerCount(dev047Text()) === 1,
+      );
+      await sleep(2_500); // 防抖保存 + IPC 写盘
+      const dev047TocOnDisk = await invoke('fs:readTextFile', { path: dev047Path });
+      check(
+        'DEV-047 正文目录写盘：磁盘只保留标记行（条目不落盘）',
+        tocMarkerCount(dev047TocOnDisk) === 1,
+        `markers=${tocMarkerCount(dev047TocOnDisk)}`,
+      );
+
+      // 关闭重开：目录条目仍从磁盘标记派生。
+      const dev047Tab = useTabStore.getState().tabs.find((t) => t.pagePath === dev047Path);
+      if (dev047Tab) useTabStore.getState().closeTab(dev047Tab.id);
+      await openDocumentTab(dev047Path);
+      check(
+        'DEV-047 关闭重开：目录条目仍从磁盘标记派生',
+        (await waitFor(
+          () => !!document.querySelector('[data-testid="source-mode-view"] .cm-content'),
+        )) &&
+          (await waitFor(
+            () =>
+              document.querySelectorAll(
+                '[data-testid="live-preview"] [data-table-of-contents-item]',
+              ).length >= 3,
+            15_000,
+          )),
+      );
+      await capture('DEV-047-toc');
+    } else {
+      check('DEV-047 源码编辑器句柄可用', false, 'getActiveSourceEditor 为空');
+    }
+
+    // 6) 悬浮目录：更多菜单开启、条目与标题一致、点击定位、切页不残留、关闭收起。
+    {
+      const outlinePanel = (): HTMLElement | null =>
+        document.querySelector<HTMLElement>('[data-testid="outline-panel"]');
+      const outlineEntryEls = (): HTMLElement[] => [
+        ...document.querySelectorAll<HTMLElement>('[data-testid^="outline-entry-"]'),
+      ];
+      const outlineOpened = await clickToolbarEntry('view:outline');
+      check(
+        'DEV-047 悬浮目录开启：条目与文档标题一致',
+        outlineOpened &&
+          (await waitFor(() => {
+            const entries = outlineEntryEls();
+            const texts = entries.map((el) => el.textContent ?? '');
+            return (
+              outlinePanel() !== null &&
+              entries.length >= 3 &&
+              texts.includes('DEV-047 冒烟') &&
+              texts.includes('章节 乙')
+            );
+          })),
+        `entries=${outlineEntryEls()
+          .map((el) => el.textContent)
+          .join(',')}`,
+      );
+      const dev047Handle2 = getActiveSourceEditor();
+      const entryB = outlineEntryEls().find((el) => (el.textContent ?? '') === '章节 乙');
+      entryB?.click();
+      await sleep(200);
+      const dev047View2 = dev047Handle2?.view;
+      check(
+        'DEV-047 点击悬浮目录条目：编辑器选区定位到对应标题（源码态）',
+        !!dev047View2 &&
+          dev047View2.state.doc
+            .lineAt(dev047View2.state.selection.main.head)
+            .text.startsWith('## 章节 乙'),
+        dev047View2
+          ? dev047View2.state.doc.lineAt(dev047View2.state.selection.main.head).text.slice(0, 24)
+          : 'no view',
+      );
+      await openDocumentTab('DEV-042 验收组合.md');
+      check(
+        'DEV-047 切换页面后悬浮目录不残留旧条目',
+        (await waitFor(
+          () => !!document.querySelector('[data-testid="editor-view"] .ProseMirror'),
+        )) && !outlinePanel(),
+      );
+      await openDocumentTab(dev047Path);
+      await waitFor(() => !!document.querySelector('[data-testid="source-mode-view"] .cm-content'));
+      check('DEV-047 切回源码页：悬浮目录默认收起', await waitFor(() => outlinePanel() === null));
+      const outlineReopened =
+        (await clickToolbarEntry('view:outline')) && (await waitFor(() => outlinePanel() !== null));
+      document.querySelector<HTMLButtonElement>('[data-testid="outline-close"]')?.click();
+      check(
+        'DEV-047 关闭按钮收起悬浮目录',
+        outlineReopened && (await waitFor(() => outlinePanel() === null)),
+      );
+    }
+
+    // 7) 页面树：点击文件夹行主体（非 chevron）切换展开/收起。
+    {
+      // 10a 段把侧栏切到了局部图谱；页面树检查前先切回 pages 面板（树只挂载于该面板）。
+      useUiStore.getState().setActiveSidebarPanel('pages');
+      await invoke('fs:mkdir', { path: 'DEV-047 目录', recursive: false });
+      await invoke('fs:createNote', {
+        parentDir: 'DEV-047 目录',
+        name: 'DEV-047 子页',
+        content: '# DEV-047 子页\n',
+        format: 'native-block',
+      });
+      // chokidar 对新建子目录内文件的事件回流存在延迟（5b 段同款问题）：显式全量重载。
+      await usePageTreeStore.getState().load();
+      check(
+        'DEV-047 页面树：目录与子页出现（默认展开）',
+        (await waitFor(() => !!treeRow('DEV-047 目录'))) &&
+          (await waitFor(() => !!treeRow('DEV-047 目录/DEV-047 子页.md'))),
+      );
+      const dirRow = (): Element | null => treeRow('DEV-047 目录');
+      dirRow()?.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
+      check(
+        'DEV-047 点击文件夹行主体：折叠后子页隐藏（chevron 变「展开」）',
+        (await waitFor(() => !treeRow('DEV-047 目录/DEV-047 子页.md'))) &&
+          !!dirRow()?.querySelector('button[aria-label="展开"]'),
+      );
+      dirRow()?.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
+      check(
+        'DEV-047 再次点击行主体：恢复展开子页可见',
+        (await waitFor(() => !!treeRow('DEV-047 目录/DEV-047 子页.md'))) &&
+          !!dirRow()?.querySelector('button[aria-label="折叠"]'),
+      );
+      await capture('DEV-047-page-tree');
+    }
 
     // ── 11. 关闭 vault 回到向导 ───────────────────────────────
     await invoke('vault:close');

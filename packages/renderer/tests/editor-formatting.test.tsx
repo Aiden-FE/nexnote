@@ -38,6 +38,31 @@ function selectRange(kernel: EditorKernelInstance, from: number, to: number) {
 
 const stripAnchors = (md: string) => md.replace(/[ \t]*\^[A-Za-z0-9]+/g, '').trim();
 
+describe('DEV-047 块模式结构工具栏命令使用 TipTap 专用 commands', () => {
+  it('2×2 table、Mermaid 专用命令与正文目录均为一次可撤销写回', () => {
+    const { kernel } = mountKernel('# 标题\n');
+
+    expect(kernel.editor.commands.insertTable({ rows: 2, cols: 2, withHeaderRow: true })).toBe(
+      true,
+    );
+    expect(kernel.getMarkdown()).toContain('| --- | --- |');
+    expect(kernel.undo()).toBe(true);
+
+    expect(kernel.editor.commands.insertMermaidFlowchart()).toBe(true);
+    expect(kernel.getMarkdown()).toContain('```mermaid\nflowchart TD');
+    expect(kernel.undo()).toBe(true);
+
+    expect(kernel.editor.commands.insertMermaidGantt()).toBe(true);
+    expect(kernel.getMarkdown()).toContain('```mermaid\ngantt');
+    expect(kernel.undo()).toBe(true);
+
+    expect(kernel.editor.commands.insertTableOfContents()).toBe(true);
+    expect(kernel.getMarkdown()).toContain('<!-- nexnote:toc -->');
+    expect(kernel.undo()).toBe(true);
+    kernel.destroy();
+  });
+});
+
 describe('DEV-023 块编辑双链按钮（runFormatAction）', () => {
   it('有选区：经内核 wikilink 节点插入 [[选区]]，单次 undo 还原', () => {
     const { kernel } = mountKernel('参见 计划 结束');

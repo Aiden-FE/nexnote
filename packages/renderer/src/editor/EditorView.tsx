@@ -2,6 +2,7 @@ import { openDocumentTab } from '../lib/open-document';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { AlertCircle, Check, LoaderCircle } from 'lucide-react';
 import { createEditor } from '@nexnote/kernel';
+import { TextSelection } from '@tiptap/pm/state';
 import { invoke } from '../lib/ipc';
 import { useTabStore, type TabDescriptor } from '../stores/tab-store';
 import { DocumentPropertiesPopover } from '../features/frontmatter/DocumentPropertiesPopover';
@@ -71,6 +72,7 @@ import {
 import { usePluginStore } from '../features/plugins/plugin-store';
 import { usePageTreeStore } from '../stores/page-tree-store';
 import { EditorToolbar } from './toolbar/EditorToolbar';
+import { OutlinePanel } from './OutlinePanel';
 import {
   AI_ASK_ID,
   blockToolbarEntries,
@@ -78,7 +80,15 @@ import {
   INSERT_IMAGE_ID,
   VIEW_SOURCE_ID,
   AI_INSERT_ID,
+  UNDO_ID,
+  REDO_ID,
+  INSERT_TABLE_ID,
+  INSERT_FLOWCHART_ID,
+  INSERT_GANTT_ID,
+  INSERT_TOC_ID,
+  TOGGLE_OUTLINE_ID,
 } from './toolbar/entries';
+import { parseBlockOutline, type OutlineEntry } from './outline';
 import {
   buildBuiltinSlashItems,
   buildBuiltinViewExtensions,
@@ -330,6 +340,14 @@ export function EditorView({ tab }: EditorViewProps) {
   // 挂起的文件选择器（工具栏与斜杠菜单共用）：编辑器卸载时统一 abort，
   // 避免隐藏 input / 悬挂 promise。
   const pendingFilePicksRef = useRef(new Set<() => void>());
+
+  // DEV-047 悬浮目录：局部 UI 状态（不落 store）；数据在内核 update 时惰性解析。
+  const [outlineVisible, setOutlineVisible] = useState(false);
+  const outlineVisibleRef = useRef(false);
+  const [outline, setOutline] = useState<OutlineEntry[]>([]);
+  useEffect(() => {
+    outlineVisibleRef.current = outlineVisible;
+  }, [outlineVisible]);
 
   // 写作辅助编排器（DEV-010）：在 mount effect 中创建（effect 内读取 ref 合法），
   // getter 在事件触发时才经 ref 读取实时 kernel/路径；控制器本身稳定。
@@ -646,6 +664,10 @@ export function EditorView({ tab }: EditorViewProps) {
       },
     });
     kernelRef.current = kernel;
+    const refreshOutline = () => {
+      if (outlineVisibleRef.current) setOutline(parseBlockOutline(kernel.editor.state.doc));
+    };
+    kernel.editor.on('update', refreshOutline);
     // DEV-041：选区消失（折叠）时关闭划词翻译浮层，避免浮层滞留旧译文。
     const onSelectionUpdate = () => {
       const { from, to } = kernel.editor.state.selection;
@@ -667,6 +689,7 @@ export function EditorView({ tab }: EditorViewProps) {
       unregisterModeSwitch();
       window.removeEventListener('blur', flush);
       kernel.editor.off('selectionUpdate', onSelectionUpdate);
+      kernel.editor.off('update', refreshOutline);
       editorRegistration.unregister();
       // 卸载时取消所有挂起的文件选择器（隐藏 input / 悬挂 promise）。
       // 集合身份稳定，无需进依赖数组。
@@ -854,6 +877,33 @@ export function EditorView({ tab }: EditorViewProps) {
       return from === to ? '' : v.state.doc.textBetween(from, to, '\n');
     };
     switch (id) {
+      case TOGGLE_OUTLINE_ID: {
+        const next = !outlineVisibleRef.current;
+        outlineVisibleRef.current = next;
+        setOutlineVisible(next);
+        if (next && kernelRef.current) {
+          setOutline(parseBlockOutline(kernelRef.current.editor.state.doc));
+        }
+        return;
+      }
+      case UNDO_ID:
+        kernelRef.current?.editor.commands.undo();
+        return;
+      case REDO_ID:
+        kernelRef.current?.editor.commands.redo();
+        return;
+      case INSERT_TABLE_ID:
+        kernelRef.current?.editor.commands.insertTable({ rows: 2, cols: 2, withHeaderRow: true });
+        return;
+      case INSERT_FLOWCHART_ID:
+        kernelRef.current?.editor.commands.insertMermaidFlowchart();
+        return;
+      case INSERT_GANTT_ID:
+        kernelRef.current?.editor.commands.insertMermaidGantt();
+        return;
+      case INSERT_TOC_ID:
+        kernelRef.current?.editor.commands.insertTableOfContents();
+        return;
       case FORMAT_BOLD:
       case FORMAT_ITALIC:
       case FORMAT_STRIKE:
@@ -943,7 +993,7 @@ export function EditorView({ tab }: EditorViewProps) {
     <div
       data-testid="editor-view"
       data-path={displayPath}
-      className="nexnote-editor-view flex h-full min-h-0 flex-col"
+      className="nexnote-editor-view relative flex h-full min-h-0 flex-col"
     >
       <EditorToolbar
         label="编辑器工具栏"
@@ -1019,6 +1069,24 @@ export function EditorView({ tab }: EditorViewProps) {
           <div ref={hostRef} data-testid="editor-host" className="nexnote-editor-host" />
         </div>
       </div>
+      {outlineVisible && (
+        <OutlinePanel
+          entries={outline}
+          onNavigate={(entry) => {
+            const editor = kernelRef.current?.editor;
+            const pos = entry.pos ?? 0;
+            // pos 指向 heading 节点起点；+1 进入节点内部，文本选区落在标题文本上。
+            editor?.view.dispatch(
+              editor.view.state.tr
+                .setSelection(TextSelection.create(editor.view.state.doc, pos + 1))
+                .scrollIntoView(),
+            );
+            editor?.commands.focus();
+          }}
+          onClose={() => setOutlineVisible(false)}
+          className="absolute right-3 top-10 z-20"
+        />
+      )}
     </div>
   );
 }

@@ -94,6 +94,28 @@ afterEach(async () => {
 });
 
 describe('页面树 GUI 回归', () => {
+  it('点击文件夹整行可展开收起，Chevron 不会双重切换', async () => {
+    const view = await mountPageTree();
+    const directory = view.querySelector<HTMLElement>('[data-path="研究"]');
+    expect(directory).not.toBeNull();
+    expect(view.querySelector('[data-path="研究/外部笔记.md"]')).not.toBeNull();
+
+    act(() => directory!.click());
+    expect(useUiStore.getState().treeCollapsedDirs).toContain('研究');
+    expect(view.querySelector('[data-path="研究/外部笔记.md"]')).toBeNull();
+
+    act(() => view.querySelector<HTMLElement>('[data-path="研究"]')!.click());
+    expect(useUiStore.getState().treeCollapsedDirs).not.toContain('研究');
+    expect(view.querySelector('[data-path="研究/外部笔记.md"]')).not.toBeNull();
+
+    const chevron = view.querySelector<HTMLButtonElement>(
+      '[data-path="研究"] button[aria-label="折叠"]',
+    );
+    expect(chevron).not.toBeNull();
+    act(() => chevron!.click());
+    expect(useUiStore.getState().treeCollapsedDirs).toContain('研究');
+  });
+
   it('活动页面 tab 优先于旧 selection，并随 tab 切换更新激活态', async () => {
     useTabStore.setState({
       tabs: [

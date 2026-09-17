@@ -80,8 +80,15 @@ export {
   MERMAID_BLOCK_NAME,
   MERMAID_LANGUAGE,
   MERMAID_DEFAULT_SOURCE,
+  MERMAID_FLOWCHART_SOURCE,
+  MERMAID_GANTT_SOURCE,
 } from './extensions/mermaid';
 export { MathBlock, MathInline, MATH_BLOCK_NAME, MATH_INLINE_NAME } from './extensions/math';
+export {
+  TableOfContents,
+  TABLE_OF_CONTENTS_MARKER,
+  TABLE_OF_CONTENTS_NAME,
+} from './extensions/table-of-contents';
 export { computeEditorActionContext } from './extensions/action-context';
 export type { EditorActionContext, EditorActionTarget } from './extensions/action-context';
 export { generateBlockId } from './extensions/block-id';

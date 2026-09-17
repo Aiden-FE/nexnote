@@ -35,6 +35,7 @@ import type { BlockMenuContext, BlockMenuState } from './block-menu';
 import type { EditorActionContext } from './action-context';
 import { PluginBlock } from './plugin-block';
 import { MermaidBlock } from './mermaid';
+import { TableOfContents } from './table-of-contents';
 import { MathBlock, MathInline } from './math';
 import { SuggestionMenu, type SuggestionItem, type SuggestionTrigger } from './suggestion-menu';
 import { createObsidianMarked } from '../markdown/pipeline';
@@ -125,6 +126,7 @@ export function buildKernelExtensions(options: KernelExtensionsOptions = {}): Ex
     // DEV-015：Obsidian 方言内置块（Mermaid/KaTeX），往返能力始终在线，
     // 富预览 NodeView 由渲染层经 extraExtensions 叠加。
     MermaidBlock,
+    TableOfContents,
     MathBlock,
     MathInline,
     Fold,

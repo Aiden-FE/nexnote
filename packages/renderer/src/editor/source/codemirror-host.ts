@@ -4,6 +4,11 @@ import { defaultHighlightStyle, syntaxHighlighting, syntaxTree } from '@codemirr
 import { CODE_LANGUAGES } from '@nexnote/shared';
 import { codeLanguages } from './fence-languages';
 import { fenceHighlightExtension } from './fence-highlight';
+import {
+  applySourceMarkdownFormat,
+  indentSourceSelection,
+  type SourceFormatScope,
+} from './source-formatting';
 import { EditorState, type Extension, type Range } from '@codemirror/state';
 import {
   Decoration,
@@ -17,12 +22,24 @@ import {
 
 export const sourceCodeLanguages = CODE_LANGUAGES;
 
+function normalizeLineSeparators(text: string, lineSeparator: string): string {
+  return text.replace(/\r\n?|\n/g, lineSeparator);
+}
+
 export interface SourceEditorHandle {
   /** CodeMirror 视图实例（AI 辅助事务写回/坐标查询用）。 */
   readonly view: EditorView;
   readonly scrollDOM: HTMLElement;
   getText(): string;
   setText(text: string): void;
+  /** 在当前选区处插入文本：单个事务写回，可一次 undo。 */
+  insertText(text: string): void;
+  /** 插入独立成块的 Markdown 片段（表格/mermaid 围栏/目录标记）：前后自动补空行，单事务可撤销。 */
+  insertBlock(snippet: string): void;
+  /** 格式化选中行或整个文档。 */
+  formatMarkdown(scope?: SourceFormatScope): boolean;
+  /** 多行非空选区整体增/减缩进；返回 false 时交回默认 Tab 处理。 */
+  indentSelection(outdent?: boolean): boolean;
   focus(): void;
   destroy(): void;
 }
@@ -88,17 +105,24 @@ export function createSourceEditor(
   },
 ): SourceEditorHandle {
   let programmatic = false;
+  const lineSeparator = options.initialText.includes('\r\n') ? '\r\n' : '\n';
   const view = new EditorView({
     parent,
     state: EditorState.create({
       doc: options.initialText,
       extensions: [
+        EditorState.lineSeparator.of(lineSeparator),
         lineNumbers(),
         history(),
         markdown({ codeLanguages }),
         fenceHighlightExtension,
         syntaxHighlighting(defaultHighlightStyle, { fallback: true }),
-        keymap.of([...defaultKeymap, ...historyKeymap]),
+        keymap.of([
+          { key: 'Tab', run: (editor) => indentSourceSelection(editor) },
+          { key: 'Shift-Tab', run: (editor) => indentSourceSelection(editor, true) },
+          ...defaultKeymap,
+          ...historyKeymap,
+        ]),
         // 块锚点弱化显示（只读元数据）：低透明度，不改变任何字节。
         ViewPlugin.fromClass(
           class {
@@ -131,7 +155,7 @@ export function createSourceEditor(
           '.cm-block-anchor': { opacity: '0.45' },
         }),
         EditorView.updateListener.of((update) => {
-          if (update.docChanged && !programmatic) options.onChange(update.state.doc.toString());
+          if (update.docChanged && !programmatic) options.onChange(update.state.sliceDoc());
         }),
         EditorView.domEventHandlers({
           scroll: () => {
@@ -147,16 +171,57 @@ export function createSourceEditor(
   return {
     view,
     scrollDOM: view.scrollDOM,
-    getText: () => view.state.doc.toString(),
+    getText: () => view.state.sliceDoc(),
     setText(text) {
-      if (text === view.state.doc.toString()) return;
+      if (text === view.state.sliceDoc()) return;
       programmatic = true;
       try {
-        view.dispatch({ changes: { from: 0, to: view.state.doc.length, insert: text } });
+        view.dispatch({
+          changes: {
+            from: 0,
+            to: view.state.doc.length,
+            insert: normalizeLineSeparators(text, lineSeparator),
+          },
+        });
       } finally {
         programmatic = false;
       }
     },
+    insertText(text) {
+      const selection = view.state.selection.main;
+      const insert = normalizeLineSeparators(text, view.state.lineBreak);
+      view.dispatch({
+        changes: { from: selection.from, to: selection.to, insert },
+        selection: { anchor: selection.from + view.state.toText(insert).length },
+        scrollIntoView: true,
+      });
+    },
+    insertBlock(snippet) {
+      const lineBreak = view.state.lineBreak;
+      const selection = view.state.selection.main;
+      const before = view.state.sliceDoc(0, selection.from);
+      const after = view.state.sliceDoc(selection.to);
+      const prefix =
+        before.length > 0 && !before.endsWith(lineBreak + lineBreak)
+          ? before.endsWith(lineBreak)
+            ? lineBreak
+            : lineBreak + lineBreak
+          : '';
+      const suffix =
+        after.length > 0 && !after.startsWith(lineBreak + lineBreak)
+          ? after.startsWith(lineBreak)
+            ? lineBreak
+            : lineBreak + lineBreak
+          : lineBreak;
+      const insert = `${prefix}${normalizeLineSeparators(snippet, lineBreak)}${suffix}`;
+      view.dispatch({
+        changes: { from: selection.from, to: selection.to, insert },
+        selection: { anchor: selection.from + view.state.toText(insert).length },
+        scrollIntoView: true,
+      });
+    },
+    formatMarkdown: (scope = 'document') => applySourceMarkdownFormat(view, scope),
+    indentSelection: (outdent = false) => indentSourceSelection(view, outdent),
     focus: () => view.focus(),
     destroy: () => view.destroy(),
   };
