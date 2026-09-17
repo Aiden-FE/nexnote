@@ -11,8 +11,8 @@ import { useSettingsStore } from '../src/stores/settings-store';
 import { useTabStore, type TabDescriptor } from '../src/stores/tab-store';
 
 /**
- * DEV-035 验收 1/3/4：块编辑与源码模式的顶部均为单行工具栏，且不再有独立左上角
- * 文件名；工具栏动作真实作用到编辑器内核；AI 入口在工具栏上可开可键盘选择。
+ * DEV-035/DEV-050 验收：块编辑与源码模式的顶部均为单行 Icon-first 工具栏（无独立
+ * 文件名）；常驻集合 +「格式 / 插入 / AI」动作组；工具栏动作真实作用到编辑器内核。
  */
 
 globalThis.IS_REACT_ACT_ENVIRONMENT = true;
@@ -108,6 +108,13 @@ const toolbar = (): HTMLElement | null =>
   document.querySelector<HTMLElement>('[data-testid="editor-toolbar"]');
 const entry = (id: string): HTMLButtonElement | null =>
   document.querySelector<HTMLButtonElement>(`[data-testid="toolbar-entry-${id}"]`);
+const menuItem = (id: string): HTMLButtonElement | null =>
+  document.querySelector<HTMLButtonElement>(`[data-testid="toolbar-menu-item-${id}"]`);
+const press = (el: Element, key: string): void => {
+  act(() => {
+    el.dispatchEvent(new KeyboardEvent('keydown', { key, bubbles: true, cancelable: true }));
+  });
+};
 
 beforeEach(() => {
   sourceCommands.insertBlock.mockReset();
@@ -140,25 +147,86 @@ describe('块编辑工具栏（DEV-035）', () => {
       '测试页.md',
     );
     for (const id of [
-      'format:bold',
-      'format:italic',
-      'format:strike',
-      'format:code',
-      'format:link',
-      'format:wikilink',
       'edit:undo',
       'edit:redo',
-      'insert:table',
-      'insert:mermaid-flowchart',
-      'insert:mermaid-gantt',
-      'insert:toc',
-      'view:outline',
-      'insert:image',
-      'insert:attachment',
+      'block:type',
+      'format:bold',
+      'format:italic',
+      'format:wikilink',
+      'menu:format',
+      'menu:insert',
       'ai',
+      'view:outline',
     ]) {
       expect(entry(id), id).not.toBeNull();
     }
+  });
+
+  it('格式与插入动作组收纳低频动作，菜单项保留图标与文案', async () => {
+    installBridge('# 测试页\n\n正文一段\n');
+    await mount(<EditorView tab={blockTab} />);
+    await vi.waitFor(() => expect(getActiveEditor()).not.toBeNull());
+
+    for (const [menu, ids] of [
+      ['menu:format', ['format:strike', 'format:code', 'format:link']],
+      [
+        'menu:insert',
+        [
+          'insert:table',
+          'insert:image',
+          'insert:attachment',
+          'insert:mermaid-flowchart',
+          'insert:mermaid-gantt',
+          'insert:toc',
+        ],
+      ],
+    ] as const) {
+      press(entry(menu)!, 'ArrowDown');
+      for (const id of ids) {
+        const item = menuItem(id);
+        expect(item, id).not.toBeNull();
+        expect(item?.textContent ?? '').not.toBe('');
+        expect(item?.querySelector('svg, [class*="font-semibold"]')).not.toBeNull();
+      }
+      act(() => entry(menu)?.click());
+    }
+  });
+
+  it('标题/段落下拉提供正文与 H1-H6，H1 说明文件名同步语义', async () => {
+    installBridge('# 测试页\n\n正文一段\n');
+    await mount(<EditorView tab={blockTab} />);
+    await vi.waitFor(() => expect(getActiveEditor()).not.toBeNull());
+    press(entry('block:type')!, 'ArrowDown');
+    expect(menuItem('block:paragraph')).not.toBeNull();
+    for (let level = 1; level <= 6; level += 1) {
+      expect(menuItem(`block:heading:${level}`), `h${level}`).not.toBeNull();
+    }
+    expect(menuItem('block:heading:1')?.textContent).toContain('页面标题 H1');
+    expect(menuItem('block:heading:1')?.textContent).toContain('首个正文 H1 与文件名同步');
+  });
+
+  it('复杂跨块标题转换项保持可聚焦并以 aria-label 解释禁用原因', async () => {
+    installBridge('# 测试页\n\n正文一段\n');
+    await mount(<EditorView tab={blockTab} />);
+    await vi.waitFor(() => expect(getActiveEditor()).not.toBeNull());
+    const kernel = getActiveEditor()!;
+    act(() => {
+      kernel.editor.view.dispatch(
+        kernel.editor.state.tr.setSelection(
+          TextSelection.create(
+            kernel.editor.state.doc,
+            1,
+            kernel.editor.state.doc.content.size - 1,
+          ),
+        ),
+      );
+    });
+    press(entry('block:type')!, 'ArrowDown');
+    const h2 = menuItem('block:heading:2');
+    expect(h2?.getAttribute('aria-disabled')).toBe('true');
+    expect(h2?.getAttribute('aria-label')).toContain('跨复杂结构');
+    h2?.focus();
+    expect(document.activeElement).toBe(h2);
   });
 
   it('工具栏格式化动作真实作用于内核选区', async () => {
@@ -266,28 +334,30 @@ describe('源码模式工具栏（DEV-035）', () => {
     expect(bar?.getAttribute('role')).toBe('toolbar');
     expect(bar?.textContent ?? '').not.toContain('源码页.md');
     for (const id of [
-      'format:bold',
-      'format:italic',
-      'format:strike',
-      'format:code',
-      'format:link',
-      'format:wikilink',
       'edit:undo',
       'edit:redo',
-      'insert:table',
-      'format:selection',
-      'format:document',
-      'insert:mermaid-flowchart',
-      'insert:mermaid-gantt',
-      'insert:toc',
-      'view:outline',
+      'block:type',
+      'format:bold',
+      'format:italic',
+      'format:wikilink',
+      'menu:format',
+      'menu:insert',
       'ai',
       'view:source',
       'view:split',
       'view:preview',
+      'view:outline',
     ]) {
       expect(entry(id), id).not.toBeNull();
     }
+    press(entry('menu:format')!, 'ArrowDown');
+    expect(menuItem('format:selection')).not.toBeNull();
+    expect(menuItem('format:document')).not.toBeNull();
+    act(() => entry('menu:format')?.click());
+    press(entry('menu:insert')!, 'ArrowDown');
+    expect(menuItem('insert:image')).toBeNull();
+    expect(menuItem('insert:attachment')).toBeNull();
+    act(() => entry('menu:insert')?.click());
     // 属性 Popover 触发器仍在工具栏上（不随文件名移除而丢失）
     expect(document.querySelector('[data-testid="document-properties-trigger"]')).not.toBeNull();
     expect(
@@ -299,14 +369,19 @@ describe('源码模式工具栏（DEV-035）', () => {
     installBridge('# 源码页\n\n正文\n');
     await mount(<SourceModeView tab={sourceTab} />);
 
-    await act(async () => {
-      entry('insert:table')?.click();
-      entry('insert:mermaid-flowchart')?.click();
-      entry('insert:mermaid-gantt')?.click();
-      entry('insert:toc')?.click();
-      entry('format:selection')?.click();
-      entry('format:document')?.click();
-    });
+    for (const id of [
+      'insert:table',
+      'insert:mermaid-flowchart',
+      'insert:mermaid-gantt',
+      'insert:toc',
+    ]) {
+      press(entry('menu:insert')!, 'ArrowDown');
+      act(() => menuItem(id)?.click());
+    }
+    for (const id of ['format:selection', 'format:document']) {
+      press(entry('menu:format')!, 'ArrowDown');
+      act(() => menuItem(id)?.click());
+    }
 
     expect(sourceCommands.insertBlock).toHaveBeenCalledTimes(4);
     expect(sourceCommands.insertBlock.mock.calls[0]?.[0]).toContain('| 列 1 | 列 2 |');

@@ -141,6 +141,20 @@ describe('工具栏 Priority+ 布局（resolveToolbarLayout）', () => {
     });
   });
 
+  it('同一响应式动作组不会被拆散', () => {
+    const entries = [
+      { id: 'edit', width: 20 },
+      { id: 'source', width: 20, overflowGroup: 'views' },
+      { id: 'split', width: 20, overflowGroup: 'views' },
+      { id: 'preview', width: 20, overflowGroup: 'views' },
+    ];
+    // edit 放得下，但三态视图作为整体放不下，因此三项一起进入更多。
+    expect(resolveToolbarLayout(entries, 72, 24)).toEqual({
+      visibleIds: ['edit'],
+      overflowIds: ['source', 'split', 'preview'],
+    });
+  });
+
   it('宽度极小时全部进入「更多」', () => {
     const entries = [
       { id: 'a', width: 40 },
@@ -197,7 +211,7 @@ describe('工具栏溢出的 DOM 行为（DEV-035）', () => {
     mount(makeEntries({ disabledStrike: true }));
     click(byTestId('toolbar-more'));
     const strike = byTestId('toolbar-menu-item-strike');
-    expect(strike?.disabled).toBe(true);
+    expect(strike?.getAttribute('aria-disabled')).toBe('true');
     click(strike);
     expect(ran).toEqual([]);
   });
@@ -207,6 +221,28 @@ describe('工具栏溢出的 DOM 行为（DEV-035）', () => {
     mount(makeEntries());
     expect(document.querySelectorAll(`[data-testid^="toolbar-entry-"]`)).toHaveLength(4);
     expect(byTestId('toolbar-more')).toBeNull();
+  });
+});
+
+describe('Icon-first 与统一 Tooltip（DEV-050）', () => {
+  it('顶层默认仅图标，AI 保留唯一可见文案且按钮无原生 title', () => {
+    mount(makeEntries());
+    expect(byTestId('toolbar-entry-bold')?.textContent).toBe('bold');
+    expect(byTestId('toolbar-entry-bold')?.hasAttribute('title')).toBe(false);
+    expect(byTestId('toolbar-entry-ai')?.textContent).toContain('AI');
+  });
+
+  it('hover 与 keyboard focus 打开 Tooltip，Escape 关闭', () => {
+    mount(makeEntries());
+    const bold = byTestId('toolbar-entry-bold')!;
+    act(() => bold.dispatchEvent(new PointerEvent('pointerover', { bubbles: true })));
+    expect(byTestId('toolbar-tooltip')?.textContent).toContain('动作 bold');
+    act(() => bold.dispatchEvent(new PointerEvent('pointerout', { bubbles: true })));
+    expect(byTestId('toolbar-tooltip')).toBeNull();
+    act(() => bold.focus());
+    expect(byTestId('toolbar-tooltip')).not.toBeNull();
+    press(bold, 'Escape');
+    expect(byTestId('toolbar-tooltip')).toBeNull();
   });
 });
 

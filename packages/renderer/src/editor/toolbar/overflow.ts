@@ -1,6 +1,8 @@
 export interface ToolbarLayoutEntry {
   id: string;
   width: number;
+  /** 相邻且同名的动作构成不可拆分的响应式单元（如三态视图切换器）。 */
+  overflowGroup?: string;
 }
 
 export interface ToolbarLayout {
@@ -28,14 +30,24 @@ export function resolveToolbarLayout(
     return { visibleIds: entries.map((entry) => entry.id), overflowIds: [] };
   }
 
+  // 语义动作组与普通单动作都归一为布局单元。同组入口只能一起可见或一起溢出，
+  // 避免窄窗把三态视图切换器等控件拆散；「格式 / 插入」本身已是单个 menu 单元。
+  const units: ToolbarLayoutEntry[][] = [];
+  for (const entry of entries) {
+    const previous = units.at(-1);
+    if (entry.overflowGroup && previous?.[0]?.overflowGroup === entry.overflowGroup)
+      previous.push(entry);
+    else units.push([entry]);
+  }
+
   const visibleIds: string[] = [];
   let used = 0;
-  // 「更多」按钮自身及其与最后一个可见动作的间距。
   const reserved = Math.max(0, moreWidth) + gap;
-  for (const entry of entries) {
-    const next = used + entry.width + (visibleIds.length > 0 ? gap : 0);
+  for (const unit of units) {
+    const unitWidth = unit.reduce((sum, entry) => sum + entry.width, 0) + gap * (unit.length - 1);
+    const next = used + unitWidth + (visibleIds.length > 0 ? gap : 0);
     if (next + reserved > availableWidth) break;
-    visibleIds.push(entry.id);
+    visibleIds.push(...unit.map((entry) => entry.id));
     used = next;
   }
   const visibleSet = new Set(visibleIds);

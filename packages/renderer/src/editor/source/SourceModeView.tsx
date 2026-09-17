@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { AlertCircle, Check, LoaderCircle } from 'lucide-react';
 import { undo as cmUndo, redo as cmRedo } from '@codemirror/commands';
 import { EditorToolbar } from '../toolbar/EditorToolbar';
@@ -19,7 +19,7 @@ import {
   type PageFileIo,
 } from './page-source-io';
 import { createSourceEditor, type SourceEditorHandle } from './codemirror-host';
-import { registerSourceEditor } from './active-source-editor';
+import { getActiveSourceEditor, registerSourceEditor } from './active-source-editor';
 import { sourceSelectionBubble } from './source-bubble';
 import { applySourceFormat, sourceFormatBubbleActions } from './source-formatting';
 import { handleSourceBubbleAction, openSourceCursorInsertSession } from './source-ai-assist';
@@ -42,7 +42,13 @@ import {
   FORMAT_SELECTION_ID,
   FORMAT_DOCUMENT_ID,
   TOGGLE_OUTLINE_ID,
+  PARAGRAPH_ID,
 } from '../toolbar/entries';
+import {
+  applySourceBlockTypeAction,
+  sourceHeadingCapability,
+  headingLevelFromAction,
+} from '../toolbar/heading-actions';
 import {
   MARKDOWN_TABLE_SNIPPET,
   MERMAID_FLOWCHART_SOURCE,
@@ -742,6 +748,15 @@ export function SourceModeView({ tab }: { tab: TabDescriptor }) {
         : { icon: Check, text: '已保存', className: '' };
   const StatusIcon = status.icon;
 
+  // 同块编辑：能力在工具栏交互时惰性求值，避免渲染期读 ref。
+  const sourceHeadingState = useMemo(
+    () => ({
+      disabled: () => !sourceHeadingCapability(getActiveSourceEditor()?.view ?? null).enabled,
+      disabledReason: () => sourceHeadingCapability(getActiveSourceEditor()?.view ?? null).reason,
+    }),
+    [],
+  );
+
   /**
    * DEV-035 工具栏命令分发（ADR-0006）：源码模式下的动作落点。
    * 格式动作经 CodeMirror 单事务写回（空选区插入语法骨架）；AI 动作以选区为目标，
@@ -770,6 +785,11 @@ export function SourceModeView({ tab }: { tab: TabDescriptor }) {
     }
     // 预览态是严格只读边界：导航动作在上方已处理，其余编辑命令一律忽略。
     if (previewOnly && ![VIEW_SOURCE_ID, VIEW_SPLIT_ID, VIEW_PREVIEW_ID].includes(id)) return;
+    if (id === PARAGRAPH_ID || headingLevelFromAction(id) !== null) {
+      const v = view();
+      if (v) applySourceBlockTypeAction(v, id);
+      return;
+    }
     if (id === UNDO_ID || id === REDO_ID) {
       const v = view();
       if (v) (id === UNDO_ID ? cmUndo : cmRedo)(v);
@@ -858,7 +878,13 @@ export function SourceModeView({ tab }: { tab: TabDescriptor }) {
     >
       <EditorToolbar
         label="编辑器工具栏"
-        entries={sourceToolbarEntries({ isMarkdown, markdownView, previewVisible, previewOnly })}
+        entries={sourceToolbarEntries({
+          isMarkdown,
+          markdownView,
+          previewVisible,
+          previewOnly,
+          headingState: sourceHeadingState,
+        })}
         onCommand={runToolbarCommand}
         tools={
           isMarkdown && !previewOnly ? (

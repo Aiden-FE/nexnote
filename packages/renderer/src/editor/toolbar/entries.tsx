@@ -7,12 +7,14 @@ import {
   Eye,
   EyeOff,
   FileCode2,
+  Heading,
   Image,
   Italic,
   Link,
   ListTree,
   PanelRight,
   Paperclip,
+  Pilcrow,
   Redo2,
   Sparkles,
   Strikethrough,
@@ -44,9 +46,11 @@ import {
 export interface ToolbarSubItemSpec {
   id: string;
   label: string;
+  icon?: ReactNode;
   /** 快捷键提示（菜单右侧展示） */
   shortcut?: string;
-  disabled?: boolean;
+  disabled?: boolean | (() => boolean);
+  disabledReason?: string | (() => string | undefined);
 }
 
 export interface ToolbarActionSpec {
@@ -56,7 +60,9 @@ export interface ToolbarActionSpec {
   hint?: string;
   shortcut?: string;
   icon: ReactNode;
-  disabled?: boolean;
+  disabled?: boolean | (() => boolean);
+  disabledReason?: string | (() => string | undefined);
+  overflowGroup?: string;
 }
 
 export interface ToolbarMenuSpec {
@@ -64,8 +70,11 @@ export interface ToolbarMenuSpec {
   id: string;
   label: string;
   hint?: string;
+  shortcut?: string;
   icon: ReactNode;
   items: ToolbarSubItemSpec[];
+  disabledReason?: string | (() => string | undefined);
+  overflowGroup?: string;
 }
 
 export type ToolbarEntrySpec = ToolbarActionSpec | ToolbarMenuSpec;
@@ -76,6 +85,11 @@ export const AI_ENTRY_ID = 'ai';
 export const AI_ASK_ID = 'ai:ask';
 /** 明确的光标处 AI 插入入口，与斜杠菜单「AI 插入」同语义。 */
 export const AI_INSERT_ID = 'ai:insert';
+export const FORMAT_MENU_ID = 'menu:format';
+export const INSERT_MENU_ID = 'menu:insert';
+export const BLOCK_TYPE_MENU_ID = 'block:type';
+export const PARAGRAPH_ID = 'block:paragraph';
+export const headingId = (level: number): string => `block:heading:${level}`;
 export const INSERT_IMAGE_ID = 'insert:image';
 export const INSERT_ATTACHMENT_ID = 'insert:attachment';
 export const UNDO_ID = 'edit:undo';
@@ -91,6 +105,46 @@ export const VIEW_SOURCE_ID = 'view:source';
 export const VIEW_SPLIT_ID = 'view:split';
 export const VIEW_BLOCK_ID = 'view:block';
 export const VIEW_PREVIEW_ID = 'view:preview';
+
+export type EditorActionMode = 'block' | 'source' | 'preview';
+export type EditorActionGroup = 'primary' | 'format' | 'insert' | 'ai' | 'view' | 'navigation';
+
+export interface EditorActionDefinition {
+  id: string;
+  label: string;
+  group: EditorActionGroup;
+  modes: readonly EditorActionMode[];
+}
+
+/** 无 UI 依赖的稳定语义/能力目录，供工具栏、划词与快捷输入逐步复用。 */
+export const EDITOR_ACTION_MODEL: readonly EditorActionDefinition[] = [
+  { id: UNDO_ID, label: '撤销', group: 'primary', modes: ['block', 'source'] },
+  { id: REDO_ID, label: '重做', group: 'primary', modes: ['block', 'source'] },
+  { id: BLOCK_TYPE_MENU_ID, label: '标题/段落', group: 'primary', modes: ['block', 'source'] },
+  { id: FORMAT_BOLD, label: '粗体', group: 'primary', modes: ['block', 'source'] },
+  { id: FORMAT_ITALIC, label: '斜体', group: 'primary', modes: ['block', 'source'] },
+  { id: FORMAT_WIKILINK, label: '双链', group: 'primary', modes: ['block', 'source'] },
+  { id: FORMAT_STRIKE, label: '删除线', group: 'format', modes: ['block', 'source'] },
+  { id: FORMAT_CODE, label: '行内代码', group: 'format', modes: ['block', 'source'] },
+  { id: FORMAT_LINK, label: '外链', group: 'format', modes: ['block', 'source'] },
+  { id: INSERT_TABLE_ID, label: '表格', group: 'insert', modes: ['block', 'source'] },
+  { id: INSERT_IMAGE_ID, label: '图片', group: 'insert', modes: ['block'] },
+  { id: INSERT_ATTACHMENT_ID, label: '附件', group: 'insert', modes: ['block'] },
+  { id: INSERT_FLOWCHART_ID, label: '流程图', group: 'insert', modes: ['block', 'source'] },
+  { id: INSERT_GANTT_ID, label: '甘特图', group: 'insert', modes: ['block', 'source'] },
+  { id: INSERT_TOC_ID, label: '正文目录', group: 'insert', modes: ['block', 'source'] },
+  { id: AI_ENTRY_ID, label: 'AI', group: 'ai', modes: ['block', 'source'] },
+  {
+    id: TOGGLE_OUTLINE_ID,
+    label: '悬浮目录',
+    group: 'navigation',
+    modes: ['block', 'source', 'preview'],
+  },
+];
+
+export function editorActionsForMode(mode: EditorActionMode): EditorActionDefinition[] {
+  return EDITOR_ACTION_MODEL.filter((action) => action.modes.includes(mode));
+}
 
 /**
  * AI 入口的子动作：询问 AI + 六个白名单写作动作 + 全文翻译（子动作必须键盘可达）。
@@ -262,28 +316,112 @@ function aiEntry(): ToolbarMenuSpec {
   };
 }
 
-/** 块编辑工具栏动作：格式 + 插入（图片/附件）+ AI 入口（+ Markdown 页的源码入口）。 */
-export function blockToolbarEntries(options: { sourceModeToggle: boolean }): ToolbarEntrySpec[] {
-  const entries: ToolbarEntrySpec[] = [
+export interface HeadingActionState {
+  disabled?: boolean | (() => boolean);
+  disabledReason?: string | (() => string | undefined);
+}
+
+function headingEntry(state: HeadingActionState = {}): ToolbarMenuSpec {
+  const common = { disabled: state.disabled, disabledReason: state.disabledReason };
+  return {
+    kind: 'menu',
+    id: BLOCK_TYPE_MENU_ID,
+    label: '标题/段落',
+    hint: '转换当前块或当前 Markdown 行',
+    icon: <Heading className="size-3.5" />,
+    items: [
+      { id: PARAGRAPH_ID, label: '正文', icon: <Pilcrow className="size-3.5" />, ...common },
+      ...Array.from({ length: 6 }, (_, index) => {
+        const level = index + 1;
+        return {
+          id: headingId(level),
+          label: level === 1 ? '页面标题 H1 · 首个正文 H1 与文件名同步' : `标题 H${level}`,
+          icon: <span className="w-3.5 text-center text-[10px] font-semibold">H{level}</span>,
+          ...common,
+        };
+      }),
+    ],
+  };
+}
+
+function menuItem(entry: ToolbarEntrySpec): ToolbarSubItemSpec {
+  return {
+    id: entry.id,
+    label: entry.label,
+    icon: entry.icon,
+    shortcut: entry.shortcut,
+    disabled: entry.kind === 'action' ? entry.disabled : undefined,
+    disabledReason: entry.kind === 'action' ? entry.disabledReason : undefined,
+  };
+}
+
+function entryById(id: string, entries: ToolbarEntrySpec[]): ToolbarEntrySpec {
+  const entry = entries.find((candidate) => candidate.id === id);
+  if (!entry) throw new Error(`Unknown toolbar entry: ${id}`);
+  return entry;
+}
+
+function formatMenu(source: boolean): ToolbarMenuSpec {
+  const formats = formatEntries();
+  const items = [FORMAT_STRIKE, FORMAT_CODE, FORMAT_LINK].map((id) =>
+    menuItem(entryById(id, formats)),
+  );
+  if (source) items.push(...sourceFormatEntries().map(menuItem));
+  return {
+    kind: 'menu',
+    id: FORMAT_MENU_ID,
+    label: '格式',
+    icon: <TextSelect className="size-3.5" />,
+    items,
+  };
+}
+
+function insertMenu(mode: 'block' | 'source'): ToolbarMenuSpec {
+  const entries: ToolbarEntrySpec[] = [...structuralEntries()];
+  if (mode === 'block')
+    entries.splice(
+      1,
+      0,
+      { kind: 'action', id: INSERT_IMAGE_ID, label: '图片', icon: <Image className="size-3.5" /> },
+      {
+        kind: 'action',
+        id: INSERT_ATTACHMENT_ID,
+        label: '附件',
+        icon: <Paperclip className="size-3.5" />,
+      },
+    );
+  return {
+    kind: 'menu',
+    id: INSERT_MENU_ID,
+    label: '插入',
+    icon: <Table className="size-3.5" />,
+    items: entries.map(menuItem),
+  };
+}
+
+function editableEntries(
+  mode: 'block' | 'source',
+  headingState?: HeadingActionState,
+): ToolbarEntrySpec[] {
+  const formats = formatEntries();
+  return [
     ...historyEntries(),
-    ...formatEntries(),
-    ...structuralEntries(),
-    {
-      kind: 'action',
-      id: INSERT_IMAGE_ID,
-      label: '图片',
-      hint: '导入图片并插入光标处',
-      icon: <Image className="size-3.5" />,
-    },
-    {
-      kind: 'action',
-      id: INSERT_ATTACHMENT_ID,
-      label: '附件',
-      hint: '导入附件并插入链接',
-      icon: <Paperclip className="size-3.5" />,
-    },
+    headingEntry(headingState),
+    entryById(FORMAT_BOLD, formats),
+    entryById(FORMAT_ITALIC, formats),
+    entryById(FORMAT_WIKILINK, formats),
+    formatMenu(mode === 'source'),
+    insertMenu(mode),
     aiEntry(),
   ];
+}
+
+/** 块编辑工具栏动作：格式 + 插入（图片/附件）+ AI 入口（+ Markdown 页的源码入口）。 */
+export function blockToolbarEntries(options: {
+  sourceModeToggle: boolean;
+  headingState?: HeadingActionState;
+}): ToolbarEntrySpec[] {
+  const entries = editableEntries('block', options.headingState);
   if (options.sourceModeToggle) {
     entries.push({
       kind: 'action',
@@ -292,6 +430,7 @@ export function blockToolbarEntries(options: { sourceModeToggle: boolean }): Too
       hint: '打开源码模式（⌘/Ctrl+E）',
       shortcut: '⌘E',
       icon: <FileCode2 className="size-3.5" />,
+      overflowGroup: 'view-switcher',
     });
   }
   entries.push(outlineEntry());
@@ -304,33 +443,23 @@ export function sourceToolbarEntries(options: {
   markdownView?: 'source' | 'split' | 'preview';
   previewVisible?: boolean;
   previewOnly?: boolean;
+  headingState?: HeadingActionState;
 }): ToolbarEntrySpec[] {
   const view = options.markdownView ?? (options.previewVisible === false ? 'source' : 'split');
-  const entries: ToolbarEntrySpec[] = options.isMarkdown
-    ? options.previewOnly
-      ? []
-      : [
-          ...historyEntries(),
-          ...formatEntries(),
-          ...sourceFormatEntries(),
-          ...structuralEntries(),
-          aiEntry(),
-        ]
-    : [
-        ...historyEntries(),
-        ...formatEntries(),
-        ...sourceFormatEntries(),
-        ...structuralEntries(),
-        aiEntry(),
-        {
-          kind: 'action',
-          id: VIEW_BLOCK_ID,
-          label: '块编辑',
-          hint: '切回块编辑模式（⌘/Ctrl+E）',
-          shortcut: '⌘E',
-          icon: <Code className="size-3.5" />,
-        },
-      ];
+  const entries: ToolbarEntrySpec[] = options.previewOnly
+    ? []
+    : editableEntries('source', options.headingState);
+  if (!options.isMarkdown && !options.previewOnly) {
+    entries.push({
+      kind: 'action',
+      id: VIEW_BLOCK_ID,
+      label: '块编辑',
+      hint: '切回块编辑模式（⌘/Ctrl+E）',
+      shortcut: '⌘E',
+      icon: <Code className="size-3.5" />,
+      overflowGroup: 'view-switcher',
+    });
+  }
   if (options.isMarkdown) {
     entries.push(
       {
@@ -339,6 +468,7 @@ export function sourceToolbarEntries(options: {
         label: '源码',
         hint: '仅显示 Markdown 源码',
         icon: <FileCode2 className="size-3.5" />,
+        overflowGroup: 'view-switcher',
       },
       {
         kind: 'action',
@@ -346,6 +476,7 @@ export function sourceToolbarEntries(options: {
         label: '分栏',
         hint: '源码与实时预览',
         icon: <Columns2 className="size-3.5" />,
+        overflowGroup: 'view-switcher',
       },
       {
         kind: 'action',
@@ -353,6 +484,7 @@ export function sourceToolbarEntries(options: {
         label: '预览',
         hint: '仅显示只读预览',
         icon: view === 'preview' ? <EyeOff className="size-3.5" /> : <Eye className="size-3.5" />,
+        overflowGroup: 'view-switcher',
       },
     );
   }

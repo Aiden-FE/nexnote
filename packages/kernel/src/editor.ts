@@ -286,7 +286,7 @@ export function createEditor(
       const size = editor.state.doc.content.size;
       const f = Math.max(0, Math.min(from, size));
       const t = Math.max(f, Math.min(to, size));
-      const isHeading = kind === 'h1' || kind === 'h2' || kind === 'h3';
+      const isHeading = /^h[1-6]$/.test(kind);
       const nodeType = schema.nodes[isHeading ? 'heading' : kind];
       if (!nodeType) return false;
       if (isHeading) {

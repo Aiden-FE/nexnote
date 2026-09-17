@@ -8,9 +8,17 @@ import {
   type ReactNode,
 } from 'react';
 import { ChevronDown, MoreHorizontal } from 'lucide-react';
+import { ToolbarTooltip } from './Tooltip';
 import { cn } from '../../lib/utils';
-import type { ToolbarEntrySpec, ToolbarSubItemSpec } from './entries';
+import { AI_ENTRY_ID, type ToolbarEntrySpec, type ToolbarSubItemSpec } from './entries';
 import { resolveToolbarLayout } from './overflow';
+
+const resolveDisabled = (value: boolean | (() => boolean) | undefined): boolean =>
+  typeof value === 'function' ? value() : (value ?? false);
+
+const resolveDisabledReason = (
+  value: string | (() => string | undefined) | undefined,
+): string | undefined => (typeof value === 'function' ? value() : value);
 
 /** 溢出菜单触发器 id（工具栏内部使用，不与业务动作 id 冲突）。 */
 export const TOOLBAR_MORE_ID = 'toolbar:more';
@@ -44,8 +52,10 @@ interface PanelState {
 /**
  * 编辑器单行工具栏（DEV-035）。
  *
- * - 动作以图标 + 文案呈现，保持单行；宽度不足时按 Priority+ 规则把尾部动作收进
- *   「更多」溢出菜单（{@link resolveToolbarLayout}）
+ * - 动作 Icon-first（ADR-0006）：顶层默认仅图标，AI 入口为 Sparkles + `AI` + chevron
+ *   例外；名称、快捷键与禁用原因由统一 Tooltip 承载（hover / focus 可达，Esc 关闭）
+ * - 宽度不足时按 Priority+ 规则把尾部动作收进「更多」溢出菜单
+ *   （{@link resolveToolbarLayout}），同一动作组的入口整体移动、不拆散
  * - 「更多」保留原分组：AI 入口整体折叠为一个分组标题 + 其全部子动作
  * - 键盘：工具栏内 ←/→/Home/End 移动焦点（roving tabindex）；菜单 ↑/↓/Home/End
  *   移动、Enter/Space 执行、Esc 关闭并把焦点还给触发器
@@ -71,7 +81,18 @@ export function EditorToolbar({ label, entries, onCommand, tools, status }: Edit
     active?.kind === 'menu'
       ? active.items
       : hidden.flatMap((entry) =>
-          entry.kind === 'menu' ? entry.items : [{ id: entry.id, label: entry.label }],
+          entry.kind === 'menu'
+            ? entry.items
+            : [
+                {
+                  id: entry.id,
+                  label: entry.label,
+                  icon: entry.icon,
+                  shortcut: entry.shortcut,
+                  disabled: entry.disabled,
+                  disabledReason: entry.disabledReason,
+                },
+              ],
         );
 
   /** 实测并缓存当前渲染出的动作按钮宽度，再按可用宽度决定溢出集合。 */
@@ -86,6 +107,7 @@ export function EditorToolbar({ label, entries, onCommand, tools, status }: Edit
     const measured = entries.map((entry) => ({
       id: entry.id,
       width: widths.current.get(entry.id) ?? 0,
+      overflowGroup: entry.overflowGroup,
     }));
     // 容器或动作尚未测得宽度（首帧、无布局环境）：保持全部平铺。
     if (available <= 0 || measured.some((entry) => entry.width <= 0)) return;
@@ -219,68 +241,85 @@ export function EditorToolbar({ label, entries, onCommand, tools, status }: Edit
   const trigger = (entry: ToolbarEntrySpec, index: number): ReactNode => {
     const isMenu = entry.kind === 'menu';
     const expanded = panel?.entryId === entry.id;
+    const disabled = entry.kind === 'action' && resolveDisabled(entry.disabled);
+    const reason = resolveDisabledReason(entry.disabledReason);
+    const tooltipLabel = entry.shortcut ? `${entry.label}（${entry.shortcut}）` : entry.label;
+    const tooltipText = reason ? `${tooltipLabel} — ${reason}` : (entry.hint ?? tooltipLabel);
+    const labeled = entry.id === AI_ENTRY_ID;
     return (
-      <button
-        key={entry.id}
-        ref={(el) => register(entry.id, el)}
-        type="button"
-        data-toolbar-item="true"
-        data-item-id={entry.id}
-        data-testid={`toolbar-entry-${entry.id}`}
-        aria-label={entry.label}
-        title={entry.hint ?? entry.label}
-        aria-haspopup={isMenu ? 'menu' : undefined}
-        aria-expanded={isMenu ? expanded : undefined}
-        disabled={entry.kind === 'action' && entry.disabled}
-        tabIndex={focusId === entry.id || (!focusId && index === 0) ? 0 : -1}
-        onFocus={() => setFocusId(entry.id)}
-        onClick={() => {
-          if (!isMenu) {
-            onCommand(entry.id);
-            return;
-          }
-          if (expanded) setPanel(null);
-          else openPanel(entry.id, 'first');
-        }}
-        onKeyDown={(event) => {
-          if (!isMenu || (event.key !== 'ArrowDown' && event.key !== 'ArrowUp')) return;
-          event.preventDefault();
-          openPanel(entry.id, event.key === 'ArrowDown' ? 'first' : 'last');
-        }}
-        className={cn(
-          'flex h-6 shrink-0 items-center gap-1 whitespace-nowrap rounded px-1.5 text-muted-foreground hover:bg-accent hover:text-foreground',
-          expanded && 'bg-accent text-foreground',
-        )}
-      >
-        {entry.icon}
-        <span className="text-[11px]">{entry.label}</span>
-        {isMenu && <ChevronDown className="size-2.5 shrink-0" aria-hidden="true" />}
-      </button>
+      <ToolbarTooltip key={entry.id} text={tooltipText}>
+        <button
+          ref={(el) => register(entry.id, el)}
+          type="button"
+          data-toolbar-item="true"
+          data-item-id={entry.id}
+          data-testid={`toolbar-entry-${entry.id}`}
+          aria-label={reason ? `${entry.label}（${reason}）` : entry.label}
+          aria-disabled={disabled || undefined}
+          aria-haspopup={isMenu ? 'menu' : undefined}
+          aria-expanded={isMenu ? expanded : undefined}
+          tabIndex={focusId === entry.id || (!focusId && index === 0) ? 0 : -1}
+          onFocus={() => setFocusId(entry.id)}
+          onClick={() => {
+            if (disabled) return;
+            if (!isMenu) {
+              onCommand(entry.id);
+              return;
+            }
+            if (expanded) setPanel(null);
+            else openPanel(entry.id, 'first');
+          }}
+          onKeyDown={(event) => {
+            if (!isMenu || (event.key !== 'ArrowDown' && event.key !== 'ArrowUp')) return;
+            event.preventDefault();
+            openPanel(entry.id, event.key === 'ArrowDown' ? 'first' : 'last');
+          }}
+          className={cn(
+            'flex h-6 shrink-0 items-center gap-1 whitespace-nowrap rounded px-1.5 text-muted-foreground hover:bg-accent hover:text-foreground focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-ring',
+            expanded && 'bg-accent text-foreground',
+            disabled && 'cursor-not-allowed opacity-50',
+          )}
+        >
+          {entry.icon}
+          {labeled && <span className="text-[11px]">{entry.label}</span>}
+          {isMenu && <ChevronDown className="size-2.5 shrink-0" aria-hidden="true" />}
+        </button>
+      </ToolbarTooltip>
     );
   };
 
-  const menuItem = (item: ToolbarSubItemSpec): ReactNode => (
-    <button
-      key={item.id}
-      type="button"
-      role="menuitem"
-      data-testid={`toolbar-menu-item-${item.id}`}
-      disabled={item.disabled}
-      title={item.label}
-      onClick={() => {
-        if (item.disabled) return;
-        onCommand(item.id);
-        setPanel(null);
-      }}
-      className={cn(
-        'flex w-full items-center gap-2 rounded-sm px-2 py-1.5 text-left text-xs',
-        item.disabled ? 'cursor-not-allowed text-muted-foreground/50' : 'hover:bg-accent',
-      )}
-    >
-      <span className="flex-1 truncate">{item.label}</span>
-      {item.shortcut && <span className="text-[10px] text-muted-foreground">{item.shortcut}</span>}
-    </button>
-  );
+  const menuItem = (item: ToolbarSubItemSpec): ReactNode => {
+    const disabled = resolveDisabled(item.disabled);
+    const reason = resolveDisabledReason(item.disabledReason);
+    return (
+      <button
+        key={item.id}
+        type="button"
+        role="menuitem"
+        data-testid={`toolbar-menu-item-${item.id}`}
+        aria-label={reason ? `${item.label}（${reason}）` : item.label}
+        aria-disabled={disabled || undefined}
+        onClick={() => {
+          if (disabled) return;
+          onCommand(item.id);
+          setPanel(null);
+        }}
+        className={cn(
+          'flex w-full items-center gap-2 rounded-sm px-2 py-1.5 text-left text-xs focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-ring',
+          disabled ? 'cursor-not-allowed text-muted-foreground/50' : 'hover:bg-accent',
+        )}
+      >
+        {item.icon && (
+          <span className="flex size-3.5 shrink-0 items-center justify-center">{item.icon}</span>
+        )}
+        <span className="flex-1 truncate">{item.label}</span>
+        {reason && <span className="text-[10px] text-muted-foreground">{reason}</span>}
+        {item.shortcut && (
+          <span className="text-[10px] text-muted-foreground">{item.shortcut}</span>
+        )}
+      </button>
+    );
+  };
 
   return (
     <div
@@ -297,34 +336,35 @@ export function EditorToolbar({ label, entries, onCommand, tools, status }: Edit
       >
         {visible.map((entry, index) => trigger(entry, index))}
         {hidden.length > 0 && (
-          <button
-            ref={(el) => register(TOOLBAR_MORE_ID, el)}
-            type="button"
-            data-toolbar-item="true"
-            data-item-id={TOOLBAR_MORE_ID}
-            data-testid="toolbar-more"
-            aria-label="更多"
-            title="更多"
-            aria-haspopup="menu"
-            aria-expanded={panel?.entryId === TOOLBAR_MORE_ID}
-            tabIndex={focusId === TOOLBAR_MORE_ID || (!focusId && visible.length === 0) ? 0 : -1}
-            onFocus={() => setFocusId(TOOLBAR_MORE_ID)}
-            onClick={() => {
-              if (panel?.entryId === TOOLBAR_MORE_ID) setPanel(null);
-              else openPanel(TOOLBAR_MORE_ID, 'first');
-            }}
-            onKeyDown={(event) => {
-              if (event.key !== 'ArrowDown' && event.key !== 'ArrowUp') return;
-              event.preventDefault();
-              openPanel(TOOLBAR_MORE_ID, event.key === 'ArrowDown' ? 'first' : 'last');
-            }}
-            className={cn(
-              'flex h-6 shrink-0 items-center justify-center rounded px-1.5 text-muted-foreground hover:bg-accent hover:text-foreground',
-              panel?.entryId === TOOLBAR_MORE_ID && 'bg-accent text-foreground',
-            )}
-          >
-            <MoreHorizontal className="size-3.5" aria-hidden="true" />
-          </button>
+          <ToolbarTooltip key={TOOLBAR_MORE_ID} text="更多">
+            <button
+              ref={(el) => register(TOOLBAR_MORE_ID, el)}
+              type="button"
+              data-toolbar-item="true"
+              data-item-id={TOOLBAR_MORE_ID}
+              data-testid="toolbar-more"
+              aria-label="更多"
+              aria-haspopup="menu"
+              aria-expanded={panel?.entryId === TOOLBAR_MORE_ID}
+              tabIndex={focusId === TOOLBAR_MORE_ID || (!focusId && visible.length === 0) ? 0 : -1}
+              onFocus={() => setFocusId(TOOLBAR_MORE_ID)}
+              onClick={() => {
+                if (panel?.entryId === TOOLBAR_MORE_ID) setPanel(null);
+                else openPanel(TOOLBAR_MORE_ID, 'first');
+              }}
+              onKeyDown={(event) => {
+                if (event.key !== 'ArrowDown' && event.key !== 'ArrowUp') return;
+                event.preventDefault();
+                openPanel(TOOLBAR_MORE_ID, event.key === 'ArrowDown' ? 'first' : 'last');
+              }}
+              className={cn(
+                'flex h-6 shrink-0 items-center justify-center rounded px-1.5 text-muted-foreground hover:bg-accent hover:text-foreground',
+                panel?.entryId === TOOLBAR_MORE_ID && 'bg-accent text-foreground',
+              )}
+            >
+              <MoreHorizontal className="size-3.5" aria-hidden="true" />
+            </button>
+          </ToolbarTooltip>
         )}
       </div>
 
@@ -361,8 +401,10 @@ export function EditorToolbar({ label, entries, onCommand, tools, status }: Edit
                   menuItem({
                     id: entry.id,
                     label: entry.label,
+                    icon: entry.icon,
                     shortcut: entry.shortcut,
                     disabled: entry.disabled,
+                    disabledReason: entry.disabledReason,
                   })
                 ),
               )
