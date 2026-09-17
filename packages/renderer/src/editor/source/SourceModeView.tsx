@@ -448,7 +448,7 @@ export function SourceModeView({ tab }: { tab: TabDescriptor }) {
       onScroll: (scrollDOM) => {
         const preview = previewScrollRef.current;
         if (!preview) return;
-        if (Date.now() < outlineNavSyncSuppressedUntilRef.current) return;
+        if (performance.now() < outlineNavSyncSuppressedUntilRef.current) return;
         const next = syncScrollRatio(
           {
             scrollTop: scrollDOM.scrollTop,
@@ -648,7 +648,8 @@ export function SourceModeView({ tab }: { tab: TabDescriptor }) {
       const to = entry.to ?? from;
       // 先挂起比例同步再滚动编辑器：让随后的 scroll 事件不覆盖下面的直接定位。
       // 窗口需覆盖 CM 滚动事件派发 + 预览 smooth 滚动全程（按距离自适应可达数百毫秒）。
-      outlineNavSyncSuppressedUntilRef.current = Date.now() + 1_200;
+      // 用 performance.now 单调钟：墙钟回拨（NTP/手动校时）不应拉长挂起窗口。
+      outlineNavSyncSuppressedUntilRef.current = performance.now() + 1_200;
       editor.view.dispatch({
         selection: { anchor: from, head: Math.max(from, to) },
         scrollIntoView: true,

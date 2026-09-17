@@ -2966,6 +2966,13 @@ export async function runSmokeIfEnabled(): Promise<void> {
         `content=${dev048ContentWidth.toFixed(0)}px host=${dev048HostWidth.toFixed(0)}px`,
       );
       check(
+        'DEV-048 预览视图占满：内容列 max-width 为 none（不再受 46rem 阅读列限制）',
+        previewFillReady &&
+          !!dev048ContentCol &&
+          getComputedStyle(dev048ContentCol).maxWidth === 'none',
+        `maxWidth=${dev048ContentCol ? getComputedStyle(dev048ContentCol).maxWidth : 'n/a'}`,
+      );
+      check(
         'DEV-048 预览视图编辑器窗格退出文档流（含 absolute 不含 relative）',
         editorPane()?.classList.contains('absolute') === true &&
           editorPane()?.classList.contains('relative') === false,
@@ -3001,22 +3008,24 @@ export async function runSmokeIfEnabled(): Promise<void> {
         `entries=${outlineEntries().length}`,
       );
 
-      // 3) 分栏目录点击 → 预览直接滚到对应标题：长文档（12 节 + 深处标题位于下部）。
+      // 3) 分栏目录点击 → 预览直接滚到对应标题：目标标题位于文档中部
+      //    （下方内容远超一屏），直接定位 delta≈0；若退化为比例同步，
+      //    中部标题会落在视口中段，delta 判别阈值可区分两种机制。
       const dev048LongPath = 'DEV-048 长文.md';
-      const deepHeadingText = '深处标题';
-      const dev048Sections = Array.from({ length: 12 }, (_, i) => i + 1).map(
-        (i) =>
-          `## 章节 ${i}\n\n` +
-          `章节 ${i} 第一段：用于撑起预览高度，使文档整体可滚动。\n\n` +
-          `章节 ${i} 第二段：各节长度一致，源码与预览的滚动比例彼此接近。\n\n` +
-          `章节 ${i} 第三段：收尾段落，进一步增加文档高度。\n\n`,
-      );
+      const midHeadingText = '中部目标标题';
+      const dev048Section = (i: number) =>
+        `## 章节 ${i}\n\n` +
+        `章节 ${i} 第一段：用于撑起预览高度，使文档整体可滚动。\n\n` +
+        `章节 ${i} 第二段：各节长度一致，源码与预览的滚动比例彼此接近。\n\n` +
+        `章节 ${i} 第三段：收尾段落，进一步增加文档高度。\n\n`;
       const dev048LongContent =
         '---\ntitle: DEV-048\n---\n\n# DEV-048 长文\n\n' +
-        dev048Sections.join('') +
-        `## ${deepHeadingText}\n\n` +
-        '深处标题第一段：位于文档下部，初始不可见，点击悬浮目录条目后预览应滚到这里。\n\n' +
-        '深处标题第二段：验证分栏视图下目录点击的预览跟随。\n\n## 尾声\n\n结尾段落。\n';
+        Array.from({ length: 6 }, (_, i) => dev048Section(i + 1)).join('') +
+        `## ${midHeadingText}\n\n` +
+        '中部标题第一段：位于文档中部，点击悬浮目录条目后预览应把它滚到视口顶部附近。\n\n' +
+        '中部标题第二段：直接定位与比例同步在此处的落点差异构成判别。\n\n' +
+        Array.from({ length: 6 }, (_, i) => dev048Section(i + 7)).join('') +
+        '## 尾声\n\n结尾段落。\n';
       await invoke('fs:createNote', {
         parentDir: '',
         name: 'DEV-048 长文',
@@ -3025,33 +3034,36 @@ export async function runSmokeIfEnabled(): Promise<void> {
       });
       await openDocumentTab(dev048LongPath);
       await clickToolbarEntry('view:split');
-      const dev048LongHost = document.querySelector('[data-testid="live-preview"]');
       const longReady =
         (await waitFor(
           () => !!document.querySelector('[data-testid="source-mode-view"] .cm-content'),
         )) &&
-        (await waitFor(() => (dev048LongHost?.querySelectorAll('h2').length ?? 0) >= 14, 15_000));
+        (await waitFor(() => {
+          const host = document.querySelector('[data-testid="live-preview"]');
+          return (host?.querySelectorAll('h2').length ?? 0) >= 14;
+        }, 15_000));
+      const longHostNow = () => document.querySelector<HTMLElement>('[data-testid="live-preview"]');
       check(
         'DEV-048 长文页打开（分栏 + 预览渲染 14 个 H2，预览可滚动）',
-        longReady && (dev048LongHost?.scrollHeight ?? 0) > (dev048LongHost?.clientHeight ?? 0),
-        `h2=${dev048LongHost?.querySelectorAll('h2').length ?? 0}`,
+        longReady && (longHostNow()?.scrollHeight ?? 0) > (longHostNow()?.clientHeight ?? 0),
+        `h2=${longHostNow()?.querySelectorAll('h2').length ?? 0}`,
       );
       const outlineLongOpened =
         (await clickToolbarEntry('view:outline')) &&
         (await waitFor(() =>
-          outlineEntries().some((el) => (el.textContent ?? '') === deepHeadingText),
+          outlineEntries().some((el) => (el.textContent ?? '') === midHeadingText),
         ));
       outlineEntries()
-        .find((el) => (el.textContent ?? '') === deepHeadingText)
+        .find((el) => (el.textContent ?? '') === midHeadingText)
         ?.click();
-      const deepHeadingMeasure = (): {
+      const midHeadingMeasure = (): {
         scrollTop: number;
         delta: number;
         height: number;
       } | null => {
         const host = document.querySelector<HTMLElement>('[data-testid="live-preview"]');
         const heading = [...(host?.querySelectorAll<HTMLElement>('h2') ?? [])].find(
-          (el) => (el.textContent ?? '').trim() === deepHeadingText,
+          (el) => (el.textContent ?? '').trim() === midHeadingText,
         );
         if (!host || !heading) return null;
         return {
@@ -3061,36 +3073,36 @@ export async function runSmokeIfEnabled(): Promise<void> {
         };
       };
       await waitFor(() => {
-        const m = deepHeadingMeasure();
-        return !!m && m.scrollTop > 0 && m.delta >= -2 && m.delta < m.height;
+        const m = midHeadingMeasure();
+        return !!m && m.scrollTop > 0 && m.delta >= -2 && m.delta < 250;
       }, 12_000);
       // smooth 滚动按距离自适应时长：轮询到位置稳定（连续两次读数一致）再取最终值，
       // 避免在动画途中测量导致结果随机器负载抖动。
-      let followMeasure = deepHeadingMeasure();
+      let followMeasure = midHeadingMeasure();
       const settleDeadline = Date.now() + 8_000;
       while (Date.now() < settleDeadline) {
         await sleep(250);
         const prev = followMeasure;
-        followMeasure = deepHeadingMeasure();
+        followMeasure = midHeadingMeasure();
         if (
           prev &&
           followMeasure &&
           Math.abs(prev.scrollTop - followMeasure.scrollTop) <= 1 &&
-          followMeasure.delta < followMeasure.height
+          followMeasure.delta < 250
         ) {
           break;
         }
       }
       check(
-        'DEV-048 分栏目录点击：预览跟随滚动（scrollTop>0 且深处标题进入视口）',
+        'DEV-048 分栏目录点击：预览直接滚到中部标题（delta<250px，区别于比例同步落点）',
         outlineLongOpened &&
           !!followMeasure &&
           followMeasure.scrollTop > 0 &&
           followMeasure.delta >= -2 &&
-          followMeasure.delta < followMeasure.height,
+          followMeasure.delta < 250,
         followMeasure
           ? `scrollTop=${followMeasure.scrollTop.toFixed(0)} delta=${followMeasure.delta.toFixed(0)}px viewport=${followMeasure.height.toFixed(0)}px`
-          : '深处标题未找到',
+          : '中部标题未找到',
       );
       await capture('DEV-048-outline-follow');
     }

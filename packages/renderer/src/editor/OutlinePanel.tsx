@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { ListTree, X } from 'lucide-react';
 import { cn } from '../lib/utils';
 import type { OutlineEntry } from './outline';
@@ -13,11 +13,24 @@ export interface OutlinePanelProps {
 /**
  * 运行时悬浮目录：只消费标题模型并回调定位，不向正文注入锚点、不写盘。
  * 顶栏左侧图标是展开/收缩开关（DEV-048）：收缩后仅保留小图标按钮，避免遮挡正文；
- * 右侧关闭按钮仍是彻底隐藏面板。
+ * 右侧关闭按钮仍是彻底隐藏面板。收缩/展开切换时焦点移到对侧按钮，键盘不落回 body。
  */
 export function OutlinePanel({ entries, onNavigate, onClose, className }: OutlinePanelProps) {
   const [activeId, setActiveId] = useState<string | null>(null);
   const [collapsed, setCollapsed] = useState(false);
+  const toggleRef = useRef<HTMLButtonElement | null>(null);
+  const expandRef = useRef<HTMLButtonElement | null>(null);
+  const userToggledRef = useRef(false);
+
+  useEffect(() => {
+    if (!userToggledRef.current) return;
+    (collapsed ? expandRef.current : toggleRef.current)?.focus();
+  }, [collapsed]);
+
+  const toggleCollapsed = (next: boolean): void => {
+    userToggledRef.current = true;
+    setCollapsed(next);
+  };
 
   if (collapsed) {
     return (
@@ -28,12 +41,13 @@ export function OutlinePanel({ entries, onNavigate, onClose, className }: Outlin
         className={cn('rounded-lg border bg-popover/95 shadow-lg backdrop-blur', className)}
       >
         <button
+          ref={expandRef}
           type="button"
           data-testid="outline-expand"
           aria-label="展开悬浮目录"
           aria-expanded="false"
           title="展开悬浮目录"
-          onClick={() => setCollapsed(false)}
+          onClick={() => toggleCollapsed(false)}
           className="flex size-8 items-center justify-center rounded text-muted-foreground hover:bg-accent hover:text-foreground"
         >
           <ListTree className="size-4" aria-hidden="true" />
@@ -53,12 +67,13 @@ export function OutlinePanel({ entries, onNavigate, onClose, className }: Outlin
     >
       <div className="flex h-9 items-center gap-2 border-b px-3 text-xs font-medium">
         <button
+          ref={toggleRef}
           type="button"
           data-testid="outline-toggle"
           aria-label="收起悬浮目录"
           aria-expanded="true"
           title="收起悬浮目录"
-          onClick={() => setCollapsed(true)}
+          onClick={() => toggleCollapsed(true)}
           className="rounded p-1 text-muted-foreground hover:bg-accent hover:text-foreground"
         >
           <ListTree className="size-3.5" aria-hidden="true" />
