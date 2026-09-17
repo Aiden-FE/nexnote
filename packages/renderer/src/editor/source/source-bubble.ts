@@ -2,11 +2,13 @@ import type { Extension } from '@codemirror/state';
 import { type EditorView, ViewPlugin, type ViewUpdate } from '@codemirror/view';
 import {
   createBubbleAiMenu,
+  decorateBubbleButton,
   type BubbleAiMenuOptions,
   type BubbleAiMenuView,
   type BubbleExtraControl,
 } from '@nexnote/kernel';
 import { AI_ACTION_PREFIX } from '../../features/ai/writing/actions';
+import type { BubbleAction } from '@nexnote/kernel';
 
 /**
  * 源码模式（CodeMirror）划词浮动工具栏：与块编辑模式 selection bubble 一致的交互。
@@ -20,12 +22,7 @@ import { AI_ACTION_PREFIX } from '../../features/ai/writing/actions';
  *   生成中的停止控件由渲染层经 extraControl 注入
  */
 
-export interface SourceBubbleAction {
-  id: string;
-  title: string;
-  /** tooltip（与块编辑 bubble 的 hint 对齐，如「双链（内部页面）」） */
-  hint?: string;
-}
+export type SourceBubbleAction = BubbleAction;
 
 export interface SourceBubbleContext {
   /** 选区文本（未裁剪） */
@@ -106,6 +103,7 @@ export function sourceSelectionBubble(options: SourceBubbleOptions): Extension {
         document.removeEventListener('scroll', this.onScroll, true);
         this.view.dom.removeEventListener('focusout', this.onBlur);
         this.view.dom.removeEventListener('keydown', this.onKeyDown);
+        this.dom.removeEventListener('keydown', this.onToolbarKeyDown);
         this.dom.remove();
       }
 
@@ -128,6 +126,31 @@ export function sourceSelectionBubble(options: SourceBubbleOptions): Extension {
           return true;
         }
         return false;
+      };
+
+      private toolbarControls(): HTMLButtonElement[] {
+        return Array.from(
+          this.dom.querySelectorAll<HTMLButtonElement>(
+            ':scope > button:not([hidden]), :scope > [data-ai-dropdown] > button:not([hidden])',
+          ),
+        ).filter((button) => button.getAttribute('aria-disabled') !== 'true' && !button.disabled);
+      }
+
+      private onToolbarKeyDown = (event: KeyboardEvent) => {
+        if (!['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) return;
+        const buttons = this.toolbarControls();
+        if (buttons.length === 0) return;
+        event.preventDefault();
+        const current = buttons.indexOf(document.activeElement as HTMLButtonElement);
+        const next =
+          event.key === 'Home'
+            ? 0
+            : event.key === 'End'
+              ? buttons.length - 1
+              : event.key === 'ArrowRight'
+                ? (current + 1 + buttons.length) % buttons.length
+                : (current - 1 + buttons.length) % buttons.length;
+        buttons[next]?.focus();
       };
 
       /** 可见期间每帧自愈：任何外部容器重建（含 document.body 被替换）后立即重挂。 */
@@ -230,20 +253,25 @@ export function sourceSelectionBubble(options: SourceBubbleOptions): Extension {
           btn.type = 'button';
           btn.className = `${BUBBLE_CLASS}__action`;
           btn.dataset.bubbleAction = action.id;
-          btn.title = action.hint ?? action.title;
-          btn.textContent = action.title;
+          decorateBubbleButton(btn, BUBBLE_CLASS, action);
           btn.addEventListener('mousedown', (e) => {
             // 阻止 mousedown 抢夺编辑器选区
             e.preventDefault();
           });
           btn.addEventListener('click', (e) => {
             e.preventDefault();
+            const nowDisabled =
+              typeof action.disabled === 'function'
+                ? action.disabled()
+                : (action.disabled ?? false);
+            if (nowDisabled) return;
             this.emitAction(action.id);
           });
           dom.append(btn);
         }
         // Esc 关闭：经 keydown 挂在编辑器 DOM 上（ViewPlugin 不提供 keymap）
         this.view.dom.addEventListener('keydown', this.onKeyDown);
+        dom.addEventListener('keydown', this.onToolbarKeyDown);
         return dom;
       }
     },

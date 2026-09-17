@@ -126,10 +126,11 @@ describe('DEV-023 悬浮格式化按钮：双链入列', () => {
     ]);
     const link = actions.find((a) => a.id === FORMAT_LINK);
     const wikilink = actions.find((a) => a.id === FORMAT_WIKILINK);
-    expect(wikilink?.title).toBe('[[]]');
-    expect(wikilink?.title).not.toBe(link?.title);
+    expect(wikilink?.title).toBe('双链');
+    expect(wikilink?.icon).toBe('wikilink');
+    expect(link?.icon).toBe('link');
     expect(wikilink?.hint).toContain('双链');
-    expect(link?.hint).toContain('外部');
+    expect(link?.hint).toContain('⌘K');
   });
 });
 

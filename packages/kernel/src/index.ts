@@ -57,9 +57,11 @@ export {
   SelectionBubble,
   selectionBubblePluginKey,
   createBubbleAiMenu,
+  decorateBubbleButton,
 } from './extensions/selection-bubble';
 export type {
   BubbleAction,
+  BubbleIconName,
   BubbleAiMenuOptions,
   BubbleAiMenuView,
   BubbleExtraControl,

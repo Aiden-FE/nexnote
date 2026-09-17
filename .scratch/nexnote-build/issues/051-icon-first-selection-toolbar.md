@@ -2,7 +2,7 @@
 
 Type: dev
 Module: editor
-Status: open
+Status: implementation-complete
 Blocked by: DEV-050（共享动作语义与 Tooltip）
 Depends: DEV-023（双模式划词动作）、DEV-034（AI 下拉）、DEV-041（临时翻译）
 Effort: M
@@ -28,13 +28,22 @@ Priority: P1
 
 ## 验收标准
 
-- [ ] TipTap 与 CodeMirror 的划词工具栏在动作集、图标、Tooltip、AI 入口和键盘行为上保持一致。
-- [ ] 图标按钮均有准确 `aria-label` 和 focus-visible；禁用动作可获知原因。
-- [ ] AI 写作、询问 AI、划词翻译和停止生成不回归，普通选区操作零隐式 AI 请求。
-- [ ] Markdown 格式化与双链插入保持单事务、可撤销及未选范围字节不变。
-- [ ] Renderer 测试覆盖鼠标与键盘可达性、菜单焦点、Escape、空/折叠选区和预览排除。
-- [ ] 候选 SHA 上通过标准门禁；Electron smoke 未执行时记录 `NOT_RUN`。
+- [x] TipTap 与 CodeMirror 的划词工具栏在动作集、图标、Tooltip、AI 入口和键盘行为上保持一致。
+- [x] 图标按钮均有准确 `aria-label` 和 focus-visible；禁用动作可获知原因。
+- [x] AI 写作、询问 AI、划词翻译和停止生成不回归，普通选区操作零隐式 AI 请求。
+- [x] Markdown 格式化与双链插入保持单事务、可撤销及未选范围字节不变。
+- [x] Renderer 测试覆盖鼠标与键盘可达性、菜单焦点、Escape、空/折叠选区和预览排除。
+- [x] 候选 SHA 上通过标准门禁；Electron smoke 未执行时记录 `NOT_RUN`。
 - [ ] 在 `.wt/DEV-051` / `dev/DEV-051` 隔离实现，完成 Standards + Spec 双轴审查后方可合并。
+
+## 实施证据（2026-09-17，dev/DEV-051）
+
+- 划词格式按钮由 `selectionFormatBubbleActions()` 从 DEV-050 `EDITOR_ACTION_MODEL` 投影；TipTap 与 CodeMirror 复用同一动作、名称、图标语义、快捷键与 Tooltip 文案，不另建漂移动作目录。
+- 非 AI 格式/双链改为纯图标；AI 唯一入口为 Sparkles + `AI` + chevron。AI 写作、询问 AI、划词翻译保留文字菜单；流式会话的停止入口仍独立可达，Accept/Reject/undo 保持既有路径。
+- 内核和 CodeMirror 均支持 Arrow、Home、End roving；AI 菜单支持 Arrow、Home、End、Enter/Space、Escape 并向触发器归还焦点。Tooltip 不使用原生 `title`，支持 hover/focus、快捷键及禁用原因。
+- 真实 renderer 覆盖纯图标/aria/Tooltip、禁用解释、工具栏及菜单键盘、菜单 Escape 与焦点归还、折叠/空/失焦关闭、两个编辑器的元数据一致性；既有真实 Markdown 单事务/undo/CRLF、AI 流/取消/Accept/Reject/翻译覆盖继续通过。
+- 验证：定向 `vitest` 3 files / 60 tests 通过；全项目 `typecheck` 通过。完整 test、lint、build、changed-format、diff-check 待候选提交后运行。
+- Electron smoke：`NOT_RUN`（本轮未执行）。
 
 ## 关联决策
 

@@ -1,61 +1,34 @@
-import type { BubbleAction } from '@nexnote/kernel';
 import type { EditorKernelInstance } from '@nexnote/kernel';
+import { selectionFormatBubbleActions } from '../toolbar/selection-actions';
+import {
+  FORMAT_BOLD,
+  FORMAT_CODE,
+  FORMAT_ITALIC,
+  FORMAT_LINK,
+  FORMAT_STRIKE,
+  FORMAT_WIKILINK,
+} from './format-ids';
+
+export {
+  FORMAT_BOLD,
+  FORMAT_CODE,
+  FORMAT_ITALIC,
+  FORMAT_LINK,
+  FORMAT_STRIKE,
+  FORMAT_WIKILINK,
+} from './format-ids';
 
 /**
  * DEV-017 选区悬浮工具栏：正文格式化按钮（粗体/斜体/删除线/行内代码/链接）。
  * AI 按钮由 DEV-010 注入；本模块只承担格式化，onAction 分发到内核 TipTap 命令。
  */
 
-export const FORMAT_BOLD = 'format:bold';
-export const FORMAT_ITALIC = 'format:italic';
-export const FORMAT_STRIKE = 'format:strike';
-export const FORMAT_CODE = 'format:code';
-export const FORMAT_LINK = 'format:link';
-/** 双链（[[页面名]]）：与外链（FORMAT_LINK，外部 URL）互不混淆的独立动作。 */
-export const FORMAT_WIKILINK = 'format:wikilink';
-
 /** 链接动作的 URL 输入提示语（块编辑与源码模式共用同一交互）。 */
 export const LINK_URL_PROMPT = '链接地址（http(s):// 或 obsidian:// 或相对页面路径）：';
 
-export function formatBubbleActions(): BubbleAction[] {
-  return [
-    {
-      id: FORMAT_BOLD,
-      title: 'B',
-      hint: '粗体',
-      shortcut: { mod: true, key: 'b' },
-      shortcutLabel: '⌘B',
-    },
-    {
-      id: FORMAT_ITALIC,
-      title: 'I',
-      hint: '斜体',
-      shortcut: { mod: true, key: 'i' },
-      shortcutLabel: '⌘I',
-    },
-    {
-      id: FORMAT_STRIKE,
-      title: 'S',
-      hint: '删除线',
-      shortcut: { mod: true, shift: true, key: 'x' },
-      shortcutLabel: '⌘⇧X',
-    },
-    {
-      id: FORMAT_CODE,
-      title: '`</>',
-      hint: '行内代码',
-      shortcut: { mod: true, key: 'e' },
-      shortcutLabel: '⌘E',
-    },
-    {
-      id: FORMAT_LINK,
-      title: '🔗',
-      hint: '链接（外部 URL）',
-      shortcut: { mod: true, key: 'k' },
-      shortcutLabel: '⌘K',
-    },
-    { id: FORMAT_WIKILINK, title: '[[]]', hint: '双链（内部页面 [[页面名]]）' },
-  ];
+/** 从 DEV-050 共享动作模型投影的划词格式动作。 */
+export function formatBubbleActions() {
+  return selectionFormatBubbleActions();
 }
 
 /**

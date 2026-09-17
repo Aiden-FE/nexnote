@@ -2,6 +2,7 @@ import type { EditorView } from '@codemirror/view';
 import { isolateHistory } from '@codemirror/commands';
 import type { ChangeSpec } from '@codemirror/state';
 import type { SourceBubbleAction } from './source-bubble';
+import { selectionFormatBubbleActions } from '../toolbar/selection-actions';
 import {
   FORMAT_BOLD,
   FORMAT_CODE,
@@ -282,16 +283,9 @@ export function planSourceFormat(
   }
 }
 
-/** 源码 bubble 的格式化按钮（与块编辑 bubble 同图标、同顺序；五项 + 双链）。 */
+/** 与块编辑共用 DEV-050 动作模型投影；源码仅负责局部 Markdown 事务执行。 */
 export function sourceFormatBubbleActions(): SourceBubbleAction[] {
-  return [
-    { id: FORMAT_BOLD, title: 'B', hint: '粗体 **文本**' },
-    { id: FORMAT_ITALIC, title: 'I', hint: '斜体 *文本*' },
-    { id: FORMAT_STRIKE, title: 'S', hint: '删除线 ~~文本~~' },
-    { id: FORMAT_CODE, title: '`</>', hint: '行内代码 `代码`' },
-    { id: FORMAT_LINK, title: '🔗', hint: '链接（外部 URL）[文本](url)' },
-    { id: FORMAT_WIKILINK, title: '[[]]', hint: '双链（内部页面）[[页面名]]' },
-  ];
+  return selectionFormatBubbleActions();
 }
 
 /** 链接动作取 URL：沿用块编辑链接交互（window.prompt 轻量输入）。 */

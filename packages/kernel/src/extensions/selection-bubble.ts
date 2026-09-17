@@ -13,10 +13,18 @@ import { computeEditorActionContext, type EditorActionContext } from './action-c
  * - 折叠选区 / 编辑器失焦 / 选区为空时隐藏
  */
 
+export type BubbleIconName =
+  'bold' | 'italic' | 'strike' | 'code' | 'link' | 'wikilink' | 'sparkles' | 'stop';
+
 export interface BubbleAction {
   id: string;
+  /** 共享可访问名称；菜单项也使用此文字。 */
   title: string;
+  /** 纯图标动作的稳定图标语义，由 DOM/CSS 渲染，避免绑定 UI framework。 */
+  icon?: BubbleIconName;
   hint?: string;
+  disabled?: boolean | (() => boolean);
+  disabledReason?: string | (() => string | undefined);
   /** 快捷键显示，如 '⌘⌥R'；与 shortcut 匹配时键盘触发。 */
   shortcutLabel?: string;
   shortcut?: { mod: boolean; alt?: boolean; shift?: boolean; key: string };
@@ -57,6 +65,71 @@ export interface BubbleAiMenuView {
   destroy(): void;
 }
 
+const resolveBoolean = (value: boolean | (() => boolean) | undefined): boolean =>
+  typeof value === 'function' ? value() : (value ?? false);
+const resolveText = (value: string | (() => string | undefined) | undefined): string | undefined =>
+  typeof value === 'function' ? value() : value;
+
+function bubbleTooltipText(action: BubbleAction): string {
+  const reason = resolveText(action.disabledReason);
+  const label = action.shortcutLabel
+    ? `${action.title}（${action.shortcutLabel}）`
+    : (action.hint ?? action.title);
+  return reason ? `${label} — ${reason}` : label;
+}
+
+function createBubbleIcon(className: string, icon: BubbleIconName): HTMLSpanElement {
+  const span = document.createElement('span');
+  span.className = `${className}__icon`;
+  span.dataset.icon = icon;
+  span.setAttribute('aria-hidden', 'true');
+  return span;
+}
+
+export function decorateBubbleButton(
+  button: HTMLButtonElement,
+  className: string,
+  action: BubbleAction,
+  options: { menuItem?: boolean; tooltip?: boolean } = {},
+): void {
+  const disabled = resolveBoolean(action.disabled);
+  const reason = resolveText(action.disabledReason);
+  button.setAttribute('aria-label', reason ? `${action.title}（${reason}）` : action.title);
+  button.setAttribute('aria-disabled', disabled ? 'true' : 'false');
+  if (action.icon) button.append(createBubbleIcon(className, action.icon));
+  if (!action.icon || options.menuItem) {
+    const label = document.createElement('span');
+    label.className = `${className}__label`;
+    label.textContent = action.title;
+    button.append(label);
+  }
+  if (options.tooltip !== false) {
+    const tooltip = document.createElement('span');
+    tooltip.className = `${className}__tooltip`;
+    tooltip.dataset.bubbleTooltip = '';
+    tooltip.setAttribute('role', 'tooltip');
+    tooltip.textContent = bubbleTooltipText(action);
+    tooltip.hidden = true;
+    button.append(tooltip);
+    const revealTooltip = () => {
+      tooltip.hidden = false;
+    };
+    const hideTooltip = () => {
+      tooltip.hidden = true;
+    };
+    button.addEventListener('pointerenter', revealTooltip);
+    button.addEventListener('focus', revealTooltip);
+    button.addEventListener('pointerleave', hideTooltip);
+    button.addEventListener('blur', hideTooltip);
+    button.addEventListener('keydown', (event) => {
+      if (event.key !== 'Escape' || tooltip.hidden) return;
+      event.preventDefault();
+      event.stopPropagation();
+      tooltip.hidden = true;
+    });
+  }
+}
+
 /** Shared AI dropdown for block and source editors. */
 export function createBubbleAiMenu(
   className: string,
@@ -74,7 +147,32 @@ export function createBubbleAiMenu(
   trigger.setAttribute('aria-haspopup', 'menu');
   trigger.setAttribute('aria-expanded', 'false');
   trigger.setAttribute('aria-label', 'AI 菜单');
-  trigger.textContent = `${options.label ?? 'AI'} ▾`;
+  trigger.append(createBubbleIcon(className, 'sparkles'));
+  const triggerLabel = document.createElement('span');
+  triggerLabel.className = `${className}__ai-label`;
+  triggerLabel.textContent = options.label ?? 'AI';
+  const chevron = document.createElement('span');
+  chevron.className = `${className}__chevron`;
+  chevron.setAttribute('aria-hidden', 'true');
+  chevron.textContent = '⌄';
+  trigger.append(triggerLabel, chevron);
+  const triggerTooltip = document.createElement('span');
+  triggerTooltip.className = `${className}__tooltip`;
+  triggerTooltip.dataset.bubbleTooltip = '';
+  triggerTooltip.setAttribute('role', 'tooltip');
+  triggerTooltip.textContent = 'AI 写作、询问与翻译';
+  triggerTooltip.hidden = true;
+  trigger.append(triggerTooltip);
+  const revealTriggerTooltip = () => {
+    triggerTooltip.hidden = false;
+  };
+  const hideTriggerTooltip = () => {
+    triggerTooltip.hidden = true;
+  };
+  trigger.addEventListener('pointerenter', revealTriggerTooltip);
+  trigger.addEventListener('focus', revealTriggerTooltip);
+  trigger.addEventListener('pointerleave', hideTriggerTooltip);
+  trigger.addEventListener('blur', hideTriggerTooltip);
 
   const menu = document.createElement('div');
   menu.className = `${className}__ai-menu`;
@@ -92,12 +190,8 @@ export function createBubbleAiMenu(
     item.className = `${className}__ai-item`;
     item.dataset.aiMenuAction = action.id;
     item.setAttribute('role', 'menuitem');
-    item.title = action.shortcutLabel
-      ? `${action.title}（${action.shortcutLabel}）`
-      : (action.hint ?? action.title);
-    const label = document.createElement('span');
-    label.textContent = action.title;
-    item.append(label);
+    decorateBubbleButton(item, className, action, { menuItem: true, tooltip: false });
+    item.tabIndex = -1;
     const hint = action.shortcutLabel ?? action.hint;
     if (hint) {
       const hintDom = document.createElement('span');
@@ -108,6 +202,7 @@ export function createBubbleAiMenu(
     item.addEventListener('mousedown', (event) => event.preventDefault());
     item.addEventListener('click', (event) => {
       event.preventDefault();
+      if (resolveBoolean(action.disabled)) return;
       close();
       onTrigger(action.id);
     });
@@ -115,9 +210,14 @@ export function createBubbleAiMenu(
     menu.append(item);
   }
 
-  const focusItem = (index: number) => items[(index + items.length) % items.length]?.focus();
+  const enabledItems = () => items.filter((item) => item.getAttribute('aria-disabled') !== 'true');
+  const focusItem = (index: number) => {
+    const enabled = enabledItems();
+    enabled[(index + enabled.length) % enabled.length]?.focus();
+  };
   const open = (focus: 'first' | 'last' = 'first') => {
-    if (items.length === 0) return;
+    const enabled = enabledItems();
+    if (enabled.length === 0) return;
     menu.hidden = false;
     trigger.setAttribute('aria-expanded', 'true');
     menu.style.left = '0px';
@@ -127,12 +227,12 @@ export function createBubbleAiMenu(
       menu.style.left = '';
       menu.style.right = '0px';
     }
-    focusItem(focus === 'first' ? 0 : items.length - 1);
+    focusItem(focus === 'first' ? 0 : enabled.length - 1);
   };
   const close: BubbleAiMenuView['close'] = (closeOptions) => {
     menu.hidden = true;
     trigger.setAttribute('aria-expanded', 'false');
-    if (closeOptions?.restoreFocus) trigger.focus();
+    if (closeOptions?.restoreFocus) trigger.focus({ preventScroll: true });
   };
 
   trigger.addEventListener('mousedown', (event) => event.preventDefault());
@@ -142,6 +242,14 @@ export function createBubbleAiMenu(
     else close();
   });
   trigger.addEventListener('keydown', (event) => {
+    if (event.key === 'Escape' && menu.hidden && !triggerTooltip.hidden) {
+      event.preventDefault();
+      event.stopPropagation();
+      triggerTooltip.hidden = true;
+      return;
+    }
+    if (!['ArrowDown', 'ArrowUp', 'Enter', ' ', 'Escape'].includes(event.key)) return;
+    event.stopPropagation();
     if (event.key === 'ArrowDown' || event.key === 'Enter' || event.key === ' ') {
       event.preventDefault();
       open('first');
@@ -154,7 +262,9 @@ export function createBubbleAiMenu(
     }
   });
   menu.addEventListener('keydown', (event) => {
-    const current = items.indexOf(document.activeElement as HTMLButtonElement);
+    event.stopPropagation();
+    const enabled = enabledItems();
+    const current = enabled.indexOf(document.activeElement as HTMLButtonElement);
     if (event.key === 'ArrowDown') {
       event.preventDefault();
       focusItem(current + 1);
@@ -166,14 +276,14 @@ export function createBubbleAiMenu(
       focusItem(0);
     } else if (event.key === 'End') {
       event.preventDefault();
-      focusItem(items.length - 1);
+      focusItem(enabled.length - 1);
     } else if (event.key === 'Escape') {
       event.preventDefault();
       event.stopPropagation();
       close({ restoreFocus: true });
     } else if (event.key === 'Enter' || event.key === ' ') {
       event.preventDefault();
-      items[current]?.click();
+      enabled[current]?.click();
     } else if (event.key === 'Tab') {
       close();
     }
@@ -192,6 +302,7 @@ function createBubbleDom(
   aiMenuOptions: BubbleAiMenuOptions | undefined,
   extraControl: BubbleExtraControl | undefined,
   onTrigger: (id: string) => void,
+  onDismiss: () => void,
 ): BubbleView {
   const dom = document.createElement('div');
   dom.className = className;
@@ -207,14 +318,14 @@ function createBubbleDom(
     btn.type = 'button';
     btn.className = `${className}__action`;
     btn.dataset.bubbleAction = action.id;
-    btn.title = action.shortcutLabel ? `${action.title}（${action.shortcutLabel}）` : action.title;
-    btn.textContent = action.title;
+    decorateBubbleButton(btn, className, action);
     btn.addEventListener('mousedown', (e) => {
       // 阻止 mousedown 抢夺编辑器选区
       e.preventDefault();
     });
     btn.addEventListener('click', (e) => {
       e.preventDefault();
+      if (resolveBoolean(action.disabled)) return;
       onTrigger(action.id);
     });
     dom.append(btn);
@@ -223,6 +334,34 @@ function createBubbleDom(
   const aiMenu = aiMenuOptions ? createBubbleAiMenu(className, aiMenuOptions, onTrigger) : null;
   if (aiMenu) dom.append(aiMenu.dom);
   if (extraControl) dom.append(extraControl.dom);
+
+  const controls = (): HTMLButtonElement[] =>
+    Array.from(
+      dom.querySelectorAll<HTMLButtonElement>(
+        ':scope > button:not([hidden]), :scope > [data-ai-dropdown] > button:not([hidden])',
+      ),
+    ).filter((button) => button.getAttribute('aria-disabled') !== 'true' && !button.disabled);
+  dom.addEventListener('keydown', (event) => {
+    if (event.key === 'Escape' && event.target === dom) {
+      event.preventDefault();
+      onDismiss();
+      return;
+    }
+    if (!['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) return;
+    const buttons = controls();
+    if (buttons.length === 0) return;
+    event.preventDefault();
+    const current = buttons.indexOf(document.activeElement as HTMLButtonElement);
+    const next =
+      event.key === 'Home'
+        ? 0
+        : event.key === 'End'
+          ? buttons.length - 1
+          : event.key === 'ArrowRight'
+            ? (current + 1 + buttons.length) % buttons.length
+            : (current - 1 + buttons.length) % buttons.length;
+    buttons[next]?.focus();
+  });
 
   const show: BubbleView['show'] = (coords) => {
     dom.style.display = 'flex';
@@ -301,6 +440,11 @@ export const SelectionBubble = Extension.create<SelectionBubbleOptions, { visibl
             ext.options.aiMenu,
             ext.options.extraControl,
             (id) => trigger(editorView, id),
+            () => {
+              ext.storage.visible = false;
+              bubble?.hide();
+              editorView.focus();
+            },
           );
           const host = editorView.dom.parentElement;
           if (host && bubble) host.append(bubble.dom);
@@ -347,6 +491,14 @@ export const SelectionBubble = Extension.create<SelectionBubbleOptions, { visibl
         },
         props: {
           handleKeyDown(view, event) {
+            if (event.key === 'Escape' && ext.storage.visible) {
+              event.preventDefault();
+              ext.storage.visible = false;
+              const bubbleDom =
+                view.dom.parentElement?.querySelector<HTMLElement>('[data-selection-bubble]');
+              if (bubbleDom) bubbleDom.style.display = 'none';
+              return true;
+            }
             if (view.state.selection.empty) return false;
             const shortcutActions = [
               ...ext.options.actions,

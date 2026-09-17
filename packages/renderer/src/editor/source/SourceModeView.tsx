@@ -189,6 +189,9 @@ export function SourceModeView({ tab }: { tab: TabDescriptor }) {
 
   useEffect(() => {
     hostRef.current?.toggleAttribute('inert', previewOnly);
+    if (!previewOnly) return;
+    editorRef.current?.view.dispatch({ selection: { anchor: 0, head: 0 } });
+    translationControllerRef.current?.closeSelection();
   }, [previewOnly]);
 
   useEffect(() => {

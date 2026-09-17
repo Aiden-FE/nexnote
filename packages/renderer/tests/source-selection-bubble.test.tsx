@@ -430,16 +430,20 @@ describe('DEV-023 源码模式划词格式化（Markdown 包裹写回）', () =>
     editor.destroy();
   });
 
-  it('双链按钮与外链按钮视觉可区分（图标与 tooltip）', () => {
+  it('双链与外链使用不同纯图标、准确 aria-label 和非原生 tooltip', () => {
     const { parent, editor } = mount('第一句原文。第二句。');
     selectWithCoords(editor, parent, 0, 6, { top: 300, left: 100, right: 120, bottom: 320 });
     const bubble = bubbleOf();
     const link = bubble.querySelector<HTMLElement>('[data-bubble-action="format:link"]');
     const wiki = bubble.querySelector<HTMLElement>('[data-bubble-action="format:wikilink"]');
-    expect(link?.textContent).toBe('🔗');
-    expect(wiki?.textContent).toBe('[[]]');
-    expect(link?.title).not.toBe(wiki?.title);
-    expect(wiki?.title).toContain('双链');
+    expect(link?.querySelector('[data-icon]')?.getAttribute('data-icon')).toBe('link');
+    expect(wiki?.querySelector('[data-icon]')?.getAttribute('data-icon')).toBe('wikilink');
+    expect(link?.getAttribute('aria-label')).toBe('外链');
+    expect(wiki?.getAttribute('aria-label')).toBe('双链');
+    expect(link?.hasAttribute('title')).toBe(false);
+    expect(wiki?.hasAttribute('title')).toBe(false);
+    expect(link?.querySelector('[role="tooltip"]')?.textContent).toContain('⌘K');
+    expect(wiki?.querySelector('[role="tooltip"]')?.textContent).toContain('双链');
     editor.destroy();
   });
 
@@ -557,6 +561,78 @@ describe('DEV-034 划词工具栏 AI 下拉（源码模式）', () => {
     editor.destroy();
   });
 
+  it('纯图标格式化、Sparkles + AI + chevron、Tooltip 和 roving 工具栏键盘行为一致', () => {
+    const { parent, editor } = mount('第一句原文。第二句。');
+    selectWithCoords(editor, parent, 0, 6, { top: 300, left: 100, right: 120, bottom: 320 });
+    const bubble = bubbleOf();
+    const bold = bubble.querySelector<HTMLButtonElement>('[data-bubble-action="format:bold"]')!;
+    const italic = bubble.querySelector<HTMLButtonElement>('[data-bubble-action="format:italic"]')!;
+    const ai = triggerOf();
+    expect(bold.textContent).toBe('粗体（⌘B）');
+    expect(bold.querySelector('[data-icon="bold"]')).toBeTruthy();
+    expect(bold.getAttribute('aria-label')).toBe('粗体');
+    expect(bold.querySelector('[role="tooltip"]')?.textContent).toBe('粗体（⌘B）');
+    expect(ai.querySelector('[data-icon="sparkles"]')).toBeTruthy();
+    expect(ai.querySelector('.nexnote-selection-bubble__ai-label')?.textContent).toBe('AI');
+    expect(ai.querySelector('.nexnote-selection-bubble__chevron')).toBeTruthy();
+
+    const tooltip = bold.querySelector<HTMLElement>('[role="tooltip"]')!;
+    expect(tooltip.hidden).toBe(true);
+    bold.dispatchEvent(new PointerEvent('pointerenter'));
+    expect(tooltip.hidden).toBe(false);
+    bold.dispatchEvent(new PointerEvent('pointerleave'));
+    expect(tooltip.hidden).toBe(true);
+    bold.focus();
+    expect(tooltip.hidden).toBe(false);
+    key(bold, 'Escape');
+    expect(tooltip.hidden).toBe(true);
+    expect(bubble.style.display).not.toBe('none');
+
+    key(bold, 'ArrowRight');
+    expect(document.activeElement).toBe(italic);
+    key(italic, 'End');
+    expect(document.activeElement).toBe(ai);
+    key(ai, 'Home');
+    expect(document.activeElement).toBe(bold);
+    editor.destroy();
+  });
+
+  it('disabled action retains an explained Tooltip without executing', () => {
+    const onAction = vi.fn();
+    const parent = document.createElement('div');
+    document.body.append(parent);
+    parent.getBoundingClientRect = () =>
+      makeRect({ top: 0, left: 0, right: 800, bottom: 600, width: 800, height: 600 });
+    const editor = createSourceEditor(parent, {
+      initialText: '第一句原文。',
+      onChange: () => undefined,
+      extraExtensions: [
+        sourceSelectionBubble({
+          actions: [
+            {
+              id: 'format:bold',
+              title: '粗体',
+              icon: 'bold',
+              disabled: true,
+              disabledReason: '当前选区不可格式化',
+            },
+          ],
+          onAction,
+        }),
+      ],
+    });
+    selectWithCoords(editor, parent, 0, 6, { top: 300, left: 100, right: 120, bottom: 320 });
+    const button = bubbleOf().querySelector<HTMLButtonElement>(
+      '[data-bubble-action="format:bold"]',
+    )!;
+    expect(button.getAttribute('aria-label')).toBe('粗体（当前选区不可格式化）');
+    expect(button.getAttribute('aria-disabled')).toBe('true');
+    expect(button.querySelector('[role="tooltip"]')?.textContent).toContain('当前选区不可格式化');
+    button.click();
+    expect(onAction).not.toHaveBeenCalled();
+    editor.destroy();
+  });
+
   it('键盘：向下键打开并聚焦首项、方向键移动、Enter 执行、Esc 关闭且工具栏保留', async () => {
     const bridge = installBridge();
     const { parent, editor } = mount('第一句原文。第二句。');
@@ -571,8 +647,17 @@ describe('DEV-034 划词工具栏 AI 下拉（源码模式）', () => {
 
     key(menu, 'ArrowDown');
     expect(document.activeElement).toBe(menu.querySelector('[data-ai-menu-action="ai:polish"]'));
-    key(menu, 'ArrowUp');
+    key(menu, 'End');
+    expect(document.activeElement).toBe(
+      menu.querySelector(`[data-ai-menu-action="${TRANSLATE_SELECTION_ACTION_ID}"]`),
+    );
+    key(menu, 'Home');
     expect(document.activeElement).toBe(menu.querySelector('[data-ai-menu-action="ai:rewrite"]'));
+    key(menu, 'ArrowUp');
+    expect(document.activeElement).toBe(
+      menu.querySelector(`[data-ai-menu-action="${TRANSLATE_SELECTION_ACTION_ID}"]`),
+    );
+    key(menu, 'Home');
 
     // Esc 只关菜单，工具栏保持可见（选区仍在）
     key(document.activeElement as HTMLElement, 'Escape');
@@ -700,6 +785,23 @@ describe('DEV-034 两模式按钮集一致（源码 vs 块编辑）', () => {
     expect(blockFlat).toEqual(sourceFlat);
     expect(blockMenu).toEqual(sourceMenu);
     expect(blockMenuTitles).toEqual(sourceMenuTitles);
+    const sourceActions = Array.from(
+      sourceBubble.querySelectorAll<HTMLElement>('[data-bubble-action^="format:"]'),
+    ).map((button) => ({
+      id: button.dataset.bubbleAction,
+      label: button.getAttribute('aria-label'),
+      icon: button.querySelector<HTMLElement>('[data-icon]')?.dataset.icon,
+      tooltip: button.querySelector<HTMLElement>('[role="tooltip"]')?.textContent,
+    }));
+    const blockActions = Array.from(
+      blockBubble!.querySelectorAll<HTMLElement>('[data-bubble-action^="format:"]'),
+    ).map((button) => ({
+      id: button.dataset.bubbleAction,
+      label: button.getAttribute('aria-label'),
+      icon: button.querySelector<HTMLElement>('[data-icon]')?.dataset.icon,
+      tooltip: button.querySelector<HTMLElement>('[role="tooltip"]')?.textContent,
+    }));
+    expect(blockActions).toEqual(sourceActions);
     // 六写作动作 + 询问 AI + 划词翻译（DEV-041）
     expect(blockMenu).toHaveLength(8);
     kernel.destroy();

@@ -33,7 +33,7 @@ import {
   FORMAT_LINK,
   FORMAT_STRIKE,
   FORMAT_WIKILINK,
-} from '../interactions/formatting';
+} from '../interactions/format-ids';
 
 export const AI_ENTRY_ID = 'ai';
 export const AI_ASK_ID = 'ai:ask';
