@@ -96,9 +96,7 @@ describe('Live Preview 首帧（DEV-020 GUI 反馈：初次进入右侧不得空
 
     expect(
       [
-        ...container.querySelectorAll(
-          '[data-testid="live-preview"] [data-table-of-contents-item]',
-        ),
+        ...container.querySelectorAll('[data-testid="live-preview"] [data-table-of-contents-item]'),
       ].map((item) => item.textContent),
     ).toEqual(['更新后的一级标题', '更新后的二级标题']);
   });

@@ -32,13 +32,13 @@ export interface SourceEditorHandle {
   readonly scrollDOM: HTMLElement;
   getText(): string;
   setText(text: string): void;
-  /** Inserts text at the current selection in one undoable transaction. */
+  /** 在当前选区处插入文本：单个事务写回，可一次 undo。 */
   insertText(text: string): void;
   /** 插入独立成块的 Markdown 片段（表格/mermaid 围栏/目录标记）：前后自动补空行，单事务可撤销。 */
   insertBlock(snippet: string): void;
-  /** Format selected lines or the entire document. */
+  /** 格式化选中行或整个文档。 */
   formatMarkdown(scope?: SourceFormatScope): boolean;
-  /** Indent/outdent nonempty multiline selections; returns false for default Tab handling. */
+  /** 多行非空选区整体增/减缩进；返回 false 时交回默认 Tab 处理。 */
   indentSelection(outdent?: boolean): boolean;
   focus(): void;
   destroy(): void;

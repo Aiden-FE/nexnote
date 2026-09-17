@@ -51,6 +51,7 @@ import {
   mermaidFence,
 } from '../toolbar/snippets';
 import { parseMarkdownOutline, type OutlineEntry } from '../outline';
+import { matchPreviewHeading } from './preview-outline';
 import type { EditorView } from '@codemirror/view';
 import { writingAiMenuActions, writingStopControl } from '../../features/ai/writing';
 import {
@@ -617,7 +618,8 @@ export function SourceModeView({ tab }: { tab: TabDescriptor }) {
    * 悬浮目录定位（DEV-047）：
    * - 源码/分栏：OutlineEntry 的 from/to 相对 CodeMirror 正文（无 YAML 头），单事务
    *   重设选区并滚动；分栏下预览经既有单向滚动同步跟随。
-   * - 预览视图：正文只读，按标题顺序 querySelectorAll 滚动到对应标题。
+   * - 预览视图：正文只读，收集预览 heading 元素后优先按文本匹配定位（引用/HTML 标题
+   *   会使纯 ordinal 索引错位），匹配不到再回退 ordinal。
    */
   const locateOutlineEntry = useCallback(
     (entry: OutlineEntry): void => {
@@ -625,7 +627,10 @@ export function SourceModeView({ tab }: { tab: TabDescriptor }) {
         const headings = [
           ...(previewScrollRef.current?.querySelectorAll('h1,h2,h3,h4,h5,h6') ?? []),
         ];
-        headings[entry.ordinal]?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        matchPreviewHeading(headings, entry)?.scrollIntoView({
+          behavior: 'smooth',
+          block: 'start',
+        });
         return;
       }
       const editor = editorRef.current;

@@ -58,17 +58,17 @@ Priority: P1
 
 17. 在 `.wt/DEV-047` / `dev/DEV-047` 隔离实现；固定候选 SHA 上完成 Standards 与 Spec 双轴审查后再合并，合并后复跑门禁并更新 checkpoint。
 
-## 验收记录（2026-09-16，未提交工作树）
+## 验收记录（2026-09-17，候选 974f7e4 + 双轴修复提交）
 
 - `pnpm typecheck`：通过。
 - `pnpm lint`：0 error；4 条仓库既有 `consistent-type-imports` warning。
-- `env -u GIT_EDITOR -u GIT_SEQUENCE_EDITOR -u EDITOR CI=true pnpm test`：148 files passed / 1 skipped，1204 tests passed / 2 skipped。
+- `env -u GIT_EDITOR -u GIT_SEQUENCE_EDITOR -u EDITOR CI=true pnpm test`：148 files passed / 1 skipped，1204 tests passed / 2 skipped（双轴修复后复跑）。
 - `pnpm build`：通过。
 - `git diff --check`：通过。
-- `bash scripts/check-changed-format.sh master`：当前改动尚未提交，脚本按 `master...HEAD` 报“无已提交变更”，不计为通过证据；提交候选 SHA 后需重跑。
-- Electron 自动 smoke：216/216 checks passed，报告与截图保存在 `.scratch/nexnote-build/smoke/DEV-047/`；checkbox 几何偏差为 0.00px（16px）、0.37px（19px）、0.20px（预览），均满足 ≤2px。
-- Electron 手工 GUI：通过 Markdown 新工具栏可见性、正文目录标记与 Live Preview 动态目录、悬浮目录、流程图专用模板渲染、单步 undo、文件夹整行折叠；操作使用临时 smoke vault 与独立 userData。
-- 未执行：提交后候选 SHA 的 changed-format、双轴审查、合并与 post-merge 门禁；本记录不宣称这些步骤完成。
+- Electron smoke：**246/246 checks passed**（既有 216 项零回归 + 本票新增 30 项，覆盖验收标准 16 的目录派生/导航、正文目录标记重开、悬浮目录生命周期、流程图/甘特图插入、轻量格式化、多行缩进与 undo/redo、页面树整行折叠）；证据：`.scratch/nexnote-build/smoke/DEV-047/results.json` 与截图。
+- checkbox 几何偏差：0.00px（16px）、0.37px（19px）、0.20px（预览），满足 ≤2px。
+- 双轴审查：Standards 轴 1×P2 + 5×P3、Spec 轴 1 High + 2 Medium + 2 Low，已全部修复（预览工具栏 ADR-0004 修订、目录引用块 parity 与预览文本匹配、格式化语义安全规则、注释/术语/import 风格、smoke 覆盖）；修复后 SHA 变更已按协议焦点重审。
+- 未执行：合并后 post-merge 门禁与发布（v0.0.12）在后续流程完成，见 master 合并提交与 release tag。
 
 ## 关联决策
 

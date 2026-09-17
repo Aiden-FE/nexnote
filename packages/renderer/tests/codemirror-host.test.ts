@@ -109,7 +109,7 @@ describe('源码编辑命令', () => {
     const { editor } = fixture;
     editor.view.dispatch({ selection: { anchor: 4, head: 13 } });
     expect(editor.formatMarkdown('selection')).toBe(true);
-    expect(editor.getText()).toBe('# 标题\n\n- 项目');
+    expect(editor.getText()).toBe('# 标题\n\n+ 项目');
     expect(editor.view.state.selection.main).toMatchObject({ anchor: 2, head: 10 });
     expect(undo(editor.view)).toBe(true);
     expect(editor.getText()).toBe('#   标题\n\n\n+ 项目');

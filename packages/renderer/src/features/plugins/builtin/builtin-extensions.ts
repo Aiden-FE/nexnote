@@ -25,7 +25,9 @@ export interface BuiltinBlockFlags {
   katex: boolean;
 }
 
-export function flagsFromActivePlugins(plugins: Pick<PluginView, 'id' | 'state'>[]): BuiltinBlockFlags {
+export function flagsFromActivePlugins(
+  plugins: Pick<PluginView, 'id' | 'state'>[],
+): BuiltinBlockFlags {
   const active = new Set(plugins.filter((p) => p.state === 'active').map((p) => p.id));
   return {
     mermaid: active.has(BUILTIN_PLUGIN_IDS.mermaid),
@@ -88,13 +90,12 @@ export function buildBuiltinSlashItems(flags: BuiltinBlockFlags): SlashMenuItem[
   const items: SlashMenuItem[] = [];
   if (flags.mermaid) {
     items.push(
-      mermaidSlashItem('builtin:mermaid-flowchart', '流程图', MermaidBlock.options.flowchartSource, [
-        'mermaid',
-        '流程',
-        'flow',
-        'flowchart',
-        'chart',
-      ]),
+      mermaidSlashItem(
+        'builtin:mermaid-flowchart',
+        '流程图',
+        MermaidBlock.options.flowchartSource,
+        ['mermaid', '流程', 'flow', 'flowchart', 'chart'],
+      ),
       mermaidSlashItem('builtin:mermaid-gantt', '甘特图', MermaidBlock.options.ganttSource, [
         'mermaid',
         '甘特',

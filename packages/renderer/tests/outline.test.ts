@@ -1,9 +1,11 @@
 import { describe, expect, it } from 'vitest';
+import { buildKernelExtensions, createMarkdownManager, parseMarkdown } from '@nexnote/kernel';
 import {
   createOutlineId,
   parseBlockOutline,
   parseMarkdownOutline,
   slugifyOutlineText,
+  type OutlineEntry,
 } from '../src/editor/outline';
 
 describe('parseMarkdownOutline（DEV-047 共享标题目录）', () => {
@@ -189,12 +191,12 @@ describe('parseMarkdownOutline（DEV-047 共享标题目录）', () => {
     ]);
   });
 
-  it('多行 Setext 段落合并为一行文本', () => {
+  it('多行 Setext 段落以 \\n join（与块侧 textContent 一致），slug 归一空白不受影响', () => {
     expect(parseMarkdownOutline('Intro\ncontinued\n===')).toEqual([
       {
         id: 'intro-continued',
         level: 1,
-        text: 'Intro continued',
+        text: 'Intro\ncontinued',
         ordinal: 0,
         line: 1,
         from: 0,
@@ -209,6 +211,85 @@ describe('parseMarkdownOutline（DEV-047 共享标题目录）', () => {
     expect(
       parseMarkdownOutline('---\ntitle: x\n# Heading').map(({ text, line }) => ({ text, line })),
     ).toEqual([{ text: 'Heading', line: 3 }]);
+  });
+
+  it('识别块引用内 ATX 标题（可嵌套、可缩进）；from/to 仍指向原始行', () => {
+    const markdown = '# 顶层\n\n> # 引用标题\n\n  > > ### 嵌套引用\n\n># 直接引用\n';
+
+    expect(
+      parseMarkdownOutline(markdown).map(({ id, level, text, line, from, to }) => ({
+        id,
+        level,
+        text,
+        line,
+        from,
+        to,
+      })),
+    ).toEqual([
+      { id: '顶层', level: 1, text: '顶层', line: 1, from: 0, to: 4 },
+      // 行 3「> # 引用标题」共 8 字符（start 6）：from/to 指向原始行行首与内容末，含引用前缀。
+      { id: '引用标题', level: 1, text: '引用标题', line: 3, from: 6, to: 14 },
+      { id: '嵌套引用', level: 3, text: '嵌套引用', line: 5, from: 16, to: 30 },
+      { id: '直接引用', level: 1, text: '直接引用', line: 7, from: 32, to: 39 },
+    ]);
+  });
+
+  it('块引用内 Setext 下划线与待定段落文本同样剥引用前缀识别', () => {
+    const markdown = '> 引用小节\n> ---\n>\n> 单行\n> ===';
+    expect(
+      parseMarkdownOutline(markdown).map(({ text, level, line }) => ({ text, level, line })),
+    ).toEqual([
+      { text: '引用小节', level: 2, line: 1 },
+      { text: '单行', level: 1, line: 4 },
+    ]);
+  });
+
+  it('块引用内 fence 先剥引用前缀识别：其中伪标题不产生条目，未闭合到文末均为代码', () => {
+    const markdown = [
+      '# 实标题',
+      '',
+      '> ```ts',
+      '> # 引用内伪标题',
+      '> ===',
+      '> ```',
+      '',
+      '> ~~~',
+      '> # 未闭合伪标题',
+    ].join('\n');
+
+    expect(parseMarkdownOutline(markdown).map(({ text, level }) => ({ text, level }))).toEqual([
+      { text: '实标题', level: 1 },
+    ]);
+  });
+
+  it('与 parseBlockOutline 的 parity：同一 markdown 经 kernel 解析后两侧条目 text/level 一致', () => {
+    const markdown = [
+      '# 顶层',
+      '',
+      'Intro',
+      'continued',
+      '===',
+      '',
+      '> # 引用标题',
+      '',
+      '> > ### 嵌套引用',
+      '',
+      '> ## 引用 *强调* 标题',
+      '',
+      '> 引用小节',
+      '> ---',
+      '',
+      '> ```',
+      '> # 引用内伪标题',
+      '> ```',
+      '',
+      '## 尾部',
+    ].join('\n');
+    const extensions = buildKernelExtensions({ slashMenu: false, dragHandle: false });
+    const doc = parseMarkdown(createMarkdownManager(extensions), markdown);
+
+    const pick = (entries: OutlineEntry[]) => entries.map(({ text, level }) => ({ text, level }));
+    expect(pick(parseMarkdownOutline(markdown))).toEqual(pick(parseBlockOutline(doc)));
   });
 });
 

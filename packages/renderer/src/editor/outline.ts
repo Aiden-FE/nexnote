@@ -2,7 +2,8 @@
  * 共享标题目录（Table of Contents）纯模型（DEV-047）。
  *
  * 同一套 OutlineEntry 服务两种文档形态，供源码模式与块模式的目录 UI 复用：
- * - Markdown 源码：parseMarkdownOutline（ATX/Setext，排除 frontmatter 与 fenced code 伪标题）
+ * - Markdown 源码：parseMarkdownOutline（ATX/Setext，含块引用内标题，排除 frontmatter
+ *   与 fenced code 伪标题）
  * - 块编辑器文档：parseBlockOutline（TipTap JSON 或 ProseMirror doc，无 DOM 依赖）
  *
  * 纯函数约定：不修改正文、不写入/注入锚点；id 仅为运行时标识（React key、滚动定位），
@@ -75,6 +76,16 @@ const THEMATIC_BREAK_RE = /^ {0,3}(?:(?:\*[ \t]*){3,}|(?:-[ \t]*){3,}|(?:_[ \t]*
 const OPEN_FENCE_RE = /^ {0,3}(`{3,}|~{3,})/;
 const BLANK_RE = /^[ \t]*$/;
 const LINK_REFERENCE_DEFINITION_RE = /^ {0,3}\[((?:\\.|[^\\\]])+)\]:[ \t]*\S/;
+/** 行首块引用前缀（可嵌套、可缩进，> 后至多一个空格），与 source-formatting 的围栏保护口径一致。 */
+const BLOCKQUOTE_PREFIX_RE = /^(?:[ \t]*>[ \t]?)+/;
+
+/**
+ * 剥离行首块引用前缀：引用内标题（`> # x`）与围栏按剥后的内容识别，
+ * 与 kernel 的 blockquote heading 行为对齐；定位偏移仍由调用方指向原始行。
+ */
+function stripBlockquotePrefix(text: string): string {
+  return text.replace(BLOCKQUOTE_PREFIX_RE, '');
+}
 
 function splitMarkdownLines(markdown: string): MarkdownLine[] {
   const lines: MarkdownLine[] = [];
@@ -422,24 +433,27 @@ export function parseMarkdownOutline(markdown: string): OutlineEntry[] {
   let pending: { texts: string[]; start: number; end: number; number: number } | null = null;
 
   for (const line of lines.slice(first)) {
+    // 块引用内标题/围栏：识别基于剥掉引用前缀的内容，from/to 仍指向原始行。
+    const content = stripBlockquotePrefix(line.text);
+
     if (fence) {
-      if (fence.close.test(line.text)) fence = null;
+      if (fence.close.test(content)) fence = null;
       continue;
     }
 
-    if (BLANK_RE.test(line.text)) {
+    if (BLANK_RE.test(content)) {
       pending = null;
       continue;
     }
 
-    const atx = ATX_HEADING_RE.exec(line.text);
+    const atx = ATX_HEADING_RE.exec(content);
     if (atx) {
       push((atx[1] ?? '').length, atx[2] ?? '', true, line);
       pending = null;
       continue;
     }
 
-    const open = OPEN_FENCE_RE.exec(line.text);
+    const open = OPEN_FENCE_RE.exec(content);
     if (open) {
       const marker = open[1] ?? '```';
       fence = {
@@ -449,14 +463,14 @@ export function parseMarkdownOutline(markdown: string): OutlineEntry[] {
       continue;
     }
 
-    const underline = SETEXT_UNDERLINE_RE.exec(line.text);
+    const underline = SETEXT_UNDERLINE_RE.exec(content);
     if (underline) {
       // 有待定段落则是 Setext 标题；否则 --- 是主题分隔线，只终结段落。
       const paragraph = pending;
       if (paragraph) {
         push(
           (underline[1] ?? '').startsWith('=') ? 1 : 2,
-          paragraph.texts.join(' '),
+          paragraph.texts.join('\n'),
           false,
           paragraph,
         );
@@ -465,7 +479,7 @@ export function parseMarkdownOutline(markdown: string): OutlineEntry[] {
       continue;
     }
 
-    if (THEMATIC_BREAK_RE.test(line.text)) {
+    if (THEMATIC_BREAK_RE.test(content)) {
       pending = null;
       continue;
     }
@@ -476,7 +490,7 @@ export function parseMarkdownOutline(markdown: string): OutlineEntry[] {
       end: line.end,
       number: line.number,
     };
-    paragraph.texts.push(line.text);
+    paragraph.texts.push(content);
     paragraph.end = line.end;
     pending = paragraph;
   }

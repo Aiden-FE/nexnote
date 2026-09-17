@@ -16,7 +16,7 @@ export function OutlinePanel({ entries, onNavigate, onClose, className }: Outlin
   return (
     <aside
       data-testid="outline-panel"
-      aria-label="文档目录"
+      aria-label="悬浮目录"
       className={cn(
         'w-60 overflow-hidden rounded-lg border bg-popover/95 text-popover-foreground shadow-lg backdrop-blur',
         className,
@@ -24,7 +24,7 @@ export function OutlinePanel({ entries, onNavigate, onClose, className }: Outlin
     >
       <div className="flex h-9 items-center gap-2 border-b px-3 text-xs font-medium">
         <ListTree className="size-3.5" aria-hidden="true" />
-        <span className="min-w-0 flex-1">文档目录</span>
+        <span className="min-w-0 flex-1">悬浮目录</span>
         <button
           type="button"
           aria-label="关闭悬浮目录"
