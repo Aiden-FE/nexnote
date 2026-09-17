@@ -7,6 +7,8 @@ describe('共享快捷插入动作模型（DEV-052）', () => {
     expect(SHARED_SLASH_ACTIONS.filter((action) => action.kind === 'block-type')).toHaveLength(12);
     expect(sharedSlashAction('wikilink')?.kind).toBe('inline');
     expect(sharedSlashAction('table')?.kind).toBe('structure');
+    expect(sharedSlashAction('table')?.modes).toEqual(['block', 'source']);
+    expect(sharedSlashAction('heading1')?.modes).toContain('block');
   });
 
   it('中文、英文和 Markdown 记号别名指向同一语义动作', () => {
