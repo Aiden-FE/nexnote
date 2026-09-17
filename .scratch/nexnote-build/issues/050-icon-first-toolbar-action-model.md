@@ -2,7 +2,7 @@
 
 Type: dev
 Module: editor
-Status: implementation-complete
+Status: closed
 Blocked by: 无（可立即开始）
 Depends: DEV-020（Markdown 编辑）、DEV-023（双模式划词动作）、DEV-038（快捷插入）、DEV-047（目录与结构插入）
 Effort: L
@@ -29,8 +29,9 @@ Priority: P1
 - 合法单行 Setext H1/H2 现在可转正文或 H1–H6：一个 CodeMirror transaction 精确插入 ATX 前缀并删除 underline，保留标题文字、行分隔风格与未触及范围，可一次 undo/redo；多行 Setext 作为复杂块 fail closed。能力判断同时覆盖只读状态，与执行保持一致。
 - `EDITOR_ACTION_MODEL` 现在声明 id、统一名称、图标、语义分组、执行 semantic、模式 availability 与 overflow priority，toolbar 直接按模型投影；`HeadingLevel` 收窄为 H1–H6。
 - 判别测试新增/强化：模型投影与名称防漂移；全部 AI/菜单项 icon + label；常驻优先响应式布局；hover/focus/menu 导航对 AI/写盘/改名零副作用；源码复杂块/列表/引用/水平线零事务零字节；Setext H1/H2 × 正文/H1–H6 的局部保真、CRLF、单事务 undo/redo；首个/后续 H1 经真实 toolbar 的文件名同步边界；预览只读无副作用。
-- Electron smoke：`NOT_RUN`。
-- 下列验收复选框与最终 Standards + Spec PASS **仍保留给主代理独立重审填写**；本分支不预先宣称审查通过。
+- 固定候选：`5383c20`。独立双轴审查结论：**Standards PASS、Spec PASS**。
+- 固定候选验证：定向测试 28/28；typecheck 通过；完整测试 150 files passed / 1 skipped、1263 tests passed / 2 skipped；lint 0 errors（4 个既有 warnings）；build、changed-format、diff-check 均通过。
+- Electron smoke：`NOT_RUN`（本轮未执行，不作为已运行证据）。
 
 ## 安全不变量
 
@@ -41,14 +42,14 @@ Priority: P1
 
 ## 验收标准
 
-- [ ] 块编辑和 Markdown 编辑的共享动作在名称、图标、可用状态及结果语义上保持一致；模式专属动作按能力隐藏或禁用。
-- [ ] 顶部工具栏符合常驻集合及“格式 / 插入 / AI”分组；窄窗口溢出不拆散动作组。
-- [ ] Tooltip 可由 hover 和键盘焦点触发，Escape 关闭；禁用按钮解释原因；不再依赖原生 `title` 完成交互。
-- [ ] 正文与 H1–H6 转换在 TipTap 和 CodeMirror 均可撤销/重做，保留文字；复杂跨块范围得到明确禁用反馈。
-- [ ] 首个正文 H1 的文件名同步及冲突处理不回归，后续 H1 不误触发重命名。
-- [ ] 单元与 Renderer 测试覆盖动作分组、能力过滤、Tooltip、键盘菜单、响应式溢出、标题转换和预览只读边界。
-- [ ] 候选 SHA 上通过 typecheck、完整测试、lint、build、changed-format 与 diff-check；Electron smoke 未执行时明确记录 `NOT_RUN`。
-- [ ] 在 `.wt/DEV-050` / `dev/DEV-050` 隔离实现，完成 Standards + Spec 双轴审查后方可合并。
+- [x] 块编辑和 Markdown 编辑的共享动作在名称、图标、可用状态及结果语义上保持一致；模式专属动作按能力隐藏或禁用。
+- [x] 顶部工具栏符合常驻集合及“格式 / 插入 / AI”分组；窄窗口溢出不拆散动作组。
+- [x] Tooltip 可由 hover 和键盘焦点触发，Escape 关闭；禁用按钮解释原因；不再依赖原生 `title` 完成交互。
+- [x] 正文与 H1–H6 转换在 TipTap 和 CodeMirror 均可撤销/重做，保留文字；复杂跨块范围得到明确禁用反馈。
+- [x] 首个正文 H1 的文件名同步及冲突处理不回归，后续 H1 不误触发重命名。
+- [x] 单元与 Renderer 测试覆盖动作分组、能力过滤、Tooltip、键盘菜单、响应式溢出、标题转换和预览只读边界。
+- [x] 候选 SHA 上通过 typecheck、完整测试、lint、build、changed-format 与 diff-check；Electron smoke 未执行时明确记录 `NOT_RUN`。
+- [x] 在 `.wt/DEV-050` / `dev/DEV-050` 隔离实现，完成 Standards + Spec 双轴审查后方可合并。
 
 ## 关联决策
 
