@@ -7,6 +7,7 @@ import { markdown } from '@codemirror/lang-markdown';
 import { createSourceEditor, type SourceEditorHandle } from '../src/editor/source/codemirror-host';
 import {
   clampSourceMouseSelection,
+  expandAllSourceHeadingFolds,
   parseSourceHeadings,
   revealSourceHeadingAt,
   sourceFoldState,
@@ -355,15 +356,54 @@ describe('DEV-055 真实 CodeMirror renderer', () => {
     expect(editor.getText()).toBe(`${original}edited`);
   });
 
-  it('目录/跳转只展开遮蔽目标的祖先，目标自身折叠保持', () => {
-    const { parent, editor } = make('# parent\n## target\ntarget body\n# after\ntail\n');
+  it('目录/查找只展开多层必要祖先，目标自身与无关分支保持，重复定位稳定且零字节写入', () => {
+    const original =
+      '# parent\n## middle\n### target\nhidden match\n# unrelated\nunrelated body\n# after\ntail\n';
+    const { parent, editor, onChange } = make(original);
     const headings = sourceFoldState(editor.view.state)!.headings;
-    click(buttons(parent)[1]!);
-    click(buttons(parent)[0]!);
-    revealSourceHeadingAt(editor.view, headings[1]!.from);
-    const folded = sourceFoldState(editor.view.state)!.folded;
-    expect(folded.has(headings[0]!.id)).toBe(false);
-    expect(folded.has(headings[1]!.id)).toBe(true);
+    const [parentHeading, middle, target, unrelated] = headings;
+    for (const heading of [target, middle, parentHeading, unrelated]) {
+      click(
+        parent.querySelector<HTMLButtonElement>(
+          `.cm-heading-fold-toggle[data-fold-id="${heading!.id}"]`,
+        )!,
+      );
+    }
+
+    expect(revealSourceHeadingAt(editor.view, target!.from)).toBe(2);
+    let folded = sourceFoldState(editor.view.state)!.folded;
+    expect(folded.has(parentHeading!.id)).toBe(false);
+    expect(folded.has(middle!.id)).toBe(false);
+    expect(folded.has(target!.id)).toBe(true);
+    expect(folded.has(unrelated!.id)).toBe(true);
+    expect(revealSourceHeadingAt(editor.view, target!.from)).toBe(0);
+
+    const match = original.indexOf('hidden match');
+    expect(revealSourceHeadingAt(editor.view, match)).toBe(1);
+    folded = sourceFoldState(editor.view.state)!.folded;
+    expect(folded.has(target!.id)).toBe(false);
+    expect(folded.has(unrelated!.id)).toBe(true);
+    expect(editor.getText()).toBe(original);
+    expect(new TextEncoder().encode(editor.getText())).toEqual(new TextEncoder().encode(original));
+    expect(onChange).not.toHaveBeenCalled();
+    expect(undo(editor.view)).toBe(false);
+  });
+
+  it('全部展开只清空当前 CodeMirror 视图且不改源码或其他视图', () => {
+    const current = make('# A\nA body\n# B\nB body\n');
+    const background = make('# C\nC body\n');
+    click(buttons(current.parent)[0]!);
+    click(buttons(current.parent)[1]!);
+    click(buttons(background.parent)[0]!);
+    const before = current.editor.getText();
+
+    expect(expandAllSourceHeadingFolds(current.editor.view)).toBe(2);
+    expect(sourceFoldState(current.editor.view.state)?.folded.size).toBe(0);
+    expect(sourceFoldState(background.editor.view.state)?.folded.size).toBe(1);
+    expect(current.editor.getText()).toBe(before);
+    expect(current.onChange).not.toHaveBeenCalled();
+    expect(undo(current.editor.view)).toBe(false);
+    expect(expandAllSourceHeadingFolds(current.editor.view)).toBe(0);
   });
 
   it('重建编辑器（重开 tab）默认全部展开；不启用时 native-block 源码无控件', () => {

@@ -8,6 +8,8 @@ import type { SourceEditorHandle } from './codemirror-host';
  */
 
 let active: SourceEditorHandle | null = null;
+const editors = new Set<SourceEditorHandle>();
+const tabIds = new WeakMap<SourceEditorHandle, string>();
 const listeners = new Set<() => void>();
 
 export function subscribeActiveSourceEditor(listener: () => void): () => void {
@@ -19,12 +21,16 @@ function notifyActiveSourceEditorChanged(): void {
   for (const listener of listeners) listener();
 }
 
-export function registerSourceEditor(handle: SourceEditorHandle): () => void {
+export function registerSourceEditor(handle: SourceEditorHandle, tabId?: string): () => void {
+  editors.add(handle);
+  if (tabId) tabIds.set(handle, tabId);
   active = handle;
   notifyActiveSourceEditorChanged();
   return () => {
+    editors.delete(handle);
+    tabIds.delete(handle);
     if (active === handle) {
-      active = null;
+      active = editors.size > 0 ? (editors.values().next().value as SourceEditorHandle) : null;
       notifyActiveSourceEditorChanged();
     }
   };
@@ -32,4 +38,9 @@ export function registerSourceEditor(handle: SourceEditorHandle): () => void {
 
 export function getActiveSourceEditor(): SourceEditorHandle | null {
   return active;
+}
+
+export function getSourceEditorForTab(tabId: string): SourceEditorHandle | null {
+  for (const editor of editors) if (tabIds.get(editor) === tabId) return editor;
+  return null;
 }

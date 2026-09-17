@@ -6,6 +6,7 @@ import { usePaletteStore } from '../../stores/palette-store';
 import { invoke } from '../../lib/ipc';
 import { openSettings } from '../../lib/open-settings';
 import { createPage } from '../editor/create-page';
+import { expandAllCurrentHeadingFolds } from '../../editor/expand-all';
 import {
   requestActiveMarkdownPreviewToggle,
   requestActiveMarkdownView,
@@ -55,6 +56,16 @@ commandRegistry.register({
   keywords: ['previous', 'prev', 'tab', 'cycle', '切换', '循环', '页签'],
   shortcut: '⌃⇧Tab / Ctrl+Shift+Tab',
   run: () => tabs.getState().activateAdjacentTab(-1),
+});
+
+commandRegistry.register({
+  id: 'editor.expandAllHeadings',
+  title: '全部展开章节',
+  category: '编辑器',
+  keywords: ['expand all', 'unfold', '全部展开', '章节', '标题'],
+  run: () => {
+    expandAllCurrentHeadingFolds();
+  },
 });
 
 commandRegistry.register({

@@ -258,9 +258,21 @@ export function sourceFoldState(state: EditorState): FoldState | null {
 }
 
 /** 目录/锚点跳转：只展开遮蔽目标的祖先章节；目标自身折叠状态保持。 */
-export function revealSourceHeadingAt(view: EditorView, pos: number): void {
-  if (!sourceFoldState(view.state)?.folded.size) return;
-  view.dispatch({ effects: revealFoldAt.of(pos) });
+export function revealSourceHeadingAt(view: EditorView, pos: number): number {
+  const model = sourceFoldState(view.state);
+  if (!model?.folded.size) return 0;
+  const count = model.headings.filter(
+    (heading) => model.folded.has(heading.id) && pos > heading.to && pos < heading.end,
+  ).length;
+  if (count > 0) view.dispatch({ effects: revealFoldAt.of(pos) });
+  return count;
+}
+
+/** 展开当前 CodeMirror 编辑视图的全部章节；不修改文档或 undo 历史。 */
+export function expandAllSourceHeadingFolds(view: EditorView): number {
+  const count = sourceFoldState(view.state)?.folded.size ?? 0;
+  clearSourceHeadingFolds(view);
+  return count;
 }
 
 class DisclosureSpacer extends GutterMarker {

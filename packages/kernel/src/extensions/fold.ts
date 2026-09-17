@@ -250,6 +250,13 @@ export function clearBlockFolds(view: EditorView): void {
   view.dispatch(view.state.tr.setMeta(foldPluginKey, { type: 'clear' } satisfies FoldMeta));
 }
 
+/** 展开当前编辑视图中的全部章节；仅改变 ProseMirror 插件视图状态。 */
+export function expandAllBlockFolds(view: EditorView): number {
+  const count = foldPluginKey.getState(view.state)?.folded.size ?? 0;
+  clearBlockFolds(view);
+  return count;
+}
+
 /**
  * 显式跳转到文档位置时只展开遮蔽该位置的祖先章节。
  * 目标标题自身的折叠区从其 nodeSize 之后开始，因此会保持折叠。
@@ -487,6 +494,20 @@ export const Fold = Extension.create({
             }
             if (tr.docChanged) {
               folded = reconcileFoldedAfterDocChange(tr, oldEditorState, folded);
+            }
+            // 查找（以及任何显式定位）把选区落入隐藏正文时，按 ADR-0013 自动
+            // 仅展开遮蔽该命中的祖先。目标标题自身不在其隐藏范围内，因而保持折叠。
+            if (tr.selectionSet && folded.size > 0) {
+              const target = tr.selection.head;
+              const concealedBy = foldedSectionRanges(
+                listTopLevelBlocksFromDoc(tr.doc),
+                folded,
+              ).filter((range) => target >= range.from && target < range.to);
+              if (concealedBy.length > 0) {
+                const next = new Set(folded);
+                for (const range of concealedBy) next.delete(range.blockId);
+                folded = next;
+              }
             }
             return folded === old.folded ? old : { folded };
           },

@@ -11,6 +11,7 @@ import type { EditorKernelInstance } from '@nexnote/kernel';
 
 let active: EditorKernelInstance | null = null;
 const editors = new Set<EditorKernelInstance>();
+const tabIds = new WeakMap<EditorKernelInstance, string>();
 const listeners = new Set<() => void>();
 
 export function subscribeActiveEditor(listener: () => void): () => void {
@@ -22,11 +23,15 @@ function notifyActiveEditorChanged(): void {
   for (const listener of listeners) listener();
 }
 
-export function registerEditor(kernel: EditorKernelInstance): {
+export function registerEditor(
+  kernel: EditorKernelInstance,
+  tabId?: string,
+): {
   unregister: () => void;
   focus: () => void;
 } {
   editors.add(kernel);
+  if (tabId) tabIds.set(kernel, tabId);
   active = kernel;
   notifyActiveEditorChanged();
   const onFocus = () => {
@@ -40,6 +45,7 @@ export function registerEditor(kernel: EditorKernelInstance): {
     unregister() {
       kernel.editor.view.dom.removeEventListener('focus', onFocus);
       editors.delete(kernel);
+      tabIds.delete(kernel);
       if (active === kernel) {
         active = editors.size > 0 ? (editors.values().next().value as EditorKernelInstance) : null;
       }
@@ -50,4 +56,9 @@ export function registerEditor(kernel: EditorKernelInstance): {
 
 export function getActiveEditor(): EditorKernelInstance | null {
   return active;
+}
+
+export function getEditorForTab(tabId: string): EditorKernelInstance | null {
+  for (const editor of editors) if (tabIds.get(editor) === tabId) return editor;
+  return null;
 }
