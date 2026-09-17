@@ -28,6 +28,17 @@ function buttons(parent: HTMLElement): HTMLButtonElement[] {
   return [...parent.querySelectorAll<HTMLButtonElement>('.cm-heading-fold-toggle')];
 }
 
+function hasAriaHiddenAncestor(element: Element): boolean {
+  for (let ancestor = element.parentElement; ancestor; ancestor = ancestor.parentElement) {
+    if (ancestor.getAttribute('aria-hidden') === 'true') return true;
+  }
+  return false;
+}
+
+function gutterIcon(parent: HTMLElement, id: string): HTMLElement | null {
+  return parent.querySelector<HTMLElement>(`.cm-heading-fold-gutter-icon[data-fold-id="${id}"]`);
+}
+
 function click(button: HTMLButtonElement) {
   button.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, cancelable: true }));
   button.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true, detail: 1 }));
@@ -77,6 +88,36 @@ describe('DEV-055 Markdown 标题解析与章节边界', () => {
     ).toBe(false);
   });
 
+  it('Setext H1/H2 的正文起点越过 underline：仅标题+underline 无控件，有内容时边界正确', () => {
+    const h1Empty = make('Only H1\n===\n');
+    const h2Empty = make('Only H2\n---\n');
+    expect(sourceFoldState(h1Empty.editor.view.state)!.headings[0]!.content).toBe(false);
+    expect(sourceFoldState(h2Empty.editor.view.state)!.headings[0]!.content).toBe(false);
+    expect(buttons(h1Empty.parent)).toHaveLength(0);
+    expect(buttons(h2Empty.parent)).toHaveLength(0);
+
+    const h1 = make('H1 body\n===\nbody one\n## boundary\ntail\n');
+    const h2 = make('H2 body\n---\nbody two\n# next\ntail\n');
+    const h1Heading = sourceFoldState(h1.editor.view.state)!.headings[0]!;
+    const h2Heading = sourceFoldState(h2.editor.view.state)!.headings[0]!;
+    expect(h1Heading.content).toBe(true);
+    expect(h2Heading.content).toBe(true);
+    expect(buttons(h1.parent)).toHaveLength(2);
+    expect(buttons(h2.parent)).toHaveLength(2);
+    expect(h1.editor.view.state.sliceDoc(h1Heading.to, h1Heading.end)).toBe(
+      '\nbody one\n## boundary\ntail\n',
+    );
+    expect(h2.editor.view.state.sliceDoc(h2Heading.to, h2Heading.end)).toBe('\nbody two\n');
+    expect(h1.editor.view.state.sliceDoc(h1Heading.from, h1Heading.to)).toContain('===');
+    expect(h2.editor.view.state.sliceDoc(h2Heading.from, h2Heading.to)).toContain('---');
+    click(buttons(h1.parent)[0]!);
+    click(buttons(h2.parent)[0]!);
+    expect(visibleText(h1.parent)).toContain('===');
+    expect(visibleText(h2.parent)).toContain('---');
+    expect(visibleText(h1.parent)).not.toContain('body one');
+    expect(visibleText(h2.parent)).not.toContain('body two');
+  });
+
   it('同级/高层级边界正确，嵌套章节包含低级标题且空章节不可折叠', () => {
     const text = '# A\nA body\n## A.1\nchild\n### deep\ndeep body\n## A.2\n# B\nB body\n# Empty\n';
     const { editor } = make(text);
@@ -95,23 +136,31 @@ describe('DEV-055 Markdown 标题解析与章节边界', () => {
 });
 
 describe('DEV-055 真实 CodeMirror renderer', () => {
-  it('gutter 仅为有内容的非引用 ATX/Setext 标题渲染键盘可达 disclosure', () => {
+  it('视觉 gutter 保留 icon/click；可访问 disclosure 位于非 aria-hidden editor overlay', () => {
     const { parent } = make('# ATX\nbody\nSetext\n---\nbody\n> # quote\n> body\n# Empty\n');
-    expect(buttons(parent)).toHaveLength(2);
-    for (const button of buttons(parent)) {
+    const accessible = buttons(parent);
+    expect(accessible).toHaveLength(2);
+    expect(parent.querySelector('.cm-gutters')?.getAttribute('aria-hidden')).toBe('true');
+    for (const button of accessible) {
       expect(button.tabIndex).toBe(0);
       expect(button.getAttribute('aria-label')).toBe('折叠章节');
       expect(button.getAttribute('aria-expanded')).toBe('true');
       expect(button.dataset.foldState).toBe('expanded');
+      expect(hasAriaHiddenAncestor(button)).toBe(false);
+      expect(button.closest('[data-testid="source-heading-fold-controls"]')).not.toBeNull();
+      expect(gutterIcon(parent, button.dataset.foldId!)).not.toBeNull();
     }
     expect(parent.querySelector('.cm-heading-fold-placeholder')).toBeNull();
   });
 
-  it('鼠标折叠隐藏正确章节但不改字节、不触发 onChange、不写 undo 历史', () => {
+  it('视觉 gutter click 折叠正确章节且不改字节、不触发 onChange、不写 undo 历史', () => {
     const original = '# A\r\nbody one\r\n## child\r\nbody two\r\n# B\r\ntail\r\n';
     const { parent, editor, onChange } = make(original);
     const before = new TextEncoder().encode(editor.getText());
-    click(buttons(parent)[0]!);
+    const id = buttons(parent)[0]!.dataset.foldId!;
+    gutterIcon(parent, id)!.dispatchEvent(
+      new MouseEvent('click', { bubbles: true, cancelable: true }),
+    );
 
     expect(editor.getText()).toBe(original);
     expect(new TextEncoder().encode(editor.getText())).toEqual(before);
@@ -124,10 +173,16 @@ describe('DEV-055 真实 CodeMirror renderer', () => {
     expect(undo(editor.view)).toBe(false);
   });
 
-  it('键盘 Enter/Space 连续切换时 widget 重建后焦点由新按钮承接', async () => {
+  it('Tab/Enter/Space 在非 hidden ancestor 的 control 操作，重建后焦点承接', async () => {
     const { parent, editor } = make('# A\nbody\n# B\ntail\n');
     const original = buttons(parent)[0]!;
+    expect(hasAriaHiddenAncestor(original)).toBe(false);
+    // `tabIndex=0` + editor-root DOM order makes this a real Tab stop, unlike the hidden gutter marker.
+    expect(original.matches('button[tabindex="0"]')).toBe(true);
+    const tabStops = [...parent.querySelectorAll<HTMLElement>('button[tabindex="0"]')];
+    expect(tabStops).toContain(original);
     original.focus();
+    expect(document.activeElement).toBe(original);
     original.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
     const collapsed = buttons(parent)[0]!;
     await vi.waitFor(() => expect(document.activeElement).toBe(collapsed));

@@ -33,7 +33,7 @@ export interface SourceHeading {
   id: number;
   /** 标题首行行首（ATX 为 `#` 行，Setext 为文本首行）。 */
   from: number;
-  /** 可见标题末行行尾（Setext 不含下划线行）。 */
+  /** 折叠正文的起点（Setext 越过 underline 行；标题与 underline 均保持可见）。 */
   to: number;
   level: number;
   /** blockquote 内标题：参与目录但首期不折叠，避免跨引用边界。 */
@@ -61,7 +61,7 @@ const KEYBOARD_CLICK_DEDUPE_MS = 500;
 
 /**
  * 从完整 Markdown 语法树解析标题。fenced code、frontmatter、HTML 块里形似标题的行
- * 不是标题；ATX H1-H6 与 Setext H1/H2 均产出（Setext 边界取文本末行而非下划线行）。
+ * 不是标题；ATX H1-H6 与 Setext H1/H2 均产出（Setext 正文边界越过 underline 行）。
  */
 export function parseSourceHeadings(state: EditorState): SourceHeading[] {
   const headings: SourceHeading[] = [];
@@ -76,8 +76,9 @@ export function parseSourceHeadings(state: EditorState): SourceHeading[] {
         if (ancestor.name === 'Blockquote') quoted = true;
         ancestor = ancestor.parent;
       }
-      // The Setext node includes its underline. Only its final line belongs to the visible heading.
-      const to = state.doc.lineAt(Math.max(node.from, node.to - 1)).to;
+      // Setext 语法树节点包含文本与 underline：两行都是标题本身，折叠正文必须从
+      // underline 行之后开始，避免把 `===` / `---` 作为章节内容隐藏或误判为可折叠。
+      const to = node.to;
       headings.push({
         id: 0,
         from: state.doc.lineAt(node.from).from,
@@ -262,7 +263,10 @@ class DisclosureSpacer extends GutterMarker {
   }
 }
 
-/** gutter disclosure：低视觉权重 chevron，Tab 可达，Enter/Space 激活。 */
+/**
+ * CodeMirror 将整个 `.cm-gutters` 从 accessibility tree 隐藏，因此此 marker 只承担
+ * 视觉与鼠标命中；真正可访问的 button 由 editor root 的 sibling overlay 提供。
+ */
 class Disclosure extends GutterMarker {
   constructor(
     readonly id: number,
@@ -273,64 +277,172 @@ class Disclosure extends GutterMarker {
   override eq(other: GutterMarker) {
     return other instanceof Disclosure && this.id === other.id && this.folded === other.folded;
   }
-  override toDOM(view: EditorView) {
-    const button = document.createElement('button');
-    const action = this.folded ? '展开章节' : '折叠章节';
-    button.type = 'button';
-    button.className = 'cm-heading-fold-toggle';
-    button.textContent = '›';
-    button.title = action;
-    button.setAttribute('aria-label', action);
-    button.setAttribute('aria-expanded', String(!this.folded));
-    button.setAttribute('data-fold-state', this.folded ? 'collapsed' : 'expanded');
-    button.setAttribute('data-fold-id', String(this.id));
-    button.tabIndex = 0;
-    let lastKeyToggleAt = 0;
-    const activate = (keyboard: boolean) => {
-      if (keyboard) pendingFocus.set(view, this.id);
-      const heading = sourceFoldState(view.state)?.headings.find((h) => h.id === this.id);
-      if (!heading?.content) {
-        pendingFocus.delete(view);
-        return;
+  override toDOM(): HTMLElement {
+    const icon = document.createElement('span');
+    icon.className = 'cm-heading-fold-gutter-icon';
+    icon.textContent = '›';
+    icon.setAttribute('aria-hidden', 'true');
+    icon.setAttribute('data-fold-state', this.folded ? 'collapsed' : 'expanded');
+    icon.setAttribute('data-fold-id', String(this.id));
+    return icon;
+  }
+}
+
+function headingIsVisibleControl(model: FoldState, heading: SourceHeading): boolean {
+  return (
+    !heading.quoted &&
+    heading.content &&
+    !model.headings.some(
+      (parent) =>
+        model.folded.has(parent.id) && heading.from > parent.to && heading.from < parent.end,
+    )
+  );
+}
+
+function toggleSourceHeadingFold(view: EditorView, id: number, restoreKeyboardFocus = false): void {
+  if (restoreKeyboardFocus) pendingFocus.set(view, id);
+  const model = sourceFoldState(view.state);
+  const heading = model?.headings.find((candidate) => candidate.id === id && candidate.content);
+  if (!heading || heading.quoted) {
+    pendingFocus.delete(view);
+    return;
+  }
+  // 光标整体在可见区时保持不动；光标会落入隐藏章节时移回标题行末，避免悬空光标。
+  const selection = view.state.selection.main;
+  const collapsing = !model!.folded.has(id);
+  const fullDocumentSelection = selection.from === 0 && selection.to === view.state.doc.length;
+  const intersectsHiddenSection = selection.from < heading.end && selection.to > heading.to;
+  view.dispatch({
+    effects: toggleFold.of(id),
+    ...(collapsing && intersectsHiddenSection && !fullDocumentSelection
+      ? { selection: { anchor: heading.to } }
+      : {}),
+  });
+}
+
+/** Accessible control deliberately lives outside CodeMirror's aria-hidden gutter subtree. */
+function createAccessibleDisclosure(
+  view: EditorView,
+  id: number,
+  folded: boolean,
+): HTMLButtonElement {
+  const button = document.createElement('button');
+  const action = folded ? '展开章节' : '折叠章节';
+  button.type = 'button';
+  button.className = 'cm-heading-fold-toggle';
+  button.textContent = '›';
+  button.title = action;
+  button.setAttribute('aria-label', action);
+  button.setAttribute('aria-expanded', String(!folded));
+  button.setAttribute('data-fold-state', folded ? 'collapsed' : 'expanded');
+  button.setAttribute('data-fold-id', String(id));
+  button.tabIndex = 0;
+  let lastKeyToggleAt = 0;
+  button.addEventListener('mousedown', (event) => {
+    event.preventDefault();
+    event.stopPropagation();
+  });
+  button.addEventListener('keydown', (event) => {
+    if (event.key !== 'Enter' && event.key !== ' ') return;
+    event.preventDefault();
+    event.stopPropagation();
+    lastKeyToggleAt = Date.now();
+    toggleSourceHeadingFold(view, id, true);
+  });
+  button.addEventListener('click', (event) => {
+    event.preventDefault();
+    event.stopPropagation();
+    if (event.detail === 0 && Date.now() - lastKeyToggleAt < KEYBOARD_CLICK_DEDUPE_MS) return;
+    toggleSourceHeadingFold(view, id);
+  });
+  return button;
+}
+
+/** 将可访问 controls 绝对定位到 gutter 上，既保留视觉入口又不违反 CodeMirror aria 边界。 */
+class AccessibleDisclosureOverlay {
+  readonly dom = document.createElement('div');
+
+  constructor(readonly view: EditorView) {
+    this.dom.className = 'cm-heading-fold-accessible-controls';
+    this.dom.setAttribute('data-testid', 'source-heading-fold-controls');
+    view.dom.append(this.dom);
+    this.sync();
+  }
+
+  update(update: ViewUpdate): void {
+    if (
+      update.viewportChanged ||
+      update.geometryChanged ||
+      sourceFoldState(update.startState) !== sourceFoldState(update.state)
+    )
+      this.sync();
+  }
+
+  sync(): void {
+    const model = sourceFoldState(this.view.state);
+    this.dom.replaceChildren();
+    if (!model) return;
+    for (const heading of model.headings) {
+      if (
+        !headingIsVisibleControl(model, heading) ||
+        heading.from < this.view.viewport.from ||
+        heading.from > this.view.viewport.to
+      )
+        continue;
+      const button = createAccessibleDisclosure(
+        this.view,
+        heading.id,
+        model.folded.has(heading.id),
+      );
+      this.dom.append(button);
+      if (pendingFocus.get(this.view) === heading.id) {
+        pendingFocus.delete(this.view);
+        queueMicrotask(() => {
+          if (button.isConnected) button.focus({ preventScroll: true });
+        });
       }
-      // 光标整体在可见区时保持不动；光标会落入隐藏章节时移回标题行末，避免悬空光标。
-      const selection = view.state.selection.main;
-      const collapsing = !sourceFoldState(view.state)?.folded.has(this.id);
-      const fullDocumentSelection = selection.from === 0 && selection.to === view.state.doc.length;
-      const intersectsHiddenSection = selection.from < heading.end && selection.to > heading.to;
-      view.dispatch({
-        effects: toggleFold.of(this.id),
-        // Mod+A explicitly retains full-document semantics; all other selections that would
-        // include/leave a hidden endpoint return to the visible heading boundary.
-        ...(collapsing && intersectsHiddenSection && !fullDocumentSelection
-          ? { selection: { anchor: heading.to } }
-          : {}),
-      });
-    };
-    button.addEventListener('mousedown', (event) => {
-      event.preventDefault();
-      event.stopPropagation();
-    });
-    button.addEventListener('keydown', (event) => {
-      if (event.key !== 'Enter' && event.key !== ' ') return;
-      event.preventDefault();
-      event.stopPropagation();
-      lastKeyToggleAt = Date.now();
-      activate(true);
-    });
-    button.addEventListener('click', (event) => {
-      event.preventDefault();
-      event.stopPropagation();
-      if (event.detail === 0 && Date.now() - lastKeyToggleAt < KEYBOARD_CLICK_DEDUPE_MS) return;
-      activate(false);
-    });
-    if (pendingFocus.get(view) === this.id) {
-      pendingFocus.delete(view);
-      queueMicrotask(() => {
-        if (button.isConnected) button.focus({ preventScroll: true });
-      });
     }
-    return button;
+    // CodeMirror forbids layout reads during plugin construction/update. Request the positions in
+    // its measure phase, then apply them in write phase; controls stay outside `.cm-gutters`.
+    this.view.requestMeasure({
+      read: (view) => {
+        const root = view.dom.getBoundingClientRect();
+        const gutter = view.dom.querySelector<HTMLElement>('.cm-heading-fold-gutter');
+        const gutterBox = gutter?.getBoundingClientRect();
+        return (sourceFoldState(view.state)?.headings ?? [])
+          .filter((heading) => {
+            const current = sourceFoldState(view.state);
+            return (
+              current !== null &&
+              headingIsVisibleControl(current, heading) &&
+              heading.from >= view.viewport.from &&
+              heading.from <= view.viewport.to
+            );
+          })
+          .map((heading) => {
+            const coords = view.coordsAtPos(heading.from);
+            return {
+              id: heading.id,
+              left: Math.max(0, (gutterBox?.left ?? root.left) - root.left),
+              top: (coords?.top ?? root.top + view.lineBlockAt(heading.from).top) - root.top,
+            };
+          });
+      },
+      write: (positions) => {
+        for (const position of positions) {
+          const button = this.dom.querySelector<HTMLButtonElement>(
+            `.cm-heading-fold-toggle[data-fold-id="${position.id}"]`,
+          );
+          if (!button) continue;
+          button.style.left = `${position.left}px`;
+          button.style.top = `${position.top}px`;
+        }
+      },
+    });
+  }
+
+  destroy(): void {
+    this.dom.remove();
   }
 }
 
@@ -357,19 +469,9 @@ export function sourceHeadingFolding(): Extension {
         const builder = new RangeSetBuilder<GutterMarker>();
         for (const heading of model?.headings ?? []) {
           if (
-            heading.quoted ||
-            !heading.content ||
+            !headingIsVisibleControl(model!, heading) ||
             heading.from < view.viewport.from ||
             heading.from > view.viewport.to
-          )
-            continue;
-          if (
-            model!.headings.some(
-              (parent) =>
-                model!.folded.has(parent.id) &&
-                heading.from > parent.to &&
-                heading.from < parent.end,
-            )
           )
             continue;
           builder.add(
@@ -388,10 +490,28 @@ export function sourceHeadingFolding(): Extension {
       (view) => sourceFoldState(view.state)?.decorations ?? Decoration.none,
     ),
     markers,
+    ViewPlugin.fromClass(AccessibleDisclosureOverlay, {
+      eventHandlers: {
+        scroll(event) {
+          if (event.target === this.view.scrollDOM) this.sync();
+          return false;
+        },
+      },
+    }),
     gutter({
       class: 'cm-heading-fold-gutter',
       markers: (view) => view.plugin(markers)?.markers ?? RangeSet.empty,
       initialSpacer: () => new DisclosureSpacer(),
+      domEventHandlers: {
+        click(view, line, event) {
+          const model = sourceFoldState(view.state);
+          const heading = model?.headings.find((candidate) => candidate.from === line.from);
+          if (!model || !heading || !headingIsVisibleControl(model, heading)) return false;
+          event.preventDefault();
+          toggleSourceHeadingFold(view, heading.id);
+          return true;
+        },
+      },
     }),
     keymap.of([
       {
