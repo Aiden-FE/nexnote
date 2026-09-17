@@ -1,37 +1,34 @@
 {
   "schema": "nexnote-release-qa/v1",
   "repository": "Aiden-FE/nexnote",
-  "tag": "v0.0.12",
-  "commit": "445b00a45f3d225d231931b44c0fbc68bc5bbc19",
+  "tag": "v0.0.13",
+  "commit": "40d50a5c6ae4589f4df7b8f4b3b19ae4b77d141b",
   "channel": "stable",
   "allRequiredChecksPassed": true,
-  "scope": "v0.0.12-release-candidate",
+  "scope": "v0.0.13-release-candidate",
   "machineChecks": {
     "typecheck": "passed",
     "lint": "passed (0 errors, 4 pre-existing warnings)",
-    "tests": "150 files passed, 1219 tests passed, 1 file skipped, 2 tests skipped",
+    "tests": "150 files passed, 1222 tests passed, 1 file skipped, 2 tests skipped",
     "build": "passed",
     "releaseConfig": "31/31 passed",
-    "devElectronSmoke": "246/246 passed (results: .scratch/nexnote-build/smoke/DEV-047/results.json; exit code 0)",
-    "releaseCIBuildAndSmoke": "passed (run 35166486383: 4/4 build matrices + packaged smoke 246/246 on macOS arm64 runner)"
+    "devElectronSmoke": "253/253 passed (results: .scratch/nexnote-build/smoke/DEV-048/results.json; exit code 0)"
   },
   "candidateContents": {
-    "ticket": "DEV-047 (.scratch/nexnote-build/issues/047-document-outline-toc-diagram-formatting.md)",
+    "ticket": "DEV-048 (.scratch/nexnote-build/issues/048-outline-preview-followup-bugs.md)",
     "highlights": [
-      "document outline model shared by markdown/block pages with blockquote-heading parity",
-      "in-body TOC block persisted as the single-line <!-- nexnote:toc --> marker with live derived entries",
-      "floating outline panel (tab-lifecycle only, never persisted)",
-      "toolbar undo/redo, markdown table, flowchart/gantt mermaid templates, format selection/document",
-      "multiline Tab/Shift+Tab 2-space indent and semantics-safe lightweight markdown formatting",
-      "page-tree whole-row folder expand/collapse; task checkbox resized to 0.7lh (geometry deltas 0.00px/0.37px/0.20px)"
+      "preview view content column now fills the content area (LivePreview fillContent; removed relative/absolute class conflict on the hidden editor pane)",
+      "floating outline header icon toggles collapse to a small icon button with focus retention",
+      "split-view outline clicks scroll the preview directly to the matched heading (normalized text match) with a 1.2s monotonic-clock suppression window over ratio scroll sync",
+      "smoke evidence strengthened: computed max-width:none assertion and middle-heading delta<250px discrimination (253/253)"
     ]
   },
   "notRun": [
-    "GitHub Actions runner execution for this candidate beyond run 35166486383",
+    "GitHub Actions runner execution for this candidate",
     "Intel macOS physical/package verification",
     "Windows physical installation and SmartScreen verification",
     "Ubuntu physical installation and GPG verification",
-    "public N-1 to v0.0.12 network upgrade",
+    "public N-1 to v0.0.13 network upgrade",
     "post-publication 24-hour monitoring"
   ],
   "notes": "macOS artifacts are Ad hoc signed without notarization; Windows Authenticode and Linux GPG may publish unsigned when credentials are unavailable. NOT_RUN items remain explicitly unverified and must not be described as passed."
