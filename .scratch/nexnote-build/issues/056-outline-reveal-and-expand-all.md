@@ -79,4 +79,7 @@ Priority: P1
 
 - 首审（实际候选 `3c8dc65`；此前报告的 `fba0325` 非实际候选）为 **FAIL**，最终双轴验收项继续保持未勾选。
 - 首审 findings 与本轮修复：移除 Fold 插件对任意 `tr.selectionSet` 的自动 reveal，只允许目录与 find 显式调用 reveal；Unicode case-insensitive 查找改为将折叠后的 UTF-16 单元映射回原文范围，覆盖 `AİB` 找 `b`；搜索算法从 React UI 分离，补 CodeMirror/TipTap 原文定位测试；补真实页内 FindBar renderer 流程，`Mod/Ctrl+F` 仅由 active tab 响应，`Mod/Ctrl+Shift+F` 保留给全局 SearchPanel；合并两种编辑器的 tab 过滤 aria-live hook，并通过替换 live-region 子节点重复播报相同消息。
-- 本轮仅完成实现阶段自审与定向/全量门禁；未预填独立 Standards + Spec PASS。修复代码候选 `3c2b83c`（及本次票据证据提交）仍需独立双轴复审，本票保持 `implementation-complete`，不标记 closed。
+- Standards 复审：代码候选 `3c2b83c` 为 **FAIL**（Spec 总体 PASS，但 Find 正确性阻断）；最终双轴验收项继续保持未勾选。
+- 本轮修复 Standards findings：CodeMirror 搜索以 `doc.line(n).text` 加单个 LF 建立与 CM position 一致的搜索文本，避免将 CRLF 原始 JS 偏移传入 CM；TipTap 按每个 textblock 聚合 marked text nodes，支持跨 mark 连续文本但不跨 block 或 inline atom；Unicode folding 改为整串 lower-case 后依原文 UTF-16 span 映射，覆盖希腊语终止 sigma（`ΟΣ` / `ος`）、土耳其 İ 与 emoji。
+- 本轮完整 `pnpm test`：154 文件中 153 通过 / 1 跳过，1306 测试通过 / 2 跳过；`pnpm typecheck`、`pnpm lint`（0 error、4 个既有 warning）、`pnpm build`、changed-format 与 `git diff --check` 均通过。Electron smoke 仍为 `NOT_RUN`。
+- 本轮仅完成实现阶段自审与定向/全量门禁；未预填独立 Standards + Spec PASS。新修复候选（由本轮追加提交产生）仍需独立双轴复审，本票保持 `implementation-complete`，不标记 closed。

@@ -57,9 +57,35 @@ describe('DEV-056 Unicode 查找 offsets', () => {
     expect(textMatches('AİB', 'b')).toEqual([{ from: 2, to: 3 }]);
     expect(textMatches('😀İB', 'b')).toEqual([{ from: 3, to: 4 }]);
     expect(textMatches('AİB', 'İ')).toEqual([{ from: 1, to: 2 }]);
+    expect(textMatches('ΟΣ', 'ος')).toEqual([{ from: 0, to: 2 }]);
+    expect(textMatches('Α ΟΣ Β', 'ος')).toEqual([{ from: 2, to: 4 }]);
     for (const match of textMatches('😀İB', 'b')) {
       expect('😀İB'.slice(match.from, match.to)).toBe('B');
     }
+  });
+
+  it('真实 CodeMirror 保留 CRLF 时按 CM 坐标定位 body/emoji/tail，且不会越界', () => {
+    const host = document.createElement('div');
+    document.body.append(host);
+    const source = createSourceEditor(host, {
+      initialText: '# A\r\nbody 😀\r\ntail\r\n',
+      headingFolding: true,
+      onChange: vi.fn(),
+    });
+    cleanups.push(() => source.destroy());
+
+    expect(findInSourceView(source.view, 'body', 1, true)).toEqual({ current: 1, total: 1 });
+    let selection = source.view.state.selection.main;
+    expect(source.view.state.sliceDoc(selection.from, selection.to)).toBe('body');
+    expect(selection.from).toBe(source.view.state.doc.line(2).from);
+    expect(findInSourceView(source.view, '😀', 1, true)).toEqual({ current: 1, total: 1 });
+    selection = source.view.state.selection.main;
+    expect(source.view.state.sliceDoc(selection.from, selection.to)).toBe('😀');
+    expect(findInSourceView(source.view, 'tail', 1, true)).toEqual({ current: 1, total: 1 });
+    selection = source.view.state.selection.main;
+    expect(source.view.state.sliceDoc(selection.from, selection.to)).toBe('tail');
+    expect(selection.to).toBeLessThanOrEqual(source.view.state.doc.length);
+    expect(source.getText()).toBe('# A\r\nbody 😀\r\ntail\r\n');
   });
 
   it('真实 CodeMirror 与 TipTap 将 B 定位到原文而非 case-folded 文本偏移', () => {
@@ -82,6 +108,52 @@ describe('DEV-056 Unicode 查找 offsets', () => {
     expect(findInBlockView(block.editor.view, 'b', 1, true)).toEqual({ current: 1, total: 1 });
     const { doc, selection } = block.editor.state;
     expect(doc.textBetween(selection.from, selection.to)).toBe('B');
+  });
+});
+
+describe('DEV-056 TipTap 跨 mark 原文查找', () => {
+  it('可在同一个块内跨 text nodes 命中 hello world，不跨块拼接相邻文本', () => {
+    const host = document.createElement('div');
+    document.body.append(host);
+    const kernel = createEditor(host, {
+      initialMarkdown: '# A ^a\n\nhello **world** ^first\n\nhello\n\nworld ^second\n',
+      slashMenu: false,
+      dragHandle: false,
+    });
+    cleanups.push(() => kernel.destroy());
+    const textNodes: Array<{ text: string; pos: number }> = [];
+    kernel.editor.state.doc.descendants((node, pos) => {
+      if (node.isText && node.text) textNodes.push({ text: node.text, pos });
+    });
+    expect(textNodes.some(({ text }) => text === 'hello ')).toBe(true);
+    expect(textNodes.some(({ text }) => text === 'world')).toBe(true);
+    expect(findInBlockView(kernel.editor.view, 'hello world', 1, true)).toEqual({
+      current: 1,
+      total: 1,
+    });
+    const { doc, selection } = kernel.editor.state;
+    expect(selection.from).toBe(textNodes.find(({ text }) => text === 'hello ')!.pos);
+    expect(doc.textBetween(selection.from, selection.to)).toBe('hello world');
+    expect(selection.to - selection.from).toBe('hello world'.length);
+    expect(findInBlockView(kernel.editor.view, 'hello world', 1, false).total).toBe(1);
+  });
+
+  it('希腊文整词查找保留折叠最小祖先规则及原文坐标', () => {
+    const host = document.createElement('div');
+    document.body.append(host);
+    const kernel = createEditor(host, {
+      initialMarkdown: '# A ^a\n\nΟΣ ^body\n\n# unrelated ^other\n\nother text ^p\n',
+      slashMenu: false,
+      dragHandle: false,
+    });
+    cleanups.push(() => kernel.destroy());
+    kernel.toggleBlockFold('a');
+    kernel.toggleBlockFold('other');
+    expect(findInBlockView(kernel.editor.view, 'ος', 1, true)).toEqual({ current: 1, total: 1 });
+    const { doc, selection } = kernel.editor.state;
+    expect(doc.textBetween(selection.from, selection.to)).toBe('ΟΣ');
+    expect(kernel.isBlockFolded('a')).toBe(false);
+    expect(kernel.isBlockFolded('other')).toBe(true);
   });
 });
 

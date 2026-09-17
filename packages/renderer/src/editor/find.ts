@@ -3,6 +3,7 @@ import { TextSelection } from '@tiptap/pm/state';
 import type { EditorView as ProseMirrorView } from '@tiptap/pm/view';
 import { revealBlockFoldAt } from '@nexnote/kernel';
 import { revealSourceHeadingAt } from './source/heading-fold';
+
 export interface EditorFindResult {
   current: number;
   total: number;
@@ -13,20 +14,23 @@ export interface TextMatch {
   to: number;
 }
 
-/** Case folding may expand a character (İ → i + ◌̇). Map every folded UTF-16 unit back to the original span. */
+/**
+ * Fold whole strings to preserve context-sensitive casing (ΟΣ → ος), then map folded
+ * UTF-16 units to source spans. Per-code-point folds retain length mapping when casing expands
+ * (İ → i + ◌̇). For contextual substitutions the whole-string fold has the same length;
+ * if that invariant fails, fail closed rather than selecting an incorrect source range.
+ */
 function foldedText(text: string): { value: string; spans: TextMatch[] } {
-  let value = '';
+  const value = text.toLocaleLowerCase();
   const spans: TextMatch[] = [];
   let from = 0;
   for (const character of text) {
-    const folded = character.toLocaleLowerCase();
-    value += folded;
-    for (let index = 0; index < folded.length; index++) {
+    for (let index = 0; index < character.toLocaleLowerCase().length; index++) {
       spans.push({ from, to: from + character.length });
     }
     from += character.length;
   }
-  return { value, spans };
+  return { value, spans: spans.length === value.length ? spans : [] };
 }
 
 /** Return offsets in the original UTF-16 string, never offsets in case-folded text. */
@@ -34,6 +38,7 @@ export function textMatches(text: string, query: string): TextMatch[] {
   const needle = foldedText(query).value;
   if (!needle) return [];
   const { value, spans } = foldedText(text);
+  if (spans.length !== value.length) return [];
   const matches: TextMatch[] = [];
   let start = 0;
   while (start <= value.length - needle.length) {
@@ -66,13 +71,19 @@ function targetIndex(
   return matches.length - 1;
 }
 
+/** CodeMirror positions count any configured line separator as one UTF-16 unit, including CRLF. */
+function sourceSearchText(view: CodeMirrorView): string {
+  const { doc } = view.state;
+  return Array.from({ length: doc.lines }, (_unused, index) => doc.line(index + 1).text).join('\n');
+}
+
 export function findInSourceView(
   view: CodeMirrorView,
   query: string,
   direction: 1 | -1,
   restart: boolean,
 ): EditorFindResult {
-  const matches = textMatches(view.state.sliceDoc(), query);
+  const matches = textMatches(sourceSearchText(view), query);
   const index = targetIndex(matches, view.state.selection.main.from, direction, restart);
   if (index < 0) return { current: 0, total: 0 };
   const match = matches[index]!;
@@ -81,14 +92,36 @@ export function findInSourceView(
   return { current: index + 1, total: matches.length };
 }
 
-/** ProseMirror textBetween 插入的块分隔符会占一个偏移；遍历 text nodes 直接取 doc position。 */
+/**
+ * Search one textblock at a time: adjacent marked text nodes are continuous visible text, but
+ * adjacent blocks are not. Map its raw UTF-16 offsets back to ProseMirror document positions.
+ */
 function blockMatches(view: ProseMirrorView, query: string): TextMatch[] {
   const matches: TextMatch[] = [];
-  view.state.doc.descendants((node, pos) => {
-    if (!node.isText || !node.text) return;
-    for (const match of textMatches(node.text, query)) {
-      matches.push({ from: pos + match.from, to: pos + match.to });
+  view.state.doc.descendants((block, blockPos) => {
+    if (!block.isTextblock) return;
+    let text = '';
+    const positions: number[] = [];
+    block.forEach((node, offset) => {
+      if (!node.isText || !node.text) {
+        // A hard break or inline atom is not continuous text across its boundary.
+        text += '\u0000';
+        positions.push(-1);
+        return;
+      }
+      text += node.text;
+      for (let index = 0; index < node.text.length; index++) {
+        positions.push(blockPos + 1 + offset + index);
+      }
+    });
+    for (const match of textMatches(text, query)) {
+      const from = positions[match.from];
+      const end = positions[match.to - 1];
+      if (from !== undefined && from >= 0 && end !== undefined && end >= 0) {
+        matches.push({ from, to: end + 1 });
+      }
     }
+    return false;
   });
   return matches;
 }
