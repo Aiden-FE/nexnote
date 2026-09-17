@@ -6,7 +6,7 @@
 
 块编辑 × Markdown × 双链 × Git × 可控 AI。
 
-[English](README.md) · [下载最新版本](https://github.com/Aiden-FE/nexnote/releases/latest) · [GitHub](https://github.com/Aiden-FE/nexnote)
+[产品官网](https://nexnote-app.vercel.app/zh) · [English](README.md) · [下载最新版本](https://github.com/Aiden-FE/nexnote/releases/latest) · [GitHub](https://github.com/Aiden-FE/nexnote)
 
 ## 为什么是 NexNote
 

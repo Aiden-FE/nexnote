@@ -6,7 +6,7 @@
 
 Block editing × Markdown × Wikilinks × Git × controllable AI.
 
-[简体中文](README.zh-CN.md) · [Download the latest release](https://github.com/Aiden-FE/nexnote/releases/latest) · [GitHub](https://github.com/Aiden-FE/nexnote)
+[Website](https://nexnote-app.vercel.app) · [简体中文](README.zh-CN.md) · [Download the latest release](https://github.com/Aiden-FE/nexnote/releases/latest) · [GitHub](https://github.com/Aiden-FE/nexnote)
 
 ## Why NexNote
 
