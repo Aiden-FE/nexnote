@@ -75,6 +75,7 @@ function mermaidSlashItem(
     id,
     title,
     hint: '```mermaid',
+    icon: id.includes('gantt') ? 'gantt' : 'flowchart',
     group: '插入',
     kind: 'structure',
     contract: { execution: 'insert-safe-block', capability: 'editable-line' },
@@ -93,13 +94,14 @@ export function buildBuiltinSlashItems(flags: BuiltinBlockFlags): SlashMenuItem[
   const items: SlashMenuItem[] = [];
   if (flags.mermaid) {
     items.push(
-      mermaidSlashItem(
-        'builtin:mermaid-flowchart',
-        '流程图',
-        MermaidBlock.options.flowchartSource,
-        ['mermaid', '流程', 'flow', 'flowchart', 'chart'],
-      ),
-      mermaidSlashItem('builtin:mermaid-gantt', '甘特图', MermaidBlock.options.ganttSource, [
+      mermaidSlashItem('insert:mermaid-flowchart', '流程图', MermaidBlock.options.flowchartSource, [
+        'mermaid',
+        '流程',
+        'flow',
+        'flowchart',
+        'chart',
+      ]),
+      mermaidSlashItem('insert:mermaid-gantt', '甘特图', MermaidBlock.options.ganttSource, [
         'mermaid',
         '甘特',
         'gantt',
@@ -112,6 +114,7 @@ export function buildBuiltinSlashItems(flags: BuiltinBlockFlags): SlashMenuItem[
         id: 'builtin:math-block',
         title: '公式（块级）',
         hint: '$$',
+        icon: 'outline',
         group: '插入',
         kind: 'structure',
         contract: { execution: 'insert-safe-block', capability: 'editable-line' },
@@ -127,6 +130,7 @@ export function buildBuiltinSlashItems(flags: BuiltinBlockFlags): SlashMenuItem[
         id: 'builtin:math-inline',
         title: '公式（行内）',
         hint: '$',
+        icon: 'outline',
         group: '插入',
         kind: 'inline',
         contract: { execution: 'insert-at-cursor', capability: 'editable-line' },

@@ -104,12 +104,12 @@ describe('内置块 NodeView（DEV-015）', () => {
     const byId = (id: string) => items.find((i) => i.id === id)!;
     const fakeCtx = { view: kernel.editor.view };
 
-    expect(byId('builtin:mermaid-flowchart').action(fakeCtx as never)).toBe(true);
+    expect(byId('insert:mermaid-flowchart').action(fakeCtx as never)).toBe(true);
     const md = kernel.getMarkdown();
     expect(md).toContain('```mermaid\nflowchart TD');
     expect(md).toContain('A[开始]');
 
-    expect(byId('builtin:mermaid-gantt').action(fakeCtx as never)).toBe(true);
+    expect(byId('insert:mermaid-gantt').action(fakeCtx as never)).toBe(true);
     expect(kernel.getMarkdown()).toContain('```mermaid\ngantt\n');
     expect(kernel.getJSON().content?.some((n) => n.type === 'mermaidBlock')).toBe(true);
 

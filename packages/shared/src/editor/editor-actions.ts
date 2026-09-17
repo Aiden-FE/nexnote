@@ -59,6 +59,8 @@ export interface EditorActionCatalogEntry {
   semantic: EditorActionSemantic;
   group: EditorActionGroup;
   modes: readonly EditorActionMode[];
+  hint?: string;
+  shortcut?: string;
   quickInsert?: QuickInsertMetadata;
 }
 
@@ -76,6 +78,8 @@ export const EDITOR_ACTION_CATALOG: readonly EditorActionCatalogEntry[] = [
     name: '撤销',
     icon: 'undo',
     semantic: 'history',
+    hint: '撤销（⌘Z）',
+    shortcut: '⌘Z',
     group: 'primary',
     modes: ['block', 'source'],
   },
@@ -84,6 +88,8 @@ export const EDITOR_ACTION_CATALOG: readonly EditorActionCatalogEntry[] = [
     name: '重做',
     icon: 'redo',
     semantic: 'history',
+    hint: '重做（⌘⇧Z）',
+    shortcut: '⌘⇧Z',
     group: 'primary',
     modes: ['block', 'source'],
   },
@@ -206,6 +212,8 @@ export const EDITOR_ACTION_CATALOG: readonly EditorActionCatalogEntry[] = [
     name: '粗体',
     icon: 'bold',
     semantic: 'format',
+    hint: '粗体（⌘B）',
+    shortcut: '⌘B',
     group: 'primary',
     modes: ['block', 'source'],
   },
@@ -214,6 +222,8 @@ export const EDITOR_ACTION_CATALOG: readonly EditorActionCatalogEntry[] = [
     name: '斜体',
     icon: 'italic',
     semantic: 'format',
+    hint: '斜体（⌘I）',
+    shortcut: '⌘I',
     group: 'primary',
     modes: ['block', 'source'],
   },
@@ -222,6 +232,7 @@ export const EDITOR_ACTION_CATALOG: readonly EditorActionCatalogEntry[] = [
     name: '双链',
     icon: 'wikilink',
     semantic: 'format',
+    hint: '双链 [[页面名]]',
     group: 'primary',
     modes: ['block', 'source'],
     quickInsert: quick('插入', 'inline', 'insert-at-cursor', 'editable-line', [
@@ -236,6 +247,8 @@ export const EDITOR_ACTION_CATALOG: readonly EditorActionCatalogEntry[] = [
     name: '删除线',
     icon: 'strike',
     semantic: 'format',
+    hint: '删除线（⌘⇧X）',
+    shortcut: '⌘⇧X',
     group: 'format',
     modes: ['block', 'source'],
   },
@@ -252,6 +265,8 @@ export const EDITOR_ACTION_CATALOG: readonly EditorActionCatalogEntry[] = [
     name: '外链',
     icon: 'link',
     semantic: 'format',
+    hint: '外链（⌘K）',
+    shortcut: '⌘K',
     group: 'format',
     modes: ['block', 'source'],
   },
@@ -366,6 +381,21 @@ export const EDITOR_ACTION_CATALOG: readonly EditorActionCatalogEntry[] = [
       'table of contents',
       '目录',
       '正文目录',
+    ]),
+  },
+  {
+    id: 'ai:insert',
+    name: 'AI 插入',
+    icon: 'sparkles',
+    semantic: 'ai',
+    group: 'ai',
+    modes: ['block', 'source'],
+    quickInsert: quick('AI', 'ai', 'explicit-ai', 'explicit-ai', [
+      'ai',
+      'insert',
+      'prompt',
+      '生成',
+      '插入',
     ]),
   },
   {

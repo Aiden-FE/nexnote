@@ -2,7 +2,7 @@ import { Extension } from '@tiptap/core';
 import { Plugin, PluginKey } from '@tiptap/pm/state';
 import type { EditorView } from '@tiptap/pm/view';
 import { SLASH_ACTION_GROUP_ORDER } from '@nexnote/shared';
-import type { QuickInsertKind } from '@nexnote/shared';
+import type { EditorActionIconKey, QuickInsertKind } from '@nexnote/shared';
 import { defaultQuickInsertItems } from './quick-insert-catalog';
 import {
   canExecuteSlashAction,
@@ -16,6 +16,7 @@ export interface QuickInsertItem {
   id: string;
   title: string;
   hint?: string;
+  icon?: EditorActionIconKey;
   keywords?: string[];
   aliases?: string[];
   group?: string;
@@ -92,11 +93,22 @@ function triggerContext(view: EditorView, from: number): SlashExecutionContext |
     return null;
   if (before.length && !/\s$/.test(before)) return null;
   const emptyBlock = /^\s*$/.test(before) && /^\s*$/.test(after);
+  const blockFrom = $from.before(1);
+  const blockTo = $from.after(1);
   return {
     triggerFrom: from,
-    triggerTo: from,
+    // handleTextInput fires before the input transaction. Include the slash immediately;
+    // later transactions advance this endpoint from the actual selection.
+    triggerTo: from + 1,
+    blockFrom,
+    blockTo,
     emptyBlock,
-    capabilities: new Set(['editable-line', ...(emptyBlock ? (['empty-block'] as const) : [])]),
+    capabilities: new Set([
+      'editable-line',
+      'explicit-ai',
+      'plugin-defined',
+      ...(emptyBlock ? (['empty-block'] as const) : []),
+    ]),
   };
 }
 
@@ -124,9 +136,26 @@ export const QuickInsert = Extension.create<QuickInsertOptions, SlashMenuState>(
       context = null;
       sync(view);
     };
+    const selectionMatchesTrigger = (view: EditorView): boolean => {
+      if (!context || !view.state.selection.empty) return false;
+      const { from } = view.state.selection;
+      if (from < context.triggerFrom || from > context.blockTo) return false;
+      const $from = view.state.doc.resolve(from);
+      return $from.depth >= 1 && $from.before(1) === context.blockFrom;
+    };
     const refresh = (view: EditorView) => {
       if (!context) return;
-      context = { ...context, triggerTo: view.state.selection.from };
+      if (!selectionMatchesTrigger(view)) {
+        close(view);
+        return;
+      }
+      // ProseMirror may publish selection updates before DOMObserver has advanced the
+      // selection. The exact owned range is therefore derived from the committed input
+      // query, whose characters entered through handleTextInput, not from a stale cursor.
+      context = {
+        ...context,
+        triggerTo: context.triggerFrom + 1 + extension.storage.query.length,
+      };
       extension.storage.items = extension.options.items(extension.storage.query, context);
       extension.storage.activeIndex = Math.min(
         extension.storage.activeIndex,
@@ -141,13 +170,11 @@ export const QuickInsert = Extension.create<QuickInsertOptions, SlashMenuState>(
         !(item.available?.(context) ?? true)
       )
         return;
-      if (item.contract?.execution === 'explicit-ai') {
-        if (!item.action({ view, context })) return;
-        consumeSlashTrigger(view, context);
-      } else {
-        consumeSlashTrigger(view, context);
-        if (!item.action({ view, context })) return;
-      }
+      const executingContext = context;
+      // All action classes consume only the tracked `/query` span. Structural handlers
+      // themselves insert at a top-level boundary and never replace current body text.
+      consumeSlashTrigger(view, executingContext);
+      if (!item.action({ view, context: executingContext })) return;
       close(view);
     };
     return [
@@ -164,7 +191,17 @@ export const QuickInsert = Extension.create<QuickInsertOptions, SlashMenuState>(
           });
           view.dom.parentElement?.append(menu.dom);
           return {
-            update: sync,
+            update(view, previousState) {
+              // A typing transaction maps the active selection. Only selection-only moves
+              // may invalidate a trigger; closing during a doc change loses the next query char.
+              if (
+                extension.storage.open &&
+                previousState.doc.eq(view.state.doc) &&
+                !selectionMatchesTrigger(view)
+              )
+                close(view);
+              else sync(view);
+            },
             destroy: () => {
               menu?.destroy();
               menu = null;
@@ -188,7 +225,15 @@ export const QuickInsert = Extension.create<QuickInsertOptions, SlashMenuState>(
               return false;
             }
             extension.storage.query += text.startsWith('/') ? text.slice(1) : text;
-            refresh(view);
+            if (context)
+              context = {
+                ...context,
+                triggerTo: context.triggerFrom + 1 + extension.storage.query.length,
+              };
+            extension.storage.items = context
+              ? extension.options.items(extension.storage.query, context)
+              : [];
+            sync(view);
             return false;
           },
           handleKeyDown(view, event) {
@@ -216,10 +261,7 @@ export const QuickInsert = Extension.create<QuickInsertOptions, SlashMenuState>(
             }
             if (event.key === 'Backspace') {
               if (!extension.storage.query.length) close(view);
-              else {
-                extension.storage.query = extension.storage.query.slice(0, -1);
-                refresh(view);
-              }
+              else extension.storage.query = extension.storage.query.slice(0, -1);
             }
             return false;
           },

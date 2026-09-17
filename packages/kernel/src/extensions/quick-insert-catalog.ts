@@ -10,6 +10,7 @@ function item(id: string, action: QuickInsertItem['action']): QuickInsertItem {
   return {
     id,
     title: definition.name,
+    icon: definition.icon,
     aliases: [...quick.aliases],
     keywords: [...quick.aliases],
     group: quick.group,

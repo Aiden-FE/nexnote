@@ -53,6 +53,24 @@ async function type(kernel: ReturnType<typeof createEditor>, text: string): Prom
 }
 const press = (dom: HTMLElement, key: string) =>
   dom.dispatchEvent(new KeyboardEvent('keydown', { key, bubbles: true, cancelable: true }));
+async function backspace(kernel: ReturnType<typeof createEditor>): Promise<void> {
+  const dom = kernel.editor.view.dom;
+  press(dom, 'Backspace');
+  const pos = kernel.editor.state.selection.from;
+  const at = kernel.editor.view.domAtPos(pos);
+  if (at.node.nodeType === Node.TEXT_NODE && at.offset > 0) {
+    (at.node as Text).deleteData(at.offset - 1, 1);
+    const range = document.createRange();
+    range.setStart(at.node, at.offset - 1);
+    range.collapse(true);
+    document.getSelection()?.removeAllRanges();
+    document.getSelection()?.addRange(range);
+    dom.dispatchEvent(
+      new InputEvent('input', { bubbles: true, inputType: 'deleteContentBackward' }),
+    );
+    await new Promise((resolve) => setTimeout(resolve, 0));
+  }
+}
 function selectAt(kernel: ReturnType<typeof createEditor>, pos: number): void {
   kernel.editor.view.dispatch(
     kernel.editor.state.tr.setSelection(TextSelection.create(kernel.editor.state.doc, pos)),
@@ -112,8 +130,15 @@ describe('斜杠快捷输入真实 TipTap DOM 链路（DEV-052）', () => {
     press(first.dom, 'Tab');
     expect(first.kernel.editor.state.selection.$from.parent.attrs.level).toBe(2);
     expect(first.kernel.getMarkdown()).not.toContain('/h2');
+    expect(first.kernel.getMarkdown()).not.toContain('h2');
     expect(first.kernel.undo()).toBe(true);
+    expect(first.kernel.editor.state.selection.$from.parent.type.name).not.toBe('heading');
     expect(first.kernel.redo()).toBe(true);
+    expect(
+      first.kernel
+        .getJSON()
+        .content?.some((node) => node.type === 'heading' && node.attrs?.level === 2),
+    ).toBe(true);
     const second = mount('\u00a0');
     selectAt(second.kernel, second.kernel.editor.state.doc.content.size - 1);
     await type(second.kernel, '/二级标题');
@@ -136,13 +161,44 @@ describe('斜杠快捷输入真实 TipTap DOM 链路（DEV-052）', () => {
     selectAt(structure.kernel, structure.kernel.editor.state.doc.content.size - 1);
     await type(structure.kernel, '/表格');
     press(structure.dom, 'Enter');
-    expect(structure.kernel.getMarkdown()).toContain('正文');
+    const structureText = structure.kernel.getMarkdown();
+    expect(structureText).toContain('正文');
+    expect(structureText).not.toContain('/表格');
     expect(structure.kernel.getJSON().content?.some((node) => node.type === 'table')).toBe(true);
+    expect(structure.kernel.undo()).toBe(true);
+    expect(structure.kernel.getMarkdown()).toContain('正文');
+    expect(structure.kernel.redo()).toBe(true);
+    expect(structure.kernel.getMarkdown()).not.toContain('/表格');
     const inline = mount('\u00a0');
     selectAt(inline.kernel, inline.kernel.editor.state.doc.content.size - 1);
     await type(inline.kernel, '/双链');
     press(inline.dom, 'Enter');
     expect(inline.kernel.getMarkdown()).toContain('\\[\\[');
+  });
+
+  it('裸 / 精确消费且单步 undo/redo；换块后旧菜单立即关闭且 Enter 无效', async () => {
+    const naked = mount('\u00a0');
+    selectAt(naked.kernel, naked.kernel.editor.state.doc.content.size - 1);
+    await type(naked.kernel, '/');
+    press(naked.dom, 'ArrowDown');
+    press(naked.dom, 'Enter');
+    expect(naked.kernel.getMarkdown()).not.toContain('/');
+    expect(naked.kernel.undo()).toBe(true);
+    expect(naked.kernel.editor.state.selection.$from.parent.type.name).toBe('paragraph');
+    expect(naked.kernel.redo()).toBe(true);
+
+    const moved = mount('第一段 \n\n第二段');
+    selectAt(moved.kernel, firstNodeEnd(moved.kernel, 'paragraph'));
+    await type(moved.kernel, '/h2');
+    const secondPos = moved.kernel.editor.state.doc.content.size - 1;
+    selectAt(moved.kernel, secondPos);
+    expect(moved.host.querySelector('[data-slash-menu]')?.getAttribute('style')).toContain(
+      'display: none',
+    );
+    const before = moved.kernel.getMarkdown().trimEnd();
+    press(moved.dom, 'Enter');
+    expect(moved.kernel.getMarkdown().trimEnd()).toBe(before);
+    expect(moved.kernel.getMarkdown()).toContain('第二段');
   });
   it('Escape/Backspace/空态及插件能力过滤', async () => {
     const { kernel, dom, host } = mount('\u00a0', () => [
@@ -164,7 +220,7 @@ describe('斜杠快捷输入真实 TipTap DOM 链路（DEV-052）', () => {
     const before = kernel.getMarkdown();
     press(dom, 'Enter');
     expect(kernel.getMarkdown()).toBe(before);
-    for (let index = 0; index <= '隐藏'.length; index += 1) press(dom, 'Backspace');
+    for (let index = 0; index <= '隐藏'.length; index += 1) await backspace(kernel);
     expect(host.querySelector('[data-slash-menu]')?.getAttribute('style')).toContain(
       'display: none',
     );

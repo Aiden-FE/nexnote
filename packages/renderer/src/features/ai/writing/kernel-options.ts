@@ -45,9 +45,10 @@ export function writingContextMenu(ctx: { target: string }): ContextMenuItem[] {
 /** 斜杠 `/ai` 项：空块基于上文生成，选区作用于选区。 */
 export function writingSlashItems(controller: WritingController): SlashMenuItem[] {
   const aiInsert: SlashMenuItem = {
-    id: 'ai-insert',
+    id: 'ai:insert',
     title: 'AI 插入',
     hint: '指令…',
+    icon: 'sparkles',
     group: 'AI',
     kind: 'ai',
     contract: { execution: 'explicit-ai', capability: 'explicit-ai' },
@@ -71,6 +72,7 @@ export function writingSlashItems(controller: WritingController): SlashMenuItem[
       id: `ai-${action.id}`,
       title: `AI · ${action.label}`,
       hint: '/ai',
+      icon: 'sparkles',
       group: 'AI',
       kind: 'ai',
       contract: { execution: 'explicit-ai', capability: 'explicit-ai' },

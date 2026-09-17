@@ -229,7 +229,10 @@ function createMediaInsert(options: MediaInsertOptions): {
         if (!schema.nodes.image) return;
         view.dispatch(
           view.state.tr
-            .replaceSelectionWith(schema.nodes.image.create({ src: relPath, alt: '' }))
+            .insert(
+              view.state.selection.$from.after(1),
+              schema.nodes.image.create({ src: relPath, alt: '' }),
+            )
             .scrollIntoView(),
         );
       });
@@ -237,7 +240,7 @@ function createMediaInsert(options: MediaInsertOptions): {
     pickAttachment: () => {
       void runInsert('*/*', (kernel, relPath) => {
         const { view } = kernel.editor;
-        view.dispatch(view.state.tr.insertText(`[附件](${relPath})`));
+        kernel.insertMarkdownBlocks(`[附件](${relPath})`, view.state.selection.from, 'after');
       });
     },
   };
@@ -248,24 +251,28 @@ function createMediaInsertSlashItems(options: MediaInsertOptions): SlashMenuItem
   const media = createMediaInsert(options);
   return [
     {
-      id: 'image',
+      id: INSERT_IMAGE_ID,
       title: '图片',
       hint: 'img',
+      icon: 'image',
       keywords: ['image', 'img', 'picture', 'tupian'],
       group: '插入',
       kind: 'structure',
+      contract: { execution: 'insert-safe-block', capability: 'editable-line' },
       action: () => {
         media.pickImage();
         return true;
       },
     },
     {
-      id: 'attachment',
+      id: INSERT_ATTACHMENT_ID,
       title: '附件',
       hint: 'file',
+      icon: 'attachment',
       keywords: ['attachment', 'file', 'fujian'],
       group: '插入',
       kind: 'structure',
+      contract: { execution: 'insert-safe-block', capability: 'editable-line' },
       action: () => {
         media.pickAttachment();
         return true;

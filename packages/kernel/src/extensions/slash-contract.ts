@@ -5,6 +5,9 @@ import type { QuickInsertCapability, QuickInsertExecution } from '@nexnote/share
 export interface SlashExecutionContext {
   triggerFrom: number;
   triggerTo: number;
+  /** 触发时所在的顶层块；菜单不得跨块复用旧触发范围。 */
+  blockFrom: number;
+  blockTo: number;
   /** trigger 前后均无有效正文，才允许块类型转换。 */
   emptyBlock: boolean;
   capabilities: ReadonlySet<QuickInsertCapability>;
