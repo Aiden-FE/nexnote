@@ -1,18 +1,17 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { ChevronDown, ChevronUp, Search, X } from 'lucide-react';
+import { useTabStore } from '../stores/tab-store';
 
-export interface EditorFindResult {
-  current: number;
-  total: number;
-}
+import type { EditorFindResult } from './find';
 
 interface EditorFindBarProps {
   onFind: (query: string, direction: 1 | -1, restart: boolean) => EditorFindResult;
+  tabId: string;
   onClose?: () => void;
 }
 
 /** 当前编辑视图的轻量查找栏。命中定位由宿主编辑器完成，并同步显现折叠正文。 */
-export function EditorFindBar({ onFind, onClose }: EditorFindBarProps) {
+export function EditorFindBar({ onFind, onClose, tabId }: EditorFindBarProps) {
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState('');
   const [result, setResult] = useState<EditorFindResult>({ current: 0, total: 0 });
@@ -20,17 +19,32 @@ export function EditorFindBar({ onFind, onClose }: EditorFindBarProps) {
 
   useEffect(() => {
     const keydown = (event: KeyboardEvent) => {
-      if (!(event.metaKey || event.ctrlKey) || event.key.toLowerCase() !== 'f') return;
+      if (
+        event.defaultPrevented ||
+        !(event.metaKey || event.ctrlKey) ||
+        event.shiftKey ||
+        event.altKey ||
+        event.key.toLowerCase() !== 'f' ||
+        useTabStore.getState().activeTabId !== tabId
+      )
+        return;
       event.preventDefault();
-      setOpen(true);
-      queueMicrotask(() => {
+      if (open) {
         inputRef.current?.focus();
         inputRef.current?.select();
-      });
+      } else {
+        setOpen(true);
+      }
     };
     window.addEventListener('keydown', keydown);
     return () => window.removeEventListener('keydown', keydown);
-  }, []);
+  }, [open, tabId]);
+
+  useLayoutEffect(() => {
+    if (!open) return;
+    inputRef.current?.focus();
+    inputRef.current?.select();
+  }, [open]);
 
   const close = (): void => {
     setOpen(false);
@@ -111,24 +125,4 @@ export function EditorFindBar({ onFind, onClose }: EditorFindBarProps) {
       </button>
     </div>
   );
-}
-
-export interface TextMatch {
-  from: number;
-  to: number;
-}
-
-export function textMatches(text: string, query: string): TextMatch[] {
-  const needle = query.toLocaleLowerCase();
-  if (!needle) return [];
-  const haystack = text.toLocaleLowerCase();
-  const matches: TextMatch[] = [];
-  let from = 0;
-  while (from <= haystack.length - needle.length) {
-    const index = haystack.indexOf(needle, from);
-    if (index < 0) break;
-    matches.push({ from: index, to: index + query.length });
-    from = index + Math.max(1, needle.length);
-  }
-  return matches;
 }

@@ -3,7 +3,50 @@ import { TextSelection } from '@tiptap/pm/state';
 import type { EditorView as ProseMirrorView } from '@tiptap/pm/view';
 import { revealBlockFoldAt } from '@nexnote/kernel';
 import { revealSourceHeadingAt } from './source/heading-fold';
-import { textMatches, type EditorFindResult, type TextMatch } from './EditorFindBar';
+export interface EditorFindResult {
+  current: number;
+  total: number;
+}
+
+export interface TextMatch {
+  from: number;
+  to: number;
+}
+
+/** Case folding may expand a character (İ → i + ◌̇). Map every folded UTF-16 unit back to the original span. */
+function foldedText(text: string): { value: string; spans: TextMatch[] } {
+  let value = '';
+  const spans: TextMatch[] = [];
+  let from = 0;
+  for (const character of text) {
+    const folded = character.toLocaleLowerCase();
+    value += folded;
+    for (let index = 0; index < folded.length; index++) {
+      spans.push({ from, to: from + character.length });
+    }
+    from += character.length;
+  }
+  return { value, spans };
+}
+
+/** Return offsets in the original UTF-16 string, never offsets in case-folded text. */
+export function textMatches(text: string, query: string): TextMatch[] {
+  const needle = foldedText(query).value;
+  if (!needle) return [];
+  const { value, spans } = foldedText(text);
+  const matches: TextMatch[] = [];
+  let start = 0;
+  while (start <= value.length - needle.length) {
+    const index = value.indexOf(needle, start);
+    if (index < 0) break;
+    const match = { from: spans[index]!.from, to: spans[index + needle.length - 1]!.to };
+    if (matches.at(-1)?.from !== match.from || matches.at(-1)?.to !== match.to) {
+      matches.push(match);
+    }
+    start = index + Math.max(1, needle.length);
+  }
+  return matches;
+}
 
 function targetIndex(
   matches: readonly TextMatch[],

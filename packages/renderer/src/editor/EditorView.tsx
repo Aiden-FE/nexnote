@@ -95,11 +95,8 @@ import {
   headingLevelFromAction,
 } from './toolbar/heading-actions';
 import { parseBlockOutline, type OutlineEntry } from './outline';
-import {
-  expandAllCurrentHeadingFolds,
-  HEADING_FOLDS_EXPANDED_EVENT,
-  type HeadingFoldsExpandedDetail,
-} from './expand-all';
+import { expandAllCurrentHeadingFolds } from './expand-all';
+import { useHeadingFoldAnnouncement } from './use-heading-fold-announcement';
 import { EditorFindBar } from './EditorFindBar';
 import { findInBlockView } from './find';
 import {
@@ -358,21 +355,10 @@ export function EditorView({ tab }: EditorViewProps) {
   const [outlineVisible, setOutlineVisible] = useState(false);
   const outlineVisibleRef = useRef(false);
   const [outline, setOutline] = useState<OutlineEntry[]>([]);
-  const [foldAnnouncement, setFoldAnnouncement] = useState('');
+  const foldAnnouncement = useHeadingFoldAnnouncement(tab.id);
   useEffect(() => {
     outlineVisibleRef.current = outlineVisible;
   }, [outlineVisible]);
-  useEffect(() => {
-    const announce = (event: Event): void => {
-      const detail = (event as CustomEvent<HeadingFoldsExpandedDetail>).detail;
-      if (detail.tabId !== tab.id) return;
-      setFoldAnnouncement(
-        detail.count > 0 ? `已展开 ${detail.count} 个折叠章节` : '当前页面没有折叠章节',
-      );
-    };
-    window.addEventListener(HEADING_FOLDS_EXPANDED_EVENT, announce);
-    return () => window.removeEventListener(HEADING_FOLDS_EXPANDED_EVENT, announce);
-  }, [tab.id]);
 
   // 写作辅助编排器（DEV-010）：在 mount effect 中创建（effect 内读取 ref 合法），
   // getter 在事件触发时才经 ref 读取实时 kernel/路径；控制器本身稳定。
@@ -1110,13 +1096,14 @@ export function EditorView({ tab }: EditorViewProps) {
         </div>
       </div>
       <EditorFindBar
+        tabId={tab.id}
         onFind={(query, direction, restart) => {
           const view = kernelRef.current?.editor.view;
           return view ? findInBlockView(view, query, direction, restart) : { current: 0, total: 0 };
         }}
       />
       <span className="sr-only" role="status" aria-live="polite" data-testid="fold-status">
-        {foldAnnouncement}
+        <span key={foldAnnouncement.key}>{foldAnnouncement.message}</span>
       </span>
       {outlineVisible && (
         <OutlinePanel

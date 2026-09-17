@@ -505,6 +505,35 @@ describe('DEV-054 块文档标题章节折叠', () => {
     expect(kernel.hasPendingSave()).toBe(false);
   });
 
+  it('普通 selectionSet 和插件选择变化不显式 reveal 隐藏章节', () => {
+    const { kernel } = trackedMake(
+      '# parent ^parent\n\n## child ^child\n\nhidden body ^body\n\n# other ^other\n\nother body ^otherBody\n',
+    );
+    kernel.toggleBlockFold('parent');
+    kernel.toggleBlockFold('child');
+    kernel.toggleBlockFold('other');
+    const hidden = topBlocks(kernel).find((block) => block.blockId === 'body')!;
+    const before = kernel.getMarkdown();
+
+    // API/plugin selection movements are not user requests to reveal hidden content.
+    kernel.editor.view.dispatch(
+      kernel.editor.state.tr.setSelection(
+        TextSelection.create(kernel.editor.state.doc, hidden.from + 1),
+      ),
+    );
+    kernel.editor.view.dispatch(kernel.editor.state.tr.setMeta('plugin-selection', true));
+    expect(kernel.isBlockFolded('parent')).toBe(true);
+    expect(kernel.isBlockFolded('child')).toBe(true);
+    expect(kernel.isBlockFolded('other')).toBe(true);
+
+    // Only the explicit outline/find action may reveal the necessary ancestors.
+    revealBlockFoldAt(kernel.editor.view, hidden.from + 1);
+    expect(kernel.isBlockFolded('parent')).toBe(false);
+    expect(kernel.isBlockFolded('child')).toBe(false);
+    expect(kernel.isBlockFolded('other')).toBe(true);
+    expect(kernel.getMarkdown()).toBe(before);
+  });
+
   it('全部展开只清空当前块编辑视图折叠状态且不写正文', () => {
     const current = trackedMake('# A ^a\n\nA正文 ^ap\n\n# B ^b\n\nB正文 ^bp\n');
     const background = trackedMake('# C ^c\n\nC正文 ^cp\n');

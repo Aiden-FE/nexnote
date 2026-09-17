@@ -495,20 +495,6 @@ export const Fold = Extension.create({
             if (tr.docChanged) {
               folded = reconcileFoldedAfterDocChange(tr, oldEditorState, folded);
             }
-            // 查找（以及任何显式定位）把选区落入隐藏正文时，按 ADR-0013 自动
-            // 仅展开遮蔽该命中的祖先。目标标题自身不在其隐藏范围内，因而保持折叠。
-            if (tr.selectionSet && folded.size > 0) {
-              const target = tr.selection.head;
-              const concealedBy = foldedSectionRanges(
-                listTopLevelBlocksFromDoc(tr.doc),
-                folded,
-              ).filter((range) => target >= range.from && target < range.to);
-              if (concealedBy.length > 0) {
-                const next = new Set(folded);
-                for (const range of concealedBy) next.delete(range.blockId);
-                folded = next;
-              }
-            }
             return folded === old.folded ? old : { folded };
           },
         },

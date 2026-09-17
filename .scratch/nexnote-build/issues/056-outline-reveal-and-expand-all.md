@@ -54,7 +54,7 @@ Priority: P1
 
 ### 门禁与验收记录
 
-候选提交前工作树验证（最终 SHA 由本票提交产生）：
+首审候选 `3c8dc65` 提交前验证（以下为当时记录；首审结果仍为 FAIL）：
 
 - 定向测试：`fold.test.ts`、`source-heading-fold.test.ts`、`expand-all.test.ts`、`commands-builtin.test.ts`、`source-mode-outline.test.tsx`、`caret-insert.test.ts`：通过。
 - 完整 `pnpm test`：152 文件中 151 通过 / 1 跳过，1296 测试通过 / 2 跳过。
@@ -65,7 +65,18 @@ Priority: P1
 - `git diff --check`：通过。
 - Electron smoke：`NOT_RUN`（未执行打包应用 smoke，不以自动化测试或构建替代）。
 
+首审修复后新候选提交前工作树验证（候选 SHA 由追加提交产生）：
+
+- 定向测试：`editor-find.test.tsx`、`expand-all.test.tsx`、`fold.test.ts`、`source-heading-fold.test.ts`、`source-mode-outline.test.tsx`：50/50 通过；覆盖显式 reveal 反例、Unicode 原文 UTF-16 定位、真实页内查找与重复 aria-live。
+- 完整 `pnpm test`：154 文件中 153 通过 / 1 跳过，1303 测试通过 / 2 跳过。
+- `pnpm typecheck`：全部 workspace 包通过。
+- `pnpm lint`：0 error；4 个既有 `import()` type annotation warning，均不在本票文件。
+- `pnpm build`：Electron Vite 构建成功；既有 Rollup 动态导入/第三方注释 warning。
+- changed-format：本轮改动文件 `prettier --check` 通过；`git diff --check` 通过。
+- Electron smoke：`NOT_RUN`（未执行打包应用 smoke）。
+
 ### 审查状态
 
-- 实现阶段已完成自审，并修复了重复命令注册、全局最近编辑器导致的跨 tab 操作风险、查找抢占输入焦点及 CodeMirror 更新钩子重入 dispatch 风险。
-- 未预填独立 Standards + Spec PASS：固定候选提交上的独立双轴审查仍待执行。本票保持 `implementation-complete`，不标记 closed。
+- 首审（实际候选 `3c8dc65`；此前报告的 `fba0325` 非实际候选）为 **FAIL**，最终双轴验收项继续保持未勾选。
+- 首审 findings 与本轮修复：移除 Fold 插件对任意 `tr.selectionSet` 的自动 reveal，只允许目录与 find 显式调用 reveal；Unicode case-insensitive 查找改为将折叠后的 UTF-16 单元映射回原文范围，覆盖 `AİB` 找 `b`；搜索算法从 React UI 分离，补 CodeMirror/TipTap 原文定位测试；补真实页内 FindBar renderer 流程，`Mod/Ctrl+F` 仅由 active tab 响应，`Mod/Ctrl+Shift+F` 保留给全局 SearchPanel；合并两种编辑器的 tab 过滤 aria-live hook，并通过替换 live-region 子节点重复播报相同消息。
+- 本轮仅完成实现阶段自审与定向/全量门禁；未预填独立 Standards + Spec PASS。固定的新候选提交仍需独立双轴复审，本票保持 `implementation-complete`，不标记 closed。

@@ -79,11 +79,8 @@ import { sourceWikilinkCompletion } from './wikilink-completion';
 import { clearSourceHeadingFolds, revealSourceHeadingAt } from './heading-fold';
 import { EditorFindBar } from '../EditorFindBar';
 import { findInSourceView } from '../find';
-import {
-  expandAllCurrentHeadingFolds,
-  HEADING_FOLDS_EXPANDED_EVENT,
-  type HeadingFoldsExpandedDetail,
-} from '../expand-all';
+import { expandAllCurrentHeadingFolds } from '../expand-all';
+import { useHeadingFoldAnnouncement } from '../use-heading-fold-announcement';
 import { createRedlinkPage, currentPageCandidates } from '../wikilink-page-ops';
 import { DocumentPropertiesPopover } from '../../features/frontmatter/DocumentPropertiesPopover';
 import { Resizer } from '../../shell/Resizer';
@@ -193,7 +190,7 @@ export function SourceModeView({ tab }: { tab: TabDescriptor }) {
   // DEV-047 悬浮目录：局部 UI 状态，不落 store；切换三视图不重建 CodeMirror。
   const [outlineVisible, setOutlineVisible] = useState(false);
   const outlineVisibleRef = useRef(false);
-  const [foldAnnouncement, setFoldAnnouncement] = useState('');
+  const foldAnnouncement = useHeadingFoldAnnouncement(tab.id);
   const [outline, setOutline] = useState<OutlineEntry[]>([]);
 
   useEffect(() => {
@@ -203,17 +200,6 @@ export function SourceModeView({ tab }: { tab: TabDescriptor }) {
   useEffect(() => {
     outlineVisibleRef.current = outlineVisible;
   }, [outlineVisible]);
-  useEffect(() => {
-    const announce = (event: Event): void => {
-      const detail = (event as CustomEvent<HeadingFoldsExpandedDetail>).detail;
-      if (detail.tabId !== tab.id) return;
-      setFoldAnnouncement(
-        detail.count > 0 ? `已展开 ${detail.count} 个折叠章节` : '当前页面没有折叠章节',
-      );
-    };
-    window.addEventListener(HEADING_FOLDS_EXPANDED_EVENT, announce);
-    return () => window.removeEventListener(HEADING_FOLDS_EXPANDED_EVENT, announce);
-  }, [tab.id]);
 
   /** 悬浮目录数据源：与 CodeMirror 正文（无 YAML 头）同源，点击定位偏移可直接使用。 */
   const refreshOutline = useCallback((body: string): void => {
@@ -1011,6 +997,7 @@ export function SourceModeView({ tab }: { tab: TabDescriptor }) {
       </div>
       {!previewOnly && (
         <EditorFindBar
+          tabId={tab.id}
           onFind={(query, direction, restart) => {
             const view = editorRef.current?.view;
             return view
@@ -1020,7 +1007,7 @@ export function SourceModeView({ tab }: { tab: TabDescriptor }) {
         />
       )}
       <span className="sr-only" role="status" aria-live="polite" data-testid="fold-status">
-        {foldAnnouncement}
+        <span key={foldAnnouncement.key}>{foldAnnouncement.message}</span>
       </span>
       {outlineVisible && (
         <OutlinePanel
