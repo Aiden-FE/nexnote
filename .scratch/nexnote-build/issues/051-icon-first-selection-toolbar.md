@@ -2,7 +2,7 @@
 
 Type: dev
 Module: editor
-Status: implementation-complete
+Status: closed
 Blocked by: DEV-050（共享动作语义与 Tooltip）
 Depends: DEV-023（双模式划词动作）、DEV-034（AI 下拉）、DEV-041（临时翻译）
 Effort: M
@@ -34,7 +34,7 @@ Priority: P1
 - [x] Markdown 格式化与双链插入保持单事务、可撤销及未选范围字节不变。
 - [x] Renderer 测试覆盖鼠标与键盘可达性、菜单焦点、Escape、空/折叠选区和预览排除。
 - [x] 候选 SHA 上通过标准门禁；Electron smoke 未执行时记录 `NOT_RUN`。
-- [ ] 在 `.wt/DEV-051` / `dev/DEV-051` 隔离实现，完成 Standards + Spec 双轴审查后方可合并。
+- [x] 在 `.wt/DEV-051` / `dev/DEV-051` 隔离实现，完成 Standards + Spec 双轴审查后方可合并。
 
 ## 实施证据（2026-09-17，dev/DEV-051）
 
@@ -73,6 +73,11 @@ Priority: P1
 - 新增真实 `SourceModeView` + 未 mock CodeMirror 的 preview renderer 测试：存在真实选区时 bubble 仍隐藏，所有内部按钮 `tabIndex=-1` / 不可访问；同时保留 preview capability 单元覆盖。
 - AI 菜单成功执行会归还 trigger；若执行同步关闭 bubble，焦点回所属 TipTap/CodeMirror 编辑器，真实 DOM 断言覆盖。
 - 三审修复候选门禁（追加提交前）：定向 `vitest` 5 files / 86 tests、全项目 `typecheck`、完整 `test` 151 files（150 passed / 1 skipped）、1290 tests（1288 passed / 2 skipped）、`lint`（0 errors、4 个既有 warnings）、`build`、changed-format、diff-check 均通过；最终独立双轴结果仍不预填。Electron smoke：`NOT_RUN`。
+
+## 最终独立双轴审查（固定候选 `2d6e505`）
+
+- Standards：**PASS**；Spec：**PASS**。审查对象为固定候选 `2d6e505`，本次仅追加票据结项记录，不变更实现。
+- Electron smoke：`NOT_RUN`（未执行，不作为验收运行证据）。
 
 ## 关联决策
 
