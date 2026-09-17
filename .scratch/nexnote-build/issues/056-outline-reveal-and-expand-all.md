@@ -65,7 +65,7 @@ Priority: P1
 - `git diff --check`：通过。
 - Electron smoke：`NOT_RUN`（未执行打包应用 smoke，不以自动化测试或构建替代）。
 
-首审修复后新候选提交前工作树验证（候选 SHA 由追加提交产生）：
+首审修复后代码候选 `3c2b83c` 的提交前工作树验证（票据证据更新另行提交）：
 
 - 定向测试：`editor-find.test.tsx`、`expand-all.test.tsx`、`fold.test.ts`、`source-heading-fold.test.ts`、`source-mode-outline.test.tsx`：50/50 通过；覆盖显式 reveal 反例、Unicode 原文 UTF-16 定位、真实页内查找与重复 aria-live。
 - 完整 `pnpm test`：154 文件中 153 通过 / 1 跳过，1303 测试通过 / 2 跳过。
@@ -79,4 +79,4 @@ Priority: P1
 
 - 首审（实际候选 `3c8dc65`；此前报告的 `fba0325` 非实际候选）为 **FAIL**，最终双轴验收项继续保持未勾选。
 - 首审 findings 与本轮修复：移除 Fold 插件对任意 `tr.selectionSet` 的自动 reveal，只允许目录与 find 显式调用 reveal；Unicode case-insensitive 查找改为将折叠后的 UTF-16 单元映射回原文范围，覆盖 `AİB` 找 `b`；搜索算法从 React UI 分离，补 CodeMirror/TipTap 原文定位测试；补真实页内 FindBar renderer 流程，`Mod/Ctrl+F` 仅由 active tab 响应，`Mod/Ctrl+Shift+F` 保留给全局 SearchPanel；合并两种编辑器的 tab 过滤 aria-live hook，并通过替换 live-region 子节点重复播报相同消息。
-- 本轮仅完成实现阶段自审与定向/全量门禁；未预填独立 Standards + Spec PASS。固定的新候选提交仍需独立双轴复审，本票保持 `implementation-complete`，不标记 closed。
+- 本轮仅完成实现阶段自审与定向/全量门禁；未预填独立 Standards + Spec PASS。修复代码候选 `3c2b83c`（及本次票据证据提交）仍需独立双轴复审，本票保持 `implementation-complete`，不标记 closed。
