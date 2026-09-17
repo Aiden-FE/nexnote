@@ -1,35 +1,32 @@
 {
   "schema": "nexnote-release-qa/v1",
   "repository": "Aiden-FE/nexnote",
-  "tag": "v0.0.13",
-  "commit": "40d50a5c6ae4589f4df7b8f4b3b19ae4b77d141b",
+  "tag": "v0.0.14",
+  "commit": "d0422e151524530b1c2babe61d7dbbdbdd8bddc6",
   "channel": "stable",
   "allRequiredChecksPassed": true,
-  "scope": "v0.0.13-release-candidate",
+  "scope": "v0.0.14-release-candidate",
   "machineChecks": {
     "typecheck": "passed",
     "lint": "passed (0 errors, 4 pre-existing warnings)",
     "tests": "150 files passed, 1222 tests passed, 1 file skipped, 2 tests skipped",
     "build": "passed",
     "releaseConfig": "31/31 passed",
-    "devElectronSmoke": "253/253 passed (results: .scratch/nexnote-build/smoke/DEV-048/results.json; exit code 0)"
+    "devElectronSmoke": "254/254 passed (DEV-049 red/green geometry: 644/1057 -> 1057/1057)"
   },
   "candidateContents": {
-    "ticket": "DEV-048 (.scratch/nexnote-build/issues/048-outline-preview-followup-bugs.md)",
+    "ticket": "DEV-049 (.scratch/nexnote-build/issues/049-preview-root-width.md)",
     "highlights": [
-      "preview view content column now fills the content area (LivePreview fillContent; removed relative/absolute class conflict on the hidden editor pane)",
-      "floating outline header icon toggles collapse to a small icon button with focus retention",
-      "split-view outline clicks scroll the preview directly to the matched heading (normalized text match) with a 1.2s monotonic-clock suppression window over ratio scroll sync",
-      "smoke evidence strengthened: computed max-width:none assertion and middle-heading delta<250px discrimination (253/253)"
+      "removed root-level .nexnote-editor-scope max-width that constrained the LivePreview flex item itself",
+      "kept width policy at the LivePreview inner content column: split view reading width, preview view max-w-none",
+      "added red-capable Electron geometry check comparing preview root width with markdown layout"
     ]
   },
   "notRun": [
     "GitHub Actions runner execution for this candidate",
-    "Intel macOS physical/package verification",
-    "Windows physical installation and SmartScreen verification",
-    "Ubuntu physical installation and GPG verification",
-    "public N-1 to v0.0.13 network upgrade",
+    "physical platform installation verification",
+    "public N-1 to v0.0.14 network upgrade",
     "post-publication 24-hour monitoring"
   ],
-  "notes": "macOS artifacts are Ad hoc signed without notarization; Windows Authenticode and Linux GPG may publish unsigned when credentials are unavailable. NOT_RUN items remain explicitly unverified and must not be described as passed."
+  "notes": "macOS artifacts are Ad hoc signed without notarization; unsigned platform artifacts may publish when credentials are unavailable."
 }
