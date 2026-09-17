@@ -302,11 +302,10 @@ export function createEditor(
         // DEV-054：单块升降级保留 blockId（折叠状态按新层级重算）；
         // 多块转换不携带旧 ID，交给 UniqueID 分配，避免重复 blockId。
         const fromBlock = editor.state.doc.nodeAt(f);
-        const fromBlockPos = f;
-        const single = fromBlock && fromBlockPos + fromBlock.nodeSize === t ? fromBlock : null;
+        const single = fromBlock && f + fromBlock.nodeSize === t ? fromBlock : null;
         if (single && single.type.name === 'heading') {
           const blockId = (single.attrs as { blockId?: string }).blockId;
-          const tr = editor.state.tr.setNodeMarkup(fromBlockPos, undefined, {
+          const tr = editor.state.tr.setNodeMarkup(f, undefined, {
             ...single.attrs,
             level,
           });
