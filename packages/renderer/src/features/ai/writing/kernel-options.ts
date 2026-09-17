@@ -1,4 +1,5 @@
 import { computeEditorActionContext } from '@nexnote/kernel';
+import { editorActionCatalogEntry } from '@nexnote/shared';
 import type { BubbleAction, ContextMenuItem, SlashMenuItem } from '@nexnote/kernel';
 import { toAiActionId, WRITING_ACTIONS } from './actions';
 import { CHAT_ASK_ACTION } from '../chat/ask-ai';
@@ -44,23 +45,28 @@ export function writingContextMenu(ctx: { target: string }): ContextMenuItem[] {
 
 /** 斜杠 `/ai` 项：空块基于上文生成，选区作用于选区。 */
 export function writingSlashItems(controller: WritingController): SlashMenuItem[] {
+  const canonical = editorActionCatalogEntry('ai:insert');
+  if (!canonical?.quickInsert) throw new Error('Missing canonical AI insert action');
   const aiInsert: SlashMenuItem = {
-    id: 'ai-insert',
-    title: 'AI 插入',
-    hint: '指令…',
-    group: 'AI',
-    keywords: ['ai', 'insert', 'prompt', '生成', '插入'],
-    action: ({ view }) => {
+    id: canonical.id,
+    title: canonical.name,
+    hint: canonical.hint,
+    icon: canonical.icon,
+    group: canonical.quickInsert.group,
+    kind: canonical.quickInsert.kind,
+    contract: {
+      execution: canonical.quickInsert.execution,
+      capability: canonical.quickInsert.capability,
+    },
+    keywords: [...canonical.quickInsert.aliases],
+    action: ({ view, afterSlashCommit }) => {
       const instruction = window.prompt('AI 插入指令', '请基于当前上下文补充内容');
       if (!instruction?.trim()) return false;
-      const editorContext = computeEditorActionContext(view, 'cursor');
-      // expand 是“在光标处追加”的既有白名单动作；指令作为目标传入，正文不会被替换。
-      controller.trigger(toAiActionId('expand'), {
-        ...editorContext,
-        text: instruction.trim(),
-        target: 'cursor',
-      });
-      return true;
+      return controller.triggerSlash(
+        'ai:expand',
+        { ...computeEditorActionContext(view, 'cursor'), text: instruction.trim() },
+        afterSlashCommit,
+      );
     },
   };
   return [
@@ -69,14 +75,17 @@ export function writingSlashItems(controller: WritingController): SlashMenuItem[
       id: `ai-${action.id}`,
       title: `AI · ${action.label}`,
       hint: '/ai',
+      icon: 'sparkles',
       group: 'AI',
+      kind: 'ai',
+      contract: { execution: 'explicit-ai', capability: 'explicit-ai' },
       keywords: ['ai', '✨', ...action.keywords],
-      action: ({ view }) => {
-        const target = view.state.selection.empty ? 'cursor' : 'selection';
-        const editorContext = computeEditorActionContext(view, target);
-        controller.trigger(toAiActionId(action.id), editorContext);
-        return true;
-      },
+      action: ({ view, afterSlashCommit }) =>
+        controller.triggerSlash(
+          toAiActionId(action.id),
+          computeEditorActionContext(view, 'cursor'),
+          afterSlashCommit,
+        ),
     })),
   ];
 }

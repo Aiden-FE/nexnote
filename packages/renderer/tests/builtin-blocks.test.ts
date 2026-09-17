@@ -43,10 +43,10 @@ describe('内置插件渲染派生（DEV-015）', () => {
     expect(items.map((i) => i.id).sort()).toEqual([
       'builtin:math-block',
       'builtin:math-inline',
-      'builtin:mermaid-flowchart',
-      'builtin:mermaid-gantt',
+      'insert:mermaid-flowchart',
+      'insert:mermaid-gantt',
     ]);
-    expect(items.filter((i) => i.id.startsWith('builtin:mermaid')).map((i) => i.title)).toEqual([
+    expect(items.filter((i) => i.id.startsWith('insert:mermaid')).map((i) => i.title)).toEqual([
       '流程图',
       '甘特图',
     ]);
@@ -60,8 +60,8 @@ describe('内置插件渲染派生（DEV-015）', () => {
     ]);
     expect(flags.katex).toBe(false);
     expect(buildBuiltinSlashItems(flags).map((i) => i.id)).toEqual([
-      'builtin:mermaid-flowchart',
-      'builtin:mermaid-gantt',
+      'insert:mermaid-flowchart',
+      'insert:mermaid-gantt',
     ]);
     expect(buildBuiltinViewExtensions(flags).map((e) => e.name)).toEqual(['mermaidBlock']);
   });

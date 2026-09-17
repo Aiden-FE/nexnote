@@ -1,8 +1,13 @@
 // @vitest-environment happy-dom
 import { describe, expect, it, vi, beforeEach } from 'vitest';
 import { createEditor, computeEditorActionContext } from '@nexnote/kernel';
+import { TextSelection } from '@tiptap/pm/state';
 import type { EditorKernelInstance } from '@nexnote/kernel';
-import { createWritingController, useWritingStore } from '../src/features/ai/writing';
+import {
+  createWritingController,
+  useWritingStore,
+  writingSlashItems,
+} from '../src/features/ai/writing';
 
 type Listener = (payload: unknown) => void;
 
@@ -68,6 +73,36 @@ function selectPrefix(kernel: EditorKernelInstance, chars = 6) {
 
 const stripAnchors = (md: string) => md.replace(/[ \t]*\^[A-Za-z0-9]+/g, '').trim();
 
+async function typeInTipTap(kernel: EditorKernelInstance, text: string): Promise<void> {
+  const dom = kernel.editor.view.dom;
+  dom.focus();
+  for (const character of text) {
+    dom.dispatchEvent(
+      new KeyboardEvent('keydown', { key: character, bubbles: true, cancelable: true }),
+    );
+    const at = kernel.editor.view.domAtPos(kernel.editor.state.selection.from);
+    const node =
+      at.node.nodeType === Node.TEXT_NODE ? (at.node as Text) : document.createTextNode('');
+    if (at.node.nodeType === Node.TEXT_NODE) node.insertData(at.offset, character);
+    else {
+      at.node.insertBefore(node, at.node.childNodes[at.offset] ?? null);
+      node.appendData(character);
+    }
+    const range = document.createRange();
+    range.setStart(
+      node,
+      at.node.nodeType === Node.TEXT_NODE ? at.offset + character.length : character.length,
+    );
+    range.collapse(true);
+    document.getSelection()?.removeAllRanges();
+    document.getSelection()?.addRange(range);
+    dom.dispatchEvent(
+      new InputEvent('input', { bubbles: true, inputType: 'insertText', data: character }),
+    );
+    await new Promise((resolve) => setTimeout(resolve, 0));
+  }
+}
+
 function setup(markdown = '第一句原文。第二句。', bridge: Bridge = installBridge()) {
   const kernel = mountKernel(markdown);
   const controller = createWritingController({
@@ -88,6 +123,284 @@ const fail = (bridge: Bridge, runId: string, message = '上游断线', code = 'S
 
 beforeEach(() => {
   useWritingStore.getState().closeSession();
+});
+
+describe('DEV-052 slash AI 坐标与启动边界', () => {
+  it('真实 /ai 确认后 Accept 在消费后的光标插入，Accept undo 不回退到旧坐标', async () => {
+    const bridge = installBridge();
+    const host = document.createElement('div');
+    document.body.append(host);
+    let controller: ReturnType<typeof createWritingController> | null = null;
+    const kernel = createEditor(host, {
+      initialMarkdown: '正文 ',
+      dragHandle: false,
+      extraSlashItems: () => (controller ? writingSlashItems(controller) : []),
+    });
+    controller = createWritingController({
+      getKernel: () => kernel,
+      getContext: () => ({ markdown: kernel.getMarkdown(), backlinks: [] }),
+    });
+    kernel.editor.view.dispatch(
+      kernel.editor.state.tr.setSelection(
+        TextSelection.create(kernel.editor.state.doc, kernel.editor.state.doc.content.size - 1),
+      ),
+    );
+    const prompt = vi.fn().mockReturnValue('补充');
+    window.prompt = prompt;
+    await typeInTipTap(kernel, '/ai');
+    kernel.editor.view.dom.dispatchEvent(
+      new KeyboardEvent('keydown', { key: 'Enter', bubbles: true, cancelable: true }),
+    );
+    await bridge.flush();
+    expect(bridge.startCalls).toHaveLength(1);
+    expect(stripAnchors(kernel.getMarkdown())).toBe('正文');
+    delta(bridge, 'stream-1', '生成');
+    done(bridge, 'stream-1');
+    await bridge.flush();
+    expect(() => useWritingStore.getState().session?.accept()).not.toThrow();
+    expect(stripAnchors(kernel.getMarkdown())).toBe('正文 生成');
+    expect(kernel.undo()).toBe(true);
+    expect(stripAnchors(kernel.getMarkdown())).toBe('正文');
+    delete (window as unknown as { prompt?: unknown }).prompt;
+    kernel.destroy();
+  });
+
+  it('流式失败保留已生成部分但 trigger 已消费；Reject 不写回', async () => {
+    const bridge = installBridge();
+    const host = document.createElement('div');
+    document.body.append(host);
+    let controller: ReturnType<typeof createWritingController> | null = null;
+    const kernel = createEditor(host, {
+      initialMarkdown: '正文 ',
+      dragHandle: false,
+      extraSlashItems: () => (controller ? writingSlashItems(controller) : []),
+    });
+    controller = createWritingController({
+      getKernel: () => kernel,
+      getContext: () => ({ markdown: kernel.getMarkdown(), backlinks: [] }),
+    });
+    kernel.editor.view.dispatch(
+      kernel.editor.state.tr.setSelection(
+        TextSelection.create(kernel.editor.state.doc, kernel.editor.state.doc.content.size - 1),
+      ),
+    );
+    window.prompt = vi.fn().mockReturnValue('补充');
+    await typeInTipTap(kernel, '/ai');
+    kernel.editor.view.dom.dispatchEvent(
+      new KeyboardEvent('keydown', { key: 'Enter', bubbles: true, cancelable: true }),
+    );
+    await bridge.flush();
+    delta(bridge, 'stream-1', '半句');
+    fail(bridge, 'stream-1');
+    await bridge.flush();
+    expect(useWritingStore.getState().session?.status).toBe('error');
+    expect(useWritingStore.getState().session?.generated).toBe('半句');
+    expect(stripAnchors(kernel.getMarkdown())).toBe('正文');
+    useWritingStore.getState().session?.reject();
+    expect(stripAnchors(kernel.getMarkdown())).toBe('正文');
+    delete (window as unknown as { prompt?: unknown }).prompt;
+    kernel.destroy();
+  });
+
+  it('AI Accept 遇到后续文档变更或切换当前页面时不写错位置', async () => {
+    const bridge = installBridge();
+    const host = document.createElement('div');
+    document.body.append(host);
+    let active: EditorKernelInstance | null = null;
+    let controller: ReturnType<typeof createWritingController> | null = null;
+    const kernel = createEditor(host, {
+      initialMarkdown: '正文 ',
+      dragHandle: false,
+      extraSlashItems: () => (controller ? writingSlashItems(controller) : []),
+    });
+    active = kernel;
+    controller = createWritingController({
+      getKernel: () => active,
+      getContext: () => ({ markdown: kernel.getMarkdown(), backlinks: [] }),
+    });
+    kernel.editor.view.dispatch(
+      kernel.editor.state.tr.setSelection(
+        TextSelection.create(kernel.editor.state.doc, kernel.editor.state.doc.content.size - 1),
+      ),
+    );
+    window.prompt = vi.fn().mockReturnValue('补充');
+    await typeInTipTap(kernel, '/ai');
+    kernel.editor.view.dom.dispatchEvent(
+      new KeyboardEvent('keydown', { key: 'Enter', bubbles: true, cancelable: true }),
+    );
+    await bridge.flush();
+    delta(bridge, 'stream-1', '生成');
+    done(bridge, 'stream-1');
+    await bridge.flush();
+    kernel.editor.view.dispatch(kernel.editor.state.tr.insertText('外部', 1));
+    const changed = kernel.getMarkdown();
+    expect(() => useWritingStore.getState().session?.accept()).not.toThrow();
+    expect(kernel.getMarkdown()).toBe(changed);
+    // A second session must not dispatch into the previous page after a tab switch.
+    kernel.editor.view.dispatch(
+      kernel.editor.state.tr.setSelection(
+        TextSelection.create(kernel.editor.state.doc, kernel.editor.state.doc.content.size - 1),
+      ),
+    );
+    await typeInTipTap(kernel, '/ai');
+    kernel.editor.view.dom.dispatchEvent(
+      new KeyboardEvent('keydown', { key: 'Enter', bubbles: true, cancelable: true }),
+    );
+    await bridge.flush();
+    delta(bridge, 'stream-2', '另页');
+    done(bridge, 'stream-2');
+    await bridge.flush();
+    active = null;
+    const beforeSwitch = kernel.getMarkdown();
+    expect(() => useWritingStore.getState().session?.accept()).not.toThrow();
+    expect(kernel.getMarkdown()).toBe(beforeSwitch);
+    delete (window as unknown as { prompt?: unknown }).prompt;
+    kernel.destroy();
+  });
+
+  it('同一编辑器发生多次文档变化后即使 undo 回旧文本仍不接受旧 AI 锚点', async () => {
+    const bridge = installBridge();
+    const host = document.createElement('div');
+    document.body.append(host);
+    let controller: ReturnType<typeof createWritingController> | null = null;
+    const kernel = createEditor(host, {
+      initialMarkdown: '正文 ',
+      dragHandle: false,
+      extraSlashItems: () => (controller ? writingSlashItems(controller) : []),
+    });
+    controller = createWritingController({
+      getKernel: () => kernel,
+      getContext: () => ({ markdown: kernel.getMarkdown(), backlinks: [] }),
+    });
+    kernel.editor.view.dispatch(
+      kernel.editor.state.tr.setSelection(
+        TextSelection.create(kernel.editor.state.doc, kernel.editor.state.doc.content.size - 1),
+      ),
+    );
+    window.prompt = vi.fn().mockReturnValue('补充');
+    await typeInTipTap(kernel, '/ai');
+    kernel.editor.view.dom.dispatchEvent(
+      new KeyboardEvent('keydown', { key: 'Enter', bubbles: true, cancelable: true }),
+    );
+    await bridge.flush();
+    delta(bridge, 'stream-1', '生成');
+    done(bridge, 'stream-1');
+    await bridge.flush();
+    kernel.editor.view.dispatch(kernel.editor.state.tr.insertText('临时', 1));
+    expect(kernel.undo()).toBe(true);
+    const before = kernel.getMarkdown();
+    useWritingStore.getState().session?.accept();
+    expect(kernel.getMarkdown()).toBe(before);
+    delete (window as unknown as { prompt?: unknown }).prompt;
+    kernel.destroy();
+  });
+
+  it('AI 会话跨两个页面后不把生成结果写进另一页', async () => {
+    const bridge = installBridge();
+    const firstHost = document.createElement('div');
+    const secondHost = document.createElement('div');
+    document.body.append(firstHost, secondHost);
+    let active: EditorKernelInstance | null = null;
+    let controller: ReturnType<typeof createWritingController> | null = null;
+    const first = createEditor(firstHost, {
+      initialMarkdown: '正文 ',
+      dragHandle: false,
+      extraSlashItems: () => (controller ? writingSlashItems(controller) : []),
+    });
+    const second = createEditor(secondHost, { initialMarkdown: '另页', dragHandle: false });
+    active = first;
+    controller = createWritingController({
+      getKernel: () => active,
+      getContext: () => ({ markdown: active?.getMarkdown() ?? '', backlinks: [] }),
+    });
+    first.editor.view.dispatch(
+      first.editor.state.tr.setSelection(
+        TextSelection.create(first.editor.state.doc, first.editor.state.doc.content.size - 1),
+      ),
+    );
+    window.prompt = vi.fn().mockReturnValue('补充');
+    await typeInTipTap(first, '/ai');
+    first.editor.view.dom.dispatchEvent(
+      new KeyboardEvent('keydown', { key: 'Enter', bubbles: true, cancelable: true }),
+    );
+    await bridge.flush();
+    delta(bridge, 'stream-1', '生成');
+    done(bridge, 'stream-1');
+    await bridge.flush();
+    const firstText = first.getMarkdown();
+    const secondText = second.getMarkdown();
+    active = second;
+    useWritingStore.getState().session?.accept();
+    expect(first.getMarkdown()).toBe(firstText);
+    expect(second.getMarkdown()).toBe(secondText);
+    delete (window as unknown as { prompt?: unknown }).prompt;
+    first.destroy();
+    second.destroy();
+  });
+
+  it('真实 /ai prompt 取消保留原文且不启动写作流', async () => {
+    const bridge = installBridge();
+    const host = document.createElement('div');
+    document.body.append(host);
+    let controller: ReturnType<typeof createWritingController> | null = null;
+    const kernel = createEditor(host, {
+      initialMarkdown: '正文 ',
+      dragHandle: false,
+      extraSlashItems: () => (controller ? writingSlashItems(controller) : []),
+    });
+    controller = createWritingController({
+      getKernel: () => kernel,
+      getContext: () => ({ markdown: kernel.getMarkdown(), backlinks: [] }),
+    });
+    kernel.editor.view.dispatch(
+      kernel.editor.state.tr.setSelection(
+        TextSelection.create(kernel.editor.state.doc, kernel.editor.state.doc.content.size - 1),
+      ),
+    );
+    window.prompt = vi.fn().mockReturnValue(null);
+    await typeInTipTap(kernel, '/ai');
+    kernel.editor.view.dom.dispatchEvent(
+      new KeyboardEvent('keydown', { key: 'Enter', bubbles: true, cancelable: true }),
+    );
+    await bridge.flush();
+    expect(stripAnchors(kernel.getMarkdown())).toBe('正文 /ai');
+    expect(bridge.startCalls).toHaveLength(0);
+    expect(useWritingStore.getState().session).toBeNull();
+    delete (window as unknown as { prompt?: unknown }).prompt;
+    kernel.destroy();
+  });
+
+  it('真实 /ai 的提示取消或写作启动失败保留 trigger', async () => {
+    const bridge = installBridge();
+    bridge.setFailStart(true);
+    const host = document.createElement('div');
+    document.body.append(host);
+    let controller: ReturnType<typeof createWritingController> | null = null;
+    const kernel = createEditor(host, {
+      initialMarkdown: '正文 ',
+      dragHandle: false,
+      extraSlashItems: () => (controller ? writingSlashItems(controller) : []),
+    });
+    controller = createWritingController({
+      getKernel: () => kernel,
+      getContext: () => ({ markdown: kernel.getMarkdown(), backlinks: [] }),
+    });
+    kernel.editor.view.dispatch(
+      kernel.editor.state.tr.setSelection(
+        TextSelection.create(kernel.editor.state.doc, kernel.editor.state.doc.content.size - 1),
+      ),
+    );
+    const prompt = vi.fn().mockReturnValue('补充');
+    window.prompt = prompt;
+    await typeInTipTap(kernel, '/ai');
+    kernel.editor.view.dom.dispatchEvent(
+      new KeyboardEvent('keydown', { key: 'Enter', bubbles: true, cancelable: true }),
+    );
+    await bridge.flush();
+    expect(stripAnchors(kernel.getMarkdown())).toBe('正文 /ai');
+    delete (window as unknown as { prompt?: unknown }).prompt;
+    kernel.destroy();
+  });
 });
 
 describe('DEV-037 写作辅助流式状态机（块编辑）', () => {

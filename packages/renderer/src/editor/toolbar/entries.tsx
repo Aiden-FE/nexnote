@@ -1,5 +1,6 @@
 import type { ReactNode } from 'react';
 import type { BubbleIconName } from '@nexnote/kernel';
+import { EDITOR_ACTION_CATALOG } from '@nexnote/shared';
 import {
   Bold,
   ChartGantt,
@@ -13,9 +14,9 @@ import {
   Italic,
   Link,
   ListTree,
-  PanelRight,
   Paperclip,
   Pilcrow,
+  Puzzle,
   Redo2,
   Sparkles,
   Strikethrough,
@@ -27,14 +28,6 @@ import {
 } from 'lucide-react';
 import { WRITING_ACTIONS, toAiActionId } from '../../features/ai/writing';
 import { TRANSLATE_DOCUMENT_ID } from '../../features/ai/translation/actions';
-import {
-  FORMAT_BOLD,
-  FORMAT_CODE,
-  FORMAT_ITALIC,
-  FORMAT_LINK,
-  FORMAT_STRIKE,
-  FORMAT_WIKILINK,
-} from '../interactions/format-ids';
 
 export const AI_ENTRY_ID = 'ai';
 export const AI_ASK_ID = 'ai:ask';
@@ -77,221 +70,74 @@ export interface EditorActionDefinition {
   semantic: EditorActionSemantic;
   modes: readonly EditorActionMode[];
   priority: ToolbarPriority;
-  /** Selection-bubble-only DOM icon/order projection; toolbar still consumes icon above. */
   selectionIcon?: BubbleIconName;
   selectionOrder?: number;
 }
 
 /** 唯一共享动作定义：名称、图标、分组、模式能力、优先级和执行语义均在此声明。 */
-export const EDITOR_ACTION_MODEL: readonly EditorActionDefinition[] = [
-  {
-    id: UNDO_ID,
-    label: '撤销',
-    hint: '撤销（⌘Z）',
-    shortcut: '⌘Z',
-    icon: <Undo2 className="size-3.5" />,
-    group: 'primary',
-    semantic: 'history',
-    modes: ['block', 'source'],
-    priority: 'persistent',
-  },
-  {
-    id: REDO_ID,
-    label: '重做',
-    hint: '重做（⌘⇧Z）',
-    shortcut: '⌘⇧Z',
-    icon: <Redo2 className="size-3.5" />,
-    group: 'primary',
-    semantic: 'history',
-    modes: ['block', 'source'],
-    priority: 'persistent',
-  },
-  {
-    id: BLOCK_TYPE_MENU_ID,
-    label: '标题/段落',
-    hint: '转换当前块或当前 Markdown 行',
-    icon: <Heading className="size-3.5" />,
-    group: 'primary',
-    semantic: 'block-type',
-    modes: ['block', 'source'],
-    priority: 'persistent',
-  },
-  {
-    id: FORMAT_BOLD,
-    label: '粗体',
-    hint: '粗体（⌘B）',
-    shortcut: '⌘B',
-    icon: <Bold className="size-3.5" />,
-    group: 'primary',
-    semantic: 'format',
-    modes: ['block', 'source'],
-    priority: 'persistent',
-    selectionIcon: 'bold',
-    selectionOrder: 1,
-  },
-  {
-    id: FORMAT_ITALIC,
-    label: '斜体',
-    hint: '斜体（⌘I）',
-    shortcut: '⌘I',
-    icon: <Italic className="size-3.5" />,
-    group: 'primary',
-    semantic: 'format',
-    modes: ['block', 'source'],
-    priority: 'persistent',
-    selectionIcon: 'italic',
-    selectionOrder: 2,
-  },
-  {
-    id: FORMAT_WIKILINK,
-    label: '双链',
-    hint: '双链 [[页面名]]',
-    icon: <span className="text-[10px] font-semibold">[[]]</span>,
-    group: 'primary',
-    semantic: 'format',
-    modes: ['block', 'source'],
-    priority: 'persistent',
-    selectionIcon: 'wikilink',
-    selectionOrder: 6,
-  },
-  {
-    id: FORMAT_STRIKE,
-    label: '删除线',
-    hint: '删除线（⌘⇧X）',
-    shortcut: '⌘⇧X',
-    icon: <Strikethrough className="size-3.5" />,
-    group: 'format',
-    semantic: 'format',
-    modes: ['block', 'source'],
-    priority: 'secondary',
-    selectionIcon: 'strike',
-    selectionOrder: 3,
-  },
-  {
-    id: FORMAT_CODE,
-    label: '行内代码',
-    hint: '行内代码（⌘E）',
-    shortcut: '⌘E',
-    icon: <Code className="size-3.5" />,
-    group: 'format',
-    semantic: 'format',
-    modes: ['block', 'source'],
-    priority: 'secondary',
-    selectionIcon: 'code',
-    selectionOrder: 4,
-  },
-  {
-    id: FORMAT_LINK,
-    label: '外链',
-    hint: '外链（⌘K）',
-    shortcut: '⌘K',
-    icon: <Link className="size-3.5" />,
-    group: 'format',
-    semantic: 'format',
-    modes: ['block', 'source'],
-    priority: 'secondary',
-    selectionIcon: 'link',
-    selectionOrder: 5,
-  },
-  {
-    id: FORMAT_SELECTION_ID,
-    label: '格式化选区',
-    icon: <TextSelect className="size-3.5" />,
-    group: 'format',
-    semantic: 'format',
-    modes: ['source'],
-    priority: 'secondary',
-  },
-  {
-    id: FORMAT_DOCUMENT_ID,
-    label: '格式化全文',
-    icon: <WandSparkles className="size-3.5" />,
-    group: 'format',
-    semantic: 'format',
-    modes: ['source'],
-    priority: 'secondary',
-  },
-  {
-    id: INSERT_TABLE_ID,
-    label: '表格',
-    hint: '插入 2×2 Markdown 表格',
-    icon: <Table className="size-3.5" />,
-    group: 'insert',
-    semantic: 'insert',
-    modes: ['block', 'source'],
-    priority: 'secondary',
-  },
-  {
-    id: INSERT_IMAGE_ID,
-    label: '图片',
-    hint: '导入图片并插入光标处',
-    icon: <Image className="size-3.5" />,
-    group: 'insert',
-    semantic: 'insert',
-    modes: ['block'],
-    priority: 'secondary',
-  },
-  {
-    id: INSERT_ATTACHMENT_ID,
-    label: '附件',
-    hint: '导入附件并插入链接',
-    icon: <Paperclip className="size-3.5" />,
-    group: 'insert',
-    semantic: 'insert',
-    modes: ['block'],
-    priority: 'secondary',
-  },
-  {
-    id: INSERT_FLOWCHART_ID,
-    label: '流程图',
-    hint: '插入 Mermaid 流程图',
-    icon: <Workflow className="size-3.5" />,
-    group: 'insert',
-    semantic: 'insert',
-    modes: ['block', 'source'],
-    priority: 'secondary',
-  },
-  {
-    id: INSERT_GANTT_ID,
-    label: '甘特图',
-    hint: '插入 Mermaid 甘特图',
-    icon: <ChartGantt className="size-3.5" />,
-    group: 'insert',
-    semantic: 'insert',
-    modes: ['block', 'source'],
-    priority: 'secondary',
-  },
-  {
-    id: INSERT_TOC_ID,
-    label: '正文目录',
-    hint: '在正文中插入目录',
-    icon: <ListTree className="size-3.5" />,
-    group: 'insert',
-    semantic: 'insert',
-    modes: ['block', 'source'],
-    priority: 'secondary',
-  },
-  {
-    id: AI_ENTRY_ID,
-    label: 'AI',
-    hint: 'AI 写作与对话入口',
-    icon: <Sparkles className="size-3.5" />,
-    group: 'ai',
-    semantic: 'ai',
-    modes: ['block', 'source'],
-    priority: 'persistent',
-  },
-  {
-    id: TOGGLE_OUTLINE_ID,
-    label: '悬浮目录',
-    hint: '显示或隐藏悬浮目录',
-    icon: <PanelRight className="size-3.5" />,
-    group: 'navigation',
-    semantic: 'navigation',
-    modes: ['block', 'source', 'preview'],
-    priority: 'supplementary',
-  },
-];
+const ICONS: Record<string, ReactNode> = {
+  undo: <Undo2 className="size-3.5" />,
+  redo: <Redo2 className="size-3.5" />,
+  heading: <Heading className="size-3.5" />,
+  paragraph: <Pilcrow className="size-3.5" />,
+  bold: <Bold className="size-3.5" />,
+  italic: <Italic className="size-3.5" />,
+  strike: <Strikethrough className="size-3.5" />,
+  code: <Code className="size-3.5" />,
+  link: <Link className="size-3.5" />,
+  wikilink: <span className="text-[10px] font-semibold">[[]]</span>,
+  selection: <TextSelect className="size-3.5" />,
+  wand: <WandSparkles className="size-3.5" />,
+  table: <Table className="size-3.5" />,
+  image: <Image className="size-3.5" />,
+  attachment: <Paperclip className="size-3.5" />,
+  flowchart: <Workflow className="size-3.5" />,
+  gantt: <ChartGantt className="size-3.5" />,
+  outline: <ListTree className="size-3.5" />,
+  plugin: <Puzzle className="size-3.5" />,
+  sparkles: <Sparkles className="size-3.5" />,
+};
+
+const SELECTION_ACTIONS: Readonly<Record<string, { icon: BubbleIconName; order: number }>> = {
+  'format:bold': { icon: 'bold', order: 1 },
+  'format:italic': { icon: 'italic', order: 2 },
+  'format:strike': { icon: 'strike', order: 3 },
+  'format:code': { icon: 'code', order: 4 },
+  'format:link': { icon: 'link', order: 5 },
+  'format:wikilink': { icon: 'wikilink', order: 6 },
+};
+
+/** Renderer 只把 shared catalog 的 icon semantic key 映射为 React component。 */
+export const EDITOR_ACTION_MODEL: readonly EditorActionDefinition[] = EDITOR_ACTION_CATALOG.filter(
+  (action) =>
+    !action.id.startsWith('block:heading:') &&
+    ![
+      'block:paragraph',
+      'block:bullet-list',
+      'block:ordered-list',
+      'block:task-list',
+      'block:blockquote',
+      'block:code',
+      'insert:horizontal-rule',
+    ].includes(action.id),
+).map((action) => ({
+  id: action.id,
+  label: action.name,
+  hint: action.hint,
+  shortcut: action.shortcut,
+  icon: ICONS[action.icon] ?? <Sparkles className="size-3.5" />,
+  group: action.group,
+  semantic: action.semantic,
+  modes: action.modes,
+  selectionIcon: SELECTION_ACTIONS[action.id]?.icon,
+  selectionOrder: SELECTION_ACTIONS[action.id]?.order,
+  priority:
+    action.group === 'primary' || action.group === 'ai'
+      ? 'persistent'
+      : action.group === 'navigation'
+        ? 'supplementary'
+        : 'secondary',
+}));
 
 const actionById = new Map(EDITOR_ACTION_MODEL.map((action) => [action.id, action]));
 export function editorAction(id: string): EditorActionDefinition {

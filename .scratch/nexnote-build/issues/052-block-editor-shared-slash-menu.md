@@ -2,11 +2,26 @@
 
 Type: dev
 Module: editor
-Status: open
+Status: closed
 Blocked by: DEV-050（共享动作模型）
 Depends: DEV-038（现有快捷插入）、DEV-047（结构插入与标题目录）
 Effort: M
 Priority: P1
+
+
+## 实施记录（2026-09-17，dev/DEV-052）
+
+- 固定候选 `52d75cb`：独立 Standards **PASS**、Spec **PASS**、数据安全对抗 **PASS**。候选门禁：定向 4 files / 68 tests passed；`CI=true pnpm typecheck` 通过；完整 `pnpm test` 152 files passed / 1 skipped，1320 tests passed / 2 skipped；`pnpm lint` 0 errors / 4 个既有 warnings；`pnpm build`、修改文件 Prettier、changed-format 与 diff-check 均通过。Electron smoke：`NOT_RUN`（真实 Chromium packaged 验证仍交由 DEV-057）。
+- 候选 HEAD `b9c6667` 的 Standards 通过，但 Spec / 对抗审查为 **FAIL**：`/ai` 消费 trigger 后仍把预消费的绝对光标坐标交给 Accept，可能 RangeError 或错误写入；本轮在原分支增加 commit 后锚点、当前页与后续文档事务 fail-closed。prompt 取消或初始 IPC 启动失败保留 `/ai`；成功建立 stream 后消费 `/ai`，后续 stream error 保留预览片段供显式 Accept / Reject（Reject 不写正文），遵循既有流式会话语义。补真实 TipTap DOM + WritingController 以及默认 `/表格` icon/hint/ARIA 回归；本记录不预填独立审查 PASS，Electron smoke 仍为 `NOT_RUN`。
+- 候选 HEAD `34a61ad` 的独立 Standards / Spec / 对抗审查均为 **FAIL**：兄弟可编辑行身份及 `/query` 区间校验、异步插件命令拒绝、AI 成功消费、菜单图标/ARIA、注入项 canonical 元数据仍有缺口；此前 typecheck / test / lint / build 通过不代表验收。后续在原分支追加修复与真实 DOM/Renderer 回归；本记录不预填独立审查 PASS。
+- 实现共享快捷插入动作定义（分组、中文/英文/Markdown 记号别名、编辑模式能力），块编辑菜单按“基础块、插入、AI、插件”分组并在组内按匹配度排序。
+- 真实 TipTap contenteditable DOM 的 KeyboardEvent/InputEvent + DOMObserver 验收覆盖段落、标题、列表、引用触发；代码块、行内代码、URL、路径、数学和单词内部不触发；以及 Tab 确认、Escape、Backspace、空态和 undo/redo。
+- 块类型在已有正文时过滤；结构动作在当前顶层块后插入，双链/AI/插件按能力分组；普通交互不触发 AI。
+- 初始候选 `f4c8343` 的 Standards/Spec 审查发现触发词 eligibility、数学 fail-closed、结构安全插入、共享模型与测试真实性缺口；追加 `2339b40`、`4c649b1`、`75e5355` 修复为 shared catalog 投影、execution/context contract、插件能力过滤与拆分的 quick-insert 模块。
+- 最终验证记录（候选 `75e5355`）：定向 4 files / 32 tests passed；`CI=true pnpm typecheck`、完整 `pnpm test`（152 files passed / 1 skipped，1292 tests passed / 2 skipped）、`pnpm lint`（0 errors，4 个既有 warnings）、`pnpm build`、`bash scripts/check-changed-format.sh master`、`git diff --check master...HEAD` 均通过。
+- 三审复现并修复候选 `bd2120d`：真实 DOM 回归覆盖前置事务 fail-closed、query 内光标失效、false/async-cancel 保留 trigger、逐字路径关闭与 IME composition 不触发；完整门禁为 typecheck、152 files passed / 1 skipped、1296 tests passed / 2 skipped、lint 0 error（4 既有 warnings）、build、changed-format、diff-check。**仍未满足“成功 action 的触发消费与 action 同一 TipTap undo transaction”这一更强原子 undo 要求；不声明双轴 PASS。**
+- 二审数据安全修复候选 `4bf9985`：修正真实输入后的 trigger 范围、裸 `/` 消费、跨块 selection 失效、override dedupe、媒体/AI/插件/内置动作 contract、canonical Mermaid/AI/media 元数据与 toolbar hint/shortcut 投影；定向 5 files / 52 tests、完整测试 152 files passed / 1 skipped，1293 tests passed / 2 skipped，typecheck/lint/build/changed-format/diff-check 均通过。
+- happy-dom 验收使用明确的浏览器默认输入 helper（keydown → DOM selection mutation → InputEvent → DOMObserver flush），断言实际节点与选区；最终真实 Chromium packaged 链路保留给 DEV-057 smoke。Electron smoke：`NOT_RUN`。
 
 ## Scope
 
@@ -29,14 +44,14 @@ Priority: P1
 
 ## 验收标准
 
-- [ ] 真实键盘输入可在段落、标题、列表项和引用中打开菜单，并在所有排除上下文中保持普通 `/`。
-- [ ] 中文、英文和记号别名过滤及全套键盘行为可用；确认和取消后的原文精确符合决策。
-- [ ] 三类动作的上下文可见性与执行结果正确，已有正文不出现不安全类型转换。
-- [ ] 插件动作按块编辑能力接入，不适用动作不展示。
-- [ ] 集成测试通过浏览器输入事件驱动真实 TipTap，不直接调用 `handleTextInput` 冒充验收。
-- [ ] 既有块菜单、选区工具栏、AI、插入与 undo/redo 测试不回归。
-- [ ] 候选 SHA 上通过标准门禁；Electron smoke 未执行时记录 `NOT_RUN`。
-- [ ] 在 `.wt/DEV-052` / `dev/DEV-052` 隔离实现，完成 Standards + Spec 双轴审查后方可合并。
+- [x] 真实键盘输入可在段落、标题、列表项和引用中打开菜单，并在所有排除上下文中保持普通 `/`。
+- [x] 中文、英文和记号别名过滤及全套键盘行为可用；确认和取消后的原文精确符合决策。
+- [x] 三类动作的上下文可见性与执行结果正确，已有正文不出现不安全类型转换。
+- [x] 插件动作按块编辑能力接入，不适用动作不展示。
+- [x] 集成测试通过浏览器输入事件驱动真实 TipTap，不直接调用 `handleTextInput` 冒充验收。
+- [x] 既有块菜单、选区工具栏、AI、插入与 undo/redo 测试不回归。
+- [x] 候选 SHA 上通过标准门禁；Electron smoke 未执行时记录 `NOT_RUN`。
+- [x] 在 `.wt/DEV-052` / `dev/DEV-052` 隔离实现，完成 Standards + Spec 双轴审查后方可合并。
 
 ## 关联决策
 

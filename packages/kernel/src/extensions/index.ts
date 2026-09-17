@@ -17,12 +17,7 @@ import {
   KernelTableRow,
 } from './code-table';
 import { createBlockIdExtensions } from './block-id';
-import {
-  SlashMenu,
-  defaultSlashMenuItems,
-  dedupeSlashItems,
-  sortSlashItemsByGroup,
-} from './slash-menu';
+import { SlashMenu, defaultSlashMenuItems, dedupeSlashItems, filterSlashItems } from './slash-menu';
 import type { SlashMenuItem } from './slash-menu';
 import { createKernelDragHandle } from './drag-handle';
 import { Fold } from './fold';
@@ -166,20 +161,15 @@ export function buildKernelExtensions(options: KernelExtensionsOptions = {}): Ex
     const extra = options.extraSlashItems ?? [];
     extensions.push(
       SlashMenu.configure({
-        items: (query: string) => {
-          const q = query.trim().toLowerCase();
-          // 函数式 extraSlashItems 在每次打开菜单时实时求值（跟踪插件启停）
+        items: (query, context) => {
+          // 函数式 extraSlashItems 在每次打开菜单时实时求值（跟踪插件启停）。
+          // 先合并能力允许的条目，再由共享排序器按「基础块 / 插入 / AI / 插件」
+          // 分组和组内匹配度投影；块类型在已有正文时被统一过滤。
           const extraItems = typeof extra === 'function' ? extra() : extra;
-          // 合并后按 id 去重（渲染层/插件覆盖同名内核默认项）并按分组排序（同组连续）
-          const merged = sortSlashItemsByGroup(
-            dedupeSlashItems([...defaultSlashMenuItems(query), ...extraItems]),
-          );
-          if (!q) return merged;
-          return merged.filter(
-            (it) =>
-              it.title.toLowerCase().includes(q) ||
-              it.id.toLowerCase().includes(q) ||
-              (it.keywords ?? []).some((k) => k.includes(q)),
+          return filterSlashItems(
+            dedupeSlashItems([...defaultSlashMenuItems(), ...extraItems]),
+            query,
+            context,
           );
         },
       }),

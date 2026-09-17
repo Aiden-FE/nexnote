@@ -1,6 +1,6 @@
 import type { Extension } from '@tiptap/core';
 import type { PluginView } from '@nexnote/shared';
-import { BUILTIN_PLUGIN_IDS } from '@nexnote/shared';
+import { BUILTIN_PLUGIN_IDS, editorActionCatalogEntry } from '@nexnote/shared';
 import {
   MathBlock,
   MathInline,
@@ -8,6 +8,7 @@ import {
   MERMAID_BLOCK_NAME,
   MATH_BLOCK_NAME,
   MATH_INLINE_NAME,
+  insertAtSafeBlockBoundary,
 } from '@nexnote/kernel';
 import type { SlashMenuItem } from '@nexnote/kernel';
 import { createKatexBlockView, createKatexInlineView, createMermaidView } from './node-views';
@@ -64,22 +65,25 @@ export function buildBuiltinViewExtensions(flags: BuiltinBlockFlags): Extension[
   return extensions;
 }
 
-function mermaidSlashItem(
-  id: string,
-  title: string,
-  source: string,
-  keywords: string[],
-): SlashMenuItem {
+function mermaidSlashItem(id: string, source: string): SlashMenuItem {
+  const catalog = editorActionCatalogEntry(id);
+  if (!catalog?.quickInsert) throw new Error(`Missing canonical slash action: ${id}`);
   return {
-    id,
-    title,
-    hint: '```mermaid',
-    group: '高级',
-    keywords,
-    action: ({ view }) => {
+    id: catalog.id,
+    title: catalog.name,
+    hint: catalog.hint,
+    icon: catalog.icon,
+    group: catalog.quickInsert.group,
+    kind: catalog.quickInsert.kind,
+    contract: {
+      execution: catalog.quickInsert.execution,
+      capability: catalog.quickInsert.capability,
+    },
+    keywords: [...catalog.quickInsert.aliases],
+    action: ({ view, tr }) => {
       const node = view.state.schema.nodes[MERMAID_BLOCK_NAME]?.create({ source });
       if (!node) return false;
-      view.dispatch(view.state.tr.replaceSelectionWith(node).scrollIntoView());
+      insertAtSafeBlockBoundary(view, node, tr);
       return true;
     },
   };
@@ -90,17 +94,8 @@ export function buildBuiltinSlashItems(flags: BuiltinBlockFlags): SlashMenuItem[
   const items: SlashMenuItem[] = [];
   if (flags.mermaid) {
     items.push(
-      mermaidSlashItem(
-        'builtin:mermaid-flowchart',
-        '流程图',
-        MermaidBlock.options.flowchartSource,
-        ['mermaid', '流程', 'flow', 'flowchart', 'chart'],
-      ),
-      mermaidSlashItem('builtin:mermaid-gantt', '甘特图', MermaidBlock.options.ganttSource, [
-        'mermaid',
-        '甘特',
-        'gantt',
-      ]),
+      mermaidSlashItem('insert:mermaid-flowchart', MermaidBlock.options.flowchartSource),
+      mermaidSlashItem('insert:mermaid-gantt', MermaidBlock.options.ganttSource),
     );
   }
   if (flags.katex) {
@@ -109,12 +104,15 @@ export function buildBuiltinSlashItems(flags: BuiltinBlockFlags): SlashMenuItem[
         id: 'builtin:math-block',
         title: '公式（块级）',
         hint: '$$',
-        group: '高级',
+        icon: 'outline',
+        group: '插入',
+        kind: 'structure',
+        contract: { execution: 'insert-safe-block', capability: 'editable-line' },
         keywords: ['math', '公式', 'latex', 'katex', '块级'],
-        action: ({ view }) => {
+        action: ({ view, tr }) => {
           const node = view.state.schema.nodes[MATH_BLOCK_NAME]?.create({ source: '' });
           if (!node) return false;
-          view.dispatch(view.state.tr.replaceSelectionWith(node).scrollIntoView());
+          insertAtSafeBlockBoundary(view, node, tr);
           return true;
         },
       },
@@ -122,12 +120,15 @@ export function buildBuiltinSlashItems(flags: BuiltinBlockFlags): SlashMenuItem[
         id: 'builtin:math-inline',
         title: '公式（行内）',
         hint: '$',
-        group: '高级',
+        icon: 'outline',
+        group: '插入',
+        kind: 'inline',
+        contract: { execution: 'insert-at-cursor', capability: 'editable-line' },
         keywords: ['math', '公式', 'latex', 'katex', '行内', 'inline'],
-        action: ({ view }) => {
+        action: ({ view, tr }) => {
           const node = view.state.schema.nodes[MATH_INLINE_NAME]?.create({ source: '' });
           if (!node) return false;
-          view.dispatch(view.state.tr.replaceSelectionWith(node).scrollIntoView());
+          tr.replaceSelectionWith(node).scrollIntoView();
           return true;
         },
       },

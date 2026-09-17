@@ -9,6 +9,7 @@ import { DocumentPropertiesPopover } from '../features/frontmatter/DocumentPrope
 import { useDocumentPropertiesStore } from '../features/frontmatter/document-properties-store';
 import { useIndexStore } from '../stores/index-store';
 import type { FrontmatterData } from '@nexnote/kernel';
+import { editorActionCatalogEntry, pluginQuickInsertMetadata } from '@nexnote/shared';
 import { parseFrontmatterYaml, serializeFrontmatterYaml, splitFrontmatter } from '@nexnote/kernel';
 import { collectVaultTags, inspectFrontmatter } from '../features/frontmatter/frontmatter-utils';
 import { bindH1ToTitle, firstH1, sanitizePageTitle, titleFromPath } from './title-sync';
@@ -49,6 +50,7 @@ import {
 import type { BlockMenuContext } from '@nexnote/kernel';
 import {
   computeEditorActionContext,
+  insertAtSafeBlockBoundary,
   type EditorKernelInstance,
   type SlashMenuItem,
 } from '@nexnote/kernel';
@@ -126,12 +128,15 @@ function pickFile(accept: string): { promise: Promise<File | null>; abort: () =>
   input.type = 'file';
   input.accept = accept;
   input.style.display = 'none';
+  let resolvePick: (file: File | null) => void = () => undefined;
   const abort = () => {
     if (settled) return;
     settled = true;
     input.remove();
+    resolvePick(null);
   };
   const promise = new Promise<File | null>((resolve) => {
+    resolvePick = resolve;
     const done = (file: File | null) => {
       if (settled) return;
       settled = true;
@@ -183,24 +188,23 @@ interface MediaInsertOptions {
 }
 
 /** 媒体插入（DEV-017）：导入当前 vault 后按类型插入图片节点或附件链接。 */
+type ImportedMediaHandler = (kernel: EditorKernelInstance, path: string) => boolean;
+
 function createMediaInsert(options: MediaInsertOptions): {
-  pickImage: () => void;
-  pickAttachment: () => void;
+  pickImage: (onImported?: ImportedMediaHandler) => Promise<boolean>;
+  pickAttachment: (onImported?: ImportedMediaHandler) => Promise<boolean>;
 } {
   const runInsert = async (
     accept: string,
-    insert: (kernel: EditorKernelInstance, relPath: string) => void,
-  ) => {
+    kernel: EditorKernelInstance,
+  ): Promise<string | null> => {
     const { promise, abort } = pickFile(accept);
     const untrack = options.trackAbort(abort);
-    // 页面切换/编辑器卸载时取消挂起的 input
     const onUnload = () => abort();
     window.addEventListener('beforeunload', onUnload);
     try {
       const file = await promise;
-      if (!file || options.getDestroyed()) return;
-      const kernel = options.getEditor();
-      if (!kernel) return;
+      if (!file || options.getDestroyed() || options.getEditor() !== kernel) return null;
       const data = await readFileAsBase64(file);
       const currentPage = options.getPagePath();
       const target = attachmentTargetPath(file, currentPage);
@@ -212,36 +216,37 @@ function createMediaInsert(options: MediaInsertOptions): {
         createParentDirs: true,
         overwrite: false,
       });
-      // 确认仍在同一编辑器实例与未卸载
-      if (options.getDestroyed() || options.getEditor() !== kernel) return;
-      insert(kernel, path);
+      if (options.getDestroyed() || options.getEditor() !== kernel) return null;
+      return path;
     } catch (e) {
-      // 导入失败可见地报告（至少 console；UI 通知待后续票），不插入
       console.error('[EditorView] 媒体导入失败', e);
+      return null;
     } finally {
       untrack();
       window.removeEventListener('beforeunload', onUnload);
     }
   };
-
   return {
-    pickImage: () => {
-      void runInsert('image/*', (kernel, relPath) => {
-        const { view } = kernel.editor;
-        const { schema } = view.state;
-        if (!schema.nodes.image) return;
-        view.dispatch(
-          view.state.tr
-            .replaceSelectionWith(schema.nodes.image.create({ src: relPath, alt: '' }))
-            .scrollIntoView(),
-        );
-      });
+    pickImage: async (onImported?: (kernel: EditorKernelInstance, path: string) => boolean) => {
+      const kernel = options.getEditor();
+      if (!kernel) return false;
+      const path = await runInsert('image/*', kernel);
+      if (!path) return false;
+      if (onImported) return onImported(kernel, path);
+      const { view } = kernel.editor;
+      const node = view.state.schema.nodes.image?.create({ src: path, alt: '' });
+      return node ? insertAtSafeBlockBoundary(view, node) : false;
     },
-    pickAttachment: () => {
-      void runInsert('*/*', (kernel, relPath) => {
-        const { view } = kernel.editor;
-        view.dispatch(view.state.tr.insertText(`[附件](${relPath})`));
-      });
+    pickAttachment: async (
+      onImported?: (kernel: EditorKernelInstance, path: string) => boolean,
+    ) => {
+      const kernel = options.getEditor();
+      if (!kernel) return false;
+      const path = await runInsert('*/*', kernel);
+      if (!path) return false;
+      if (onImported) return onImported(kernel, path);
+      kernel.insertMarkdownBlocks(`[附件](${path})`, kernel.editor.state.selection.from, 'after');
+      return true;
     },
   };
 }
@@ -249,47 +254,73 @@ function createMediaInsert(options: MediaInsertOptions): {
 /** 斜杠菜单的「图片 / 附件」项（与工具栏入口共用同一插入实现）。 */
 function createMediaInsertSlashItems(options: MediaInsertOptions): SlashMenuItem[] {
   const media = createMediaInsert(options);
+  const fromCatalog = (id: string) => {
+    const action = editorActionCatalogEntry(id);
+    if (!action?.quickInsert) throw new Error(`Missing canonical slash action: ${id}`);
+    return {
+      id: action.id,
+      title: action.name,
+      hint: action.hint,
+      icon: action.icon,
+      keywords: [...action.quickInsert.aliases],
+      group: action.quickInsert.group,
+      kind: action.quickInsert.kind,
+      contract: {
+        execution: action.quickInsert.execution,
+        capability: action.quickInsert.capability,
+      },
+    };
+  };
   return [
     {
-      id: 'image',
-      title: '图片',
-      hint: 'img',
-      keywords: ['image', 'img', 'picture', 'tupian'],
-      group: '媒体',
-      action: () => {
-        media.pickImage();
-        return true;
-      },
+      ...fromCatalog(INSERT_IMAGE_ID),
+      action: ({ view, tr }) =>
+        media.pickImage((_kernel, path) => {
+          const node = view.state.schema.nodes.image?.create({ src: path, alt: '' });
+          return node ? insertAtSafeBlockBoundary(view, node, tr) : false;
+        }),
     },
     {
-      id: 'attachment',
-      title: '附件',
-      hint: 'file',
-      keywords: ['attachment', 'file', 'fujian'],
-      group: '媒体',
-      action: () => {
-        media.pickAttachment();
-        return true;
-      },
+      ...fromCatalog(INSERT_ATTACHMENT_ID),
+      action: ({ view, tr }) =>
+        media.pickAttachment((_kernel, path) => {
+          const paragraph = view.state.schema.nodes.paragraph;
+          const link = view.state.schema.marks.link;
+          if (!paragraph || !link) return false;
+          return insertAtSafeBlockBoundary(
+            view,
+            paragraph.create(null, view.state.schema.text('附件', [link.create({ href: path })])),
+            tr,
+          );
+        }),
     },
   ];
 }
 
-function buildPluginBlockSlashItems(kernel: EditorKernelInstance): SlashMenuItem[] {
+function buildPluginBlockSlashItems(_kernel: EditorKernelInstance): SlashMenuItem[] {
   // PluginContributionDef 与 PluginContributionView 形状同源（scopedId/pluginId/kind/title/id）
   const contributions = pluginContributionRegistry.all() as unknown as Parameters<
     typeof buildDispatchableBlockCommands
   >[0];
   const defs = buildDispatchableBlockCommands(contributions);
+  const meta = pluginQuickInsertMetadata('block');
   return defs.map((d) => ({
     id: d.id,
     title: d.title,
     hint: d.blockType,
-    keywords: ['插件', 'plugin', 'block', ...(d.keywords ?? []).map((k) => String(k))],
-    group: '插件',
-    action: () => {
-      kernel.editor.commands.insertPluginBlock?.({ pluginId: d.pluginId, blockType: d.blockType });
-      return true;
+    icon: meta.icon,
+    keywords: [...meta.quickInsert.aliases, ...(d.keywords ?? []).map((k) => String(k))],
+    group: meta.quickInsert.group,
+    kind: meta.quickInsert.kind,
+    contract: { execution: meta.quickInsert.execution, capability: meta.quickInsert.capability },
+    available: (context) => context.capabilities.has('plugin-defined'),
+    action: ({ view, tr }) => {
+      const node = view.state.schema.nodes.pluginBlock?.create({
+        pluginId: d.pluginId,
+        blockType: d.blockType,
+        data: '{}',
+      });
+      return node ? insertAtSafeBlockBoundary(view, node, tr) : false;
     },
   }));
 }
@@ -366,6 +397,7 @@ export function EditorView({ tab }: EditorViewProps) {
   useEffect(() => {
     writingControllerRef.current = createWritingController({
       getKernel: () => kernelRef.current,
+      getPageId: () => (useTabStore.getState().activeTabId === tab.id ? tab.id : null),
       getContext: () => {
         const markdown = kernelRef.current?.getMarkdown() ?? '';
         const idx = useIndexStore.getState();
@@ -379,7 +411,7 @@ export function EditorView({ tab }: EditorViewProps) {
     return () => {
       writingControllerRef.current = null;
     };
-  }, []);
+  }, [tab.id]);
 
   // 临时翻译编排器（DEV-041）：划词浮层 + 全文临时视图；经 ref 读取实时文档与路径。
   // 卸载时关闭两个会话（关闭即弃，绝不写回文档）。
@@ -627,10 +659,11 @@ export function EditorView({ tab }: EditorViewProps) {
             trackAbort,
           }),
           ...buildPluginBlockSlashItems(kernel),
-          ...buildPluginCommandSlashItems(
-            pluginState.contributions,
-            pluginState.commands,
-            (def) => void invoke('plugins:runCommand', def),
+          ...buildPluginCommandSlashItems(pluginState.contributions, pluginState.commands, (def) =>
+            invoke('plugins:runCommand', def).then(
+              () => true,
+              () => false,
+            ),
           ),
         ];
       },
@@ -949,8 +982,8 @@ export function EditorView({ tab }: EditorViewProps) {
             return () => pendingFilePicksRef.current.delete(abort);
           },
         });
-        if (id === INSERT_IMAGE_ID) media.pickImage();
-        else media.pickAttachment();
+        if (id === INSERT_IMAGE_ID) void media.pickImage();
+        else void media.pickAttachment();
         return;
       }
       case AI_ASK_ID: {

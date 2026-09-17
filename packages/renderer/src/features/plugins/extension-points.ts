@@ -1,5 +1,5 @@
 import type { PluginCommandView, PluginContributionView } from '@nexnote/shared';
-import { BUILTIN_PLUGIN_IDS } from '@nexnote/shared';
+import { BUILTIN_PLUGIN_IDS, pluginQuickInsertMetadata } from '@nexnote/shared';
 import type { ContextMenuItem } from '@nexnote/kernel';
 import type { SlashMenuItem } from '@nexnote/kernel';
 
@@ -34,9 +34,7 @@ export function pluginBlockCommandId(pluginId: string, blockType: string): strin
 /** 由插件菜单贡献派生编辑器右键菜单条目（挂在「插件」子菜单下）。 */
 export function buildPluginMenuItems<
   T extends { id: string; kind: string; title: string; scopedId?: string },
->(
-  contributions: readonly T[],
-): ContextMenuItem[] {
+>(contributions: readonly T[]): ContextMenuItem[] {
   const menus = contributions.filter((item) => item.kind === 'menus');
   if (menus.length === 0) return [];
   const submenu: ContextMenuItem[] = menus.map((item) => ({
@@ -76,7 +74,9 @@ export function buildPluginBlockCommands(
 export function buildDispatchableBlockCommands(
   contributions: PluginContributionView[],
 ): PluginBlockCommandDef[] {
-  return buildPluginBlockCommands(contributions).filter((block) => !isBuiltinPlugin(block.pluginId));
+  return buildPluginBlockCommands(contributions).filter(
+    (block) => !isBuiltinPlugin(block.pluginId),
+  );
 }
 
 /**
@@ -84,7 +84,9 @@ export function buildDispatchableBlockCommands(
  * 不走通用 pluginBlock 插入命令（否则会生成私有 fence 而非 Obsidian 原生语法）。
  */
 export function isBuiltinPlugin(id: string): boolean {
-  return Object.values(BUILTIN_PLUGIN_IDS).includes(id as (typeof BUILTIN_PLUGIN_IDS)[keyof typeof BUILTIN_PLUGIN_IDS]);
+  return Object.values(BUILTIN_PLUGIN_IDS).includes(
+    id as (typeof BUILTIN_PLUGIN_IDS)[keyof typeof BUILTIN_PLUGIN_IDS],
+  );
 }
 
 /**
@@ -94,19 +96,23 @@ export function isBuiltinPlugin(id: string): boolean {
 export function buildPluginCommandSlashItems(
   contributions: PluginContributionView[],
   runtimeCommands: PluginCommandView[],
-  run: (def: { pluginId: string; commandId: string }) => void,
+  run: (def: { pluginId: string; commandId: string }) => Promise<boolean>,
 ): SlashMenuItem[] {
   const defs = buildPluginCommandDefs(contributions, runtimeCommands);
+  const meta = pluginQuickInsertMetadata('command');
   return defs.map((def) => ({
     id: pluginCmdSlashId(def.id),
     title: def.title,
     hint: def.pluginId,
-    keywords: ['插件', 'plugin', 'command', ...(def.keywords ?? [])],
-    group: '插件',
-    action: () => {
-      run({ pluginId: def.pluginId, commandId: def.commandId });
-      return true;
-    },
+    icon: meta.icon,
+    keywords: [...meta.quickInsert.aliases, ...(def.keywords ?? [])],
+    group: meta.quickInsert.group,
+    kind: meta.quickInsert.kind,
+    contract: { execution: meta.quickInsert.execution, capability: meta.quickInsert.capability },
+    available: (context) => context.capabilities.has('plugin-defined'),
+    // Commands are asynchronous non-document effects. Only a confirmed success allows
+    // Quick Insert to consume the typed trigger; rejection/permission denial leaves it intact.
+    action: () => run({ pluginId: def.pluginId, commandId: def.commandId }),
   }));
 }
 
@@ -148,7 +154,9 @@ export function buildPluginViewPanels(
   contributions: PluginContributionView[],
 ): PluginViewPanelDef[] {
   return contributions
-    .filter((item) => item.kind === 'views' && item.placement !== 'main' && item.placement !== 'settings')
+    .filter(
+      (item) => item.kind === 'views' && item.placement !== 'main' && item.placement !== 'settings',
+    )
     .map((item) => ({
       id: `plugin-view:${item.scopedId}`,
       title: item.title,
