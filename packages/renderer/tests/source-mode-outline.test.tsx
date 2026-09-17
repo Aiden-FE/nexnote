@@ -7,9 +7,12 @@ import {
   matchPreviewHeading,
   normalizePreviewHeadingText,
 } from '../src/editor/source/preview-outline';
+import { parseMarkdownOutline } from '../src/editor/outline';
 import type { TabDescriptor } from '../src/stores/tab-store';
 
 globalThis.IS_REACT_ACT_ENVIRONMENT = true;
+
+const cm = vi.hoisted(() => ({ dispatch: vi.fn() }));
 
 vi.mock('../src/editor/source/codemirror-host', () => ({
   createSourceEditor: (_parent: HTMLElement, options: { initialText: string }) => ({
@@ -17,6 +20,10 @@ vi.mock('../src/editor/source/codemirror-host', () => ({
     setText: () => undefined,
     focus: () => undefined,
     destroy: () => undefined,
+    view: {
+      state: { doc: { toString: () => options.initialText } },
+      dispatch: cm.dispatch,
+    },
   }),
 }));
 
@@ -64,7 +71,7 @@ describe('matchPreviewHeading（预览悬浮目录定位纯函数）', () => {
 /** 预览态页面：HTML 标题渲染为预览 heading 但没有源码目录条目，会打乱 ordinal 对应。 */
 const PAGE_MARKDOWN = '# 顶层标题\n\n<h2>HTML 标题</h2>\n\n> # 引用标题\n';
 
-const tab: TabDescriptor = {
+const previewTab: TabDescriptor = {
   id: 'source-outline-preview-test',
   kind: 'page',
   title: '预览目录页',
@@ -75,7 +82,18 @@ const tab: TabDescriptor = {
   createdAt: 1,
 };
 
-function installBridge(content: string): void {
+const splitTab: TabDescriptor = {
+  id: 'source-outline-split-test',
+  kind: 'page',
+  title: '分栏目录页',
+  pagePath: '分栏目录页.md',
+  format: 'markdown',
+  editorMode: 'source',
+  markdownView: 'split',
+  createdAt: 1,
+};
+
+function installBridge(content: string, pagePath: string): void {
   (window as unknown as { nexnote: unknown }).nexnote = {
     invoke: vi.fn(async (channel: string) => {
       if (channel === 'fs:readTextFile') return { ok: true, data: content };
@@ -83,8 +101,8 @@ function installBridge(content: string): void {
         return {
           ok: true,
           data: {
-            path: tab.pagePath,
-            name: tab.pagePath,
+            path: pagePath,
+            name: pagePath,
             kind: 'file',
             size: content.length,
             modifiedAt: 'v1',
@@ -105,12 +123,12 @@ afterEach(() => {
 
 describe('SourceModeView 预览态悬浮目录导航', () => {
   it('含引用与 HTML 标题的页面按文本匹配定位，不再被 ordinal 错位', async () => {
-    installBridge(PAGE_MARKDOWN);
+    installBridge(PAGE_MARKDOWN, previewTab.pagePath);
     const container = document.createElement('div');
     document.body.append(container);
     const root = createRoot(container);
     await act(async () => {
-      root.render(<SourceModeView tab={tab} />);
+      root.render(<SourceModeView tab={previewTab} />);
       await Promise.resolve();
       await Promise.resolve();
     });
@@ -142,6 +160,77 @@ describe('SourceModeView 预览态悬浮目录导航', () => {
     expect(quoteSpy).toHaveBeenCalledWith({ behavior: 'smooth', block: 'start' });
     expect(topSpy).not.toHaveBeenCalled();
     expect(htmlSpy).not.toHaveBeenCalled();
+
+    await act(async () => {
+      root.unmount();
+    });
+  });
+
+  it('分栏视图点击目录：编辑器选区定位的同时预览直接滚到对应 heading（DEV-048）', async () => {
+    installBridge(PAGE_MARKDOWN, splitTab.pagePath);
+    const container = document.createElement('div');
+    document.body.append(container);
+    const root = createRoot(container);
+    await act(async () => {
+      root.render(<SourceModeView tab={splitTab} />);
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    await vi.waitFor(() => {
+      expect(container.querySelectorAll('h1').length).toBe(2);
+    });
+    const quoteHeading = container.querySelectorAll('h1')[1]!;
+    const quoteSpy = vi.spyOn(quoteHeading, 'scrollIntoView');
+    cm.dispatch.mockClear();
+
+    act(() =>
+      container
+        .querySelector<HTMLButtonElement>('[data-testid="toolbar-entry-view:outline"]')!
+        .click(),
+    );
+    await act(async () => {
+      container.querySelector<HTMLButtonElement>('[data-testid="outline-entry-引用标题"]')!.click();
+      await Promise.resolve();
+    });
+
+    // 编辑器单事务重设选区到源码标题行（from 来自 parseMarkdownOutline）。
+    const entry = parseMarkdownOutline(PAGE_MARKDOWN).find((e) => e.text === '引用标题')!;
+    expect(cm.dispatch).toHaveBeenCalledWith(
+      expect.objectContaining({
+        selection: { anchor: entry.from, head: entry.to },
+        scrollIntoView: true,
+      }),
+    );
+    // 预览同步直接滚到引用 heading，而不是依赖比例滚动同步。
+    expect(quoteSpy).toHaveBeenCalledWith({ behavior: 'smooth', block: 'start' });
+
+    await act(async () => {
+      root.unmount();
+    });
+  });
+
+  it('预览视图：预览内容列不再受 --editor-content-width 限制，编辑器窗格退出文档流（DEV-048）', async () => {
+    installBridge(PAGE_MARKDOWN, previewTab.pagePath);
+    const container = document.createElement('div');
+    document.body.append(container);
+    const root = createRoot(container);
+    await act(async () => {
+      root.render(<SourceModeView tab={previewTab} />);
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    await vi.waitFor(() => {
+      expect(container.querySelector('[data-testid="live-preview-content"]')).not.toBeNull();
+    });
+    const contentColumn = container.querySelector('[data-testid="live-preview-content"]')!;
+    expect(contentColumn.classList.contains('max-w-none')).toBe(true);
+    const pane = container.querySelector('[data-testid="source-editor-pane"]')!;
+    // Tailwind v4 里 .relative 生成顺序在 .absolute 之后，同时存在会互相覆盖；
+    // 预览态只允许 absolute（配合 size-px 隐藏退出文档流）。
+    expect(pane.classList.contains('absolute')).toBe(true);
+    expect(pane.classList.contains('relative')).toBe(false);
 
     await act(async () => {
       root.unmount();

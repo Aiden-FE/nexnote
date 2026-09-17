@@ -2934,6 +2934,167 @@ export async function runSmokeIfEnabled(): Promise<void> {
       await capture('DEV-047-page-tree');
     }
 
+    // ── DEV-048 预览视图占满 / 悬浮目录收缩 / 分栏目录点击预览跟随 ──────────
+    {
+      const outlinePanelEl = (): HTMLElement | null =>
+        document.querySelector<HTMLElement>('[data-testid="outline-panel"]');
+      const outlineEntries = (): HTMLElement[] => [
+        ...document.querySelectorAll<HTMLElement>('[data-testid^="outline-entry-"]'),
+      ];
+      const dev047TabView = (): string | undefined =>
+        useTabStore.getState().tabs.find((t) => t.pagePath === dev047Path)?.markdownView;
+      const editorPane = (): HTMLElement | null =>
+        document.querySelector<HTMLElement>('[data-testid="source-editor-pane"]');
+
+      // 1) 预览视图：内容列不再受 --editor-content-width 限制，占满预览容器；
+      //    编辑器窗格退出文档流（absolute，不再 relative）。
+      const previewFillReady =
+        (await clickToolbarEntry('view:preview')) &&
+        (await waitFor(
+          () =>
+            dev047TabView() === 'preview' &&
+            editorPane()?.classList.contains('absolute') === true &&
+            !!document.querySelector('[data-testid="live-preview-content"]'),
+        ));
+      const dev048ContentCol = document.querySelector('[data-testid="live-preview-content"]');
+      const dev048PreviewHost = dev048ContentCol?.closest('[data-testid="live-preview"]');
+      const dev048ContentWidth = dev048ContentCol?.getBoundingClientRect().width ?? 0;
+      const dev048HostWidth = dev048PreviewHost?.getBoundingClientRect().width ?? 0;
+      check(
+        'DEV-048 预览视图占满：内容列宽度 ≥ 预览容器 - 80px',
+        previewFillReady && !!dev048PreviewHost && dev048ContentWidth >= dev048HostWidth - 80,
+        `content=${dev048ContentWidth.toFixed(0)}px host=${dev048HostWidth.toFixed(0)}px`,
+      );
+      check(
+        'DEV-048 预览视图编辑器窗格退出文档流（含 absolute 不含 relative）',
+        editorPane()?.classList.contains('absolute') === true &&
+          editorPane()?.classList.contains('relative') === false,
+      );
+      await capture('DEV-048-preview-fill');
+      await clickToolbarEntry('view:split');
+      await waitFor(() => dev047TabView() === 'split');
+
+      // 2) 悬浮目录收缩：toggle 后仅剩展开按钮；expand 恢复条目。
+      const collapseReady =
+        (await clickToolbarEntry('view:outline')) &&
+        (await waitFor(() => outlinePanelEl() !== null && outlineEntries().length > 0));
+      document.querySelector<HTMLButtonElement>('[data-testid="outline-toggle"]')?.click();
+      const collapsedOk = await waitFor(
+        () =>
+          outlinePanelEl()?.getAttribute('data-collapsed') === 'true' &&
+          outlineEntries().length === 0 &&
+          !!document.querySelector('[data-testid="outline-expand"]'),
+      );
+      check(
+        'DEV-048 悬浮目录收缩：data-collapsed=true 且条目收起仅剩展开按钮',
+        collapseReady && collapsedOk,
+        `collapsed=${outlinePanelEl()?.getAttribute('data-collapsed') ?? 'none'} entries=${outlineEntries().length}`,
+      );
+      await capture('DEV-048-outline-collapse');
+      document.querySelector<HTMLButtonElement>('[data-testid="outline-expand"]')?.click();
+      check(
+        'DEV-048 点击展开按钮恢复目录条目',
+        await waitFor(
+          () =>
+            outlinePanelEl()?.getAttribute('data-collapsed') == null && outlineEntries().length > 0,
+        ),
+        `entries=${outlineEntries().length}`,
+      );
+
+      // 3) 分栏目录点击 → 预览直接滚到对应标题：长文档（12 节 + 深处标题位于下部）。
+      const dev048LongPath = 'DEV-048 长文.md';
+      const deepHeadingText = '深处标题';
+      const dev048Sections = Array.from({ length: 12 }, (_, i) => i + 1).map(
+        (i) =>
+          `## 章节 ${i}\n\n` +
+          `章节 ${i} 第一段：用于撑起预览高度，使文档整体可滚动。\n\n` +
+          `章节 ${i} 第二段：各节长度一致，源码与预览的滚动比例彼此接近。\n\n` +
+          `章节 ${i} 第三段：收尾段落，进一步增加文档高度。\n\n`,
+      );
+      const dev048LongContent =
+        '---\ntitle: DEV-048\n---\n\n# DEV-048 长文\n\n' +
+        dev048Sections.join('') +
+        `## ${deepHeadingText}\n\n` +
+        '深处标题第一段：位于文档下部，初始不可见，点击悬浮目录条目后预览应滚到这里。\n\n' +
+        '深处标题第二段：验证分栏视图下目录点击的预览跟随。\n\n## 尾声\n\n结尾段落。\n';
+      await invoke('fs:createNote', {
+        parentDir: '',
+        name: 'DEV-048 长文',
+        content: dev048LongContent,
+        format: 'markdown',
+      });
+      await openDocumentTab(dev048LongPath);
+      await clickToolbarEntry('view:split');
+      const dev048LongHost = document.querySelector('[data-testid="live-preview"]');
+      const longReady =
+        (await waitFor(
+          () => !!document.querySelector('[data-testid="source-mode-view"] .cm-content'),
+        )) &&
+        (await waitFor(() => (dev048LongHost?.querySelectorAll('h2').length ?? 0) >= 14, 15_000));
+      check(
+        'DEV-048 长文页打开（分栏 + 预览渲染 14 个 H2，预览可滚动）',
+        longReady && (dev048LongHost?.scrollHeight ?? 0) > (dev048LongHost?.clientHeight ?? 0),
+        `h2=${dev048LongHost?.querySelectorAll('h2').length ?? 0}`,
+      );
+      const outlineLongOpened =
+        (await clickToolbarEntry('view:outline')) &&
+        (await waitFor(() =>
+          outlineEntries().some((el) => (el.textContent ?? '') === deepHeadingText),
+        ));
+      outlineEntries()
+        .find((el) => (el.textContent ?? '') === deepHeadingText)
+        ?.click();
+      const deepHeadingMeasure = (): {
+        scrollTop: number;
+        delta: number;
+        height: number;
+      } | null => {
+        const host = document.querySelector<HTMLElement>('[data-testid="live-preview"]');
+        const heading = [...(host?.querySelectorAll<HTMLElement>('h2') ?? [])].find(
+          (el) => (el.textContent ?? '').trim() === deepHeadingText,
+        );
+        if (!host || !heading) return null;
+        return {
+          scrollTop: host.scrollTop,
+          delta: heading.getBoundingClientRect().top - host.getBoundingClientRect().top,
+          height: host.getBoundingClientRect().height,
+        };
+      };
+      await waitFor(() => {
+        const m = deepHeadingMeasure();
+        return !!m && m.scrollTop > 0 && m.delta >= -2 && m.delta < m.height;
+      }, 12_000);
+      // smooth 滚动按距离自适应时长：轮询到位置稳定（连续两次读数一致）再取最终值，
+      // 避免在动画途中测量导致结果随机器负载抖动。
+      let followMeasure = deepHeadingMeasure();
+      const settleDeadline = Date.now() + 8_000;
+      while (Date.now() < settleDeadline) {
+        await sleep(250);
+        const prev = followMeasure;
+        followMeasure = deepHeadingMeasure();
+        if (
+          prev &&
+          followMeasure &&
+          Math.abs(prev.scrollTop - followMeasure.scrollTop) <= 1 &&
+          followMeasure.delta < followMeasure.height
+        ) {
+          break;
+        }
+      }
+      check(
+        'DEV-048 分栏目录点击：预览跟随滚动（scrollTop>0 且深处标题进入视口）',
+        outlineLongOpened &&
+          !!followMeasure &&
+          followMeasure.scrollTop > 0 &&
+          followMeasure.delta >= -2 &&
+          followMeasure.delta < followMeasure.height,
+        followMeasure
+          ? `scrollTop=${followMeasure.scrollTop.toFixed(0)} delta=${followMeasure.delta.toFixed(0)}px viewport=${followMeasure.height.toFixed(0)}px`
+          : '深处标题未找到',
+      );
+      await capture('DEV-048-outline-follow');
+    }
+
     // ── 11. 关闭 vault 回到向导 ───────────────────────────────
     await invoke('vault:close');
     check(

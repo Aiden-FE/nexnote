@@ -56,4 +56,28 @@ describe('OutlinePanel', () => {
     expect(nested.dataset.active).toBe('true');
     expect(top.dataset.active).toBeUndefined();
   });
+
+  it('顶栏图标可收缩为小图标并再展开（DEV-048）', () => {
+    const entries: OutlineEntry[] = [
+      { id: 'top', level: 1, text: 'Top', ordinal: 0, from: 0, to: 5 },
+    ];
+    render(entries);
+    const panel = () => document.querySelector('[data-testid="outline-panel"]')!;
+    const toggle = () =>
+      document.querySelector<HTMLButtonElement>('[data-testid="outline-toggle"]')!;
+
+    expect(toggle().getAttribute('aria-expanded')).toBe('true');
+
+    act(() => toggle().click());
+    expect(panel().getAttribute('data-collapsed')).toBe('true');
+    expect(document.querySelector('[data-testid="outline-entry-top"]')).toBeNull();
+    expect(document.querySelector('[data-testid="outline-close"]')).toBeNull();
+    const expand = document.querySelector<HTMLButtonElement>('[data-testid="outline-expand"]')!;
+    expect(expand.getAttribute('aria-expanded')).toBe('false');
+    expect(expand.getAttribute('aria-label')).toBe('展开悬浮目录');
+
+    act(() => expand.click());
+    expect(panel().hasAttribute('data-collapsed')).toBe(false);
+    expect(document.querySelector('[data-testid="outline-entry-top"]')).not.toBeNull();
+  });
 });
