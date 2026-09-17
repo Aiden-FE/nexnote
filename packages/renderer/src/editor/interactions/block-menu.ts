@@ -55,6 +55,9 @@ export function buildBlockMenuItems(ctx: BlockMenuContext, deps: BlockMenuDeps):
         { id: `${BLOCK_MENU_CONVERT_PREFIX}h1`, title: '标题 1' },
         { id: `${BLOCK_MENU_CONVERT_PREFIX}h2`, title: '标题 2' },
         { id: `${BLOCK_MENU_CONVERT_PREFIX}h3`, title: '标题 3' },
+        { id: `${BLOCK_MENU_CONVERT_PREFIX}h4`, title: '标题 4' },
+        { id: `${BLOCK_MENU_CONVERT_PREFIX}h5`, title: '标题 5' },
+        { id: `${BLOCK_MENU_CONVERT_PREFIX}h6`, title: '标题 6' },
         { id: `${BLOCK_MENU_CONVERT_PREFIX}taskList`, title: '任务列表' },
         { id: `${BLOCK_MENU_CONVERT_PREFIX}blockquote`, title: '引用' },
         { id: `${BLOCK_MENU_CONVERT_PREFIX}callout`, title: '标注块' },
@@ -66,14 +69,16 @@ export function buildBlockMenuItems(ctx: BlockMenuContext, deps: BlockMenuDeps):
     { id: blockMenuActionId('move-down'), title: '下移', hint: '⌥↓' },
     {
       id: blockMenuActionId('fold'),
-      title: deps.isFolded?.(ctx) ? '展开' : '折叠',
+      title: deps.isFolded?.(ctx) ? '展开章节' : '折叠章节',
       disabled: !deps.canFold?.(ctx),
     },
     { separator: true, title: '' },
     { id: blockMenuActionId('insert-before'), title: '在上方插入' },
     { id: blockMenuActionId('insert-after'), title: '在下方插入' },
     ...(ai.length > 0 ? [{ separator: true as const, title: '' }, ...ai] : []),
-    ...(deps.pluginItems?.length ? [{ separator: true as const, title: '' }, ...deps.pluginItems] : []),
+    ...(deps.pluginItems?.length
+      ? [{ separator: true as const, title: '' }, ...deps.pluginItems]
+      : []),
   ];
   return items;
 }
@@ -119,7 +124,8 @@ export function runBlockMenuAction(
         ? kernel.moveBlock(ctx.blockId, neighbors.nextBlockId, 'after')
         : false;
     case blockMenuActionId('fold'): {
-      // 标题折叠：视图层装饰状态（内核 Fold 扩展），不写 Markdown
+      // DEV-054：块菜单与标题 chevron 共享内核 Fold 状态，标题动态反映当前态
+      // （「折叠/展开章节」），点击 chevron 不移动正文光标或修改文档。
       return kernel.toggleBlockFold(ctx.blockId);
     }
     case blockMenuActionId('insert-before'):

@@ -1,7 +1,7 @@
 import { openDocumentTab } from '../lib/open-document';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { AlertCircle, Check, LoaderCircle } from 'lucide-react';
-import { createEditor } from '@nexnote/kernel';
+import { createEditor, revealBlockFoldAt } from '@nexnote/kernel';
 import { TextSelection } from '@tiptap/pm/state';
 import { invoke } from '../lib/ipc';
 import { useTabStore, type TabDescriptor } from '../stores/tab-store';
@@ -1075,6 +1075,9 @@ export function EditorView({ tab }: EditorViewProps) {
           onNavigate={(entry) => {
             const editor = kernelRef.current?.editor;
             const pos = entry.pos ?? 0;
+            // DEV-054（ADR-0013）：目录跳转目标被折叠祖先遮蔽时只展开必要祖先，
+            // 目标标题自身若已折叠则保持折叠。
+            if (editor) revealBlockFoldAt(editor.view, pos);
             // pos 指向 heading 节点起点；+1 进入节点内部，文本选区落在标题文本上。
             editor?.view.dispatch(
               editor.view.state.tr
