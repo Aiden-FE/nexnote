@@ -16,6 +16,7 @@ Priority: P1
 - 块类型在已有正文时过滤；结构动作在当前顶层块后插入，双链/AI/插件按能力分组；普通交互不触发 AI。
 - 初始候选 `f4c8343` 的 Standards/Spec 审查发现触发词 eligibility、数学 fail-closed、结构安全插入、共享模型与测试真实性缺口；追加 `2339b40`、`4c649b1`、`75e5355` 修复为 shared catalog 投影、execution/context contract、插件能力过滤与拆分的 quick-insert 模块。
 - 最终验证记录（候选 `75e5355`）：定向 4 files / 32 tests passed；`CI=true pnpm typecheck`、完整 `pnpm test`（152 files passed / 1 skipped，1292 tests passed / 2 skipped）、`pnpm lint`（0 errors，4 个既有 warnings）、`pnpm build`、`bash scripts/check-changed-format.sh master`、`git diff --check master...HEAD` 均通过。
+- 二审数据安全修复候选 `4bf9985`：修正真实输入后的 trigger 范围、裸 `/` 消费、跨块 selection 失效、override dedupe、媒体/AI/插件/内置动作 contract、canonical Mermaid/AI/media 元数据与 toolbar hint/shortcut 投影；定向 5 files / 52 tests、完整测试 152 files passed / 1 skipped，1293 tests passed / 2 skipped，typecheck/lint/build/changed-format/diff-check 均通过。
 - happy-dom 验收使用明确的浏览器默认输入 helper（keydown → DOM selection mutation → InputEvent → DOMObserver flush），断言实际节点与选区；最终真实 Chromium packaged 链路保留给 DEV-057 smoke。Electron smoke：`NOT_RUN`。
 
 ## Scope
