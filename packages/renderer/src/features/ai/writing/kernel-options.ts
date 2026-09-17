@@ -59,17 +59,14 @@ export function writingSlashItems(controller: WritingController): SlashMenuItem[
       capability: canonical.quickInsert.capability,
     },
     keywords: [...canonical.quickInsert.aliases],
-    action: ({ view }) => {
+    action: ({ view, afterSlashCommit }) => {
       const instruction = window.prompt('AI 插入指令', '请基于当前上下文补充内容');
       if (!instruction?.trim()) return false;
-      const editorContext = computeEditorActionContext(view, 'cursor');
-      // expand 是“在光标处追加”的既有白名单动作；指令作为目标传入，正文不会被替换。
-      controller.trigger(toAiActionId('expand'), {
-        ...editorContext,
-        text: instruction.trim(),
-        target: 'cursor',
-      });
-      return true;
+      return controller.triggerSlash(
+        'ai:expand',
+        { ...computeEditorActionContext(view, 'cursor'), text: instruction.trim() },
+        afterSlashCommit,
+      );
     },
   };
   return [
@@ -83,12 +80,12 @@ export function writingSlashItems(controller: WritingController): SlashMenuItem[
       kind: 'ai',
       contract: { execution: 'explicit-ai', capability: 'explicit-ai' },
       keywords: ['ai', '✨', ...action.keywords],
-      action: ({ view }) => {
-        const target = view.state.selection.empty ? 'cursor' : 'selection';
-        const editorContext = computeEditorActionContext(view, target);
-        controller.trigger(toAiActionId(action.id), editorContext);
-        return true;
-      },
+      action: ({ view, afterSlashCommit }) =>
+        controller.triggerSlash(
+          toAiActionId(action.id),
+          computeEditorActionContext(view, 'cursor'),
+          afterSlashCommit,
+        ),
     })),
   ];
 }

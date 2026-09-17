@@ -32,6 +32,8 @@ export interface SlashActionTransaction {
   readonly view: EditorView;
   readonly tr: Transaction;
   readonly context: SlashExecutionContext;
+  /** Runs only after Quick Insert has safely consumed and dispatched the slash transaction. */
+  afterSlashCommit(callback: () => void): void;
 }
 
 /** 结构动作只会插在当前顶层块之后，永不 replaceSelection 截断正文。 */

@@ -11,6 +11,7 @@ Priority: P1
 
 ## 实施记录（2026-09-17，dev/DEV-052）
 
+- 候选 HEAD `b9c6667` 的 Standards 通过，但 Spec / 对抗审查为 **FAIL**：`/ai` 消费 trigger 后仍把预消费的绝对光标坐标交给 Accept，可能 RangeError 或错误写入；本轮在原分支增加 commit 后锚点、当前页与后续文档事务 fail-closed。prompt 取消或初始 IPC 启动失败保留 `/ai`；成功建立 stream 后消费 `/ai`，后续 stream error 保留预览片段供显式 Accept / Reject（Reject 不写正文），遵循既有流式会话语义。补真实 TipTap DOM + WritingController 以及默认 `/表格` icon/hint/ARIA 回归；本记录不预填独立审查 PASS，Electron smoke 仍为 `NOT_RUN`。
 - 候选 HEAD `34a61ad` 的独立 Standards / Spec / 对抗审查均为 **FAIL**：兄弟可编辑行身份及 `/query` 区间校验、异步插件命令拒绝、AI 成功消费、菜单图标/ARIA、注入项 canonical 元数据仍有缺口；此前 typecheck / test / lint / build 通过不代表验收。后续在原分支追加修复与真实 DOM/Renderer 回归；本记录不预填独立审查 PASS。
 - 实现共享快捷插入动作定义（分组、中文/英文/Markdown 记号别名、编辑模式能力），块编辑菜单按“基础块、插入、AI、插件”分组并在组内按匹配度排序。
 - 真实 TipTap contenteditable DOM 的 KeyboardEvent/InputEvent + DOMObserver 验收覆盖段落、标题、列表、引用触发；代码块、行内代码、URL、路径、数学和单词内部不触发；以及 Tab 确认、Escape、Backspace、空态和 undo/redo。

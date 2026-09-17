@@ -157,6 +157,21 @@ describe('斜杠快捷输入真实 TipTap DOM 链路（DEV-052）', () => {
     press(second.dom, 'Enter');
     expect(second.kernel.editor.state.selection.$from.parent.attrs.level).toBe(2);
   });
+  it('默认 /表格投影 shared icon、hint 与 active option ARIA', async () => {
+    const { kernel, host } = mount('\u00a0');
+    selectAt(kernel, kernel.editor.state.doc.content.size - 1);
+    await type(kernel, '/表格');
+    const row = host.querySelector<HTMLElement>('[data-slash-item="insert:table"]');
+    expect(row?.querySelector('[data-slash-icon="table"]')?.textContent).toBe('▦');
+    expect(row?.querySelector('.nexnote-slash-menu__hint')?.textContent).toContain(
+      '插入 2×2 Markdown 表格',
+    );
+    expect(row?.getAttribute('aria-selected')).toBe('true');
+    expect(host.querySelector('[data-slash-menu]')?.getAttribute('aria-activedescendant')).toBe(
+      row?.id,
+    );
+  });
+
   it('trigger 前后任一有效正文均隐藏转换且不删除后文', async () => {
     const { kernel, host } = mount('前文 后文');
     selectAt(kernel, 4);

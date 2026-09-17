@@ -18,6 +18,8 @@ export interface WritingStreamHandlers {
 }
 
 export interface WritingStreamHandle {
+  /** Resolves false only when the initial IPC request cannot establish a stream. */
+  readonly started: Promise<boolean>;
   cancel: () => void;
 }
 
@@ -30,15 +32,21 @@ export function startWritingStream(
   let runId: string | null = null;
   let finished = false;
   let buffered: RunEventPayload[] = [];
+  let resolveStarted!: (started: boolean) => void;
+  const started = new Promise<boolean>((resolve) => {
+    resolveStarted = resolve;
+  });
 
   /** 只转发写作会话关心的事件；start/fallback/context/tool 等对预览无意义。 */
   const deliver = (event: AgentRunEvent) => {
     if (event.type === 'delta') {
       handlers.onDelta(event.text);
     } else if (event.type === 'done') {
+      resolveStarted(runId !== null);
       finish();
       handlers.onDone();
     } else if (event.type === 'error') {
+      resolveStarted(runId !== null);
       finish();
       handlers.onError(event.message, event.code);
     }
@@ -64,11 +72,13 @@ export function startWritingStream(
   void invoke('agent:run:writing', request)
     .then((res) => {
       if (finished) {
+        resolveStarted(false);
         // start 返回前已被取消：补发 cancel，避免上游孤儿流。
         void invoke('agent:cancel', { runId: res.runId }).catch(() => undefined);
         return;
       }
       runId = res.runId;
+      resolveStarted(true);
       const replay = buffered;
       buffered = [];
       for (const payload of replay) {
@@ -78,13 +88,19 @@ export function startWritingStream(
       }
     })
     .catch((e: unknown) => {
-      if (finished) return;
+      if (finished) {
+        resolveStarted(false);
+        return;
+      }
       finish();
+      resolveStarted(false);
       handlers.onError(e instanceof Error ? e.message : String(e));
     });
 
   return {
+    started,
     cancel() {
+      resolveStarted(false);
       if (finished) return;
       finish();
       const id = runId;

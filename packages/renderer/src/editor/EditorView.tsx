@@ -392,6 +392,7 @@ export function EditorView({ tab }: EditorViewProps) {
   useEffect(() => {
     writingControllerRef.current = createWritingController({
       getKernel: () => kernelRef.current,
+      getPageId: () => (useTabStore.getState().activeTabId === tab.id ? tab.id : null),
       getContext: () => {
         const markdown = kernelRef.current?.getMarkdown() ?? '';
         const idx = useIndexStore.getState();
@@ -405,7 +406,7 @@ export function EditorView({ tab }: EditorViewProps) {
     return () => {
       writingControllerRef.current = null;
     };
-  }, []);
+  }, [tab.id]);
 
   // 临时翻译编排器（DEV-041）：划词浮层 + 全文临时视图；经 ref 读取实时文档与路径。
   // 卸载时关闭两个会话（关闭即弃，绝不写回文档）。

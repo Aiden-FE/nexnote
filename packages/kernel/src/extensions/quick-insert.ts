@@ -202,10 +202,19 @@ export const QuickInsert = Extension.create<QuickInsertOptions, SlashMenuState>(
       // exactly one TipTap history step. Explicit AI is deliberately separate: its prompt/request
       // may stream later, so it closes the menu but preserves the source text rather than
       // attempting an unsafe future transaction after a streamed result.
+      const afterSlashCommit: Array<() => void> = [];
       const transaction: SlashActionTransaction = {
         view,
         tr: view.state.tr,
         context: executingContext,
+        afterSlashCommit: (callback) => afterSlashCommit.push(callback),
+      };
+      const commitExplicitAi = () => {
+        const committed = view.state.tr;
+        consumeSlashTrigger(committed, executingContext);
+        view.dispatch(closeHistory(committed.scrollIntoView()));
+        for (const callback of afterSlashCommit) callback();
+        close(view);
       };
       try {
         if (
@@ -234,10 +243,7 @@ export const QuickInsert = Extension.create<QuickInsertOptions, SlashMenuState>(
               )
                 return;
               if (item.contract?.execution === 'explicit-ai') {
-                const committed = view.state.tr;
-                consumeSlashTrigger(committed, executingContext);
-                view.dispatch(closeHistory(committed.scrollIntoView()));
-                close(view);
+                commitExplicitAi();
                 return;
               }
               if (item.contract?.execution === 'external-command') {
@@ -262,6 +268,10 @@ export const QuickInsert = Extension.create<QuickInsertOptions, SlashMenuState>(
           item.contract?.execution === 'external-command'
         ) {
           if (!sessionIsCurrent(view, executingContext)) return;
+          if (item.contract?.execution === 'explicit-ai') {
+            commitExplicitAi();
+            return;
+          }
           const committed = view.state.tr;
           consumeSlashTrigger(committed, executingContext);
           view.dispatch(closeHistory(committed.scrollIntoView()));

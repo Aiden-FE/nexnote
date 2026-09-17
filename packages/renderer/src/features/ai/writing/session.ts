@@ -11,6 +11,7 @@ export interface WritingSessionPlan {
   truncated: boolean;
   note: string | null;
   apply: (generated: string) => void;
+  onClose?: () => void;
 }
 
 /**
@@ -22,7 +23,7 @@ export interface WritingSessionPlan {
  *   都保留已显示内容并标记未完成，仍可 Accept（单事务写回、单 undo）或 Reject（丢弃，原文不变）
  * - 一切 patch 先校验 session id，晚到的旧流事件不会污染新会话
  */
-export function beginWritingSession(plan: WritingSessionPlan): void {
+export function beginWritingSession(plan: WritingSessionPlan): Promise<boolean> {
   const previous = useWritingStore.getState().session;
   if (previous?.status === 'streaming') previous.stop();
 
@@ -50,11 +51,13 @@ export function beginWritingSession(plan: WritingSessionPlan): void {
       if (!session) return;
       stream?.cancel();
       if (session.generated.trim()) plan.apply(session.generated);
+      plan.onClose?.();
       useWritingStore.getState().closeSession();
     },
     reject: () => {
       if (!current()) return;
       stream?.cancel();
+      plan.onClose?.();
       useWritingStore.getState().closeSession();
     },
     stop: () => {
@@ -82,4 +85,5 @@ export function beginWritingSession(plan: WritingSessionPlan): void {
       }
     },
   });
+  return stream.started;
 }
