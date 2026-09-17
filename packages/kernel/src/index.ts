@@ -57,14 +57,25 @@ export {
   SelectionBubble,
   selectionBubblePluginKey,
   createBubbleAiMenu,
+  attachBubbleTooltip,
+  decorateBubbleButton,
+  refreshBubbleButton,
 } from './extensions/selection-bubble';
 export type {
   BubbleAction,
+  BubbleIconName,
   BubbleAiMenuOptions,
   BubbleAiMenuView,
   BubbleExtraControl,
   SelectionBubbleOptions,
 } from './extensions/selection-bubble';
+export {
+  bindSelectionBubbleToolbarRoving,
+  dispatchBubbleShortcut,
+  disableSelectionBubbleToolbarTabStops,
+  moveSelectionBubbleToolbarFocus,
+  syncSelectionBubbleToolbarTabStop,
+} from './extensions/selection-bubble-roving';
 export { ContextMenu, contextMenuPluginKey } from './extensions/context-menu';
 export type { ContextMenuItem, ContextMenuOptions } from './extensions/context-menu';
 export { PluginBlock, PLUGIN_BLOCK_FENCE } from './extensions/plugin-block';

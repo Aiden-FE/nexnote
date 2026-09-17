@@ -1,5 +1,9 @@
 // @vitest-environment happy-dom
 import { describe, expect, it, vi, beforeEach, afterEach } from 'vitest';
+import { act } from 'react';
+import { createRoot } from 'react-dom/client';
+import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
 import { undo } from '@codemirror/commands';
 import { createSourceEditor, type SourceEditorHandle } from '../src/editor/source/codemirror-host';
 import { sourceSelectionBubble } from '../src/editor/source/source-bubble';
@@ -22,6 +26,11 @@ import { TextSelection } from '@tiptap/pm/state';
 import { formatBubbleActions } from '../src/editor/interactions/formatting';
 import { useChatStore } from '../src/features/ai/chat/chat-store';
 import { useUiStore } from '../src/stores/ui-store';
+import { SourceModeView } from '../src/editor/source/SourceModeView';
+import { getActiveSourceEditor } from '../src/editor/source/active-source-editor';
+import type { TabDescriptor } from '../src/stores/tab-store';
+
+globalThis.IS_REACT_ACT_ENVIRONMENT = true;
 
 interface StreamListener {
   (payload: unknown): void;
@@ -78,7 +87,13 @@ function makeRect(init: {
   } as DOMRect;
 }
 
-function mount(initialText: string) {
+function mount(
+  initialText: string,
+  overrides: {
+    actions?: ReturnType<typeof sourceFormatBubbleActions>;
+    onAction?: Parameters<typeof sourceSelectionBubble>[0]['onAction'];
+  } = {},
+) {
   const parent = document.createElement('div');
   document.body.append(parent);
   // 模拟定位锚点（source-editor-pane）在视口原点、宽 800
@@ -90,13 +105,15 @@ function mount(initialText: string) {
     extraExtensions: [
       sourceSelectionBubble({
         // 与 SourceModeView 相同：格式化/双链平铺，写作与询问 AI 收口下拉。
-        actions: sourceFormatBubbleActions(),
+        actions: overrides.actions ?? sourceFormatBubbleActions(),
         aiMenu: { label: 'AI', actions: writingAiMenuActions() },
         extraControl: writingStopControl(),
-        onAction: (id, ctx) => {
-          if (applySourceFormat(editor.view, id)) return;
-          handleSourceBubbleAction(editor.view, id, ctx, { getDocPath: () => 'Notes/测试.md' });
-        },
+        onAction:
+          overrides.onAction ??
+          ((id, ctx) => {
+            if (applySourceFormat(editor.view, id)) return;
+            handleSourceBubbleAction(editor.view, id, ctx, { getDocPath: () => 'Notes/测试.md' });
+          }),
       }),
     ],
   });
@@ -430,16 +447,20 @@ describe('DEV-023 源码模式划词格式化（Markdown 包裹写回）', () =>
     editor.destroy();
   });
 
-  it('双链按钮与外链按钮视觉可区分（图标与 tooltip）', () => {
+  it('双链与外链使用不同纯图标、准确 aria-label 和非原生 tooltip', () => {
     const { parent, editor } = mount('第一句原文。第二句。');
     selectWithCoords(editor, parent, 0, 6, { top: 300, left: 100, right: 120, bottom: 320 });
     const bubble = bubbleOf();
     const link = bubble.querySelector<HTMLElement>('[data-bubble-action="format:link"]');
     const wiki = bubble.querySelector<HTMLElement>('[data-bubble-action="format:wikilink"]');
-    expect(link?.textContent).toBe('🔗');
-    expect(wiki?.textContent).toBe('[[]]');
-    expect(link?.title).not.toBe(wiki?.title);
-    expect(wiki?.title).toContain('双链');
+    expect(link?.querySelector('[data-icon]')?.getAttribute('data-icon')).toBe('link');
+    expect(wiki?.querySelector('[data-icon]')?.getAttribute('data-icon')).toBe('wikilink');
+    expect(link?.getAttribute('aria-label')).toBe('外链');
+    expect(wiki?.getAttribute('aria-label')).toBe('双链');
+    expect(link?.hasAttribute('title')).toBe(false);
+    expect(wiki?.hasAttribute('title')).toBe(false);
+    expect(link?.querySelector('[role="tooltip"]')?.textContent).toContain('⌘K');
+    expect(wiki?.querySelector('[role="tooltip"]')?.textContent).toContain('双链');
     editor.destroy();
   });
 
@@ -557,6 +578,222 @@ describe('DEV-034 划词工具栏 AI 下拉（源码模式）', () => {
     editor.destroy();
   });
 
+  it('纯图标格式化、Sparkles + AI + chevron、Tooltip 和 roving 工具栏键盘行为一致', () => {
+    const { parent, editor } = mount('第一句原文。第二句。');
+    selectWithCoords(editor, parent, 0, 6, { top: 300, left: 100, right: 120, bottom: 320 });
+    const bubble = bubbleOf();
+    const bold = bubble.querySelector<HTMLButtonElement>('[data-bubble-action="format:bold"]')!;
+    const italic = bubble.querySelector<HTMLButtonElement>('[data-bubble-action="format:italic"]')!;
+    const ai = triggerOf();
+    expect(bold.textContent).toBe('粗体（⌘B）');
+    expect(bold.querySelector('[data-icon="bold"]')).toBeTruthy();
+    expect(bold.getAttribute('aria-label')).toBe('粗体');
+    expect(bold.querySelector('[role="tooltip"]')?.textContent).toBe('粗体（⌘B）');
+    expect(ai.querySelector('[data-icon="sparkles"]')).toBeTruthy();
+    expect(ai.querySelector('.nexnote-selection-bubble__ai-label')?.textContent).toBe('AI');
+    expect(ai.querySelector('.nexnote-selection-bubble__chevron')).toBeTruthy();
+
+    const tooltip = bold.querySelector<HTMLElement>('[role="tooltip"]')!;
+    expect(tooltip.hidden).toBe(true);
+    bold.dispatchEvent(new PointerEvent('pointerenter'));
+    expect(tooltip.hidden).toBe(false);
+    bold.dispatchEvent(new PointerEvent('pointerleave'));
+    expect(tooltip.hidden).toBe(true);
+    bold.focus();
+    expect(tooltip.hidden).toBe(false);
+    key(bold, 'Escape');
+    expect(tooltip.hidden).toBe(true);
+    expect(bubble.style.display).not.toBe('none');
+
+    key(bold, 'ArrowRight');
+    expect(document.activeElement).toBe(italic);
+    key(italic, 'End');
+    expect(document.activeElement).toBe(ai);
+    key(ai, 'Home');
+    expect(document.activeElement).toBe(bold);
+    editor.destroy();
+  });
+
+  it('CodeMirror real DOM dispatches format and AI shortcuts, consumes Mod+E, and honors dynamic disabled', () => {
+    const onAction = vi.fn();
+    let disabled = false;
+    const actions = sourceFormatBubbleActions().map((action) =>
+      action.id === 'format:code' ? { ...action, disabled: () => disabled } : action,
+    );
+    const { parent, editor } = mount('第一句原文。第二句。', { actions, onAction });
+    selectWithCoords(editor, parent, 0, 6, { top: 300, left: 100, right: 120, bottom: 320 });
+
+    const code = new KeyboardEvent('keydown', {
+      key: 'e',
+      metaKey: true,
+      bubbles: true,
+      cancelable: true,
+    });
+    editor.view.dom.dispatchEvent(code);
+    expect(code.defaultPrevented).toBe(true);
+    expect(onAction).toHaveBeenCalledWith(
+      'format:code',
+      expect.objectContaining({ text: '第一句原文。' }),
+    );
+
+    disabled = true;
+    const blocked = new KeyboardEvent('keydown', {
+      key: 'e',
+      metaKey: true,
+      bubbles: true,
+      cancelable: true,
+    });
+    editor.view.dom.dispatchEvent(blocked);
+    expect(blocked.defaultPrevented).toBe(true);
+    expect(onAction).toHaveBeenCalledTimes(1);
+
+    const ai = new KeyboardEvent('keydown', {
+      key: 'r',
+      metaKey: true,
+      altKey: true,
+      bubbles: true,
+      cancelable: true,
+    });
+    editor.view.dom.dispatchEvent(ai);
+    expect(ai.defaultPrevented).toBe(true);
+    expect(onAction).toHaveBeenLastCalledWith('ai:rewrite', expect.any(Object));
+    editor.destroy();
+  });
+
+  it('CodeMirror uses one top-level tabstop, repairs it after hidden/disabled changes, and closes on external focusout', () => {
+    const { parent, editor } = mount('第一句原文。第二句。');
+    selectWithCoords(editor, parent, 0, 6, { top: 300, left: 100, right: 120, bottom: 320 });
+    const bubble = bubbleOf();
+    const top = () =>
+      Array.from(
+        bubble.querySelectorAll<HTMLButtonElement>(
+          ':scope > button:not([hidden]), :scope > [data-ai-dropdown] > button:not([hidden])',
+        ),
+      );
+    expect(top().filter((button) => button.tabIndex === 0)).toHaveLength(1);
+    const first = top().find((button) => button.tabIndex === 0)!;
+    first.focus();
+    first.dispatchEvent(new KeyboardEvent('keydown', { key: 'End', bubbles: true }));
+    const last = top().at(-1)!;
+    expect(document.activeElement).toBe(last);
+    expect(last.tabIndex).toBe(0);
+    expect(top().filter((button) => button.tabIndex === 0)).toEqual([last]);
+    last.hidden = true;
+    first.dispatchEvent(new KeyboardEvent('keydown', { key: 'Home', bubbles: true }));
+    expect(first.tabIndex).toBe(0);
+    expect(top().filter((button) => button.tabIndex === 0)).toEqual([first]);
+
+    const italic = bubble.querySelector<HTMLButtonElement>('[data-bubble-action="format:italic"]')!;
+    first.dispatchEvent(new FocusEvent('focusout', { bubbles: true, relatedTarget: italic }));
+    expect(bubble.style.display).not.toBe('none');
+    const outside = document.createElement('button');
+    document.body.append(outside);
+    italic.dispatchEvent(new FocusEvent('focusout', { bubbles: true, relatedTarget: outside }));
+    expect(bubble.style.display).toBe('none');
+    editor.destroy();
+  });
+
+  it('stop button Tooltip has hover/focus/Escape DOM behavior and matching CSS selectors', () => {
+    const control = writingStopControl();
+    document.body.append(control.dom);
+    const tooltip = control.dom.querySelector<HTMLElement>('[role="tooltip"]')!;
+    control.dom.disabled = false;
+    control.dom.hidden = false;
+    expect(control.dom.classList.contains('nexnote-selection-bubble__stop')).toBe(true);
+    expect(tooltip.hidden).toBe(true);
+    control.dom.dispatchEvent(new PointerEvent('pointerenter'));
+    expect(tooltip.hidden).toBe(false);
+    control.dom.dispatchEvent(new PointerEvent('pointerleave'));
+    expect(tooltip.hidden).toBe(true);
+    control.dom.focus();
+    expect(tooltip.hidden).toBe(false);
+    control.dom.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+    expect(tooltip.hidden).toBe(true);
+    const css = readFileSync(resolve(process.cwd(), 'packages/renderer/src/globals.css'), 'utf8');
+    expect(css).toContain(
+      '.nexnote-selection-bubble__stop:hover > .nexnote-selection-bubble__tooltip',
+    );
+    expect(css).toContain(
+      '.nexnote-selection-bubble__stop:focus-visible > .nexnote-selection-bubble__tooltip',
+    );
+    control.destroy();
+  });
+
+  it('disabled action retains an explained Tooltip without executing', () => {
+    const onAction = vi.fn();
+    const parent = document.createElement('div');
+    document.body.append(parent);
+    parent.getBoundingClientRect = () =>
+      makeRect({ top: 0, left: 0, right: 800, bottom: 600, width: 800, height: 600 });
+    const editor = createSourceEditor(parent, {
+      initialText: '第一句原文。',
+      onChange: () => undefined,
+      extraExtensions: [
+        sourceSelectionBubble({
+          actions: [
+            {
+              id: 'format:bold',
+              title: '粗体',
+              icon: 'bold',
+              disabled: true,
+              disabledReason: '当前选区不可格式化',
+            },
+          ],
+          onAction,
+        }),
+      ],
+    });
+    selectWithCoords(editor, parent, 0, 6, { top: 300, left: 100, right: 120, bottom: 320 });
+    const button = bubbleOf().querySelector<HTMLButtonElement>(
+      '[data-bubble-action="format:bold"]',
+    )!;
+    expect(button.getAttribute('aria-label')).toBe('粗体（当前选区不可格式化）');
+    expect(button.getAttribute('aria-disabled')).toBe('true');
+    expect(button.querySelector('[role="tooltip"]')?.textContent).toContain('当前选区不可格式化');
+    button.click();
+    expect(onAction).not.toHaveBeenCalled();
+    editor.destroy();
+  });
+
+  it('actual CodeMirror toolbar DOM Escape only closes its nested Tooltip or menu, not the bubble', () => {
+    const { parent, editor } = mount('第一句原文。第二句。');
+    selectWithCoords(editor, parent, 0, 6, { top: 300, left: 100, right: 120, bottom: 320 });
+    const bubble = bubbleOf();
+    const bold = bubble.querySelector<HTMLButtonElement>('[data-bubble-action="format:bold"]')!;
+    const tooltip = bold.querySelector<HTMLElement>('[role="tooltip"]')!;
+    bold.focus();
+    expect(tooltip.hidden).toBe(false);
+    bold.dispatchEvent(
+      new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true }),
+    );
+    expect(tooltip.hidden).toBe(true);
+    expect(bubble.style.display).not.toBe('none');
+
+    const trigger = triggerOf();
+    trigger.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowDown', bubbles: true }));
+    const menu = menuOf();
+    const item = menu.querySelector<HTMLButtonElement>('[data-ai-menu-action="ai:rewrite"]')!;
+    item.dispatchEvent(
+      new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true }),
+    );
+    expect(menu.hidden).toBe(true);
+    expect(document.activeElement).toBe(trigger);
+    expect(bubble.style.display).not.toBe('none');
+
+    trigger.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowDown', bubbles: true }));
+    const activeItem = document.activeElement as HTMLButtonElement;
+    activeItem.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
+    expect(menu.hidden).toBe(true);
+    expect(document.activeElement).toBe(trigger);
+
+    trigger.dispatchEvent(
+      new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true }),
+    );
+    expect(bubble.style.display).toBe('none');
+    expect(document.activeElement).toBe(editor.view.contentDOM);
+    editor.destroy();
+  });
+
   it('键盘：向下键打开并聚焦首项、方向键移动、Enter 执行、Esc 关闭且工具栏保留', async () => {
     const bridge = installBridge();
     const { parent, editor } = mount('第一句原文。第二句。');
@@ -571,8 +808,17 @@ describe('DEV-034 划词工具栏 AI 下拉（源码模式）', () => {
 
     key(menu, 'ArrowDown');
     expect(document.activeElement).toBe(menu.querySelector('[data-ai-menu-action="ai:polish"]'));
-    key(menu, 'ArrowUp');
+    key(menu, 'End');
+    expect(document.activeElement).toBe(
+      menu.querySelector(`[data-ai-menu-action="${TRANSLATE_SELECTION_ACTION_ID}"]`),
+    );
+    key(menu, 'Home');
     expect(document.activeElement).toBe(menu.querySelector('[data-ai-menu-action="ai:rewrite"]'));
+    key(menu, 'ArrowUp');
+    expect(document.activeElement).toBe(
+      menu.querySelector(`[data-ai-menu-action="${TRANSLATE_SELECTION_ACTION_ID}"]`),
+    );
+    key(menu, 'Home');
 
     // Esc 只关菜单，工具栏保持可见（选区仍在）
     key(document.activeElement as HTMLElement, 'Escape');
@@ -638,6 +884,138 @@ describe('DEV-034 划词工具栏 AI 下拉（源码模式）', () => {
     });
   });
 
+  it('dynamic disabled and reason refresh from configuration updates without DOM mutation', () => {
+    const parent = document.createElement('div');
+    document.body.append(parent);
+    let disabled = true;
+    let reason = '配置暂不可用';
+    const editor = createSourceEditor(parent, {
+      initialText: '第一句原文。第二句。',
+      onChange: () => undefined,
+      extraExtensions: [
+        sourceSelectionBubble({
+          actions: [
+            {
+              id: 'format:bold',
+              title: '粗体',
+              icon: 'bold',
+              disabled: () => disabled,
+              disabledReason: () => reason,
+            },
+          ],
+          onAction: () => undefined,
+        }),
+      ],
+    });
+    editor.view.dispatch({ selection: { anchor: 0, head: 6 } });
+    const button = bubbleOf().querySelector<HTMLButtonElement>(
+      '[data-bubble-action="format:bold"]',
+    )!;
+    expect(button.getAttribute('aria-disabled')).toBe('true');
+    expect(button.getAttribute('aria-label')).toContain('配置暂不可用');
+    expect(button.tabIndex).toBe(-1);
+
+    disabled = false;
+    reason = undefined as unknown as string;
+    editor.view.dispatch({ selection: { anchor: 1, head: 6 } });
+    expect(button.getAttribute('aria-disabled')).toBe('false');
+    expect(button.getAttribute('aria-label')).toBe('粗体');
+    expect(button.tabIndex).toBe(0);
+
+    disabled = true;
+    reason = '权限已收回';
+    editor.view.dispatch({ selection: { anchor: 0, head: 6 } });
+    expect(button.getAttribute('aria-disabled')).toBe('true');
+    expect(button.getAttribute('aria-label')).toContain('权限已收回');
+    expect(button.tabIndex).toBe(-1);
+    editor.destroy();
+  });
+
+  it('SourceModeView preview mounts real CodeMirror but keeps selected-text bubble hidden and unreachable', async () => {
+    const markdown = '# 预览页\n\n第一句原文。第二句。';
+    (window as unknown as { nexnote: unknown }).nexnote = {
+      invoke: vi.fn(async (channel: string) => {
+        if (channel === 'fs:readTextFile') return { ok: true, data: markdown };
+        if (channel === 'fs:stat') {
+          return {
+            ok: true,
+            data: {
+              path: '预览页.md',
+              name: '预览页.md',
+              kind: 'file',
+              size: markdown.length,
+              modifiedAt: 'v1',
+            },
+          };
+        }
+        if (channel === 'fs:exists') return { ok: true, data: false };
+        if (channel === 'fs:listDir' || channel === 'index:pageSummaries') {
+          return { ok: true, data: [] };
+        }
+        return { ok: true, data: null };
+      }),
+      on: () => () => undefined,
+    };
+    const tab: TabDescriptor = {
+      id: 'selection-preview-real',
+      kind: 'page',
+      title: '预览页',
+      pagePath: '预览页.md',
+      format: 'markdown',
+      editorMode: 'source',
+      markdownView: 'preview',
+      createdAt: 1,
+    };
+    const host = document.createElement('div');
+    document.body.append(host);
+    const root = createRoot(host);
+    await act(async () => {
+      root.render(<SourceModeView tab={tab} />);
+      await Promise.resolve();
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+    await vi.waitFor(() => expect(getActiveSourceEditor()).not.toBeNull());
+    const editor = getActiveSourceEditor()!;
+    editor.view.dispatch({ selection: { anchor: 8, head: 14 } });
+    const bubble = document.querySelector<HTMLElement>('[data-source-selection-bubble]')!;
+    expect(bubble).not.toBeNull();
+    expect(bubble.style.display).toBe('none');
+    expect(
+      document.querySelector('[data-testid="source-editor-pane"]')?.getAttribute('aria-hidden'),
+    ).toBe('true');
+    expect(
+      Array.from(bubble.querySelectorAll<HTMLButtonElement>('button')).every(
+        (button) => button.tabIndex === -1 || button.hidden,
+      ),
+    ).toBe(true);
+    await act(async () => root.unmount());
+  });
+
+  it('preview capability excludes the bubble even when a real CodeMirror text selection exists', () => {
+    const parent = document.createElement('div');
+    document.body.append(parent);
+    let previewOnly = true;
+    const editor = createSourceEditor(parent, {
+      initialText: '第一句原文。第二句。',
+      onChange: () => undefined,
+      extraExtensions: [
+        sourceSelectionBubble({
+          actions: sourceFormatBubbleActions(),
+          isEnabled: () => !previewOnly,
+          onAction: () => undefined,
+        }),
+      ],
+    });
+    editor.view.dispatch({ selection: { anchor: 0, head: 6 } });
+    const bubble = bubbleOf();
+    expect(bubble.style.display).toBe('none');
+    previewOnly = false;
+    editor.view.dispatch({ selection: { anchor: 1, head: 6 } });
+    expect(bubble.style.display).not.toBe('none');
+    editor.destroy();
+  });
+
   it('无选区时不显示工具栏（含 AI 入口）', () => {
     const { editor } = mount('第一句原文。第二句。');
     const bubble = bubbleOf();
@@ -700,6 +1078,23 @@ describe('DEV-034 两模式按钮集一致（源码 vs 块编辑）', () => {
     expect(blockFlat).toEqual(sourceFlat);
     expect(blockMenu).toEqual(sourceMenu);
     expect(blockMenuTitles).toEqual(sourceMenuTitles);
+    const sourceActions = Array.from(
+      sourceBubble.querySelectorAll<HTMLElement>('[data-bubble-action^="format:"]'),
+    ).map((button) => ({
+      id: button.dataset.bubbleAction,
+      label: button.getAttribute('aria-label'),
+      icon: button.querySelector<HTMLElement>('[data-icon]')?.dataset.icon,
+      tooltip: button.querySelector<HTMLElement>('[role="tooltip"]')?.textContent,
+    }));
+    const blockActions = Array.from(
+      blockBubble!.querySelectorAll<HTMLElement>('[data-bubble-action^="format:"]'),
+    ).map((button) => ({
+      id: button.dataset.bubbleAction,
+      label: button.getAttribute('aria-label'),
+      icon: button.querySelector<HTMLElement>('[data-icon]')?.dataset.icon,
+      tooltip: button.querySelector<HTMLElement>('[role="tooltip"]')?.textContent,
+    }));
+    expect(blockActions).toEqual(sourceActions);
     // 六写作动作 + 询问 AI + 划词翻译（DEV-041）
     expect(blockMenu).toHaveLength(8);
     kernel.destroy();

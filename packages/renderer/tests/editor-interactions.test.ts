@@ -19,6 +19,7 @@ import {
   FORMAT_STRIKE,
   FORMAT_WIKILINK,
 } from '../src/editor/interactions/formatting';
+import { editorAction } from '../src/editor/toolbar/entries';
 
 describe('DEV-017 wikilink 候选（纯逻辑）', () => {
   const pages = [
@@ -126,10 +127,19 @@ describe('DEV-023 悬浮格式化按钮：双链入列', () => {
     ]);
     const link = actions.find((a) => a.id === FORMAT_LINK);
     const wikilink = actions.find((a) => a.id === FORMAT_WIKILINK);
-    expect(wikilink?.title).toBe('[[]]');
-    expect(wikilink?.title).not.toBe(link?.title);
+    expect(wikilink?.title).toBe('双链');
+    expect(wikilink?.icon).toBe('wikilink');
+    expect(link?.icon).toBe('link');
     expect(wikilink?.hint).toContain('双链');
-    expect(link?.hint).toContain('外部');
+    expect(link?.hint).toContain('⌘K');
+    for (const action of actions) {
+      const shared = editorAction(action.id);
+      expect(action.title, action.id).toBe(shared.label);
+      expect(action.shortcutLabel, action.id).toBe(shared.shortcut);
+    }
+    const code = actions.find((action) => action.id === FORMAT_CODE);
+    expect(code?.shortcutLabel).toBe('⌘E');
+    expect(code?.hint).toContain('⌘E');
   });
 });
 

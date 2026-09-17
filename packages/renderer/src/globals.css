@@ -452,17 +452,92 @@
   box-shadow: 0 10px 28px rgb(0 0 0 / 18%);
 }
 .nexnote-selection-bubble__action {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.2rem;
+  min-width: 1.85rem;
+  min-height: 1.85rem;
   border: none;
   background: transparent;
   color: inherit;
   border-radius: 0.35rem;
-  padding: 0.3rem 0.5rem;
+  padding: 0.3rem;
   font-size: 0.74rem;
   cursor: pointer;
   white-space: nowrap;
 }
-.nexnote-selection-bubble__action:hover {
+.nexnote-selection-bubble__action:hover,
+.nexnote-selection-bubble__action:focus-visible {
   background: var(--accent);
+  outline: 2px solid var(--ring);
+  outline-offset: 1px;
+}
+.nexnote-selection-bubble__icon {
+  display: inline-flex;
+  width: 0.95rem;
+  height: 0.95rem;
+  align-items: center;
+  justify-content: center;
+  font-size: 0;
+}
+.nexnote-selection-bubble__icon::before {
+  font-size: 0.78rem;
+  font-weight: 700;
+  line-height: 1;
+}
+.nexnote-selection-bubble__icon[data-icon='bold']::before {
+  content: 'B';
+}
+.nexnote-selection-bubble__icon[data-icon='italic']::before {
+  content: 'I';
+  font-style: italic;
+}
+.nexnote-selection-bubble__icon[data-icon='strike']::before {
+  content: 'S̶';
+}
+.nexnote-selection-bubble__icon[data-icon='code']::before {
+  content: '</>';
+  font-size: 0.58rem;
+}
+.nexnote-selection-bubble__icon[data-icon='link']::before {
+  content: '↗';
+}
+.nexnote-selection-bubble__icon[data-icon='wikilink']::before {
+  content: '[[]]';
+  font-size: 0.52rem;
+}
+.nexnote-selection-bubble__icon[data-icon='sparkles']::before {
+  content: '✦';
+}
+.nexnote-selection-bubble__icon[data-icon='stop']::before {
+  content: '■';
+  font-size: 0.62rem;
+}
+.nexnote-selection-bubble__tooltip {
+  position: absolute;
+  z-index: 48;
+  bottom: calc(100% + 0.35rem);
+  left: 50%;
+  display: none;
+  transform: translateX(-50%);
+  border: 1px solid var(--border);
+  border-radius: 0.3rem;
+  background: var(--popover);
+  color: var(--popover-foreground);
+  padding: 0.2rem 0.35rem;
+  font-size: 0.65rem;
+  font-weight: 400;
+  pointer-events: none;
+  white-space: nowrap;
+}
+.nexnote-selection-bubble__tooltip[hidden] {
+  display: none !important;
+}
+.nexnote-selection-bubble__action:hover > .nexnote-selection-bubble__tooltip:not([hidden]),
+.nexnote-selection-bubble__action:focus-visible > .nexnote-selection-bubble__tooltip:not([hidden]) {
+  display: block;
 }
 
 /* DEV-034：AI 动作收口下拉。菜单向上展开（工具栏位于选区上方），不遮挡选区。 */
@@ -491,6 +566,7 @@
   display: none;
 }
 .nexnote-selection-bubble__ai-item {
+  position: relative;
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -508,12 +584,33 @@
 .nexnote-selection-bubble__ai-item:hover,
 .nexnote-selection-bubble__ai-item:focus-visible {
   background: var(--accent);
+  outline: 2px solid var(--ring);
+  outline-offset: 1px;
+}
+.nexnote-selection-bubble__ai-item > .nexnote-selection-bubble__tooltip {
+  left: auto;
+  right: calc(100% + 0.35rem);
+  bottom: auto;
+  top: 50%;
+  transform: translateY(-50%);
+}
+.nexnote-selection-bubble__ai-item:hover > .nexnote-selection-bubble__tooltip,
+.nexnote-selection-bubble__ai-item:focus-visible > .nexnote-selection-bubble__tooltip {
+  display: none;
+}
+.nexnote-selection-bubble__ai-label {
+  font-size: 0.74rem;
+}
+.nexnote-selection-bubble__chevron {
+  font-size: 0.68rem;
+  line-height: 1;
 }
 .nexnote-selection-bubble__shortcut {
   color: var(--muted-foreground);
   font-size: 0.65rem;
 }
 .nexnote-selection-bubble__stop {
+  position: relative;
   border: none;
   border-radius: 0.35rem;
   background: transparent;
@@ -523,8 +620,15 @@
   white-space: nowrap;
   cursor: pointer;
 }
-.nexnote-selection-bubble__stop:hover {
+.nexnote-selection-bubble__stop:hover,
+.nexnote-selection-bubble__stop:focus-visible {
   background: color-mix(in oklch, var(--destructive) 12%, transparent);
+  outline: 2px solid var(--ring);
+  outline-offset: 1px;
+}
+.nexnote-selection-bubble__stop:hover > .nexnote-selection-bubble__tooltip:not([hidden]),
+.nexnote-selection-bubble__stop:focus-visible > .nexnote-selection-bubble__tooltip:not([hidden]) {
+  display: block;
 }
 .nexnote-selection-bubble__stop[hidden] {
   display: none;
