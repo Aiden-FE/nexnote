@@ -51,11 +51,15 @@ function toggleFor(container: HTMLElement, blockId: string): HTMLButtonElement |
   );
 }
 
-function keydown(kernel: ReturnType<typeof make>['kernel'], key: string): boolean {
+function keydown(
+  kernel: ReturnType<typeof make>['kernel'],
+  key: string,
+  init: KeyboardEventInit = {},
+): boolean {
   const view = kernel.editor.view;
   let handled = false;
   view.someProp('handleKeyDown', (handler) => {
-    handled ||= handler(view, new KeyboardEvent('keydown', { key, cancelable: true }));
+    handled ||= handler(view, new KeyboardEvent('keydown', { key, cancelable: true, ...init }));
   });
   return handled;
 }
@@ -91,7 +95,7 @@ afterEach(() => {
 });
 
 describe('DEV-054 块文档标题章节折叠', () => {
-  it('H1-H6 有章节内容时始终显示可发现、键盘可达且 accessible name 准确的 chevron', () => {
+  it('H1-H6 有章节内容时始终显示可发现、键盘可达且 accessible name 准确的 chevron', async () => {
     const markdown = [1, 2, 3, 4, 5, 6]
       .map((level) => `${'#'.repeat(level)} H${level} ^h${level}\n\n正文 ${level} ^p${level}`)
       .join('\n\n');
@@ -113,15 +117,69 @@ describe('DEV-054 块文档标题章节折叠', () => {
     const selectionBefore = kernel.editor.state.selection.toJSON();
     const markdownBefore = kernel.getMarkdown();
     const button = toggleFor(container, first.blockId)!;
+    button.focus();
+    expect(document.activeElement).toBe(button);
     button.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, cancelable: true }));
     button.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
     expect(kernel.isBlockFolded(first.blockId)).toBe(true);
     expect(kernel.editor.state.selection.toJSON()).toEqual(selectionBefore);
     expect(kernel.getMarkdown()).toBe(markdownBefore);
-    expect(toggleFor(container, first.blockId)?.getAttribute('aria-label')).toBe('展开章节');
-    expect(toggleFor(container, first.blockId)?.getAttribute('aria-expanded')).toBe('false');
-    expect(toggleFor(container, first.blockId)?.getAttribute('data-fold-state')).toBe('collapsed');
-    expect(toggleFor(container, first.blockId)?.textContent).toBe('›');
+    const collapsed = toggleFor(container, first.blockId);
+    await vi.waitFor(() => expect(document.activeElement).toBe(collapsed));
+    expect(document.activeElement).not.toBe(document.body);
+    expect(collapsed?.matches(':focus')).toBe(true);
+    expect(collapsed?.getAttribute('aria-label')).toBe('展开章节');
+    expect(collapsed?.getAttribute('aria-expanded')).toBe('false');
+    expect(collapsed?.getAttribute('data-fold-state')).toBe('collapsed');
+    expect(collapsed?.textContent).toBe('›');
+
+    // widget 重建后连续用 Space 操作，焦点仍承接到再次重建的新按钮。
+    collapsed?.dispatchEvent(new KeyboardEvent('keydown', { key: ' ', bubbles: true }));
+    expect(kernel.isBlockFolded(first.blockId)).toBe(false);
+    const expandedAgain = toggleFor(container, first.blockId);
+    await vi.waitFor(() => expect(document.activeElement).toBe(expandedAgain));
+    expect(expandedAgain).not.toBe(collapsed);
+    expect(expandedAgain?.getAttribute('aria-expanded')).toBe('true');
+    expect(kernel.editor.state.selection.toJSON()).toEqual(selectionBefore);
+  });
+
+  it('chevron 点击正常不移动光标；若光标将被隐藏则安全移回标题是必要例外', () => {
+    const { container, kernel } = trackedMake(
+      '# A ^a\n\n隐藏正文 ^hidden\n\n# B ^b\n\n可见尾部 ^tail\n',
+    );
+    const heading = topBlocks(kernel).find((block) => block.blockId === 'a')!;
+    const hidden = topBlocks(kernel).find((block) => block.blockId === 'hidden')!;
+    const tail = topBlocks(kernel).find((block) => block.blockId === 'tail')!;
+
+    // 正常点击：当前光标在折叠区之外，mousedown/click 均不抢正文 selection。
+    kernel.editor.view.dispatch(
+      kernel.editor.state.tr.setSelection(
+        TextSelection.create(kernel.editor.state.doc, tail.from + 1),
+      ),
+    );
+    const stableSelection = kernel.editor.state.selection.toJSON();
+    let button = toggleFor(container, 'a')!;
+    button.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, cancelable: true }));
+    button.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true, detail: 1 }));
+    expect(kernel.isBlockFolded('a')).toBe(true);
+    expect(kernel.editor.state.selection.toJSON()).toEqual(stableSelection);
+
+    // 展开后把光标放进即将隐藏的正文；再次点击折叠必须移回标题行，避免悬空光标。
+    toggleFor(container, 'a')!.dispatchEvent(
+      new MouseEvent('click', { bubbles: true, cancelable: true, detail: 1 }),
+    );
+    kernel.editor.view.dispatch(
+      kernel.editor.state.tr.setSelection(
+        TextSelection.create(kernel.editor.state.doc, hidden.from + 1),
+      ),
+    );
+    button = toggleFor(container, 'a')!;
+    button.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, cancelable: true }));
+    button.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true, detail: 1 }));
+    expect(kernel.isBlockFolded('a')).toBe(true);
+    expect(kernel.editor.state.selection.$from.parent.type.name).toBe('heading');
+    expect(kernel.editor.state.selection.$from.parent.textContent).toBe('A');
+    expect(kernel.editor.state.selection.head).toBe(heading.to - 1);
   });
 
   it('无章节内容的标题（含文档末尾标题）不提供 chevron，块菜单能力亦禁用', () => {
@@ -312,6 +370,108 @@ describe('DEV-054 块文档标题章节折叠', () => {
     expect(kernel.getMarkdown()).toContain('第二段');
   });
 
+  it('Shift+Arrow 在折叠边界被消费，选区和复制文本均不进入隐藏正文', () => {
+    const { kernel } = trackedMake(
+      '# A ^a\n\n隐藏一 ^p1\n\n隐藏二 ^p2\n\n# B ^b\n\n可见尾部 ^tail\n',
+    );
+    const heading = topBlocks(kernel).find((block) => block.blockId === 'a')!;
+    const next = topBlocks(kernel).find((block) => block.blockId === 'b')!;
+    kernel.toggleBlockFold('a');
+
+    kernel.editor.view.dispatch(
+      kernel.editor.state.tr.setSelection(
+        TextSelection.create(kernel.editor.state.doc, heading.to - 1),
+      ),
+    );
+    const beforeDown = kernel.editor.state.selection.toJSON();
+    expect(keydown(kernel, 'ArrowDown', { shiftKey: true })).toBe(true);
+    expect(kernel.editor.state.selection.toJSON()).toEqual(beforeDown);
+    expect(
+      kernel.editor.state.doc.textBetween(
+        kernel.editor.state.selection.from,
+        kernel.editor.state.selection.to,
+        '\n',
+      ),
+    ).not.toContain('隐藏');
+
+    kernel.editor.view.dispatch(
+      kernel.editor.state.tr.setSelection(
+        TextSelection.create(kernel.editor.state.doc, next.from + 1),
+      ),
+    );
+    const beforeUp = kernel.editor.state.selection.toJSON();
+    expect(keydown(kernel, 'ArrowUp', { shiftKey: true })).toBe(true);
+    expect(kernel.editor.state.selection.toJSON()).toEqual(beforeUp);
+    expect(
+      kernel.editor.state.doc.textBetween(
+        kernel.editor.state.selection.from,
+        kernel.editor.state.selection.to,
+        '\n',
+      ),
+    ).not.toContain('隐藏');
+  });
+
+  it('嵌套折叠反向拖选使用外层首个边界，并保留折叠区之后的可见正文选择', () => {
+    const { kernel } = trackedMake(
+      '# 父 ^parent\n\n## 子 ^child\n\n子正文 ^childBody\n\n父尾 ^parentTail\n\n# 后续 ^after\n\n可见正文 ^visible\n',
+    );
+    const parent = topBlocks(kernel).find((block) => block.blockId === 'parent')!;
+    const child = topBlocks(kernel).find((block) => block.blockId === 'child')!;
+    const after = topBlocks(kernel).find((block) => block.blockId === 'after')!;
+    const visible = topBlocks(kernel).find((block) => block.blockId === 'visible')!;
+    kernel.toggleBlockFold('child');
+    kernel.toggleBlockFold('parent');
+
+    // anchor 在折叠区之后的可见正文，反向 head 越过父/子嵌套折叠区。
+    const anchor = visible.from + 1;
+    kernel.editor.view.dispatch(
+      kernel.editor.state.tr.setSelection(
+        TextSelection.create(kernel.editor.state.doc, anchor, parent.to - 1),
+      ),
+    );
+    clampMouseSelection(kernel.editor.view);
+
+    expect(kernel.editor.state.selection.empty).toBe(false);
+    expect(kernel.editor.state.selection.anchor).toBe(anchor);
+    expect(kernel.editor.state.selection.$head.parent.textContent).toBe('后续');
+    expect(kernel.editor.state.selection.head).toBe(after.from + 1);
+    expect(kernel.editor.state.selection.head).toBeGreaterThan(child.to);
+    const selected = kernel.editor.state.doc.textBetween(
+      kernel.editor.state.selection.from,
+      kernel.editor.state.selection.to,
+      '\n',
+    );
+    expect(selected.trimEnd()).toBe('后续');
+    expect(selected).not.toContain('子正文');
+    expect(selected).not.toContain('父尾');
+  });
+
+  it('正向拖选保留折叠区之前的可见正文尾部，不吞入隐藏段', () => {
+    const { kernel } = trackedMake(
+      '# 顶部 ^top\n\n前言段 ^intro\n\n# A ^a\n\n隐藏段 ^hidden\n\n# B ^b\n',
+    );
+    const intro = topBlocks(kernel).find((block) => block.blockId === 'intro')!;
+    const next = topBlocks(kernel).find((block) => block.blockId === 'b')!;
+    kernel.toggleBlockFold('a');
+
+    kernel.editor.view.dispatch(
+      kernel.editor.state.tr.setSelection(
+        TextSelection.create(kernel.editor.state.doc, intro.from + 1, next.from + 1),
+      ),
+    );
+    clampMouseSelection(kernel.editor.view);
+    const { selection } = kernel.editor.state;
+    expect(selection.empty).toBe(false);
+    expect(selection.from).toBe(intro.from + 1);
+    expect(selection.to).toBeLessThanOrEqual(
+      topBlocks(kernel).find((block) => block.blockId === 'hidden')!.from,
+    );
+    const selected = kernel.editor.state.doc.textBetween(selection.from, selection.to, '\n');
+    expect(selected).toContain('前言段');
+    expect(selected).toContain('A');
+    expect(selected).not.toContain('隐藏段');
+  });
+
   it('显式目录/锚点跳转只展开必要祖先，目标标题自身折叠状态保留', () => {
     const { container, kernel } = trackedMake(
       '# 父 ^parent\n\n## 目标 ^target\n\n目标正文 ^body\n\n# 后续 ^after\n\n尾部 ^tail\n',
@@ -328,6 +488,7 @@ describe('DEV-054 块文档标题章节折叠', () => {
 
   it('折叠、展开、保存与全文读取不改变 Markdown/JSON/revision，重载页面全部展开', async () => {
     const saved: string[] = [];
+    const docChanges: unknown[] = [];
     const container = document.createElement('div');
     document.body.append(container);
     const markdown = '# A ^a\n\n正文 ^p\n\n# B ^b\n\n尾部 ^tail\n';
@@ -337,19 +498,36 @@ describe('DEV-054 块文档标题章节折叠', () => {
       dragHandle: false,
       saveDelayMs: 0,
       onContentChange: (value) => saved.push(value),
+      onDocChange: (json) => docChanges.push(json),
     });
     kernels.push({ container, kernel });
     const beforeMarkdown = kernel.getMarkdown();
+    const beforeBytes = new TextEncoder().encode(beforeMarkdown);
     const beforeJson = kernel.getJSON();
+    const beforeBlockIds = topBlocks(kernel).map((block) => block.blockId);
     const beforeRevision = kernel.getRevision();
 
     kernel.toggleBlockFold('a');
     expect(kernel.getMarkdown()).toBe(beforeMarkdown);
+    expect(new TextEncoder().encode(kernel.getMarkdown())).toEqual(beforeBytes);
     expect(kernel.getJSON()).toEqual(beforeJson);
+    expect(topBlocks(kernel).map((block) => block.blockId)).toEqual(beforeBlockIds);
     expect(kernel.getRevision()).toBe(beforeRevision);
     expect(kernel.hasPendingSave()).toBe(false);
     await kernel.flushPendingSave();
     expect(saved).toEqual([]);
+    expect(docChanges).toEqual([]);
+
+    kernel.toggleBlockFold('a');
+    expect(kernel.getMarkdown()).toBe(beforeMarkdown);
+    expect(new TextEncoder().encode(kernel.getMarkdown())).toEqual(beforeBytes);
+    expect(kernel.getJSON()).toEqual(beforeJson);
+    expect(topBlocks(kernel).map((block) => block.blockId)).toEqual(beforeBlockIds);
+    expect(kernel.getRevision()).toBe(beforeRevision);
+    expect(kernel.hasPendingSave()).toBe(false);
+    await kernel.flushPendingSave();
+    expect(saved).toEqual([]);
+    expect(docChanges).toEqual([]);
 
     kernel.setMarkdown(beforeMarkdown);
     expect(kernel.isBlockFolded('a')).toBe(false);

@@ -24,6 +24,12 @@ export const foldPluginKey = new PluginKey<FoldPluginState>('nexnoteFold');
  */
 const FOLD_TRUSTED_IDS_META = 'nexnoteFoldTrustedIds';
 
+/** 键盘激活后与原生 click 的去重窗口（毫秒）。 */
+const KEYBOARD_CLICK_DEDUPE_MS = 500;
+
+/** 每个编辑视图键盘切换后等待重建 chevron 承接焦点的 blockId。 */
+const pendingKeyboardFocus = new WeakMap<EditorView, string>();
+
 type FoldMeta =
   | { type: 'toggle'; blockId: string }
   | { type: 'clear' }
@@ -40,6 +46,8 @@ interface TopLevelBlock {
 interface FoldedSectionRange {
   blockId: string;
   headingIndex: number;
+  /** 隐藏区结束块下标（exclusive）。 */
+  endIndex: number;
   from: number;
   to: number;
 }
@@ -60,6 +68,10 @@ function listTopLevelBlocksFromDoc(doc: ProseMirrorNode): TopLevelBlock[] {
 
 function listTopLevelBlocks(state: EditorState): TopLevelBlock[] {
   return listTopLevelBlocksFromDoc(state.doc);
+}
+
+function topLevelBlockIndexById(blocks: readonly TopLevelBlock[], blockId: string): number {
+  return blocks.findIndex((block) => block.blockId === blockId);
 }
 
 /** 返回章节结束的块下标（exclusive）。 */
@@ -90,6 +102,7 @@ function foldedSectionRanges(
     ranges.push({
       blockId: heading.blockId,
       headingIndex: i,
+      endIndex: end,
       from: blocks[i + 1]!.from,
       to: blocks[end - 1]!.to,
     });
@@ -103,10 +116,28 @@ function hiddenBlockIndexes(
 ): ReadonlySet<number> {
   const hidden = new Set<number>();
   for (const range of foldedSectionRanges(blocks, folded)) {
-    const end = sectionEndIndex(blocks, range.headingIndex);
-    for (let i = range.headingIndex + 1; i < end; i++) hidden.add(i);
+    for (let i = range.headingIndex + 1; i < range.endIndex; i++) hidden.add(i);
   }
   return hidden;
+}
+
+function mergedHiddenRanges(
+  blocks: readonly TopLevelBlock[],
+  folded: ReadonlySet<string>,
+): Array<{ from: number; to: number }> {
+  const ranges = foldedSectionRanges(blocks, folded)
+    .map(({ from, to }) => ({ from, to }))
+    .sort((a, b) => a.from - b.from || a.to - b.to);
+  const merged: Array<{ from: number; to: number }> = [];
+  for (const range of ranges) {
+    const previous = merged.at(-1);
+    if (previous && range.from <= previous.to) {
+      previous.to = Math.max(previous.to, range.to);
+    } else {
+      merged.push({ ...range });
+    }
+  }
+  return merged;
 }
 
 function uniqueNodePositionsByBlockId(doc: ProseMirrorNode): Map<string, number[]> {
@@ -181,8 +212,8 @@ export function trustFoldIdentity(tr: Transaction, blockId: string): void {
 /** 可折叠 = 有章节内容的顶层 H1–H6。 */
 export function canFoldBlock(state: EditorState, blockId: string): boolean {
   const blocks = listTopLevelBlocks(state);
-  const index = blocks.findIndex((block) => block.blockId === blockId && block.level != null);
-  return index >= 0 && hasSectionContent(blocks, index);
+  const index = topLevelBlockIndexById(blocks, blockId);
+  return index >= 0 && blocks[index]?.level != null && hasSectionContent(blocks, index);
 }
 
 export function isBlockFolded(state: EditorState, blockId: string): boolean {
@@ -196,7 +227,7 @@ export function toggleBlockFold(view: EditorView, blockId: string): boolean {
   const tr = state.tr;
   if (!isBlockFolded(state, blockId)) {
     const blocks = listTopLevelBlocks(state);
-    const index = blocks.findIndex((block) => block.blockId === blockId && block.level != null);
+    const index = topLevelBlockIndexById(blocks, blockId);
     const heading = blocks[index];
     const end = sectionEndIndex(blocks, index);
     const lastHidden = blocks[end - 1];
@@ -261,9 +292,11 @@ function createToggleButton(
   button.tabIndex = 0;
 
   let lastKeyToggleAt = 0;
-  const toggle = () => {
+  const toggle = (restoreKeyboardFocus = false) => {
     const view = getView();
-    if (view) toggleBlockFold(view, blockId);
+    if (!view) return;
+    if (restoreKeyboardFocus) pendingKeyboardFocus.set(view, blockId);
+    if (!toggleBlockFold(view, blockId)) pendingKeyboardFocus.delete(view);
   };
   button.addEventListener('mousedown', (event) => {
     // 保留正文焦点、光标和选区；按钮仍可由 Tab 获得键盘焦点。
@@ -275,14 +308,14 @@ function createToggleButton(
     event.preventDefault();
     event.stopPropagation();
     lastKeyToggleAt = Date.now();
-    toggle();
+    toggle(true);
   });
   button.addEventListener('click', (event) => {
     event.preventDefault();
     event.stopPropagation();
     // 键盘原生激活可能在 keydown 后再派发 detail=0 的 click，避免双切换。
-    if (event.detail === 0 && Date.now() - lastKeyToggleAt < 500) return;
-    toggle();
+    if (event.detail === 0 && Date.now() - lastKeyToggleAt < KEYBOARD_CLICK_DEDUPE_MS) return;
+    toggle(false);
   });
   return button;
 }
@@ -315,10 +348,25 @@ function buildDecorations(
     }
     const blockId = block.blockId;
     decorations.push(
-      Decoration.widget(block.from + 1, () => createToggleButton(blockId, isFolded, getView), {
-        side: -1,
-        key: `fold-${blockId}-${isFolded ? 'closed' : 'open'}`,
-      }),
+      Decoration.widget(
+        block.from + 1,
+        () => {
+          const button = createToggleButton(blockId, isFolded, getView);
+          const view = getView();
+          if (view && pendingKeyboardFocus.get(view) === blockId) {
+            pendingKeyboardFocus.delete(view);
+            // ProseMirror 会先把旧 widget 移除；新 widget 插入 DOM 后再承接焦点。
+            queueMicrotask(() => {
+              if (button.isConnected) button.focus({ preventScroll: true });
+            });
+          }
+          return button;
+        },
+        {
+          side: -1,
+          key: `fold-${blockId}-${isFolded ? 'closed' : 'open'}`,
+        },
+      ),
     );
   }
   return DecorationSet.create(state.doc, decorations);
@@ -330,10 +378,10 @@ function blockIndexAtPosition(blocks: readonly TopLevelBlock[], pos: number): nu
   return blocks.findIndex((block) => block.from >= pos);
 }
 
-/** 上下方向键跨越折叠区，不把光标送入不可见正文。 */
+/** 上下方向键跨越折叠区，不把光标或键盘扩展选区送入不可见正文。 */
 function skipHiddenWithArrow(view: EditorView, event: KeyboardEvent): boolean {
-  if ((event.key !== 'ArrowDown' && event.key !== 'ArrowUp') || event.shiftKey) return false;
-  if (event.metaKey || event.ctrlKey || event.altKey || !view.state.selection.empty) return false;
+  if (event.key !== 'ArrowDown' && event.key !== 'ArrowUp') return false;
+  if (event.metaKey || event.ctrlKey || event.altKey) return false;
 
   const folded = foldPluginKey.getState(view.state)?.folded ?? new Set<string>();
   if (folded.size === 0) return false;
@@ -363,10 +411,18 @@ function skipHiddenWithArrow(view: EditorView, event: KeyboardEvent): boolean {
   const block = blocks[target];
   if (!block) return false;
 
+  if (event.shiftKey) {
+    // ProseMirror 的文本选区是连续区间；跨到下一可见块必然把隐藏正文纳入复制。
+    // 因此在隐藏边界消费 Shift+Arrow 并保持现有可见选区，而非制造含隐藏文本的范围。
+    event.preventDefault();
+    return true;
+  }
+  if (!view.state.selection.empty) return false;
+
   const boundary = bias > 0 ? block.from : block.to;
   const selection = TextSelection.near(view.state.doc.resolve(boundary), bias);
-  view.dispatch(view.state.tr.setSelection(selection).scrollIntoView());
   event.preventDefault();
+  view.dispatch(view.state.tr.setSelection(selection).scrollIntoView());
   return true;
 }
 
@@ -380,18 +436,22 @@ export function clampMouseSelection(view: EditorView): void {
   if (selection.from === 0 && selection.to === view.state.doc.content.size) return;
   if (selection.empty) return;
   const folded = foldPluginKey.getState(view.state)?.folded ?? new Set<string>();
-  const ranges = foldedSectionRanges(listTopLevelBlocks(view.state), folded);
+  const ranges = mergedHiddenRanges(listTopLevelBlocks(view.state), folded);
   if (ranges.length === 0) return;
 
   const forward = selection.anchor <= selection.head;
-  const ordered = forward ? ranges : [...ranges].reverse();
-  const crossed = ordered.find((range) => selection.from < range.to && selection.to > range.from);
+  // 从固定 anchor 朝 head 的方向找首次进入的合并隐藏区。嵌套折叠必须先合并，
+  // 否则反向拖选会误取内层 range.to，并丢掉折叠区之后仍可见的正文选择。
+  const crossed = forward
+    ? ranges.find((range) => selection.anchor < range.to && selection.head > range.from)
+    : [...ranges]
+        .reverse()
+        .find((range) => selection.head < range.to && selection.anchor > range.from);
   if (!crossed) return;
 
   const boundary = forward ? crossed.from : crossed.to;
-  // 截断点吸附到边界可见一侧的最近合法文本位置；可见侧没有可选内容时退化为空选区。
-  const head = TextSelection.near(view.state.doc.resolve(boundary), forward ? -1 : 1).head;
-  const target = forward ? Math.min(selection.anchor, head) : Math.max(selection.anchor, head);
+  // 吸附到隐藏区外侧的最近合法文本位置，因此保留 anchor 至折叠边界之间的可见选区。
+  const target = TextSelection.near(view.state.doc.resolve(boundary), forward ? -1 : 1).head;
   view.dispatch(
     view.state.tr.setSelection(TextSelection.create(view.state.doc, selection.anchor, target)),
   );
