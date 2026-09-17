@@ -2,7 +2,7 @@
 
 Type: dev
 Module: ai
-Status: open
+Status: closed
 Blocked by: DEV-039（权限模式）
 Depends: DEV-032（工具循环）、DEV-036（光标插入基座）
 Effort: L

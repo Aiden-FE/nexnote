@@ -2,7 +2,7 @@
 
 Type: dev
 Module: ai
-Status: open
+Status: closed
 Blocked by: 无（可立即开始）
 Depends: DEV-009（Provider Adapter）、DEV-011（检索/向量索引）
 Effort: M

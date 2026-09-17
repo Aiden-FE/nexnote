@@ -2,7 +2,7 @@
 
 Type: dev
 Module: shell
-Status: open
+Status: closed
 Blocked by: 无（可立即开始）
 Depends: 无
 Effort: M

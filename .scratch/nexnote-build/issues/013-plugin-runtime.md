@@ -2,7 +2,7 @@
 
 Type: dev
 Module: plugins
-Status: open
+Status: closed
 Blocked by: DEV-001, DEV-002
 Depends: DEV-001, DEV-002
 Effort: XL

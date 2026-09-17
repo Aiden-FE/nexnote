@@ -2,7 +2,7 @@
 
 Type: dev
 Module: ai
-Status: open
+Status: closed
 Blocked by: 无（可立即开始）
 Depends: DEV-009（Provider Adapter）、DEV-010（写作辅助）、DEV-012（对话 dock）
 Effort: L

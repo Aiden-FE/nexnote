@@ -2,7 +2,7 @@
 
 Type: dev
 Module: foundation
-Status: open
+Status: closed
 Blocked by: (none)
 Depends: (none)
 Effort: M

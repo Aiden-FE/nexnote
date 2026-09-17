@@ -2,7 +2,7 @@
 
 Type: dev
 Module: integration
-Status: open
+Status: closed
 Blocked by: DEV-027、DEV-028、DEV-029、DEV-030、DEV-031、DEV-032、DEV-033、DEV-034、DEV-035、DEV-036、DEV-037、DEV-038、DEV-039、DEV-040、DEV-041、DEV-043、DEV-044
 Depends: DEV-018（打包发布）、DEV-019（集成验收）
 Effort: L

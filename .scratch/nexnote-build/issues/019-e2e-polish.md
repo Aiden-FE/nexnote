@@ -2,7 +2,7 @@
 
 Type: dev
 Module: foundation
-Status: open
+Status: closed
 Blocked by: DEV-004, DEV-006, DEV-008, DEV-010, DEV-012, DEV-015, DEV-017, DEV-018
 Depends: DEV-004, DEV-006, DEV-008, DEV-010, DEV-012, DEV-015, DEV-017, DEV-018
 Effort: L

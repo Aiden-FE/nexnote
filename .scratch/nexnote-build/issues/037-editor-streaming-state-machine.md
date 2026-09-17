@@ -2,7 +2,7 @@
 
 Type: dev
 Module: ai
-Status: open
+Status: closed
 Blocked by: DEV-031（SDK 流式链路）、DEV-034（AI 下拉收口）
 Depends: DEV-010（写作辅助）
 Effort: M

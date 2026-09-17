@@ -2,7 +2,7 @@
 
 Type: dev
 Module: editor
-Status: open
+Status: closed
 Blocked by: 无（可立即开始）
 Depends: DEV-010（划词写作辅助）、DEV-020（源码模式）
 Effort: M

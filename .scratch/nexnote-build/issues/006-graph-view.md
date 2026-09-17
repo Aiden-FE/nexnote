@@ -2,7 +2,7 @@
 
 Type: dev
 Module: knowledge
-Status: open
+Status: closed
 Blocked by: DEV-004
 Depends: DEV-004
 Effort: M

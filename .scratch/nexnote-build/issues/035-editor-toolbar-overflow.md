@@ -2,7 +2,7 @@
 
 Type: dev
 Module: shell
-Status: open
+Status: closed
 Blocked by: 无（可立即开始）
 Depends: DEV-022（Tab 顺序与快捷键）
 Effort: M

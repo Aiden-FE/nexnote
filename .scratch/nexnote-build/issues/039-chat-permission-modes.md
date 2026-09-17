@@ -2,7 +2,7 @@
 
 Type: dev
 Module: ai
-Status: open
+Status: closed
 Blocked by: DEV-032（SDK 工具循环）、DEV-033（会话 JSONL）
 Depends: DEV-012（对话 dock）
 Effort: M
