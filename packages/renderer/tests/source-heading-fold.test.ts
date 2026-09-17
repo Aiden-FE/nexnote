@@ -2,6 +2,8 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { redo, undo } from '@codemirror/commands';
 import { runScopeHandlers } from '@codemirror/view';
+import { EditorState } from '@codemirror/state';
+import { markdown } from '@codemirror/lang-markdown';
 import { createSourceEditor, type SourceEditorHandle } from '../src/editor/source/codemirror-host';
 import {
   clampSourceMouseSelection,
@@ -118,6 +120,24 @@ describe('DEV-055 Markdown 标题解析与章节边界', () => {
     expect(visibleText(h2.parent)).not.toContain('body two');
   });
 
+  it('长文档末尾的 ATX/Setext 仍从完整 syntax tree 解析，解析不可用时 fail-open', () => {
+    const prefix = `${'正文行，不是标题。\n'.repeat(1_600)}`;
+    expect(prefix.length).toBeGreaterThan(15_000);
+    const atx = EditorState.create({
+      doc: `${prefix}# tail ATX\nbody\n`,
+      extensions: [markdown()],
+    });
+    const setext = EditorState.create({
+      doc: `${prefix}tail Setext\n---\nbody\n`,
+      extensions: [markdown()],
+    });
+    expect(parseSourceHeadings(atx).at(-1)).toMatchObject({ level: 1, content: true });
+    expect(parseSourceHeadings(setext).at(-1)).toMatchObject({ level: 2, content: true });
+
+    const unavailable = parseSourceHeadings(atx, () => null);
+    expect(unavailable).toEqual([]);
+  });
+
   it('同级/高层级边界正确，嵌套章节包含低级标题且空章节不可折叠', () => {
     const text = '# A\nA body\n## A.1\nchild\n### deep\ndeep body\n## A.2\n# B\nB body\n# Empty\n';
     const { editor } = make(text);
@@ -186,15 +206,46 @@ describe('DEV-055 真实 CodeMirror renderer', () => {
     original.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
     const collapsed = buttons(parent)[0]!;
     await vi.waitFor(() => expect(document.activeElement).toBe(collapsed));
-    expect(collapsed).not.toBe(original);
+    expect(collapsed).toBe(original);
     expect(collapsed.getAttribute('aria-label')).toBe('展开章节');
     expect(collapsed.getAttribute('aria-expanded')).toBe('false');
 
     collapsed.dispatchEvent(new KeyboardEvent('keydown', { key: ' ', bubbles: true }));
     const reopened = buttons(parent)[0]!;
     await vi.waitFor(() => expect(document.activeElement).toBe(reopened));
-    expect(reopened).not.toBe(collapsed);
+    expect(reopened).toBe(original);
     expect(sourceFoldState(editor.view.state)?.folded.size).toBe(0);
+  });
+
+  it('多次 scroll/update 差量复用 overlay button，焦点稳定且 measure 请求按 stable key 合并', async () => {
+    const { parent, editor } = make('# A\nbody\n# B\ntail\n');
+    const first = buttons(parent)[0]!;
+    first.focus();
+    const requestMeasure = vi.spyOn(editor.view, 'requestMeasure');
+    requestMeasure.mockClear();
+    for (let i = 0; i < 4; i++) {
+      editor.view.scrollDOM.scrollTop = i * 10;
+      editor.view.scrollDOM.dispatchEvent(new Event('scroll', { bubbles: true }));
+      editor.view.dispatch({ selection: { anchor: i % 2 } });
+      expect(buttons(parent)[0]).toBe(first);
+      expect(document.activeElement).toBe(first);
+    }
+    // 即使视口更新暂时把标题移出渲染范围，聚焦 control 也保留到真实失效为止。
+    Object.defineProperty(editor.view, 'viewport', {
+      configurable: true,
+      get: () => ({ from: 1, to: editor.view.state.doc.length }),
+    });
+    editor.view.scrollDOM.dispatchEvent(new Event('scroll', { bubbles: true }));
+    expect(buttons(parent)[0]).toBe(first);
+    expect(document.activeElement).toBe(first);
+    await Promise.resolve();
+    // CodeMirror 自身也可能发无 key 的测量请求；本扩展的 keyed 请求必须全部共用同一 key，
+    // 由 requestMeasure 在单帧内替换旧请求而非累积。
+    const keyedRequests = requestMeasure.mock.calls
+      .map(([request]) => request)
+      .filter((request) => request?.key !== undefined);
+    expect(keyedRequests.length).toBeGreaterThan(0);
+    expect(new Set(keyedRequests.map((request) => request!.key)).size).toBe(1);
   });
 
   it('父子嵌套状态独立：重开父章节后子章节仍保持折叠', () => {

@@ -1,4 +1,4 @@
-import { syntaxTree } from '@codemirror/language';
+import { ensureSyntaxTree } from '@codemirror/language';
 import {
   RangeSet,
   RangeSetBuilder,
@@ -58,14 +58,24 @@ const revealFoldAt = StateEffect.define<number>();
 const pendingFocus = new WeakMap<EditorView, number>();
 /** 键盘激活后与原生 click 的去重窗口（毫秒）。 */
 const KEYBOARD_CLICK_DEDUPE_MS = 500;
+/** 等待 Lezer 完整解析全文的上限；超时即 fail-open，不使用不完整树计算范围。 */
+const FULL_PARSE_TIMEOUT_MS = 100;
 
 /**
  * 从完整 Markdown 语法树解析标题。fenced code、frontmatter、HTML 块里形似标题的行
  * 不是标题；ATX H1-H6 与 Setext H1/H2 均产出（Setext 正文边界越过 underline 行）。
+ *
+ * CodeMirror 的 `syntaxTree` 可以是 viewport 外尚未完成的增量树。这里强制等待覆盖全文的
+ * tree；超时或未完成时返回空列表，令折叠 fail-open，而不是据半棵树隐藏错误章节。
  */
-export function parseSourceHeadings(state: EditorState): SourceHeading[] {
+export function parseSourceHeadings(
+  state: EditorState,
+  ensureTree: typeof ensureSyntaxTree = ensureSyntaxTree,
+): SourceHeading[] {
+  const tree = ensureTree(state, state.doc.length, FULL_PARSE_TIMEOUT_MS);
+  if (!tree || tree.length < state.doc.length) return [];
   const headings: SourceHeading[] = [];
-  syntaxTree(state).iterate({
+  tree.iterate({
     enter(node) {
       const atx = /^ATXHeading([1-6])$/.exec(node.name);
       const setext = /^SetextHeading([12])$/.exec(node.name);
@@ -358,9 +368,19 @@ function createAccessibleDisclosure(
   return button;
 }
 
+function updateAccessibleDisclosure(button: HTMLButtonElement, folded: boolean): void {
+  const action = folded ? '展开章节' : '折叠章节';
+  button.title = action;
+  button.setAttribute('aria-label', action);
+  button.setAttribute('aria-expanded', String(!folded));
+  button.setAttribute('data-fold-state', folded ? 'collapsed' : 'expanded');
+}
+
 /** 将可访问 controls 绝对定位到 gutter 上，既保留视觉入口又不违反 CodeMirror aria 边界。 */
 class AccessibleDisclosureOverlay {
   readonly dom = document.createElement('div');
+  /** 按临时 heading identity 复用节点，滚动与测量不会破坏 Tab 焦点。 */
+  readonly buttons = new Map<number, HTMLButtonElement>();
 
   constructor(readonly view: EditorView) {
     this.dom.className = 'cm-heading-fold-accessible-controls';
@@ -380,21 +400,44 @@ class AccessibleDisclosureOverlay {
 
   sync(): void {
     const model = sourceFoldState(this.view.state);
-    this.dom.replaceChildren();
-    if (!model) return;
-    for (const heading of model.headings) {
-      if (
-        !headingIsVisibleControl(model, heading) ||
-        heading.from < this.view.viewport.from ||
-        heading.from > this.view.viewport.to
-      )
+    if (!model) {
+      for (const button of this.buttons.values()) button.remove();
+      this.buttons.clear();
+      return;
+    }
+    const visible = model.headings.filter(
+      (heading) =>
+        headingIsVisibleControl(model, heading) &&
+        heading.from >= this.view.viewport.from &&
+        heading.from <= this.view.viewport.to,
+    );
+    const valid = new Map(
+      model.headings
+        .filter((heading) => headingIsVisibleControl(model, heading))
+        .map((heading) => [heading.id, heading]),
+    );
+    const visibleIds = new Set(visible.map((heading) => heading.id));
+    for (const [id, button] of this.buttons) {
+      const heading = valid.get(id);
+      if (!heading) {
+        button.remove();
+        this.buttons.delete(id);
         continue;
-      const button = createAccessibleDisclosure(
-        this.view,
-        heading.id,
-        model.folded.has(heading.id),
-      );
-      this.dom.append(button);
+      }
+      updateAccessibleDisclosure(button, model.folded.has(id));
+      if (visibleIds.has(id) || document.activeElement === button) continue;
+      button.remove();
+      this.buttons.delete(id);
+    }
+    for (const heading of visible) {
+      let button = this.buttons.get(heading.id);
+      if (!button) {
+        button = createAccessibleDisclosure(this.view, heading.id, model.folded.has(heading.id));
+        this.buttons.set(heading.id, button);
+        this.dom.append(button);
+      } else {
+        updateAccessibleDisclosure(button, model.folded.has(heading.id));
+      }
       if (pendingFocus.get(this.view) === heading.id) {
         pendingFocus.delete(this.view);
         queueMicrotask(() => {
@@ -402,23 +445,23 @@ class AccessibleDisclosureOverlay {
         });
       }
     }
-    // CodeMirror forbids layout reads during plugin construction/update. Request the positions in
-    // its measure phase, then apply them in write phase; controls stay outside `.cm-gutters`.
+    // CodeMirror forbids layout reads during plugin construction/update. A stable request key
+    // coalesces repeated scroll/update syncs to one measure per frame.
     this.view.requestMeasure({
+      key: this,
       read: (view) => {
         const root = view.dom.getBoundingClientRect();
         const gutter = view.dom.querySelector<HTMLElement>('.cm-heading-fold-gutter');
         const gutterBox = gutter?.getBoundingClientRect();
-        return (sourceFoldState(view.state)?.headings ?? [])
-          .filter((heading) => {
-            const current = sourceFoldState(view.state);
-            return (
+        const current = sourceFoldState(view.state);
+        return (current?.headings ?? [])
+          .filter(
+            (heading) =>
               current !== null &&
               headingIsVisibleControl(current, heading) &&
               heading.from >= view.viewport.from &&
-              heading.from <= view.viewport.to
-            );
-          })
+              heading.from <= view.viewport.to,
+          )
           .map((heading) => {
             const coords = view.coordsAtPos(heading.from);
             return {
@@ -430,9 +473,7 @@ class AccessibleDisclosureOverlay {
       },
       write: (positions) => {
         for (const position of positions) {
-          const button = this.dom.querySelector<HTMLButtonElement>(
-            `.cm-heading-fold-toggle[data-fold-id="${position.id}"]`,
-          );
+          const button = this.buttons.get(position.id);
           if (!button) continue;
           button.style.left = `${position.left}px`;
           button.style.top = `${position.top}px`;
@@ -442,6 +483,7 @@ class AccessibleDisclosureOverlay {
   }
 
   destroy(): void {
+    this.buttons.clear();
     this.dom.remove();
   }
 }

@@ -51,14 +51,14 @@ Priority: P1
 - 标题身份使用 tab 生命周期内整数 id，并通过 transaction change mapping 调和：正文编辑、标题改名/清空/同名与单行层级变化可靠保留；删除、转非标题、跨行替换、整文档重载或其他无法证明身份的情况安全展开。父子折叠状态独立，父展开后子状态保留。
 - gutter disclosure 提供 `aria-label`、`aria-expanded`、`data-fold-state`、Tab 焦点和 Enter/Space 操作；键盘切换后 gutter marker 重建由新按钮承接焦点，并去重原生 keyboard click。上下方向键跳过隐藏区，Shift+Arrow 在隐藏边界保持现有可见选区；Mod+A 保持全文选择；普通跨折叠鼠标选区截断到可见边界。
 - 仅 `format=markdown` 装配扩展；源码/分栏沿用同一 CodeMirror 实例，状态跨两者连续；右侧实时预览与独立预览视图的数据源仍是完整 `textRef`，不接入折叠 decoration。目录定位先展开必要祖先，目标标题自身折叠保留。外部重载显式清空状态；新建编辑器/重开 tab 默认全展开。
-- 新增真实 CodeMirror renderer 测试 `packages/renderer/tests/source-heading-fold.test.ts`（14 例），覆盖解析、边界、gutter、鼠标/键盘、焦点承接、嵌套、空/同名/改名/层级变化、删除与 Undo、方向键/Shift+Arrow、全文与鼠标选择、原文字节/CRLF/onChange/undo 历史、目录 reveal、保存源完整、重开与 native-block 排除。
+- 新增真实 CodeMirror renderer 测试 `packages/renderer/tests/source-heading-fold.test.ts`（16 例），覆盖解析、边界、gutter、鼠标/键盘、焦点承接、嵌套、空/同名/改名/层级变化、删除与 Undo、方向键/Shift+Arrow、全文与鼠标选择、原文字节/CRLF/onChange/undo 历史、目录 reveal、保存源完整、重开与 native-block 排除。
 
 ### 门禁与验收记录
 
 候选提交前工作树验证（最终 SHA 由本票提交产生）：
 
-- 定向测试：`source-heading-fold.test.ts` 14/14；关联 `app-origin-change.test.tsx`、`source-mode-outline.test.tsx`、`codemirror-host.test.ts`、`source-mode-markdown-panel.test.tsx`、`source-mode-autosave.test.tsx`、`outline.test.ts` 等共 70/70 通过。
-- 完整 `pnpm vitest run`：150 文件通过 / 1 跳过，1248 测试通过 / 2 跳过。
+- 定向测试：`source-heading-fold.test.ts` 16/16；关联 `app-origin-change.test.tsx`、`source-mode-outline.test.tsx`、`codemirror-host.test.ts`、`source-mode-markdown-panel.test.tsx`、`source-mode-autosave.test.tsx`、`outline.test.ts` 等共 72/72 通过。
+- 完整 `pnpm vitest run`：150 文件通过 / 1 跳过，1250 测试通过 / 2 跳过。
 - `pnpm typecheck`：全部 workspace 包通过。
 - `pnpm lint`：0 error；4 个既有 `import()` type annotation warning，与 master 基线相同，均非本票文件。
 - `pnpm build`：Electron Vite main/preload/renderer 构建成功（仅既有 Rollup chunk/annotation warning）。
@@ -79,3 +79,12 @@ Priority: P1
 2. **gutter 控件不在 accessibility tree**：CodeMirror 给 `.cm-gutters` 父容器设置 `aria-hidden=true`，原 button 虽带 ARIA 属性仍被整个子树隐藏。现保留 aria-hidden gutter 内的纯视觉、非交互 marker，并在 `EditorView.dom` 下挂载非 aria-hidden 的绝对定位 disclosure overlay；可访问 button 与视觉 gutter marker 同步状态和位置，视觉 gutter click 仍可切换。真实 DOM 测试断言 button 无 `aria-hidden` ancestor，并覆盖 Tab focus、Enter/Space、准确 `aria-label` / `aria-expanded`、marker/control 重建后的焦点承接及视觉 gutter click。
 
 修复后仍不预填独立双轴 PASS；必须在追加修复候选 SHA 上重新进行独立 Standards + Spec 双轴审查，方可勾选最终项或合并。
+
+### 独立双轴二审 FAIL 与修复
+
+追加候选 `ab3c657` 的独立 Standards + Spec 二次复审仍为 **FAIL**；最终双轴验收项继续保持未勾选。二审发现及本轮追加修复如下：
+
+1. **accessible overlay 全量重建与 measure 累积**：原 `sync()` 每次 `replaceChildren()`，滚动/更新会销毁并重建所有 button，导致焦点与 DOM identity 不稳定；每次同步也创建无稳定 key 的新 measure request。现以 tab 生命周期 heading identity 为 key 持有 button map，只对新增/失效/进出 viewport 项增删，原位更新 `aria-label`、`aria-expanded` 与 fold state；聚焦 button 即使暂时滚出 viewport 也保留，滚动和状态更新不丢焦点。所有定位请求使用 overlay 实例作为稳定 `requestMeasure.key`，由 CodeMirror 在单帧内合并。真实 DOM 测试覆盖多轮 scroll + state update、按钮节点 identity、`activeElement` 与 keyed measure 请求。
+2. **不完整 syntax tree**：原解析直接读取可能仅覆盖 viewport 的 `syntaxTree(state)`，长文档尾部标题可能缺失并生成错误章节边界。现用 `ensureSyntaxTree(state, doc.length, 100ms)` 请求覆盖全文；未返回或 tree 长度不足时返回空标题集合并 fail-open，不产生 decoration 或错误折叠范围。测试覆盖超过 15k 字符文档末尾 ATX/Setext，以及确保解析不可用返回 null 时空结果安全展开。
+
+本轮修复后仍不预填独立双轴 PASS；必须在新的追加修复 SHA 上再次独立复审，方可勾选最终项或合并。
