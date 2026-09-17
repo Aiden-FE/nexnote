@@ -45,6 +45,15 @@ Priority: P1
 - 验证：定向 `vitest` 3 files / 60 tests 通过；全项目 `typecheck` 通过。完整 test、lint、build、changed-format、diff-check 待候选提交后运行。
 - Electron smoke：`NOT_RUN`（本轮未执行）。
 
+## 首审 FAIL 与修复记录（2026-09-18）
+
+- DEV-051 首次 Standards + Spec 双轴/专项审查结论：**FAIL**。本节只记录审查事实和修复证据，不预填最终两轴 PASS；最终双轴验收项继续保持未勾选。
+- 修复独立停止按钮 Tooltip 的 hover/focus 可见 CSS 与 Escape 关闭行为，并补 DOM class、hidden 状态和 CSS selector 回归测试。
+- TipTap shortcut 分派现在执行时动态检查 `action.disabled`；禁用动作不消费快捷键、不触发 action，真实 TipTap DOM `keydown` 覆盖禁用→恢复可用。
+- Tooltip、AI 菜单与工具栏 Escape 分层：编辑器级 Escape 忽略来自工具栏后代的事件；Tooltip Escape 只关闭 Tooltip；菜单 Escape 只关闭菜单并归还触发器；工具栏/编辑器自身 Escape 保持原关闭语义。TipTap 与 CodeMirror 均由真实编辑器 DOM 事件链覆盖。
+- TipTap 与 CodeMirror 顶层工具栏共用 `moveSelectionBubbleToolbarFocus()`，统一 ArrowLeft/ArrowRight/Home/End 和 hidden/disabled 过滤策略，消除两份 roving 实现。
+- 修复候选门禁（追加提交前）：定向 `vitest` 3 files / 64 tests、全项目 `typecheck`、完整 `test` 151 files（150 passed / 1 skipped）、1283 tests（1281 passed / 2 skipped）、`lint`（0 errors、4 个既有 warnings）、`build`、changed-format、diff-check 均通过；最终独立双轴结果仍不预填。Electron smoke：`NOT_RUN`。
+
 ## 关联决策
 
 - [ADR-0006](../../../docs/adr/0006-editor-toolbar-and-quick-insert-boundaries.md)

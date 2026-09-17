@@ -3,6 +3,7 @@ import { type EditorView, ViewPlugin, type ViewUpdate } from '@codemirror/view';
 import {
   createBubbleAiMenu,
   decorateBubbleButton,
+  moveSelectionBubbleToolbarFocus,
   type BubbleAiMenuOptions,
   type BubbleAiMenuView,
   type BubbleExtraControl,
@@ -120,7 +121,8 @@ export function sourceSelectionBubble(options: SourceBubbleOptions): Extension {
 
       /** Escape 关闭（仅 bubble 可见时拦截，不吞编辑器其他 Escape 语义）。 */
       private onKeyDown = (event: KeyboardEvent) => {
-        if (event.key === 'Escape' && this.visible) {
+        const eventFromBubble = this.dom.contains(event.target as Node | null);
+        if (event.key === 'Escape' && this.visible && !eventFromBubble) {
           event.preventDefault();
           this.hide();
           return true;
@@ -128,29 +130,8 @@ export function sourceSelectionBubble(options: SourceBubbleOptions): Extension {
         return false;
       };
 
-      private toolbarControls(): HTMLButtonElement[] {
-        return Array.from(
-          this.dom.querySelectorAll<HTMLButtonElement>(
-            ':scope > button:not([hidden]), :scope > [data-ai-dropdown] > button:not([hidden])',
-          ),
-        ).filter((button) => button.getAttribute('aria-disabled') !== 'true' && !button.disabled);
-      }
-
       private onToolbarKeyDown = (event: KeyboardEvent) => {
-        if (!['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) return;
-        const buttons = this.toolbarControls();
-        if (buttons.length === 0) return;
-        event.preventDefault();
-        const current = buttons.indexOf(document.activeElement as HTMLButtonElement);
-        const next =
-          event.key === 'Home'
-            ? 0
-            : event.key === 'End'
-              ? buttons.length - 1
-              : event.key === 'ArrowRight'
-                ? (current + 1 + buttons.length) % buttons.length
-                : (current - 1 + buttons.length) % buttons.length;
-        buttons[next]?.focus();
+        moveSelectionBubbleToolbarFocus(this.dom, event);
       };
 
       /** 可见期间每帧自愈：任何外部容器重建（含 document.body 被替换）后立即重挂。 */

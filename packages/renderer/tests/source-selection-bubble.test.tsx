@@ -1,5 +1,7 @@
 // @vitest-environment happy-dom
 import { describe, expect, it, vi, beforeEach, afterEach } from 'vitest';
+import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
 import { undo } from '@codemirror/commands';
 import { createSourceEditor, type SourceEditorHandle } from '../src/editor/source/codemirror-host';
 import { sourceSelectionBubble } from '../src/editor/source/source-bubble';
@@ -597,6 +599,32 @@ describe('DEV-034 划词工具栏 AI 下拉（源码模式）', () => {
     editor.destroy();
   });
 
+  it('stop button Tooltip has hover/focus/Escape DOM behavior and matching CSS selectors', () => {
+    const control = writingStopControl();
+    document.body.append(control.dom);
+    const tooltip = control.dom.querySelector<HTMLElement>('[role="tooltip"]')!;
+    control.dom.disabled = false;
+    control.dom.hidden = false;
+    expect(control.dom.classList.contains('nexnote-selection-bubble__stop')).toBe(true);
+    expect(tooltip.hidden).toBe(true);
+    control.dom.dispatchEvent(new PointerEvent('pointerenter'));
+    expect(tooltip.hidden).toBe(false);
+    control.dom.dispatchEvent(new PointerEvent('pointerleave'));
+    expect(tooltip.hidden).toBe(true);
+    control.dom.focus();
+    expect(tooltip.hidden).toBe(false);
+    control.dom.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+    expect(tooltip.hidden).toBe(true);
+    const css = readFileSync(resolve(process.cwd(), 'packages/renderer/src/globals.css'), 'utf8');
+    expect(css).toContain(
+      '.nexnote-selection-bubble__stop:hover > .nexnote-selection-bubble__tooltip',
+    );
+    expect(css).toContain(
+      '.nexnote-selection-bubble__stop:focus-visible > .nexnote-selection-bubble__tooltip',
+    );
+    control.destroy();
+  });
+
   it('disabled action retains an explained Tooltip without executing', () => {
     const onAction = vi.fn();
     const parent = document.createElement('div');
@@ -630,6 +658,33 @@ describe('DEV-034 划词工具栏 AI 下拉（源码模式）', () => {
     expect(button.querySelector('[role="tooltip"]')?.textContent).toContain('当前选区不可格式化');
     button.click();
     expect(onAction).not.toHaveBeenCalled();
+    editor.destroy();
+  });
+
+  it('actual CodeMirror toolbar DOM Escape only closes its nested Tooltip or menu, not the bubble', () => {
+    const { parent, editor } = mount('第一句原文。第二句。');
+    selectWithCoords(editor, parent, 0, 6, { top: 300, left: 100, right: 120, bottom: 320 });
+    const bubble = bubbleOf();
+    const bold = bubble.querySelector<HTMLButtonElement>('[data-bubble-action="format:bold"]')!;
+    const tooltip = bold.querySelector<HTMLElement>('[role="tooltip"]')!;
+    bold.focus();
+    expect(tooltip.hidden).toBe(false);
+    bold.dispatchEvent(
+      new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true }),
+    );
+    expect(tooltip.hidden).toBe(true);
+    expect(bubble.style.display).not.toBe('none');
+
+    const trigger = triggerOf();
+    trigger.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowDown', bubbles: true }));
+    const menu = menuOf();
+    const item = menu.querySelector<HTMLButtonElement>('[data-ai-menu-action="ai:rewrite"]')!;
+    item.dispatchEvent(
+      new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true }),
+    );
+    expect(menu.hidden).toBe(true);
+    expect(document.activeElement).toBe(trigger);
+    expect(bubble.style.display).not.toBe('none');
     editor.destroy();
   });
 

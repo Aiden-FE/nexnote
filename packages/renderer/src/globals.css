@@ -626,6 +626,10 @@
   outline: 2px solid var(--ring);
   outline-offset: 1px;
 }
+.nexnote-selection-bubble__stop:hover > .nexnote-selection-bubble__tooltip:not([hidden]),
+.nexnote-selection-bubble__stop:focus-visible > .nexnote-selection-bubble__tooltip:not([hidden]) {
+  display: block;
+}
 .nexnote-selection-bubble__stop[hidden] {
   display: none;
 }

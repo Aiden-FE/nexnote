@@ -3,6 +3,7 @@ import { Plugin, PluginKey } from '@tiptap/pm/state';
 import type { EditorView } from '@tiptap/pm/view';
 
 import { computeEditorActionContext, type EditorActionContext } from './action-context';
+import { moveSelectionBubbleToolbarFocus } from './selection-bubble-roving';
 
 /**
  * 选区浮动工具栏（框架无关 DOM 实现）。
@@ -335,32 +336,13 @@ function createBubbleDom(
   if (aiMenu) dom.append(aiMenu.dom);
   if (extraControl) dom.append(extraControl.dom);
 
-  const controls = (): HTMLButtonElement[] =>
-    Array.from(
-      dom.querySelectorAll<HTMLButtonElement>(
-        ':scope > button:not([hidden]), :scope > [data-ai-dropdown] > button:not([hidden])',
-      ),
-    ).filter((button) => button.getAttribute('aria-disabled') !== 'true' && !button.disabled);
   dom.addEventListener('keydown', (event) => {
     if (event.key === 'Escape' && event.target === dom) {
       event.preventDefault();
       onDismiss();
       return;
     }
-    if (!['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) return;
-    const buttons = controls();
-    if (buttons.length === 0) return;
-    event.preventDefault();
-    const current = buttons.indexOf(document.activeElement as HTMLButtonElement);
-    const next =
-      event.key === 'Home'
-        ? 0
-        : event.key === 'End'
-          ? buttons.length - 1
-          : event.key === 'ArrowRight'
-            ? (current + 1 + buttons.length) % buttons.length
-            : (current - 1 + buttons.length) % buttons.length;
-    buttons[next]?.focus();
+    moveSelectionBubbleToolbarFocus(dom, event);
   });
 
   const show: BubbleView['show'] = (coords) => {
@@ -491,11 +473,12 @@ export const SelectionBubble = Extension.create<SelectionBubbleOptions, { visibl
         },
         props: {
           handleKeyDown(view, event) {
-            if (event.key === 'Escape' && ext.storage.visible) {
+            const bubbleDom =
+              view.dom.parentElement?.querySelector<HTMLElement>('[data-selection-bubble]');
+            const eventFromBubble = bubbleDom?.contains(event.target as Node | null) ?? false;
+            if (event.key === 'Escape' && ext.storage.visible && !eventFromBubble) {
               event.preventDefault();
               ext.storage.visible = false;
-              const bubbleDom =
-                view.dom.parentElement?.querySelector<HTMLElement>('[data-selection-bubble]');
               if (bubbleDom) bubbleDom.style.display = 'none';
               return true;
             }
@@ -505,7 +488,7 @@ export const SelectionBubble = Extension.create<SelectionBubbleOptions, { visibl
               ...(ext.options.aiMenu?.actions ?? []),
             ];
             for (const action of shortcutActions) {
-              if (matchesShortcut(event, action)) {
+              if (matchesShortcut(event, action) && !resolveBoolean(action.disabled)) {
                 event.preventDefault();
                 trigger(view, action.id);
                 return true;
