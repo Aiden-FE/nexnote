@@ -48,6 +48,7 @@ export {
   foldPluginKey,
   canFoldBlock,
   clearBlockFolds,
+  expandAllBlockFolds,
   isBlockFolded,
   revealBlockFoldAt,
   toggleBlockFold,

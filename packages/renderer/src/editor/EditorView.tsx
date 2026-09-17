@@ -95,6 +95,10 @@ import {
   headingLevelFromAction,
 } from './toolbar/heading-actions';
 import { parseBlockOutline, type OutlineEntry } from './outline';
+import { expandAllCurrentHeadingFolds } from './expand-all';
+import { useHeadingFoldAnnouncement } from './use-heading-fold-announcement';
+import { EditorFindBar } from './EditorFindBar';
+import { findInBlockView } from './find';
 import {
   buildBuiltinSlashItems,
   buildBuiltinViewExtensions,
@@ -351,6 +355,7 @@ export function EditorView({ tab }: EditorViewProps) {
   const [outlineVisible, setOutlineVisible] = useState(false);
   const outlineVisibleRef = useRef(false);
   const [outline, setOutline] = useState<OutlineEntry[]>([]);
+  const foldAnnouncement = useHeadingFoldAnnouncement(tab.id);
   useEffect(() => {
     outlineVisibleRef.current = outlineVisible;
   }, [outlineVisible]);
@@ -680,7 +685,7 @@ export function EditorView({ tab }: EditorViewProps) {
       if (from === to) translationControllerRef.current?.closeSelection();
     };
     kernel.editor.on('selectionUpdate', onSelectionUpdate);
-    const editorRegistration = registerEditor(kernel);
+    const editorRegistration = registerEditor(kernel, tab.id);
     const unregisterModeSwitch = registerModeSwitchHandler(tab.id, async () => {
       await kernel.flushPendingSave();
       await saveChainRef.current;
@@ -1090,6 +1095,16 @@ export function EditorView({ tab }: EditorViewProps) {
           <div ref={hostRef} data-testid="editor-host" className="nexnote-editor-host" />
         </div>
       </div>
+      <EditorFindBar
+        tabId={tab.id}
+        onFind={(query, direction, restart) => {
+          const view = kernelRef.current?.editor.view;
+          return view ? findInBlockView(view, query, direction, restart) : { current: 0, total: 0 };
+        }}
+      />
+      <span className="sr-only" role="status" aria-live="polite" data-testid="fold-status">
+        <span key={foldAnnouncement.key}>{foldAnnouncement.message}</span>
+      </span>
       {outlineVisible && (
         <OutlinePanel
           entries={outline}
@@ -1099,14 +1114,23 @@ export function EditorView({ tab }: EditorViewProps) {
             // DEV-054（ADR-0013）：目录跳转目标被折叠祖先遮蔽时只展开必要祖先，
             // 目标标题自身若已折叠则保持折叠。
             if (editor) revealBlockFoldAt(editor.view, pos);
-            // pos 指向 heading 节点起点；+1 进入节点内部，文本选区落在标题文本上。
+            // 选中目标标题文字，既定位又提供可见的跳转高亮；目标标题自身折叠时仍不触及其正文。
+            const heading = editor?.view.state.doc.nodeAt(pos);
+            const from = Math.min(pos + 1, editor?.view.state.doc.content.size ?? 0);
+            const to = heading
+              ? Math.max(
+                  from,
+                  Math.min(pos + heading.nodeSize - 1, editor?.view.state.doc.content.size ?? from),
+                )
+              : from;
             editor?.view.dispatch(
               editor.view.state.tr
-                .setSelection(TextSelection.create(editor.view.state.doc, pos + 1))
+                .setSelection(TextSelection.create(editor.view.state.doc, from, to))
                 .scrollIntoView(),
             );
             editor?.commands.focus();
           }}
+          onExpandAll={expandAllCurrentHeadingFolds}
           onClose={() => setOutlineVisible(false)}
           className="absolute right-3 top-10 z-20"
         />

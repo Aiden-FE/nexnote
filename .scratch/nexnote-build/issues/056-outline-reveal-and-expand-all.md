@@ -2,7 +2,7 @@
 
 Type: dev
 Module: editor
-Status: open
+Status: closed
 Blocked by: DEV-054（块标题折叠）、DEV-055（Markdown 标题折叠）
 Depends: DEV-047（标题目录与悬浮目录）
 Effort: M
@@ -29,17 +29,57 @@ Priority: P1
 
 ## 验收标准
 
-- [ ] 块文档与 Markdown 中，目录跳转到多层隐藏标题均展开必要祖先并准确定位。
-- [ ] 目标自身折叠与无关分支状态保持；重复跳转结果稳定。
-- [ ] 查找命中隐藏正文时可见、可定位，且不会展开整页无关章节。
-- [ ] 标题目录菜单与命令面板均可执行“全部展开”，键盘与屏幕阅读器可达。
-- [ ] 页面切换、tab 关闭与重开不残留或串用折叠状态。
-- [ ] Renderer 测试覆盖两种编辑器、嵌套祖先、目标自身折叠、无关分支和全部展开。
-- [ ] 候选 SHA 上通过标准门禁；Electron smoke 未执行时记录 `NOT_RUN`。
-- [ ] 在 `.wt/DEV-056` / `dev/DEV-056` 隔离实现，完成 Standards + Spec 双轴审查后方可合并。
+- [x] 块文档与 Markdown 中，目录跳转到多层隐藏标题均展开必要祖先并准确定位。
+- [x] 目标自身折叠与无关分支状态保持；重复跳转结果稳定。
+- [x] 查找命中隐藏正文时可见、可定位，且不会展开整页无关章节。
+- [x] 标题目录菜单与命令面板均可执行“全部展开”，键盘与屏幕阅读器可达。
+- [x] 页面切换、tab 关闭与重开不残留或串用折叠状态。
+- [x] Renderer 测试覆盖两种编辑器、嵌套祖先、目标自身折叠、无关分支和全部展开。
+- [x] 候选 SHA 上通过标准门禁；Electron smoke 未执行时记录 `NOT_RUN`。
+- [x] 在 `.wt/DEV-056` / `dev/DEV-056` 隔离实现；固定候选 `d6f08ce` 独立 Standards PASS、Spec PASS，Unicode/CRLF 专项 PASS。
 
 ## 关联决策
 
 - [ADR-0013](../../../docs/adr/0013-heading-section-folding.md)
 - [ADR-0012](../../../docs/adr/0012-derived-document-outline-and-markdown-editing-boundaries.md)
 - 术语：[CONTEXT.md](../../../CONTEXT.md) 标题折叠 / 标题目录 / 悬浮目录
+
+## 实现记录（DEV-056）
+
+- 块编辑与 Markdown 源码视图均在目录跳转或查找定位隐藏内容前，仅展开遮蔽该位置的已折叠祖先。标题自身的正文折叠状态、无关分支及重复定位结果保持不变；定位选区提供目标高亮。
+- 新增当前视图“全部展开”原语，并在悬浮目录与命令面板提供入口；不注册任何“全部折叠”命令。命令经 tab id 精确解析当前编辑器实例，后台 tab 不会被修改。
+- 新增当前页面查找栏（`Mod/Ctrl+F`），命中折叠正文时按同一最小祖先规则显现；不会夺走查找输入框焦点。
+- 展开反馈使用当前 tab 过滤的 `aria-live` status；目录 active item 使用 `aria-current=location`。折叠、查找、跳转和批量展开均不写正文、sidecar 或文件。
+- 覆盖真实 ProseMirror/CodeMirror renderer 的嵌套祖先、目标自身、无关分支、重复 reveal、零字节/零保存与全部展开；额外覆盖 activeTabId 路由，不串改后来注册的后台块/Markdown 编辑器。
+
+### 门禁与验收记录
+
+首审候选 `3c8dc65` 提交前验证（以下为当时记录；首审结果仍为 FAIL）：
+
+- 定向测试：`fold.test.ts`、`source-heading-fold.test.ts`、`expand-all.test.ts`、`commands-builtin.test.ts`、`source-mode-outline.test.tsx`、`caret-insert.test.ts`：通过。
+- 完整 `pnpm test`：152 文件中 151 通过 / 1 跳过，1296 测试通过 / 2 跳过。
+- `pnpm typecheck`：全部 workspace 包通过。
+- `pnpm lint`：0 error；4 个既有 `import()` type annotation warning，均不在本票文件。
+- `pnpm build`：Electron Vite 构建成功；仅既有 Rollup 动态导入/第三方注释 warning。
+- changed-format：本票改动文件 `prettier --check` 通过。
+- `git diff --check`：通过。
+- Electron smoke：`NOT_RUN`（未执行打包应用 smoke，不以自动化测试或构建替代）。
+
+首审修复后代码候选 `3c2b83c` 的提交前工作树验证（票据证据更新另行提交）：
+
+- 定向测试：`editor-find.test.tsx`、`expand-all.test.tsx`、`fold.test.ts`、`source-heading-fold.test.ts`、`source-mode-outline.test.tsx`：50/50 通过；覆盖显式 reveal 反例、Unicode 原文 UTF-16 定位、真实页内查找与重复 aria-live。
+- 完整 `pnpm test`：154 文件中 153 通过 / 1 跳过，1303 测试通过 / 2 跳过。
+- `pnpm typecheck`：全部 workspace 包通过。
+- `pnpm lint`：0 error；4 个既有 `import()` type annotation warning，均不在本票文件。
+- `pnpm build`：Electron Vite 构建成功；既有 Rollup 动态导入/第三方注释 warning。
+- changed-format：本轮改动文件 `prettier --check` 通过；`git diff --check` 通过。
+- Electron smoke：`NOT_RUN`（未执行打包应用 smoke）。
+
+### 审查状态
+
+- 首审（实际候选 `3c8dc65`；此前报告的 `fba0325` 非实际候选）为 **FAIL**，最终双轴验收项继续保持未勾选。
+- 首审 findings 与本轮修复：移除 Fold 插件对任意 `tr.selectionSet` 的自动 reveal，只允许目录与 find 显式调用 reveal；Unicode case-insensitive 查找改为将折叠后的 UTF-16 单元映射回原文范围，覆盖 `AİB` 找 `b`；搜索算法从 React UI 分离，补 CodeMirror/TipTap 原文定位测试；补真实页内 FindBar renderer 流程，`Mod/Ctrl+F` 仅由 active tab 响应，`Mod/Ctrl+Shift+F` 保留给全局 SearchPanel；合并两种编辑器的 tab 过滤 aria-live hook，并通过替换 live-region 子节点重复播报相同消息。
+- Standards 复审：代码候选 `3c2b83c` 为 **FAIL**（Spec 总体 PASS，但 Find 正确性阻断）；最终双轴验收项继续保持未勾选。
+- 本轮修复 Standards findings：CodeMirror 搜索以 `doc.line(n).text` 加单个 LF 建立与 CM position 一致的搜索文本，避免将 CRLF 原始 JS 偏移传入 CM；TipTap 按每个 textblock 聚合 marked text nodes，支持跨 mark 连续文本但不跨 block 或 inline atom；Unicode folding 改为整串 lower-case 后依原文 UTF-16 span 映射，覆盖希腊语终止 sigma（`ΟΣ` / `ος`）、土耳其 İ 与 emoji。
+- 本轮完整 `pnpm test`：154 文件中 153 通过 / 1 跳过，1306 测试通过 / 2 跳过；`pnpm typecheck`、`pnpm lint`（0 error、4 个既有 warning）、`pnpm build`、changed-format 与 `git diff --check` 均通过。Electron smoke 仍为 `NOT_RUN`。
+- 固定候选 `d6f08ce` 已完成独立复审：**Standards PASS、Spec PASS**，Unicode/CRLF 专项 **PASS**。据此勾选双轴验收项并将票据关闭。Electron smoke 未执行，维持 `NOT_RUN`；本次仅更新票据，不作 push 或 merge。

@@ -1,11 +1,12 @@
 import { useEffect, useRef, useState } from 'react';
-import { ListTree, X } from 'lucide-react';
+import { ChevronsDown, ListTree, X } from 'lucide-react';
 import { cn } from '../lib/utils';
 import type { OutlineEntry } from './outline';
 
 export interface OutlinePanelProps {
   entries: OutlineEntry[];
   onNavigate: (entry: OutlineEntry) => void;
+  onExpandAll: () => void;
   onClose: () => void;
   className?: string;
 }
@@ -15,7 +16,13 @@ export interface OutlinePanelProps {
  * 顶栏左侧图标是展开/收缩开关（DEV-048）：收缩后仅保留小图标按钮，避免遮挡正文；
  * 右侧关闭按钮仍是彻底隐藏面板。收缩/展开切换时焦点移到对侧按钮，键盘不落回 body。
  */
-export function OutlinePanel({ entries, onNavigate, onClose, className }: OutlinePanelProps) {
+export function OutlinePanel({
+  entries,
+  onNavigate,
+  onExpandAll,
+  onClose,
+  className,
+}: OutlinePanelProps) {
   const [activeId, setActiveId] = useState<string | null>(null);
   const [collapsed, setCollapsed] = useState(false);
   const toggleRef = useRef<HTMLButtonElement | null>(null);
@@ -81,6 +88,16 @@ export function OutlinePanel({ entries, onNavigate, onClose, className }: Outlin
         <span className="min-w-0 flex-1">悬浮目录</span>
         <button
           type="button"
+          aria-label="全部展开章节"
+          title="全部展开章节"
+          data-testid="outline-expand-all"
+          onClick={onExpandAll}
+          className="rounded p-1 text-muted-foreground hover:bg-accent hover:text-foreground"
+        >
+          <ChevronsDown className="size-3.5" aria-hidden="true" />
+        </button>
+        <button
+          type="button"
           aria-label="关闭悬浮目录"
           data-testid="outline-close"
           onClick={onClose}
@@ -112,6 +129,7 @@ export function OutlinePanel({ entries, onNavigate, onClose, className }: Outlin
                   setActiveId(entry.id);
                   onNavigate(entry);
                 }}
+                aria-current={active ? 'location' : undefined}
                 className={cn(
                   'block w-full truncate rounded px-2 py-1.5 text-left text-xs text-muted-foreground hover:bg-accent hover:text-foreground',
                   active && 'bg-accent font-medium text-foreground',

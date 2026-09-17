@@ -77,6 +77,10 @@ import {
 import { syncScrollRatio } from './scroll-sync';
 import { sourceWikilinkCompletion } from './wikilink-completion';
 import { clearSourceHeadingFolds, revealSourceHeadingAt } from './heading-fold';
+import { EditorFindBar } from '../EditorFindBar';
+import { findInSourceView } from '../find';
+import { expandAllCurrentHeadingFolds } from '../expand-all';
+import { useHeadingFoldAnnouncement } from '../use-heading-fold-announcement';
 import { createRedlinkPage, currentPageCandidates } from '../wikilink-page-ops';
 import { DocumentPropertiesPopover } from '../../features/frontmatter/DocumentPropertiesPopover';
 import { Resizer } from '../../shell/Resizer';
@@ -188,6 +192,7 @@ export function SourceModeView({ tab }: { tab: TabDescriptor }) {
   // DEV-047 悬浮目录：局部 UI 状态，不落 store；切换三视图不重建 CodeMirror。
   const [outlineVisible, setOutlineVisible] = useState(false);
   const outlineVisibleRef = useRef(false);
+  const foldAnnouncement = useHeadingFoldAnnouncement(tab.id);
   const [outline, setOutline] = useState<OutlineEntry[]>([]);
 
   useEffect(() => {
@@ -512,7 +517,7 @@ export function SourceModeView({ tab }: { tab: TabDescriptor }) {
       ],
     });
     editorRef.current = editor;
-    const unregisterSourceEditor = registerSourceEditor(editor);
+    const unregisterSourceEditor = registerSourceEditor(editor, tab.id);
     return () => {
       unregisterSourceEditor();
       editorRef.current = null;
@@ -996,10 +1001,25 @@ export function SourceModeView({ tab }: { tab: TabDescriptor }) {
           />
         )}
       </div>
+      {!previewOnly && (
+        <EditorFindBar
+          tabId={tab.id}
+          onFind={(query, direction, restart) => {
+            const view = editorRef.current?.view;
+            return view
+              ? findInSourceView(view, query, direction, restart)
+              : { current: 0, total: 0 };
+          }}
+        />
+      )}
+      <span className="sr-only" role="status" aria-live="polite" data-testid="fold-status">
+        <span key={foldAnnouncement.key}>{foldAnnouncement.message}</span>
+      </span>
       {outlineVisible && (
         <OutlinePanel
           entries={outline}
           onNavigate={locateOutlineEntry}
+          onExpandAll={expandAllCurrentHeadingFolds}
           onClose={() => setOutlineVisible(false)}
           className="absolute right-3 top-10 z-20"
         />

@@ -2,7 +2,11 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { TextSelection } from '@tiptap/pm/state';
 import { createEditor } from '../src/editor';
-import { clampMouseSelection, revealBlockFoldAt } from '../src/extensions/fold';
+import {
+  clampMouseSelection,
+  expandAllBlockFolds,
+  revealBlockFoldAt,
+} from '../src/extensions/fold';
 
 function make(markdown: string) {
   const container = document.createElement('div');
@@ -472,18 +476,79 @@ describe('DEV-054 块文档标题章节折叠', () => {
     expect(selected).not.toContain('隐藏段');
   });
 
-  it('显式目录/锚点跳转只展开必要祖先，目标标题自身折叠状态保留', () => {
+  it('目录/查找只展开多层必要祖先，目标自身与无关分支保持，重复定位稳定且零正文写入', () => {
     const { container, kernel } = trackedMake(
-      '# 父 ^parent\n\n## 目标 ^target\n\n目标正文 ^body\n\n# 后续 ^after\n\n尾部 ^tail\n',
+      '# 父 ^parent\n\n## 中层 ^middle\n\n### 目标 ^target\n\n隐藏命中 ^body\n\n# 无关 ^other\n\n无关正文 ^otherBody\n\n# 后续 ^after\n\n尾部 ^tail\n',
     );
-    kernel.toggleBlockFold('target');
-    kernel.toggleBlockFold('parent');
+    for (const id of ['target', 'middle', 'parent', 'other']) kernel.toggleBlockFold(id);
     const target = topBlocks(kernel).find((block) => block.blockId === 'target')!;
+    const hiddenMatch = topBlocks(kernel).find((block) => block.blockId === 'body')!;
+    const before = kernel.getMarkdown();
+    const beforeRevision = kernel.getRevision();
 
     revealBlockFoldAt(kernel.editor.view, target.from + 1);
     expect(kernel.isBlockFolded('parent')).toBe(false);
+    expect(kernel.isBlockFolded('middle')).toBe(false);
     expect(kernel.isBlockFolded('target')).toBe(true);
-    expect(hiddenTexts(container)).toEqual(['目标正文']);
+    expect(kernel.isBlockFolded('other')).toBe(true);
+    revealBlockFoldAt(kernel.editor.view, target.from + 1);
+    expect(kernel.isBlockFolded('target')).toBe(true);
+    expect(kernel.isBlockFolded('other')).toBe(true);
+
+    // 查找命中的目标正文还被目标标题本身遮蔽，只需再展开这一层。
+    revealBlockFoldAt(kernel.editor.view, hiddenMatch.from + 1);
+    expect(kernel.isBlockFolded('target')).toBe(false);
+    expect(kernel.isBlockFolded('other')).toBe(true);
+    expect(hiddenTexts(container)).toEqual(['无关正文']);
+    expect(kernel.getMarkdown()).toBe(before);
+    expect(kernel.getRevision()).toBe(beforeRevision);
+    expect(kernel.hasPendingSave()).toBe(false);
+  });
+
+  it('普通 selectionSet 和插件选择变化不显式 reveal 隐藏章节', () => {
+    const { kernel } = trackedMake(
+      '# parent ^parent\n\n## child ^child\n\nhidden body ^body\n\n# other ^other\n\nother body ^otherBody\n',
+    );
+    kernel.toggleBlockFold('parent');
+    kernel.toggleBlockFold('child');
+    kernel.toggleBlockFold('other');
+    const hidden = topBlocks(kernel).find((block) => block.blockId === 'body')!;
+    const before = kernel.getMarkdown();
+
+    // API/plugin selection movements are not user requests to reveal hidden content.
+    kernel.editor.view.dispatch(
+      kernel.editor.state.tr.setSelection(
+        TextSelection.create(kernel.editor.state.doc, hidden.from + 1),
+      ),
+    );
+    kernel.editor.view.dispatch(kernel.editor.state.tr.setMeta('plugin-selection', true));
+    expect(kernel.isBlockFolded('parent')).toBe(true);
+    expect(kernel.isBlockFolded('child')).toBe(true);
+    expect(kernel.isBlockFolded('other')).toBe(true);
+
+    // Only the explicit outline/find action may reveal the necessary ancestors.
+    revealBlockFoldAt(kernel.editor.view, hidden.from + 1);
+    expect(kernel.isBlockFolded('parent')).toBe(false);
+    expect(kernel.isBlockFolded('child')).toBe(false);
+    expect(kernel.isBlockFolded('other')).toBe(true);
+    expect(kernel.getMarkdown()).toBe(before);
+  });
+
+  it('全部展开只清空当前块编辑视图折叠状态且不写正文', () => {
+    const current = trackedMake('# A ^a\n\nA正文 ^ap\n\n# B ^b\n\nB正文 ^bp\n');
+    const background = trackedMake('# C ^c\n\nC正文 ^cp\n');
+    current.kernel.toggleBlockFold('a');
+    current.kernel.toggleBlockFold('b');
+    background.kernel.toggleBlockFold('c');
+    const before = current.kernel.getMarkdown();
+
+    expect(expandAllBlockFolds(current.kernel.editor.view)).toBe(2);
+    expect(current.kernel.isBlockFolded('a')).toBe(false);
+    expect(current.kernel.isBlockFolded('b')).toBe(false);
+    expect(background.kernel.isBlockFolded('c')).toBe(true);
+    expect(current.kernel.getMarkdown()).toBe(before);
+    expect(current.kernel.hasPendingSave()).toBe(false);
+    expect(expandAllBlockFolds(current.kernel.editor.view)).toBe(0);
   });
 
   it('折叠、展开、保存与全文读取不改变 Markdown/JSON/revision，重载页面全部展开', async () => {

@@ -250,6 +250,13 @@ export function clearBlockFolds(view: EditorView): void {
   view.dispatch(view.state.tr.setMeta(foldPluginKey, { type: 'clear' } satisfies FoldMeta));
 }
 
+/** 展开当前编辑视图中的全部章节；仅改变 ProseMirror 插件视图状态。 */
+export function expandAllBlockFolds(view: EditorView): number {
+  const count = foldPluginKey.getState(view.state)?.folded.size ?? 0;
+  clearBlockFolds(view);
+  return count;
+}
+
 /**
  * 显式跳转到文档位置时只展开遮蔽该位置的祖先章节。
  * 目标标题自身的折叠区从其 nodeSize 之后开始，因此会保持折叠。
