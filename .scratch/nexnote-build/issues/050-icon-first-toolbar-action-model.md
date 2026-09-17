@@ -24,11 +24,13 @@ Priority: P1
 
 ## 实施记录（2026-09-17，dev/DEV-050）
 
-- 初次独立 Standards + Spec 审查未通过。本轮已逐项修复审查发现：共享模型成为 toolbar 的生产单一数据源；AI/全部菜单项统一 icon + label；低频语义组优先整体溢出并保留常驻集合（含 AI）；移除工具栏、保存状态、属性入口原生 `title`，属性/更多/菜单按钮补齐 Tooltip/focus-visible；CodeMirror 在围栏/表格等复杂上下文 fail closed。
+- 初次独立 Standards + Spec 审查未通过；修复共享模型、菜单语义、响应式分组、Tooltip/focus-visible 与源码复杂结构边界后，二次 Spec 审查仍为 **FAIL**：列表/blockquote 会被破坏，合法 Setext 标题不受支持，且 `---` 可能与水平线混淆。
+- 本轮保留并完成中断前的在途修复：CodeMirror 标题能力通过 Lezer 顶层块与文本兜底 fail closed，列表（有序/无序/任务/嵌套/续行）、blockquote 和其他复杂块给出明确禁用原因；孤立 horizontal rule 不作为 Setext。
+- 合法单行 Setext H1/H2 现在可转正文或 H1–H6：一个 CodeMirror transaction 精确插入 ATX 前缀并删除 underline，保留标题文字、行分隔风格与未触及范围，可一次 undo/redo；多行 Setext 作为复杂块 fail closed。能力判断同时覆盖只读状态，与执行保持一致。
 - `EDITOR_ACTION_MODEL` 现在声明 id、统一名称、图标、语义分组、执行 semantic、模式 availability 与 overflow priority，toolbar 直接按模型投影；`HeadingLevel` 收窄为 H1–H6。
-- 判别测试新增/强化：模型投影与名称防漂移；全部 AI/菜单项 icon + label；常驻优先响应式布局；hover/focus/menu 导航对 AI/写盘/改名零副作用；源码围栏/表格零事务零字节；首个/后续 H1 经真实 toolbar 的文件名同步边界；预览只读无副作用。
+- 判别测试新增/强化：模型投影与名称防漂移；全部 AI/菜单项 icon + label；常驻优先响应式布局；hover/focus/menu 导航对 AI/写盘/改名零副作用；源码复杂块/列表/引用/水平线零事务零字节；Setext H1/H2 × 正文/H1–H6 的局部保真、CRLF、单事务 undo/redo；首个/后续 H1 经真实 toolbar 的文件名同步边界；预览只读无副作用。
 - Electron smoke：`NOT_RUN`。
-- 下列验收复选框与最终 Standards + Spec PASS **保留给主代理独立重审填写**；本分支不预先宣称审查通过。
+- 下列验收复选框与最终 Standards + Spec PASS **仍保留给主代理独立重审填写**；本分支不预先宣称审查通过。
 
 ## 安全不变量
 
