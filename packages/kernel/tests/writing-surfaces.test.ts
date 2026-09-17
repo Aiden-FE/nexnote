@@ -553,6 +553,9 @@ describe('斜杠菜单注入 AI 项（extraSlashItems）', () => {
           id: 'ai-rewrite',
           title: 'AI · 改写',
           keywords: ['ai'],
+          group: 'AI',
+          kind: 'ai',
+          contract: { execution: 'explicit-ai', capability: 'explicit-ai' },
           action: ({ view }) => {
             actioned.push('ai-rewrite');
             void view;
@@ -563,17 +566,43 @@ describe('斜杠菜单注入 AI 项（extraSlashItems）', () => {
     });
     const slash = exts.find((e) => (e as { name?: string }).name === 'nexnoteSlashMenu') as {
       options: {
-        items: (q: string) => { id: string; action: (ctx: { view: unknown }) => boolean }[];
+        items: (
+          q: string,
+          context?: unknown,
+        ) => { id: string; action: (ctx: { view: unknown }) => boolean }[];
       };
     };
-    const aiItems = slash.options.items('ai').map((i) => i.id);
+    const aiItems = slash.options
+      .items('ai', {
+        triggerFrom: 1,
+        triggerTo: 1,
+        emptyBlock: true,
+        capabilities: new Set(['editable-line', 'empty-block', 'explicit-ai', 'plugin-defined']),
+      })
+      .map((i) => i.id);
     expect(aiItems).toContain('ai-rewrite');
     // 默认结构块项不匹配 'ai'
-    expect(aiItems).not.toContain('heading1');
+    expect(aiItems).not.toContain('block:heading:1');
     // 空 query 时默认项与注入项都在
-    expect(slash.options.items('').map((i) => i.id)).toContain('heading1');
+    expect(
+      slash.options
+        .items('', {
+          triggerFrom: 1,
+          triggerTo: 1,
+          emptyBlock: true,
+          capabilities: new Set(['editable-line', 'empty-block', 'explicit-ai', 'plugin-defined']),
+        })
+        .map((i) => i.id),
+    ).toContain('block:heading:1');
     // action 可执行
-    const item = slash.options.items('ai').find((i) => i.id === 'ai-rewrite');
+    const item = slash.options
+      .items('ai', {
+        triggerFrom: 1,
+        triggerTo: 1,
+        emptyBlock: true,
+        capabilities: new Set(['editable-line', 'empty-block', 'explicit-ai', 'plugin-defined']),
+      })
+      .find((i) => i.id === 'ai-rewrite');
     const { kernel } = mount('正文');
     expect(item?.action({ view: kernel.editor.view })).toBe(true);
     expect(actioned).toContain('ai-rewrite');

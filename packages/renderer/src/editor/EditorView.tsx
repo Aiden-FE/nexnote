@@ -286,6 +286,8 @@ function buildPluginBlockSlashItems(kernel: EditorKernelInstance): SlashMenuItem
     keywords: ['插件', 'plugin', 'block', ...(d.keywords ?? []).map((k) => String(k))],
     group: '插件',
     kind: 'plugin',
+    contract: { execution: 'insert-safe-block', capability: 'plugin-defined' },
+    available: (context) => context.capabilities.has('plugin-defined'),
     action: () => {
       kernel.editor.commands.insertPluginBlock?.({ pluginId: d.pluginId, blockType: d.blockType });
       return true;

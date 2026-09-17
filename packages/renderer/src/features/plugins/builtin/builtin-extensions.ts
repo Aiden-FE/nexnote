@@ -8,6 +8,7 @@ import {
   MERMAID_BLOCK_NAME,
   MATH_BLOCK_NAME,
   MATH_INLINE_NAME,
+  insertAtSafeBlockBoundary,
 } from '@nexnote/kernel';
 import type { SlashMenuItem } from '@nexnote/kernel';
 import { createKatexBlockView, createKatexInlineView, createMermaidView } from './node-views';
@@ -75,11 +76,13 @@ function mermaidSlashItem(
     title,
     hint: '```mermaid',
     group: '插入',
+    kind: 'structure',
+    contract: { execution: 'insert-safe-block', capability: 'editable-line' },
     keywords,
     action: ({ view }) => {
       const node = view.state.schema.nodes[MERMAID_BLOCK_NAME]?.create({ source });
       if (!node) return false;
-      view.dispatch(view.state.tr.replaceSelectionWith(node).scrollIntoView());
+      insertAtSafeBlockBoundary(view, node);
       return true;
     },
   };
@@ -110,11 +113,13 @@ export function buildBuiltinSlashItems(flags: BuiltinBlockFlags): SlashMenuItem[
         title: '公式（块级）',
         hint: '$$',
         group: '插入',
+        kind: 'structure',
+        contract: { execution: 'insert-safe-block', capability: 'editable-line' },
         keywords: ['math', '公式', 'latex', 'katex', '块级'],
         action: ({ view }) => {
           const node = view.state.schema.nodes[MATH_BLOCK_NAME]?.create({ source: '' });
           if (!node) return false;
-          view.dispatch(view.state.tr.replaceSelectionWith(node).scrollIntoView());
+          insertAtSafeBlockBoundary(view, node);
           return true;
         },
       },
@@ -123,6 +128,8 @@ export function buildBuiltinSlashItems(flags: BuiltinBlockFlags): SlashMenuItem[
         title: '公式（行内）',
         hint: '$',
         group: '插入',
+        kind: 'inline',
+        contract: { execution: 'insert-at-cursor', capability: 'editable-line' },
         keywords: ['math', '公式', 'latex', 'katex', '行内', 'inline'],
         action: ({ view }) => {
           const node = view.state.schema.nodes[MATH_INLINE_NAME]?.create({ source: '' });

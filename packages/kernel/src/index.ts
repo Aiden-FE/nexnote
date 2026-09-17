@@ -47,6 +47,7 @@ export {
   filterSlashItems,
   slashMenuPluginKey,
 } from './extensions/slash-menu';
+export { insertAtSafeBlockBoundary } from './extensions/slash-contract';
 export type {
   SlashMenuContext,
   SlashMenuItem,

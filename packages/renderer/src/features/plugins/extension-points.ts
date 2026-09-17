@@ -106,6 +106,8 @@ export function buildPluginCommandSlashItems(
     keywords: ['插件', 'plugin', 'command', ...(def.keywords ?? [])],
     group: '插件',
     kind: 'plugin',
+    contract: { execution: 'insert-at-cursor', capability: 'plugin-defined' },
+    available: (context) => context.capabilities.has('plugin-defined'),
     action: () => {
       run({ pluginId: def.pluginId, commandId: def.commandId });
       return true;

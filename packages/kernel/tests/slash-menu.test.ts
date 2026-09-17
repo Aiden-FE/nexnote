@@ -49,7 +49,7 @@ describe('斜杠菜单分组（DEV-017）', () => {
     );
     expect(groups).toContain('基础块');
     expect(groups).toContain('插入');
-    expect(groups).toContain('AI');
+    expect(groups).not.toContain('AI');
     // 分组排序后同组连续：分组头不重复
     expect(new Set(groups).size).toBe(groups.length);
     const rows = [...menu.querySelectorAll('[data-slash-item]')].map((r) =>
@@ -57,15 +57,15 @@ describe('斜杠菜单分组（DEV-017）', () => {
     );
     // 基础块齐备：标题/段落/无序/有序/任务/引用/代码块/表格/分割线
     for (const id of [
-      'heading1',
-      'paragraph',
-      'bulletList',
-      'orderedList',
-      'taskList',
-      'blockquote',
-      'codeBlock',
-      'table',
-      'horizontalRule',
+      'block:heading:1',
+      'block:paragraph',
+      'block:bullet-list',
+      'block:ordered-list',
+      'block:task-list',
+      'block:blockquote',
+      'block:code',
+      'insert:table',
+      'insert:horizontal-rule',
     ]) {
       expect(rows).toContain(id);
     }
@@ -89,7 +89,7 @@ describe('斜杠菜单分组（DEV-017）', () => {
     const rows = [...menu.querySelectorAll('[data-slash-item]')].map((r) =>
       r.getAttribute('data-slash-item'),
     );
-    expect(rows).toEqual(['table']);
+    expect(rows).toEqual(['insert:table']);
     view.someProp('handleKeyDown', (f: (v: never, e: KeyboardEvent) => boolean) => {
       f(view, new KeyboardEvent('keydown', { key: 'Enter' }));
       return false;

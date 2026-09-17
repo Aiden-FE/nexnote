@@ -8,20 +8,21 @@ afterEach(() => {
   while (kernels.length) kernels.pop()?.destroy();
   document.body.innerHTML = '';
 });
-
-function mount(markdown: string) {
+function mount(
+  markdown: string,
+  extraSlashItems?: NonNullable<Parameters<typeof createEditor>[1]>['extraSlashItems'],
+) {
   const host = document.createElement('div');
   document.body.append(host);
-  const kernel = createEditor(host, { initialMarkdown: markdown, dragHandle: false });
+  const kernel = createEditor(host, {
+    initialMarkdown: markdown,
+    dragHandle: false,
+    extraSlashItems,
+  });
   kernels.push(kernel);
   return { kernel, dom: kernel.editor.view.dom, host };
 }
-
-/**
- * 真实 contenteditable 编辑：先由浏览器修改 DOM，再派发 InputEvent，交给
- * ProseMirror 的 DOMObserver 将输入还原为编辑事务。这里绝不调用 handleTextInput
- * 或 tr.insertText。
- */
+/** happy-dom 无 contenteditable 默认编辑：keydown → DOM/selection mutation → InputEvent → DOMObserver。 */
 async function type(kernel: ReturnType<typeof createEditor>, text: string): Promise<void> {
   const dom = kernel.editor.view.dom;
   dom.focus();
@@ -30,113 +31,145 @@ async function type(kernel: ReturnType<typeof createEditor>, text: string): Prom
       new KeyboardEvent('keydown', { key: character, bubbles: true, cancelable: true }),
     );
     const at = kernel.editor.view.domAtPos(kernel.editor.state.selection.from);
-    let textNode: Text;
-    let offset: number;
-    if (at.node.nodeType === Node.TEXT_NODE) {
-      textNode = at.node as Text;
-      textNode.insertData(at.offset, character);
-      offset = at.offset + character.length;
-    } else {
-      textNode = document.createTextNode(character);
+    const textNode =
+      at.node.nodeType === Node.TEXT_NODE ? (at.node as Text) : document.createTextNode('');
+    if (at.node.nodeType === Node.TEXT_NODE) textNode.insertData(at.offset, character);
+    else {
       at.node.insertBefore(textNode, at.node.childNodes[at.offset] ?? null);
-      offset = character.length;
+      textNode.appendData(character);
     }
-    // 浏览器输入会同步移动 DOM selection；测试须同样提供这个真实 DOM 状态，
-    // 让 ProseMirror DOMObserver 解析输入位置而非从旧选区反推。
-    const selection = document.getSelection();
+    const offset =
+      at.node.nodeType === Node.TEXT_NODE ? at.offset + character.length : character.length;
     const range = document.createRange();
     range.setStart(textNode, offset);
     range.collapse(true);
-    selection?.removeAllRanges();
-    selection?.addRange(range);
+    document.getSelection()?.removeAllRanges();
+    document.getSelection()?.addRange(range);
     dom.dispatchEvent(
       new InputEvent('input', { bubbles: true, inputType: 'insertText', data: character }),
     );
     await new Promise((resolve) => setTimeout(resolve, 0));
   }
 }
-function press(dom: HTMLElement, key: string): void {
+const press = (dom: HTMLElement, key: string) =>
   dom.dispatchEvent(new KeyboardEvent('keydown', { key, bubbles: true, cancelable: true }));
-}
-function selectEnd(kernel: ReturnType<typeof createEditor>): void {
-  const end = kernel.editor.state.doc.content.size;
+function selectAt(kernel: ReturnType<typeof createEditor>, pos: number): void {
   kernel.editor.view.dispatch(
-    kernel.editor.state.tr.setSelection(TextSelection.near(kernel.editor.state.doc.resolve(end))),
+    kernel.editor.state.tr.setSelection(TextSelection.create(kernel.editor.state.doc, pos)),
   );
   kernel.editor.view.focus();
+}
+function firstNodeEnd(kernel: ReturnType<typeof createEditor>, name: string): number {
+  let result = -1;
+  kernel.editor.state.doc.descendants((node, pos) => {
+    if (result < 0 && node.type.name === name) result = pos + node.nodeSize - 1;
+  });
+  expect(result).toBeGreaterThan(0);
+  return result;
 }
 
 describe('斜杠快捷输入真实 TipTap DOM 链路（DEV-052）', () => {
   it.each([
-    ['段落', '段落 '],
-    ['标题', '# 标题\n\n'],
-    ['列表项', '- \n'],
-    ['引用', '> 引用 \n'],
-  ])('在%s的行首或空白后由浏览器输入事件打开菜单', async (_name, markdown) => {
+    ['段落', '段落 ', 'paragraph'],
+    ['标题', '# 标题', 'heading'],
+    ['列表项', '- 列表', 'paragraph'],
+    ['引用', '> 引用 ', 'paragraph'],
+  ] as const)('在%s的行首或空白后打开，光标位于真实目标节点', async (_name, markdown, parent) => {
     const { kernel, host } = mount(markdown);
-    selectEnd(kernel);
-    await type(kernel, '/');
-    expect(host.querySelector('[data-slash-menu]')).not.toBeNull();
+    selectAt(kernel, firstNodeEnd(kernel, parent));
+    expect(kernel.editor.state.selection.$from.parent.type.name).toBe(parent);
+    await type(kernel, ' /');
     expect(host.querySelector('[data-slash-menu]')?.getAttribute('style')).not.toContain(
       'display: none',
     );
   });
-
   it.each([
-    ['代码块', '```ts\n\n```\n'],
+    ['代码块', '```ts\ncode\n```\n'],
     ['行内代码', '`code`\n'],
-    ['URL', 'https:\n'],
-    ['路径', '/Users\n'],
-    ['数学', '$x$\n'],
+    ['URL', 'https://host\n'],
+    ['路径', '/Users/path\n'],
+    ['已闭合数学', '$x$\n'],
+    ['未闭合数学', '$x\n'],
     ['单词内部', 'word\n'],
-  ])('在%s中保留普通斜杠且不打开菜单', async (_name, markdown) => {
+  ])('在%s中普通 / 不触发', async (_name, markdown) => {
     const { kernel, host } = mount(markdown);
-    selectEnd(kernel);
+    selectAt(kernel, kernel.editor.state.doc.content.size - 1);
     await type(kernel, '/');
     expect(host.querySelector('[data-slash-menu]')?.getAttribute('style')).toContain(
       'display: none',
     );
     expect(kernel.getMarkdown()).toContain('/');
   });
-
-  it('过滤、方向键、Tab 确认消费触发串，且操作可 undo/redo', async () => {
-    const { kernel, dom, host } = mount('\u00a0');
-    selectEnd(kernel);
-    await type(kernel, '/');
-    await type(kernel, 'h');
-    await type(kernel, '2');
-    expect(host.querySelector('[data-slash-menu]')?.textContent).toContain('标题 H2');
-    expect(host.querySelectorAll('[data-slash-item]')).toHaveLength(1);
-    expect(host.querySelector('[data-slash-item]')?.getAttribute('data-slash-item')).toBe(
-      'heading2',
+  it('中文/英文/记号过滤与 ArrowUp/Down、Enter/Tab', async () => {
+    const first = mount('\u00a0');
+    selectAt(first.kernel, first.kernel.editor.state.doc.content.size - 1);
+    await type(first.kernel, '/h2');
+    expect(first.host.querySelector('[data-slash-item]')?.getAttribute('data-slash-item')).toBe(
+      'block:heading:2',
     );
-    press(dom, 'ArrowDown');
-    press(dom, 'Tab');
-    expect(kernel.editor.state.selection.$from.parent.type.name).toBe('heading');
-    expect(kernel.editor.state.selection.$from.parent.attrs.level).toBe(2);
-    expect(kernel.getMarkdown()).not.toContain('/h2');
-    expect(kernel.undo()).toBe(true);
-    expect(kernel.editor.state.selection.$from.parent.type.name).not.toBe('heading');
-    expect(kernel.redo()).toBe(true);
-    expect(
-      kernel.getJSON().content?.some((node) => node.type === 'heading' && node.attrs?.level === 2),
-    ).toBe(true);
+    press(first.dom, 'ArrowDown');
+    press(first.dom, 'ArrowUp');
+    press(first.dom, 'Tab');
+    expect(first.kernel.editor.state.selection.$from.parent.attrs.level).toBe(2);
+    expect(first.kernel.getMarkdown()).not.toContain('/h2');
+    expect(first.kernel.undo()).toBe(true);
+    expect(first.kernel.redo()).toBe(true);
+    const second = mount('\u00a0');
+    selectAt(second.kernel, second.kernel.editor.state.doc.content.size - 1);
+    await type(second.kernel, '/二级标题');
+    press(second.dom, 'Enter');
+    expect(second.kernel.editor.state.selection.$from.parent.attrs.level).toBe(2);
   });
-
-  it('Escape 保留原文，Backspace 越过触发词关闭，空态绝不执行', async () => {
-    const { kernel, dom, host } = mount('\u00a0');
-    selectEnd(kernel);
-    await type(kernel, '/二级标题');
-    press(dom, 'Escape');
-    expect(kernel.getMarkdown()).toContain('/二级标题');
-    await type(kernel, ' /不存在');
+  it('trigger 前后任一有效正文均隐藏转换且不删除后文', async () => {
+    const { kernel, host } = mount('前文 后文');
+    selectAt(kernel, 4);
+    await type(kernel, '/ul');
+    expect(
+      [...host.querySelectorAll('[data-slash-item]')].map((node) =>
+        node.getAttribute('data-slash-item'),
+      ),
+    ).not.toContain('block:bullet-list');
+    expect(kernel.getMarkdown()).toContain('后文');
+  });
+  it('结构在安全块边界插入，双链仍在光标行内', async () => {
+    const structure = mount('正文 ');
+    selectAt(structure.kernel, structure.kernel.editor.state.doc.content.size - 1);
+    await type(structure.kernel, '/表格');
+    press(structure.dom, 'Enter');
+    expect(structure.kernel.getMarkdown()).toContain('正文');
+    expect(structure.kernel.getJSON().content?.some((node) => node.type === 'table')).toBe(true);
+    const inline = mount('\u00a0');
+    selectAt(inline.kernel, inline.kernel.editor.state.doc.content.size - 1);
+    await type(inline.kernel, '/双链');
+    press(inline.dom, 'Enter');
+    expect(inline.kernel.getMarkdown()).toContain('\\[\\[');
+  });
+  it('Escape/Backspace/空态及插件能力过滤', async () => {
+    const { kernel, dom, host } = mount('\u00a0', () => [
+      {
+        id: 'plugin:hidden',
+        title: '隐藏插件动作',
+        group: '插件',
+        kind: 'plugin',
+        contract: { execution: 'insert-at-cursor', capability: 'plugin-defined' },
+        available: () => false,
+        action: () => {
+          throw new Error('must not run');
+        },
+      },
+    ]);
+    selectAt(kernel, kernel.editor.state.doc.content.size - 1);
+    await type(kernel, '/隐藏');
     expect(host.querySelector('[data-slash-empty]')).not.toBeNull();
     const before = kernel.getMarkdown();
     press(dom, 'Enter');
     expect(kernel.getMarkdown()).toBe(before);
-    for (let index = 0; index <= '不存在'.length; index += 1) press(dom, 'Backspace');
+    for (let index = 0; index <= '隐藏'.length; index += 1) press(dom, 'Backspace');
     expect(host.querySelector('[data-slash-menu]')?.getAttribute('style')).toContain(
       'display: none',
     );
+    await type(kernel, '/二级标题');
+    press(dom, 'Escape');
+    expect(kernel.getMarkdown()).toContain('/二级标题');
   });
 });
