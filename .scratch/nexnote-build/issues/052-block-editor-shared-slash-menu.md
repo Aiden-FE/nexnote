@@ -2,11 +2,19 @@
 
 Type: dev
 Module: editor
-Status: open
+Status: implementation-complete
 Blocked by: DEV-050（共享动作模型）
 Depends: DEV-038（现有快捷插入）、DEV-047（结构插入与标题目录）
 Effort: M
 Priority: P1
+
+
+## 实施记录（2026-09-17，dev/DEV-052）
+
+- 实现共享快捷插入动作定义（分组、中文/英文/Markdown 记号别名、编辑模式能力），块编辑菜单按“基础块、插入、AI、插件”分组并在组内按匹配度排序。
+- 真实 TipTap contenteditable DOM 的 KeyboardEvent/InputEvent + DOMObserver 验收覆盖段落、标题、列表、引用触发；代码块、行内代码、URL、路径、数学和单词内部不触发；以及 Tab 确认、Escape、Backspace、空态和 undo/redo。
+- 块类型在已有正文时过滤；结构动作在当前顶层块后插入，双链/AI/插件按能力分组；普通交互不触发 AI。
+- 候选提交：`f4c8343`。Electron smoke：`NOT_RUN`。
 
 ## Scope
 
