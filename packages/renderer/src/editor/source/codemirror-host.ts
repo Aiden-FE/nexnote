@@ -4,6 +4,7 @@ import { defaultHighlightStyle, syntaxHighlighting, syntaxTree } from '@codemirr
 import { CODE_LANGUAGES } from '@nexnote/shared';
 import { codeLanguages } from './fence-languages';
 import { fenceHighlightExtension } from './fence-highlight';
+import { sourceHeadingFolding } from './heading-fold';
 import {
   applySourceMarkdownFormat,
   indentSourceSelection,
@@ -100,6 +101,8 @@ export function createSourceEditor(
     initialText: string;
     onChange(text: string): void;
     onScroll?(scrollDOM: HTMLElement): void;
+    /** 仅 markdown 文档启用章节折叠；native-block 临时源码模式保持只看原文。 */
+    headingFolding?: boolean;
     /** 追加扩展（如划词工具栏、AI 辅助），随编辑器一次性装配。 */
     extraExtensions?: Extension[];
   },
@@ -116,6 +119,7 @@ export function createSourceEditor(
         history(),
         markdown({ codeLanguages }),
         fenceHighlightExtension,
+        ...(options.headingFolding ? [sourceHeadingFolding()] : []),
         syntaxHighlighting(defaultHighlightStyle, { fallback: true }),
         keymap.of([
           { key: 'Tab', run: (editor) => indentSourceSelection(editor) },

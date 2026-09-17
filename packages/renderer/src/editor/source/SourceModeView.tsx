@@ -70,6 +70,7 @@ import {
 } from './source-mode-toggle';
 import { syncScrollRatio } from './scroll-sync';
 import { sourceWikilinkCompletion } from './wikilink-completion';
+import { clearSourceHeadingFolds, revealSourceHeadingAt } from './heading-fold';
 import { createRedlinkPage, currentPageCandidates } from '../wikilink-page-ops';
 import { DocumentPropertiesPopover } from '../../features/frontmatter/DocumentPropertiesPopover';
 import { Resizer } from '../../shell/Resizer';
@@ -338,7 +339,12 @@ export function SourceModeView({ tab }: { tab: TabDescriptor }) {
     baseTextRef.current = text;
     dirtyRef.current = false;
     const parts = absorbText(text);
-    editorRef.current?.setText(parts.body);
+    const editor = editorRef.current;
+    if (editor) {
+      // 外部内容整体替换：标题身份不可信，先清空临时状态再写入（fail-open）。
+      if (editor.view) clearSourceHeadingFolds(editor.view);
+      editor.setText(parts.body);
+    }
     textRef.current = parts.body;
     refreshOutline(parts.body);
     setPreviewText(composeDocument());
@@ -362,7 +368,11 @@ export function SourceModeView({ tab }: { tab: TabDescriptor }) {
       // 竞态防护：读取期间用户又开始输入（dirty）则只刷新基线，不动编辑器
       if (text !== composeDocument()) {
         const parts = absorbText(text);
-        editorRef.current?.setText(parts.body);
+        const editor = editorRef.current;
+        if (editor) {
+          if (editor.view) clearSourceHeadingFolds(editor.view);
+          editor.setText(parts.body);
+        }
         textRef.current = parts.body;
         refreshOutline(parts.body);
         setPreviewText(composeDocument());
@@ -438,6 +448,7 @@ export function SourceModeView({ tab }: { tab: TabDescriptor }) {
     unmountedRef.current = false;
     const editor = createSourceEditor(hostRef.current, {
       initialText: load.phase === 'ready' ? partsRef.current.body : '',
+      headingFolding: isMarkdown,
       onChange: (text) => {
         dirtyRef.current = true;
         textRef.current = text;
@@ -646,6 +657,8 @@ export function SourceModeView({ tab }: { tab: TabDescriptor }) {
       if (!editor) return;
       const from = entry.from ?? 0;
       const to = entry.to ?? from;
+      // 目录目标若被父章节遮蔽，仅展开必要祖先；目标自身的折叠状态保留。
+      revealSourceHeadingAt(editor.view, from);
       // 先挂起比例同步再滚动编辑器：让随后的 scroll 事件不覆盖下面的直接定位。
       // 窗口需覆盖 CM 滚动事件派发 + 预览 smooth 滚动全程（按距离自适应可达数百毫秒）。
       // 用 performance.now 单调钟：墙钟回拨（NTP/手动校时）不应拉长挂起窗口。
