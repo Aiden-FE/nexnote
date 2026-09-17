@@ -49,6 +49,7 @@ import {
 import type { BlockMenuContext } from '@nexnote/kernel';
 import {
   computeEditorActionContext,
+  insertAtSafeBlockBoundary,
   type EditorKernelInstance,
   type SlashMenuItem,
 } from '@nexnote/kernel';
@@ -288,9 +289,13 @@ function buildPluginBlockSlashItems(kernel: EditorKernelInstance): SlashMenuItem
     kind: 'plugin',
     contract: { execution: 'insert-safe-block', capability: 'plugin-defined' },
     available: (context) => context.capabilities.has('plugin-defined'),
-    action: () => {
-      kernel.editor.commands.insertPluginBlock?.({ pluginId: d.pluginId, blockType: d.blockType });
-      return true;
+    action: ({ view }) => {
+      const node = view.state.schema.nodes.pluginBlock?.create({
+        pluginId: d.pluginId,
+        blockType: d.blockType,
+        data: '{}',
+      });
+      return node ? insertAtSafeBlockBoundary(view, node) : false;
     },
   }));
 }
