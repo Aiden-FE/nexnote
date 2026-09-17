@@ -918,7 +918,7 @@ export function SourceModeView({ tab }: { tab: TabDescriptor }) {
         </div>
       )}
 
-      <div ref={splitHostRef} className="flex min-h-0 flex-1">
+      <div ref={splitHostRef} data-testid="markdown-view-layout" className="flex min-h-0 flex-1">
         <div
           data-testid="source-editor-pane"
           className={`min-h-0 min-w-0 overflow-hidden ${previewOnly ? 'absolute size-px opacity-0' : 'relative'}`}

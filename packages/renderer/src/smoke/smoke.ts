@@ -2958,8 +2958,18 @@ export async function runSmokeIfEnabled(): Promise<void> {
         ));
       const dev048ContentCol = document.querySelector('[data-testid="live-preview-content"]');
       const dev048PreviewHost = dev048ContentCol?.closest('[data-testid="live-preview"]');
+      const dev048Layout = document.querySelector('[data-testid="markdown-view-layout"]');
       const dev048ContentWidth = dev048ContentCol?.getBoundingClientRect().width ?? 0;
       const dev048HostWidth = dev048PreviewHost?.getBoundingClientRect().width ?? 0;
+      const dev048LayoutWidth = dev048Layout?.getBoundingClientRect().width ?? 0;
+      check(
+        'DEV-049 预览根容器占满 Markdown 布局（宽度差 ≤ 2px）',
+        previewFillReady &&
+          !!dev048PreviewHost &&
+          !!dev048Layout &&
+          Math.abs(dev048HostWidth - dev048LayoutWidth) <= 2,
+        `preview=${dev048HostWidth.toFixed(0)}px layout=${dev048LayoutWidth.toFixed(0)}px`,
+      );
       check(
         'DEV-048 预览视图占满：内容列宽度 ≥ 预览容器 - 80px',
         previewFillReady && !!dev048PreviewHost && dev048ContentWidth >= dev048HostWidth - 80,
