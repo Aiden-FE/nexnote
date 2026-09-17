@@ -2,7 +2,7 @@
 
 Type: dev
 Module: editor
-Status: implementation-complete
+Status: closed
 Blocked by: DEV-054（块标题折叠）、DEV-055（Markdown 标题折叠）
 Depends: DEV-047（标题目录与悬浮目录）
 Effort: M
@@ -36,7 +36,7 @@ Priority: P1
 - [x] 页面切换、tab 关闭与重开不残留或串用折叠状态。
 - [x] Renderer 测试覆盖两种编辑器、嵌套祖先、目标自身折叠、无关分支和全部展开。
 - [x] 候选 SHA 上通过标准门禁；Electron smoke 未执行时记录 `NOT_RUN`。
-- [ ] 在 `.wt/DEV-056` / `dev/DEV-056` 隔离实现，完成 Standards + Spec 双轴审查后方可合并。
+- [x] 在 `.wt/DEV-056` / `dev/DEV-056` 隔离实现；固定候选 `d6f08ce` 独立 Standards PASS、Spec PASS，Unicode/CRLF 专项 PASS。
 
 ## 关联决策
 
@@ -82,4 +82,4 @@ Priority: P1
 - Standards 复审：代码候选 `3c2b83c` 为 **FAIL**（Spec 总体 PASS，但 Find 正确性阻断）；最终双轴验收项继续保持未勾选。
 - 本轮修复 Standards findings：CodeMirror 搜索以 `doc.line(n).text` 加单个 LF 建立与 CM position 一致的搜索文本，避免将 CRLF 原始 JS 偏移传入 CM；TipTap 按每个 textblock 聚合 marked text nodes，支持跨 mark 连续文本但不跨 block 或 inline atom；Unicode folding 改为整串 lower-case 后依原文 UTF-16 span 映射，覆盖希腊语终止 sigma（`ΟΣ` / `ος`）、土耳其 İ 与 emoji。
 - 本轮完整 `pnpm test`：154 文件中 153 通过 / 1 跳过，1306 测试通过 / 2 跳过；`pnpm typecheck`、`pnpm lint`（0 error、4 个既有 warning）、`pnpm build`、changed-format 与 `git diff --check` 均通过。Electron smoke 仍为 `NOT_RUN`。
-- 本轮仅完成实现阶段自审与定向/全量门禁；未预填独立 Standards + Spec PASS。新修复候选（由本轮追加提交产生）仍需独立双轴复审，本票保持 `implementation-complete`，不标记 closed。
+- 固定候选 `d6f08ce` 已完成独立复审：**Standards PASS、Spec PASS**，Unicode/CRLF 专项 **PASS**。据此勾选双轴验收项并将票据关闭。Electron smoke 未执行，维持 `NOT_RUN`；本次仅更新票据，不作 push 或 merge。
