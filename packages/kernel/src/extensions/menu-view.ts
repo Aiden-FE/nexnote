@@ -13,6 +13,7 @@ export function createQuickInsertView(className: string): QuickInsertView {
   dom.className = className;
   dom.dataset.slashMenu = '';
   dom.setAttribute('role', 'listbox');
+  dom.setAttribute('aria-label', '快捷插入动作');
   dom.style.cssText = 'display:none;position:absolute;z-index:40';
   return {
     dom,
@@ -30,9 +31,51 @@ export function createQuickInsertView(className: string): QuickInsertView {
         const row = document.createElement('div');
         row.className = `${className}__item`;
         row.dataset.slashItem = item.id;
+        row.id = `${className}-option-${index}`;
         row.dataset.active = String(index === state.activeIndex);
         row.setAttribute('role', 'option');
-        row.textContent = item.title;
+        row.setAttribute('aria-selected', String(index === state.activeIndex));
+        if (item.icon) {
+          const icon = document.createElement('span');
+          icon.dataset.slashIcon = item.icon;
+          icon.setAttribute('aria-hidden', 'true');
+          icon.textContent = {
+            undo: '↶',
+            redo: '↷',
+            heading: 'H',
+            paragraph: '¶',
+            bold: 'B',
+            italic: 'I',
+            strike: 'S̶',
+            code: '</>',
+            link: '↗',
+            wikilink: '[[]]',
+            selection: '▣',
+            wand: '✦',
+            table: '▦',
+            image: '▧',
+            attachment: '▤',
+            flowchart: '◇',
+            gantt: '▥',
+            outline: '☷',
+            rule: '─',
+            quote: '❝',
+            list: '☷',
+            task: '☑',
+            sparkles: '✧',
+            plugin: '⬡',
+          }[item.icon];
+          row.append(icon);
+        }
+        const label = document.createElement('span');
+        label.textContent = item.title;
+        row.append(label);
+        if (item.hint) {
+          const hint = document.createElement('span');
+          hint.className = `${className}__hint`;
+          hint.textContent = ` ${item.hint}`;
+          row.append(hint);
+        }
         dom.append(row);
       }
       if (!state.items.length) {
@@ -42,6 +85,9 @@ export function createQuickInsertView(className: string): QuickInsertView {
         empty.textContent = '没有匹配的快捷动作';
         dom.append(empty);
       }
+      if (state.items.length)
+        dom.setAttribute('aria-activedescendant', `${className}-option-${state.activeIndex}`);
+      else dom.removeAttribute('aria-activedescendant');
       dom.style.display = state.open ? 'block' : 'none';
       dom.style.top = `${coords.top}px`;
       dom.style.left = `${coords.left}px`;

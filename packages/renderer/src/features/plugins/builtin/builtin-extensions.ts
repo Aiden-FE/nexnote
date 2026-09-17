@@ -1,6 +1,6 @@
 import type { Extension } from '@tiptap/core';
 import type { PluginView } from '@nexnote/shared';
-import { BUILTIN_PLUGIN_IDS } from '@nexnote/shared';
+import { BUILTIN_PLUGIN_IDS, editorActionCatalogEntry } from '@nexnote/shared';
 import {
   MathBlock,
   MathInline,
@@ -65,21 +65,21 @@ export function buildBuiltinViewExtensions(flags: BuiltinBlockFlags): Extension[
   return extensions;
 }
 
-function mermaidSlashItem(
-  id: string,
-  title: string,
-  source: string,
-  keywords: string[],
-): SlashMenuItem {
+function mermaidSlashItem(id: string, source: string): SlashMenuItem {
+  const catalog = editorActionCatalogEntry(id);
+  if (!catalog?.quickInsert) throw new Error(`Missing canonical slash action: ${id}`);
   return {
-    id,
-    title,
-    hint: '```mermaid',
-    icon: id.includes('gantt') ? 'gantt' : 'flowchart',
-    group: '插入',
-    kind: 'structure',
-    contract: { execution: 'insert-safe-block', capability: 'editable-line' },
-    keywords,
+    id: catalog.id,
+    title: catalog.name,
+    hint: catalog.hint,
+    icon: catalog.icon,
+    group: catalog.quickInsert.group,
+    kind: catalog.quickInsert.kind,
+    contract: {
+      execution: catalog.quickInsert.execution,
+      capability: catalog.quickInsert.capability,
+    },
+    keywords: [...catalog.quickInsert.aliases],
     action: ({ view, tr }) => {
       const node = view.state.schema.nodes[MERMAID_BLOCK_NAME]?.create({ source });
       if (!node) return false;
@@ -94,18 +94,8 @@ export function buildBuiltinSlashItems(flags: BuiltinBlockFlags): SlashMenuItem[
   const items: SlashMenuItem[] = [];
   if (flags.mermaid) {
     items.push(
-      mermaidSlashItem('insert:mermaid-flowchart', '流程图', MermaidBlock.options.flowchartSource, [
-        'mermaid',
-        '流程',
-        'flow',
-        'flowchart',
-        'chart',
-      ]),
-      mermaidSlashItem('insert:mermaid-gantt', '甘特图', MermaidBlock.options.ganttSource, [
-        'mermaid',
-        '甘特',
-        'gantt',
-      ]),
+      mermaidSlashItem('insert:mermaid-flowchart', MermaidBlock.options.flowchartSource),
+      mermaidSlashItem('insert:mermaid-gantt', MermaidBlock.options.ganttSource),
     );
   }
   if (flags.katex) {

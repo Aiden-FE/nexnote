@@ -15,6 +15,7 @@ import {
   ListTree,
   Paperclip,
   Pilcrow,
+  Puzzle,
   Redo2,
   Sparkles,
   Strikethrough,
@@ -90,6 +91,7 @@ const ICONS: Record<string, ReactNode> = {
   flowchart: <Workflow className="size-3.5" />,
   gantt: <ChartGantt className="size-3.5" />,
   outline: <ListTree className="size-3.5" />,
+  plugin: <Puzzle className="size-3.5" />,
   sparkles: <Sparkles className="size-3.5" />,
 };
 

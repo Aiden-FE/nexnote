@@ -125,7 +125,17 @@ describe('斜杠快捷输入真实 TipTap DOM 链路（DEV-052）', () => {
     expect(first.host.querySelector('[data-slash-item]')?.getAttribute('data-slash-item')).toBe(
       'block:heading:2',
     );
+    const menu = first.host.querySelector<HTMLElement>('[data-slash-menu]')!;
+    expect(
+      menu.querySelector('[data-slash-item="block:heading:2"] [data-slash-icon="heading"]'),
+    ).not.toBeNull();
+    expect(menu.querySelector('[aria-selected="true"]')?.getAttribute('data-slash-item')).toBe(
+      'block:heading:2',
+    );
     press(first.dom, 'ArrowDown');
+    expect(menu.querySelector('[aria-selected="true"]')?.id).toBe(
+      menu.getAttribute('aria-activedescendant'),
+    );
     press(first.dom, 'ArrowUp');
     press(first.dom, 'Tab');
     expect(first.kernel.editor.state.selection.$from.parent.attrs.level).toBe(2);
@@ -204,6 +214,98 @@ describe('斜杠快捷输入真实 TipTap DOM 链路（DEV-052）', () => {
     expect(moved.kernel.getMarkdown().trimEnd()).toBe(before);
     expect(moved.kernel.getMarkdown()).toContain('第二段');
   });
+  it.each([
+    ['相邻列表项', '- 第一项 \n- 第二项 '],
+    ['相邻引用段落', '> 第一段 \n>\n> 第二段 '],
+  ])('%s 的旧 trigger 不能在兄弟 textblock 上确认', async (_label, markdown) => {
+    const { kernel, dom, host } = mount(markdown);
+    selectAt(kernel, firstNodeEnd(kernel, 'paragraph'));
+    await type(kernel, '/表格');
+    let second = -1;
+    kernel.editor.state.doc.descendants((node, pos) => {
+      if (node.type.name === 'paragraph' && node.textContent.includes('第二')) second = pos + 1;
+    });
+    expect(second).toBeGreaterThan(0);
+    selectAt(kernel, second);
+    expect(host.querySelector('[data-slash-menu]')?.getAttribute('style')).toContain(
+      'display: none',
+    );
+    press(dom, 'Tab');
+    expect(kernel.getMarkdown()).toContain('/表格');
+    expect(kernel.getJSON().content?.some((node) => node.type === 'table')).toBe(false);
+  });
+
+  it('区间内交错插入改变 /query 时立即关闭，不删除 /重要表格 的正文', async () => {
+    const { kernel, dom, host } = mount('正文 ');
+    selectAt(kernel, kernel.editor.state.doc.content.size - 1);
+    await type(kernel, '/表格');
+    const slash = kernel.editor.state.doc.textContent.indexOf('/');
+    kernel.editor.view.dispatch(kernel.editor.state.tr.insertText('重要', slash + 2));
+    expect(kernel.getMarkdown()).toContain('/重要表格');
+    expect(host.querySelector('[data-slash-menu]')?.getAttribute('style')).toContain(
+      'display: none',
+    );
+    press(dom, 'Tab');
+    expect(kernel.getMarkdown()).toContain('/重要表格');
+    expect(kernel.getJSON().content?.some((node) => node.type === 'table')).toBe(false);
+  });
+
+  it('替换 query 或在 trigger 前插入后立即关闭；保留正文', async () => {
+    for (const change of ['replace', 'prefix'] as const) {
+      const { kernel, dom, host } = mount('正文 ');
+      selectAt(kernel, kernel.editor.state.doc.content.size - 1);
+      await type(kernel, '/表格');
+      const from = kernel.editor.state.selection.from - '/表格'.length;
+      if (change === 'replace')
+        kernel.editor.view.dispatch(kernel.editor.state.tr.insertText('重要', from + 1, from + 2));
+      else kernel.editor.view.dispatch(kernel.editor.state.tr.insertText('前置', 1));
+      const before = kernel.getMarkdown();
+      expect(host.querySelector('[data-slash-menu]')?.getAttribute('style')).toContain(
+        'display: none',
+      );
+      press(dom, 'Tab');
+      expect(kernel.getMarkdown()).toBe(before);
+      expect(kernel.getJSON().content?.some((node) => node.type === 'table')).toBe(false);
+    }
+  });
+
+  it('无关外部 doc transaction 即使保留相同 /query 也关闭旧会话', async () => {
+    const { kernel, dom, host } = mount('正文 ');
+    selectAt(kernel, kernel.editor.state.doc.content.size - 1);
+    await type(kernel, '/表格');
+    kernel.editor.view.dispatch(kernel.editor.state.tr.insertText('追加', 1));
+    expect(host.querySelector('[data-slash-menu]')?.getAttribute('style')).toContain(
+      'display: none',
+    );
+    press(dom, 'Tab');
+    expect(kernel.getMarkdown()).toContain('/表格');
+    expect(kernel.getJSON().content?.some((node) => node.type === 'table')).toBe(false);
+  });
+
+  it('无关前后结构事务使已打开菜单立即失效', async () => {
+    for (const position of ['before', 'after'] as const) {
+      const { kernel, dom, host } = mount('正文 ');
+      selectAt(kernel, kernel.editor.state.doc.content.size - 1);
+      await type(kernel, '/表格');
+      const at = position === 'before' ? 0 : kernel.editor.state.doc.content.size;
+      kernel.editor.view.dispatch(
+        kernel.editor.state.tr.insert(
+          at,
+          kernel.editor.state.schema.nodes.paragraph!.create(
+            null,
+            kernel.editor.state.schema.text('外部'),
+          ),
+        ),
+      );
+      expect(host.querySelector('[data-slash-menu]')?.getAttribute('style')).toContain(
+        'display: none',
+      );
+      press(dom, 'Tab');
+      expect(kernel.getMarkdown()).toContain('/表格');
+      expect(kernel.getJSON().content?.some((node) => node.type === 'table')).toBe(false);
+    }
+  });
+
   it('逐字路径输入关闭菜单并保留文本，IME 合成不触发', async () => {
     const path = mount('\u00a0');
     selectAt(path.kernel, path.kernel.editor.state.doc.content.size - 1);
@@ -286,7 +388,7 @@ describe('斜杠快捷输入真实 TipTap DOM 链路（DEV-052）', () => {
     },
   );
 
-  it('显式 AI 同步/异步意图仅在成功后关闭，失败保留原文', async () => {
+  it('显式 AI 异步成功消费 trigger，确认前保留原文', async () => {
     let resolve!: (value: boolean) => void;
     const ai = mount('正文 ', () => [
       {
@@ -308,10 +410,43 @@ describe('斜杠快捷输入真实 TipTap DOM 链路（DEV-052）', () => {
     expect(ai.kernel.getMarkdown()).toBe(original);
     resolve(true);
     await Promise.resolve();
-    expect(ai.kernel.getMarkdown()).toBe(original);
+    expect(ai.kernel.getMarkdown()).not.toContain('/AI 意图测试');
+    expect(ai.kernel.undo()).toBe(true);
+    expect(ai.kernel.getMarkdown()).toContain('/AI 意图测试');
+    expect(ai.kernel.redo()).toBe(true);
+    expect(ai.kernel.getMarkdown()).not.toContain('/AI 意图测试');
     expect(ai.host.querySelector('[data-slash-menu]')?.getAttribute('style')).toContain(
       'display: none',
     );
+  });
+
+  it('AI 提示取消/失败保留原文，成功后异步改动上下文不误删', async () => {
+    for (const outcome of [false, true]) {
+      let resolve!: (success: boolean) => void;
+      const ai = mount('正文 ', () => [
+        {
+          id: 'ai:pending',
+          title: 'AI 等待',
+          group: 'AI',
+          kind: 'ai',
+          contract: { execution: 'explicit-ai', capability: 'explicit-ai' },
+          action: () =>
+            new Promise<boolean>((done) => {
+              resolve = done;
+            }),
+        },
+      ]);
+      selectAt(ai.kernel, ai.kernel.editor.state.doc.content.size - 1);
+      await type(ai.kernel, '/AI 等待');
+      press(ai.dom, 'Enter');
+      const before = ai.kernel.getMarkdown();
+      if (outcome) ai.kernel.editor.view.dispatch(ai.kernel.editor.state.tr.insertText('外部', 1));
+      resolve(outcome);
+      await Promise.resolve();
+      expect(ai.kernel.getMarkdown()).toContain('/AI 等待');
+      if (outcome) expect(ai.kernel.getMarkdown()).toContain('外部');
+      else expect(ai.kernel.getMarkdown()).toBe(before);
+    }
   });
 
   it('光标移入 query 内部后菜单关闭且确认不再执行', async () => {

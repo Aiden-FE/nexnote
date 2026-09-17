@@ -9,6 +9,7 @@ import { DocumentPropertiesPopover } from '../features/frontmatter/DocumentPrope
 import { useDocumentPropertiesStore } from '../features/frontmatter/document-properties-store';
 import { useIndexStore } from '../stores/index-store';
 import type { FrontmatterData } from '@nexnote/kernel';
+import { editorActionCatalogEntry, pluginQuickInsertMetadata } from '@nexnote/shared';
 import { parseFrontmatterYaml, serializeFrontmatterYaml, splitFrontmatter } from '@nexnote/kernel';
 import { collectVaultTags, inspectFrontmatter } from '../features/frontmatter/frontmatter-utils';
 import { bindH1ToTitle, firstH1, sanitizePageTitle, titleFromPath } from './title-sync';
@@ -249,16 +250,26 @@ function createMediaInsert(options: MediaInsertOptions): {
 /** 斜杠菜单的「图片 / 附件」项（与工具栏入口共用同一插入实现）。 */
 function createMediaInsertSlashItems(options: MediaInsertOptions): SlashMenuItem[] {
   const media = createMediaInsert(options);
+  const fromCatalog = (id: string) => {
+    const action = editorActionCatalogEntry(id);
+    if (!action?.quickInsert) throw new Error(`Missing canonical slash action: ${id}`);
+    return {
+      id: action.id,
+      title: action.name,
+      hint: action.hint,
+      icon: action.icon,
+      keywords: [...action.quickInsert.aliases],
+      group: action.quickInsert.group,
+      kind: action.quickInsert.kind,
+      contract: {
+        execution: action.quickInsert.execution,
+        capability: action.quickInsert.capability,
+      },
+    };
+  };
   return [
     {
-      id: INSERT_IMAGE_ID,
-      title: '图片',
-      hint: 'img',
-      icon: 'image',
-      keywords: ['image', 'img', 'picture', 'tupian'],
-      group: '插入',
-      kind: 'structure',
-      contract: { execution: 'insert-safe-block', capability: 'editable-line' },
+      ...fromCatalog(INSERT_IMAGE_ID),
       action: ({ view, tr }) =>
         media.pickImage((_kernel, path) => {
           const node = view.state.schema.nodes.image?.create({ src: path, alt: '' });
@@ -266,14 +277,7 @@ function createMediaInsertSlashItems(options: MediaInsertOptions): SlashMenuItem
         }),
     },
     {
-      id: INSERT_ATTACHMENT_ID,
-      title: '附件',
-      hint: 'file',
-      icon: 'attachment',
-      keywords: ['attachment', 'file', 'fujian'],
-      group: '插入',
-      kind: 'structure',
-      contract: { execution: 'insert-safe-block', capability: 'editable-line' },
+      ...fromCatalog(INSERT_ATTACHMENT_ID),
       action: ({ view, tr }) =>
         media.pickAttachment((_kernel, path) => {
           const paragraph = view.state.schema.nodes.paragraph;
@@ -295,14 +299,16 @@ function buildPluginBlockSlashItems(_kernel: EditorKernelInstance): SlashMenuIte
     typeof buildDispatchableBlockCommands
   >[0];
   const defs = buildDispatchableBlockCommands(contributions);
+  const meta = pluginQuickInsertMetadata('block');
   return defs.map((d) => ({
     id: d.id,
     title: d.title,
     hint: d.blockType,
-    keywords: ['插件', 'plugin', 'block', ...(d.keywords ?? []).map((k) => String(k))],
-    group: '插件',
-    kind: 'plugin',
-    contract: { execution: 'insert-safe-block', capability: 'plugin-defined' },
+    icon: meta.icon,
+    keywords: [...meta.quickInsert.aliases, ...(d.keywords ?? []).map((k) => String(k))],
+    group: meta.quickInsert.group,
+    kind: meta.quickInsert.kind,
+    contract: { execution: meta.quickInsert.execution, capability: meta.quickInsert.capability },
     available: (context) => context.capabilities.has('plugin-defined'),
     action: ({ view, tr }) => {
       const node = view.state.schema.nodes.pluginBlock?.create({
@@ -647,10 +653,11 @@ export function EditorView({ tab }: EditorViewProps) {
             trackAbort,
           }),
           ...buildPluginBlockSlashItems(kernel),
-          ...buildPluginCommandSlashItems(
-            pluginState.contributions,
-            pluginState.commands,
-            (def) => void invoke('plugins:runCommand', def),
+          ...buildPluginCommandSlashItems(pluginState.contributions, pluginState.commands, (def) =>
+            invoke('plugins:runCommand', def).then(
+              () => true,
+              () => false,
+            ),
           ),
         ];
       },

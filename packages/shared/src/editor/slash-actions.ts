@@ -10,4 +10,4 @@ export type {
   QuickInsertGroup as SlashActionGroup,
   QuickInsertKind as SlashActionKind,
 } from './editor-actions';
-export const SLASH_ACTION_GROUP_ORDER = ['基础块', '插入', 'AI', '插件'] as const;
+export { SLASH_ACTION_GROUP_ORDER } from './editor-actions';

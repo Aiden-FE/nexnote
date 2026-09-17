@@ -128,6 +128,36 @@ const press = (el: Element, key: string): void => {
   });
 };
 
+async function typeInBlockEditor(
+  kernel: NonNullable<ReturnType<typeof getActiveEditor>>,
+  text: string,
+): Promise<void> {
+  const dom = kernel.editor.view.dom;
+  dom.focus();
+  for (const character of text) {
+    const at = kernel.editor.view.domAtPos(kernel.editor.state.selection.from);
+    const node =
+      at.node.nodeType === Node.TEXT_NODE ? (at.node as Text) : document.createTextNode('');
+    if (at.node.nodeType === Node.TEXT_NODE) node.insertData(at.offset, character);
+    else {
+      at.node.insertBefore(node, at.node.childNodes[at.offset] ?? null);
+      node.appendData(character);
+    }
+    const range = document.createRange();
+    range.setStart(
+      node,
+      at.node.nodeType === Node.TEXT_NODE ? at.offset + character.length : character.length,
+    );
+    range.collapse(true);
+    document.getSelection()?.removeAllRanges();
+    document.getSelection()?.addRange(range);
+    dom.dispatchEvent(
+      new InputEvent('input', { bubbles: true, inputType: 'insertText', data: character }),
+    );
+    await new Promise((resolve) => setTimeout(resolve, 0));
+  }
+}
+
 beforeEach(() => {
   sourceCommands.insertBlock.mockReset();
   sourceCommands.formatMarkdown.mockReset();
@@ -161,6 +191,17 @@ describe('DEV-050 共享动作模型单一数据源', () => {
       const action = editorAction(id);
       expect(action.hint, id).toBeTruthy();
       expect(action.shortcut, id).toBeTruthy();
+    }
+    for (const id of [
+      'insert:table',
+      'insert:image',
+      'insert:attachment',
+      'insert:mermaid-flowchart',
+      'insert:mermaid-gantt',
+      'insert:toc',
+    ]) {
+      expect(editorAction(id).hint, id).toBeTruthy();
+      expect(editorAction(id).hint, id).toBe(editorActionCatalogEntry(id)?.hint);
     }
     expect(editorActionsForMode('source').some((action) => action.id === 'insert:image')).toBe(
       false,
@@ -218,29 +259,7 @@ describe('块编辑工具栏（DEV-035）', () => {
         kernel.editor.state.tr.setSelection(TextSelection.create(kernel.editor.state.doc, pos)),
       ),
     );
-    dom.focus();
-    for (const character of '/流程图') {
-      const at = kernel.editor.view.domAtPos(kernel.editor.state.selection.from);
-      const node =
-        at.node.nodeType === Node.TEXT_NODE ? (at.node as Text) : document.createTextNode('');
-      if (at.node.nodeType === Node.TEXT_NODE) node.insertData(at.offset, character);
-      else {
-        at.node.insertBefore(node, at.node.childNodes[at.offset] ?? null);
-        node.appendData(character);
-      }
-      const range = document.createRange();
-      range.setStart(
-        node,
-        at.node.nodeType === Node.TEXT_NODE ? at.offset + character.length : character.length,
-      );
-      range.collapse(true);
-      document.getSelection()?.removeAllRanges();
-      document.getSelection()?.addRange(range);
-      dom.dispatchEvent(
-        new InputEvent('input', { bubbles: true, inputType: 'insertText', data: character }),
-      );
-      await new Promise((resolve) => setTimeout(resolve, 0));
-    }
+    await typeInBlockEditor(kernel, '/流程图');
     const action = editorActionCatalogEntry('insert:mermaid-flowchart')!;
     const item = document.querySelector<HTMLElement>(
       '[data-slash-item="insert:mermaid-flowchart"]',
@@ -260,6 +279,60 @@ describe('块编辑工具栏（DEV-035）', () => {
     expect(kernel.getMarkdown()).toContain('```mermaid\nflowchart TD');
     expect(kernel.getMarkdown()).not.toContain('/流程图');
   });
+
+  it.each(['reject', 'permission', 'success'] as const)(
+    'Renderer 插件命令 %s 后安全处理 slash 原文',
+    async (result) => {
+      installBridge('# 测试页\n\n正文一段 \n');
+      usePluginStore.setState({
+        contributions: [
+          {
+            id: 'danger',
+            scopedId: 'com.demo:danger',
+            pluginId: 'com.demo',
+            kind: 'commands',
+            title: '危险命令',
+          },
+        ] as never,
+      });
+      await mount(<EditorView tab={blockTab} />);
+      await vi.waitFor(() => expect(getActiveEditor()).not.toBeNull());
+      const kernel = getActiveEditor()!;
+      const pos = kernel.editor.state.doc.content.size - 1;
+      act(() =>
+        kernel.editor.view.dispatch(
+          kernel.editor.state.tr.setSelection(TextSelection.create(kernel.editor.state.doc, pos)),
+        ),
+      );
+      await typeInBlockEditor(kernel, '/危险命令');
+      expect(
+        document.querySelector('[data-slash-item="plugin-cmd:com.demo:danger"]'),
+      ).not.toBeNull();
+      const bridge = (window as unknown as { nexnote: { invoke: ReturnType<typeof vi.fn> } })
+        .nexnote;
+      let complete!: (response: unknown) => void;
+      let reject!: (error: Error) => void;
+      bridge.invoke.mockImplementationOnce(
+        () =>
+          new Promise((resolve, fail) => {
+            complete = resolve;
+            reject = fail;
+          }),
+      );
+      kernel.editor.view.dom.dispatchEvent(
+        new KeyboardEvent('keydown', { key: 'Enter', bubbles: true, cancelable: true }),
+      );
+      expect(kernel.getMarkdown()).toContain('/危险命令');
+      if (result === 'reject') reject(new Error('command failed'));
+      else if (result === 'permission')
+        complete({ ok: false, error: { code: 'PERMISSION_DENIED', message: '拒绝' } });
+      else complete({ ok: true, data: null });
+      await vi.waitFor(() => {
+        if (result === 'success') expect(kernel.getMarkdown()).not.toContain('/危险命令');
+        else expect(kernel.getMarkdown()).toContain('/危险命令');
+      });
+    },
+  );
 
   it('格式与插入动作组收纳低频动作，菜单项保留图标与文案', async () => {
     installBridge('# 测试页\n\n正文一段\n');

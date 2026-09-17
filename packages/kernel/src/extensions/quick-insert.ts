@@ -99,15 +99,15 @@ function triggerContext(view: EditorView, from: number): SlashExecutionContext |
     return null;
   if (before.length && !/\s$/.test(before)) return null;
   const emptyBlock = /^\s*$/.test(before) && /^\s*$/.test(after);
-  const blockFrom = $from.before(1);
-  const blockTo = $from.after(1);
+  const textblockFrom = $from.before($from.depth);
+  const textblockTo = $from.after($from.depth);
   return {
     triggerFrom: from,
     // handleTextInput fires before the input transaction. Include the slash immediately;
     // later transactions advance this endpoint from the actual selection.
     triggerTo: from + 1,
-    blockFrom,
-    blockTo,
+    textblockFrom,
+    textblockTo,
     emptyBlock,
     capabilities: new Set([
       'editable-line',
@@ -131,6 +131,13 @@ export const QuickInsert = Extension.create<QuickInsertOptions, SlashMenuState>(
     let menu: QuickInsertView | null = null;
     let context: SlashExecutionContext | null = null;
     let composing = false;
+    let pendingInput: {
+      from: number;
+      text: string;
+      before: string;
+      previousCursor: number;
+      documentDelta: number;
+    } | null = null;
     const sync = (view: EditorView) => {
       if (!menu) return;
       if (extension.storage.open && !menu.dom.isConnected) view.dom.parentElement?.append(menu.dom);
@@ -139,26 +146,35 @@ export const QuickInsert = Extension.create<QuickInsertOptions, SlashMenuState>(
       else menu.hide();
     };
     const close = (view: EditorView) => {
+      pendingInput = null;
       Object.assign(extension.storage, { open: false, query: '', items: [], activeIndex: 0 });
       context = null;
       sync(view);
     };
-    const selectionMatchesTrigger = (view: EditorView): boolean => {
-      if (!context || !view.state.selection.empty) return false;
+    const sessionIsCurrent = (
+      view: EditorView,
+      candidate = context,
+    ): candidate is SlashExecutionContext => {
+      if (!candidate || !view.state.selection.empty) return false;
       const { from } = view.state.selection;
-      if (from < context.triggerFrom || from > context.blockTo) return false;
+      if (from !== candidate.triggerTo) return false;
       const $from = view.state.doc.resolve(from);
-      return $from.depth >= 1 && $from.before(1) === context.blockFrom;
+      if ($from.depth < 1 || $from.before($from.depth) !== candidate.textblockFrom) return false;
+      if (candidate.triggerTo > $from.after($from.depth)) return false;
+      return (
+        candidate.triggerTo <= view.state.doc.content.size &&
+        view.state.doc.textBetween(
+          candidate.triggerFrom,
+          candidate.triggerTo,
+          undefined,
+          '\ufffc',
+        ) === `/${extension.storage.query}`
+      );
     };
     const refresh = (view: EditorView) => {
       if (!context) return;
-      if (!selectionMatchesTrigger(view)) {
-        close(view);
-        return;
-      }
-      // ProseMirror may publish selection updates before DOMObserver has advanced the
-      // selection. The exact owned range is therefore derived from the committed input
-      // query, whose characters entered through handleTextInput, not from a stale cursor.
+      // The input hook sees the next character before DOMObserver commits it. Recompute the
+      // owned range only after that input transaction; no other transaction may reinterpret it.
       context = {
         ...context,
         triggerTo: context.triggerFrom + 1 + extension.storage.query.length,
@@ -173,11 +189,14 @@ export const QuickInsert = Extension.create<QuickInsertOptions, SlashMenuState>(
     const apply = (view: EditorView, item: QuickInsertItem) => {
       if (
         !context ||
+        !sessionIsCurrent(view) ||
+        view.state.selection.from !== context.triggerTo ||
         !canExecuteSlashAction(item.contract, context) ||
         !(item.available?.(context) ?? true)
       )
         return;
       const executingContext = context;
+      const ownedText = `/${extension.storage.query}`;
       // A false/rejected/cancelled action must leave `/query` untouched. Synchronous actions
       // receive one un-dispatched transaction: trigger consumption and the action therefore form
       // exactly one TipTap history step. Explicit AI is deliberately separate: its prompt/request
@@ -189,27 +208,48 @@ export const QuickInsert = Extension.create<QuickInsertOptions, SlashMenuState>(
         context: executingContext,
       };
       try {
-        if (item.contract?.execution !== 'explicit-ai')
+        if (
+          item.contract?.execution !== 'explicit-ai' &&
+          item.contract?.execution !== 'external-command'
+        )
           consumeSlashTrigger(transaction.tr, executingContext);
         const outcome = item.action(transaction);
         if (outcome instanceof Promise) {
           void outcome.then(
             (success) => {
               if (!success) return;
+              // All async completions must revalidate the owned range and exact source.
+              // AI consumes only on explicit success; cancelled/failed requests retain the query.
+              if (
+                view.isDestroyed ||
+                !extension.storage.open ||
+                context !== executingContext ||
+                !sessionIsCurrent(view, executingContext) ||
+                view.state.doc.textBetween(
+                  executingContext.triggerFrom,
+                  executingContext.triggerTo,
+                  undefined,
+                  '\ufffc',
+                ) !== ownedText
+              )
+                return;
               if (item.contract?.execution === 'explicit-ai') {
+                const committed = view.state.tr;
+                consumeSlashTrigger(committed, executingContext);
+                view.dispatch(closeHistory(committed.scrollIntoView()));
                 close(view);
                 return;
               }
-              // File pickers and plugin commands may complete later. Commit only when their
-              // original document is still current; otherwise preserve the typed source text.
-              if (
-                view.isDestroyed ||
-                !view.state.doc.eq(transaction.tr.before) ||
-                !extension.storage.open ||
-                context !== executingContext
-              )
-                return;
-              view.dispatch(closeHistory(transaction.tr.scrollIntoView()));
+              if (item.contract?.execution === 'external-command') {
+                // The plugin has no editor transaction of its own; consume only after the host
+                // confirms success, even if unrelated document edits happened while awaiting it.
+                const committed = view.state.tr;
+                consumeSlashTrigger(committed, executingContext);
+                view.dispatch(closeHistory(committed.scrollIntoView()));
+              } else {
+                if (!view.state.doc.eq(transaction.tr.before)) return;
+                view.dispatch(closeHistory(transaction.tr.scrollIntoView()));
+              }
               close(view);
             },
             () => undefined,
@@ -217,7 +257,14 @@ export const QuickInsert = Extension.create<QuickInsertOptions, SlashMenuState>(
           return;
         }
         if (!outcome) return;
-        if (item.contract?.execution === 'explicit-ai') {
+        if (
+          item.contract?.execution === 'explicit-ai' ||
+          item.contract?.execution === 'external-command'
+        ) {
+          if (!sessionIsCurrent(view, executingContext)) return;
+          const committed = view.state.tr;
+          consumeSlashTrigger(committed, executingContext);
+          view.dispatch(closeHistory(committed.scrollIntoView()));
           close(view);
           return;
         }
@@ -247,26 +294,33 @@ export const QuickInsert = Extension.create<QuickInsertOptions, SlashMenuState>(
                 return;
               }
               if (!previousState.doc.eq(view.state.doc)) {
-                // Browser typing keeps the document prefix before the tracked slash intact.
-                // Any other transaction, including an insertion before the slash, fails closed.
-                const from = context.triggerFrom;
-                const oldPrefix = previousState.doc.textBetween(
-                  0,
-                  Math.min(from, previousState.doc.content.size),
-                  '\n',
-                  '\ufffc',
-                );
-                const newPrefix = view.state.doc.textBetween(
-                  0,
-                  Math.min(from, view.state.doc.content.size),
-                  '\n',
-                  '\ufffc',
-                );
-                if (oldPrefix !== newPrefix) {
+                // A DOMObserver input is the only operation allowed to grow/shrink the query.
+                // Before accepting it, verify the previous owned text, the exact inserted
+                // input and the current textblock; an unrelated transaction fails closed.
+                const input = pendingInput;
+                pendingInput = null;
+                const validInput =
+                  input &&
+                  previousState.selection.from === input.previousCursor &&
+                  previousState.doc.content.size + input.documentDelta ===
+                    view.state.doc.content.size &&
+                  previousState.doc.textBetween(
+                    context.triggerFrom,
+                    input.from,
+                    undefined,
+                    '\ufffc',
+                  ) === input.before &&
+                  view.state.doc.textBetween(
+                    input.from,
+                    input.from + input.text.length,
+                    undefined,
+                    '\ufffc',
+                  ) === input.text;
+                if (!validInput || !sessionIsCurrent(view)) {
                   close(view);
                   return;
                 }
-              } else if (!selectionMatchesTrigger(view)) {
+              } else if (!sessionIsCurrent(view)) {
                 close(view);
                 return;
               }
@@ -297,6 +351,13 @@ export const QuickInsert = Extension.create<QuickInsertOptions, SlashMenuState>(
                 const next = triggerContext(view, from + index);
                 if (next) {
                   context = next;
+                  pendingInput = {
+                    from: next.triggerFrom,
+                    text: text.slice(index),
+                    before: '',
+                    previousCursor: from,
+                    documentDelta: text.slice(index).length,
+                  };
                   extension.storage.open = true;
                   extension.storage.query = text.slice(index + 1);
                   extension.storage.activeIndex = 0;
@@ -311,6 +372,14 @@ export const QuickInsert = Extension.create<QuickInsertOptions, SlashMenuState>(
               close(view);
               return false;
             }
+            if (context)
+              pendingInput = {
+                from: context.triggerTo,
+                text,
+                before: `/${extension.storage.query}`,
+                previousCursor: view.state.selection.from,
+                documentDelta: text.length,
+              };
             extension.storage.query += text;
             if (context)
               context = {
@@ -347,8 +416,22 @@ export const QuickInsert = Extension.create<QuickInsertOptions, SlashMenuState>(
               return true;
             }
             if (event.key === 'Backspace') {
+              if (!sessionIsCurrent(view)) {
+                close(view);
+                return false;
+              }
               if (!extension.storage.query.length) close(view);
-              else extension.storage.query = extension.storage.query.slice(0, -1);
+              else {
+                pendingInput = {
+                  from: context?.triggerTo ?? 0,
+                  text: '',
+                  before: `/${extension.storage.query}`,
+                  previousCursor: view.state.selection.from,
+                  documentDelta: -1,
+                };
+                extension.storage.query = extension.storage.query.slice(0, -1);
+                if (context) context = { ...context, triggerTo: context.triggerTo - 1 };
+              }
             }
             return false;
           },

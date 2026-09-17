@@ -1,4 +1,5 @@
 import { computeEditorActionContext } from '@nexnote/kernel';
+import { editorActionCatalogEntry } from '@nexnote/shared';
 import type { BubbleAction, ContextMenuItem, SlashMenuItem } from '@nexnote/kernel';
 import { toAiActionId, WRITING_ACTIONS } from './actions';
 import { CHAT_ASK_ACTION } from '../chat/ask-ai';
@@ -44,15 +45,20 @@ export function writingContextMenu(ctx: { target: string }): ContextMenuItem[] {
 
 /** 斜杠 `/ai` 项：空块基于上文生成，选区作用于选区。 */
 export function writingSlashItems(controller: WritingController): SlashMenuItem[] {
+  const canonical = editorActionCatalogEntry('ai:insert');
+  if (!canonical?.quickInsert) throw new Error('Missing canonical AI insert action');
   const aiInsert: SlashMenuItem = {
-    id: 'ai:insert',
-    title: 'AI 插入',
-    hint: '指令…',
-    icon: 'sparkles',
-    group: 'AI',
-    kind: 'ai',
-    contract: { execution: 'explicit-ai', capability: 'explicit-ai' },
-    keywords: ['ai', 'insert', 'prompt', '生成', '插入'],
+    id: canonical.id,
+    title: canonical.name,
+    hint: canonical.hint,
+    icon: canonical.icon,
+    group: canonical.quickInsert.group,
+    kind: canonical.quickInsert.kind,
+    contract: {
+      execution: canonical.quickInsert.execution,
+      capability: canonical.quickInsert.capability,
+    },
+    keywords: [...canonical.quickInsert.aliases],
     action: ({ view }) => {
       const instruction = window.prompt('AI 插入指令', '请基于当前上下文补充内容');
       if (!instruction?.trim()) return false;

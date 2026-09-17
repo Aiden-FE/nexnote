@@ -25,11 +25,16 @@ export type EditorActionIconKey =
   | 'quote'
   | 'list'
   | 'task'
-  | 'sparkles';
+  | 'sparkles'
+  | 'plugin';
 export type QuickInsertGroup = '基础块' | '插入' | 'AI' | '插件';
 export type QuickInsertKind = 'block-type' | 'structure' | 'inline' | 'ai' | 'plugin';
 export type QuickInsertExecution =
-  'convert-empty-block' | 'insert-safe-block' | 'insert-at-cursor' | 'explicit-ai';
+  | 'convert-empty-block'
+  | 'insert-safe-block'
+  | 'insert-at-cursor'
+  | 'explicit-ai'
+  | 'external-command';
 export type QuickInsertCapability =
   'empty-block' | 'editable-line' | 'explicit-ai' | 'plugin-defined';
 
@@ -289,6 +294,7 @@ export const EDITOR_ACTION_CATALOG: readonly EditorActionCatalogEntry[] = [
   {
     id: 'insert:horizontal-rule',
     name: '分隔线',
+    hint: '在当前块后插入分隔线',
     icon: 'rule',
     semantic: 'insert',
     group: 'insert',
@@ -303,6 +309,7 @@ export const EDITOR_ACTION_CATALOG: readonly EditorActionCatalogEntry[] = [
   {
     id: 'insert:table',
     name: '表格',
+    hint: '插入 2×2 Markdown 表格',
     icon: 'table',
     semantic: 'insert',
     group: 'insert',
@@ -317,6 +324,7 @@ export const EDITOR_ACTION_CATALOG: readonly EditorActionCatalogEntry[] = [
   {
     id: 'insert:image',
     name: '图片',
+    hint: '导入图片并插入安全块边界',
     icon: 'image',
     semantic: 'insert',
     group: 'insert',
@@ -331,6 +339,7 @@ export const EDITOR_ACTION_CATALOG: readonly EditorActionCatalogEntry[] = [
   {
     id: 'insert:attachment',
     name: '附件',
+    hint: '导入附件并插入安全块边界',
     icon: 'attachment',
     semantic: 'insert',
     group: 'insert',
@@ -344,6 +353,7 @@ export const EDITOR_ACTION_CATALOG: readonly EditorActionCatalogEntry[] = [
   {
     id: 'insert:mermaid-flowchart',
     name: '流程图',
+    hint: '插入 Mermaid 流程图',
     icon: 'flowchart',
     semantic: 'insert',
     group: 'insert',
@@ -359,6 +369,7 @@ export const EDITOR_ACTION_CATALOG: readonly EditorActionCatalogEntry[] = [
   {
     id: 'insert:mermaid-gantt',
     name: '甘特图',
+    hint: '插入 Mermaid 甘特图',
     icon: 'gantt',
     semantic: 'insert',
     group: 'insert',
@@ -372,6 +383,7 @@ export const EDITOR_ACTION_CATALOG: readonly EditorActionCatalogEntry[] = [
   {
     id: 'insert:toc',
     name: '正文目录',
+    hint: '在正文中插入目录',
     icon: 'outline',
     semantic: 'insert',
     group: 'insert',
@@ -386,6 +398,7 @@ export const EDITOR_ACTION_CATALOG: readonly EditorActionCatalogEntry[] = [
   {
     id: 'ai:insert',
     name: 'AI 插入',
+    hint: '指令…',
     icon: 'sparkles',
     semantic: 'ai',
     group: 'ai',
@@ -417,6 +430,22 @@ export const EDITOR_ACTION_CATALOG: readonly EditorActionCatalogEntry[] = [
 ];
 
 const catalogById = new Map(EDITOR_ACTION_CATALOG.map((action) => [action.id, action]));
+
+/** Dynamic plugin contributions share one host-owned slash metadata contract. */
+export function pluginQuickInsertMetadata(
+  kind: 'block' | 'command',
+): Pick<EditorActionCatalogEntry, 'icon'> & { quickInsert: QuickInsertMetadata } {
+  return {
+    icon: 'plugin',
+    quickInsert: quick(
+      '插件',
+      'plugin',
+      kind === 'block' ? 'insert-safe-block' : 'external-command',
+      'plugin-defined',
+      ['插件', 'plugin', kind],
+    ),
+  };
+}
 
 export function editorActionCatalogEntry(id: string): EditorActionCatalogEntry | undefined {
   return catalogById.get(id);
