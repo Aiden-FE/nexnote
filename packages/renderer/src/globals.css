@@ -913,6 +913,75 @@
   display: none;
 }
 
+/* ── DEV-055 Markdown 源码/分栏标题章节折叠（CodeMirror gutter disclosure）── */
+.cm-heading-fold-gutter .cm-gutterElement {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 1.25rem;
+}
+/* `.cm-gutters` is aria-hidden by CodeMirror: visible icons stay inert; accessible controls
+   are editor-root overlay siblings, positioned over the same gutter coordinates. */
+.cm-heading-fold-gutter-icon {
+  display: inline-block;
+  color: color-mix(in srgb, var(--muted-foreground) 70%, transparent);
+  font-size: 0.95rem;
+  line-height: 1;
+  transform: rotate(90deg);
+}
+.cm-heading-fold-gutter-icon[data-fold-state='collapsed'] {
+  transform: rotate(0deg);
+}
+.cm-heading-fold-accessible-controls {
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  pointer-events: none;
+}
+.cm-heading-fold-accessible-controls .cm-heading-fold-toggle {
+  position: absolute;
+  pointer-events: auto;
+}
+.cm-heading-fold-toggle {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1rem;
+  height: 1rem;
+  padding: 0;
+  border: 0;
+  border-radius: 0.2rem;
+  background: transparent;
+  color: color-mix(in srgb, var(--muted-foreground) 70%, transparent);
+  font-size: 0.95rem;
+  line-height: 1;
+  transform: rotate(90deg);
+  transition:
+    color 120ms ease,
+    background-color 120ms ease,
+    opacity 120ms ease,
+    transform 120ms ease;
+  cursor: pointer;
+  opacity: 0.6;
+}
+.cm-heading-fold-toggle[data-fold-state='collapsed'] {
+  transform: rotate(0deg);
+}
+.cm-heading-fold-toggle:hover,
+.cm-heading-fold-toggle:focus-visible {
+  color: var(--foreground);
+  background: var(--accent);
+  opacity: 1;
+}
+.cm-heading-fold-toggle:focus-visible {
+  outline: 2px solid color-mix(in srgb, var(--ring) 65%, transparent);
+  outline-offset: 1px;
+}
+.cm-heading-fold-placeholder {
+  color: color-mix(in srgb, var(--muted-foreground) 65%, transparent);
+  user-select: none;
+}
+
 /* 菜单项键盘焦点与悬停同样式（无障碍基础） */
 .nexnote-block-menu__item:focus-visible,
 .nexnote-context-menu__item:focus-visible {
