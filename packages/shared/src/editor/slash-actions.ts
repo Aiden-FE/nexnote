@@ -138,6 +138,14 @@ export const SHARED_SLASH_ACTIONS: readonly SharedSlashAction[] = [
     modes: ['block', 'source'],
   },
   {
+    id: 'tableOfContents',
+    label: '正文目录',
+    aliases: ['toc', 'table of contents', '目录', '正文目录'],
+    group: '插入',
+    kind: 'structure',
+    modes: ['block', 'source'],
+  },
+  {
     id: 'wikilink',
     label: '双链',
     aliases: ['wikilink', 'link', '[[', '双链'],

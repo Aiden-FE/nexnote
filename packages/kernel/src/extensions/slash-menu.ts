@@ -223,6 +223,12 @@ export function defaultSlashMenuItems(query = '', context?: SlashMenuContext): S
         table.create(null, [row(tableHeader), row(tableCell)]),
       );
     }),
+    sharedItem('tableOfContents', ({ view }) => {
+      const tableOfContents = view.state.schema.nodes.tableOfContents;
+      return tableOfContents
+        ? insertAfterCurrentTopLevelBlock(view, tableOfContents.create())
+        : false;
+    }),
     sharedItem('wikilink', ({ view }) => {
       view.dispatch(view.state.tr.insertText('[[').scrollIntoView());
       return true;
