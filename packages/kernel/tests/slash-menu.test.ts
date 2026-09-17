@@ -35,21 +35,38 @@ describe('斜杠菜单分组（DEV-017）', () => {
     placeCursorEnd(kernel);
     const view = kernel.editor.view as never;
     const from = view.state.selection.from;
-    view.someProp('handleTextInput', (f: (v: never, a: number, b: number, t: string) => boolean) => {
-      f(view, from, from, '/');
-      return false;
-    });
+    view.someProp(
+      'handleTextInput',
+      (f: (v: never, a: number, b: number, t: string) => boolean) => {
+        f(view, from, from, '/');
+        return false;
+      },
+    );
     const menu = container.querySelector('.nexnote-slash-menu') as HTMLElement;
     expect(menu).toBeTruthy();
-    const groups = [...menu.querySelectorAll('.nexnote-slash-menu__group')].map((g) => g.textContent);
+    const groups = [...menu.querySelectorAll('.nexnote-slash-menu__group')].map(
+      (g) => g.textContent,
+    );
     expect(groups).toContain('基础块');
-    expect(groups).toContain('高级');
+    expect(groups).toContain('插入');
     expect(groups).toContain('AI');
     // 分组排序后同组连续：分组头不重复
     expect(new Set(groups).size).toBe(groups.length);
-    const rows = [...menu.querySelectorAll('[data-slash-item]')].map((r) => r.getAttribute('data-slash-item'));
+    const rows = [...menu.querySelectorAll('[data-slash-item]')].map((r) =>
+      r.getAttribute('data-slash-item'),
+    );
     // 基础块齐备：标题/段落/无序/有序/任务/引用/代码块/表格/分割线
-    for (const id of ['heading1', 'paragraph', 'bulletList', 'orderedList', 'taskList', 'blockquote', 'codeBlock', 'table', 'horizontalRule']) {
+    for (const id of [
+      'heading1',
+      'paragraph',
+      'bulletList',
+      'orderedList',
+      'taskList',
+      'blockquote',
+      'codeBlock',
+      'table',
+      'horizontalRule',
+    ]) {
       expect(rows).toContain(id);
     }
     kernel.destroy();
@@ -69,7 +86,9 @@ describe('斜杠菜单分组（DEV-017）', () => {
     view.someProp('handleTextInput', (f) => (f(view, from, from, '格'), false));
     view.dispatch(view.state.tr.insertText('格', from, from));
     const menu = container.querySelector('.nexnote-slash-menu') as HTMLElement;
-    const rows = [...menu.querySelectorAll('[data-slash-item]')].map((r) => r.getAttribute('data-slash-item'));
+    const rows = [...menu.querySelectorAll('[data-slash-item]')].map((r) =>
+      r.getAttribute('data-slash-item'),
+    );
     expect(rows).toEqual(['table']);
     view.someProp('handleKeyDown', (f: (v: never, e: KeyboardEvent) => boolean) => {
       f(view, new KeyboardEvent('keydown', { key: 'Enter' }));
@@ -84,11 +103,16 @@ describe('斜杠菜单分组（DEV-017）', () => {
     placeCursorEnd(kernel);
     const view = kernel.editor.view as never;
     const from = view.state.selection.from;
-    view.someProp('handleTextInput', (f: (v: never, a: number, b: number, t: string) => boolean) => {
-      f(view, from, from, '/');
-      return false;
-    });
-    const rows = [...container.querySelectorAll('[data-slash-item]')].map((r) => r.getAttribute('data-slash-item'));
+    view.someProp(
+      'handleTextInput',
+      (f: (v: never, a: number, b: number, t: string) => boolean) => {
+        f(view, from, from, '/');
+        return false;
+      },
+    );
+    const rows = [...container.querySelectorAll('[data-slash-item]')].map((r) =>
+      r.getAttribute('data-slash-item'),
+    );
     expect(rows).not.toContain('image');
     expect(rows).not.toContain('attachment');
     kernel.destroy();

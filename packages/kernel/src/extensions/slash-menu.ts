@@ -2,22 +2,18 @@ import { Extension } from '@tiptap/core';
 import { Plugin, PluginKey } from '@tiptap/pm/state';
 import { findWrapping } from '@tiptap/pm/transform';
 import type { EditorView } from '@tiptap/pm/view';
+import { SLASH_ACTION_GROUP_ORDER, sharedSlashAction } from '@nexnote/shared';
 
-/**
- * 斜杠菜单骨架（框架无关 DOM 实现）。
- *
- * 空行/行尾输入 `/` 弹出插入菜单：过滤 + ↑↓ 导航 + Enter 执行 + Esc 关闭。
- * 项集为内核默认（结构块类型），渲染层后续票据可经 configure({ items }) 扩展。
- */
-
+/** 快捷插入条目；渲染层和插件可追加条目，内核始终负责输入边界与键盘语义。 */
 export interface SlashMenuItem {
   id: string;
   title: string;
   hint?: string;
   keywords?: string[];
-  /** 分组标题（DEV-017：基础块 / 媒体 / 高级 / AI）；缺省按追加顺序归组 */
+  aliases?: string[];
   group?: string;
-  /** 执行插入；返回 false 表示当前上下文不可用 */
+  /** block-type 只在触发词前没有有效正文时显示。 */
+  kind?: 'block-type' | 'structure' | 'inline' | 'ai' | 'plugin';
   action: (ctx: { view: EditorView }) => boolean;
 }
 
@@ -28,26 +24,23 @@ export interface SlashMenuState {
   activeIndex: number;
 }
 
+export interface SlashMenuContext {
+  /** 当前触发词前没有有效正文，因此允许块类型转换。 */
+  emptyBeforeTrigger: boolean;
+}
+
 export interface SlashMenuOptions {
-  items: (query: string) => SlashMenuItem[];
-  /** 弹层容器 class（默认 nexnote-slash-menu，渲染层用 CSS 变量主题化） */
+  items: (query: string, context?: SlashMenuContext) => SlashMenuItem[];
   className: string;
 }
 
 export const slashMenuPluginKey = new PluginKey<SlashMenuState>('nexnoteSlashMenu');
+export const SLASH_GROUP_ORDER = SLASH_ACTION_GROUP_ORDER;
 
-/** 分组展示顺序（渲染按首次出现顺序抬头，需先按此排序保证同组连续）。 */
-export const SLASH_GROUP_ORDER = ['基础块', '媒体', '高级', 'AI', '插件'] as const;
-
-/**
- * 按分组稳定排序（同组保持原有相对顺序），未分组项排最后。
- * 渲染层只在 group 变化时插分组头，非连续同组会出现重复分组头，故合并后必须排序。
- */
 export function sortSlashItemsByGroup(items: SlashMenuItem[]): SlashMenuItem[] {
-  const rank = (g: string | undefined): number => {
-    if (!g) return SLASH_GROUP_ORDER.length;
-    const i = (SLASH_GROUP_ORDER as readonly string[]).indexOf(g);
-    return i < 0 ? SLASH_GROUP_ORDER.length : i;
+  const rank = (group: string | undefined): number => {
+    const index = group ? (SLASH_GROUP_ORDER as readonly string[]).indexOf(group) : -1;
+    return index < 0 ? SLASH_GROUP_ORDER.length : index;
   };
   return items
     .map((item, index) => ({ item, index }))
@@ -55,241 +48,187 @@ export function sortSlashItemsByGroup(items: SlashMenuItem[]): SlashMenuItem[] {
     .map(({ item }) => item);
 }
 
-/**
- * 按 id 去重：后出现者覆盖先出现者（渲染层/插件可覆盖内核默认项），
- * 保留首次出现位置以维持分组排序稳定。
- */
 export function dedupeSlashItems(items: SlashMenuItem[]): SlashMenuItem[] {
   const lastWins = new Map<string, SlashMenuItem>();
   for (const item of items) lastWins.set(item.id, item);
   const seen = new Set<string>();
-  const out: SlashMenuItem[] = [];
-  for (const item of items) {
-    if (seen.has(item.id)) continue;
+  return items.filter((item) => {
+    if (seen.has(item.id)) return false;
     seen.add(item.id);
-    out.push(lastWins.get(item.id)!);
-  }
-  return out;
+    return lastWins.get(item.id) === item;
+  });
 }
 
-/** 默认项集：结构块插入（动作全部用 TipTap 命令语义，经 view.dispatch 执行）。 */
-export function defaultSlashMenuItems(query: string): SlashMenuItem[] {
-  const q = query.trim().toLowerCase();
-  const items: SlashMenuItem[] = [
-    {
-      id: 'heading1',
-      title: '标题 1',
-      hint: '# ',
-      group: '基础块',
-      keywords: ['heading', 'h1', 'biaoti'],
-      action: ({ view }) => {
-        const { heading } = view.state.schema.nodes;
-        if (!heading) return false;
-        const { from, to } = view.state.selection;
-        view.dispatch(view.state.tr.setBlockType(from, to, heading, { level: 1 }).scrollIntoView());
-        return true;
-      },
-    },
-    {
-      id: 'heading2',
-      title: '标题 2',
-      hint: '## ',
-      group: '基础块',
-      keywords: ['heading', 'h2'],
-      action: ({ view }) => {
-        const { heading } = view.state.schema.nodes;
-        if (!heading) return false;
-        const { from, to } = view.state.selection;
-        view.dispatch(view.state.tr.setBlockType(from, to, heading, { level: 2 }).scrollIntoView());
-        return true;
-      },
-    },
-    {
-      id: 'heading3',
-      title: '标题 3',
-      hint: '### ',
-      group: '基础块',
-      keywords: ['heading', 'h3'],
-      action: ({ view }) => {
-        const { heading } = view.state.schema.nodes;
-        if (!heading) return false;
-        const { from, to } = view.state.selection;
-        view.dispatch(view.state.tr.setBlockType(from, to, heading, { level: 3 }).scrollIntoView());
-        return true;
-      },
-    },
-    {
-      id: 'paragraph',
-      title: '段落',
-      hint: 'p',
-      keywords: ['text', 'paragraph', 'duanluo'],
-      group: '基础块',
-      action: ({ view }) => {
-        const { schema, selection } = view.state;
-        const current = selection.$from.parent;
-        if (current.type.name === 'paragraph') return false;
-        view.dispatch(
-          view.state.tr.setBlockType(selection.from, selection.to, schema.nodes.paragraph!, {}),
-        );
-        return true;
-      },
-    },
-    {
-      id: 'bulletList',
-      title: '无序列表',
-      hint: '- ',
-      group: '基础块',
-      keywords: ['list', 'bullet', 'ul', 'liebiao', 'wuxu'],
-      action: ({ view }) => {
-        const { bulletList, listItem, paragraph } = view.state.schema.nodes;
-        if (!bulletList || !listItem || !paragraph) return false;
-        view.dispatch(
-          view.state.tr
-            .replaceSelectionWith(
-              bulletList.create(null, [listItem.create(null, paragraph.create())]),
-            )
-            .scrollIntoView(),
-        );
-        return true;
-      },
-    },
-    {
-      id: 'orderedList',
-      title: '有序列表',
-      hint: '1. ',
-      group: '基础块',
-      keywords: ['list', 'ordered', 'ol', 'number', 'youxu'],
-      action: ({ view }) => {
-        const { orderedList, listItem, paragraph } = view.state.schema.nodes;
-        if (!orderedList || !listItem || !paragraph) return false;
-        view.dispatch(
-          view.state.tr
-            .replaceSelectionWith(
-              orderedList.create(null, [listItem.create(null, paragraph.create())]),
-            )
-            .scrollIntoView(),
-        );
-        return true;
-      },
-    },
-    {
-      id: 'table',
-      title: '表格',
-      hint: '| … |',
-      group: '基础块',
-      keywords: ['table', 'grid', 'biaoge'],
-      action: ({ view }) => {
-        const { table, tableRow, tableHeader, tableCell, paragraph } = view.state.schema.nodes;
-        if (!table || !tableRow || !tableHeader || !tableCell || !paragraph) return false;
-        const header = tableRow.create(null, [
-          tableHeader.create(null, paragraph.create()),
-          tableHeader.create(null, paragraph.create()),
-        ]);
-        const row = tableRow.create(null, [
-          tableCell.create(null, paragraph.create()),
-          tableCell.create(null, paragraph.create()),
-        ]);
-        view.dispatch(
-          view.state.tr.replaceSelectionWith(table.create(null, [header, row])).scrollIntoView(),
-        );
-        return true;
-      },
-    },
-    {
-      id: 'taskList',
-      title: '任务列表',
-      hint: '- [ ]',
-      group: '基础块',
-      keywords: ['task', 'todo', 'checkbox'],
-      action: ({ view }) => {
-        const { schema } = view.state;
-        view.dispatch(
-          view.state.tr
-            .replaceSelectionWith(
-              schema.nodes.taskList!.create(null, [
-                schema.nodes.taskItem!.create(null, schema.nodes.paragraph!.create()),
-              ]),
-            )
-            .scrollIntoView(),
-        );
-        return true;
-      },
-    },
-    {
-      id: 'callout',
-      title: '标注块',
-      hint: '> [!note]',
-      group: '高级',
-      keywords: ['callout', 'admonition', 'biaozhu'],
-      action: ({ view }) => {
-        const { schema } = view.state;
-        view.dispatch(
-          view.state.tr
-            .replaceSelectionWith(
-              schema.nodes.callout!.create({ type: 'note' }, schema.nodes.paragraph!.create()),
-            )
-            .scrollIntoView(),
-        );
-        return true;
-      },
-    },
-    {
-      id: 'codeBlock',
-      title: '代码块',
-      hint: '```',
-      group: '基础块',
-      keywords: ['code', 'daima'],
-      action: ({ view }) => {
-        const { schema, selection } = view.state;
-        const { codeBlock } = schema.nodes;
-        if (!codeBlock) return false;
-        view.dispatch(
-          view.state.tr
-            .setBlockType(selection.from, selection.to, codeBlock, { language: 'plaintext' })
-            .scrollIntoView(),
-        );
-        return true;
-      },
-    },
-    {
-      id: 'blockquote',
-      title: '引用',
-      hint: '> ',
-      group: '基础块',
-      keywords: ['quote', 'yinyong'],
-      action: ({ view }) => {
-        const { schema, selection } = view.state;
-        const $from = selection.$from;
-        const range = $from.blockRange(selection.$to);
-        const wrapping = range ? findWrapping(range, schema.nodes.blockquote!) : null;
-        if (!range || !wrapping) return false;
-        view.dispatch(view.state.tr.wrap(range, wrapping).scrollIntoView());
-        return true;
-      },
-    },
-    {
-      id: 'horizontalRule',
-      title: '分隔线',
-      hint: '---',
-      group: '基础块',
-      keywords: ['hr', 'rule', 'fenge'],
-      action: ({ view }) => {
-        const { schema } = view.state;
-        view.dispatch(
-          view.state.tr
-            .replaceSelectionWith(schema.nodes.horizontalRule!.create())
-            .scrollIntoView(),
-        );
-        return true;
-      },
-    },
-  ];
-  if (!q) return sortSlashItemsByGroup(items);
-  return sortSlashItemsByGroup(
-    items.filter(
-      (it) => it.title.toLowerCase().includes(q) || (it.keywords ?? []).some((k) => k.includes(q)),
-    ),
+function matchingScore(item: SlashMenuItem, query: string): number | null {
+  const q = query.trim().toLocaleLowerCase();
+  if (!q) return 0;
+  const terms = [item.title, item.id, ...(item.aliases ?? []), ...(item.keywords ?? [])].map(
+    (term) => term.toLocaleLowerCase(),
   );
+  let best: number | null = null;
+  for (const term of terms) {
+    const score = term === q ? 0 : term.startsWith(q) ? 1 : term.includes(q) ? 2 : null;
+    if (score !== null && (best === null || score < best)) best = score;
+  }
+  return best;
+}
+
+/** 按固定分组、组内匹配度稳定排序；最近使用者只能在调用方进一步做组内排序。 */
+export function filterSlashItems(
+  items: SlashMenuItem[],
+  query: string,
+  context: SlashMenuContext = { emptyBeforeTrigger: true },
+): SlashMenuItem[] {
+  return items
+    .map((item, index) => ({ item, index, score: matchingScore(item, query) }))
+    .filter(
+      (entry): entry is { item: SlashMenuItem; index: number; score: number } =>
+        entry.score !== null && !(entry.item.kind === 'block-type' && !context.emptyBeforeTrigger),
+    )
+    .sort((a, b) => {
+      const groupA = a.item.group
+        ? (SLASH_GROUP_ORDER as readonly string[]).indexOf(a.item.group)
+        : -1;
+      const groupB = b.item.group
+        ? (SLASH_GROUP_ORDER as readonly string[]).indexOf(b.item.group)
+        : -1;
+      const rankA = groupA < 0 ? SLASH_GROUP_ORDER.length : groupA;
+      const rankB = groupB < 0 ? SLASH_GROUP_ORDER.length : groupB;
+      return rankA - rankB || a.score - b.score || a.index - b.index;
+    })
+    .map(({ item }) => item);
+}
+
+function replaceCurrentEmptyBlock(
+  view: EditorView,
+  node: Parameters<typeof view.state.tr.replaceSelectionWith>[0],
+): boolean {
+  const { $from } = view.state.selection;
+  const from = $from.before($from.depth);
+  const to = $from.after($from.depth);
+  view.dispatch(view.state.tr.replaceWith(from, to, node).scrollIntoView());
+  return true;
+}
+
+/** 已有正文时，结构块一律附加到当前顶层块后，不从光标处截断内容。 */
+function insertAfterCurrentTopLevelBlock(
+  view: EditorView,
+  node: Parameters<typeof view.state.tr.insert>[1],
+): boolean {
+  const { $from } = view.state.selection;
+  if ($from.depth < 1) return false;
+  const at = $from.after(1);
+  view.dispatch(view.state.tr.insert(at, node).scrollIntoView());
+  return true;
+}
+
+function sharedItem(id: string, action: SlashMenuItem['action']): SlashMenuItem {
+  const definition = sharedSlashAction(id);
+  if (!definition) throw new Error(`Unknown slash action: ${id}`);
+  return {
+    id,
+    title: definition.label,
+    hint: definition.aliases.find((alias) => /[#>`|\-[.]/.test(alias)),
+    aliases: [...definition.aliases],
+    keywords: [...definition.aliases],
+    group: definition.group,
+    kind: definition.kind,
+    action,
+  };
+}
+
+/** 内核默认动作。结构动作在安全顶层块边界插入；块类型只改写当前空行。 */
+export function defaultSlashMenuItems(query = '', context?: SlashMenuContext): SlashMenuItem[] {
+  const items: SlashMenuItem[] = [
+    sharedItem('paragraph', ({ view }) => {
+      const { paragraph } = view.state.schema.nodes;
+      if (!paragraph) return false;
+      view.dispatch(
+        view.state.tr.setBlockType(view.state.selection.from, view.state.selection.to, paragraph),
+      );
+      return true;
+    }),
+    ...([1, 2, 3, 4, 5, 6] as const).map((level) =>
+      sharedItem(`heading${level}`, ({ view }) => {
+        const heading = view.state.schema.nodes.heading;
+        if (!heading) return false;
+        view.dispatch(
+          view.state.tr
+            .setBlockType(view.state.selection.from, view.state.selection.to, heading, { level })
+            .scrollIntoView(),
+        );
+        return true;
+      }),
+    ),
+    sharedItem('bulletList', ({ view }) => {
+      const { bulletList, listItem, paragraph } = view.state.schema.nodes;
+      return bulletList && listItem && paragraph
+        ? replaceCurrentEmptyBlock(
+            view,
+            bulletList.create(null, listItem.create(null, paragraph.create())),
+          )
+        : false;
+    }),
+    sharedItem('orderedList', ({ view }) => {
+      const { orderedList, listItem, paragraph } = view.state.schema.nodes;
+      return orderedList && listItem && paragraph
+        ? replaceCurrentEmptyBlock(
+            view,
+            orderedList.create(null, listItem.create(null, paragraph.create())),
+          )
+        : false;
+    }),
+    sharedItem('taskList', ({ view }) => {
+      const { taskList, taskItem, paragraph } = view.state.schema.nodes;
+      return taskList && taskItem && paragraph
+        ? replaceCurrentEmptyBlock(
+            view,
+            taskList.create(null, taskItem.create(null, paragraph.create())),
+          )
+        : false;
+    }),
+    sharedItem('blockquote', ({ view }) => {
+      const range = view.state.selection.$from.blockRange(view.state.selection.$to);
+      const wrapping = range ? findWrapping(range, view.state.schema.nodes.blockquote!) : null;
+      if (!range || !wrapping) return false;
+      view.dispatch(view.state.tr.wrap(range, wrapping).scrollIntoView());
+      return true;
+    }),
+    sharedItem('codeBlock', ({ view }) => {
+      const codeBlock = view.state.schema.nodes.codeBlock;
+      if (!codeBlock) return false;
+      view.dispatch(
+        view.state.tr
+          .setBlockType(view.state.selection.from, view.state.selection.to, codeBlock, {
+            language: 'plaintext',
+          })
+          .scrollIntoView(),
+      );
+      return true;
+    }),
+    sharedItem('horizontalRule', ({ view }) => {
+      const rule = view.state.schema.nodes.horizontalRule;
+      return rule ? insertAfterCurrentTopLevelBlock(view, rule.create()) : false;
+    }),
+    sharedItem('table', ({ view }) => {
+      const { table, tableRow, tableHeader, tableCell, paragraph } = view.state.schema.nodes;
+      if (!table || !tableRow || !tableHeader || !tableCell || !paragraph) return false;
+      const row = (cell: typeof tableHeader) =>
+        tableRow.create(null, [
+          cell.create(null, paragraph.create()),
+          cell.create(null, paragraph.create()),
+        ]);
+      return insertAfterCurrentTopLevelBlock(
+        view,
+        table.create(null, [row(tableHeader), row(tableCell)]),
+      );
+    }),
+    sharedItem('wikilink', ({ view }) => {
+      view.dispatch(view.state.tr.insertText('[[').scrollIntoView());
+      return true;
+    }),
+  ];
+  return filterSlashItems(items, query, context);
 }
 
 interface MenuView {
@@ -303,157 +242,137 @@ function createMenuDom(className: string): MenuView {
   const dom = document.createElement('div');
   dom.className = className;
   dom.dataset.slashMenu = '';
+  dom.setAttribute('role', 'listbox');
   dom.style.display = 'none';
   dom.style.position = 'absolute';
   dom.style.zIndex = '40';
-  const render = (state: SlashMenuState, coords: { top: number; left: number }) => {
-    dom.innerHTML = '';
-    let lastGroup: string | null = null;
-    state.items.forEach((item, i) => {
-      const group = item.group ?? null;
-      if (group !== lastGroup) {
-        lastGroup = group;
-        if (group) {
+  return {
+    dom,
+    render(state, coords) {
+      dom.innerHTML = '';
+      let lastGroup: string | undefined;
+      for (const [index, item] of state.items.entries()) {
+        if (item.group !== lastGroup && item.group) {
+          lastGroup = item.group;
           const header = document.createElement('div');
           header.className = `${className}__group`;
-          header.textContent = group;
+          header.textContent = item.group;
           dom.append(header);
         }
+        const row = document.createElement('div');
+        row.className = `${className}__item`;
+        row.dataset.slashItem = item.id;
+        row.dataset.active = String(index === state.activeIndex);
+        row.setAttribute('role', 'option');
+        row.textContent = item.hint ? `${item.title}  ${item.hint}` : item.title;
+        dom.append(row);
       }
-      const row = document.createElement('div');
-      row.className = `${className}__item`;
-      row.dataset.slashItem = item.id;
-      row.dataset.active = i === state.activeIndex ? 'true' : 'false';
-      const title = document.createElement('span');
-      title.className = `${className}__title`;
-      title.textContent = item.title;
-      row.append(title);
-      if (item.hint) {
-        const hint = document.createElement('code');
-        hint.className = `${className}__hint`;
-        hint.textContent = item.hint;
-        row.append(hint);
+      if (state.items.length === 0) {
+        const empty = document.createElement('div');
+        empty.className = `${className}__empty`;
+        empty.dataset.slashEmpty = '';
+        empty.textContent = '没有匹配的快捷动作';
+        dom.append(empty);
       }
-      dom.append(row);
-    });
-    dom.style.display = state.open && state.items.length > 0 ? 'block' : 'none';
-    dom.style.top = `${coords.top}px`;
-    dom.style.left = `${coords.left}px`;
+      dom.style.display = state.open ? 'block' : 'none';
+      dom.style.top = `${coords.top}px`;
+      dom.style.left = `${coords.left}px`;
+    },
+    hide() {
+      dom.style.display = 'none';
+    },
+    destroy() {
+      dom.remove();
+    },
   };
-  const hide = () => {
-    dom.style.display = 'none';
-  };
-  const destroy = () => dom.remove();
-  return { dom, render, hide, destroy };
 }
 
-/** 计算 `/` 触发光标的屏幕坐标（弹层锚点）。 */
 function caretCoords(view: EditorView): { top: number; left: number } {
-  const start = view.state.selection.from;
-  const domAt = view.domAtPos(start);
-  const node = domAt.node;
-  const el =
-    node.nodeType === 1 ? (node as HTMLElement) : (node.parentElement as HTMLElement | null);
-  if (!el) return { top: 0, left: 0 };
-  const range = document.createRange();
-  range.setStart(domAt.node, domAt.offset);
-  const rect = range.getBoundingClientRect();
-  const hostRect = view.dom.parentElement?.getBoundingClientRect();
-  return {
-    top: rect.bottom - (hostRect?.top ?? 0) + 6,
-    left: rect.left - (hostRect?.left ?? 0),
-  };
+  const rect = view.coordsAtPos(view.state.selection.from);
+  const host = view.dom.parentElement?.getBoundingClientRect();
+  return { top: rect.bottom - (host?.top ?? 0) + 6, left: rect.left - (host?.left ?? 0) };
+}
+
+function triggerContext(view: EditorView, from: number): SlashMenuContext | null {
+  const $from = view.state.doc.resolve(from);
+  const parent = $from.parent;
+  if (!['paragraph', 'heading'].includes(parent.type.name)) return null;
+  if ($from.marks().some((mark) => mark.type.name === 'code' || mark.type.name === 'link'))
+    return null;
+  const before = parent.textBetween(0, $from.parentOffset, undefined, '\ufffc');
+  if (before.length > 0 && !/\s$/.test(before)) return null;
+  return { emptyBeforeTrigger: /^\s*$/.test(before) };
 }
 
 export const SlashMenu = Extension.create<SlashMenuOptions, SlashMenuState>({
   name: 'nexnoteSlashMenu',
-
   addOptions() {
-    return {
-      items: defaultSlashMenuItems,
-      className: 'nexnote-slash-menu',
-    };
+    return { items: defaultSlashMenuItems, className: 'nexnote-slash-menu' };
   },
-
   addStorage() {
     return { open: false, query: '', items: [], activeIndex: 0 } satisfies SlashMenuState;
   },
-
   addProseMirrorPlugins() {
     // eslint-disable-next-line @typescript-eslint/no-this-alias
-    const ext = this;
+    const extension = this;
     let menu: MenuView | null = null;
-    /** `/` 前的文本位置（含斜杠），执行后需要删除的范围 */
     let slashFrom = -1;
-
-    const close = (view: EditorView) => {
-      ext.storage.open = false;
-      ext.storage.query = '';
-      ext.storage.items = [];
-      ext.storage.activeIndex = 0;
-      slashFrom = -1;
-      menu?.hide();
-      view.updateState(view.state);
-    };
-
-    const open = (view: EditorView, from: number) => {
-      slashFrom = from;
-      ext.storage.open = true;
-      ext.storage.query = '';
-      ext.storage.items = ext.options.items('');
-      ext.storage.activeIndex = 0;
-      sync(view);
-    };
-
+    let context: SlashMenuContext = { emptyBeforeTrigger: true };
     const sync = (view: EditorView) => {
       if (!menu) return;
-      const state = ext.storage;
-      const host = view.dom.parentElement;
-      if (state.open && !menu.dom.isConnected && host) host.append(menu.dom);
-      if (!state.open) {
-        menu.hide();
-        return;
-      }
-      menu.render({ ...state }, caretCoords(view));
+      if (extension.storage.open && !menu.dom.isConnected) view.dom.parentElement?.append(menu.dom);
+      if (extension.storage.open) menu.render({ ...extension.storage }, caretCoords(view));
+      else menu.hide();
     };
-
+    const close = (view: EditorView) => {
+      extension.storage.open = false;
+      extension.storage.query = '';
+      extension.storage.items = [];
+      extension.storage.activeIndex = 0;
+      slashFrom = -1;
+      sync(view);
+    };
+    const refresh = (view: EditorView) => {
+      extension.storage.items = extension.options.items(extension.storage.query, context);
+      extension.storage.activeIndex = Math.min(
+        extension.storage.activeIndex,
+        Math.max(0, extension.storage.items.length - 1),
+      );
+      sync(view);
+    };
+    const open = (view: EditorView, from: number, nextContext: SlashMenuContext) => {
+      slashFrom = from;
+      context = nextContext;
+      extension.storage.open = true;
+      extension.storage.query = '';
+      extension.storage.activeIndex = 0;
+      refresh(view);
+    };
     const applyItem = (view: EditorView, item: SlashMenuItem) => {
-      // 需要额外确认的动作（AI 插入指令框）先确认，Esc/取消不得消费原文。
-      if (item.id === 'ai-insert') {
-        if (!item.action({ view })) return;
-        const to = view.state.selection.from;
-        if (slashFrom >= 0 && to > slashFrom) view.dispatch(view.state.tr.delete(slashFrom, to));
-      } else {
-        // 普通动作先消费触发文本，再在干净的光标上下文执行。
-        const to = view.state.selection.from;
-        if (slashFrom >= 0 && to > slashFrom) view.dispatch(view.state.tr.delete(slashFrom, to));
-        if (!item.action({ view })) return;
-      }
+      const to = view.state.selection.from;
+      if (slashFrom < 0 || to < slashFrom) return;
+      // Prompt cancellation (AI) returns false before this mutation: Escape/cancel preserves source text.
+      if (item.id === 'ai-insert' && !item.action({ view })) return;
+      if (to > slashFrom) view.dispatch(view.state.tr.delete(slashFrom, to).scrollIntoView());
+      if (item.id !== 'ai-insert' && !item.action({ view })) return;
       close(view);
     };
-
     return [
       new Plugin<SlashMenuState>({
         key: slashMenuPluginKey,
-        view(editorView) {
-          menu = createMenuDom(ext.options.className);
-          menu.dom.addEventListener('mousedown', (e) => {
-            e.preventDefault();
-            const target = e.target as HTMLElement;
-            const row = target.closest<HTMLElement>('[data-slash-item]');
-            if (!row) return;
-            const id = row.dataset.slashItem;
-            const item = ext.storage.items.find((it) => it.id === id);
-            if (item) applyItem(editorView, item);
+        view(view) {
+          menu = createMenuDom(extension.options.className);
+          menu.dom.addEventListener('mousedown', (event) => {
+            event.preventDefault();
+            const id = (event.target as HTMLElement).closest<HTMLElement>('[data-slash-item]')
+              ?.dataset.slashItem;
+            const item = extension.storage.items.find((candidate) => candidate.id === id);
+            if (item) applyItem(view, item);
           });
-          if (editorView.dom.parentElement) {
-            editorView.dom.parentElement.append(menu.dom);
-          }
+          view.dom.parentElement?.append(menu.dom);
           return {
-            update(view) {
-              sync(view);
-            },
-            destroy() {
+            update: sync,
+            destroy: () => {
               menu?.destroy();
               menu = null;
             },
@@ -461,74 +380,58 @@ export const SlashMenu = Extension.create<SlashMenuOptions, SlashMenuState>({
         },
         props: {
           handleTextInput(view, from, _to, text) {
-            if (!ext.storage.open) {
-              // 仅在行首或空白之后触发。这样 URL、路径、数学表达式及单词内的 `/`
-              // 都保持普通文本；允许已有缩进/空白，但不允许其它可见字符。
-              if (text === '/') {
-                const $from = view.state.doc.resolve(from);
-                const textBefore = $from.parent.textBetween(
-                  0,
-                  $from.parentOffset,
-                  undefined,
-                  '\ufffc',
-                );
-                const previous = textBefore.slice(-1);
-                if (
-                  $from.parent.type.name === 'paragraph' &&
-                  (textBefore.length === 0 || /\s/.test(previous))
-                ) {
-                  open(view, from);
+            if (!extension.storage.open) {
+              const slashIndex = text.indexOf('/');
+              if (slashIndex >= 0) {
+                const triggerFrom = from + slashIndex;
+                const nextContext = triggerContext(view, triggerFrom);
+                if (nextContext) {
+                  open(view, triggerFrom, nextContext);
+                  extension.storage.query = text.slice(slashIndex + 1);
+                  refresh(view);
                 }
               }
               return false;
             }
-            // 菜单开启：更新 query
-            if (text === '/') {
+            const inserted = text.startsWith('/') ? text.slice(1) : text;
+            if (text === '/' && view.state.selection.from > slashFrom) {
               close(view);
               return false;
             }
-            ext.storage.query += text;
-            ext.storage.items = ext.options.items(ext.storage.query);
-            ext.storage.activeIndex = Math.min(
-              ext.storage.activeIndex,
-              Math.max(0, ext.storage.items.length - 1),
-            );
-            if (ext.storage.items.length === 0) close(view);
-            sync(view);
+            extension.storage.query += inserted;
+            refresh(view);
             return false;
           },
           handleKeyDown(view, event) {
-            if (!ext.storage.open) return false;
-            const key = event.key;
-            if (key === 'Escape') {
+            if (!extension.storage.open) return false;
+            if (event.key === 'Escape') {
+              event.preventDefault();
               close(view);
               return true;
             }
-            if (key === 'ArrowDown' || key === 'ArrowUp') {
+            if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
               event.preventDefault();
-              const count = ext.storage.items.length;
-              if (count === 0) return true;
-              const dir = key === 'ArrowDown' ? 1 : -1;
-              ext.storage.activeIndex = (ext.storage.activeIndex + dir + count) % count;
-              sync(view);
+              const count = extension.storage.items.length;
+              if (count) {
+                const direction = event.key === 'ArrowDown' ? 1 : -1;
+                extension.storage.activeIndex =
+                  (extension.storage.activeIndex + direction + count) % count;
+                sync(view);
+              }
               return true;
             }
-            if (key === 'Enter') {
+            if (event.key === 'Enter' || event.key === 'Tab') {
               event.preventDefault();
-              const item = ext.storage.items[ext.storage.activeIndex];
+              const item = extension.storage.items[extension.storage.activeIndex];
               if (item) applyItem(view, item);
               return true;
             }
-            if (key === 'Backspace') {
-              if (ext.storage.query.length > 0) {
-                ext.storage.query = ext.storage.query.slice(0, -1);
-                ext.storage.items = ext.options.items(ext.storage.query);
-                ext.storage.activeIndex = 0;
-                sync(view);
-                if (ext.storage.items.length === 0) close(view);
-                return false; // 让编辑器真正删字符
+            if (event.key === 'Backspace') {
+              if (extension.storage.query.length === 0) close(view);
+              else {
+                extension.storage.query = extension.storage.query.slice(0, -1);
+                refresh(view);
               }
-              close(view);
             }
             return false;
           },

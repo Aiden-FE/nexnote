@@ -41,8 +41,18 @@ export type {
 export { KernelCodeBlock, KernelTable } from './extensions/code-table';
 export { fenceHighlighter, createFenceHighlighter } from './highlight/fence-highlight';
 export type { FenceHighlighter, FenceTokenSpan } from './highlight/fence-highlight';
-export { SlashMenu, defaultSlashMenuItems, slashMenuPluginKey } from './extensions/slash-menu';
-export type { SlashMenuItem, SlashMenuOptions, SlashMenuState } from './extensions/slash-menu';
+export {
+  SlashMenu,
+  defaultSlashMenuItems,
+  filterSlashItems,
+  slashMenuPluginKey,
+} from './extensions/slash-menu';
+export type {
+  SlashMenuContext,
+  SlashMenuItem,
+  SlashMenuOptions,
+  SlashMenuState,
+} from './extensions/slash-menu';
 export {
   Fold,
   foldPluginKey,

@@ -251,7 +251,8 @@ function createMediaInsertSlashItems(options: MediaInsertOptions): SlashMenuItem
       title: '图片',
       hint: 'img',
       keywords: ['image', 'img', 'picture', 'tupian'],
-      group: '媒体',
+      group: '插入',
+      kind: 'structure',
       action: () => {
         media.pickImage();
         return true;
@@ -262,7 +263,8 @@ function createMediaInsertSlashItems(options: MediaInsertOptions): SlashMenuItem
       title: '附件',
       hint: 'file',
       keywords: ['attachment', 'file', 'fujian'],
-      group: '媒体',
+      group: '插入',
+      kind: 'structure',
       action: () => {
         media.pickAttachment();
         return true;
@@ -283,6 +285,7 @@ function buildPluginBlockSlashItems(kernel: EditorKernelInstance): SlashMenuItem
     hint: d.blockType,
     keywords: ['插件', 'plugin', 'block', ...(d.keywords ?? []).map((k) => String(k))],
     group: '插件',
+    kind: 'plugin',
     action: () => {
       kernel.editor.commands.insertPluginBlock?.({ pluginId: d.pluginId, blockType: d.blockType });
       return true;

@@ -49,6 +49,7 @@ export function writingSlashItems(controller: WritingController): SlashMenuItem[
     title: 'AI 插入',
     hint: '指令…',
     group: 'AI',
+    kind: 'ai',
     keywords: ['ai', 'insert', 'prompt', '生成', '插入'],
     action: ({ view }) => {
       const instruction = window.prompt('AI 插入指令', '请基于当前上下文补充内容');
@@ -70,6 +71,7 @@ export function writingSlashItems(controller: WritingController): SlashMenuItem[
       title: `AI · ${action.label}`,
       hint: '/ai',
       group: 'AI',
+      kind: 'ai',
       keywords: ['ai', '✨', ...action.keywords],
       action: ({ view }) => {
         const target = view.state.selection.empty ? 'cursor' : 'selection';
