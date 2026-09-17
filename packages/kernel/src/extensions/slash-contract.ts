@@ -1,4 +1,5 @@
 import type { EditorView } from '@tiptap/pm/view';
+import type { Transaction } from '@tiptap/pm/state';
 import type { QuickInsertCapability, QuickInsertExecution } from '@nexnote/shared';
 
 /** 当前快捷插入的执行能力；由输入上下文和插件声明共同决定。 */
@@ -26,19 +27,30 @@ export function canExecuteSlashAction(
   return contract.execution !== 'convert-empty-block' || context.emptyBlock;
 }
 
+/** 同一未派发 transaction 中先消费 trigger，再执行动作；失败时丢弃整个 transaction。 */
+export interface SlashActionTransaction {
+  readonly view: EditorView;
+  readonly tr: Transaction;
+  readonly context: SlashExecutionContext;
+}
+
 /** 结构动作只会插在当前顶层块之后，永不 replaceSelection 截断正文。 */
 export function insertAtSafeBlockBoundary(
   view: EditorView,
   node: Parameters<typeof view.state.tr.insert>[1],
+  transaction?: Transaction,
 ): boolean {
-  const $from = view.state.selection.$from;
+  const tr = transaction ?? view.state.tr;
+  const $from = tr.selection.$from;
   if ($from.depth < 1) return false;
-  view.dispatch(view.state.tr.insert($from.after(1), node).scrollIntoView());
+  tr.insert($from.after(1), node).scrollIntoView();
+  if (transaction) return true;
+  view.dispatch(tr);
   return true;
 }
 
-export function consumeSlashTrigger(view: EditorView, context: SlashExecutionContext): void {
+export function consumeSlashTrigger(tr: Transaction, context: SlashExecutionContext): void {
   if (context.triggerTo > context.triggerFrom) {
-    view.dispatch(view.state.tr.delete(context.triggerFrom, context.triggerTo).scrollIntoView());
+    tr.delete(context.triggerFrom, context.triggerTo);
   }
 }

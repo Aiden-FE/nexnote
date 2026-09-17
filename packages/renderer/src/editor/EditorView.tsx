@@ -123,12 +123,15 @@ function pickFile(accept: string): { promise: Promise<File | null>; abort: () =>
   input.type = 'file';
   input.accept = accept;
   input.style.display = 'none';
+  let resolvePick: (file: File | null) => void = () => undefined;
   const abort = () => {
     if (settled) return;
     settled = true;
     input.remove();
+    resolvePick(null);
   };
   const promise = new Promise<File | null>((resolve) => {
+    resolvePick = resolve;
     const done = (file: File | null) => {
       if (settled) return;
       settled = true;
@@ -180,24 +183,23 @@ interface MediaInsertOptions {
 }
 
 /** 媒体插入（DEV-017）：导入当前 vault 后按类型插入图片节点或附件链接。 */
+type ImportedMediaHandler = (kernel: EditorKernelInstance, path: string) => boolean;
+
 function createMediaInsert(options: MediaInsertOptions): {
-  pickImage: () => void;
-  pickAttachment: () => void;
+  pickImage: (onImported?: ImportedMediaHandler) => Promise<boolean>;
+  pickAttachment: (onImported?: ImportedMediaHandler) => Promise<boolean>;
 } {
   const runInsert = async (
     accept: string,
-    insert: (kernel: EditorKernelInstance, relPath: string) => void,
-  ) => {
+    kernel: EditorKernelInstance,
+  ): Promise<string | null> => {
     const { promise, abort } = pickFile(accept);
     const untrack = options.trackAbort(abort);
-    // 页面切换/编辑器卸载时取消挂起的 input
     const onUnload = () => abort();
     window.addEventListener('beforeunload', onUnload);
     try {
       const file = await promise;
-      if (!file || options.getDestroyed()) return;
-      const kernel = options.getEditor();
-      if (!kernel) return;
+      if (!file || options.getDestroyed() || options.getEditor() !== kernel) return null;
       const data = await readFileAsBase64(file);
       const currentPage = options.getPagePath();
       const target = attachmentTargetPath(file, currentPage);
@@ -209,39 +211,37 @@ function createMediaInsert(options: MediaInsertOptions): {
         createParentDirs: true,
         overwrite: false,
       });
-      // 确认仍在同一编辑器实例与未卸载
-      if (options.getDestroyed() || options.getEditor() !== kernel) return;
-      insert(kernel, path);
+      if (options.getDestroyed() || options.getEditor() !== kernel) return null;
+      return path;
     } catch (e) {
-      // 导入失败可见地报告（至少 console；UI 通知待后续票），不插入
       console.error('[EditorView] 媒体导入失败', e);
+      return null;
     } finally {
       untrack();
       window.removeEventListener('beforeunload', onUnload);
     }
   };
-
   return {
-    pickImage: () => {
-      void runInsert('image/*', (kernel, relPath) => {
-        const { view } = kernel.editor;
-        const { schema } = view.state;
-        if (!schema.nodes.image) return;
-        view.dispatch(
-          view.state.tr
-            .insert(
-              view.state.selection.$from.after(1),
-              schema.nodes.image.create({ src: relPath, alt: '' }),
-            )
-            .scrollIntoView(),
-        );
-      });
+    pickImage: async (onImported?: (kernel: EditorKernelInstance, path: string) => boolean) => {
+      const kernel = options.getEditor();
+      if (!kernel) return false;
+      const path = await runInsert('image/*', kernel);
+      if (!path) return false;
+      if (onImported) return onImported(kernel, path);
+      const { view } = kernel.editor;
+      const node = view.state.schema.nodes.image?.create({ src: path, alt: '' });
+      return node ? insertAtSafeBlockBoundary(view, node) : false;
     },
-    pickAttachment: () => {
-      void runInsert('*/*', (kernel, relPath) => {
-        const { view } = kernel.editor;
-        kernel.insertMarkdownBlocks(`[附件](${relPath})`, view.state.selection.from, 'after');
-      });
+    pickAttachment: async (
+      onImported?: (kernel: EditorKernelInstance, path: string) => boolean,
+    ) => {
+      const kernel = options.getEditor();
+      if (!kernel) return false;
+      const path = await runInsert('*/*', kernel);
+      if (!path) return false;
+      if (onImported) return onImported(kernel, path);
+      kernel.insertMarkdownBlocks(`[附件](${path})`, kernel.editor.state.selection.from, 'after');
+      return true;
     },
   };
 }
@@ -259,10 +259,11 @@ function createMediaInsertSlashItems(options: MediaInsertOptions): SlashMenuItem
       group: '插入',
       kind: 'structure',
       contract: { execution: 'insert-safe-block', capability: 'editable-line' },
-      action: () => {
-        media.pickImage();
-        return true;
-      },
+      action: ({ view, tr }) =>
+        media.pickImage((_kernel, path) => {
+          const node = view.state.schema.nodes.image?.create({ src: path, alt: '' });
+          return node ? insertAtSafeBlockBoundary(view, node, tr) : false;
+        }),
     },
     {
       id: INSERT_ATTACHMENT_ID,
@@ -273,10 +274,17 @@ function createMediaInsertSlashItems(options: MediaInsertOptions): SlashMenuItem
       group: '插入',
       kind: 'structure',
       contract: { execution: 'insert-safe-block', capability: 'editable-line' },
-      action: () => {
-        media.pickAttachment();
-        return true;
-      },
+      action: ({ view, tr }) =>
+        media.pickAttachment((_kernel, path) => {
+          const paragraph = view.state.schema.nodes.paragraph;
+          const link = view.state.schema.marks.link;
+          if (!paragraph || !link) return false;
+          return insertAtSafeBlockBoundary(
+            view,
+            paragraph.create(null, view.state.schema.text('附件', [link.create({ href: path })])),
+            tr,
+          );
+        }),
     },
   ];
 }
@@ -296,13 +304,13 @@ function buildPluginBlockSlashItems(_kernel: EditorKernelInstance): SlashMenuIte
     kind: 'plugin',
     contract: { execution: 'insert-safe-block', capability: 'plugin-defined' },
     available: (context) => context.capabilities.has('plugin-defined'),
-    action: ({ view }) => {
+    action: ({ view, tr }) => {
       const node = view.state.schema.nodes.pluginBlock?.create({
         pluginId: d.pluginId,
         blockType: d.blockType,
         data: '{}',
       });
-      return node ? insertAtSafeBlockBoundary(view, node) : false;
+      return node ? insertAtSafeBlockBoundary(view, node, tr) : false;
     },
   }));
 }
@@ -961,8 +969,8 @@ export function EditorView({ tab }: EditorViewProps) {
             return () => pendingFilePicksRef.current.delete(abort);
           },
         });
-        if (id === INSERT_IMAGE_ID) media.pickImage();
-        else media.pickAttachment();
+        if (id === INSERT_IMAGE_ID) void media.pickImage();
+        else void media.pickAttachment();
         return;
       }
       case AI_ASK_ID: {

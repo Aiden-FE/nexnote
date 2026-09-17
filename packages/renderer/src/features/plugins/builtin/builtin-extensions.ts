@@ -80,10 +80,10 @@ function mermaidSlashItem(
     kind: 'structure',
     contract: { execution: 'insert-safe-block', capability: 'editable-line' },
     keywords,
-    action: ({ view }) => {
+    action: ({ view, tr }) => {
       const node = view.state.schema.nodes[MERMAID_BLOCK_NAME]?.create({ source });
       if (!node) return false;
-      insertAtSafeBlockBoundary(view, node);
+      insertAtSafeBlockBoundary(view, node, tr);
       return true;
     },
   };
@@ -119,10 +119,10 @@ export function buildBuiltinSlashItems(flags: BuiltinBlockFlags): SlashMenuItem[
         kind: 'structure',
         contract: { execution: 'insert-safe-block', capability: 'editable-line' },
         keywords: ['math', '公式', 'latex', 'katex', '块级'],
-        action: ({ view }) => {
+        action: ({ view, tr }) => {
           const node = view.state.schema.nodes[MATH_BLOCK_NAME]?.create({ source: '' });
           if (!node) return false;
-          insertAtSafeBlockBoundary(view, node);
+          insertAtSafeBlockBoundary(view, node, tr);
           return true;
         },
       },
@@ -135,10 +135,10 @@ export function buildBuiltinSlashItems(flags: BuiltinBlockFlags): SlashMenuItem[
         kind: 'inline',
         contract: { execution: 'insert-at-cursor', capability: 'editable-line' },
         keywords: ['math', '公式', 'latex', 'katex', '行内', 'inline'],
-        action: ({ view }) => {
+        action: ({ view, tr }) => {
           const node = view.state.schema.nodes[MATH_INLINE_NAME]?.create({ source: '' });
           if (!node) return false;
-          view.dispatch(view.state.tr.replaceSelectionWith(node).scrollIntoView());
+          tr.replaceSelectionWith(node).scrollIntoView();
           return true;
         },
       },

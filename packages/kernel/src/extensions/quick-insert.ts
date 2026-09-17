@@ -1,5 +1,6 @@
 import { Extension } from '@tiptap/core';
 import { Plugin, PluginKey } from '@tiptap/pm/state';
+import { closeHistory } from '@tiptap/pm/history';
 import type { EditorView } from '@tiptap/pm/view';
 import { SLASH_ACTION_GROUP_ORDER } from '@nexnote/shared';
 import type { EditorActionIconKey, QuickInsertKind } from '@nexnote/shared';
@@ -7,6 +8,7 @@ import { defaultQuickInsertItems } from './quick-insert-catalog';
 import {
   canExecuteSlashAction,
   consumeSlashTrigger,
+  type SlashActionTransaction,
   type SlashExecutionContext,
   type SlashExecutionContract,
 } from './slash-contract';
@@ -23,7 +25,11 @@ export interface QuickInsertItem {
   kind?: QuickInsertKind;
   contract?: SlashExecutionContract;
   available?: (context: SlashExecutionContext) => boolean;
-  action: (ctx: { view: EditorView; context: SlashExecutionContext }) => boolean | Promise<boolean>;
+  /**
+   * 可编辑器写入的 action 只能修改 `transaction.tr`，由菜单在成功后统一 dispatch。
+   * 异步媒体动作仅在原始文档未变时提交；显式 AI 意图保留 trigger，不回溯消费。
+   */
+  action: (transaction: SlashActionTransaction) => boolean | Promise<boolean>;
 }
 
 export interface SlashMenuState {
@@ -172,19 +178,53 @@ export const QuickInsert = Extension.create<QuickInsertOptions, SlashMenuState>(
       )
         return;
       const executingContext = context;
-      // A false/rejected/cancelled action must leave `/query` untouched.
-      // Explicit AI prompts run before consumption; other actions retain the same rule.
+      // A false/rejected/cancelled action must leave `/query` untouched. Synchronous actions
+      // receive one un-dispatched transaction: trigger consumption and the action therefore form
+      // exactly one TipTap history step. Explicit AI is deliberately separate: its prompt/request
+      // may stream later, so it closes the menu but preserves the source text rather than
+      // attempting an unsafe future transaction after a streamed result.
+      const transaction: SlashActionTransaction = {
+        view,
+        tr: view.state.tr,
+        context: executingContext,
+      };
       try {
-        const outcome = item.action({ view, context: executingContext });
-        const finish = (success: boolean) => {
-          if (!success) return;
-          consumeSlashTrigger(view, executingContext);
+        if (item.contract?.execution !== 'explicit-ai')
+          consumeSlashTrigger(transaction.tr, executingContext);
+        const outcome = item.action(transaction);
+        if (outcome instanceof Promise) {
+          void outcome.then(
+            (success) => {
+              if (!success) return;
+              if (item.contract?.execution === 'explicit-ai') {
+                close(view);
+                return;
+              }
+              // File pickers and plugin commands may complete later. Commit only when their
+              // original document is still current; otherwise preserve the typed source text.
+              if (
+                view.isDestroyed ||
+                !view.state.doc.eq(transaction.tr.before) ||
+                !extension.storage.open ||
+                context !== executingContext
+              )
+                return;
+              view.dispatch(closeHistory(transaction.tr.scrollIntoView()));
+              close(view);
+            },
+            () => undefined,
+          );
+          return;
+        }
+        if (!outcome) return;
+        if (item.contract?.execution === 'explicit-ai') {
           close(view);
-        };
-        if (outcome instanceof Promise) void outcome.then(finish, () => undefined);
-        else finish(outcome);
+          return;
+        }
+        view.dispatch(closeHistory(transaction.tr.scrollIntoView()));
+        close(view);
       } catch {
-        // Keep original text after an action failure.
+        // Keep original text after an action failure; the un-dispatched transaction is discarded.
       }
     };
     return [

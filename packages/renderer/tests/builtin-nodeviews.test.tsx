@@ -102,21 +102,26 @@ describe('内置块 NodeView（DEV-015）', () => {
     const { kernel, container } = makeEditor('内容\n\n', { mermaid: true, katex: true });
     const items = buildBuiltinSlashItems({ mermaid: true, katex: true });
     const byId = (id: string) => items.find((i) => i.id === id)!;
-    const fakeCtx = { view: kernel.editor.view };
+    const run = (id: string) => {
+      const view = kernel.editor.view;
+      const tr = view.state.tr;
+      expect(byId(id).action({ view, tr, context: {} as never })).toBe(true);
+      view.dispatch(tr);
+    };
 
-    expect(byId('insert:mermaid-flowchart').action(fakeCtx as never)).toBe(true);
+    run('insert:mermaid-flowchart');
     const md = kernel.getMarkdown();
     expect(md).toContain('```mermaid\nflowchart TD');
     expect(md).toContain('A[开始]');
 
-    expect(byId('insert:mermaid-gantt').action(fakeCtx as never)).toBe(true);
+    run('insert:mermaid-gantt');
     expect(kernel.getMarkdown()).toContain('```mermaid\ngantt\n');
     expect(kernel.getJSON().content?.some((n) => n.type === 'mermaidBlock')).toBe(true);
 
-    expect(byId('builtin:math-block').action(fakeCtx as never)).toBe(true);
+    run('builtin:math-block');
     expect(kernel.getJSON().content?.some((n) => n.type === 'mathBlock')).toBe(true);
 
-    expect(byId('builtin:math-inline').action(fakeCtx as never)).toBe(true);
+    run('builtin:math-inline');
     expect(kernel.editor.view.dom.querySelector('.nexnote-math-inline-view')).toBeTruthy();
     kernel.destroy();
     container.remove();

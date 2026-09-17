@@ -22,41 +22,33 @@ function item(id: string, action: QuickInsertItem['action']): QuickInsertItem {
 
 export function defaultQuickInsertItems(): QuickInsertItem[] {
   const handlers = new Map<string, QuickInsertItem['action']>();
-  handlers.set('block:paragraph', ({ view }) => {
+  handlers.set('block:paragraph', ({ view, tr }) => {
     const type = view.state.schema.nodes.paragraph;
     if (!type) return false;
-    view.dispatch(
-      view.state.tr.setBlockType(view.state.selection.from, view.state.selection.to, type),
-    );
+    tr.setBlockType(tr.selection.from, tr.selection.to, type);
     return true;
   });
   for (const level of [1, 2, 3, 4, 5, 6] as const) {
-    handlers.set(`block:heading:${level}`, ({ view }) => {
+    handlers.set(`block:heading:${level}`, ({ view, tr }) => {
       const type = view.state.schema.nodes.heading;
       if (!type) return false;
-      view.dispatch(
-        view.state.tr
-          .setBlockType(view.state.selection.from, view.state.selection.to, type, { level })
-          .scrollIntoView(),
-      );
+      tr.setBlockType(tr.selection.from, tr.selection.to, type, { level }).scrollIntoView();
       return true;
     });
   }
   const list = (name: 'bulletList' | 'orderedList' | 'taskList') =>
     handlers.set(
       `block:${name === 'bulletList' ? 'bullet-list' : name === 'orderedList' ? 'ordered-list' : 'task-list'}`,
-      ({ view }) => {
+      ({ view, tr }) => {
         const listType = view.state.schema.nodes[name];
         const itemType = view.state.schema.nodes[name === 'taskList' ? 'taskItem' : 'listItem'];
         const paragraph = view.state.schema.nodes.paragraph;
         if (!listType || !itemType || !paragraph) return false;
-        const $from = view.state.selection.$from;
-        view.dispatch(
-          view.state.tr.replaceWith(
-            $from.before($from.depth),
-            $from.after($from.depth),
-            listType.create(null, itemType.create(null, paragraph.create())),
-          ),
+        const $from = tr.selection.$from;
+        tr.replaceWith(
+          $from.before($from.depth),
+          $from.after($from.depth),
+          listType.create(null, itemType.create(null, paragraph.create())),
         );
         return true;
       },
@@ -64,30 +56,26 @@ export function defaultQuickInsertItems(): QuickInsertItem[] {
   list('bulletList');
   list('orderedList');
   list('taskList');
-  handlers.set('block:blockquote', ({ view }) => {
-    const range = view.state.selection.$from.blockRange(view.state.selection.$to);
+  handlers.set('block:blockquote', ({ view, tr }) => {
+    const range = tr.selection.$from.blockRange(tr.selection.$to);
     const wrapping = range ? findWrapping(range, view.state.schema.nodes.blockquote!) : null;
     if (!range || !wrapping) return false;
-    view.dispatch(view.state.tr.wrap(range, wrapping).scrollIntoView());
+    tr.wrap(range, wrapping).scrollIntoView();
     return true;
   });
-  handlers.set('block:code', ({ view }) => {
+  handlers.set('block:code', ({ view, tr }) => {
     const type = view.state.schema.nodes.codeBlock;
     if (!type) return false;
-    view.dispatch(
-      view.state.tr
-        .setBlockType(view.state.selection.from, view.state.selection.to, type, {
-          language: 'plaintext',
-        })
-        .scrollIntoView(),
-    );
+    tr.setBlockType(tr.selection.from, tr.selection.to, type, {
+      language: 'plaintext',
+    }).scrollIntoView();
     return true;
   });
-  handlers.set('insert:horizontal-rule', ({ view }) => {
+  handlers.set('insert:horizontal-rule', ({ view, tr }) => {
     const type = view.state.schema.nodes.horizontalRule;
-    return type ? insertAtSafeBlockBoundary(view, type.create()) : false;
+    return type ? insertAtSafeBlockBoundary(view, type.create(), tr) : false;
   });
-  handlers.set('insert:table', ({ view }) => {
+  handlers.set('insert:table', ({ view, tr }) => {
     const { table, tableRow, tableHeader, tableCell, paragraph } = view.state.schema.nodes;
     if (!table || !tableRow || !tableHeader || !tableCell || !paragraph) return false;
     const row = (cell: typeof tableHeader) =>
@@ -95,14 +83,18 @@ export function defaultQuickInsertItems(): QuickInsertItem[] {
         cell.create(null, paragraph.create()),
         cell.create(null, paragraph.create()),
       ]);
-    return insertAtSafeBlockBoundary(view, table.create(null, [row(tableHeader), row(tableCell)]));
+    return insertAtSafeBlockBoundary(
+      view,
+      table.create(null, [row(tableHeader), row(tableCell)]),
+      tr,
+    );
   });
-  handlers.set('insert:toc', ({ view }) => {
+  handlers.set('insert:toc', ({ view, tr }) => {
     const type = view.state.schema.nodes.tableOfContents;
-    return type ? insertAtSafeBlockBoundary(view, type.create()) : false;
+    return type ? insertAtSafeBlockBoundary(view, type.create(), tr) : false;
   });
-  handlers.set('format:wikilink', ({ view }) => {
-    view.dispatch(view.state.tr.insertText('[[').scrollIntoView());
+  handlers.set('format:wikilink', ({ tr }) => {
+    tr.insertText('[[').scrollIntoView();
     return true;
   });
   return quickInsertCatalog('block').flatMap((definition) => {

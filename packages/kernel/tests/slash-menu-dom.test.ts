@@ -132,8 +132,10 @@ describe('斜杠快捷输入真实 TipTap DOM 链路（DEV-052）', () => {
     expect(first.kernel.getMarkdown()).not.toContain('/h2');
     expect(first.kernel.getMarkdown()).not.toContain('h2');
     expect(first.kernel.undo()).toBe(true);
+    expect(first.kernel.getMarkdown()).toContain('/h2');
     expect(first.kernel.editor.state.selection.$from.parent.type.name).not.toBe('heading');
     expect(first.kernel.redo()).toBe(true);
+    expect(first.kernel.getMarkdown()).not.toContain('/h2');
     expect(
       first.kernel
         .getJSON()
@@ -166,8 +168,10 @@ describe('斜杠快捷输入真实 TipTap DOM 链路（DEV-052）', () => {
     expect(structureText).not.toContain('/表格');
     expect(structure.kernel.getJSON().content?.some((node) => node.type === 'table')).toBe(true);
     expect(structure.kernel.undo()).toBe(true);
-    expect(structure.kernel.getMarkdown()).toContain('正文');
+    expect(structure.kernel.getMarkdown()).toContain('正文 /表格');
+    expect(structure.kernel.getJSON().content?.some((node) => node.type === 'table')).toBe(false);
     expect(structure.kernel.redo()).toBe(true);
+    expect(structure.kernel.getJSON().content?.some((node) => node.type === 'table')).toBe(true);
     expect(structure.kernel.getMarkdown()).not.toContain('/表格');
     const inline = mount('\u00a0');
     selectAt(inline.kernel, inline.kernel.editor.state.doc.content.size - 1);
@@ -247,6 +251,67 @@ describe('斜杠快捷输入真实 TipTap DOM 链路（DEV-052）', () => {
     await type(failed.kernel, '/失败动作');
     press(failed.dom, 'Enter');
     expect(failed.kernel.getMarkdown()).toContain('/失败动作');
+  });
+
+  it.each(['false', 'throw', 'cancel', 'reject'] as const)(
+    '%s 后完整保留 trigger 与正文',
+    async (outcome) => {
+      const failed = mount('正文 ', () => [
+        {
+          id: `plugin:${outcome}`,
+          title: '拒绝动作',
+          group: '插件',
+          kind: 'plugin',
+          contract: { execution: 'insert-safe-block', capability: 'plugin-defined' },
+          action: ({ view, tr }) => {
+            tr.insert(
+              tr.selection.$from.after(1),
+              view.state.schema.nodes.horizontalRule!.create(),
+            );
+            if (outcome === 'throw') throw new Error('failed');
+            if (outcome === 'reject') return Promise.reject(new Error('failed'));
+            return outcome === 'cancel' ? Promise.resolve(false) : false;
+          },
+        },
+      ]);
+      selectAt(failed.kernel, failed.kernel.editor.state.doc.content.size - 1);
+      await type(failed.kernel, '/拒绝动作');
+      const original = failed.kernel.getMarkdown();
+      press(failed.dom, 'Enter');
+      await Promise.resolve();
+      expect(failed.kernel.getMarkdown()).toBe(original);
+      expect(failed.kernel.getJSON().content?.some((node) => node.type === 'horizontalRule')).toBe(
+        false,
+      );
+    },
+  );
+
+  it('显式 AI 同步/异步意图仅在成功后关闭，失败保留原文', async () => {
+    let resolve!: (value: boolean) => void;
+    const ai = mount('正文 ', () => [
+      {
+        id: 'ai:delayed',
+        title: 'AI 意图测试',
+        group: 'AI',
+        kind: 'ai',
+        contract: { execution: 'explicit-ai', capability: 'explicit-ai' },
+        action: () =>
+          new Promise<boolean>((done) => {
+            resolve = done;
+          }),
+      },
+    ]);
+    selectAt(ai.kernel, ai.kernel.editor.state.doc.content.size - 1);
+    await type(ai.kernel, '/AI 意图测试');
+    const original = ai.kernel.getMarkdown();
+    press(ai.dom, 'Enter');
+    expect(ai.kernel.getMarkdown()).toBe(original);
+    resolve(true);
+    await Promise.resolve();
+    expect(ai.kernel.getMarkdown()).toBe(original);
+    expect(ai.host.querySelector('[data-slash-menu]')?.getAttribute('style')).toContain(
+      'display: none',
+    );
   });
 
   it('光标移入 query 内部后菜单关闭且确认不再执行', async () => {

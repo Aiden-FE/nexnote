@@ -109,6 +109,8 @@ export const EDITOR_ACTION_MODEL: readonly EditorActionDefinition[] = EDITOR_ACT
 ).map((action) => ({
   id: action.id,
   label: action.name,
+  hint: action.hint,
+  shortcut: action.shortcut,
   icon: ICONS[action.icon] ?? <Sparkles className="size-3.5" />,
   group: action.group,
   semantic: action.semantic,
