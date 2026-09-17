@@ -47,7 +47,9 @@ export {
   Fold,
   foldPluginKey,
   canFoldBlock,
+  clearBlockFolds,
   isBlockFolded,
+  revealBlockFoldAt,
   toggleBlockFold,
 } from './extensions/fold';
 export { createKernelDragHandle } from './extensions/drag-handle';

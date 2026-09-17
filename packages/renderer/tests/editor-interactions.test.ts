@@ -161,16 +161,25 @@ describe('DEV-017 块菜单构建', () => {
     expect(items.some((i) => i.title === '插件项')).toBe(true);
     expect(items.some((i) => i.separator)).toBe(true);
   });
-  it('折叠项：不可折叠禁用；已折叠显示「展开」', () => {
+  it('折叠项：不可折叠禁用；已折叠显示「展开章节」（DEV-054 与 chevron 同名）', () => {
     const foldedItems = buildBlockMenuItems(ctx, {
       getKernel: () => null,
       canFold: () => true,
       isFolded: () => true,
     });
     const foldItem = foldedItems.find((i) => i.id === `${BLOCK_MENU_PREFIX}fold`);
-    expect(foldItem?.title).toBe('展开');
+    expect(foldItem?.title).toBe('展开章节');
     expect(foldItem?.disabled).toBeFalsy();
     const disabledItems = buildBlockMenuItems(ctx, { getKernel: () => null, canFold: () => false });
     expect(disabledItems.find((i) => i.id === `${BLOCK_MENU_PREFIX}fold`)?.disabled).toBe(true);
+  });
+  it('转换为子菜单覆盖 H1-H6（DEV-054 折叠与转换共享层级范围）', () => {
+    const items = buildBlockMenuItems(ctx, { getKernel: () => null });
+    const convert = items.find((i) => i.submenu);
+    for (const level of [1, 2, 3, 4, 5, 6]) {
+      expect(convert?.submenu?.some((s) => s.id === `${BLOCK_MENU_CONVERT_PREFIX}h${level}`)).toBe(
+        true,
+      );
+    }
   });
 });

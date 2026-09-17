@@ -7,7 +7,13 @@ import { findWrapping } from '@tiptap/pm/transform';
 
 import { buildKernelExtensions } from './extensions';
 import type { KernelExtensionsOptions } from './extensions';
-import { canFoldBlock, isBlockFolded, toggleBlockFold } from './extensions/fold';
+import {
+  canFoldBlock,
+  clearBlockFolds,
+  isBlockFolded,
+  toggleBlockFold,
+  trustFoldIdentity,
+} from './extensions/fold';
 import {
   createMarkdownManager,
   parseMarkdown,
@@ -89,7 +95,7 @@ export interface EditorKernelInstance {
   toggleBlockFold(blockId: string): boolean;
   /**
    * 块类型转换（块菜单「转换为」）：作用于 [from,to] 顶层块。
-   * 支持 h1/h2/h3/paragraph/codeBlock（setBlockType）、taskList（保留文本内容
+   * 支持 h1-h6/paragraph/codeBlock（setBlockType）、taskList（保留文本内容
    * 包裹为 taskList > taskItem > paragraph）、callout/blockquote（合法 wrap）。
    * 结构不合法或类型未知返回 false，不改动文档。
    */
@@ -168,6 +174,8 @@ export function createEditor(
       return serializeMarkdown(manager, editor.getJSON());
     },
     setMarkdown(markdown: string) {
+      // 页面重载/切换开启新的编辑视图会话；临时折叠状态不得跨页面沿用。
+      clearBlockFolds(editor.view);
       const json = parseMarkdown(manager, markdown);
       editor.commands.setContent(json, { emitUpdate: false });
     },
@@ -286,13 +294,26 @@ export function createEditor(
       const size = editor.state.doc.content.size;
       const f = Math.max(0, Math.min(from, size));
       const t = Math.max(f, Math.min(to, size));
-      const isHeading = kind === 'h1' || kind === 'h2' || kind === 'h3';
+      const isHeading = /^h[1-6]$/.test(kind);
       const nodeType = schema.nodes[isHeading ? 'heading' : kind];
       if (!nodeType) return false;
       if (isHeading) {
-        editor.view.dispatch(
-          editor.state.tr.setBlockType(f, t, nodeType, { level: Number(kind.slice(1)) }),
-        );
+        const level = Number(kind.slice(1));
+        // DEV-054：单块升降级保留 blockId（折叠状态按新层级重算）；
+        // 多块转换不携带旧 ID，交给 UniqueID 分配，避免重复 blockId。
+        const fromBlock = editor.state.doc.nodeAt(f);
+        const single = fromBlock && f + fromBlock.nodeSize === t ? fromBlock : null;
+        if (single && single.type.name === 'heading') {
+          const blockId = (single.attrs as { blockId?: string }).blockId;
+          const tr = editor.state.tr.setNodeMarkup(f, undefined, {
+            ...single.attrs,
+            level,
+          });
+          if (blockId) trustFoldIdentity(tr, blockId);
+          editor.view.dispatch(tr);
+          return true;
+        }
+        editor.view.dispatch(editor.state.tr.setBlockType(f, t, nodeType, { level }));
         return true;
       }
       if (kind === 'paragraph' || kind === 'codeBlock') {
