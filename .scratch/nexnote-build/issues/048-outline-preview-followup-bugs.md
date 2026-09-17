@@ -2,7 +2,7 @@
 
 Type: dev
 Module: editor
-Status: in-progress
+Status: closed
 Blocked by: DEV-047（已随 v0.0.12 发布）
 Depends: DEV-045（三视图）、DEV-047（悬浮目录/正文目录）
 Effort: S
@@ -39,4 +39,5 @@ v0.0.12 验收反馈的三项缺陷：
 
 - Electron smoke：252/252（原 246 零回归 + 新增 6 项，连续三次全绿），证据 `.scratch/nexnote-build/smoke/DEV-048/`。
 - 定向单测 13/13（收缩交互、分栏双联动、预览占满 + 纯函数）。
-- 全量门禁与发布记录见合并提交与 v0.0.13 tag。
+- 全量门禁：typecheck/lint(0 error,4 既有 warning)/test 1222 passed/build/format/diff-check 全绿（dev 分支与 post-merge master 各一轮）。
+- 发布：master 合并 5e7677e → 候选 40d50a5（tag v0.0.13）→ evidence 62930ac；git 443 不通，经 GitHub API 零分叉复刻 5 提交后 dispatch Release run 35180122667。
