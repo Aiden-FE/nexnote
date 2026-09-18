@@ -1,5 +1,5 @@
 {
-  "finishedAt": "2026-09-18T04:32:40.966Z",
+  "finishedAt": "2026-09-18T07:05:49.608Z",
   "checks": [
     {
       "name": "首启动向导可见（新建/打开/克隆三选一）",
@@ -12,7 +12,7 @@
     {
       "name": "vault:create 成功",
       "passed": true,
-      "detail": "/var/folders/np/sd6hrwgj7gs9m5chdfpcycv00000gn/T/nexnote-smoke-vault-nhVZ31/smoke-vault"
+      "detail": "/var/folders/np/sd6hrwgj7gs9m5chdfpcycv00000gn/T/nexnote-smoke-vault-yiTXwS/smoke-vault"
     },
     {
       "name": "工作区出现（vault:changed 驱动）",
@@ -145,7 +145,7 @@
     {
       "name": "TipTap 真实键入 /：菜单可见、可键盘选择、消费触发词并转换 H2",
       "passed": false,
-      "detail": "# 冒烟页面 A ^c2j4yz5\n\n\n\n  \n  \n第一块  \n第二块 /h2 ^2oonaf7"
+      "detail": "# 冒烟页面 A ^gsa4f75\n\n\n\n  \n  \n第一块  \n第二块 /h2 ^b5ozic7"
     },
     {
       "name": "块编辑划词工具栏：AI 单一入口 + 七项动作 + 平铺格式化/双链",
@@ -265,17 +265,17 @@
     {
       "name": "DEV-033 会话文件为 .nexnote/sessions/{hash}.txt",
       "passed": true,
-      "detail": ".nexnote/sessions/fe3b8559773924e45aa85b6e37e6bcf2c3edf313868afcd5372c02b2a5603359.txt"
+      "detail": ".nexnote/sessions/32d4a011e521a4c3bf2b95259951580b256827b10446107a221e2752d96b060a.txt"
     },
     {
       "name": "DEV-033 会话内容为 JSONL 快照（非 type: chat 页面）",
       "passed": true,
-      "detail": "{\"type\":\"snapshot\",\"session\":{\"meta\":{\"id\":\"2d2744af-2b04-40cb-968f-97fcf24359ca"
+      "detail": "{\"type\":\"snapshot\",\"session\":{\"meta\":{\"id\":\"3d95f3e4-fa91-4093-b51c-31402be6e5ae"
     },
     {
       "name": "DEV-033 重启后历史可列出且带未完成状态",
       "passed": true,
-      "detail": "{\"path\":\".nexnote/sessions/fe3b8559773924e45aa85b6e37e6bcf2c3edf313868afcd5372c02b2a5603359.txt\",\"id\":\"2d2744af-2b04-40cb-968f-97fcf24359ca\",\"title\":\"DEV-033 会话\",\"model\":null,\"turnCount\":2,\"updatedAt\":\"2026-09-18T04:30:47.123Z\",\"status\":\"cancelled\"}"
+      "detail": "{\"path\":\".nexnote/sessions/32d4a011e521a4c3bf2b95259951580b256827b10446107a221e2752d96b060a.txt\",\"id\":\"3d95f3e4-fa91-4093-b51c-31402be6e5ae\",\"title\":\"DEV-033 会话\",\"model\":null,\"turnCount\":2,\"updatedAt\":\"2026-09-18T07:04:38.834Z\",\"status\":\"cancelled\"}"
     },
     {
       "name": "DEV-033 历史可按标题搜索",
@@ -305,7 +305,7 @@
     {
       "name": "DEV-033 导出产物是普通页面（native-block）",
       "passed": true,
-      "detail": "{\"id\":\"423a3b04-c019-4341-9710-a80c0f41ee4f\",\"createdAt\":\"2026-09-18T04:30:47.826Z\",\"format\":\"native-block\"}"
+      "detail": "{\"id\":\"43a3d261-c1f4-4b1f-8995-a4b40f01e755\",\"createdAt\":\"2026-09-18T07:04:39.533Z\",\"format\":\"native-block\"}"
     },
     {
       "name": "DEV-033 导出产物与会话脱钩（正文为普通 markdown）",
@@ -375,7 +375,7 @@
     {
       "name": "默认新建文档持久为 native-block",
       "passed": true,
-      "detail": "{\"id\":\"f62c578a-7837-4a36-925b-e5fefbe37146\",\"createdAt\":\"2026-09-18T04:30:51.634Z\",\"format\":\"native-block\"}"
+      "detail": "{\"id\":\"8f5f9aeb-147d-4a8e-b8d1-bc400cefcc47\",\"createdAt\":\"2026-09-18T07:04:43.329Z\",\"format\":\"native-block\"}"
     },
     {
       "name": "native-block 默认进入块编辑且源码入口不可见",
@@ -392,7 +392,7 @@
     {
       "name": "Markdown sidecar 格式真实记录",
       "passed": true,
-      "detail": "{\"id\":\"6fd6e55b-b837-410d-91fd-ed1258590bf1\",\"createdAt\":\"2026-09-18T04:30:52.408Z\",\"format\":\"markdown\"}"
+      "detail": "{\"id\":\"0accb540-9e08-4d09-a210-3dbeb73468c7\",\"createdAt\":\"2026-09-18T07:04:44.096Z\",\"format\":\"markdown\"}"
     },
     {
       "name": "Markdown 文档打开源码模式",
@@ -472,11 +472,13 @@
     },
     {
       "name": "Markdown Cmd/Ctrl+E 隐藏预览但保持源码",
-      "passed": false
+      "passed": true,
+      "detail": "view=source preview=false"
     },
     {
       "name": "Markdown Cmd/Ctrl+E 恢复双栏预览",
-      "passed": true
+      "passed": true,
+      "detail": "view=split"
     },
     {
       "name": "源码命令已注册且由 Markdown 承载预览切换",
@@ -687,7 +689,7 @@
     {
       "name": "新建 Markdown 保持正文干净、产品 metadata 在 sidecar",
       "passed": true,
-      "detail": "{\"text\":\"# 冒烟首页\\n\",\"metadata\":{\"id\":\"db780542-bb70-402f-853d-90fa9cbf7262\",\"createdAt\":\"2026-09-18T04:31:28.133Z\",\"format\":\"native-block\"}}"
+      "detail": "{\"text\":\"# 冒烟首页\\n\",\"metadata\":{\"id\":\"6e51ab1c-9779-4fac-bb57-7dc2d9d2955d\",\"createdAt\":\"2026-09-18T07:05:07.664Z\",\"format\":\"native-block\"}}"
     },
     {
       "name": "状态栏显示 vault 根名",
@@ -782,7 +784,7 @@
     {
       "name": "500 节点 / 2000 边连续交互 FPS ≥ 30",
       "passed": true,
-      "detail": "fps=121.0 wheels=108"
+      "detail": "fps=121.5 wheels=110"
     },
     {
       "name": "文件夹子树过滤生效",
@@ -810,7 +812,7 @@
     {
       "name": "DEV-008 IPC getConfidence 返回缓存分数",
       "passed": true,
-      "detail": "{\"pageId\":5,\"activeConfidence\":{\"pageId\":5,\"path\":\"graph/group-a/group-a-node-0.md\",\"score\":38,\"factors\":[{\"key\":\"stability\",\"label\":\"内容稳定性\",\"score\":0.4,\"weight\":0.25,\"contribution\":10,\"detail\":\"0 次历史改动按近期权重聚合，改动越小越稳定\"},{\"key\":\"review_count\",\"label\":\"修订次数\",\"score\":0,\"weight\":0.15,\"contribution\":0,\"detail\":\"0 次提交，20 次后饱和\"},{\"key\":\"author_count\",\"label\":\"作者数量\",\"score\":0.25,\"weight\":0.15,\"contribution\":3.75,\"detail\":\"1 位作者，单人保留基础分\"},{\"key\":\"age\",\"label\":\"文档年龄\",\"score\":0,\"weight\":0.15,\"contribution\":0,\"detail\":\"文档存活 0 天，按对数增长\"},{\"key\":\"link_authority\",\"label\":\"链接权威度\",\"score\":0.94,\"weight\":0.2,\"contribution\":18.8,\"detail\":\"由去重入链图的简化 PageRank 归一化\"},{\"key\":\"manual_boost\",\"label\":\"手动加权\",\"score\":0.5,\"weight\":0.1,\"contribution\":5,\"detail\":\"未设置 confidence_boost，使用中性分\"}],\"computedAt\":\"2026-09-18T04:31:37.125Z\"}}"
+      "detail": "{\"pageId\":5,\"activeConfidence\":{\"pageId\":5,\"path\":\"graph/group-a/group-a-node-0.md\",\"score\":38,\"factors\":[{\"key\":\"stability\",\"label\":\"内容稳定性\",\"score\":0.4,\"weight\":0.25,\"contribution\":10,\"detail\":\"0 次历史改动按近期权重聚合，改动越小越稳定\"},{\"key\":\"review_count\",\"label\":\"修订次数\",\"score\":0,\"weight\":0.15,\"contribution\":0,\"detail\":\"0 次提交，20 次后饱和\"},{\"key\":\"author_count\",\"label\":\"作者数量\",\"score\":0.25,\"weight\":0.15,\"contribution\":3.75,\"detail\":\"1 位作者，单人保留基础分\"},{\"key\":\"age\",\"label\":\"文档年龄\",\"score\":0,\"weight\":0.15,\"contribution\":0,\"detail\":\"文档存活 0 天，按对数增长\"},{\"key\":\"link_authority\",\"label\":\"链接权威度\",\"score\":0.94,\"weight\":0.2,\"contribution\":18.8,\"detail\":\"由去重入链图的简化 PageRank 归一化\"},{\"key\":\"manual_boost\",\"label\":\"手动加权\",\"score\":0.5,\"weight\":0.1,\"contribution\":5,\"detail\":\"未设置 confidence_boost，使用中性分\"}],\"computedAt\":\"2026-09-18T07:05:16.605Z\"}}"
     },
     {
       "name": "DEV-008 属性面板显示真实置信度总分与六个因子",
@@ -873,7 +875,7 @@
     {
       "name": "DEV-015 保存文件为 Obsidian 原生语法（围栏/$$/$）",
       "passed": true,
-      "detail": "```mermaid\ngraph TD\n  A[\"开始\"] --> B[\"结束\"]\n```\n\n$$\nE = mc^2\n$$\n\n# $a^2 + b^2 = c^2$内置插件演示 ^ktmit148\n"
+      "detail": "```mermaid\ngraph TD\n  A[\"开始\"] --> B[\"结束\"]\n```\n\n$$\nE = mc^2\n$$\n\n# $a^2 + b^2 = c^2$内置插件演示 ^hc5wwu41\n"
     },
     {
       "name": "DEV-015 设置页插件分区可见",
@@ -1109,8 +1111,8 @@
     },
     {
       "name": "DEV-048 分栏目录点击：预览直接滚到中部标题（delta<250px，区别于比例同步落点）",
-      "passed": false,
-      "detail": "中部标题未找到"
+      "passed": true,
+      "detail": "scrollTop=1499 delta=0px viewport=744px"
     },
     {
       "name": "vault:close 后回到向导",

@@ -37,6 +37,8 @@ interface SmokeBridge {
   ): Promise<SmokeCaptureResult & { path?: string }>;
   seedGraph(root: string): Promise<SmokeCaptureResult & { pages?: number; links?: number }>;
   setWindowSize(width: number, height: number): Promise<SmokeCaptureResult>;
+  typeText(text: string): Promise<SmokeCaptureResult>;
+  pressKey(key: string, modifiers?: string[]): Promise<SmokeCaptureResult>;
   finish(report: unknown): Promise<SmokeCaptureResult>;
   /** DEV-037：内嵌 mock provider 地址 + 运行时调参（分段延迟 / 下一次请求失败）。 */
   aiMock(): Promise<SmokeCaptureResult & { url?: string }>;
@@ -95,52 +97,6 @@ async function typeWithKeyboard(target: HTMLElement, text: string): Promise<void
     if (!document.execCommand('insertText', false, character)) {
       throw new Error(`Chromium 未接受输入字符: ${character}`);
     }
-    await sleep(30);
-  }
-}
-
-/**
- * ProseMirror's browser path requires the DOM mutation that follows keydown. Chromium's
- * execCommand is sufficient for CodeMirror but does not consistently produce that mutation
- * after programmatic TipTap selection changes, so emulate the browser's DOM/input sequence.
- * This remains a visible-editor input path: it never invokes a TipTap hook or transaction.
- */
-async function typeWithDomInput(target: HTMLElement, text: string): Promise<void> {
-  target.focus();
-  for (const character of text) {
-    target.dispatchEvent(
-      new KeyboardEvent('keydown', { key: character, bubbles: true, cancelable: true }),
-    );
-    // Chromium's synthetic KeyboardEvent keeps charCode at 0; ProseMirror's keypress
-    // handler intentionally ignores that as a non-text key. Supply the browser field.
-    const keypress = new KeyboardEvent('keypress', {
-      key: character,
-      bubbles: true,
-      cancelable: true,
-    });
-    Object.defineProperty(keypress, 'charCode', { value: character.charCodeAt(0) });
-    target.dispatchEvent(keypress);
-    target.dispatchEvent(
-      new InputEvent('beforeinput', {
-        bubbles: true,
-        cancelable: true,
-        inputType: 'insertText',
-        data: character,
-      }),
-    );
-    const selection = document.getSelection();
-    const range = selection?.rangeCount ? selection.getRangeAt(0) : null;
-    if (!range) throw new Error(`TipTap DOM 选区缺失: ${character}`);
-    range.deleteContents();
-    const node = document.createTextNode(character);
-    range.insertNode(node);
-    range.setStartAfter(node);
-    range.collapse(true);
-    selection?.removeAllRanges();
-    selection?.addRange(range);
-    target.dispatchEvent(
-      new InputEvent('input', { bubbles: true, inputType: 'insertText', data: character }),
-    );
     await sleep(30);
   }
 }
@@ -463,14 +419,10 @@ export async function runSmokeIfEnabled(): Promise<void> {
         const slashPosition = blockSlashKernel.editor.state.doc.content.size - 1;
         blockSlashKernel.editor.commands.setTextSelection(slashPosition);
         blockSlashInput.focus();
-        // 同步原生 DOM selection 到 ProseMirror 位置；随后只经浏览器 key/input 事件写入。
-        const domPosition = blockSlashKernel.editor.view.domAtPos(slashPosition);
-        const range = document.createRange();
-        range.setStart(domPosition.node, domPosition.offset);
-        range.collapse(true);
-        document.getSelection()?.removeAllRanges();
-        document.getSelection()?.addRange(range);
-        await typeWithDomInput(blockSlashInput, ' /h2');
+        // Use Electron WebContents key events: synthetic renderer KeyboardEvents are untrusted and
+        // Chromium does not run their contenteditable editing default action in packaged builds.
+        const typed = await bridge.typeText(' /h2');
+        await sleep(150);
         const blockSlashMenu = (): HTMLElement | null =>
           document.querySelector<HTMLElement>('[data-testid="block-slash-menu"]');
         const blockSlashItem = (): HTMLElement | null =>
@@ -485,19 +437,19 @@ export async function runSmokeIfEnabled(): Promise<void> {
             !!blockSlashItem() &&
             blockSlashItem()?.getAttribute('aria-selected') === 'true',
         );
-        blockSlashInput.dispatchEvent(
-          new KeyboardEvent('keydown', { key: 'ArrowDown', bubbles: true, cancelable: true }),
-        );
-        blockSlashInput.dispatchEvent(
-          new KeyboardEvent('keydown', { key: 'ArrowUp', bubbles: true, cancelable: true }),
-        );
-        blockSlashInput.dispatchEvent(
-          new KeyboardEvent('keydown', { key: 'Enter', bubbles: true, cancelable: true }),
-        );
+        // Keep every edit/navigation action on Electron's trusted WebContents path. The
+        // renderer can inspect only the visible result; synthetic KeyboardEvents would not
+        // exercise ProseMirror's packaged Chromium key handling.
+        const selected = blockSlashOpen ? await bridge.pressKey('ArrowDown') : null;
+        await bridge.pressKey('ArrowUp');
+        const confirmed = selected ? await bridge.pressKey('Enter') : null;
         await sleep(150);
         check(
           'TipTap 真实键入 /：菜单可见、可键盘选择、消费触发词并转换 H2',
-          blockSlashOpen &&
+          typed.ok &&
+            selected?.ok === true &&
+            confirmed?.ok === true &&
+            blockSlashOpen &&
             blockSlashKernel.editor.state.selection.$from.parent.type.name === 'heading' &&
             blockSlashKernel.editor.state.selection.$from.parent.attrs.level === 2 &&
             !blockSlashKernel.getMarkdown().includes('/h2') &&
@@ -1507,36 +1459,50 @@ export async function runSmokeIfEnabled(): Promise<void> {
       );
     }
 
-    // Markdown 的 Cmd/Ctrl+E 是预览分栏开关，不切换为 TipTap。
-    window.dispatchEvent(
-      new KeyboardEvent('keydown', {
-        key: 'e',
-        [isMac ? 'metaKey' : 'ctrlKey']: true,
-        bubbles: true,
-        cancelable: true,
-      }),
+    // Markdown 的 Mod+E（editor.toggleSourceMode）在源码/分栏之间切换，不切换为 TipTap。
+    // 断言只经真实快捷键与可见 DOM：视图切换有 flush 守卫，异步落点必须等它稳定，
+    // 否则随后的态切换会与仍在飞行中的切换互相覆盖（本轮 packaged 失败即此竞态）。
+    const markdownTabId = useTabStore.getState().activeTabId;
+    const markdownViewNow = (): string | undefined =>
+      useTabStore.getState().tabs.find((tab) => tab.id === markdownTabId)?.markdownView;
+    const markdownToggleKey = (): void => {
+      window.dispatchEvent(
+        new KeyboardEvent('keydown', {
+          key: 'e',
+          [isMac ? 'metaKey' : 'ctrlKey']: true,
+          bubbles: true,
+          cancelable: true,
+        }),
+      );
+    };
+    // 归一化到分栏，避免继承上一步的视图状态。
+    clickToolbarAction('view:split');
+    await waitFor(
+      () =>
+        markdownViewNow() === 'split' && !!document.querySelector('[data-testid="live-preview"]'),
     );
-    clickToolbarAction('view:preview');
-    const markdownTabId = useTabStore.getState().tabs.find((t) => t.pagePath === markdownPath)?.id;
-    const hidePreview = async (): Promise<void> => {
-      if (markdownTabId) useTabStore.getState().togglePreview(markdownTabId, false);
-      await sleep(150);
-    };
-    const showPreview = async (): Promise<void> => {
-      if (markdownTabId) useTabStore.getState().togglePreview(markdownTabId, true);
-      await sleep(150);
-    };
-    await hidePreview();
+    markdownToggleKey();
+    const previewHidden = await waitFor(
+      () =>
+        markdownViewNow() === 'source' &&
+        !document.querySelector('[data-testid="live-preview"]') &&
+        !!document.querySelector('[data-testid="source-editor-pane"] .cm-content'),
+    );
     check(
       'Markdown Cmd/Ctrl+E 隐藏预览但保持源码',
-      (await waitFor(() => !document.querySelector('[data-testid="live-preview"]'))) &&
-        !!document.querySelector('[data-testid="source-editor-pane"] .cm-content'),
+      previewHidden,
+      `view=${markdownViewNow()} preview=${!!document.querySelector('[data-testid="live-preview"]')}`,
     );
-    await showPreview();
+    markdownToggleKey();
     check(
       'Markdown Cmd/Ctrl+E 恢复双栏预览',
-      (await waitFor(() => !!document.querySelector('[data-testid="live-preview"]'))) &&
-        !!document.querySelector('[data-testid="source-editor-pane"] .cm-content'),
+      await waitFor(
+        () =>
+          markdownViewNow() === 'split' &&
+          !!document.querySelector('[data-testid="live-preview"]') &&
+          !!document.querySelector('[data-testid="source-editor-pane"] .cm-content'),
+      ),
+      `view=${markdownViewNow()}`,
     );
 
     const toggleCommand = commandRegistry.get('editor.toggleSourceMode');
@@ -1583,7 +1549,8 @@ export async function runSmokeIfEnabled(): Promise<void> {
         15_000,
       );
       if (!wikilinkReady && !document.querySelector('[data-testid="live-preview"]')) {
-        await showPreview();
+        clickToolbarAction('view:split');
+        await waitFor(() => !!document.querySelector('[data-testid="live-preview"]'));
       }
       document
         .querySelector<HTMLElement>('[data-testid="live-preview"] [data-wikilink-target]')
@@ -2840,7 +2807,15 @@ export async function runSmokeIfEnabled(): Promise<void> {
         (sourceAi.textContent ?? '').includes('AI') &&
         !!sourceAi.querySelector('svg') &&
         !!sourceAi.querySelector('svg.lucide-chevron-down') &&
-        (await waitFor(() => !!document.querySelector('[data-testid="toolbar-tooltip"]'))) &&
+        sourceAi.matches(':focus-visible, :focus') &&
+        (await waitFor(
+          () =>
+            !!sourceAi.getAttribute('aria-describedby') &&
+            !!document.getElementById(sourceAi.getAttribute('aria-describedby') ?? '') &&
+            document
+              .getElementById(sourceAi.getAttribute('aria-describedby') ?? '')
+              ?.getAttribute('role') === 'tooltip',
+        )) &&
         !!sourceToolbar?.querySelector('[data-testid="toolbar-entry-edit:undo"]') &&
         !!sourceToolbar?.querySelector('[data-testid="toolbar-entry-menu:format"]') &&
         !!sourceToolbar?.querySelector('[data-testid="toolbar-entry-menu:insert"]'),
@@ -3356,8 +3331,10 @@ export async function runSmokeIfEnabled(): Promise<void> {
       );
       const outlineLongOpened =
         (await clickToolbarEntry('view:outline')) &&
-        (await waitFor(() =>
-          outlineEntries().some((el) => (el.textContent ?? '') === midHeadingText),
+        (await waitFor(
+          () =>
+            outlineEntries().length >= 14 &&
+            outlineEntries().some((el) => (el.textContent ?? '') === midHeadingText),
         ));
       outlineEntries()
         .find((el) => (el.textContent ?? '') === midHeadingText)
@@ -3368,9 +3345,16 @@ export async function runSmokeIfEnabled(): Promise<void> {
         height: number;
       } | null => {
         const host = document.querySelector<HTMLElement>('[data-testid="live-preview"]');
-        const heading = [...(host?.querySelectorAll<HTMLElement>('h2') ?? [])].find(
-          (el) => (el.textContent ?? '').trim() === midHeadingText,
-        );
+        // ProseMirror heading fold widgets render an aria-hidden › inside each h2;
+        // textContent includes that icon although the accessible heading text does not.
+        const heading = [...(host?.querySelectorAll<HTMLElement>('h2') ?? [])].find((el) => {
+          const text = [...el.childNodes]
+            .filter((node) => !(node instanceof Element && node.matches('.nexnote-fold-toggle')))
+            .map((node) => node.textContent ?? '')
+            .join('')
+            .trim();
+          return text === midHeadingText;
+        });
         if (!host || !heading) return null;
         return {
           scrollTop: host.scrollTop,

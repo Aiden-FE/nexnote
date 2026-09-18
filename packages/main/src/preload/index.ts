@@ -49,6 +49,10 @@ if (process.env.NEXNOTE_SMOKE === '1') {
     // DEV-035：窄窗覆盖需在冒烟过程中调整主窗口尺寸（真实 Electron 窗口）
     setWindowSize: (width: number, height: number): Promise<{ ok: boolean; error?: string }> =>
       ipcRenderer.invoke('smoke:setWindowSize', { width, height }),
+    typeText: (text: string): Promise<{ ok: boolean; error?: string }> =>
+      ipcRenderer.invoke('smoke:typeText', text),
+    pressKey: (key: string, modifiers?: string[]): Promise<{ ok: boolean; error?: string }> =>
+      ipcRenderer.invoke('smoke:pressKey', { key, modifiers }),
     // DEV-009：AI 冒烟场景用的内嵌 mock OpenAI 服务器地址
     aiMock: (): Promise<{ ok: boolean; url?: string; error?: string }> =>
       ipcRenderer.invoke('smoke:aiMock'),

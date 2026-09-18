@@ -122,6 +122,63 @@ export class SmokeController {
         return { ok: false, error: e instanceof Error ? e.message : String(e) };
       }
     });
+    /** Use Electron's focused WebContents input path, not untrusted DOM KeyboardEvents. */
+    ipcMain.handle('smoke:pressKey', async (_event, payload: unknown) => {
+      try {
+        const { key, modifiers } = (payload ?? {}) as { key?: unknown; modifiers?: unknown };
+        if (typeof key !== 'string' || !key) throw new Error('key is required');
+        const win = this.deps.windows.getMainWindow();
+        if (!win) throw new Error('main window is not available');
+        win.show();
+        win.focus();
+        await new Promise((resolve) => setTimeout(resolve, 50));
+        const normalized = key === 'Enter' ? 'ENTER' : key === 'ArrowDown' ? 'ARROWDOWN' : key === 'ArrowUp' ? 'ARROWUP' : key.toUpperCase();
+        win.webContents.sendInputEvent({
+          type: 'keyDown',
+          keyCode: normalized,
+          modifiers: Array.isArray(modifiers) ? modifiers.filter((item): item is string => typeof item === 'string') : [],
+        });
+        win.webContents.sendInputEvent({
+          type: 'keyUp',
+          keyCode: normalized,
+          modifiers: Array.isArray(modifiers) ? modifiers.filter((item): item is string => typeof item === 'string') : [],
+        });
+        return { ok: true };
+      } catch (e) {
+        return { ok: false, error: e instanceof Error ? e.message : String(e) };
+      }
+    });
+    ipcMain.handle('smoke:typeText', async (_event, text: unknown) => {
+      try {
+        if (typeof text !== 'string' || !text) throw new Error('non-empty text is required');
+        const win = this.deps.windows.getMainWindow();
+        if (!win) throw new Error('main window is not available');
+        win.show();
+        win.focus();
+        await new Promise((resolve) => setTimeout(resolve, 50));
+        for (const character of text) {
+          // sendInputEvent uses Chromium accelerator names for non-letter keys. A raw
+          // character (not a DOM KeyboardEvent) is still required so the focused
+          // contenteditable runs its normal beforeinput/input path.
+          const keyCode =
+            character === '\n'
+              ? 'ENTER'
+              : character === ' '
+                ? 'SPACE'
+                : character === '/'
+                  ? 'SLASH'
+                  : character.toUpperCase();
+          win.webContents.sendInputEvent({ type: 'rawKeyDown', keyCode });
+          if (character !== '\n')
+            win.webContents.sendInputEvent({ type: 'char', keyCode: character });
+          win.webContents.sendInputEvent({ type: 'keyUp', keyCode });
+          await new Promise((resolve) => setTimeout(resolve, 20));
+        }
+        return { ok: true };
+      } catch (e) {
+        return { ok: false, error: e instanceof Error ? e.message : String(e) };
+      }
+    });
     ipcMain.handle('smoke:capture', async (_event, name: unknown) => {
       try {
         const file = await this.capture(String(name));
