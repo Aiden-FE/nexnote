@@ -232,6 +232,9 @@ importers:
       '@codemirror/view':
         specifier: ^6.43.11
         version: 6.43.11
+      '@lezer/markdown':
+        specifier: ^1.7.2
+        version: 1.7.2
       '@nexnote/kernel':
         specifier: workspace:*
         version: link:../kernel

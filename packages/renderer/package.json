@@ -16,6 +16,7 @@
     "@codemirror/language": "^6.12.4",
     "@codemirror/state": "^6.7.4",
     "@codemirror/view": "^6.43.11",
+    "@lezer/markdown": "^1.7.2",
     "@nexnote/kernel": "workspace:*",
     "@nexnote/shared": "workspace:*",
     "@tiptap/core": "^3.31.3",

@@ -1,5 +1,6 @@
 import { defaultKeymap, history, historyKeymap } from '@codemirror/commands';
 import { markdown } from '@codemirror/lang-markdown';
+import type { MarkdownExtension } from '@lezer/markdown';
 import { defaultHighlightStyle, syntaxHighlighting, syntaxTree } from '@codemirror/language';
 import { CODE_LANGUAGES } from '@nexnote/shared';
 import { codeLanguages } from './fence-languages';
@@ -20,6 +21,46 @@ import {
   ViewPlugin,
   type ViewUpdate,
 } from '@codemirror/view';
+
+/** Dollar math is not part of CommonMark. Register it in the same Lezer tree used by slash context checks. */
+const sourceMathSyntax: MarkdownExtension = {
+  defineNodes: [{ name: 'MathBlock', block: true }, 'InlineMath'],
+  parseBlock: [
+    {
+      name: 'MathBlock',
+      before: 'FencedCode',
+      parse(cx, line) {
+        if (!/^\$\$(?!\$)/.test(line.text.slice(line.pos))) return false;
+        const from = cx.lineStart + line.pos;
+        let end = cx.lineStart + line.text.length;
+        let closed = /\$\$\s*$/.test(line.text.slice(line.pos + 2));
+        while (!closed && cx.nextLine()) {
+          end = cx.lineStart + line.text.length;
+          closed = /\$\$\s*$/.test(line.text.slice(line.pos));
+        }
+        cx.addElement(cx.elt('MathBlock', from, end));
+        if (closed) cx.nextLine();
+        return true;
+      },
+    },
+  ],
+  parseInline: [
+    {
+      name: 'InlineMath',
+      after: 'InlineCode',
+      parse(cx, next, pos) {
+        if (next !== 36 || cx.char(pos - 1) === 92 || cx.char(pos + 1) === 36) return -1;
+        for (let end = pos + 1; end < cx.end; end++) {
+          if (cx.char(end) === 36 && cx.char(end - 1) !== 92) {
+            cx.addElement(cx.elt('InlineMath', pos, end + 1));
+            return end + 1;
+          }
+        }
+        return -1;
+      },
+    },
+  ],
+};
 
 export const sourceCodeLanguages = CODE_LANGUAGES;
 
@@ -117,7 +158,7 @@ export function createSourceEditor(
         EditorState.lineSeparator.of(lineSeparator),
         lineNumbers(),
         history(),
-        markdown({ codeLanguages }),
+        markdown({ codeLanguages, extensions: sourceMathSyntax }),
         fenceHighlightExtension,
         ...(options.headingFolding ? [sourceHeadingFolding()] : []),
         syntaxHighlighting(defaultHighlightStyle, { fallback: true }),
