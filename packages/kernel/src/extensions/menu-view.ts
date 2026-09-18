@@ -11,7 +11,10 @@ export interface QuickInsertView {
 export function createQuickInsertView(className: string): QuickInsertView {
   const dom = document.createElement('div');
   dom.className = className;
+  // Block and CodeMirror menus share the visual class but need distinct stable smoke seams.
+  // Keep the semantic listbox/data-slash-menu contract unchanged for existing consumers.
   dom.dataset.slashMenu = '';
+  dom.dataset.testid = 'block-slash-menu';
   dom.setAttribute('role', 'listbox');
   dom.setAttribute('aria-label', '快捷插入动作');
   dom.style.cssText = 'display:none;position:absolute;z-index:40';

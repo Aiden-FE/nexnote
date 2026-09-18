@@ -655,6 +655,7 @@ export function sourceSlashMenu(options: SourceSlashMenuOptions): Extension {
           menu = document.createElement('div');
           menu.className = 'nexnote-slash-menu';
           menu.dataset.slashMenu = '';
+          menu.dataset.testid = 'source-slash-menu';
           menu.setAttribute('role', 'listbox');
           menu.setAttribute('aria-label', '快捷插入动作');
           menu.style.cssText = 'display:none;position:absolute;z-index:40';

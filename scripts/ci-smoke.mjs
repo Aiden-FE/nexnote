@@ -32,10 +32,13 @@ const child = spawn(appPath, [], {
   },
   stdio: ['ignore', 'inherit', 'inherit'],
 });
+// The full integration scenario can exceed three minutes on a cold packaged run.
+// Keep the default for CI; permit an explicit local timeout for comprehensive smoke evidence.
+const timeoutMs = Number(process.env.NEXNOTE_SMOKE_TIMEOUT_MS ?? 180_000);
 const timer = setTimeout(() => {
-  console.error('[smoke:ci] timeout (180s)');
+  console.error(`[smoke:ci] timeout (${timeoutMs}ms)`);
   child.kill('SIGTERM');
-}, 180_000);
+}, timeoutMs);
 child.on('exit', (code) => {
   clearTimeout(timer);
   console.log(`[smoke:ci] app exited with code ${code}`);

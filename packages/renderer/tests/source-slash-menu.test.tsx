@@ -105,9 +105,11 @@ describe('Markdown CodeMirror / 快捷输入（DEV-053）', () => {
   ])('真实 DOM 输入在 %s 空行打开并转换', async (prefix, query, expected) => {
     const fixture = mount(prefix);
     await type(fixture, query);
-    expect(fixture.parent.querySelector('[data-slash-menu]')?.getAttribute('style')).not.toContain(
-      'display: none',
-    );
+    const menu = fixture.parent.querySelector<HTMLElement>('[data-testid="source-slash-menu"]');
+    expect(menu?.getAttribute('role')).toBe('listbox');
+    expect(menu?.getAttribute('aria-label')).toBe('快捷插入动作');
+    expect(menu?.matches('[data-slash-menu]')).toBe(true);
+    expect(menu?.getAttribute('style')).not.toContain('display: none');
     press(fixture, 'Enter');
     expect(fixture.editor.getText()).toBe(expected);
     expect(undo(fixture.editor.view)).toBe(true);

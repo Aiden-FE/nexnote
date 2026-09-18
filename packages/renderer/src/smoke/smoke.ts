@@ -8,13 +8,14 @@ import { useTagStore } from '../stores/tag-store';
 import { usePageTreeStore } from '../stores/page-tree-store';
 import { useThemeStore } from '../theme/theme-store';
 import { dockPanelRegistry } from '../registries';
-import { getActiveEditor } from '../editor/active-editor';
+import { getActiveEditor, getEditorForTab } from '../editor/active-editor';
 import { getActiveSourceEditor } from '../editor/source/active-source-editor';
 import { currentPageCandidates } from '../editor/wikilink-page-ops';
 import { applySourceFormat } from '../editor/source/source-formatting';
 import { FORMAT_WIKILINK, runFormatAction } from '../editor/interactions/formatting';
 import { TextSelection } from '@tiptap/pm/state';
 import { redo, undo } from '@codemirror/commands';
+import { sourceFoldState } from '../editor/source/heading-fold';
 import { openSettings } from '../lib/open-settings';
 import { deleteEntry, moveEntry } from '../features/sidebar/page-tree/ops';
 import { BUILTIN_PLUGIN_IDS, type ChatSession } from '@nexnote/shared';
@@ -79,6 +80,23 @@ async function waitFor(predicate: () => boolean, timeout = 12000): Promise<boole
     await sleep(120);
   }
   return predicate();
+}
+
+/**
+ * 走 Chromium 的可编辑 DOM 输入链路；不得调用编辑器 hook 或直接 dispatch 编辑器状态。
+ * keydown 保留真实键盘语义，execCommand 触发浏览器的 beforeinput/input 与各编辑器 DOM observer。
+ */
+async function typeWithKeyboard(target: HTMLElement, text: string): Promise<void> {
+  target.focus();
+  for (const character of text) {
+    target.dispatchEvent(
+      new KeyboardEvent('keydown', { key: character, bubbles: true, cancelable: true }),
+    );
+    if (!document.execCommand('insertText', false, character)) {
+      throw new Error(`Chromium 未接受输入字符: ${character}`);
+    }
+    await sleep(30);
+  }
 }
 
 function smokeBridge(): SmokeBridge | null {
@@ -493,6 +511,53 @@ export async function runSmokeIfEnabled(): Promise<void> {
           return text.includes('第一块') && text.includes('第二块');
         }),
       );
+      const reopenedTab = useTabStore
+        .getState()
+        .tabs.find((tab) => tab.pagePath === '冒烟页面 A.md');
+      const slashKernel = reopenedTab ? getEditorForTab(reopenedTab.id) : null;
+      const blockInput = reopenedEditor() as HTMLElement | null;
+      if (slashKernel && blockInput) {
+        slashKernel.editor.commands.setTextSelection(slashKernel.editor.state.doc.content.size - 1);
+        blockInput.focus();
+        // 浏览器自身处理 Enter 创建空块；不通过 hook 或编辑器命令注入 slash session。
+        document.execCommand('insertParagraph');
+        await typeWithKeyboard(blockInput, '/h2');
+        const blockSlashMenu = (): HTMLElement | null =>
+          document.querySelector<HTMLElement>('[data-testid="block-slash-menu"]');
+        const blockSlashItem = (): HTMLElement | null =>
+          blockSlashMenu()?.querySelector<HTMLElement>('[data-slash-item="block:heading:2"]') ??
+          null;
+        const blockSlashOpen = await waitFor(
+          () =>
+            !!blockSlashMenu() &&
+            blockSlashMenu()?.getAttribute('role') === 'listbox' &&
+            blockSlashMenu()?.getAttribute('aria-label') === '快捷插入动作' &&
+            blockSlashMenu()?.style.display !== 'none' &&
+            !!blockSlashItem() &&
+            blockSlashItem()?.getAttribute('aria-selected') === 'true',
+        );
+        blockInput.dispatchEvent(
+          new KeyboardEvent('keydown', { key: 'ArrowDown', bubbles: true, cancelable: true }),
+        );
+        blockInput.dispatchEvent(
+          new KeyboardEvent('keydown', { key: 'ArrowUp', bubbles: true, cancelable: true }),
+        );
+        blockInput.dispatchEvent(
+          new KeyboardEvent('keydown', { key: 'Enter', bubbles: true, cancelable: true }),
+        );
+        await sleep(150);
+        check(
+          'TipTap 真实键入 /：菜单可见、可键盘选择、消费触发词并转换 H2',
+          blockSlashOpen &&
+            slashKernel.editor.state.selection.$from.parent.type.name === 'heading' &&
+            slashKernel.editor.state.selection.$from.parent.attrs.level === 2 &&
+            !slashKernel.getMarkdown().includes('/h2') &&
+            blockSlashMenu()?.style.display === 'none',
+          slashKernel.getMarkdown().slice(-70),
+        );
+      } else {
+        check('TipTap 真实键入 /：块编辑器已挂载', false);
+      }
     } else {
       check('编辑器 DOM 就绪', false, `editor=${!!editorRoot} tab=${!!leftPageTab}`);
     }
@@ -1189,12 +1254,58 @@ export async function runSmokeIfEnabled(): Promise<void> {
     // 划词工具栏可见性改由下方 DEV-023 段在真实 GUI 中断言（选区 → body 挂载 → 按钮集 → Esc 隐藏）。
 
     check(
-      '源码模式无块编辑交互',
-      !document.querySelector('[data-testid="slash-menu"]') &&
-        !document.querySelector('[data-testid="selection-bubble"]') &&
-        !document.querySelector('[data-testid="block-menu"]') &&
-        !document.querySelector('[data-testid="drag-handle"]'),
+      'Markdown 源码模式没有块编辑专属 slash 菜单',
+      !document.querySelector(
+        '[data-testid="source-mode-view"] [data-testid="block-slash-menu"]',
+      ) &&
+        !document.querySelector('[data-testid="source-mode-view"] [data-testid="block-menu"]') &&
+        !document.querySelector('[data-testid="source-mode-view"] [data-testid="drag-handle"]'),
     );
+    // 真正输入路径：源码菜单的稳定 selector 必须在 `/` 键入后出现，能过滤、键盘选择并消费。
+    const initialSource = getActiveSourceEditor();
+    const initialSourceDom = document.querySelector<HTMLElement>(
+      '[data-testid="source-editor-pane"] .cm-content',
+    );
+    if (initialSource && initialSourceDom) {
+      const slashStart = initialSource.view.state.doc.length;
+      initialSource.view.dispatch({ selection: { anchor: slashStart } });
+      await typeWithKeyboard(initialSourceDom, '/h2');
+      const sourceSlashMenu = (): HTMLElement | null =>
+        document.querySelector<HTMLElement>('[data-testid="source-slash-menu"]');
+      const sourceSlashItem = (): HTMLElement | null =>
+        sourceSlashMenu()?.querySelector<HTMLElement>('[data-slash-item="block:heading:2"]') ??
+        null;
+      const sourceSlashOpen = await waitFor(
+        () =>
+          !!sourceSlashMenu() &&
+          sourceSlashMenu()?.getAttribute('role') === 'listbox' &&
+          sourceSlashMenu()?.getAttribute('aria-label') === '快捷插入动作' &&
+          sourceSlashMenu()?.style.display !== 'none' &&
+          !!sourceSlashItem() &&
+          sourceSlashItem()?.getAttribute('aria-selected') === 'true',
+      );
+      sourceSlashItem()?.dispatchEvent(
+        new KeyboardEvent('keydown', { key: 'ArrowDown', bubbles: true, cancelable: true }),
+      );
+      sourceSlashItem()?.dispatchEvent(
+        new KeyboardEvent('keydown', { key: 'ArrowUp', bubbles: true, cancelable: true }),
+      );
+      initialSourceDom.dispatchEvent(
+        new KeyboardEvent('keydown', { key: 'Enter', bubbles: true, cancelable: true }),
+      );
+      await sleep(150);
+      const sourceSlashResult = initialSource.view.state.doc.toString();
+      check(
+        'Markdown 真实键入 /：菜单可见、可键盘选择、消费触发词并写入 H2',
+        sourceSlashOpen &&
+          !sourceSlashResult.includes('/h2') &&
+          sourceSlashResult.endsWith('## ') &&
+          sourceSlashMenu()?.style.display === 'none',
+        sourceSlashResult.slice(-48),
+      );
+    } else {
+      check('Markdown 真实键入 /：源码编辑器已挂载', false);
+    }
     check(
       '右侧只读 Live Preview 渲染正文',
       (await waitFor(
@@ -2574,7 +2685,7 @@ export async function runSmokeIfEnabled(): Promise<void> {
       parentDir: '',
       name: 'DEV-047 冒烟',
       content:
-        '---\ntitle: DEV-047\n---\n\n# DEV-047 冒烟\n\n## 章节 甲\n\n正文甲\n\n## 章节 乙\n\n正文乙\n',
+        '---\ntitle: DEV-047\n---\n\n# DEV-047 冒烟\n\n## 章节 甲\n\n正文甲\n\n### 章节 甲子节\n\n子节正文\n\n## 章节 乙\n\n正文乙\n',
       format: 'markdown',
     });
     await openDocumentTab(dev047Path);
@@ -2630,6 +2741,28 @@ export async function runSmokeIfEnabled(): Promise<void> {
       ].every((id) => dev047ToolbarIds.includes(id)),
       dev047ToolbarIds.join(' | '),
     );
+
+    const sourceToolbar = document.querySelector<HTMLElement>(
+      '[data-testid="source-mode-view"] [data-testid="editor-toolbar"]',
+    );
+    const sourceAi = sourceToolbar?.querySelector<HTMLButtonElement>(
+      '[data-testid="toolbar-entry-ai"]',
+    );
+    sourceAi?.focus();
+    check(
+      'Icon-first 工具栏：AI 为 Sparkles + AI + chevron，Tooltip 与 accessible name 可达',
+      !!sourceAi &&
+        sourceAi.getAttribute('aria-label') === 'AI' &&
+        (sourceAi.textContent ?? '').includes('AI') &&
+        !!sourceAi.querySelector('svg') &&
+        !!sourceAi.querySelector('svg.lucide-chevron-down') &&
+        (await waitFor(() => !!document.querySelector('[data-testid="toolbar-tooltip"]'))) &&
+        !!sourceToolbar?.querySelector('[data-testid="toolbar-entry-edit:undo"]') &&
+        !!sourceToolbar?.querySelector('[data-testid="toolbar-entry-menu:format"]') &&
+        !!sourceToolbar?.querySelector('[data-testid="toolbar-entry-menu:insert"]'),
+      sourceAi?.textContent ?? '(missing AI)',
+    );
+    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
 
     // 预览视图是只读边界：工具栏收敛为「视图切换 + 悬浮目录」。
     const dev047TabId = useTabStore.getState().tabs.find((t) => t.pagePath === dev047Path)?.id;
@@ -2898,6 +3031,85 @@ export async function runSmokeIfEnabled(): Promise<void> {
         'DEV-047 关闭按钮收起悬浮目录',
         outlineReopened && (await waitFor(() => outlinePanel() === null)),
       );
+    }
+
+    // 6b) Markdown 标题折叠：可访问 disclosure、嵌套状态、目录 reveal、全部展开、重开默认展开，且不触碰字节。
+    {
+      const foldSource = getActiveSourceEditor();
+      const foldOriginal = await invoke('fs:readTextFile', { path: dev047Path });
+      const foldEditorText = foldSource?.view.state.doc.toString();
+      const foldButtons = (): HTMLButtonElement[] => [
+        ...document.querySelectorAll<HTMLButtonElement>('.cm-heading-fold-toggle'),
+      ];
+      const foldReady =
+        !!foldSource &&
+        (await waitFor(() => foldButtons().length >= 3)) &&
+        foldButtons().every(
+          (button) =>
+            button.getAttribute('aria-label') === '折叠章节' &&
+            button.getAttribute('aria-expanded') === 'true',
+        );
+      const parentFold = foldButtons()[0];
+      const childFold = foldButtons()[1];
+      childFold?.click();
+      parentFold?.click();
+      const nestedFolded =
+        !!foldSource &&
+        sourceFoldState(foldSource.view.state)?.folded.size === 2 &&
+        !(document.querySelector('[data-testid="source-editor-pane"]')?.textContent ?? '').includes(
+          '子节正文',
+        );
+      parentFold?.click();
+      check(
+        'Markdown 嵌套标题折叠：可访问控件、父重开后子折叠仍保留且原文未改',
+        foldReady &&
+          nestedFolded &&
+          sourceFoldState(foldSource!.view.state)?.folded.size === 1 &&
+          foldSource!.view.state.doc.toString() === foldEditorText,
+        `folded=${foldSource ? sourceFoldState(foldSource.view.state)?.folded.size : 'no editor'}`,
+      );
+      const outlineForFold = document.querySelector<HTMLButtonElement>(
+        '[data-testid="toolbar-entry-view:outline"]',
+      );
+      outlineForFold?.click();
+      await waitFor(() => !!document.querySelector('[data-testid="outline-panel"]'));
+      [...document.querySelectorAll<HTMLButtonElement>('[data-testid^="outline-entry-"]')]
+        .find((entry) => (entry.textContent ?? '') === '章节 甲子节')
+        ?.click();
+      check(
+        'Markdown 目录跳转自动展开祖先章节',
+        !!foldSource &&
+          (await waitFor(() => sourceFoldState(foldSource.view.state)?.folded.size === 0)) &&
+          foldSource.view.state.doc
+            .lineAt(foldSource.view.state.selection.main.head)
+            .text.includes('章节 甲子节'),
+      );
+      parentFold?.click();
+      document.querySelector<HTMLButtonElement>('[data-testid="outline-expand-all"]')?.click();
+      check(
+        'Markdown「全部展开」清空当前折叠且 Markdown 字节保持',
+        !!foldSource &&
+          (await waitFor(() => sourceFoldState(foldSource.view.state)?.folded.size === 0)) &&
+          foldSource.view.state.doc.toString() === foldEditorText,
+      );
+      const dev047CurrentTab = useTabStore
+        .getState()
+        .tabs.find((tab) => tab.pagePath === dev047Path);
+      if (dev047CurrentTab) {
+        parentFold?.click();
+        useTabStore.getState().closeTab(dev047CurrentTab.id);
+        await openDocumentTab(dev047Path);
+        await waitFor(
+          () => !!document.querySelector('[data-testid="source-editor-pane"] .cm-content'),
+        );
+        const reopenedFoldSource = getActiveSourceEditor();
+        check(
+          'Markdown 重开全部展开且保存前后字节不变',
+          !!reopenedFoldSource &&
+            sourceFoldState(reopenedFoldSource.view.state)?.folded.size === 0 &&
+            (await invoke('fs:readTextFile', { path: dev047Path })) === foldOriginal,
+        );
+      }
     }
 
     // 7) 页面树：点击文件夹行主体（非 chevron）切换展开/收起。

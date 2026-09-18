@@ -125,7 +125,10 @@ describe('斜杠快捷输入真实 TipTap DOM 链路（DEV-052）', () => {
     expect(first.host.querySelector('[data-slash-item]')?.getAttribute('data-slash-item')).toBe(
       'block:heading:2',
     );
-    const menu = first.host.querySelector<HTMLElement>('[data-slash-menu]')!;
+    const menu = first.host.querySelector<HTMLElement>('[data-testid="block-slash-menu"]')!;
+    expect(menu.getAttribute('role')).toBe('listbox');
+    expect(menu.getAttribute('aria-label')).toBe('快捷插入动作');
+    expect(menu.matches('[data-slash-menu]')).toBe(true);
     expect(
       menu.querySelector('[data-slash-item="block:heading:2"] [data-slash-icon="heading"]'),
     ).not.toBeNull();
