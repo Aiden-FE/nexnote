@@ -1,5 +1,5 @@
 {
-  "finishedAt": "2026-09-18T03:54:46.771Z",
+  "finishedAt": "2026-09-18T04:32:40.966Z",
   "checks": [
     {
       "name": "首启动向导可见（新建/打开/克隆三选一）",
@@ -12,7 +12,7 @@
     {
       "name": "vault:create 成功",
       "passed": true,
-      "detail": "/var/folders/np/sd6hrwgj7gs9m5chdfpcycv00000gn/T/nexnote-smoke-vault-3VecIF/smoke-vault"
+      "detail": "/var/folders/np/sd6hrwgj7gs9m5chdfpcycv00000gn/T/nexnote-smoke-vault-nhVZ31/smoke-vault"
     },
     {
       "name": "工作区出现（vault:changed 驱动）",
@@ -143,6 +143,11 @@
       "passed": true
     },
     {
+      "name": "TipTap 真实键入 /：菜单可见、可键盘选择、消费触发词并转换 H2",
+      "passed": false,
+      "detail": "# 冒烟页面 A ^c2j4yz5\n\n\n\n  \n  \n第一块  \n第二块 /h2 ^2oonaf7"
+    },
+    {
       "name": "块编辑划词工具栏：AI 单一入口 + 七项动作 + 平铺格式化/双链",
       "passed": true
     },
@@ -161,10 +166,6 @@
     {
       "name": "关闭并重新打开文档内容一致",
       "passed": true
-    },
-    {
-      "name": "TipTap 真实键入 /：块编辑器已挂载",
-      "passed": false
     },
     {
       "name": "冒烟可配置指向内嵌 mock 的写作 Profile（无密钥）",
@@ -264,17 +265,17 @@
     {
       "name": "DEV-033 会话文件为 .nexnote/sessions/{hash}.txt",
       "passed": true,
-      "detail": ".nexnote/sessions/e4e8db2b421eb5a904e1c7fcbf8dd4b7c718f2e748f5579480efa0a79b0a793f.txt"
+      "detail": ".nexnote/sessions/fe3b8559773924e45aa85b6e37e6bcf2c3edf313868afcd5372c02b2a5603359.txt"
     },
     {
       "name": "DEV-033 会话内容为 JSONL 快照（非 type: chat 页面）",
       "passed": true,
-      "detail": "{\"type\":\"snapshot\",\"session\":{\"meta\":{\"id\":\"9c33afea-4fde-460a-b565-157250dfc097"
+      "detail": "{\"type\":\"snapshot\",\"session\":{\"meta\":{\"id\":\"2d2744af-2b04-40cb-968f-97fcf24359ca"
     },
     {
       "name": "DEV-033 重启后历史可列出且带未完成状态",
       "passed": true,
-      "detail": "{\"path\":\".nexnote/sessions/e4e8db2b421eb5a904e1c7fcbf8dd4b7c718f2e748f5579480efa0a79b0a793f.txt\",\"id\":\"9c33afea-4fde-460a-b565-157250dfc097\",\"title\":\"DEV-033 会话\",\"model\":null,\"turnCount\":2,\"updatedAt\":\"2026-09-18T03:51:58.121Z\",\"status\":\"cancelled\"}"
+      "detail": "{\"path\":\".nexnote/sessions/fe3b8559773924e45aa85b6e37e6bcf2c3edf313868afcd5372c02b2a5603359.txt\",\"id\":\"2d2744af-2b04-40cb-968f-97fcf24359ca\",\"title\":\"DEV-033 会话\",\"model\":null,\"turnCount\":2,\"updatedAt\":\"2026-09-18T04:30:47.123Z\",\"status\":\"cancelled\"}"
     },
     {
       "name": "DEV-033 历史可按标题搜索",
@@ -304,7 +305,7 @@
     {
       "name": "DEV-033 导出产物是普通页面（native-block）",
       "passed": true,
-      "detail": "{\"id\":\"50ded37b-3d7c-4a0a-833a-170a6882df33\",\"createdAt\":\"2026-09-18T03:51:58.816Z\",\"format\":\"native-block\"}"
+      "detail": "{\"id\":\"423a3b04-c019-4341-9710-a80c0f41ee4f\",\"createdAt\":\"2026-09-18T04:30:47.826Z\",\"format\":\"native-block\"}"
     },
     {
       "name": "DEV-033 导出产物与会话脱钩（正文为普通 markdown）",
@@ -374,7 +375,7 @@
     {
       "name": "默认新建文档持久为 native-block",
       "passed": true,
-      "detail": "{\"id\":\"1fc05cab-d8a3-4e7c-a56f-e9fa0a55387e\",\"createdAt\":\"2026-09-18T03:52:02.602Z\",\"format\":\"native-block\"}"
+      "detail": "{\"id\":\"f62c578a-7837-4a36-925b-e5fefbe37146\",\"createdAt\":\"2026-09-18T04:30:51.634Z\",\"format\":\"native-block\"}"
     },
     {
       "name": "native-block 默认进入块编辑且源码入口不可见",
@@ -391,7 +392,7 @@
     {
       "name": "Markdown sidecar 格式真实记录",
       "passed": true,
-      "detail": "{\"id\":\"4c94ce13-1180-483f-b553-0c2d655ac511\",\"createdAt\":\"2026-09-18T03:52:03.370Z\",\"format\":\"markdown\"}"
+      "detail": "{\"id\":\"6fd6e55b-b837-410d-91fd-ed1258590bf1\",\"createdAt\":\"2026-09-18T04:30:52.408Z\",\"format\":\"markdown\"}"
     },
     {
       "name": "Markdown 文档打开源码模式",
@@ -410,8 +411,8 @@
       "passed": true
     },
     {
-      "name": "Markdown 源码模式没有块编辑专属 slash 菜单",
-      "passed": false
+      "name": "Markdown 源码 slash 菜单初始关闭（不以不存在 selector 假绿）",
+      "passed": true
     },
     {
       "name": "Markdown 真实键入 /：菜单可见、可键盘选择、消费触发词并写入 H2",
@@ -686,7 +687,7 @@
     {
       "name": "新建 Markdown 保持正文干净、产品 metadata 在 sidecar",
       "passed": true,
-      "detail": "{\"text\":\"# 冒烟首页\\n\",\"metadata\":{\"id\":\"694961c1-e36f-47a1-8b80-c74b55fe6e2c\",\"createdAt\":\"2026-09-18T03:52:39.020Z\",\"format\":\"native-block\"}}"
+      "detail": "{\"text\":\"# 冒烟首页\\n\",\"metadata\":{\"id\":\"db780542-bb70-402f-853d-90fa9cbf7262\",\"createdAt\":\"2026-09-18T04:31:28.133Z\",\"format\":\"native-block\"}}"
     },
     {
       "name": "状态栏显示 vault 根名",
@@ -781,7 +782,7 @@
     {
       "name": "500 节点 / 2000 边连续交互 FPS ≥ 30",
       "passed": true,
-      "detail": "fps=121.0 wheels=109"
+      "detail": "fps=121.0 wheels=108"
     },
     {
       "name": "文件夹子树过滤生效",
@@ -809,7 +810,7 @@
     {
       "name": "DEV-008 IPC getConfidence 返回缓存分数",
       "passed": true,
-      "detail": "{\"pageId\":5,\"activeConfidence\":{\"pageId\":5,\"path\":\"graph/group-a/group-a-node-0.md\",\"score\":38,\"factors\":[{\"key\":\"stability\",\"label\":\"内容稳定性\",\"score\":0.4,\"weight\":0.25,\"contribution\":10,\"detail\":\"0 次历史改动按近期权重聚合，改动越小越稳定\"},{\"key\":\"review_count\",\"label\":\"修订次数\",\"score\":0,\"weight\":0.15,\"contribution\":0,\"detail\":\"0 次提交，20 次后饱和\"},{\"key\":\"author_count\",\"label\":\"作者数量\",\"score\":0.25,\"weight\":0.15,\"contribution\":3.75,\"detail\":\"1 位作者，单人保留基础分\"},{\"key\":\"age\",\"label\":\"文档年龄\",\"score\":0,\"weight\":0.15,\"contribution\":0,\"detail\":\"文档存活 0 天，按对数增长\"},{\"key\":\"link_authority\",\"label\":\"链接权威度\",\"score\":0.94,\"weight\":0.2,\"contribution\":18.8,\"detail\":\"由去重入链图的简化 PageRank 归一化\"},{\"key\":\"manual_boost\",\"label\":\"手动加权\",\"score\":0.5,\"weight\":0.1,\"contribution\":5,\"detail\":\"未设置 confidence_boost，使用中性分\"}],\"computedAt\":\"2026-09-18T03:52:47.981Z\"}}"
+      "detail": "{\"pageId\":5,\"activeConfidence\":{\"pageId\":5,\"path\":\"graph/group-a/group-a-node-0.md\",\"score\":38,\"factors\":[{\"key\":\"stability\",\"label\":\"内容稳定性\",\"score\":0.4,\"weight\":0.25,\"contribution\":10,\"detail\":\"0 次历史改动按近期权重聚合，改动越小越稳定\"},{\"key\":\"review_count\",\"label\":\"修订次数\",\"score\":0,\"weight\":0.15,\"contribution\":0,\"detail\":\"0 次提交，20 次后饱和\"},{\"key\":\"author_count\",\"label\":\"作者数量\",\"score\":0.25,\"weight\":0.15,\"contribution\":3.75,\"detail\":\"1 位作者，单人保留基础分\"},{\"key\":\"age\",\"label\":\"文档年龄\",\"score\":0,\"weight\":0.15,\"contribution\":0,\"detail\":\"文档存活 0 天，按对数增长\"},{\"key\":\"link_authority\",\"label\":\"链接权威度\",\"score\":0.94,\"weight\":0.2,\"contribution\":18.8,\"detail\":\"由去重入链图的简化 PageRank 归一化\"},{\"key\":\"manual_boost\",\"label\":\"手动加权\",\"score\":0.5,\"weight\":0.1,\"contribution\":5,\"detail\":\"未设置 confidence_boost，使用中性分\"}],\"computedAt\":\"2026-09-18T04:31:37.125Z\"}}"
     },
     {
       "name": "DEV-008 属性面板显示真实置信度总分与六个因子",
@@ -872,7 +873,7 @@
     {
       "name": "DEV-015 保存文件为 Obsidian 原生语法（围栏/$$/$）",
       "passed": true,
-      "detail": "```mermaid\ngraph TD\n  A[\"开始\"] --> B[\"结束\"]\n```\n\n$$\nE = mc^2\n$$\n\n# $a^2 + b^2 = c^2$内置插件演示 ^vopnxe4g\n"
+      "detail": "```mermaid\ngraph TD\n  A[\"开始\"] --> B[\"结束\"]\n```\n\n$$\nE = mc^2\n$$\n\n# $a^2 + b^2 = c^2$内置插件演示 ^ktmit148\n"
     },
     {
       "name": "DEV-015 设置页插件分区可见",
@@ -926,8 +927,8 @@
     },
     {
       "name": "DEV-047 源码页工具栏含 撤销/重做/表格/流程图/甘特图/正文目录/格式化选区/格式化全文",
-      "passed": false,
-      "detail": "edit:undo | edit:redo | block:type | format:bold | format:italic | format:wikilink | menu:format | menu:insert | ai | view:source | view:split | view:preview | view:outline"
+      "passed": true,
+      "detail": "edit:undo | edit:redo | block:type | format:bold | format:italic | format:wikilink | menu:format | menu:insert | ai | view:source | view:split | view:preview | view:outline | format:strike | format:code | format:link | format:selection | format:document | insert:table | insert:image | insert:attachment | insert:mermaid-flowchart | insert:mermaid-gantt | insert:toc | ai:ask | ai:insert | ai:rewrite | ai:polish | ai:condense | ai:expand | ai:fillgaps | ai:evidence | translate:document"
     },
     {
       "name": "Icon-first 工具栏：AI 为 Sparkles + AI + chevron，Tooltip 与 accessible name 可达",
@@ -958,8 +959,8 @@
     },
     {
       "name": "DEV-047 格式化全文：标题标记单空格、*item 补空格、连续空行合并",
-      "passed": false,
-      "detail": "\"# DEV-047 冒烟\\n\\n## 章节 甲\\n\\n正文甲\\n\\n### 章节 甲子节\\n\\n子节正文\\n\\n## 章节 乙\\n\\n正文乙\\n\\n缩进行甲\\n缩进行乙\\n\\n##  章节  丙\\n\\n正文一\\n\\n\\n\\n\\n正文二\\n\\n*item\\n\\n```text\\n##  围栏内标题\\n*  围栏内列表\\n\\n\\n```\\n\""
+      "passed": true,
+      "detail": "\"# DEV-047 冒烟\\n\\n## 章节 甲\\n\\n正文甲\\n\\n### 章节 甲子节\\n\\n子节正文\\n\\n## 章节 乙\\n\\n正文乙\\n\\n缩进行甲\\n缩进行乙\\n\\n## 章节  丙\\n\\n正文一\\n\\n正文二\\n\\n* item\\n\\n```text\\n##  围栏内标题\\n*  围栏内列表\\n\\n\\n```\\n\""
     },
     {
       "name": "DEV-047 格式化全文：围栏代码内容逐字节不变",
@@ -967,20 +968,20 @@
     },
     {
       "name": "DEV-047 格式化全文：一次撤销恢复格式化前原文",
-      "passed": false
+      "passed": true
     },
     {
       "name": "DEV-047 格式化全文写盘：frontmatter 原样、规范化正文落盘",
-      "passed": false,
+      "passed": true,
       "detail": "---\ntitle: DEV-047\n---\n\n# DEV-047 冒烟\n\n## 章节 甲\n\n正文甲\n\n### 章节 甲"
     },
     {
       "name": "DEV-047 流程图插入：源码出现 ```mermaid 与 flowchart TD 模板",
-      "passed": false
+      "passed": true
     },
     {
       "name": "DEV-047 流程图插入：LivePreview 渲染 SVG 图表",
-      "passed": false
+      "passed": true
     },
     {
       "name": "DEV-047 流程图插入：一次撤销整块移除",
@@ -988,11 +989,11 @@
     },
     {
       "name": "DEV-047 甘特图插入：源码出现 gantt 模板",
-      "passed": false
+      "passed": true
     },
     {
       "name": "DEV-047 甘特图插入：LivePreview 渲染 SVG 图表",
-      "passed": false
+      "passed": true
     },
     {
       "name": "DEV-047 甘特图插入：一次撤销整块移除",
@@ -1000,31 +1001,31 @@
     },
     {
       "name": "DEV-047 正文目录插入：源码恰有一行 <!-- nexnote:toc -->",
-      "passed": false,
-      "detail": "markers=0"
+      "passed": true,
+      "detail": "markers=1"
     },
     {
       "name": "DEV-047 正文目录：预览渲染目录容器与派生标题条目",
-      "passed": false,
-      "detail": "items=0"
+      "passed": true,
+      "detail": "items=5"
     },
     {
       "name": "DEV-047 正文目录：一次撤销移除标记、重做恢复",
-      "passed": false
+      "passed": true
     },
     {
       "name": "DEV-047 正文目录写盘：磁盘只保留标记行（条目不落盘）",
-      "passed": false,
-      "detail": "markers=0"
+      "passed": true,
+      "detail": "markers=1"
     },
     {
       "name": "DEV-047 关闭重开：目录条目仍从磁盘标记派生",
-      "passed": false
+      "passed": true
     },
     {
       "name": "DEV-047 悬浮目录开启：条目与文档标题一致",
       "passed": true,
-      "detail": "entries=DEV-047 冒烟,章节 甲,章节 甲子节,章节 乙"
+      "detail": "entries=DEV-047 冒烟,章节 甲,章节 甲子节,章节 乙,章节  丙"
     },
     {
       "name": "DEV-047 点击悬浮目录条目：编辑器选区定位到对应标题（源码态）",
@@ -1080,7 +1081,7 @@
     {
       "name": "DEV-048 预览视图占满：内容列宽度 ≥ 预览容器 - 80px",
       "passed": true,
-      "detail": "content=1057px host=1057px"
+      "detail": "content=1042px host=1057px"
     },
     {
       "name": "DEV-048 预览视图占满：内容列 max-width 为 none（不再受 46rem 阅读列限制）",
@@ -1099,7 +1100,7 @@
     {
       "name": "DEV-048 点击展开按钮恢复目录条目",
       "passed": true,
-      "detail": "entries=4"
+      "detail": "entries=5"
     },
     {
       "name": "DEV-048 长文页打开（分栏 + 预览渲染 14 个 H2，预览可滚动）",

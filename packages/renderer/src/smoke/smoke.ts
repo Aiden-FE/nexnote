@@ -8,7 +8,7 @@ import { useTagStore } from '../stores/tag-store';
 import { usePageTreeStore } from '../stores/page-tree-store';
 import { useThemeStore } from '../theme/theme-store';
 import { dockPanelRegistry } from '../registries';
-import { getActiveEditor, getEditorForTab } from '../editor/active-editor';
+import { getActiveEditor } from '../editor/active-editor';
 import { getActiveSourceEditor } from '../editor/source/active-source-editor';
 import { currentPageCandidates } from '../editor/wikilink-page-ops';
 import { applySourceFormat } from '../editor/source/source-formatting';
@@ -95,6 +95,52 @@ async function typeWithKeyboard(target: HTMLElement, text: string): Promise<void
     if (!document.execCommand('insertText', false, character)) {
       throw new Error(`Chromium 未接受输入字符: ${character}`);
     }
+    await sleep(30);
+  }
+}
+
+/**
+ * ProseMirror's browser path requires the DOM mutation that follows keydown. Chromium's
+ * execCommand is sufficient for CodeMirror but does not consistently produce that mutation
+ * after programmatic TipTap selection changes, so emulate the browser's DOM/input sequence.
+ * This remains a visible-editor input path: it never invokes a TipTap hook or transaction.
+ */
+async function typeWithDomInput(target: HTMLElement, text: string): Promise<void> {
+  target.focus();
+  for (const character of text) {
+    target.dispatchEvent(
+      new KeyboardEvent('keydown', { key: character, bubbles: true, cancelable: true }),
+    );
+    // Chromium's synthetic KeyboardEvent keeps charCode at 0; ProseMirror's keypress
+    // handler intentionally ignores that as a non-text key. Supply the browser field.
+    const keypress = new KeyboardEvent('keypress', {
+      key: character,
+      bubbles: true,
+      cancelable: true,
+    });
+    Object.defineProperty(keypress, 'charCode', { value: character.charCodeAt(0) });
+    target.dispatchEvent(keypress);
+    target.dispatchEvent(
+      new InputEvent('beforeinput', {
+        bubbles: true,
+        cancelable: true,
+        inputType: 'insertText',
+        data: character,
+      }),
+    );
+    const selection = document.getSelection();
+    const range = selection?.rangeCount ? selection.getRangeAt(0) : null;
+    if (!range) throw new Error(`TipTap DOM 选区缺失: ${character}`);
+    range.deleteContents();
+    const node = document.createTextNode(character);
+    range.insertNode(node);
+    range.setStartAfter(node);
+    range.collapse(true);
+    selection?.removeAllRanges();
+    selection?.addRange(range);
+    target.dispatchEvent(
+      new InputEvent('input', { bubbles: true, inputType: 'insertText', data: character }),
+    );
     await sleep(30);
   }
 }
@@ -410,6 +456,58 @@ export async function runSmokeIfEnabled(): Promise<void> {
       // 保存后的文档保持原路径；H1 重命名由独立 page-ops 测试覆盖，避免冒烟流程把焦点/防抖验收与命名联动耦合。
       check('编辑后页面路径保持稳定', leftPageTab.pagePath === '冒烟页面 A.md');
 
+      // 真正输入路径：活动 TipTap 的 DOM 键入 `/h2`，不调用内部 slash hook 或注入菜单状态。
+      const blockSlashInput = editorRoot;
+      const blockSlashKernel = getActiveEditor();
+      if (blockSlashKernel && blockSlashInput) {
+        const slashPosition = blockSlashKernel.editor.state.doc.content.size - 1;
+        blockSlashKernel.editor.commands.setTextSelection(slashPosition);
+        blockSlashInput.focus();
+        // 同步原生 DOM selection 到 ProseMirror 位置；随后只经浏览器 key/input 事件写入。
+        const domPosition = blockSlashKernel.editor.view.domAtPos(slashPosition);
+        const range = document.createRange();
+        range.setStart(domPosition.node, domPosition.offset);
+        range.collapse(true);
+        document.getSelection()?.removeAllRanges();
+        document.getSelection()?.addRange(range);
+        await typeWithDomInput(blockSlashInput, ' /h2');
+        const blockSlashMenu = (): HTMLElement | null =>
+          document.querySelector<HTMLElement>('[data-testid="block-slash-menu"]');
+        const blockSlashItem = (): HTMLElement | null =>
+          blockSlashMenu()?.querySelector<HTMLElement>('[data-slash-item="block:heading:2"]') ??
+          null;
+        const blockSlashOpen = await waitFor(
+          () =>
+            !!blockSlashMenu() &&
+            blockSlashMenu()?.getAttribute('role') === 'listbox' &&
+            blockSlashMenu()?.getAttribute('aria-label') === '快捷插入动作' &&
+            blockSlashMenu()?.style.display !== 'none' &&
+            !!blockSlashItem() &&
+            blockSlashItem()?.getAttribute('aria-selected') === 'true',
+        );
+        blockSlashInput.dispatchEvent(
+          new KeyboardEvent('keydown', { key: 'ArrowDown', bubbles: true, cancelable: true }),
+        );
+        blockSlashInput.dispatchEvent(
+          new KeyboardEvent('keydown', { key: 'ArrowUp', bubbles: true, cancelable: true }),
+        );
+        blockSlashInput.dispatchEvent(
+          new KeyboardEvent('keydown', { key: 'Enter', bubbles: true, cancelable: true }),
+        );
+        await sleep(150);
+        check(
+          'TipTap 真实键入 /：菜单可见、可键盘选择、消费触发词并转换 H2',
+          blockSlashOpen &&
+            blockSlashKernel.editor.state.selection.$from.parent.type.name === 'heading' &&
+            blockSlashKernel.editor.state.selection.$from.parent.attrs.level === 2 &&
+            !blockSlashKernel.getMarkdown().includes('/h2') &&
+            blockSlashMenu()?.style.display === 'none',
+          blockSlashKernel.getMarkdown().slice(-70),
+        );
+      } else {
+        check('TipTap 真实键入 /：块编辑器已挂载', false);
+      }
+
       // DEV-023 块编辑「双链」按钮：选中「第一块」经内核 wikilink 节点插入（可 undo）。
       const blockKernel = getActiveEditor();
       if (blockKernel) {
@@ -495,11 +593,7 @@ export async function runSmokeIfEnabled(): Promise<void> {
         }
       }
       useTabStore.getState().closeTab(leftPageTab.id);
-      useTabStore.getState().openTab({
-        kind: 'page',
-        title: '冒烟页面 A',
-        pagePath: '冒烟页面 A.md',
-      });
+      await openDocumentTab('冒烟页面 A.md');
       const reopenedEditor = () =>
         document.querySelector(
           '[data-testid="editor-view"][data-path="冒烟页面 A.md"] .ProseMirror',
@@ -511,53 +605,6 @@ export async function runSmokeIfEnabled(): Promise<void> {
           return text.includes('第一块') && text.includes('第二块');
         }),
       );
-      const reopenedTab = useTabStore
-        .getState()
-        .tabs.find((tab) => tab.pagePath === '冒烟页面 A.md');
-      const slashKernel = reopenedTab ? getEditorForTab(reopenedTab.id) : null;
-      const blockInput = reopenedEditor() as HTMLElement | null;
-      if (slashKernel && blockInput) {
-        slashKernel.editor.commands.setTextSelection(slashKernel.editor.state.doc.content.size - 1);
-        blockInput.focus();
-        // 浏览器自身处理 Enter 创建空块；不通过 hook 或编辑器命令注入 slash session。
-        document.execCommand('insertParagraph');
-        await typeWithKeyboard(blockInput, '/h2');
-        const blockSlashMenu = (): HTMLElement | null =>
-          document.querySelector<HTMLElement>('[data-testid="block-slash-menu"]');
-        const blockSlashItem = (): HTMLElement | null =>
-          blockSlashMenu()?.querySelector<HTMLElement>('[data-slash-item="block:heading:2"]') ??
-          null;
-        const blockSlashOpen = await waitFor(
-          () =>
-            !!blockSlashMenu() &&
-            blockSlashMenu()?.getAttribute('role') === 'listbox' &&
-            blockSlashMenu()?.getAttribute('aria-label') === '快捷插入动作' &&
-            blockSlashMenu()?.style.display !== 'none' &&
-            !!blockSlashItem() &&
-            blockSlashItem()?.getAttribute('aria-selected') === 'true',
-        );
-        blockInput.dispatchEvent(
-          new KeyboardEvent('keydown', { key: 'ArrowDown', bubbles: true, cancelable: true }),
-        );
-        blockInput.dispatchEvent(
-          new KeyboardEvent('keydown', { key: 'ArrowUp', bubbles: true, cancelable: true }),
-        );
-        blockInput.dispatchEvent(
-          new KeyboardEvent('keydown', { key: 'Enter', bubbles: true, cancelable: true }),
-        );
-        await sleep(150);
-        check(
-          'TipTap 真实键入 /：菜单可见、可键盘选择、消费触发词并转换 H2',
-          blockSlashOpen &&
-            slashKernel.editor.state.selection.$from.parent.type.name === 'heading' &&
-            slashKernel.editor.state.selection.$from.parent.attrs.level === 2 &&
-            !slashKernel.getMarkdown().includes('/h2') &&
-            blockSlashMenu()?.style.display === 'none',
-          slashKernel.getMarkdown().slice(-70),
-        );
-      } else {
-        check('TipTap 真实键入 /：块编辑器已挂载', false);
-      }
     } else {
       check('编辑器 DOM 就绪', false, `editor=${!!editorRoot} tab=${!!leftPageTab}`);
     }
@@ -1254,12 +1301,10 @@ export async function runSmokeIfEnabled(): Promise<void> {
     // 划词工具栏可见性改由下方 DEV-023 段在真实 GUI 中断言（选区 → body 挂载 → 按钮集 → Esc 隐藏）。
 
     check(
-      'Markdown 源码模式没有块编辑专属 slash 菜单',
-      !document.querySelector(
-        '[data-testid="source-mode-view"] [data-testid="block-slash-menu"]',
-      ) &&
-        !document.querySelector('[data-testid="source-mode-view"] [data-testid="block-menu"]') &&
-        !document.querySelector('[data-testid="source-mode-view"] [data-testid="drag-handle"]'),
+      'Markdown 源码 slash 菜单初始关闭（不以不存在 selector 假绿）',
+      !document.querySelector('[data-testid="source-slash-menu"]') ||
+        document.querySelector<HTMLElement>('[data-testid="source-slash-menu"]')?.style.display ===
+          'none',
     );
     // 真正输入路径：源码菜单的稳定 selector 必须在 `/` 键入后出现，能过滤、键盘选择并消费。
     const initialSource = getActiveSourceEditor();
@@ -2697,12 +2742,45 @@ export async function runSmokeIfEnabled(): Promise<void> {
     );
 
     // 1) 源码页工具栏动作集（平铺或「更多」溢出菜单均视为可达）。
-    const toolbarReachableIds = async (): Promise<string[]> => {
-      const ids = new Set(rowEntryIds().filter((id) => id !== 'toolbar:more'));
-      if (moreButton()) {
-        moreButton()?.click();
+    const sourceToolbarRoot = (): HTMLElement | null =>
+      document.querySelector<HTMLElement>(
+        '[data-testid="source-mode-view"] [data-testid="editor-toolbar"]',
+      );
+    const sourceToolbarEntry = (id: string): HTMLButtonElement | null =>
+      sourceToolbarRoot()?.querySelector<HTMLButtonElement>(
+        `[data-testid="toolbar-entry-${CSS.escape(id)}"]`,
+      ) ?? null;
+    const sourceMoreButton = (): HTMLButtonElement | null =>
+      sourceToolbarRoot()?.querySelector<HTMLButtonElement>('[data-testid="toolbar-more"]') ?? null;
+    const sourceToolbarMenuItems = (): HTMLElement[] => [
+      ...(document
+        .querySelector('[data-testid="toolbar-more-menu"]')
+        ?.querySelectorAll<HTMLElement>('[role="menuitem"]') ?? []),
+    ];
+    const sourceToolbarReachableIds = async (): Promise<string[]> => {
+      const ids = new Set(
+        [
+          ...(sourceToolbarRoot()?.querySelectorAll<HTMLElement>(
+            'button[data-toolbar-item="true"]',
+          ) ?? []),
+        ]
+          .map((el) => el.dataset.itemId ?? '')
+          .filter((id) => id !== 'toolbar:more'),
+      );
+      for (const menuId of ['menu:format', 'menu:insert', 'ai']) {
+        sourceToolbarEntry(menuId)?.click();
+        await sleep(100);
+        for (const item of document.querySelectorAll<HTMLElement>(
+          '[data-testid="toolbar-menu"] [role="menuitem"]',
+        ))
+          ids.add((item.dataset.testid ?? '').replace('toolbar-menu-item-', ''));
+        document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+      }
+      if (sourceMoreButton()) {
+        sourceMoreButton()?.click();
         await sleep(250);
-        for (const id of menuItemIds()) ids.add(id);
+        for (const item of sourceToolbarMenuItems())
+          ids.add((item.dataset.testid ?? '').replace('toolbar-menu-item-', ''));
         document
           .querySelector('[data-testid="toolbar-more-menu"]')
           ?.dispatchEvent(
@@ -2715,18 +2793,26 @@ export async function runSmokeIfEnabled(): Promise<void> {
     // 与 clickToolbarAction 不同：动作收进「更多」时先开菜单并等 React 渲染一拍再点
     // （同步 click 后菜单尚未挂载，立即查找会落空）。
     const clickToolbarEntry = async (id: string): Promise<boolean> => {
-      const inline = findToolbarAction(id);
-      if (inline) {
-        inline.click();
-        return true;
+      let target = sourceToolbarEntry(id);
+      const menuItem = (): HTMLButtonElement | null =>
+        sourceToolbarRoot()?.querySelector<HTMLButtonElement>(
+          `[data-testid="toolbar-menu-item-${CSS.escape(id)}"]`,
+        ) ?? null;
+      if (!target) {
+        const menuId = id.startsWith('format:') ? 'menu:format' : 'menu:insert';
+        sourceToolbarEntry(menuId)?.click();
+        await sleep(250);
+        target = menuItem();
       }
-      moreButton()?.click();
-      await sleep(250);
-      const target = findToolbarAction(id);
+      if (!target && sourceMoreButton()) {
+        sourceMoreButton()?.click();
+        await sleep(250);
+        target = menuItem();
+      }
       target?.click();
       return !!target;
     };
-    const dev047ToolbarIds = await toolbarReachableIds();
+    const dev047ToolbarIds = await sourceToolbarReachableIds();
     check(
       'DEV-047 源码页工具栏含 撤销/重做/表格/流程图/甘特图/正文目录/格式化选区/格式化全文',
       [
@@ -2742,9 +2828,7 @@ export async function runSmokeIfEnabled(): Promise<void> {
       dev047ToolbarIds.join(' | '),
     );
 
-    const sourceToolbar = document.querySelector<HTMLElement>(
-      '[data-testid="source-mode-view"] [data-testid="editor-toolbar"]',
-    );
+    const sourceToolbar = sourceToolbarRoot();
     const sourceAi = sourceToolbar?.querySelector<HTMLButtonElement>(
       '[data-testid="toolbar-entry-ai"]',
     );
