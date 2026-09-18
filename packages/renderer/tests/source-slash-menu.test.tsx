@@ -234,7 +234,9 @@ describe('Markdown CodeMirror / 快捷输入（DEV-053）', () => {
 
     const fixture = mount();
     await type(fixture, '/h2');
-    const button = fixture.parent.querySelector<HTMLButtonElement>('[data-slash-item="block:heading:2"]')!;
+    const button = fixture.parent.querySelector<HTMLButtonElement>(
+      '[data-slash-item="block:heading:2"]',
+    )!;
     button.focus();
     button.click();
     expect(fixture.editor.getText()).toBe('## ');
@@ -276,6 +278,162 @@ describe('Markdown CodeMirror / 快捷输入（DEV-053）', () => {
     await Promise.resolve();
     expect(editor.getText()).toBe('/图片');
     fixture.cleanup();
+  });
+
+  it('CRLF 末尾结构、代码围栏保持字节与合法 doc 位置', async () => {
+    const table = mount('原文\r\n');
+    await type(table, '/表格');
+    press(table, 'Enter');
+    expect(table.editor.getText()).toBe(
+      '原文\r\n\r\n| 列 1 | 列 2 |\r\n| --- | --- |\r\n|  |  |\r\n',
+    );
+    expect([...Buffer.from(table.editor.getText())]).toEqual([
+      ...Buffer.from('原文\r\n\r\n| 列 1 | 列 2 |\r\n| --- | --- |\r\n|  |  |\r\n'),
+    ]);
+    table.cleanup();
+    const code = mount('前文\r\n');
+    await type(code, '/code');
+    press(code, 'Enter');
+    expect(code.editor.getText()).toBe('前文\r\n```\r\n\r\n```');
+    code.cleanup();
+  });
+
+  it('软换行段落内结构与插件插在完整顶层段落后', async () => {
+    const fixture = mount('首行\n第二行 ');
+    await type(fixture, '/表格');
+    press(fixture, 'Enter');
+    expect(fixture.editor.getText()).toBe(
+      '首行\n第二行 \n\n| 列 1 | 列 2 |\n| --- | --- |\n|  |  |\n',
+    );
+    fixture.cleanup();
+  });
+
+  it.each([
+    ['多行数学', '$$\nx + y\n', '/h2'],
+    ['四反引号围栏包含短围栏', '````\n```\n', '/h2'],
+  ])('%s 不出现菜单', async (_label, before, input) => {
+    const fixture = mount(before);
+    await type(fixture, input);
+    expect(fixture.parent.querySelector<HTMLElement>('[data-slash-menu]')?.style.display).toBe(
+      'none',
+    );
+    fixture.cleanup();
+  });
+
+  it('精准 /AI 选中 AI，英文、中文和记号别名均可查找', async () => {
+    const ai = mount();
+    await type(ai, '/AI');
+    expect(ai.parent.querySelector('[aria-selected="true"]')?.getAttribute('data-slash-item')).toBe(
+      'ai:insert',
+    );
+    ai.cleanup();
+    for (const [alias, id] of [
+      ['/heading 2', 'block:heading:2'],
+      ['/二级标题', 'block:heading:2'],
+      ['/##', 'block:heading:2'],
+    ]) {
+      const fixture = mount();
+      await type(fixture, alias);
+      expect(
+        fixture.parent.querySelector('[aria-selected="true"]')?.getAttribute('data-slash-item'),
+      ).toBe(id);
+      fixture.cleanup();
+    }
+  });
+
+  it('菜单和 AI 锚点经历纯切换后永久失效', async () => {
+    let active = true;
+    let notify = () => undefined;
+    let apply: (text: string) => void = () => undefined;
+    const fixture = mount('', true, {
+      isEnabled: () => active,
+      onActivityChange: (callback) => {
+        notify = callback;
+        return () => undefined;
+      },
+      onAiInsert: (_view, _prompt, accept) => {
+        apply = accept;
+        return true;
+      },
+    });
+    await type(fixture, '/h2');
+    active = false;
+    notify();
+    active = true;
+    notify();
+    press(fixture, 'Enter');
+    expect(fixture.editor.getText()).toBe('/h2\n');
+    fixture.editor.view.dispatch({ changes: { from: 0, to: 4, insert: '' } });
+    window.prompt = vi.fn(() => '说明');
+    await type(fixture, '/AI');
+    press(fixture, 'Enter');
+    await vi.waitFor(() => expect(fixture.editor.getText()).toBe(''));
+    active = false;
+    notify();
+    active = true;
+    notify();
+    apply('不应写入');
+    expect(fixture.editor.getText()).toBe('');
+    fixture.cleanup();
+  });
+
+  it('媒体成功、导入期间切换失效及插件失败保留原文', async () => {
+    const success = mount('正文 ', true, { importMedia: async () => 'assets/a (1).png' });
+    await type(success, '/图片');
+    press(success, 'Enter');
+    await vi.waitFor(() => expect(success.editor.getText()).toContain('![](assets/a%20(1%29.png)'));
+    expect(undo(success.editor.view)).toBe(true);
+    expect(success.editor.getText()).toBe('正文 /图片');
+    success.cleanup();
+    let resolve!: (path: string) => void;
+    let active = true;
+    let notify = () => undefined;
+    const stale = mount('', true, {
+      isEnabled: () => active,
+      onActivityChange: (callback) => {
+        notify = callback;
+        return () => undefined;
+      },
+      importMedia: () =>
+        new Promise((done) => {
+          resolve = done;
+        }),
+    });
+    await type(stale, '/附件');
+    press(stale, 'Enter');
+    await vi.waitFor(() => expect(resolve).toBeTypeOf('function'));
+    active = false;
+    notify();
+    active = true;
+    notify();
+    resolve('assets/file');
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(stale.editor.getText()).toBe('/附件');
+    stale.cleanup();
+    const meta = pluginQuickInsertMetadata('block');
+    const failure = mount('', true, {
+      pluginActions: () => [
+        {
+          id: 'plugin:fail',
+          name: '失败插件',
+          icon: meta.icon,
+          semantic: 'insert',
+          group: 'insert',
+          modes: ['source'],
+          quickInsert: meta.quickInsert,
+          run: async () => {
+            throw new Error('failed');
+          },
+        },
+      ],
+    });
+    await type(failure, '/失败插件');
+    press(failure, 'Enter');
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(failure.editor.getText()).toBe('/失败插件');
+    failure.cleanup();
   });
 
   it('禁用时不创建入口，AI 仅在确认和显式指令后调用', async () => {
@@ -482,9 +640,12 @@ describe('SourceModeView 三视图真实 CodeMirror 挂载', () => {
         container.querySelector<HTMLElement>('[data-testid=source-editor-pane] [data-slash-menu]')
           ?.style.display,
       ).toBe('block');
-      dom.dispatchEvent(
-        new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true }),
-      );
+      await act(async () => {
+        dom.dispatchEvent(
+          new KeyboardEvent('keydown', { key: 'Enter', bubbles: true, cancelable: true }),
+        );
+      });
+      expect(handle.getText()).toContain('## ');
       expect(
         container.querySelector<HTMLElement>('[data-testid=source-editor-pane] [data-slash-menu]')
           ?.style.display,

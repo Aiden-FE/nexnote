@@ -1,10 +1,11 @@
 import { Prec, type EditorState, type Extension } from '@codemirror/state';
 import { syntaxTree } from '@codemirror/language';
 import { EditorView, ViewPlugin, keymap } from '@codemirror/view';
-import { quickInsertCatalog, SLASH_ACTION_GROUP_ORDER } from '@nexnote/shared';
+import { filterQuickInsertCandidates, quickInsertCatalog } from '@nexnote/shared';
 import type {
   EditorActionCatalogEntry,
   EditorActionIconKey,
+  QuickInsertCapability,
   QuickInsertMetadata,
 } from '@nexnote/shared';
 import {
@@ -22,6 +23,7 @@ interface SlashSession {
   items: SourceSlashAction[];
   activeIndex: number;
   emptyBlock: boolean;
+  epoch: number;
 }
 
 interface SourceSlashAction extends Omit<EditorActionCatalogEntry, 'quickInsert'> {
@@ -34,6 +36,8 @@ interface SourceSlashAction extends Omit<EditorActionCatalogEntry, 'quickInsert'
 export interface SourceSlashMenuOptions {
   /** Source menus must never act on an inactive tab or read-only preview. */
   isEnabled(): boolean;
+  /** Host notifies immediately when the tab or view becomes inactive. */
+  onActivityChange?(notify: () => void): () => void;
   /** Start before consuming the trigger. A failed/cancelled start leaves the text intact. */
   onAiInsert(
     view: EditorView,
@@ -73,18 +77,6 @@ const icons: Record<EditorActionIconKey, string> = {
   plugin: '⬡',
 };
 
-function score(action: SourceSlashAction, query: string): number | null {
-  const q = query.trim().toLocaleLowerCase();
-  if (!q) return 0;
-  const terms = [action.name, action.id, ...(action.quickInsert?.aliases ?? [])].map((term) =>
-    term.toLocaleLowerCase(),
-  );
-  return terms.reduce<number | null>((best, term) => {
-    const value = term === q ? 0 : term.startsWith(q) ? 1 : term.includes(q) ? 2 : null;
-    return value === null || (best !== null && best <= value) ? best : value;
-  }, null);
-}
-
 function matchesSlashContext(state: EditorState, pos: number): boolean {
   const line = state.doc.lineAt(pos);
   const before = state.sliceDoc(line.from, pos);
@@ -105,12 +97,8 @@ function matchesSlashContext(state: EditorState, pos: number): boolean {
     if (/Code|URL|Link|Math/.test(node.name)) return false;
     node = node.parent;
   }
-  const prior = state.sliceDoc(0, pos);
-  const fences = (prior.match(/^\s*(?:```|~~~)/gm) ?? []).length;
-  if (fences % 2 === 1) return false;
-  const lineBefore = before.replace(/\\`/g, '');
-  if ((lineBefore.match(/`/g) ?? []).length % 2 === 1) return false;
-  if ((lineBefore.match(/(?<!\\)\$/g) ?? []).length % 2 === 1) return false;
+  // Lezer's Markdown parser does not register dollar math by default. The configured
+  // source parser supplies MathBlock/InlineMath nodes; do not guess from dollar parity.
   return true;
 }
 
@@ -119,25 +107,32 @@ function menuItems(
   emptyBlock: boolean,
   plugins: SourceSlashAction[] = [],
 ): SourceSlashAction[] {
-  return [
-    ...quickInsertCatalog('source').filter(
-      (action): action is SourceSlashAction => !!action.quickInsert,
+  const capabilities = new Set<QuickInsertCapability>([
+    'editable-line',
+    'explicit-ai',
+    'plugin-defined',
+    ...(emptyBlock ? (['empty-block'] as QuickInsertCapability[]) : []),
+  ]);
+  return filterQuickInsertCandidates(
+    [...quickInsertCatalog('source'), ...plugins].flatMap((action) =>
+      action.quickInsert
+        ? [
+            {
+              item: action as SourceSlashAction,
+              id: action.id,
+              title: action.name,
+              aliases: action.quickInsert.aliases,
+              group: action.quickInsert.group,
+              contract: action.quickInsert,
+              available: (action as SourceSlashAction).available?.() ?? true,
+            },
+          ]
+        : [],
     ),
-    ...plugins,
-  ]
-    .filter((action) => action.available?.() ?? true)
-    .map((action, index) => ({ action, index, score: score(action, query) }))
-    .filter(
-      (entry): entry is { action: SourceSlashAction; index: number; score: number } =>
-        entry.score !== null &&
-        (emptyBlock || entry.action.quickInsert?.execution !== 'convert-empty-block'),
-    )
-    .sort((a, b) => {
-      const group = (item: SourceSlashAction) =>
-        Math.max(0, SLASH_ACTION_GROUP_ORDER.indexOf(item.quickInsert!.group));
-      return group(a.action) - group(b.action) || a.score - b.score || a.index - b.index;
-    })
-    .map((entry) => entry.action);
+    query,
+    capabilities,
+    emptyBlock,
+  );
 }
 
 function sourceBlockSnippet(id: string): { text: string; cursor: number } | null {
@@ -169,18 +164,19 @@ function insertSafeBlock(view: EditorView, session: SlashSession, snippet: strin
   const break_ = state.lineBreak;
   const beforeTrigger = state.sliceDoc(line.from, session.from);
   const afterTrigger = state.sliceDoc(session.to, line.to);
-  const emptyLine = !`${beforeTrigger}${afterTrigger}`.trim();
-  const at = line.to;
-  const end = line.to;
-  // Preserve the entire current line unless it contains only a Markdown block prefix.
-  // In that case, the blank line becomes the inserted block.
+  // Find the end of the enclosing top-level Markdown block, not merely this line.
+  // Soft-wrapped paragraphs remain one block and may not be split by a structure action.
+  let blockEnd = line.to;
+  let node = syntaxTree(state).resolveInner(Math.max(line.from, session.from - 1), 1);
+  while (node.parent && node.parent.name !== 'Document') node = node.parent;
+  if (node.parent?.name === 'Document' && node.to > blockEnd) blockEnd = node.to;
   const replaceLine =
-    emptyLine &&
+    !`${beforeTrigger}${afterTrigger}`.trim() &&
     /^\s*(?:(?:#{1,6}\s*)|(?:[-+*]\s+(?:\[[ xX]\]\s*)?)|(?:\d+\.\s+)|(?:>\s*))?$/.test(
       beforeTrigger,
     );
-  const insertAt = replaceLine ? line.from : at;
-  const replaceTo = replaceLine ? end : at;
+  const insertAt = replaceLine ? line.from : blockEnd;
+  const replaceTo = replaceLine ? line.to : insertAt;
   const before = state.sliceDoc(0, insertAt);
   const after = state.sliceDoc(replaceTo);
   const prefix =
@@ -196,6 +192,7 @@ function insertSafeBlock(view: EditorView, session: SlashSession, snippet: strin
         : break_ + break_
       : break_;
   const text = `${prefix}${snippet.replace(/\r\n?|\n/g, break_)}${suffix}`;
+  const insertedLength = state.toText(text).length;
   // Non-overlapping changes stay in the same local CodeMirror transaction/history event.
   const changes = replaceLine
     ? [{ from: insertAt, to: replaceTo, insert: text }]
@@ -205,7 +202,9 @@ function insertSafeBlock(view: EditorView, session: SlashSession, snippet: strin
       ];
   view.dispatch({
     changes,
-    selection: { anchor: insertAt + text.length - (replaceLine ? 0 : session.to - session.from) },
+    selection: {
+      anchor: insertAt + insertedLength - (replaceLine ? 0 : session.to - session.from),
+    },
     scrollIntoView: true,
     userEvent: 'input.complete',
   });
@@ -223,6 +222,17 @@ export function sourceSlashMenu(options: SourceSlashMenuOptions): Extension {
   let expectedChange = false;
   let ownedBeforeChange: string | null = null;
   let revision = 0;
+  let active = false;
+  let epoch = 0;
+  const enabled = () => {
+    const now = options.isEnabled();
+    if (active && !now) {
+      epoch++;
+      close();
+    }
+    active = now;
+    return now;
+  };
 
   const close = () => {
     session = null;
@@ -230,7 +240,7 @@ export function sourceSlashMenu(options: SourceSlashMenuOptions): Extension {
     if (menu) menu.style.display = 'none';
   };
   const render = (view: EditorView) => {
-    if (!menu || !session || !options.isEnabled()) return close();
+    if (!menu || !session || !enabled() || session.epoch !== epoch) return close();
     menu.innerHTML = '';
     let previousGroup: string | undefined;
     for (const [index, action] of session.items.entries()) {
@@ -312,29 +322,28 @@ export function sourceSlashMenu(options: SourceSlashMenuOptions): Extension {
     if (
       !current ||
       !action ||
-      !options.isEnabled() ||
+      !enabled() ||
+      current.epoch !== epoch ||
       view.state.selection.main.head !== current.to
     )
       return;
     const quick = action.quickInsert!;
-    if (
-      !availableItems(current.query, current.emptyBlock).some(
-        (item) => item.id === action.id,
-      )
-    )
+    if (!availableItems(current.query, current.emptyBlock).some((item) => item.id === action.id))
       return;
     if (quick.execution === 'external-command' || (quick.kind === 'plugin' && action.run)) {
       if (!action.run) return;
       close();
       const startedAt = revision;
+      const startedEpoch = epoch;
       void Promise.resolve()
         .then(() => action.run!(view))
         .then((result) => {
           if (
             !result ||
             !view.dom.isConnected ||
-            !options.isEnabled() ||
+            !enabled() ||
             revision !== startedAt ||
+            epoch !== startedEpoch ||
             view.state.selection.main.head !== current.to ||
             view.state.sliceDoc(current.from, current.to) !== `/${current.query}`
           )
@@ -360,8 +369,14 @@ export function sourceSlashMenu(options: SourceSlashMenuOptions): Extension {
       )
         return;
       view.dispatch({
-        changes: { from: line.from, to: current.to, insert: snippet.text },
-        selection: { anchor: line.from + snippet.cursor },
+        changes: {
+          from: line.from,
+          to: current.to,
+          insert: snippet.text.replace(/\n/g, view.state.lineBreak),
+        },
+        selection: {
+          anchor: line.from + view.state.toText(snippet.text.slice(0, snippet.cursor)).length,
+        },
         scrollIntoView: true,
         userEvent: 'input.complete',
       });
@@ -374,14 +389,16 @@ export function sourceSlashMenu(options: SourceSlashMenuOptions): Extension {
         const kind = action.id === 'insert:image' ? 'image' : 'attachment';
         close();
         const startedAt = revision;
+        const startedEpoch = epoch;
         void Promise.resolve()
           .then(() => options.importMedia!(kind))
           .then((path) => {
             if (
               !path ||
               !view.dom.isConnected ||
-              !options.isEnabled() ||
+              !enabled() ||
               revision !== startedAt ||
+              epoch !== startedEpoch ||
               view.state.selection.main.head !== current.to ||
               view.state.sliceDoc(current.from, current.to) !== `/${current.query}`
             )
@@ -416,7 +433,7 @@ export function sourceSlashMenu(options: SourceSlashMenuOptions): Extension {
       if (!instruction?.trim()) return;
       if (
         !view.dom.isConnected ||
-        !options.isEnabled() ||
+        !enabled() ||
         view.state.selection.main.head !== current.to ||
         view.state.sliceDoc(current.from, current.to) !== `/${current.query}`
       )
@@ -425,18 +442,21 @@ export function sourceSlashMenu(options: SourceSlashMenuOptions): Extension {
       // until that request actually starts. Capture no remappable position: any intervening edit,
       // tab switch, or unmount makes the eventual Accept a no-op.
       const startedAt = revision;
+      const startedEpoch = epoch;
       let committed = false;
       let anchor = -1;
       let source = '';
       let anchorRevision = -1;
+      let anchorEpoch = -1;
       const apply = (generated: string) => {
         if (
           !committed ||
           !generated ||
           !view.dom.isConnected ||
-          !options.isEnabled() ||
+          !enabled() ||
           view.state.sliceDoc() !== source ||
-          revision !== anchorRevision
+          revision !== anchorRevision ||
+          epoch !== anchorEpoch
         )
           return;
         view.dispatch({
@@ -452,8 +472,9 @@ export function sourceSlashMenu(options: SourceSlashMenuOptions): Extension {
           if (
             !started ||
             !view.dom.isConnected ||
-            !options.isEnabled() ||
+            !enabled() ||
             revision !== startedAt ||
+            epoch !== startedEpoch ||
             view.state.selection.main.head !== current.to ||
             view.state.sliceDoc(current.from, current.to) !== `/${current.query}`
           )
@@ -466,6 +487,7 @@ export function sourceSlashMenu(options: SourceSlashMenuOptions): Extension {
           });
           source = view.state.sliceDoc();
           anchorRevision = revision;
+          anchorEpoch = epoch;
           committed = true;
           close();
         })
@@ -475,10 +497,11 @@ export function sourceSlashMenu(options: SourceSlashMenuOptions): Extension {
 
   return [
     EditorView.updateListener.of((update) => {
+      enabled();
       if (update.docChanged) revision += 1;
     }),
     EditorView.inputHandler.of((view, from, to, text, insert) => {
-      if (!options.isEnabled() || composing) return false;
+      if (!enabled() || composing) return false;
       if (!session) {
         // Only a typed slash opens a menu. Pasting a word/path containing slash stays literal.
         if (text !== '/' || to !== from || !matchesSlashContext(view.state, from)) return false;
@@ -489,6 +512,7 @@ export function sourceSlashMenu(options: SourceSlashMenuOptions): Extension {
           query: '',
           items: [],
           activeIndex: 0,
+          epoch,
           emptyBlock:
             /^\s*(?:(?:#{1,6}\s*)|(?:[-+*]\s+(?:\[[ xX]\]\s*)?)|(?:\d+\.\s+)|(?:>\s*))?$/.test(
               view.state.sliceDoc(view.state.doc.lineAt(start).from, start),
@@ -552,6 +576,10 @@ export function sourceSlashMenu(options: SourceSlashMenuOptions): Extension {
           key: 'Enter',
           run: (view) => {
             if (!session) return false;
+            if (!enabled() || session.epoch !== epoch) {
+              close();
+              return true;
+            }
             confirm(view);
             return true;
           },
@@ -560,6 +588,10 @@ export function sourceSlashMenu(options: SourceSlashMenuOptions): Extension {
           key: 'Tab',
           run: (view) => {
             if (!session) return false;
+            if (!enabled() || session.epoch !== epoch) {
+              close();
+              return true;
+            }
             confirm(view);
             return true;
           },
@@ -605,6 +637,7 @@ export function sourceSlashMenu(options: SourceSlashMenuOptions): Extension {
     }),
     ViewPlugin.fromClass(
       class {
+        private readonly unsubscribe: () => void;
         private readonly contentDOM: HTMLElement;
         private readonly onKeyDown = (event: KeyboardEvent) => {
           if (event.key !== 'Escape' || !session) return;
@@ -613,6 +646,10 @@ export function sourceSlashMenu(options: SourceSlashMenuOptions): Extension {
           close();
         };
         constructor(view: EditorView) {
+          this.unsubscribe =
+            options.onActivityChange?.(() => {
+              enabled();
+            }) ?? (() => undefined);
           this.contentDOM = view.contentDOM;
           this.contentDOM.addEventListener('keydown', this.onKeyDown, true);
           menu = document.createElement('div');
@@ -636,7 +673,8 @@ export function sourceSlashMenu(options: SourceSlashMenuOptions): Extension {
         update(update: { view: EditorView; docChanged: boolean; selectionSet: boolean }) {
           if (!session) return;
           if (
-            !options.isEnabled() ||
+            session.epoch !== epoch ||
+            !enabled() ||
             !update.view.state.selection.main.empty ||
             update.view.state.selection.main.head !== session.to ||
             update.view.state.sliceDoc(session.from, session.to) !== `/${session.query}`
@@ -654,6 +692,7 @@ export function sourceSlashMenu(options: SourceSlashMenuOptions): Extension {
           if (update.docChanged || update.selectionSet) render(update.view);
         }
         destroy() {
+          this.unsubscribe?.();
           this.contentDOM.removeEventListener('keydown', this.onKeyDown, true);
           menu?.remove();
           menu = null;

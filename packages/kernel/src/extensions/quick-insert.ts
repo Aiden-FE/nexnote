@@ -2,7 +2,7 @@ import { Extension } from '@tiptap/core';
 import { Plugin, PluginKey } from '@tiptap/pm/state';
 import { closeHistory } from '@tiptap/pm/history';
 import type { EditorView } from '@tiptap/pm/view';
-import { SLASH_ACTION_GROUP_ORDER } from '@nexnote/shared';
+import { SLASH_ACTION_GROUP_ORDER, filterQuickInsertCandidates } from '@nexnote/shared';
 import type { EditorActionIconKey, QuickInsertKind } from '@nexnote/shared';
 import { defaultQuickInsertItems } from './quick-insert-catalog';
 import {
@@ -54,38 +54,26 @@ export function dedupeQuickInsertItems(items: QuickInsertItem[]): QuickInsertIte
   );
 }
 
-function matchScore(item: QuickInsertItem, query: string): number | null {
-  const q = query.trim().toLocaleLowerCase();
-  if (!q) return 0;
-  const terms = [item.title, item.id, ...(item.aliases ?? []), ...(item.keywords ?? [])].map(
-    (term) => term.toLocaleLowerCase(),
-  );
-  return terms.reduce<number | null>((best, term) => {
-    const score = term === q ? 0 : term.startsWith(q) ? 1 : term.includes(q) ? 2 : null;
-    return score === null || (best !== null && best <= score) ? best : score;
-  }, null);
-}
-
 export function filterQuickInsertItems(
   items: QuickInsertItem[],
   query: string,
   context: SlashExecutionContext,
 ): QuickInsertItem[] {
-  const rank = (group?: string) =>
-    Math.max(0, (SLASH_GROUP_ORDER as readonly string[]).indexOf(group ?? '')) ||
-    (group === '基础块' ? 0 : SLASH_GROUP_ORDER.length);
-  return items
-    .map((item, index) => ({ item, index, score: matchScore(item, query) }))
-    .filter(
-      (entry): entry is { item: QuickInsertItem; index: number; score: number } =>
-        entry.score !== null &&
-        canExecuteSlashAction(entry.item.contract, context) &&
-        (entry.item.available?.(context) ?? true),
-    )
-    .sort(
-      (a, b) => rank(a.item.group) - rank(b.item.group) || a.score - b.score || a.index - b.index,
-    )
-    .map(({ item }) => item);
+  return filterQuickInsertCandidates(
+    items.map((item) => ({
+      item,
+      id: item.id,
+      title: item.title,
+      aliases: item.aliases,
+      keywords: item.keywords,
+      group: item.group,
+      contract: item.contract,
+      available: item.available?.(context) ?? true,
+    })),
+    query,
+    context.capabilities,
+    context.emptyBlock,
+  );
 }
 
 function triggerContext(view: EditorView, from: number): SlashExecutionContext | null {

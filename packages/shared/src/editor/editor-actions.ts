@@ -453,6 +453,63 @@ export function editorActionCatalogEntry(id: string): EditorActionCatalogEntry |
   return catalogById.get(id);
 }
 
+export interface QuickInsertCandidate<T> {
+  item: T;
+  id: string;
+  title: string;
+  aliases?: readonly string[];
+  keywords?: readonly string[];
+  contract?: Pick<QuickInsertMetadata, 'execution' | 'capability'>;
+  group?: string;
+  available?: boolean;
+}
+
+/** One framework-independent search and authorization policy for both editing surfaces. */
+export function filterQuickInsertCandidates<T>(
+  candidates: readonly QuickInsertCandidate<T>[],
+  query: string,
+  capabilities: ReadonlySet<QuickInsertCapability>,
+  emptyBlock: boolean,
+): T[] {
+  const q = query.trim().toLocaleLowerCase();
+  const groupRank = (group?: string) => {
+    const index = (SLASH_ACTION_GROUP_ORDER as readonly string[]).indexOf(group ?? '');
+    return index < 0 ? SLASH_ACTION_GROUP_ORDER.length : index;
+  };
+  return candidates
+    .map((candidate, index) => {
+      const terms = [
+        candidate.title,
+        candidate.id,
+        ...(candidate.aliases ?? []),
+        ...(candidate.keywords ?? []),
+      ];
+      const score = !q
+        ? 0
+        : terms.reduce<number | null>((best, value) => {
+            const term = value.toLocaleLowerCase();
+            const next = term === q ? 0 : term.startsWith(q) ? 1 : term.includes(q) ? 2 : null;
+            return next === null || (best !== null && best <= next) ? best : next;
+          }, null);
+      return { candidate, index, score };
+    })
+    .filter(
+      (entry): entry is { candidate: QuickInsertCandidate<T>; index: number; score: number } =>
+        entry.score !== null &&
+        entry.candidate.available !== false &&
+        !!entry.candidate.contract &&
+        capabilities.has(entry.candidate.contract.capability) &&
+        (entry.candidate.contract.execution !== 'convert-empty-block' || emptyBlock),
+    )
+    .sort(
+      (a, b) =>
+        a.score - b.score ||
+        groupRank(a.candidate.group) - groupRank(b.candidate.group) ||
+        a.index - b.index,
+    )
+    .map(({ candidate }) => candidate.item);
+}
+
 export function quickInsertCatalog(mode: EditorActionMode): EditorActionCatalogEntry[] {
   return EDITOR_ACTION_CATALOG.filter(
     (action) => action.quickInsert && action.modes.includes(mode),

@@ -202,6 +202,37 @@ export function SourceModeView({ tab }: { tab: TabDescriptor }) {
   const fmEditedRef = useRef(false);
   const fmYamlRef = useRef<string | null>(null);
   const ready = load.phase === 'ready';
+  const importSourceMedia = async (kind: 'image' | 'attachment'): Promise<string | null> => {
+    const picker = pickFile(kind === 'image' ? 'image/*' : '*/*');
+    mediaPickersRef.current.add(picker.abort);
+    try {
+      const file = await picker.promise;
+      if (
+        !file ||
+        unmountedRef.current ||
+        previewOnlyRef.current ||
+        useTabStore.getState().activeTabId !== tab.id
+      )
+        return null;
+      const { path } = await invoke('fs:importBinaryFile', {
+        path: attachmentTargetPath(file, pathRef.current),
+        data: await readFileAsBase64(file),
+        suggestionName: file.name,
+        mime: file.type || undefined,
+        createParentDirs: true,
+        overwrite: false,
+      });
+      return unmountedRef.current ||
+        previewOnlyRef.current ||
+        useTabStore.getState().activeTabId !== tab.id
+        ? null
+        : path;
+    } catch {
+      return null;
+    } finally {
+      mediaPickersRef.current.delete(picker.abort);
+    }
+  };
   // DEV-047 悬浮目录：局部 UI 状态，不落 store；切换三视图不重建 CodeMirror。
   const [outlineVisible, setOutlineVisible] = useState(false);
   const outlineVisibleRef = useRef(false);
@@ -555,6 +586,10 @@ export function SourceModeView({ tab }: { tab: TabDescriptor }) {
                     })),
                   ];
                 },
+                onActivityChange: (notify) =>
+                  useTabStore.subscribe((state) => {
+                    if (state.activeTabId !== tab.id || previewOnlyRef.current) notify();
+                  }),
                 onAiInsert: (view, instruction, apply) =>
                   openSourceCursorInsertSession(
                     view,
@@ -562,28 +597,7 @@ export function SourceModeView({ tab }: { tab: TabDescriptor }) {
                     { getDocPath: () => pathRef.current },
                     apply,
                   ),
-                importMedia: async (kind) => {
-                  const picker = pickFile(kind === 'image' ? 'image/*' : '*/*');
-                  mediaPickersRef.current.add(picker.abort);
-                  const file = await picker.promise;
-                  mediaPickersRef.current.delete(picker.abort);
-                  if (
-                    !file ||
-                    unmountedRef.current ||
-                    previewOnlyRef.current ||
-                    useTabStore.getState().activeTabId !== tab.id
-                  )
-                    return null;
-                  const { path } = await invoke('fs:importBinaryFile', {
-                    path: attachmentTargetPath(file, pathRef.current),
-                    data: await readFileAsBase64(file),
-                    suggestionName: file.name,
-                    mime: file.type || undefined,
-                    createParentDirs: true,
-                    overwrite: false,
-                  });
-                  return path;
-                },
+                importMedia: (kind) => importSourceMedia(kind),
               }),
             ]
           : []),
@@ -925,40 +939,13 @@ export function SourceModeView({ tab }: { tab: TabDescriptor }) {
       return;
     }
     if (id === INSERT_IMAGE_ID || id === INSERT_ATTACHMENT_ID) {
-      const picker = pickFile(id === INSERT_IMAGE_ID ? 'image/*' : '*/*');
-      mediaPickersRef.current.add(picker.abort);
-      void picker.promise
-        .then(async (file) => {
-          mediaPickersRef.current.delete(picker.abort);
-          if (
-            !file ||
-            unmountedRef.current ||
-            previewOnlyRef.current ||
-            useTabStore.getState().activeTabId !== tab.id
-          )
-            return;
-          const { path } = await invoke('fs:importBinaryFile', {
-            path: attachmentTargetPath(file, pathRef.current),
-            data: await readFileAsBase64(file),
-            suggestionName: file.name,
-            mime: file.type || undefined,
-            createParentDirs: true,
-            overwrite: false,
-          });
-          if (
-            unmountedRef.current ||
-            previewOnlyRef.current ||
-            useTabStore.getState().activeTabId !== tab.id
-          )
-            return;
-          const escaped = encodeURI(path).replace(/\)/g, '%29');
-          editorRef.current?.insertBlock(
-            id === INSERT_IMAGE_ID ? `![](${escaped})` : `[附件](${escaped})`,
-          );
-        })
-        .catch(() => {
-          mediaPickersRef.current.delete(picker.abort);
-        });
+      void importSourceMedia(id === INSERT_IMAGE_ID ? 'image' : 'attachment').then((path) => {
+        if (!path) return;
+        const escaped = encodeURI(path).replace(/\)/g, '%29');
+        editorRef.current?.insertBlock(
+          id === INSERT_IMAGE_ID ? `![](${escaped})` : `[附件](${escaped})`,
+        );
+      });
       return;
     }
     if (id === INSERT_FLOWCHART_ID || id === INSERT_GANTT_ID) {
