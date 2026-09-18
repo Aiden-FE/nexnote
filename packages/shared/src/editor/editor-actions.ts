@@ -330,7 +330,7 @@ export const EDITOR_ACTION_CATALOG: readonly EditorActionCatalogEntry[] = [
     icon: 'image',
     semantic: 'insert',
     group: 'insert',
-    modes: ['block'],
+    modes: ['block', 'source'],
     quickInsert: quick('插入', 'structure', 'insert-safe-block', 'editable-line', [
       'image',
       'img',
@@ -345,7 +345,7 @@ export const EDITOR_ACTION_CATALOG: readonly EditorActionCatalogEntry[] = [
     icon: 'attachment',
     semantic: 'insert',
     group: 'insert',
-    modes: ['block'],
+    modes: ['block', 'source'],
     quickInsert: quick('插入', 'structure', 'insert-safe-block', 'editable-line', [
       'attachment',
       'file',

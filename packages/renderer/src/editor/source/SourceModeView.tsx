@@ -19,6 +19,13 @@ import {
   type PageFileIo,
 } from './page-source-io';
 import { createSourceEditor, type SourceEditorHandle } from './codemirror-host';
+import { usePluginStore } from '../../features/plugins/plugin-store';
+import {
+  buildDispatchableBlockCommands,
+  buildPluginCommandDefs,
+  pluginCmdSlashId,
+} from '../../features/plugins/extension-points';
+import { pluginQuickInsertMetadata } from '@nexnote/shared';
 import { getActiveSourceEditor, registerSourceEditor } from './active-source-editor';
 import { sourceSelectionBubble } from './source-bubble';
 import { applySourceFormat, sourceFormatBubbleActions } from './source-formatting';
@@ -36,6 +43,8 @@ import {
   UNDO_ID,
   REDO_ID,
   INSERT_TABLE_ID,
+  INSERT_IMAGE_ID,
+  INSERT_ATTACHMENT_ID,
   INSERT_FLOWCHART_ID,
   INSERT_GANTT_ID,
   INSERT_TOC_ID,
@@ -76,6 +85,8 @@ import {
 } from './source-mode-toggle';
 import { syncScrollRatio } from './scroll-sync';
 import { sourceWikilinkCompletion } from './wikilink-completion';
+import { sourceSlashMenu } from './source-slash-menu';
+import { pickFile, readFileAsBase64, attachmentTargetPath } from '../media-import';
 import { clearSourceHeadingFolds, revealSourceHeadingAt } from './heading-fold';
 import { EditorFindBar } from '../EditorFindBar';
 import { findInSourceView } from '../find';
@@ -93,6 +104,7 @@ import {
 import {
   parseFrontmatterYaml,
   serializeFrontmatterYaml,
+  PLUGIN_BLOCK_FENCE,
   type FrontmatterData,
 } from '@nexnote/kernel';
 
@@ -165,6 +177,7 @@ export function SourceModeView({ tab }: { tab: TabDescriptor }) {
   const hostRef = useRef<HTMLDivElement>(null);
   const splitHostRef = useRef<HTMLDivElement>(null);
   const editorRef = useRef<SourceEditorHandle | null>(null);
+  const mediaPickersRef = useRef(new Set<() => void>());
   // 临时翻译（DEV-041）：划词浮层 + 全文临时视图；生命周期与源码编辑器一致。
   const translationControllerRef = useRef<TranslationController | null>(null);
   const previewScrollRef = useRef<HTMLDivElement | null>(null);
@@ -493,6 +506,87 @@ export function SourceModeView({ tab }: { tab: TabDescriptor }) {
       // 生成中由注入的停止控件取消会话；划词翻译打开只读浮层，无写回路径。
       extraExtensions: [
         sourceWikilinkCompletion({ getPages: currentPageCandidates, onPick: createRedlinkPage }),
+        ...(isMarkdown
+          ? [
+              sourceSlashMenu({
+                isEnabled: () =>
+                  !previewOnlyRef.current && useTabStore.getState().activeTabId === tab.id,
+                pluginActions: () => {
+                  const { contributions, commands } = usePluginStore.getState();
+                  const blockMeta = pluginQuickInsertMetadata('block');
+                  const commandMeta = pluginQuickInsertMetadata('command');
+                  return [
+                    ...buildDispatchableBlockCommands(contributions).map((def) => ({
+                      id: def.id,
+                      name: def.title,
+                      icon: blockMeta.icon,
+                      semantic: 'insert' as const,
+                      group: 'insert' as const,
+                      modes: ['source' as const],
+                      quickInsert: {
+                        ...blockMeta.quickInsert,
+                        aliases: [...blockMeta.quickInsert.aliases, ...def.keywords],
+                      },
+                      run: async () =>
+                        `\`\`\`${PLUGIN_BLOCK_FENCE}:${def.pluginId}:${def.blockType}\n{}\n\`\`\``,
+                    })),
+                    ...buildPluginCommandDefs(contributions, commands).map((def) => ({
+                      id: pluginCmdSlashId(def.id),
+                      name: def.title,
+                      icon: commandMeta.icon,
+                      semantic: 'insert' as const,
+                      group: 'insert' as const,
+                      modes: ['source' as const],
+                      quickInsert: {
+                        ...commandMeta.quickInsert,
+                        aliases: [...commandMeta.quickInsert.aliases, ...(def.keywords ?? [])],
+                      },
+                      run: async () => {
+                        try {
+                          await invoke('plugins:runCommand', {
+                            pluginId: def.pluginId,
+                            commandId: def.commandId,
+                          });
+                          return true;
+                        } catch {
+                          return false;
+                        }
+                      },
+                    })),
+                  ];
+                },
+                onAiInsert: (view, instruction, apply) =>
+                  openSourceCursorInsertSession(
+                    view,
+                    instruction,
+                    { getDocPath: () => pathRef.current },
+                    apply,
+                  ),
+                importMedia: async (kind) => {
+                  const picker = pickFile(kind === 'image' ? 'image/*' : '*/*');
+                  mediaPickersRef.current.add(picker.abort);
+                  const file = await picker.promise;
+                  mediaPickersRef.current.delete(picker.abort);
+                  if (
+                    !file ||
+                    unmountedRef.current ||
+                    previewOnlyRef.current ||
+                    useTabStore.getState().activeTabId !== tab.id
+                  )
+                    return null;
+                  const { path } = await invoke('fs:importBinaryFile', {
+                    path: attachmentTargetPath(file, pathRef.current),
+                    data: await readFileAsBase64(file),
+                    suggestionName: file.name,
+                    mime: file.type || undefined,
+                    createParentDirs: true,
+                    overwrite: false,
+                  });
+                  return path;
+                },
+              }),
+            ]
+          : []),
         sourceSelectionBubble({
           actions: sourceFormatBubbleActions(),
           aiMenu: { label: 'AI', actions: writingAiMenuActions() },
@@ -518,7 +612,10 @@ export function SourceModeView({ tab }: { tab: TabDescriptor }) {
     });
     editorRef.current = editor;
     const unregisterSourceEditor = registerSourceEditor(editor, tab.id);
+    const mediaPickers = mediaPickersRef.current;
     return () => {
+      for (const abort of mediaPickers) abort();
+      mediaPickers.clear();
       unregisterSourceEditor();
       editorRef.current = null;
       editor.destroy();
@@ -825,6 +922,43 @@ export function SourceModeView({ tab }: { tab: TabDescriptor }) {
     }
     if (id === INSERT_TABLE_ID) {
       editorRef.current?.insertBlock(MARKDOWN_TABLE_SNIPPET);
+      return;
+    }
+    if (id === INSERT_IMAGE_ID || id === INSERT_ATTACHMENT_ID) {
+      const picker = pickFile(id === INSERT_IMAGE_ID ? 'image/*' : '*/*');
+      mediaPickersRef.current.add(picker.abort);
+      void picker.promise
+        .then(async (file) => {
+          mediaPickersRef.current.delete(picker.abort);
+          if (
+            !file ||
+            unmountedRef.current ||
+            previewOnlyRef.current ||
+            useTabStore.getState().activeTabId !== tab.id
+          )
+            return;
+          const { path } = await invoke('fs:importBinaryFile', {
+            path: attachmentTargetPath(file, pathRef.current),
+            data: await readFileAsBase64(file),
+            suggestionName: file.name,
+            mime: file.type || undefined,
+            createParentDirs: true,
+            overwrite: false,
+          });
+          if (
+            unmountedRef.current ||
+            previewOnlyRef.current ||
+            useTabStore.getState().activeTabId !== tab.id
+          )
+            return;
+          const escaped = encodeURI(path).replace(/\)/g, '%29');
+          editorRef.current?.insertBlock(
+            id === INSERT_IMAGE_ID ? `![](${escaped})` : `[附件](${escaped})`,
+          );
+        })
+        .catch(() => {
+          mediaPickersRef.current.delete(picker.abort);
+        });
       return;
     }
     if (id === INSERT_FLOWCHART_ID || id === INSERT_GANTT_ID) {

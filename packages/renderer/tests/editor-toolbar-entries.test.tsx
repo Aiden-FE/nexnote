@@ -203,8 +203,9 @@ describe('DEV-050 共享动作模型单一数据源', () => {
       expect(editorAction(id).hint, id).toBeTruthy();
       expect(editorAction(id).hint, id).toBe(editorActionCatalogEntry(id)?.hint);
     }
+    // DEV-053：Markdown 源码的 `/` 菜单与顶部插入菜单均可安全导入媒体。
     expect(editorActionsForMode('source').some((action) => action.id === 'insert:image')).toBe(
-      false,
+      true,
     );
     expect(editorActionsForMode('block').some((action) => action.id === 'format:document')).toBe(
       false,
@@ -595,8 +596,8 @@ describe('源码模式工具栏（DEV-035）', () => {
     expect(menuItem('format:document')).not.toBeNull();
     act(() => entry('menu:format')?.click());
     press(entry('menu:insert')!, 'ArrowDown');
-    expect(menuItem('insert:image')).toBeNull();
-    expect(menuItem('insert:attachment')).toBeNull();
+    expect(menuItem('insert:image')).not.toBeNull();
+    expect(menuItem('insert:attachment')).not.toBeNull();
     act(() => entry('menu:insert')?.click());
     // 属性 Popover 触发器仍在工具栏上（不随文件名移除而丢失）
     expect(document.querySelector('[data-testid="document-properties-trigger"]')).not.toBeNull();

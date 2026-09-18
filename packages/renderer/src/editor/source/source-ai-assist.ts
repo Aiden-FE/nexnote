@@ -33,16 +33,20 @@ export function openSourceCursorInsertSession(
   view: EditorView,
   instruction: string,
   deps: SourceAiAssistDeps,
-): void {
-  if (!instruction.trim()) return;
+  apply?: (generated: string) => void,
+): Promise<boolean> {
+  if (!instruction.trim()) return Promise.resolve(false);
   const pos = view.state.selection.main.head;
   const ctx: SourceBubbleContext = {
     text: instruction.trim(),
     from: pos,
     to: pos,
-    coords: (() => { const c = view.coordsAtPos(pos); return { top: c?.top ?? 0, left: c?.left ?? 0 }; })(),
+    coords: (() => {
+      const c = view.coordsAtPos(pos);
+      return { top: c?.top ?? 0, left: c?.left ?? 0 };
+    })(),
   };
-  openSourceWritingSession(view, 'ai:expand', ctx, deps);
+  return openSourceWritingSession(view, 'ai:expand', ctx, deps, apply);
 }
 
 /** 询问 AI 动作 id（与块编辑 CHAT_ASK_ACTION 对齐，经 bubble onAction 透传）。 */
@@ -53,10 +57,11 @@ export function openSourceWritingSession(
   rawActionId: string,
   ctx: SourceBubbleContext,
   deps: SourceAiAssistDeps,
-): void {
+  apply?: (generated: string) => void,
+): Promise<boolean> {
   const actionId = fromAiActionId(rawActionId);
   const action = actionId ? WRITING_ACTION_MAP[actionId] : null;
-  if (!actionId || !action || !ctx.text.trim()) return;
+  if (!actionId || !action || !ctx.text.trim()) return Promise.resolve(false);
 
   const docPath = deps.getDocPath();
   const idx = useIndexStore.getState();
@@ -70,14 +75,17 @@ export function openSourceWritingSession(
     backlinks,
   });
 
-  beginWritingSession({
+  return beginWritingSession({
     action,
     request: { actionId, target: ctx.text, contextText: assembly.contextBlock },
     original: action.kind === 'replace' ? ctx.text : '',
     coords: ctx.coords,
     truncated: assembly.truncated,
     note: assembly.note,
-    apply: (generated) => applyGenerated(view, action.kind, ctx, generated),
+    apply: (generated) => {
+      if (apply) apply(generated);
+      else applyGenerated(view, action.kind, ctx, generated);
+    },
   });
 }
 
