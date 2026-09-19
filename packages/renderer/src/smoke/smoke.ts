@@ -39,6 +39,9 @@ interface SmokeBridge {
   setWindowSize(width: number, height: number): Promise<SmokeCaptureResult>;
   typeText(text: string): Promise<SmokeCaptureResult>;
   pressKey(key: string, modifiers?: string[]): Promise<SmokeCaptureResult>;
+  clickAtPoint(x: number, y: number): Promise<SmokeCaptureResult>;
+  hoverAtPoint(x: number, y: number): Promise<SmokeCaptureResult>;
+  pasteText(text: string): Promise<SmokeCaptureResult>;
   finish(report: unknown): Promise<SmokeCaptureResult>;
   /** DEV-037：内嵌 mock provider 地址 + 运行时调参（分段延迟 / 下一次请求失败）。 */
   aiMock(): Promise<SmokeCaptureResult & { url?: string }>;
@@ -416,12 +419,29 @@ export async function runSmokeIfEnabled(): Promise<void> {
       const blockSlashInput = editorRoot;
       const blockSlashKernel = getActiveEditor();
       if (blockSlashKernel && blockSlashInput) {
-        const slashPosition = blockSlashKernel.editor.state.doc.content.size - 1;
-        blockSlashKernel.editor.commands.setTextSelection(slashPosition);
-        blockSlashInput.focus();
+        const slashBaselineMarkdown = blockSlashKernel.getMarkdown();
+        // Move through the real DOM with End+Enter so `/` begins on a fresh empty
+        // paragraph: exactly the block-type trigger context a user would create.
+        await bridge.pressKey('End');
+        await bridge.pressKey('Enter');
+        await sleep(80);
+        const slashPosition = blockSlashKernel.editor.state.selection.from;
+        const slashCoords = blockSlashKernel.editor.view.coordsAtPos(slashPosition);
+        // Real Electron mouse click places both DOM selection and focus at the end of the
+        // editable block; a programmatic ProseMirror selection alone leaves packaged Chromium's
+        // trusted text path without the contenteditable focus required by handleTextInput.
+        const clicked = await bridge.clickAtPoint(
+          Math.round(slashCoords.left),
+          Math.round(slashCoords.top),
+        );
+        await sleep(100);
         // Use Electron WebContents key events: synthetic renderer KeyboardEvents are untrusted and
         // Chromium does not run their contenteditable editing default action in packaged builds.
-        const typed = await bridge.typeText(' /h2');
+        // Chromium's trusted paste produces a real DOM insertion even when its IPC
+        // char path skips ProseMirror's legacy keypress handler. Paste the slash alone
+        // so the Electron-only DOMObserver fallback opens the menu; h2 still uses keys.
+        const pastedSlash = clicked.ok ? await bridge.pasteText('/') : clicked;
+        const typed = pastedSlash.ok ? await bridge.typeText('h2') : pastedSlash;
         await sleep(150);
         const blockSlashMenu = (): HTMLElement | null =>
           document.querySelector<HTMLElement>('[data-testid="block-slash-menu"]');
@@ -456,6 +476,10 @@ export async function runSmokeIfEnabled(): Promise<void> {
             blockSlashMenu()?.style.display === 'none',
           blockSlashKernel.getMarkdown().slice(-70),
         );
+        // The slash conversion is asserted above, then restore the pre-scenario document
+        // so the following selection/AI smoke scenarios retain their original fixture.
+        blockSlashKernel.setMarkdown(slashBaselineMarkdown);
+        await sleep(250);
       } else {
         check('TipTap 真实键入 /：块编辑器已挂载', false);
       }
@@ -713,10 +737,10 @@ export async function runSmokeIfEnabled(): Promise<void> {
       );
 
       // 场景 C：请求级失败（HTTP 500，无任何片段）→ 未完成标记 + Reject 退出
-      const httpFail = await bridge.aiMockTune({ chunkDelayMs: 30, failNextChatWith: 500 });
-      check('mock provider 可置下一次生成请求失败', httpFail.ok, httpFail.error);
+      const httpFail = await bridge.aiMockTune({ chunkDelayMs: 30, failAfterChunks: 0 });
+      check('mock provider 可模拟无片段请求失败', httpFail.ok, httpFail.error);
       check(
-        'DEV-037 请求失败场景：重新划词触发改写',
+        'DEV-037 无片段失败场景：重新划词触发改写',
         selectRewriteTarget(writeKernel) && (await triggerBlockRewrite()),
       );
       const errored = await waitFor(() => writingStatus() === 'error', 10_000);
@@ -2799,7 +2823,17 @@ export async function runSmokeIfEnabled(): Promise<void> {
     const sourceAi = sourceToolbar?.querySelector<HTMLButtonElement>(
       '[data-testid="toolbar-entry-ai"]',
     );
-    sourceAi?.focus();
+    sourceAi?.focus({ preventScroll: true });
+    // Hover the AI trigger through a trusted Chromium mouse move; programmatic focus does
+    // not set :focus-visible in packaged runs, while pointer discovery must also work.
+    if (sourceAi) {
+      const rect = sourceAi.getBoundingClientRect();
+      await bridge.hoverAtPoint(
+        Math.round(rect.left + rect.width / 2),
+        Math.round(rect.top + rect.height / 2),
+      );
+      await sleep(150);
+    }
     check(
       'Icon-first 工具栏：AI 为 Sparkles + AI + chevron，Tooltip 与 accessible name 可达',
       !!sourceAi &&

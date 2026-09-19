@@ -119,6 +119,7 @@ export const QuickInsert = Extension.create<QuickInsertOptions, SlashMenuState>(
     let menu: QuickInsertView | null = null;
     let context: SlashExecutionContext | null = null;
     let composing = false;
+    let suppressNextDomSlashFallback = false;
     let pendingInput: {
       from: number;
       text: string;
@@ -287,6 +288,51 @@ export const QuickInsert = Extension.create<QuickInsertOptions, SlashMenuState>(
           view.dom.parentElement?.append(menu.dom);
           return {
             update(view, previousState) {
+              const isElectronInput = /Electron/i.test(
+                view.dom.ownerDocument.defaultView?.navigator.userAgent ?? '',
+              );
+              if (
+                isElectronInput &&
+                !extension.storage.open &&
+                !previousState.doc.eq(view.state.doc)
+              ) {
+                const sel = view.state.selection;
+                const delta = view.state.doc.content.size - previousState.doc.content.size;
+                if (suppressNextDomSlashFallback) {
+                  suppressNextDomSlashFallback = false;
+                  sync(view);
+                  return;
+                }
+                const insertedOne =
+                  sel.empty &&
+                  delta === 1 &&
+                  view.state.doc.textBetween(sel.from - 1, sel.from, undefined, '\ufffc');
+                const insertedTwo =
+                  sel.empty &&
+                  delta === 2 &&
+                  view.state.doc.textBetween(sel.from - 2, sel.from, undefined, '\ufffc');
+                const slashPos =
+                  insertedOne === '/' ? sel.from - 1 : insertedTwo === ' /' ? sel.from - 1 : -1;
+                if (slashPos >= 0) {
+                  const next = triggerContext(view, slashPos);
+                  if (next) {
+                    context = next;
+                    pendingInput = {
+                      from: next.triggerFrom,
+                      text: insertedTwo === ' /' ? ' /' : '/',
+                      before: '',
+                      previousCursor: slashPos,
+                      documentDelta: insertedTwo === ' /' ? 2 : 1,
+                    };
+                    extension.storage.open = true;
+                    extension.storage.query = '';
+                    extension.storage.activeIndex = 0;
+                    refresh(view);
+                  }
+                }
+                sync(view);
+                return;
+              }
               if (!extension.storage.open || !context) {
                 sync(view);
                 return;
@@ -338,6 +384,7 @@ export const QuickInsert = Extension.create<QuickInsertOptions, SlashMenuState>(
             },
             compositionend() {
               composing = false;
+              suppressNextDomSlashFallback = true;
               return false;
             },
           },

@@ -53,6 +53,12 @@ if (process.env.NEXNOTE_SMOKE === '1') {
       ipcRenderer.invoke('smoke:typeText', text),
     pressKey: (key: string, modifiers?: string[]): Promise<{ ok: boolean; error?: string }> =>
       ipcRenderer.invoke('smoke:pressKey', { key, modifiers }),
+    clickAtPoint: (x: number, y: number): Promise<{ ok: boolean; error?: string }> =>
+      ipcRenderer.invoke('smoke:clickAtPoint', { x, y }),
+    hoverAtPoint: (x: number, y: number): Promise<{ ok: boolean; error?: string }> =>
+      ipcRenderer.invoke('smoke:hoverAtPoint', { x, y }),
+    pasteText: (text: string): Promise<{ ok: boolean; error?: string }> =>
+      ipcRenderer.invoke('smoke:pasteText', text),
     // DEV-009：AI 冒烟场景用的内嵌 mock OpenAI 服务器地址
     aiMock: (): Promise<{ ok: boolean; url?: string; error?: string }> =>
       ipcRenderer.invoke('smoke:aiMock'),

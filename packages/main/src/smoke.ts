@@ -122,6 +122,60 @@ export class SmokeController {
         return { ok: false, error: e instanceof Error ? e.message : String(e) };
       }
     });
+    ipcMain.handle('smoke:pasteText', async (_event, text: unknown) => {
+      try {
+        if (typeof text !== 'string' || !text) throw new Error('non-empty text is required');
+        const win = this.deps.windows.getMainWindow();
+        if (!win) throw new Error('main window is not available');
+        win.show();
+        win.focus();
+        await new Promise((resolve) => setTimeout(resolve, 50));
+        await win.webContents.insertText(text);
+        await new Promise((resolve) => setTimeout(resolve, 120));
+        return { ok: true };
+      } catch (e) {
+        return { ok: false, error: e instanceof Error ? e.message : String(e) };
+      }
+    });
+
+    ipcMain.handle('smoke:hoverAtPoint', async (_event, payload: unknown) => {
+      try {
+        const point = (payload ?? {}) as { x?: unknown; y?: unknown };
+        const x = typeof point.x === 'number' ? Math.round(point.x) : null;
+        const y = typeof point.y === 'number' ? Math.round(point.y) : null;
+        if (x === null || y === null) throw new Error('x/y point is required');
+        const win = this.deps.windows.getMainWindow();
+        if (!win) throw new Error('main window is not available');
+        win.show();
+        win.focus();
+        win.webContents.sendInputEvent({ type: 'mouseMove', x, y });
+        await new Promise((resolve) => setTimeout(resolve, 100));
+        return { ok: true, x, y };
+      } catch (e) {
+        return { ok: false, error: e instanceof Error ? e.message : String(e) };
+      }
+    });
+
+    ipcMain.handle('smoke:clickAtPoint', async (_event, payload: unknown) => {
+      try {
+        const point = (payload ?? {}) as { x?: unknown; y?: unknown };
+        const x = typeof point.x === 'number' ? Math.round(point.x) : null;
+        const y = typeof point.y === 'number' ? Math.round(point.y) : null;
+        if (x === null || y === null) throw new Error('x/y point is required');
+        const win = this.deps.windows.getMainWindow();
+        if (!win) throw new Error('main window is not available');
+        win.show();
+        win.focus();
+        for (const type of ['mouseMove', 'mouseDown', 'mouseUp'] as const) {
+          win.webContents.sendInputEvent({ type, x, y, button: 'left', clickCount: 1 });
+          await new Promise((resolve) => setTimeout(resolve, 30));
+        }
+        return { ok: true, x, y };
+      } catch (e) {
+        return { ok: false, error: e instanceof Error ? e.message : String(e) };
+      }
+    });
+
     /** Use Electron's focused WebContents input path, not untrusted DOM KeyboardEvents. */
     ipcMain.handle('smoke:pressKey', async (_event, payload: unknown) => {
       try {
@@ -132,16 +186,27 @@ export class SmokeController {
         win.show();
         win.focus();
         await new Promise((resolve) => setTimeout(resolve, 50));
-        const normalized = key === 'Enter' ? 'ENTER' : key === 'ArrowDown' ? 'ARROWDOWN' : key === 'ArrowUp' ? 'ARROWUP' : key.toUpperCase();
+        const normalized =
+          key === 'Enter'
+            ? 'ENTER'
+            : key === 'ArrowDown'
+              ? 'ARROWDOWN'
+              : key === 'ArrowUp'
+                ? 'ARROWUP'
+                : key.toUpperCase();
         win.webContents.sendInputEvent({
           type: 'keyDown',
           keyCode: normalized,
-          modifiers: Array.isArray(modifiers) ? modifiers.filter((item): item is string => typeof item === 'string') : [],
+          modifiers: (Array.isArray(modifiers)
+            ? modifiers.filter((item): item is string => typeof item === 'string')
+            : []) as Array<'command' | 'shift' | 'control' | 'alt'>,
         });
         win.webContents.sendInputEvent({
           type: 'keyUp',
           keyCode: normalized,
-          modifiers: Array.isArray(modifiers) ? modifiers.filter((item): item is string => typeof item === 'string') : [],
+          modifiers: (Array.isArray(modifiers)
+            ? modifiers.filter((item): item is string => typeof item === 'string')
+            : []) as Array<'command' | 'shift' | 'control' | 'alt'>,
         });
         return { ok: true };
       } catch (e) {
@@ -166,9 +231,12 @@ export class SmokeController {
               : character === ' '
                 ? 'SPACE'
                 : character === '/'
-                  ? 'SLASH'
+                  ? '/'
                   : character.toUpperCase();
-          win.webContents.sendInputEvent({ type: 'rawKeyDown', keyCode });
+          win.webContents.sendInputEvent({ type: 'keyDown', keyCode });
+          // The trusted `char` event is the same path Chromium uses for a physical
+          // keypress. Unlike webContents.insertText, it lets ProseMirror observe
+          // beforeinput and run its handleTextInput slash detection in packaged builds.
           if (character !== '\n')
             win.webContents.sendInputEvent({ type: 'char', keyCode: character });
           win.webContents.sendInputEvent({ type: 'keyUp', keyCode });
