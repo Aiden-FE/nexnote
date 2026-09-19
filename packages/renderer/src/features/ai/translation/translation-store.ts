@@ -24,6 +24,8 @@ interface TranslationSessionBase {
   sourceText: string;
   /** 由控制器在创建会话时绑定（闭包持有对应编辑器与流句柄）。 */
   onChangeLanguage: (language: string) => void;
+  /** Explicit user intent to start or restart translation with the current language. */
+  onSubmit: () => void;
   onStop: () => void;
   onClose: () => void;
 }
@@ -48,7 +50,6 @@ export interface InputTranslationSession extends TranslationSessionBase {
   overLimit: boolean;
   canSubmit: boolean;
   onDraftChange: (draft: string) => void;
-  onSubmit: () => void;
 }
 
 export type TranslationSession =

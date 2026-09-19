@@ -4,6 +4,7 @@ import type {
   AgentRunRequest,
   AgentScenario,
   AgentWritingActionId,
+  ChatPermissionMode,
   ChatMessage,
   IpcEventMap,
 } from '@nexnote/shared';
@@ -102,13 +103,14 @@ function summarizeToolResult(result: unknown): string {
 
 type RunState = {
   scenario: AgentScenario;
-  permissionMode: import('@nexnote/shared').ChatPermissionMode;
+  permissionMode: ChatPermissionMode;
   contextPaths: string[];
   started: number;
   status: 'active' | 'completed' | 'cancelled' | 'error';
   handle?: ChatStreamHandle;
   timer?: ReturnType<typeof setTimeout>;
 };
+
 export interface AgentGatewayDeps {
   ai: AiService;
   sendEvent: <C extends keyof IpcEventMap>(channel: C, payload: IpcEventMap[C]) => void;

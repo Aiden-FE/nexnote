@@ -67,7 +67,14 @@ export function createTranslationController(
       error: overLimit ? '原文超过 200,000 字符限制，请缩短后重试' : null,
       sourceText,
       coords,
-      onChangeLanguage: (next) => runSelection(sourceText, coords, next),
+      onChangeLanguage: (next) => {
+        const current = useTranslationStore.getState().selection;
+        if (current?.id === id) useTranslationStore.getState().patchSelection({ language: next });
+      },
+      onSubmit: () => {
+        const current = useTranslationStore.getState().selection;
+        if (current?.id === id) runSelection(sourceText, coords, current.language);
+      },
       onStop: () => stopSelection(),
       onClose: () => closeSelection(),
     };
@@ -120,7 +127,14 @@ export function createTranslationController(
       sourceText,
       path: meta.path,
       title: meta.title,
-      onChangeLanguage: (next) => runDocument(sourceText, meta, next),
+      onChangeLanguage: (next) => {
+        const current = useTranslationStore.getState().document;
+        if (current?.id === id) useTranslationStore.getState().patchDocument({ language: next });
+      },
+      onSubmit: () => {
+        const current = useTranslationStore.getState().document;
+        if (current?.id === id) runDocument(sourceText, meta, current.language);
+      },
       onStop: () => stopDocument(),
       onClose: () => closeDocument(),
     };
@@ -183,9 +197,8 @@ export function createTranslationController(
 
   const setTargetLanguage = (language: string) => {
     const { selection, document } = useTranslationStore.getState();
-    if (selection) runSelection(selection.sourceText, selection.coords, language);
-    if (document)
-      runDocument(document.sourceText, { path: document.path, title: document.title }, language);
+    if (selection) useTranslationStore.getState().patchSelection({ language });
+    if (document) useTranslationStore.getState().patchDocument({ language });
   };
 
   return {

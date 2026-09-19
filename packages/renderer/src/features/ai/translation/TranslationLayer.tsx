@@ -139,6 +139,17 @@ function TranslationBody({
           {copied ? <Check className="size-3" /> : <Copy className="size-3" />}
           {copied ? '已复制' : '复制'}
         </Button>
+        {scope !== 'input' && session.status !== 'streaming' && (
+          <Button
+            data-testid={testId(scope, 'submit')}
+            variant="ghost"
+            size="sm"
+            className="h-7 px-2 text-xs"
+            onClick={() => session.onSubmit()}
+          >
+            {session.output.trim() ? '重新翻译' : '翻译'}
+          </Button>
+        )}
         {session.status === 'streaming' && (
           <Button
             data-testid={testId(scope, 'stop')}
@@ -161,6 +172,7 @@ function TranslationWorkbench({
   session: Extract<TranslationSession, { kind: 'input' }>;
 }) {
   const inputRef = useRef<HTMLTextAreaElement>(null);
+  const composingRef = useRef(false);
   useEffect(() => inputRef.current?.focus(), []);
   return (
     <div
@@ -188,10 +200,17 @@ function TranslationWorkbench({
               data-testid="translation-input-draft"
               value={session.draft}
               onChange={(event) => session.onDraftChange(event.target.value)}
+              onCompositionStart={() => {
+                composingRef.current = true;
+              }}
+              onCompositionEnd={() => {
+                composingRef.current = false;
+              }}
               onKeyDown={(event) => {
                 if (
                   (event.metaKey || event.ctrlKey) &&
                   event.key === 'Enter' &&
+                  !composingRef.current &&
                   !event.nativeEvent.isComposing
                 ) {
                   event.preventDefault();

@@ -1,4 +1,4 @@
-import type { AgentTranslationRequest } from '@nexnote/shared';
+import type { AgentRunEvent, AgentTranslationRequest } from '@nexnote/shared';
 import { invoke, onEvent } from '../../../lib/ipc';
 
 /**
@@ -19,52 +19,74 @@ export interface TranslationStreamHandle {
   cancel: () => void;
 }
 
+type BufferedEvent = { runId: string; event: AgentRunEvent };
+
 export function startTranslationStream(
   request: { translation: AgentTranslationRequest },
   handlers: TranslationStreamHandlers,
 ): TranslationStreamHandle {
   let runId: string | null = null;
   let finished = false;
+  let awaitingRunId = true;
+  const buffered: BufferedEvent[] = [];
 
-  const unsubscribe = onEvent('agent:runEvent', (payload) => {
-    if (payload.runId !== runId) return;
-    const event = payload.event;
+  const finish = (): void => {
+    finished = true;
+    awaitingRunId = false;
+    buffered.length = 0;
+    unsubscribe();
+  };
+
+  const consume = (event: AgentRunEvent): void => {
+    if (finished) return;
     if (event.type === 'delta') {
       handlers.onDelta(event.text);
     } else if (event.type === 'done') {
-      finished = true;
-      unsubscribe();
+      finish();
       handlers.onDone();
     } else if (event.type === 'error') {
-      finished = true;
-      unsubscribe();
+      finish();
       handlers.onError(event.message, event.code);
     }
+  };
+
+  const unsubscribe = onEvent('agent:runEvent', (payload) => {
+    if (finished) return;
+    if (awaitingRunId) {
+      buffered.push({ runId: payload.runId, event: payload.event });
+      return;
+    }
+    if (payload.runId === runId) consume(payload.event);
   });
 
   void invoke('agent:run:translation', request)
     .then((res) => {
       if (finished) {
-        // start 返回前已被停止/关闭：补发 cancel，避免上游孤儿流。
+        buffered.length = 0;
         void invoke('agent:cancel', { runId: res.runId }).catch(() => undefined);
         return;
       }
       runId = res.runId;
+      awaitingRunId = false;
       handlers.onRunId?.(res.runId);
+      const replay = buffered.filter((item) => item.runId === res.runId);
+      buffered.length = 0;
+      for (const item of replay) {
+        consume(item.event);
+        if (finished) break;
+      }
     })
-    .catch((e: unknown) => {
+    .catch((error: unknown) => {
       if (finished) return;
-      finished = true;
-      unsubscribe();
-      handlers.onError(e instanceof Error ? e.message : String(e));
+      finish();
+      handlers.onError(error instanceof Error ? error.message : String(error));
     });
 
   return {
     cancel() {
       if (finished) return;
-      finished = true;
-      unsubscribe();
       const id = runId;
+      finish();
       runId = null;
       if (id) void invoke('agent:cancel', { runId: id }).catch(() => undefined);
     },

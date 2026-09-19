@@ -11,6 +11,7 @@ import { sourceSelectionBubble } from '../src/editor/source/source-bubble';
 import { useSettingsStore } from '../src/stores/settings-store';
 import { useTabStore, type TabDescriptor } from '../src/stores/tab-store';
 import { createTranslationController } from '../src/features/ai/translation/controller';
+import { startTranslationStream } from '../src/features/ai/translation/translate-stream';
 import { TranslationLayer } from '../src/features/ai/translation/TranslationLayer';
 import {
   isIncomplete,
@@ -21,6 +22,7 @@ import {
   openTranslationWorkbench,
 } from '../src/features/ai/translation/workbench';
 import { commandRegistry } from '../src/registries';
+import { useAiConfig } from '../src/features/ai/ai-config';
 
 /**
  * DEV-041 临时翻译：
@@ -51,6 +53,7 @@ function installBridge(diskText = ''): Bridge {
       return { ok: true, data: { runId: `stream-${runSequence}` } };
     }
     if (channel === 'agent:cancel') return { ok: true, data: { cancelled: true } };
+    if (channel === 'vault:getState') return { ok: true, data: { mode: 'onboarding', recent: [] } };
     if (channel === 'fs:exists') return { ok: true, data: true };
     if (channel === 'fs:readTextFile') return { ok: true, data: diskText };
     if (channel === 'fs:stat') {
@@ -92,6 +95,14 @@ function translationPayloads(bridge: Bridge) {
     .map(([, payload]) => payload as { translation: Record<string, string> });
 }
 
+function deferred<T>() {
+  let resolve!: (value: T) => void;
+  const promise = new Promise<T>((done) => {
+    resolve = done;
+  });
+  return { promise, resolve };
+}
+
 function controller(
   getDocumentText = () => '# 页\n\n正文原文',
 ): ReturnType<typeof createTranslationController> {
@@ -128,6 +139,320 @@ afterEach(async () => {
   document.body.innerHTML = '';
   delete (window as unknown as { nexnote?: unknown }).nexnote;
   useTranslationStore.setState({ selection: null, document: null, input: null });
+});
+
+describe('DEV-059 runId 建立前的流式事件缓冲', () => {
+  it('delta+done 先于 invoke resolve 仍回放并完成；错误先到正确失败', async () => {
+    const bridge = installBridge();
+    const success = deferred<{ ok: true; data: { runId: string } }>();
+    bridge.invokeSpy.mockImplementationOnce(() => success.promise);
+    const successHandlers = { onDelta: vi.fn(), onDone: vi.fn(), onError: vi.fn() };
+    startTranslationStream(
+      { translation: { mode: 'input', targetLanguage: 'English', text: 'x' } },
+      successHandlers,
+    );
+    bridge.emit('agent:runEvent', {
+      runId: 'buffered-success',
+      scenario: 'translation',
+      event: { type: 'delta', text: 'early' },
+    });
+    bridge.emit('agent:runEvent', {
+      runId: 'buffered-success',
+      scenario: 'translation',
+      event: { type: 'done' },
+    });
+    success.resolve({ ok: true, data: { runId: 'buffered-success' } });
+    await bridge.flush();
+    expect(successHandlers.onDelta).toHaveBeenCalledWith('early');
+    expect(successHandlers.onDone).toHaveBeenCalledTimes(1);
+
+    const failure = deferred<{ ok: true; data: { runId: string } }>();
+    bridge.invokeSpy.mockImplementationOnce(() => failure.promise);
+    const failureHandlers = { onDelta: vi.fn(), onDone: vi.fn(), onError: vi.fn() };
+    startTranslationStream(
+      { translation: { mode: 'input', targetLanguage: 'English', text: 'x' } },
+      failureHandlers,
+    );
+    bridge.emit('agent:runEvent', {
+      runId: 'buffered-error',
+      scenario: 'translation',
+      event: { type: 'error', message: 'early error', code: 'EARLY' },
+    });
+    failure.resolve({ ok: true, data: { runId: 'buffered-error' } });
+    await bridge.flush();
+    expect(failureHandlers.onError).toHaveBeenCalledWith('early error', 'EARLY');
+    expect(failureHandlers.onDone).not.toHaveBeenCalled();
+  });
+
+  it('取消后迟到 resolve/event 无效，两个并发乱序事件只回放各自 runId', async () => {
+    const bridge = installBridge();
+    const cancelledResult = deferred<{ ok: true; data: { runId: string } }>();
+    bridge.invokeSpy.mockImplementationOnce(() => cancelledResult.promise);
+    const cancelledHandlers = { onDelta: vi.fn(), onDone: vi.fn(), onError: vi.fn() };
+    const cancelled = startTranslationStream(
+      { translation: { mode: 'input', targetLanguage: 'English', text: 'cancel' } },
+      cancelledHandlers,
+    );
+    bridge.emit('agent:runEvent', {
+      runId: 'cancelled-run',
+      scenario: 'translation',
+      event: { type: 'delta', text: 'discard' },
+    });
+    cancelled.cancel();
+    cancelledResult.resolve({ ok: true, data: { runId: 'cancelled-run' } });
+    await bridge.flush();
+    bridge.emit('agent:runEvent', {
+      runId: 'cancelled-run',
+      scenario: 'translation',
+      event: { type: 'done' },
+    });
+    expect(cancelledHandlers.onDelta).not.toHaveBeenCalled();
+    expect(cancelledHandlers.onDone).not.toHaveBeenCalled();
+    expect(bridge.calls('agent:cancel')).toContainEqual([
+      'agent:cancel',
+      { runId: 'cancelled-run' },
+    ]);
+
+    const first = deferred<{ ok: true; data: { runId: string } }>();
+    const second = deferred<{ ok: true; data: { runId: string } }>();
+    bridge.invokeSpy
+      .mockImplementationOnce(() => first.promise)
+      .mockImplementationOnce(() => second.promise);
+    const firstHandlers = { onDelta: vi.fn(), onDone: vi.fn(), onError: vi.fn() };
+    const secondHandlers = { onDelta: vi.fn(), onDone: vi.fn(), onError: vi.fn() };
+    startTranslationStream(
+      { translation: { mode: 'input', targetLanguage: 'English', text: 'one' } },
+      firstHandlers,
+    );
+    startTranslationStream(
+      { translation: { mode: 'input', targetLanguage: 'English', text: 'two' } },
+      secondHandlers,
+    );
+    bridge.emit('agent:runEvent', {
+      runId: 'run-two',
+      scenario: 'translation',
+      event: { type: 'delta', text: 'two' },
+    });
+    bridge.emit('agent:runEvent', {
+      runId: 'run-one',
+      scenario: 'translation',
+      event: { type: 'delta', text: 'one' },
+    });
+    second.resolve({ ok: true, data: { runId: 'run-two' } });
+    first.resolve({ ok: true, data: { runId: 'run-one' } });
+    await bridge.flush();
+    expect(firstHandlers.onDelta).toHaveBeenCalledWith('one');
+    expect(firstHandlers.onDelta).not.toHaveBeenCalledWith('two');
+    expect(secondHandlers.onDelta).toHaveBeenCalledWith('two');
+    expect(secondHandlers.onDelta).not.toHaveBeenCalledWith('one');
+  });
+});
+
+describe('DEV-059 真实入口行为', () => {
+  const importPalette = async () => {
+    const { CommandPalette } = await import('../src/palette/CommandPalette');
+    return CommandPalette;
+  };
+
+  it('命令面板真实打开、运行 ai.translation.workbench，触发工作台而无隐式请求', async () => {
+    const bridge = installBridge();
+    const usePaletteStore = (await import('../src/stores/palette-store')).usePaletteStore;
+    usePaletteStore.setState({ open: true });
+    await import('../src/features/ai');
+    const CommandPalette = await importPalette();
+    await mount(<CommandPalette />);
+    const items = Array.from(
+      document.querySelectorAll<HTMLButtonElement>('[data-testid="palette-item"]'),
+    );
+    const commandItem = items.find((item) => item.textContent?.includes('翻译工作台'));
+    expect(commandItem).toBeDefined();
+    await act(async () => {
+      commandItem!.click();
+    });
+    expect(useTranslationStore.getState().input).not.toBeNull();
+    expect(bridge.calls('agent:run:translation')).toHaveLength(0);
+  });
+
+  it('块编辑真实 dispatch 选区 AI 下拉的 translate:workbench 与 translate:selection 互不干扰', async () => {
+    const bridge = installBridge('# 测试页\n\n正文段落\n');
+    useSettingsStore.setState({
+      vault: {
+        ...defaultVaultSettings(),
+        editor: { ...defaultVaultSettings().editor, autoSaveMs: 10_000 },
+      },
+    });
+    const tab: TabDescriptor = {
+      id: 'translate-entry',
+      kind: 'page',
+      title: '测试页',
+      pagePath: '测试页.md',
+      format: 'native-block',
+      editorMode: 'block',
+      createdAt: 1,
+    };
+    await mount(<EditorView tab={tab} />);
+    await vi.waitFor(() => expect(getActiveEditor()).not.toBeNull());
+    const kernel = getActiveEditor()!;
+    const doc = kernel.editor.state.doc;
+    let from = -1;
+    doc.descendants((node, pos) => {
+      if (from >= 0 || !node.isText) return true;
+      const at = node.text?.indexOf('正文') ?? -1;
+      if (at >= 0) from = pos + at;
+      return false;
+    });
+    expect(from).toBeGreaterThanOrEqual(0);
+
+    await act(async () => {
+      kernel.editor.view.dispatch(
+        kernel.editor.view.state.tr.setSelection(
+          TextSelection.create(doc, from, from + '正文'.length),
+        ),
+      );
+    });
+    const bubble = document.querySelector<HTMLElement>('[data-selection-bubble]');
+    expect(bubble).not.toBeNull();
+    await act(async () => {
+      bubble!.querySelector<HTMLButtonElement>('[data-bubble-action="ai:menu"]')!.click();
+    });
+    await act(async () => {
+      bubble!
+        .querySelector<HTMLButtonElement>('[data-ai-menu-action="translate:selection"]')!
+        .click();
+    });
+    await bridge.flush();
+    expect(translationPayloads(bridge)).toHaveLength(1);
+    expect(translationPayloads(bridge)[0]?.translation.mode).toBe('selection');
+
+    await act(async () => {
+      bubble!.querySelector<HTMLButtonElement>('[data-bubble-action="ai:menu"]')!.click();
+    });
+    await act(async () => {
+      bubble!
+        .querySelector<HTMLButtonElement>('[data-ai-menu-action="translate:workbench"]')!
+        .click();
+    });
+    expect(useTranslationStore.getState().input?.draft).toBe('正文');
+    await bridge.flush();
+    expect(translationPayloads(bridge)).toHaveLength(1);
+
+    useTranslationStore.getState().selection?.onClose();
+    useTranslationStore.getState().input?.onClose();
+  });
+
+  it('textarea 上 Cmd/Ctrl+Enter 真实 keydown；IME composition 不提交', async () => {
+    const bridge = installBridge();
+    const session = openTranslationWorkbench();
+    await mount(<TranslationLayer />);
+    const textarea = document.querySelector<HTMLTextAreaElement>(
+      '[data-testid="translation-input-draft"]',
+    )!;
+    await act(async () => {
+      const setter = Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, 'value')?.set;
+      setter?.call(textarea, 'hello world');
+      textarea.dispatchEvent(new Event('input', { bubbles: true }));
+      await bridge.flush();
+    });
+    const runCount = () => translationPayloads(bridge).length;
+    expect(useTranslationStore.getState().input?.draft).toBe('hello world');
+
+    // IME composing Enter must not trigger submission.
+    await act(async () => {
+      textarea.dispatchEvent(new CompositionEvent('compositionstart', { bubbles: true }));
+      textarea.dispatchEvent(
+        new KeyboardEvent('keydown', {
+          key: 'Enter',
+          metaKey: true,
+          bubbles: true,
+          cancelable: true,
+        }),
+      );
+      await bridge.flush();
+    });
+    expect(runCount()).toBe(0);
+
+    await act(async () => {
+      textarea.dispatchEvent(new CompositionEvent('compositionend', { bubbles: true }));
+    });
+    // Cmd/Ctrl + Enter must trigger exactly one explicit request.
+    await act(async () => {
+      textarea.dispatchEvent(
+        new KeyboardEvent('keydown', {
+          key: 'Enter',
+          metaKey: true,
+          bubbles: true,
+          cancelable: true,
+        }),
+      );
+      await bridge.flush();
+    });
+    expect(runCount()).toBe(1);
+    await act(async () => {
+      bridge.emit('agent:runEvent', {
+        runId: 'stream-1',
+        scenario: 'translation',
+        event: { type: 'done' },
+      });
+    });
+    await act(async () => {
+      textarea.dispatchEvent(
+        new KeyboardEvent('keydown', {
+          key: 'Enter',
+          ctrlKey: true,
+          bubbles: true,
+          cancelable: true,
+        }),
+      );
+      await bridge.flush();
+    });
+    expect(runCount()).toBe(2);
+    await act(async () => session.close());
+  });
+
+  it('vault:changed 事件真实触发三个槽位全部关闭', async () => {
+    const bridge = installBridge();
+    const App = (await import('../src/App')).default;
+    await mount(<App />);
+    await bridge.flush();
+    const c = controller();
+    await act(async () => {
+      c.translateSelection({ text: '选区', coords: { top: 0, left: 0 } });
+      c.translateDocument();
+      const input = openTranslationWorkbench('输入');
+      input.submit();
+      await bridge.flush();
+    });
+    expect(useTranslationStore.getState().selection).not.toBeNull();
+    expect(useTranslationStore.getState().document).not.toBeNull();
+    expect(useTranslationStore.getState().input).not.toBeNull();
+
+    await act(async () => {
+      bridge.emit('vault:changed', {});
+      await bridge.flush();
+    });
+    expect(useTranslationStore.getState().selection).toBeNull();
+    expect(useTranslationStore.getState().document).toBeNull();
+    expect(useTranslationStore.getState().input).toBeNull();
+    expect(bridge.calls('agent:cancel').map(([, p]) => p)).toEqual([
+      { runId: 'stream-1' },
+      { runId: 'stream-2' },
+      { runId: 'stream-3' },
+    ]);
+    await act(async () => {
+      for (const runId of ['stream-1', 'stream-2', 'stream-3']) {
+        bridge.emit('agent:runEvent', {
+          runId,
+          scenario: 'translation',
+          event: { type: 'delta', text: 'late' },
+        });
+      }
+    });
+    expect(useTranslationStore.getState()).toMatchObject({
+      selection: null,
+      document: null,
+      input: null,
+    });
+  });
 });
 
 describe('DEV-041 翻译请求与流式状态', () => {
@@ -215,25 +540,27 @@ describe('DEV-041 翻译请求与流式状态', () => {
     expect(isIncomplete(session)).toBe(true);
   });
 
-  it('目标语言每次可选但不覆盖全局默认，切换语言以同一原文重译', async () => {
+  it('三入口切换语言不发请求；划词/全文仅显式重新翻译时各新增一次', async () => {
     const bridge = installBridge();
     const c = controller();
     c.translateSelection({ text: '你好', coords: { top: 0, left: 0 } });
+    c.translateDocument();
     await bridge.flush();
-    expect(translationPayloads(bridge)[0]!.translation.targetLanguage).toBe('English');
+    expect(translationPayloads(bridge)).toHaveLength(2);
 
     useTranslationStore.getState().selection!.onChangeLanguage('日本語');
+    useTranslationStore.getState().document!.onChangeLanguage('Deutsch');
     await bridge.flush();
-    const second = translationPayloads(bridge)[1]!;
-    expect(second.translation.targetLanguage).toBe('日本語');
-    expect(second.translation.text).toBe('你好');
+    expect(translationPayloads(bridge)).toHaveLength(2);
+    expect(useTranslationStore.getState().selection?.language).toBe('日本語');
+    expect(useTranslationStore.getState().document?.language).toBe('Deutsch');
 
-    // 当次覆盖不持久化；关闭后恢复全局/兼容默认
-    c.closeSelection();
-    c.translateSelection({ text: '你好', coords: { top: 0, left: 0 } });
+    useTranslationStore.getState().selection!.onSubmit();
+    useTranslationStore.getState().document!.onSubmit();
     await bridge.flush();
-    const third = translationPayloads(bridge)[2]!;
-    expect(third.translation.targetLanguage).toBe('English');
+    expect(translationPayloads(bridge)).toHaveLength(4);
+    expect(translationPayloads(bridge)[2]?.translation.targetLanguage).toBe('日本語');
+    expect(translationPayloads(bridge)[3]?.translation.targetLanguage).toBe('Deutsch');
   });
 
   it('划词与全文同受 200k 单源上限：超限明确报错且不提交、不截断', async () => {
@@ -347,6 +674,62 @@ describe('DEV-059 翻译工作台（独立临时输入）', () => {
     });
     expect(bridge.calls('agent:run:translation')).toHaveLength(1);
     session.close();
+  });
+
+  it('配置迟到不覆盖用户临时语言，旧会话回调不影响新会话', async () => {
+    const bridge = installBridge();
+    const pending = deferred<NonNullable<ReturnType<typeof useAiConfig.getState>['state']>>();
+    useAiConfig.setState({
+      state: null,
+      loading: false,
+      load: async () => {
+        const state = await pending.promise;
+        useAiConfig.setState({ state, loading: false });
+      },
+    });
+
+    const first = openTranslationWorkbench();
+    useTranslationStore.getState().input!.onChangeLanguage('日本語');
+    pending.resolve({
+      profiles: [],
+      defaultProfileId: null,
+      features: { writing: null, translation: null, chat: null, embedding: null },
+      translationTargetLanguage: 'English',
+      needsOnboarding: true,
+      setupPromptDismissed: false,
+      embeddingFingerprint: null,
+      embeddingGeneration: 0,
+    });
+    await bridge.flush();
+    expect(useTranslationStore.getState().input?.language).toBe('日本語');
+
+    first.close();
+    useAiConfig.setState({ state: null, loading: false });
+    const oldPending = deferred<NonNullable<ReturnType<typeof useAiConfig.getState>['state']>>();
+    useAiConfig.setState({
+      state: null,
+      loading: false,
+      load: async () => {
+        const state = await oldPending.promise;
+        useAiConfig.setState({ state, loading: false });
+      },
+    });
+    openTranslationWorkbench();
+    const second = openTranslationWorkbench();
+    useTranslationStore.getState().input!.onChangeLanguage('Deutsch');
+    oldPending.resolve({
+      profiles: [],
+      defaultProfileId: null,
+      features: { writing: null, translation: null, chat: null, embedding: null },
+      translationTargetLanguage: 'English',
+      needsOnboarding: true,
+      setupPromptDismissed: false,
+      embeddingFingerprint: null,
+      embeddingGeneration: 0,
+    });
+    await bridge.flush();
+    expect(useTranslationStore.getState().input?.language).toBe('Deutsch');
+    second.close();
   });
 
   it('并发请求使用唯一 runId；晚到事件被丢弃；关闭即取消', async () => {

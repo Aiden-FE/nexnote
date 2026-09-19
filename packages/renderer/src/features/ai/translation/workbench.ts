@@ -18,11 +18,6 @@ export interface TranslationWorkbenchHandle {
 let activeStream: TranslationStreamHandle | null = null;
 let activeSessionId: string | null = null;
 
-function current(): InputTranslationSession | null {
-  const session = useTranslationStore.getState().input;
-  return session && session.id === activeSessionId ? session : null;
-}
-
 function cancelActive(): void {
   activeStream?.cancel();
   activeStream = null;
@@ -33,6 +28,11 @@ export function openTranslationWorkbench(initialText = ''): TranslationWorkbench
   closeTranslationWorkbench();
   const id = nextTranslationId('input');
   activeSessionId = id;
+  let languageTouched = false;
+  const current = (): InputTranslationSession | null => {
+    const session = useTranslationStore.getState().input;
+    return session && session.id === id && activeSessionId === id ? session : null;
+  };
   const defaultLanguage = resolveInitialTargetLanguage(
     initialText,
     useAiConfig.getState().state?.translationTargetLanguage,
@@ -98,6 +98,7 @@ export function openTranslationWorkbench(initialText = ''): TranslationWorkbench
 
   const setLanguage = (language: string): void => {
     if (!current()) return;
+    languageTouched = true;
     useTranslationStore.getState().patchInput({ language });
   };
 
@@ -118,9 +119,11 @@ export function openTranslationWorkbench(initialText = ''): TranslationWorkbench
   };
   useTranslationStore.getState().openInput(session);
 
-  // Hydrate the durable global default without triggering translation.
+  // Hydrate the durable global default without overriding a user selection.
+  // The deferred result is only honoured when the user has not picked a target language since opening.
   void fetchAiStateOnce().then((state) => {
-    if (current() && state?.translationTargetLanguage) {
+    const currentSession = current();
+    if (currentSession && state?.translationTargetLanguage && !languageTouched) {
       useTranslationStore.getState().patchInput({ language: state.translationTargetLanguage });
     }
   });
