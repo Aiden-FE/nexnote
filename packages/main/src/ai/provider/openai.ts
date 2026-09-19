@@ -306,6 +306,9 @@ export class OpenAIProtocolAdapter implements ProviderAdapter {
           messages: req.messages,
           ...(req.params?.temperature !== undefined && { temperature: req.params.temperature }),
           ...(req.params?.maxTokens !== undefined && { max_tokens: req.params.maxTokens }),
+          ...(req.params?.reasoningEffort && {
+            reasoning_effort: req.params.reasoningEffort,
+          }),
         }),
         signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
       });

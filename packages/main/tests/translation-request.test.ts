@@ -68,7 +68,11 @@ function deferredStream() {
 }
 
 function setup(
-  options: { stream?: () => ChatStreamHandle; tools?: AgentTool[]; emitted?: AgentRunEvent[] } = {},
+  options: {
+    stream?: (onEvent: (event: AgentRunEvent) => void) => ChatStreamHandle;
+    tools?: AgentTool[];
+    emitted?: AgentRunEvent[];
+  } = {},
 ) {
   const calls: StreamCall[] = [];
   const events: Array<{ runId: string; scenario: string; event: AgentRunEvent }> = [];
@@ -80,7 +84,7 @@ function setup(
     ): ChatStreamHandle => {
       calls.push(opts);
       for (const event of options.emitted ?? []) onEvent(event);
-      return options.stream ? options.stream() : immediateStream();
+      return options.stream ? options.stream(onEvent) : immediateStream();
     },
   };
   const gateway = new AgentGateway({
@@ -183,6 +187,109 @@ describe('DEV-041 临时翻译请求层', () => {
     expect(forwarded.at(-1)?.type).toBe('done');
   });
 
+  it('仅 translation 清洗；普通场景原样转发 reasoningDelta 与标签文本', async () => {
+    const { gateway, events } = setup({
+      emitted: [
+        { type: 'delta', text: '<think>normal chat text</think>' },
+        { type: 'reasoningDelta', text: 'normal reasoning channel' },
+        { type: 'done' },
+      ],
+    });
+
+    await gateway.run('chat', { messages: [{ role: 'user', content: 'hi' }] });
+    await new Promise((resolve) => setTimeout(resolve, 5));
+
+    expect(events.map((entry) => entry.event)).toContainEqual({
+      type: 'delta',
+      text: '<think>normal chat text</think>',
+    });
+    expect(events.map((entry) => entry.event)).toContainEqual({
+      type: 'reasoningDelta',
+      text: 'normal reasoning channel',
+    });
+  });
+
+  it('正常 done flush 普通 pending 前缀，未闭合完整块不泄漏', async () => {
+    const visible = setup({
+      emitted: [{ type: 'delta', text: '译文<thi' }, { type: 'done' }],
+    });
+    await visible.gateway.run('translation', { translation });
+    await new Promise((resolve) => setTimeout(resolve, 5));
+    expect(
+      visible.events
+        .map((entry) => entry.event)
+        .filter(
+          (event): event is Extract<AgentRunEvent, { type: 'delta' }> => event.type === 'delta',
+        )
+        .map((event) => event.text)
+        .join(''),
+    ).toBe('译文<thi');
+
+    const hidden = setup({
+      emitted: [{ type: 'delta', text: '译文<think>绝不能泄漏' }, { type: 'done' }],
+    });
+    await hidden.gateway.run('translation', { translation });
+    await new Promise((resolve) => setTimeout(resolve, 5));
+    expect(
+      hidden.events
+        .map((entry) => entry.event)
+        .filter(
+          (event): event is Extract<AgentRunEvent, { type: 'delta' }> => event.type === 'delta',
+        )
+        .map((event) => event.text)
+        .join(''),
+    ).toBe('译文');
+  });
+
+  it('错误与取消保留已输出译文，丢弃隐藏缓冲及终止后的晚到事件', async () => {
+    const errorCase = setup({
+      emitted: [
+        { type: 'delta', text: '已显示<think>隐藏' },
+        { type: 'error', message: '断线', code: 'STREAM_READ' },
+        { type: 'delta', text: '晚到泄漏</think>' },
+        { type: 'done' },
+      ],
+    });
+    await errorCase.gateway.run('translation', { translation });
+    await new Promise((resolve) => setTimeout(resolve, 5));
+    expect(
+      errorCase.events
+        .map((entry) => entry.event)
+        .filter(
+          (event): event is Extract<AgentRunEvent, { type: 'delta' }> => event.type === 'delta',
+        )
+        .map((event) => event.text)
+        .join(''),
+    ).toBe('已显示');
+    expect(errorCase.events.map((entry) => entry.event.type)).not.toContain('done');
+
+    const deferred = deferredStream();
+    let providerEmit: ((event: AgentRunEvent) => void) | undefined;
+    const cancelled = setup({
+      stream: (onEvent) => {
+        providerEmit = onEvent;
+        return deferred.handle;
+      },
+    });
+    const { runId } = await cancelled.gateway.run('translation', { translation });
+    providerEmit?.({ type: 'delta', text: '保留译文<think>隐藏' });
+    expect(cancelled.gateway.cancel(runId)).toBe(true);
+    providerEmit?.({ type: 'delta', text: '晚到泄漏</think>' });
+    providerEmit?.({ type: 'done' });
+    deferred.resolve();
+    await deferred.handle.done;
+    expect(
+      cancelled.events
+        .map((entry) => entry.event)
+        .filter(
+          (event): event is Extract<AgentRunEvent, { type: 'delta' }> => event.type === 'delta',
+        )
+        .map((event) => event.text)
+        .join(''),
+    ).toBe('保留译文');
+    expect(cancelled.events.map((entry) => entry.event.type)).not.toContain('done');
+  });
+
   it('翻译消息模板区分划词与全文，均不注入上下文/技能', async () => {
     const { gateway, calls } = setup();
     await gateway.run('translation', {
@@ -228,21 +335,74 @@ describe('DEV-041 reasoning 关闭值到达 provider', () => {
     await mock.close();
   });
 
-  it('sanitizeReasoningArtifacts 同时去除 think 与 analysis 残留（含未闭合块）', () => {
-    const filter = createReasoningStreamFilter();
-    expect(filter.push('A<think>hidden</think>B') + filter.finish()).toBe('AB');
-    expect(filter.push('A<analysis>internal</analysis>B') + filter.finish()).toBe('AB');
-    expect(filter.push('<think>未结束') + filter.finish()).toBe('');
-    expect(filter.push('前缀<thi') + filter.finish()).toBe('前缀');
+  it('仅完整 reasoning 标签触发隐藏，普通小于号、前缀与相似标签逐字保真', () => {
+    for (const text of [
+      '普通文本<',
+      '普通文本<thi',
+      '普通文本<think',
+      '普通文本<analysis',
+      '普通文本<thinking>正文</thinking>',
+      'a < b && c <= d',
+      '可见</think>尾巴',
+    ]) {
+      expect(sanitizeReasoningArtifacts(text)).toBe(text);
+    }
   });
 
-  it('sanitizeReasoningArtifacts 单函数版本去除跨片段的 think 块', () => {
-    expect(sanitizeReasoningArtifacts('<think>hidden</think>可见')).toBe('可见');
-    expect(sanitizeReasoningArtifacts('<analysis>hidden</analysis>')).toBe('');
-    expect(sanitizeReasoningArtifacts('普通<think>跨片段尾巴')).toBe('普通');
+  it('隐藏 nested mixed think/analysis、多块、大小写和标签内空白', () => {
+    expect(
+      sanitizeReasoningArtifacts(
+        'A< THINK >one<analysis>two</analysis>three</ THINK >B' +
+          '<AnAlYsIs\n>four<think>five</think></ ANALYSIS\u00a0>C',
+      ),
+    ).toBe('ABC');
+    expect(sanitizeReasoningArtifacts('<think><analysis>x</analysis></think>可见')).toBe('可见');
+    expect(sanitizeReasoningArtifacts('前<think>未闭合')).toBe('前');
   });
 
-  it('适配层把关闭值翻译为 provider reasoning_effort', async () => {
+  it('完整标签的每个切分点都不泄漏隐藏内容，普通前缀跨 chunk 后可恢复', () => {
+    const sample = '前< ThInK >秘密<analysis>更深</analysis></ THINK >后';
+    for (let split = 0; split <= sample.length; split += 1) {
+      const filter = createReasoningStreamFilter();
+      expect(
+        filter.push(sample.slice(0, split)) + filter.push(sample.slice(split)) + filter.finish(),
+      ).toBe('前后');
+    }
+
+    for (const chunks of [
+      ['普通<thi', 's is text'],
+      ['普通<analy', 'tics>'],
+      ['普通<think', 'ing>'],
+      ['普通<', 'not-a-tag>'],
+    ]) {
+      const filter = createReasoningStreamFilter();
+      expect(chunks.map((chunk) => filter.push(chunk)).join('') + filter.finish()).toBe(
+        chunks.join(''),
+      );
+    }
+  });
+
+  it('固定种子的随机 chunk 切分与整段清洗结果一致', () => {
+    const sample =
+      '可见<THINK\n>hidden<analysis>nested</analysis></ THINK >正文<analysis>x</analysis>结尾<thi';
+    const expected = '可见正文结尾<thi';
+    let seed = 0x5eed;
+    for (let run = 0; run < 100; run += 1) {
+      const filter = createReasoningStreamFilter();
+      let offset = 0;
+      let actual = '';
+      while (offset < sample.length) {
+        seed = (seed * 1664525 + 1013904223) >>> 0;
+        const size = (seed % 7) + 1;
+        actual += filter.push(sample.slice(offset, offset + size));
+        offset += size;
+      }
+      actual += filter.finish();
+      expect(actual).toBe(expected);
+    }
+  });
+
+  it('OpenAI-compatible 流式与非流式请求都发送 reasoning_effort=none', async () => {
     const adapter = new OpenAIProtocolAdapter({
       baseUrl: `${mock.url}/v1`,
       apiKey: 'sk-mock-key',
@@ -256,7 +416,55 @@ describe('DEV-041 reasoning 关闭值到达 provider', () => {
       },
       () => undefined,
     ).done;
-    const req = mock.requests.at(-1) as { body: { reasoning_effort?: string } };
-    expect(req.body.reasoning_effort).toBe('none');
+    expect((mock.requests.at(-1)?.body as { reasoning_effort?: string }).reasoning_effort).toBe(
+      'none',
+    );
+
+    await adapter.chatCompletion({
+      model: 'gpt-4o-mini',
+      messages: [{ role: 'user', content: 'translate fallback' }],
+      params: { reasoningEffort: TRANSLATION_REASONING_EFFORT },
+    });
+    expect((mock.requests.at(-1)?.body as { reasoning_effort?: string }).reasoning_effort).toBe(
+      'none',
+    );
+  });
+
+  it('Azure 非流式路径保持 reasoning_effort=none 与 deployment 协议', async () => {
+    const adapter = new OpenAIProtocolAdapter({
+      baseUrl: mock.url,
+      apiKey: 'azure-key',
+      kind: 'azure-openai',
+    });
+    await adapter.chatCompletion({
+      model: 'gpt-4o-mini',
+      messages: [{ role: 'user', content: 'translate fallback' }],
+      params: { reasoningEffort: TRANSLATION_REASONING_EFFORT },
+    });
+    const request = mock.requests.at(-1)!;
+    expect(request.url).toContain('/openai/deployments/gpt-4o-mini/chat/completions');
+    expect(request.headers['api-key']).toBe('azure-key');
+    expect((request.body as { reasoning_effort?: string }).reasoning_effort).toBe('none');
+  });
+
+  it('provider 拒绝 reasoning 参数时失败且不静默移除参数重试', async () => {
+    const adapter = new OpenAIProtocolAdapter({
+      baseUrl: `${mock.url}/v1`,
+      apiKey: 'sk-mock-key',
+      kind: 'openai-compatible',
+    });
+    const before = mock.requests.length;
+    mock.failNextChatWith = 400;
+    await expect(
+      adapter.chatCompletion({
+        model: 'gpt-4o-mini',
+        messages: [{ role: 'user', content: 'translate fallback' }],
+        params: { reasoningEffort: TRANSLATION_REASONING_EFFORT },
+      }),
+    ).rejects.toMatchObject({ code: 'PROVIDER_HTTP', status: 400 });
+    expect(mock.requests).toHaveLength(before + 1);
+    expect((mock.requests.at(-1)?.body as { reasoning_effort?: string }).reasoning_effort).toBe(
+      'none',
+    );
   });
 });

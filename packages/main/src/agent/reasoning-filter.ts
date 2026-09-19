@@ -1,18 +1,45 @@
-const OPEN_TAGS = ['<think>', '<analysis>'] as const;
-
 type ReasoningTag = 'think' | 'analysis';
 
-function partialTagSuffix(buffer: string, candidates: readonly string[]): number {
-  const lower = buffer.toLowerCase();
-  for (
-    let length = Math.min(lower.length, Math.max(...candidates.map((tag) => tag.length)));
-    length > 0;
-    length -= 1
-  ) {
-    const suffix = lower.slice(-length);
-    if (candidates.some((tag) => tag.startsWith(suffix))) return length;
+type TagInspection =
+  { kind: 'potential' } | { kind: 'tag'; name: ReasoningTag; closing: boolean } | { kind: 'text' };
+
+const REASONING_TAGS: readonly ReasoningTag[] = ['think', 'analysis'];
+
+function isTagWhitespace(character: string): boolean {
+  return /\s/u.test(character);
+}
+
+/**
+ * Recognise only complete think/analysis protocol tags. Similar HTML/text such as
+ * `<thinking>` is rejected as normal content, while case and whitespace inside a
+ * protocol tag are accepted across arbitrary stream boundaries.
+ */
+function inspectTag(value: string): TagInspection {
+  let index = 1;
+  while (index < value.length && isTagWhitespace(value[index]!)) index += 1;
+  if (index === value.length) return { kind: 'potential' };
+
+  const closing = value[index] === '/';
+  if (closing) {
+    index += 1;
+    while (index < value.length && isTagWhitespace(value[index]!)) index += 1;
+    if (index === value.length) return { kind: 'potential' };
   }
-  return 0;
+
+  const nameStart = index;
+  while (index < value.length && /[a-z]/i.test(value[index]!)) index += 1;
+  const fragment = value.slice(nameStart, index).toLowerCase();
+  const candidates = REASONING_TAGS.filter((name) => name.startsWith(fragment));
+  if (!fragment || candidates.length === 0) return { kind: 'text' };
+  if (index === value.length) return { kind: 'potential' };
+
+  const name = candidates.find((candidate) => candidate === fragment);
+  if (!name) return { kind: 'text' };
+
+  while (index < value.length && isTagWhitespace(value[index]!)) index += 1;
+  if (index === value.length) return { kind: 'potential' };
+  if (value[index] !== '>' || index !== value.length - 1) return { kind: 'text' };
+  return { kind: 'tag', name, closing };
 }
 
 export interface ReasoningStreamFilter {
@@ -20,49 +47,49 @@ export interface ReasoningStreamFilter {
   finish(): string;
 }
 
+/**
+ * Filters reasoning protocol blocks without exposing tentative markers or hidden
+ * text. An incomplete opening marker is held during streaming, then restored by
+ * finish() when it proved to be ordinary text. Once a complete opening tag is
+ * observed, everything remains hidden until the matching nested block closes.
+ */
 export function createReasoningStreamFilter(): ReasoningStreamFilter {
-  let buffer = '';
-  let hiddenTag: ReasoningTag | null = null;
+  let pendingTag = '';
+  let hiddenTags: ReasoningTag[] = [];
+  let finished = false;
 
   const push = (chunk: string): string => {
-    buffer += chunk;
+    if (finished) return '';
     let output = '';
 
-    while (buffer) {
-      if (hiddenTag) {
-        const closingTag = `</${hiddenTag}>`;
-        const closeAt = buffer.toLowerCase().indexOf(closingTag);
-        if (closeAt < 0) {
-          const keep = partialTagSuffix(buffer, [closingTag]);
-          buffer = keep > 0 ? buffer.slice(-keep) : '';
-          break;
-        }
-        buffer = buffer.slice(closeAt + closingTag.length);
-        hiddenTag = null;
+    for (const character of chunk) {
+      if (!pendingTag) {
+        if (character === '<') pendingTag = character;
+        else if (hiddenTags.length === 0) output += character;
         continue;
       }
 
-      const lower = buffer.toLowerCase();
-      const matches = OPEN_TAGS.map((tag) => ({ tag, index: lower.indexOf(tag) })).filter(
-        (match) => match.index >= 0,
-      );
-      const opening = matches.sort((left, right) => left.index - right.index)[0];
-      if (opening) {
-        output += buffer.slice(0, opening.index);
-        hiddenTag = opening.tag === '<think>' ? 'think' : 'analysis';
-        buffer = buffer.slice(opening.index + opening.tag.length);
+      pendingTag += character;
+      const inspection = inspectTag(pendingTag);
+      if (inspection.kind === 'potential') continue;
+
+      if (inspection.kind === 'text') {
+        const nextTagAt = pendingTag.lastIndexOf('<');
+        const text = nextTagAt > 0 ? pendingTag.slice(0, nextTagAt) : pendingTag;
+        if (hiddenTags.length === 0) output += text;
+        pendingTag = nextTagAt > 0 ? pendingTag.slice(nextTagAt) : '';
         continue;
       }
 
-      const keep = partialTagSuffix(buffer, OPEN_TAGS);
-      if (keep > 0) {
-        output += buffer.slice(0, -keep);
-        buffer = buffer.slice(-keep);
-      } else {
-        output += buffer;
-        buffer = '';
+      const completeTag = pendingTag;
+      pendingTag = '';
+      if (!inspection.closing) {
+        hiddenTags.push(inspection.name);
+      } else if (hiddenTags.at(-1) === inspection.name) {
+        hiddenTags = hiddenTags.slice(0, -1);
+      } else if (hiddenTags.length === 0) {
+        output += completeTag;
       }
-      break;
     }
 
     return output;
@@ -71,10 +98,11 @@ export function createReasoningStreamFilter(): ReasoningStreamFilter {
   return {
     push,
     finish: () => {
-      const partial = hiddenTag ? 0 : partialTagSuffix(buffer, OPEN_TAGS);
-      const output = hiddenTag ? '' : partial > 0 ? buffer.slice(0, -partial) : buffer;
-      buffer = '';
-      hiddenTag = null;
+      if (finished) return '';
+      const output = hiddenTags.length === 0 ? pendingTag : '';
+      pendingTag = '';
+      hiddenTags = [];
+      finished = true;
       return output;
     },
   };
