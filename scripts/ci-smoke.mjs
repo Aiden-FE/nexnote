@@ -34,6 +34,11 @@ const child = spawn(appPath, [], {
 });
 // The full integration scenario can exceed three minutes on a cold packaged run.
 // Keep the default for CI; permit an explicit local timeout for comprehensive smoke evidence.
+const expectedSha = process.env.NEXNOTE_SMOKE_CANDIDATE_SHA;
+if (!expectedSha || !/^[0-9a-f]{40}$/.test(expectedSha)) {
+  console.error('[smoke:ci] NEXNOTE_SMOKE_CANDIDATE_SHA must be a full 40-character commit SHA');
+  process.exit(1);
+}
 const timeoutMs = Number(process.env.NEXNOTE_SMOKE_TIMEOUT_MS ?? 180_000);
 let timedOut = false;
 const timer = setTimeout(() => {
@@ -53,9 +58,12 @@ child.on('exit', (code, signal) => {
   try {
     const report = JSON.parse(readFileSync(reportPath, 'utf8'));
     const checks = Array.isArray(report.checks) ? report.checks : [];
-    const expectedSha = process.env.NEXNOTE_SMOKE_CANDIDATE_SHA;
-    const bound = !expectedSha || report.candidateSha === expectedSha;
-    if (!checks.length || !checks.every((check) => check?.passed === true) || !bound) {
+    const bound = report.candidateSha === expectedSha;
+    const metadata =
+      report.platform === process.platform &&
+      report.electronVersion === process.versions.electron &&
+      report.electronAbi === process.versions.modules;
+    if (!checks.length || !checks.every((check) => check?.passed === true) || !bound || !metadata) {
       console.error('[smoke:ci] invalid, failed, or unbound smoke report');
       process.exit(1);
     }

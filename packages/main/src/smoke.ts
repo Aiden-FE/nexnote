@@ -23,6 +23,8 @@ interface BoundSmokeReport extends SmokeReport {
   platform: NodeJS.Platform;
   electronVersion: string;
   electronAbi: string;
+  notRun: string[];
+  manualSteps: string[];
 }
 
 /**
@@ -287,12 +289,17 @@ export class SmokeController {
   async finish(report: SmokeReport): Promise<void> {
     const finalReport: BoundSmokeReport = {
       ...report,
-      captures: [...this.captures],
+      captures: this.captures.map((capture) => path.basename(capture)),
       candidateSha: process.env.NEXNOTE_SMOKE_CANDIDATE_SHA ?? null,
       appVersion: app.getVersion(),
       platform: process.platform,
       electronVersion: process.versions.electron,
       electronAbi: process.versions.modules,
+      notRun: ['Windows packaged smoke', 'Linux packaged smoke'],
+      manualSteps: [
+        'On Windows runner: stage Electron ABI149 and run NEXNOTE_APP_PATH=<binary> pnpm smoke:ci.',
+        'On Linux runner: stage Electron ABI149 and run NEXNOTE_APP_PATH=<binary> pnpm smoke:ci.',
+      ],
     };
     await writeFile(
       path.join(this.deps.outputDir, 'results.json'),
