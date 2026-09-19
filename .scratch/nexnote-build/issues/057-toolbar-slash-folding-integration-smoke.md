@@ -47,7 +47,7 @@ Priority: P1
 
 ## Implementation evidence
 
-- 隔离实现：dev/DEV-057 与 .wt/DEV-057，基线 1cd11d7；最终代码候选 SHA：48f9604dd75b791e7d1cae35522b0d1ba4b34e47。唯一最终证据目录：.scratch/nexnote-build/smoke/DEV-057-48f9604dd75b791e7d1cae35522b0d1ba4b34e47/。
+- 隔离实现：dev/DEV-057 与 .wt/DEV-057，基线 1cd11d7；最终代码候选 SHA：48f9604dd75b791e7d1cae35522b0d1ba4b34e47。最终证据目录（唯一保留）：.scratch/nexnote-build/smoke/DEV-057-48f9604dd75b791e7d1cae35522b0d1ba4b34e47/；后续提交移除历史中间证据目录 a7a0ae5 与 f52b547，避免证据混淆。
 - 最终 macOS arm64 packaged smoke：RUN/PASS，260/260 checks passed，40 张截图与 results.json 同目录并强制入库；报告 candidateSha 绑定完整候选 SHA，appVersion=0.0.14、platform=darwin、electronVersion=44.2.0、electronAbi=149。scripts/ci-smoke.mjs 在缺失/旧 results、超时、非零退出、SHA/平台/版本/ABI 不匹配时返回非零。
 - Windows/Linux packaged smoke：NOT_RUN；results.json 的 notRun/manualSteps 字段记录目标平台及跨 runner ABI staging、完整 SHA、应用版本、Electron 版本、平台、ABI 参数。当前目标发布的 CI release workflow 会在各自原生 runner 上执行 packaged smoke。
 - 稳定 selector：块菜单 data-testid=block-slash-menu，源码菜单 data-testid=source-slash-menu；保留 data-slash-menu、role=listbox、aria-label=快捷插入动作。断言菜单可见、候选、键盘选择、触发词消费和 H2 结果，不查询不存在的 selector。
