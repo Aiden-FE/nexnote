@@ -47,9 +47,26 @@ Priority: P1
 
 ## Implementation evidence
 
-- 隔离实现：`dev/DEV-057` / `.wt/DEV-057`，基线 `1cd11d7`；最终候选 SHA：`bd98774`。Windows/Linux packaged smoke 在当前 macOS arm64 环境 `NOT_RUN`，需对应 runner 按 ABI staging 和 `NEXNOTE_APP_PATH=<binary> pnpm smoke:ci` 执行。
-- 稳定 selector：块菜单 `data-testid=block-slash-menu`，源码菜单 `data-testid=source-slash-menu`；均保留 `data-slash-menu`、`role=listbox`、`aria-label=快捷插入动作`。smoke 断言菜单可见、候选、键盘选择、触发词消费和 H2 结果，未使用不存在的 selector。
-- 可信输入：块/源码路径通过 preload → main `webContents` 鼠标定位、键盘/粘贴输入驱动 packaged Chromium；渲染层不调用 slash hook 或注入菜单状态。smoke 结果绑定候选 SHA，runner 在缺失/超时/失败/未绑定 results.json 时返回非零。
-- 最终证据：`.scratch/nexnote-build/smoke/DEV-057-bd98774/results.json`（已强制入库）；`candidateSha=bd98774`、`appVersion=0.0.14`、`platform=darwin`、`electronVersion=44.2.0`、`electronAbi=149`，`261/261` checks passed，完成时间 `2026-09-19T09:19:46.372Z`。证据截图与 JSON 位于同一 smoke 目录；Node ABI 已按协议恢复 147。
-- 门禁：候选代码 `CI=true pnpm typecheck`、完整测试 `156 files / 1403 passed / 2 skipped`、lint `0 errors / 4 existing warnings`、build、changed-format、diff-check 均通过。Electron macOS arm64 packaged smoke `RUN/PASS 261/261`；Windows/Linux packaged smoke `NOT_RUN`，需目标 runner 人工执行并保存各自 results.json。
-- 独立 Standards/Spec 双轴审查：待主代理在固定 `bd98774` 上完成；本票不预填 PASS。
+- 隔离实现： / ，基线 ；最终代码候选 SHA：。最终证据 JSON 内 ，由 fail-closed  强制比对；缺失结果、超时、非零退出、平台/版本元数据不匹配均会失败。
+- Windows/Linux packaged smoke 在当前 macOS arm64 环境 ；最终 results.json 明确列入  与 ，需对应 runner 按 Electron ABI staging、设置完整  后执行 。
+- 稳定 selector：块菜单 ，源码菜单 ；保留 、、。断言菜单可见、候选、键盘选择、触发词消费和 H2 结果，未使用不存在的 selector。
+- 可信输入：块/源码路径经 preload → main  鼠标定位、键盘/粘贴输入驱动 packaged Chromium；渲染层不调用 slash hook、不注入菜单状态或内部 transaction。旧合成  helper 已删除。
+- 最终证据：（强制入库）；appVersion=0.0.14、platform=darwin、electronVersion=44.2.0、electronAbi=149， checks passed，含 40 个相对截图文件名。执行后已运行 better-sqlite3 node binding ready: /Users/aiden/dev/aiden/nexnote/.wt/DEV-057/node_modules/.cache/nexnote-native-bindings/better-sqlite3/darwin-arm64-abi147/better_sqlite3.node 恢复 Node ABI147。
+- 非打包门禁：Scope: all 7 workspace projects
+✓ Lockfile passes supply-chain policies (verified 1d ago)
+Lockfile is up to date, resolution step is skipped
+Already up to date
+
+Done in 306ms using pnpm v11.15.1
+Scope: 6 of 7 workspace projects
+apps/website typecheck$ tsc --noEmit
+packages/plugin-api typecheck$ tsc --noEmit -p tsconfig.json
+packages/shared typecheck$ tsc --noEmit -p tsconfig.json
+apps/website typecheck: Done
+packages/plugin-api typecheck: Done
+packages/shared typecheck: Done
+packages/kernel typecheck$ tsc --noEmit -p tsconfig.json
+packages/kernel typecheck: Done
+packages/renderer typecheck$ tsc --noEmit -p tsconfig.json
+packages/renderer typecheck: Done、完整测试 、lint 、build、changed-format、diff-check 均通过。
+- 独立 Standards/Spec/证据对抗审查：最终候选  待主代理复审；本票不预填 PASS。
