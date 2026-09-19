@@ -1,8 +1,10 @@
-import { mkdtemp, rm, writeFile } from 'node:fs/promises';
+import { mkdtemp, mkdir, readFile, rm, symlink, writeFile } from 'node:fs/promises';
+import { simpleGit } from 'simple-git';
 import { tmpdir } from 'node:os';
 import * as path from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { registerAllIpcHandlers } from '../src/ipc';
+import { __resetVaultStateRestore } from '../src/ipc/vault-handlers';
 import { createIpcRegistrar, type IpcMainLike } from '../src/ipc/registrar';
 import { AppStore } from '../src/vault/app-store';
 import { VaultSession } from '../src/vault/vault-session';
@@ -60,6 +62,7 @@ beforeEach(async () => {
   // GitService intentionally rejects inherited unsafe editor overrides; keep this
   // integration suite isolated from a developer shell's GIT_EDITOR setting.
   vi.stubEnv('GIT_EDITOR', undefined);
+  __resetVaultStateRestore();
   tmp = await mkdtemp(path.join(tmpdir(), 'nexnote-ipc-test-'));
 });
 
@@ -397,6 +400,103 @@ describe('IPC 集成（vault + fs，单一注册表）', () => {
     expect(denied.code).toBe('NO_VAULT');
   });
 
+  it('vault:create initGit=false 也安全写入同步护栏模板', async () => {
+    const ipc = new FakeIpcMain();
+    const { services } = makeServices();
+    registerAllIpcHandlers(ipc, services);
+
+    const created = (await ipc.invoke('vault:create', {
+      parentDir: tmp,
+      name: 'no-git-vault',
+      initGit: false,
+    })) as { ok: boolean; data: { root: string } };
+
+    expect(created.ok).toBe(true);
+    expect(await readFile(path.join(created.data.root, '.gitignore'), 'utf8')).toContain(
+      '.nexnote/',
+    );
+    expect(await services.git.isRepository(created.data.root)).toBe(false);
+  });
+
+  it('startup restore 护栏失败会回滚 session，后续查询不能跳过修复进入 ready', async () => {
+    const ipc = new FakeIpcMain();
+    const { services, session, store } = makeServices();
+    const vault = path.join(tmp, 'restore-vault');
+    const outside = path.join(tmp, 'outside-ignore');
+    await mkdir(vault);
+    const git = simpleGit({ baseDir: vault, binary: process.env.NEXNOTE_TEST_GIT ?? 'git' });
+    await git.init();
+    await git.addConfig('user.name', 'NexNote');
+    await git.addConfig('user.email', 'noreply@nexnote.local');
+    await writeFile(path.join(vault, 'page.md'), 'page');
+    await git.add(['page.md']);
+    await git.commit('base');
+    await writeFile(outside, 'outside');
+    await symlink(outside, path.join(vault, '.gitignore'));
+    store.setLastVault(vault);
+    registerAllIpcHandlers(ipc, services);
+
+    const first = (await ipc.invoke('vault:getState')) as { ok: boolean; code?: string };
+    expect(first.ok).toBe(false);
+    expect(session.getCurrent()).toBeNull();
+    expect(store.get().lastVaultPath).toBeNull();
+    expect(await readFile(outside, 'utf8')).toBe('outside');
+
+    const second = (await ipc.invoke('vault:getState')) as {
+      ok: boolean;
+      data?: { mode: string };
+    };
+    expect(second).toMatchObject({ ok: true, data: { mode: 'onboarding' } });
+    expect(session.getCurrent()).toBeNull();
+  });
+
+  it('restore guard 异步等待期间并发 getState 不能看见未验证的 vault', async () => {
+    const ipc = new FakeIpcMain();
+    const { services, session } = makeServices();
+    const vault = path.join(tmp, 'pending-vault');
+    await mkdir(vault);
+    const git = simpleGit({ baseDir: vault, binary: process.env.NEXNOTE_TEST_GIT ?? 'git' });
+    await git.init();
+    await git.addConfig('user.name', 'NexNote');
+    await git.addConfig('user.email', 'noreply@nexnote.local');
+    await writeFile(path.join(vault, 'page.md'), 'page');
+    await git.add(['page.md']);
+    await git.commit('base');
+
+    let resolveGuard: () => void = () => undefined;
+    const guardGate = new Promise<void>((resolve) => {
+      resolveGuard = resolve;
+    });
+    const realEnsure = services.git.ensureSyncGuard.bind(services.git);
+    vi.spyOn(services.git, 'ensureSyncGuard').mockImplementation(async (root: string) => {
+      await guardGate;
+      return realEnsure(root);
+    });
+    services.appStore.setLastVault(vault);
+    registerAllIpcHandlers(ipc, services);
+
+    const reentrant = ipc.invoke('vault:getState');
+    await new Promise((r) => setTimeout(r, 20));
+    expect(session.getCurrent()).toBeNull();
+
+    let secondSettled = false;
+    const second = ipc.invoke('vault:getState').finally(() => {
+      secondSettled = true;
+    });
+    await new Promise((r) => setTimeout(r, 20));
+    expect(secondSettled).toBe(false);
+    expect(session.getCurrent()).toBeNull();
+
+    resolveGuard();
+    const [first, concurrent] = (await Promise.all([reentrant, second])) as Array<{
+      ok: boolean;
+      data?: { mode: string };
+    }>;
+    expect(first).toMatchObject({ ok: true, data: { mode: 'ready' } });
+    expect(concurrent).toMatchObject({ ok: true, data: { mode: 'ready' } });
+    expect(session.getCurrent()?.root).toBe(vault);
+  });
+
   it('vault:reveal 解析 vault 内路径并调用系统文件管理器', async () => {
     const ipc = new FakeIpcMain();
     const { services, reveals } = makeServices();
@@ -703,6 +803,7 @@ describe('IPC 集成（vault + fs，单一注册表）', () => {
       );
       return { message: '克隆完成', status };
     });
+    const ensureSyncGuard = vi.spyOn(services.git, 'ensureSyncGuard').mockResolvedValue();
     vi.spyOn(services.git, 'status').mockResolvedValue(status);
     try {
       const preflight = (await ipc.invoke('vault:clonePreflight', {
@@ -720,6 +821,7 @@ describe('IPC 集成（vault + fs，单一注册表）', () => {
       })) as { ok: boolean; data: { status: typeof status } };
       expect(cloned.ok).toBe(true);
       expect(cloned.data.status).toEqual(status);
+      expect(ensureSyncGuard).toHaveBeenCalledWith(path.join(parentDir, 'repo'));
 
       const secondPreflight = (await ipc.invoke('vault:clonePreflight', {
         url,

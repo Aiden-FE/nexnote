@@ -3,12 +3,15 @@ import { tmpdir } from 'node:os';
 import * as path from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import {
+  assertNoDotDotSegments,
   createVault,
   ensureVault,
+  isWithinPathRoot,
   mergeVaultSettings,
   readVaultConfig,
   sanitizeVaultName,
   saveVaultLayout,
+  selectSafeRoot,
   saveVaultSettings,
   validateVaultRoot,
   vaultInfoFor,
@@ -52,7 +55,7 @@ describe('sanitizeVaultName', () => {
 
 describe('validateVaultRoot', () => {
   it('存在的目录通过', async () => {
-    await expect(validateVaultRoot(tmp)).resolves.toBeUndefined();
+    await expect(validateVaultRoot(tmp)).resolves.toBe(path.resolve(tmp));
   });
 
   it('相对路径 / 不存在 / 文件路径 均报错', async () => {
@@ -65,6 +68,25 @@ describe('validateVaultRoot', () => {
     const file = path.join(tmp, 'a-file');
     await writeFile(file, 'x');
     await expect(validateVaultRoot(file)).rejects.toMatchObject({ code: 'NOT_DIRECTORY' });
+  });
+
+  it('POSIX 外置卷与 Windows 其他盘符使用真实 path relative 语义', () => {
+    expect(isWithinPathRoot('/Volumes/Notes', '/Volumes/Notes/vault', path.posix)).toBe(true);
+    expect(isWithinPathRoot('/Volumes/Notes', '/Volumes/Notes', path.posix)).toBe(true);
+    expect(isWithinPathRoot('/Volumes/Notes', '/Other/Vault', path.posix)).toBe(false);
+
+    expect(path.win32.relative('C:\\Users\\me', 'D:\\Vault')).toBe('D:\\Vault');
+    expect(isWithinPathRoot('C:\\Users\\me', 'D:\\Vault', path.win32)).toBe(false);
+    expect(selectSafeRoot('D:\\Vault', ['C:\\Users\\me'], path.win32)).toBe('D:\\');
+    expect(isWithinPathRoot('D:\\Data', 'D:\\Data\\Vault', path.win32)).toBe(true);
+    expect(isWithinPathRoot('D:\\Data', 'D:\\Other', path.win32)).toBe(false);
+  });
+
+  it('Windows 混合分隔符的 .. 与 . 段同样被拒绝', () => {
+    expect(() => assertNoDotDotSegments('C:/Users/me/link/../vault')).toThrow(VaultError);
+    expect(() => assertNoDotDotSegments('C:\\Users\\me\\link\\..\\vault')).toThrow(VaultError);
+    expect(() => assertNoDotDotSegments('C:/Users/me/./vault')).toThrow(VaultError);
+    expect(() => assertNoDotDotSegments('C:\\Users\\me\\vault')).not.toThrow();
   });
 });
 
@@ -153,6 +175,24 @@ describe('createVault（新建空 vault）', () => {
     await expect(createVault(path.join(tmp, 'nope'), 'v')).rejects.toMatchObject({
       code: 'NOT_FOUND',
     });
+  });
+
+  it('vault 祖先目录存在符号链接时拒绝写入', async () => {
+    const parent = path.join(tmp, 'parents');
+    await mkdir(parent);
+    const outside = path.join(tmp, 'outside-dir');
+    await mkdir(outside);
+    const linkedParent = path.join(parent, 'linked');
+    await symlink(outside, linkedParent);
+    // 真实目标存在但是经过 symlink 解析的目录，禁止一切 vault 写入
+    const stash = path.join(linkedParent, 'stash');
+    await expect(createVault(linkedParent, 'stash')).rejects.toMatchObject({
+      code: 'SYMLINK_COMPONENT',
+    });
+    await expect(validateVaultRoot(stash)).rejects.toMatchObject({
+      code: 'SYMLINK_COMPONENT',
+    });
+    await expect(readdir(outside)).resolves.toEqual([]);
   });
 
   it('目标存在符号链接时拒绝（VAULT_TARGET_SYMLINK）', async () => {
