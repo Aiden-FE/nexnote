@@ -35,12 +35,12 @@ Vocabulary: [CONTEXT.md](../../../CONTEXT.md)
 - `full-test.log`：PASS，156 test files passed / 1 skipped；1413 tests passed / 2 skipped。定向命令均使用 `pnpm exec vitest run`。
 - `lint.log`：PASS，0 errors / 4 个既有 warnings。
 - `build.log`：PASS，main/preload/renderer 均构建完成。
-- `changed-format.log`：实现提交前工作树尚未进入 `master...HEAD`，脚本报告无已提交变更；最终候选提交后必须复跑并更新本节。
-- `diff-check.log`：`git diff --check master` PASS。
+- `changed-format.log`：候选提交后 `scripts/check-changed-format.sh master` PASS，所有变更文件符合 Prettier。
+- `diff-check.log`：候选提交后 `git diff --check master` PASS。
 
 ## 候选
 
-- Candidate SHA: 待最终提交后填写。
+- Candidate SHA: `5bee3d8`（门禁后证据更新将形成只改本票的最终 metadata commit）。
 - Standards review: 待固定 SHA。
 - Spec review: 待固定 SHA。
 - 禁止合并或修改 master；本票仅交付 `dev/DEV-059` 固定候选。
