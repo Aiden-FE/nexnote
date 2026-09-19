@@ -47,10 +47,10 @@ Priority: P1
 
 ## Implementation evidence
 
-- 隔离实现：dev/DEV-057 与 .wt/DEV-057，基线 1cd11d7；最终代码候选 SHA：f52b547a5c8f27fa0759a9249b576b5edae1e718。唯一新增最终证据目录为 .scratch/nexnote-build/smoke/DEV-057-f52b547a5c8f27fa0759a9249b576b5edae1e718/，results.json 的 candidateSha 绑定该候选；scripts/ci-smoke.mjs 强制要求完整 SHA、结果新鲜、全绿 checks、平台/版本/ABI 元数据，缺失/超时/不匹配返回非零。
-- Windows/Linux packaged smoke 在当前 macOS arm64 环境 NOT_RUN；results.json 的 notRun/manualSteps 字段记录目标平台和操作步骤（包括完整 SHA、版本、Electron 版本、目标平台与 ABI 参数）。
-- 稳定 selector：块菜单 data-testid=block-slash-menu，源码菜单 data-testid=source-slash-menu；保留 data-slash-menu、role=listbox、aria-label=快捷插入动作。断言菜单可见、候选、键盘选择、触发词消费和 H2 结果。
-- 可信输入：块/源码路径经 preload 到 main 的 WebContents 鼠标定位、键盘与编辑输入驱动 packaged Chromium；渲染层不调用 slash hook、不注入菜单状态或内部 transaction。源码/块路径均在真实可见 UI 上断言结果。
-- 最终证据：results.json appVersion=0.0.14、platform=darwin、electronVersion=44.2.0、electronAbi=149，261/261 checks passed；40 个截图与 JSON 同目录并强制入库。执行后 pnpm pretest 恢复 Node ABI147。
-- 非打包门禁：CI=true pnpm typecheck、完整测试 156 files / 1403 passed / 2 skipped、lint 0 errors / 4 existing warnings、build、changed-format、diff-check 均通过。
-- 独立 Standards/Spec/证据对抗审查：固定最终候选 f52b547a5c8f27fa0759a9249b576b5edae1e718 待主代理复审；本票不预填 PASS。
+- 隔离实现：dev/DEV-057 与 .wt/DEV-057，基线 1cd11d7；最终代码候选 SHA：48f9604dd75b791e7d1cae35522b0d1ba4b34e47。唯一最终证据目录：.scratch/nexnote-build/smoke/DEV-057-48f9604dd75b791e7d1cae35522b0d1ba4b34e47/。
+- 最终 macOS arm64 packaged smoke：RUN/PASS，260/260 checks passed，40 张截图与 results.json 同目录并强制入库；报告 candidateSha 绑定完整候选 SHA，appVersion=0.0.14、platform=darwin、electronVersion=44.2.0、electronAbi=149。scripts/ci-smoke.mjs 在缺失/旧 results、超时、非零退出、SHA/平台/版本/ABI 不匹配时返回非零。
+- Windows/Linux packaged smoke：NOT_RUN；results.json 的 notRun/manualSteps 字段记录目标平台及跨 runner ABI staging、完整 SHA、应用版本、Electron 版本、平台、ABI 参数。当前目标发布的 CI release workflow 会在各自原生 runner 上执行 packaged smoke。
+- 稳定 selector：块菜单 data-testid=block-slash-menu，源码菜单 data-testid=source-slash-menu；保留 data-slash-menu、role=listbox、aria-label=快捷插入动作。断言菜单可见、候选、键盘选择、触发词消费和 H2 结果，不查询不存在的 selector。
+- 可信输入：块/源码路径经 preload 到 main 的 WebContents 鼠标定位、键盘与编辑输入驱动 packaged Chromium；渲染层不调用 slash hook、不注入菜单状态或内部 transaction。QuickInsert 通过通用 beforeinput 与既有 handleTextInput 支持真实浏览器/Chromium 编辑事件，不含 smoke-only 生产分支。
+- 非打包门禁：CI=true pnpm typecheck、完整测试 156 files / 1403 passed / 2 skipped、lint 0 errors / 4 existing warnings、build、changed-format、diff-check 均通过。执行后 pnpm pretest 恢复 Node ABI147。
+- 独立 Standards/Spec/证据对抗审查：固定最终候选 48f9604dd75b791e7d1cae35522b0d1ba4b34e47，待主代理终审；本票不预填 PASS。
