@@ -412,31 +412,13 @@ export class AgentGateway {
     }
     if (tool.access === 'write' || tool.requiresApproval) {
       if (tool.access === 'write') {
-        const target =
-          typeof input === 'object' && input !== null
-            ? (input as Record<string, unknown>).path
-            : undefined;
+        const target = typeof input === 'object' && input !== null ? (input as Record<string, unknown>).path : undefined;
         const inScope = typeof target === 'string' && state.contextPaths.includes(target);
-        const forbidden = /shell|command|delete|remove|rename|config|setting|vault/i.test(
-          `${name} ${JSON.stringify(input)}`,
-        );
+        const forbidden = /shell|command|delete|remove|rename|config|setting|vault/i.test(`${name} ${JSON.stringify(input)}`);
         if (forbidden || !inScope) {
           const code = forbidden ? 'FULL_MODE_TOOL_FORBIDDEN' : 'FULL_MODE_SCOPE_DENIED';
-          this.audit.append({
-            runId,
-            scenario,
-            event: 'tool',
-            status: 'denied',
-            tool: name,
-            code,
-            at: Date.now(),
-          });
-          emit({
-            type: 'tool',
-            tool: name,
-            status: 'denied',
-            summary: '护栏拒绝：仅允许当前会话上下文中的文档编辑。',
-          });
+          this.audit.append({ runId, scenario, event: 'tool', status: 'denied', tool: name, code, at: Date.now() });
+          emit({ type: 'tool', tool: name, status: 'denied', summary: '护栏拒绝：仅允许当前会话上下文中的文档编辑。' });
           throw Object.assign(new Error('写操作超出当前会话文档作用域'), { code });
         }
       }
@@ -462,18 +444,16 @@ export class AgentGateway {
       }
       if (state.permissionMode === 'full') {
         // Five hard guardrails: no shell, delete, rename, vault/settings config, or path escape.
-        const forbidden = /shell|command|delete|remove|rename|config|setting|vault/i.test(
-          `${name} ${JSON.stringify(input)}`,
-        );
+        const forbidden = /shell|command|delete|remove|rename|config|setting|vault/i.test(`${name} ${JSON.stringify(input)}`);
         const target =
           typeof input === 'object' && input !== null
             ? (input as Record<string, unknown>).path
             : undefined;
         const inScope =
           typeof target !== 'string' ||
-          (state.contextPaths.length > 0 &&
-            typeof target === 'string' &&
-            state.contextPaths.some((p) => target === p || target.startsWith(`${p}/`)));
+          state.contextPaths.length > 0 &&
+          typeof target === 'string' &&
+          state.contextPaths.some((p) => target === p || target.startsWith(`${p}/`));
         if (forbidden || !inScope) {
           this.audit.append({
             runId,
