@@ -8,8 +8,11 @@ export type AgentApprovalDecision = 'approved' | 'denied';
 /** Chat Dock 会话级 Agent 工具权限。 */
 export type ChatPermissionMode = 'conversation' | 'edit' | 'full';
 
-/** 临时翻译输入形态：划词片段（selection）或整篇文档（document）。 */
-export type AgentTranslationMode = 'selection' | 'document';
+/** 临时翻译输入形态：划词片段、整篇页面或独立工作台输入。 */
+export type AgentTranslationMode = 'selection' | 'document' | 'input';
+
+/** 三种翻译入口共享的单次原文字符上限；超限必须拒绝而非截断。 */
+export const TRANSLATION_MAX_TEXT_CHARS = 200_000;
 
 /**
  * 临时翻译请求（DEV-041）：渲染层只提供原文与目标语言，prompt 模板由主进程持有。
@@ -47,7 +50,13 @@ export type AgentRunEvent =
   | { type: 'delta'; text: string }
   | { type: 'reasoningDelta'; text: string }
   | { type: 'tool'; tool: string; status: ToolActivityStatus; summary?: string }
-  | { type: 'approvalRequired'; approvalId: string; tool: string; expiresAt: number; proposalIds?: string[] }
+  | {
+      type: 'approvalRequired';
+      approvalId: string;
+      tool: string;
+      expiresAt: number;
+      proposalIds?: string[];
+    }
   | { type: 'editProposals'; batchId: string; proposals: AgentEditProposal[] }
   | { type: 'done'; usage?: unknown }
   | { type: 'error'; message: string; code?: string };

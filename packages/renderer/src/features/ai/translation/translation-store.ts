@@ -1,3 +1,4 @@
+import { TRANSLATION_MAX_TEXT_CHARS } from '@nexnote/shared';
 import { create } from 'zustand';
 
 /**
@@ -7,8 +8,8 @@ import { create } from 'zustand';
  * 关闭（close）= 丢弃结果，停止（stop）保留已显示内容并标记未完成。
  */
 
-export type TranslationKind = 'selection' | 'document';
-export type TranslationStatus = 'streaming' | 'done' | 'cancelled' | 'error';
+export type TranslationKind = 'selection' | 'document' | 'input';
+export type TranslationStatus = 'draft' | 'streaming' | 'done' | 'cancelled' | 'error';
 
 interface TranslationSessionBase {
   id: string;
@@ -23,6 +24,8 @@ interface TranslationSessionBase {
   sourceText: string;
   /** 由控制器在创建会话时绑定（闭包持有对应编辑器与流句柄）。 */
   onChangeLanguage: (language: string) => void;
+  /** Explicit user intent to start or restart translation with the current language. */
+  onSubmit: () => void;
   onStop: () => void;
   onClose: () => void;
 }
@@ -39,7 +42,18 @@ export interface DocumentTranslationSession extends TranslationSessionBase {
   title: string;
 }
 
-export type TranslationSession = SelectionTranslationSession | DocumentTranslationSession;
+export interface InputTranslationSession extends TranslationSessionBase {
+  kind: 'input';
+  draft: string;
+  runId: string | null;
+  remaining: number;
+  overLimit: boolean;
+  canSubmit: boolean;
+  onDraftChange: (draft: string) => void;
+}
+
+export type TranslationSession =
+  SelectionTranslationSession | DocumentTranslationSession | InputTranslationSession;
 
 /** 已显示内容但未完成（取消/失败）——界面须给出「未完成」标记。 */
 export function isIncomplete(session: TranslationSession | null): boolean {
@@ -50,25 +64,48 @@ export function isIncomplete(session: TranslationSession | null): boolean {
 interface TranslationState {
   selection: SelectionTranslationSession | null;
   document: DocumentTranslationSession | null;
+  input: InputTranslationSession | null;
   openSelection: (session: SelectionTranslationSession) => void;
   openDocument: (session: DocumentTranslationSession) => void;
+  openInput: (session: InputTranslationSession) => void;
   patchSelection: (patch: Partial<SelectionTranslationSession>) => void;
   patchDocument: (patch: Partial<DocumentTranslationSession>) => void;
+  patchInput: (patch: Partial<InputTranslationSession>) => void;
   closeSelection: () => void;
   closeDocument: () => void;
+  closeInput: () => void;
+}
+
+export function inputDraftState(
+  draft: string,
+): Pick<InputTranslationSession, 'draft' | 'sourceText' | 'remaining' | 'overLimit' | 'canSubmit'> {
+  const remaining = TRANSLATION_MAX_TEXT_CHARS - draft.length;
+  const overLimit = remaining < 0;
+  return {
+    draft,
+    sourceText: draft,
+    remaining,
+    overLimit,
+    canSubmit: draft.trim().length > 0 && !overLimit,
+  };
 }
 
 export const useTranslationStore = create<TranslationState>((set) => ({
   selection: null,
   document: null,
+  input: null,
   openSelection: (selection) => set({ selection }),
   openDocument: (document) => set({ document }),
+  openInput: (input) => set({ input }),
   patchSelection: (patch) =>
     set((state) => (state.selection ? { selection: { ...state.selection, ...patch } } : state)),
   patchDocument: (patch) =>
     set((state) => (state.document ? { document: { ...state.document, ...patch } } : state)),
+  patchInput: (patch) =>
+    set((state) => (state.input ? { input: { ...state.input, ...patch } } : state)),
   closeSelection: () => set({ selection: null }),
   closeDocument: () => set({ document: null }),
+  closeInput: () => set({ input: null }),
 }));
 
 let sessionSeq = 0;

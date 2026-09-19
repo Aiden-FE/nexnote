@@ -4,6 +4,7 @@ import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { AiConfigState, VaultInfo } from '@nexnote/shared';
 import { AiDockPanel } from '../src/features/ai/AiDockPanel';
+import { AiSettingsSection } from '../src/features/ai/AiSettingsSection';
 import { shouldAutoShowSetupPrompt, useAiConfig, useAiWizard } from '../src/features/ai/ai-config';
 import { useSettingsNav } from '../src/lib/open-settings';
 import { VaultContext } from '../src/shell/vault-context';
@@ -21,7 +22,8 @@ function state(overrides: Partial<AiConfigState> = {}): AiConfigState {
   return {
     profiles: [],
     defaultProfileId: null,
-    features: { writing: null, chat: null, embedding: null },
+    features: { writing: null, translation: null, chat: null, embedding: null },
+    translationTargetLanguage: 'English',
     needsOnboarding: true,
     setupPromptDismissed: false,
     embeddingFingerprint: null,
@@ -44,6 +46,12 @@ function installBridge(): void {
     if (channel === 'ai:getState') return Promise.resolve({ ok: true, data: aiState });
     if (channel === 'ai:setupPrompt:dismiss') {
       aiState = { ...aiState, setupPromptDismissed: true };
+      return Promise.resolve({ ok: true, data: { state: aiState } });
+    }
+    if (channel === 'ai:translation:setTargetLanguage') {
+      return Promise.resolve({ ok: true, data: { state: aiState } });
+    }
+    if (channel === 'ai:features:set') {
       return Promise.resolve({ ok: true, data: { state: aiState } });
     }
     return Promise.resolve({ ok: true, data: null });
@@ -124,6 +132,38 @@ describe('DEV-026 AI 配置入口收口', () => {
       .tabs.find((tab) => tab.id === useTabStore.getState().activeTabId);
     expect(active?.kind).toBe('settings');
     expect(document.querySelector('[data-testid="ai-wizard"]')).toBeNull();
+  });
+
+  it('AI 设置提供独立翻译 Profile 与持久化默认目标语言', async () => {
+    aiState = state({
+      profiles: [
+        {
+          id: 'p1',
+          name: 'Mock',
+          kind: 'openai-compatible',
+          baseUrl: 'https://example.com/v1',
+          defaultModel: 'm',
+          params: {},
+          hasApiKey: false,
+          keyStorage: 'system-credential',
+          createdAt: 1,
+          updatedAt: 1,
+        },
+      ],
+      needsOnboarding: false,
+    });
+    useAiConfig.setState({ state: aiState, loading: false });
+    mount(<AiSettingsSection />);
+    expect(document.querySelector('[data-testid="ai-feature-profile-translation"]')).not.toBeNull();
+    const target = document.querySelector<HTMLSelectElement>(
+      '[data-testid="ai-translation-target-language"]',
+    )!;
+    target.value = '日本語';
+    target.dispatchEvent(new Event('change', { bubbles: true }));
+    await act(async () => tick());
+    expect(invokeSpy).toHaveBeenCalledWith('ai:translation:setTargetLanguage', {
+      targetLanguage: '日本語',
+    });
   });
 
   it('vault 首次就绪且未跳过时自动弹一次；关闭后持久化且切换 vault 不重弹', async () => {

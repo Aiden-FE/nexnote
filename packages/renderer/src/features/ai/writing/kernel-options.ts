@@ -3,7 +3,10 @@ import { editorActionCatalogEntry } from '@nexnote/shared';
 import type { BubbleAction, ContextMenuItem, SlashMenuItem } from '@nexnote/kernel';
 import { toAiActionId, WRITING_ACTIONS } from './actions';
 import { CHAT_ASK_ACTION } from '../chat/ask-ai';
-import { TRANSLATE_SELECTION_ACTION_ID } from '../translation/actions';
+import {
+  OPEN_TRANSLATION_WORKBENCH_ID,
+  TRANSLATE_SELECTION_ACTION_ID,
+} from '../translation/actions';
 import type { WritingController } from './controller';
 
 /** 选区浮动工具栏的六个动作（含 ⌘⌥ 快捷键）。 */
@@ -25,7 +28,8 @@ export function writingAiMenuActions(): BubbleAction[] {
   return [
     ...writingBubbleActions(),
     { id: CHAT_ASK_ACTION, title: '询问 AI' },
-    { id: TRANSLATE_SELECTION_ACTION_ID, title: '翻译' },
+    { id: TRANSLATE_SELECTION_ACTION_ID, title: '翻译选区' },
+    { id: OPEN_TRANSLATION_WORKBENCH_ID, title: '翻译工作台' },
   ];
 }
 

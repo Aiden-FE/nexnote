@@ -1,4 +1,9 @@
-import type { AgentTranslationRequest, ChatMessage, ChatParams } from '@nexnote/shared';
+import {
+  TRANSLATION_MAX_TEXT_CHARS,
+  type AgentTranslationRequest,
+  type ChatMessage,
+  type ChatParams,
+} from '@nexnote/shared';
 
 /**
  * 临时翻译（DEV-041）主进程侧定义：prompt 模板在此持有，渲染层只提供原文与目标语言。
@@ -15,8 +20,7 @@ export const TRANSLATION_REASONING_EFFORT = 'none';
 /** 目标语言白名单字符集：字母/数字/空格/括号与常见连接符，最长 40 字符。 */
 export const TARGET_LANGUAGE_PATTERN = /^[\p{L}\p{N} ()·\-+]{1,40}$/u;
 
-/** 翻译原文长度上限（IPC 边界护栏，避免无界 payload）。 */
-export const TRANSLATION_MAX_TEXT_CHARS = 200_000;
+export { TRANSLATION_MAX_TEXT_CHARS };
 
 const TRANSLATION_BASE =
   '你是 NexNote 内置翻译助手。' +
@@ -28,7 +32,12 @@ export const TRANSLATION_SYSTEM_PROMPT = TRANSLATION_BASE;
 
 /** 组装翻译消息：目标语言进 system，原文进 user。 */
 export function buildTranslationMessages(translation: AgentTranslationRequest): ChatMessage[] {
-  const scope = translation.mode === 'document' ? '整篇文档' : '选中片段';
+  const scope =
+    translation.mode === 'document'
+      ? '整篇文档'
+      : translation.mode === 'input'
+        ? '临时输入'
+        : '选中片段';
   return [
     { role: 'system', content: `${TRANSLATION_BASE}\n目标语言：${translation.targetLanguage}。` },
     { role: 'user', content: `请翻译下面的${scope}（Markdown 原文）：\n\n${translation.text}` },

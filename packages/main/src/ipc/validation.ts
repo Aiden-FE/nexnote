@@ -175,16 +175,33 @@ const aiProfileSave = object(
   ],
 );
 const idOnly = object(['id'], [stringField('id')]);
-const aiFeaturesSet = object(
-  ['feature', 'assignment'],
+const aiFeaturesSet: PayloadValidator = (payload) => {
+  const base = object(
+    ['feature', 'assignment'],
+    [
+      stringField('feature'),
+      (p) => {
+        const assignment = (p as Record<string, unknown>).assignment;
+        return assignment === null || isPlainObject(assignment)
+          ? null
+          : invalid('assignment 必须是对象或 null');
+      },
+    ],
+  )(payload);
+  if (base) return base;
+  const feature = (payload as Record<string, unknown>).feature;
+  return ['writing', 'translation', 'chat', 'embedding'].includes(String(feature))
+    ? null
+    : invalid('feature 无效');
+};
+const aiTranslationLanguage = object(
+  ['targetLanguage'],
   [
-    stringField('feature'),
-    (p) => {
-      const assignment = (p as Record<string, unknown>).assignment;
-      return assignment === null || isPlainObject(assignment)
+    (payload) =>
+      typeof (payload as Record<string, unknown>).targetLanguage === 'string' &&
+      TARGET_LANGUAGE_PATTERN.test(String((payload as Record<string, unknown>).targetLanguage))
         ? null
-        : invalid('assignment 必须是对象或 null');
-    },
+        : invalid('targetLanguage 无效'),
   ],
 );
 const _aiChatRequest = object(
@@ -290,8 +307,12 @@ const agentTranslationRun: PayloadValidator = (payload) => {
   const translationFields = ['mode', 'targetLanguage', 'text'];
   if (Object.keys(translation).some((key) => !translationFields.includes(key)))
     return invalid('translation 包含未知字段');
-  if (translation.mode !== 'selection' && translation.mode !== 'document')
-    return invalid('translation.mode 必须是 selection/document');
+  if (
+    translation.mode !== 'selection' &&
+    translation.mode !== 'document' &&
+    translation.mode !== 'input'
+  )
+    return invalid('translation.mode 必须是 selection/document/input');
   if (
     typeof translation.targetLanguage !== 'string' ||
     !TARGET_LANGUAGE_PATTERN.test(translation.targetLanguage)
@@ -576,6 +597,7 @@ const VALIDATORS: Partial<Record<IpcChannel, PayloadValidator>> = {
   'ai:profile:delete': idOnly,
   'ai:profile:setDefault': idOnly,
   'ai:features:set': aiFeaturesSet,
+  'ai:translation:setTargetLanguage': aiTranslationLanguage,
   'ai:testConnection': aiConnectionTarget,
   'ai:listModels': aiConnectionTarget,
   'agent:run:chat': agentRun,

@@ -12,6 +12,7 @@ import { AiSetupWizard } from './AiSetupWizard';
 import { AiSettingsSection } from './AiSettingsSection';
 import { openSettings } from '../../lib/open-settings';
 import { useVault } from '../../shell/vault-context';
+import { openTranslationWorkbench } from './translation';
 
 /**
  * AI 域装配点（DEV-009，DEV-026 收口）：
@@ -29,6 +30,14 @@ settingsSectionRegistry.register({
   icon: Bot,
   order: 15,
   render: AiSettingsSection,
+});
+
+commandRegistry.register({
+  id: 'ai.translation.workbench',
+  title: '翻译工作台',
+  category: 'AI',
+  keywords: ['translate', 'translation', '翻译', '输入', '工作台'],
+  run: () => void openTranslationWorkbench(),
 });
 
 commandRegistry.register({

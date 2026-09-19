@@ -40,8 +40,10 @@ const aiState: AiConfigState = {
   features: {
     chat: { profileId: 'profile-1', model: 'fake-model' },
     writing: { profileId: 'profile-1', model: 'fake-model' },
+    translation: null,
     embedding: null,
   },
+  translationTargetLanguage: 'English',
   needsOnboarding: false,
   setupPromptDismissed: true,
   embeddingFingerprint: null,
@@ -103,7 +105,7 @@ const translation = {
 };
 
 describe('DEV-041 临时翻译请求层', () => {
-  it('主进程组装 prompt、复用 writing profile，并强制关闭 reasoning', async () => {
+  it('主进程组装 prompt、兼容回退 writing profile，并强制关闭 reasoning', async () => {
     const { gateway, calls, events } = setup();
     await gateway.run('translation', {
       translation,
@@ -114,12 +116,18 @@ describe('DEV-041 临时翻译请求层', () => {
 
     expect(calls).toHaveLength(1);
     const call = calls[0]!;
-    expect(call.feature).toBe('writing');
+    expect(call.feature).toBe('translation');
     expect(call.params).toEqual({
       temperature: 0.2,
       reasoningEffort: TRANSLATION_REASONING_EFFORT,
     });
     expect(call.params?.reasoningEffort).toBe('none');
+    expect((call as StreamCall & { tools?: unknown[] }).tools ?? []).toHaveLength(0);
+    expect(
+      events.some(
+        (entry) => entry.event.type === 'fallback' && entry.event.runtime === 'builtin-fallback',
+      ),
+    ).toBe(true);
     // 目标语言在 system，原文在 user
     expect(call.messages[0]?.role).toBe('system');
     expect(call.messages[0]?.content).toContain('English');
@@ -290,25 +298,71 @@ describe('DEV-041 临时翻译请求层', () => {
     expect(cancelled.events.map((entry) => entry.event.type)).not.toContain('done');
   });
 
-  it('翻译消息模板区分划词与全文，均不注入上下文/技能', async () => {
+  it('翻译消息模板区分划词、全文与独立输入，均不注入上下文/技能', async () => {
     const { gateway, calls } = setup();
     await gateway.run('translation', {
       translation: { mode: 'document', targetLanguage: '日本語', text: '# 标题\n\n正文' },
+    });
+    await gateway.run('translation', {
+      translation: { mode: 'input', targetLanguage: 'Deutsch', text: '临时粘贴内容' },
     });
     await new Promise((r) => setTimeout(r, 5));
     expect(calls[0]?.messages).toHaveLength(2);
     expect(calls[0]?.messages[1]?.content).toContain('整篇文档');
     expect(calls[0]?.messages[0]?.content).toContain('日本語');
+    expect(calls[1]?.messages).toHaveLength(2);
+    expect(calls[1]?.messages[1]?.content).toContain('临时输入');
+    expect(calls[1]?.messages[1]?.content).toContain('临时粘贴内容');
+  });
+
+  it('translation assignment 独立路由；未设置时兼容回退 writing assignment', async () => {
+    const dedicatedState: AiConfigState = {
+      ...aiState,
+      profiles: [
+        ...aiState.profiles,
+        { ...aiState.profiles[0]!, id: 'translation-profile', name: 'translation' },
+      ],
+      features: {
+        ...aiState.features,
+        translation: { profileId: 'translation-profile', model: 'translation-model' },
+      },
+    };
+    const calls: StreamCall[] = [];
+    const gateway = new AgentGateway({
+      ai: {
+        getState: () => dedicatedState,
+        openChatStream: (opts: StreamCall) => {
+          calls.push(opts);
+          return immediateStream();
+        },
+      } as never,
+      sendEvent: () => undefined,
+    });
+    await gateway.run('translation', { translation });
+    await new Promise((r) => setTimeout(r, 5));
+    expect(calls[0]?.feature).toBe('translation');
   });
 });
 
 describe('DEV-041 IPC 边界', () => {
   it('接受合法翻译请求，拒绝非法字段与 reasoning 覆盖', () => {
+    for (const mode of ['selection', 'document', 'input'] as const) {
+      expect(
+        validatePayload('agent:run:translation', {
+          translation: { mode, targetLanguage: 'English', text: 'hi' },
+        }),
+      ).toBeNull();
+    }
     expect(
       validatePayload('agent:run:translation', {
-        translation: { mode: 'selection', targetLanguage: 'English', text: 'hi' },
+        translation: { mode: 'input', targetLanguage: 'English', text: 'x'.repeat(200_000) },
       }),
     ).toBeNull();
+    expect(
+      validatePayload('agent:run:translation', {
+        translation: { mode: 'input', targetLanguage: 'English', text: 'x'.repeat(200_001) },
+      })?.code,
+    ).toBe('IPC_PAYLOAD_INVALID');
 
     for (const payload of [
       { translation: { mode: 'nope', targetLanguage: 'English', text: 'hi' } },

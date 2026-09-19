@@ -158,6 +158,28 @@ describe('IPC 注册表框架', () => {
     expect(registrar.registeredChannels()).not.toContain('ai:credential:retrieve');
   });
 
+  it('翻译默认语言 IPC 通过主进程持久化并拒绝非法值', async () => {
+    const ipc = new FakeIpcMain();
+    const { services } = makeServices();
+    registerAllIpcHandlers(ipc, services);
+
+    const saved = (await ipc.invoke('ai:translation:setTargetLanguage', {
+      targetLanguage: '日本語',
+    })) as { ok: boolean; data: { state: { translationTargetLanguage?: string } } };
+    expect(saved).toMatchObject({
+      ok: true,
+      data: { state: { translationTargetLanguage: '日本語' } },
+    });
+    expect(services.ai.getState().translationTargetLanguage).toBe('日本語');
+
+    for (const targetLanguage of ['', '<script>', 'x'.repeat(41)]) {
+      const rejected = (await ipc.invoke('ai:translation:setTargetLanguage', {
+        targetLanguage,
+      })) as { ok: boolean; code?: string };
+      expect(rejected).toMatchObject({ ok: false, code: 'IPC_PAYLOAD_INVALID' });
+    }
+  });
+
   it('Git doctor 四个通道注册，malformed payload 稳定拒绝，未初始化返回 NO_VAULT', async () => {
     const ipc = new FakeIpcMain();
     const { services } = makeServices();

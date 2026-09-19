@@ -36,6 +36,10 @@ export function registerAiHandlers(registrar: IpcRegistrar, ai: AiService): void
     return ok(ai.setFeatureAssignment(payload.feature, payload.assignment));
   });
 
+  registrar.register('ai:translation:setTargetLanguage', async (payload) => {
+    return ok(ai.setTranslationTargetLanguage(payload.targetLanguage));
+  });
+
   registrar.register('ai:setupPrompt:dismiss', async () => {
     return ok(ai.dismissSetupPrompt());
   });

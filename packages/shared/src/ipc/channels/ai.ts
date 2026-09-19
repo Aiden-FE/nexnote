@@ -26,6 +26,7 @@ export const AI_CHANNELS = [
   'ai:profile:delete',
   'ai:profile:setDefault',
   'ai:features:set',
+  'ai:translation:setTargetLanguage',
   'ai:setupPrompt:dismiss',
   'ai:testConnection',
   'ai:listModels',
@@ -66,6 +67,10 @@ export interface AiChannelMap {
   };
   'ai:features:set': {
     request: { feature: AiFeatureKey; assignment: AiFeatureAssignment | null };
+    response: Result<{ state: AiConfigState }>;
+  };
+  'ai:translation:setTargetLanguage': {
+    request: { targetLanguage: string };
     response: Result<{ state: AiConfigState }>;
   };
   /** 用户已看过/跳过首启动 AI 引导；此后未配置入口一律跳设置页，不再自动弹向导。 */

@@ -27,6 +27,8 @@ import {
 } from '../features/ai/writing';
 import {
   createTranslationController,
+  OPEN_TRANSLATION_WORKBENCH_ID,
+  openTranslationWorkbench,
   TRANSLATE_DOCUMENT_ID,
   TRANSLATE_SELECTION_ACTION_ID,
   type TranslationController,
@@ -551,6 +553,10 @@ export function EditorView({ tab }: EditorViewProps) {
               text: ctx.text,
               coords: ctx.coords,
             });
+            return;
+          }
+          if (id === OPEN_TRANSLATION_WORKBENCH_ID) {
+            openTranslationWorkbench(ctx.text);
             return;
           }
           if (id === CHAT_ASK_ACTION) {

@@ -79,8 +79,8 @@ export interface AiProfileInput {
   clearCredential?: boolean;
 }
 
-/** 分功能指定：写作辅助 / 对话 / embedding 三处可分别指定 Profile + 模型。 */
-export type AiFeatureKey = 'writing' | 'chat' | 'embedding';
+/** 分功能指定：写作辅助 / 翻译 / 对话 / embedding 可分别指定 Profile + 模型。 */
+export type AiFeatureKey = 'writing' | 'translation' | 'chat' | 'embedding';
 
 /** embedding 距离度量（不得硬编码；指纹计入）。 */
 export type EmbeddingMetric = 'cosine' | 'dotProduct' | 'euclidean';
@@ -94,13 +94,21 @@ export interface AiFeatureAssignment {
   metric?: EmbeddingMetric;
 }
 
-export type AiFeatureAssignments = Record<AiFeatureKey, AiFeatureAssignment | null>;
+export interface AiFeatureAssignments {
+  writing: AiFeatureAssignment | null;
+  /** Missing in legacy persisted/test state means “follow writing”. */
+  translation?: AiFeatureAssignment | null;
+  chat: AiFeatureAssignment | null;
+  embedding: AiFeatureAssignment | null;
+}
 
 /** 渲染层可见的 AI 配置全量状态。 */
 export interface AiConfigState {
   profiles: AiProfileView[];
   defaultProfileId: string | null;
   features: AiFeatureAssignments;
+  /** 所有翻译入口的全局默认目标语言；触发点可仅覆盖当次请求。 */
+  translationTargetLanguage?: string;
   /** 无任何 Profile → AI 空态入口仍显示配置提示 */
   needsOnboarding: boolean;
   /** 首启动引导是否已被用户看过或跳过；只控制自动弹出，不影响 AI 空态。 */
@@ -163,6 +171,8 @@ export interface AiProfileExportBundle {
   }>;
   features: {
     writing: { profileRef?: string; name: string; model: string } | null;
+    /** Optional for backward-compatible imports created before translation had an assignment. */
+    translation?: { profileRef?: string; name: string; model: string } | null;
     chat: { profileRef?: string; name: string; model: string } | null;
     embedding: {
       profileRef?: string;
@@ -173,4 +183,5 @@ export interface AiProfileExportBundle {
   };
   defaultProfileRef?: string | null;
   defaultProfileName: string | null;
+  translationTargetLanguage?: string;
 }

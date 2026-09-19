@@ -48,4 +48,5 @@ export {
   sanitizeEntryName,
 } from './ipc/reexports';
 
+export { TRANSLATION_MAX_TEXT_CHARS } from './types/agent';
 export { PLUGIN_API_VERSION, BUILTIN_PLUGIN_IDS } from './types/plugin';

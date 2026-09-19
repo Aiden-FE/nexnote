@@ -119,6 +119,32 @@ describe('AiService', () => {
     expect(a).not.toBe(b);
   });
 
+  it('translation 独立 assignment 路由；缺省兼容回退 writing', async () => {
+    const { service } = makeService();
+    const writing = saveMockProfile(service, { name: 'Writing', defaultModel: 'writing-model' });
+    const translation = saveMockProfile(service, {
+      name: 'Translation',
+      defaultModel: 'translation-model',
+    });
+    service.setFeatureAssignment('writing', { profileId: writing, model: 'writing-model' });
+
+    await service.chatCompletion({
+      feature: 'translation',
+      messages: [{ role: 'user', content: 'x' }],
+    });
+    expect((mock.requests.at(-1)?.body as { model?: string }).model).toBe('writing-model');
+
+    service.setFeatureAssignment('translation', {
+      profileId: translation,
+      model: 'translation-model',
+    });
+    await service.chatCompletion({
+      feature: 'translation',
+      messages: [{ role: 'user', content: 'x' }],
+    });
+    expect((mock.requests.at(-1)?.body as { model?: string }).model).toBe('translation-model');
+  });
+
   it('testConnection：candidate 直测（向导场景）+ capabilities 实测', async () => {
     const { service } = makeService();
     const credentialToken = service.submitCredential('sk-cand', `${mock.url}/v1`);
@@ -213,13 +239,15 @@ describe('AiService', () => {
         },
       }),
     ).rejects.toMatchObject({ code: 'CREDENTIAL_SCOPE_MISMATCH' });
-    expect(() => service.saveProfile(undefined, {
-      name: 'Wrong operation',
-      kind: 'openai-compatible',
-      baseUrl: 'https://saved.example.com/v1',
-      defaultModel: 'gpt-4o-mini',
-      credentialToken: token,
-    })).toThrow(/凭据目标不一致/);
+    expect(() =>
+      service.saveProfile(undefined, {
+        name: 'Wrong operation',
+        kind: 'openai-compatible',
+        baseUrl: 'https://saved.example.com/v1',
+        defaultModel: 'gpt-4o-mini',
+        credentialToken: token,
+      }),
+    ).toThrow(/凭据目标不一致/);
   });
 
   it('authenticated provider requests never follow redirects', async () => {
@@ -264,10 +292,7 @@ describe('AiService', () => {
         kind: 'openai-compatible',
         baseUrl: `${mock.url}/v1`,
         defaultModel: 'gpt-4o-mini',
-        credentialToken: service.submitCredential(
-          'sk-should-not-be-saved',
-          `${mock.url}/v1`,
-        ),
+        credentialToken: service.submitCredential('sk-should-not-be-saved', `${mock.url}/v1`),
       }),
     ).toThrow(/凭据存储不可用/);
   });
