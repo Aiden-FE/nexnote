@@ -1,0 +1,10 @@
+targeted-tests: PASS (26/26)
+test: PASS (156 files passed / 1 skipped; 1413 tests passed / 2 skipped)
+root-typecheck: PASS (workspace packages with declared scripts)
+main-typecheck: BASELINE_FAIL (4 errors, all in unchanged files; same classes reproduced on dev/DEV-059 at 0af6750)
+lint: PASS (0 errors; 4 pre-existing warnings)
+build: PASS
+changed-format: PASS
+diff-check: PASS
+release-config: PASS (31/31, extra gate)
+electron-smoke: NOT_RUN - protocol and lifecycle covered by real mock HTTP/runtime tests; no fabricated GUI PASS
