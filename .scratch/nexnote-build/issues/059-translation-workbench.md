@@ -4,7 +4,7 @@ Type: dev
 Module: ai
 Status: implemented
 Branch: `dev/DEV-059`
-Base: `master`
+Code diff base: `0af6750`（当前 `origin/master`）
 Decision: [ADR-0014](../../../docs/adr/0014-translation-modes-and-no-reasoning-requests.md)
 Vocabulary: [CONTEXT.md](../../../CONTEXT.md)
 
@@ -38,9 +38,22 @@ Vocabulary: [CONTEXT.md](../../../CONTEXT.md)
 - `changed-format.log`：候选提交后 `scripts/check-changed-format.sh master` PASS，所有变更文件符合 Prettier。
 - `diff-check.log`：候选提交后 `git diff --check master` PASS。
 
-## 候选
+## 复审 FAIL 历史与修复轮
 
-- Candidate SHA: `5bee3d8`（门禁后证据更新将形成只改本票的最终 metadata commit）。
-- Standards review: 待固定 SHA。
-- Spec review: 待固定 SHA。
+- `f97597c` 独立复审：**Standards FAIL / Spec FAIL**。问题为划词/全文语言选择自动发起翻译、缺 DEV-060 reasoning output filter 与非流参数、异步默认语言覆盖用户选择、runId 返回前事件丢失、测试绕过真实入口，以及 code diff 基线包含非 DEV-059 release 继承提交。
+- 本轮先将 DEV-059 自身提交重放到正确基线 `0af6750`，再 cherry-pick DEV-060 `cd1adf1` 与修复候选 `0a68725`；冲突合并保留 DEV-059 独立 translation Profile/input mode 和 DEV-060 translation-only reasoning 防泄漏。
+- 修复：selection/document 语言修改只 patch 会话，不发请求；浮层新增显式“翻译/重新翻译”按钮。工作台继续由按钮或 IME-safe `Cmd/Ctrl+Enter` 提交。
+- 修复：workbench 默认语言异步 hydration 绑定捕获 session id，并通过 `languageTouched` 闭包拒绝覆盖用户当次选择；旧会话回调不能修改新会话。
+- 修复：`translate-stream` 在 awaiting-runId 阶段缓冲事件，invoke resolve 后仅回放匹配 runId；取消清空缓冲，迟到 resolve 只补 cancel，之后事件不生效；并发乱序 run 隔离。
+- 测试升级为真实命令面板 command run、真实 TipTap AI 下拉 dispatch、真实 textarea input/keydown/compositionStart/compositionEnd，以及真实 `vault:changed` 事件关闭三个并发槽位并拒绝晚到事件。
+- `gateway.ts` 已将无关 Prettier 排版恢复为 `0af6750` 基线，仅保留 translation feature routing / zero-tools 语义及 DEV-060 runtime 接线。
+
+## 新候选
+
+- Fixed code candidate: `646aeeb`（核心修复 `17d6109`；deferred 配置测试 `7664558`；gateway 基线清理 `4cd2654`；review 覆盖收尾 `646aeeb`）。
+- DEV-060 定向：用户指定原 26 测试命令现为 27/27 PASS（translation-request 因本票 input mode 多 1 用例）；DEV-059 main/renderer 定向此前 8 files / 144 tests PASS，最终关键三文件 47 tests PASS。日志 `../evidence/DEV-059-fix/dev060-targeted.log`、`dev059-targeted.log`。
+- 六门禁：root typecheck PASS；完整测试 156 files passed / 1 skipped、1428 tests passed / 2 skipped；lint PASS（0 errors / 3 个既有 warnings）；build PASS；changed-format（base `0af6750`）PASS；diff-check（`0af6750...HEAD`）PASS。完整测试首轮发生既有 `watch-service` chokidar 时序 flake，隔离 11/11 PASS 后全量重跑全绿；日志位于 `../evidence/DEV-059-fix/`。
+- Main 独立 typecheck 仍按前轮记录为未覆盖于 root command；本轮改动未触及那 4 个基线错误文件。
+- Standards review: 待新固定候选独立复审。
+- Spec review: 待新固定候选独立复审。
 - 禁止合并或修改 master；本票仅交付 `dev/DEV-059` 固定候选。
