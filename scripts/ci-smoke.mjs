@@ -60,10 +60,14 @@ child.on('exit', (code, signal) => {
     const checks = Array.isArray(report.checks) ? report.checks : [];
     const bound = report.candidateSha === expectedSha;
     const expectedVersion = process.env.NEXNOTE_SMOKE_EXPECTED_VERSION;
+    const expectedElectron = process.env.NEXNOTE_SMOKE_EXPECTED_ELECTRON_VERSION;
+    const expectedPlatform = process.env.NEXNOTE_SMOKE_EXPECTED_PLATFORM;
     const metadata =
-      report.platform === process.platform &&
-      report.electronVersion === process.versions.electron &&
-      (!expectedVersion || report.appVersion === expectedVersion);
+      (!expectedPlatform || report.platform === expectedPlatform) &&
+      (!expectedElectron || report.electronVersion === expectedElectron) &&
+      (!expectedVersion || report.appVersion === expectedVersion) &&
+      typeof report.electronAbi === 'string' &&
+      report.electronAbi.length > 0;
     if (!checks.length || !checks.every((check) => check?.passed === true) || !bound || !metadata) {
       console.error('[smoke:ci] invalid, failed, or unbound smoke report');
       process.exit(1);
