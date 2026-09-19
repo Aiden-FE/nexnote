@@ -35,6 +35,11 @@ on:
 permissions:
   contents: read
 
+env:
+  # Keep in lockstep with package.json devDependencies.electron (caret range pins the
+  # exact minor+patch used for ABI staging and packaged smoke binding).
+  NEXNOTE_ELECTRON_VERSION: '44.2.0'
+
 # GitHub concurrency is deliberately NOT used: GitHub replaces an older pending run
 # when a third run joins the same group, even with cancel-in-progress false. Every run
 # instead reaches publish and contends for an atomic repository ref lease, so no queued
@@ -45,6 +50,7 @@ jobs:
     runs-on: ubuntu-latest
     outputs:
       tag: ${{ steps.release.outputs.tag }}
+      version: ${{ steps.release.outputs.version }}
       commit: ${{ steps.release.outputs.commit }}
       channel: ${{ steps.release.outputs.channel }}
       evidence_url: ${{ steps.release.outputs.evidence_url }}
@@ -92,6 +98,7 @@ jobs:
           node scripts/check-version.mjs --require-tag "$RELEASE_TAG"
           test -n "$EVIDENCE_URL" && test -n "$EVIDENCE_SHA256" || { echo '::error::immutable QA evidence variables are required for automatic tag releases'; exit 1; }
           echo "tag=$RELEASE_TAG" >> "$GITHUB_OUTPUT"
+          echo "version=${RELEASE_TAG#v}" >> "$GITHUB_OUTPUT"
           echo "commit=$commit" >> "$GITHUB_OUTPUT"
           echo "channel=$RELEASE_CHANNEL" >> "$GITHUB_OUTPUT"
           echo "evidence_url=$EVIDENCE_URL" >> "$GITHUB_OUTPUT"
@@ -292,6 +299,13 @@ jobs:
         env:
           NEXNOTE_APP_PATH: release/smoke-app/NexNote.app/Contents/MacOS/NexNote
           NEXNOTE_SMOKE_OUTPUT_DIR: ${{ runner.temp }}/nexnote-smoke-results
+          # Bind packaged smoke evidence to this exact release commit and runtime; the
+          # runner exits non-zero when any value is missing or does not match results.json.
+          NEXNOTE_SMOKE_CANDIDATE_SHA: ${{ needs.prepare.outputs.commit }}
+          NEXNOTE_SMOKE_EXPECTED_VERSION: ${{ needs.prepare.outputs.version }}
+          NEXNOTE_SMOKE_EXPECTED_ELECTRON_VERSION: ${{ env.NEXNOTE_ELECTRON_VERSION }}
+          NEXNOTE_SMOKE_EXPECTED_PLATFORM: darwin
+          NEXNOTE_SMOKE_EXPECTED_ABI: '149'
       - name: Upload packaged smoke evidence
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
