@@ -345,3 +345,13 @@ DEV-006 ← DEV-004；DEV-008 ← DEV-004+007；DEV-010 ← DEV-002+009；DEV-01
 - post-merge master `0f14a49`：typecheck / 657 tests / eslint / build / release-config / changed-format 全绿；真实打包（unsigned dev，`NEXNOTE_NOTARIZE_MODE=disabled` + `CSC_IDENTITY_AUTO_DISCOVERY=false` + `--dir --publish never`）Electron smoke **102/102 PASS 退出码 0**（`smoke/DEV-020/results.json` + 19 张截图）；完成后已恢复 Node ABI。
 - NOT_RUN：本票本地可验证项全部执行；外部/跨平台项沿用 release-checklist 第 6 节既有清单（三平台签名公证/物理安装、真实网络自动更新、真实 Obsidian vault 导入等），无新增。
 - 进度：**20 / 20**。
+
+## 本轮新增票据（2026-09-19）
+
+基于 `grill-with-docs` 对翻译与知识库同步护栏的定案，新增三张票据：
+
+- **DEV-058**: 知识库同步护栏 — 扩展 `.gitignore` 模板、所有 vault 入口幂等修复、staging 前二次拒绝、已跟踪违规文件 `git rm --cached`。
+- **DEV-059**: 输入翻译工作台 — 独立面板、命令面板与划词工具栏 AI 下拉入口、200k 字符上限、目标语言选择器。
+- **DEV-060**: 无思考 AI 请求加固 — 翻译请求在协议参数层显式关闭 thinking/reasoning，覆盖外部覆盖，并对输出做 `<think>`/`<analysis>` 残留清洗。
+
+约束：每票独立 worktree + dev 分支；合入前必须通过 typecheck / test / lint / build / changed-format / diff-check 门禁。

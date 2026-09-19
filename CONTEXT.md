@@ -130,8 +130,24 @@ _Avoid_: 浮动 AI 栏
 _Avoid_: 审批开关、Agent 开关
 
 **临时翻译（Ephemeral Translation）**:
-划词翻译与全文翻译的只读结果展示；不写回、不落盘，关闭即丢弃。
+划词翻译、全文翻译与输入翻译的只读结果展示；不写回、不落盘，关闭即丢弃。
 _Avoid_: 翻译写回、译文文档
+
+**翻译工作台（Translation Workbench）**:
+独立的临时翻译入口，用户可输入任意原文并获取译文；结果只读可复制，不写回页面或知识库。
+_Avoid_: 输入框翻译、聊天翻译
+
+**目标语言选择器（Target Language Selector）**:
+翻译触发点提供的临时目标语言切换入口；默认取自全局翻译设置，单次调用可覆盖。
+_Avoid_: 语言下拉（泛指）
+
+**无思考 AI 请求（No-Reasoning AI Request）**:
+翻译等成本敏感场景在协议参数层显式关闭模型思考/推理能力，并对输出做 `<think>`/`<analysis>` 等残留清洗的请求约束。
+_Avoid_: 低温度请求、提示词禁止思考
+
+**知识库同步护栏（Vault Sync Guard）**:
+应用层在 Git staging 之前对敏感路径的二次拒绝机制；即使 `.gitignore` 缺失或被改坏，也阻止 `.DS_Store`、`.nexnote` 运行时产物、数据库等进入版本库。
+_Avoid_: gitignore 修复、同步白名单
 
 **块编辑模式（Block Editing Mode）**:
 原生块页面的编辑模式，以所见即所得的结构化块呈现 Markdown，不显示大部分源语法。
