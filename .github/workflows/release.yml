@@ -462,7 +462,7 @@ jobs:
           (cd release && sha256sum --check SHA256SUMS)
       # Same immutable tag resolves to the same GitHub Release, making explicit retries idempotent.
       - name: Attach artifacts to GitHub Release
-        uses: softprops/action-gh-release@3bb12739c298aeb8a4eeaf626c5b8d85266b0e65 # v2
+        uses: softprops/action-gh-release@efb35369e0ad2afab669f228072c1b0d510eae64 # v3.0.3
         with:
           tag_name: ${{ needs.prepare.outputs.tag }}
           files: release/**/*
