@@ -27,6 +27,7 @@ async function copyText(text: string): Promise<boolean> {
 }
 
 function statusLabel(session: TranslationSession): string {
+  if (session.status === 'draft') return '等待提交';
   if (session.status === 'streaming') return '翻译中…';
   if (session.status === 'cancelled') return '已停止 · 未完成';
   if (session.status === 'error') return '翻译失败 · 未完成';
