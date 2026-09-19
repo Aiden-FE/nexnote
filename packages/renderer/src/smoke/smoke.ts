@@ -15,6 +15,7 @@ import { applySourceFormat } from '../editor/source/source-formatting';
 import { FORMAT_WIKILINK, runFormatAction } from '../editor/interactions/formatting';
 import { TextSelection } from '@tiptap/pm/state';
 import { redo, undo } from '@codemirror/commands';
+import { sourceFoldState } from '../editor/source/heading-fold';
 import { openSettings } from '../lib/open-settings';
 import { deleteEntry, moveEntry } from '../features/sidebar/page-tree/ops';
 import { BUILTIN_PLUGIN_IDS, type ChatSession } from '@nexnote/shared';
@@ -36,6 +37,11 @@ interface SmokeBridge {
   ): Promise<SmokeCaptureResult & { path?: string }>;
   seedGraph(root: string): Promise<SmokeCaptureResult & { pages?: number; links?: number }>;
   setWindowSize(width: number, height: number): Promise<SmokeCaptureResult>;
+  typeText(text: string): Promise<SmokeCaptureResult>;
+  pressKey(key: string, modifiers?: string[]): Promise<SmokeCaptureResult>;
+  clickAtPoint(x: number, y: number): Promise<SmokeCaptureResult>;
+  hoverAtPoint(x: number, y: number): Promise<SmokeCaptureResult>;
+  pasteText(text: string): Promise<SmokeCaptureResult>;
   finish(report: unknown): Promise<SmokeCaptureResult>;
   /** DEV-037：内嵌 mock provider 地址 + 运行时调参（分段延迟 / 下一次请求失败）。 */
   aiMock(): Promise<SmokeCaptureResult & { url?: string }>;
@@ -392,6 +398,69 @@ export async function runSmokeIfEnabled(): Promise<void> {
       // 保存后的文档保持原路径；H1 重命名由独立 page-ops 测试覆盖，避免冒烟流程把焦点/防抖验收与命名联动耦合。
       check('编辑后页面路径保持稳定', leftPageTab.pagePath === '冒烟页面 A.md');
 
+      // 真正输入路径：活动 TipTap 的 DOM 键入 `/h2`，不调用内部 slash hook 或注入菜单状态。
+      const blockSlashInput = editorRoot;
+      const blockSlashKernel = getActiveEditor();
+      if (blockSlashKernel && blockSlashInput) {
+        const slashBaselineMarkdown = blockSlashKernel.getMarkdown();
+        // Use End+Enter to create a fresh empty paragraph, then drive `/h2` through
+        // Electron's trusted Chromium edit path. The empty paragraph is the same
+        // block-type trigger a keyboard user reaches; the fixture is restored below.
+        await bridge.pressKey('End');
+        await bridge.pressKey('Enter');
+        await sleep(80);
+        const slashPosition = blockSlashKernel.editor.state.selection.from;
+        const slashCoords = blockSlashKernel.editor.view.coordsAtPos(slashPosition);
+        const clicked = await bridge.clickAtPoint(
+          Math.round(slashCoords.left),
+          Math.round(slashCoords.top),
+        );
+        await sleep(100);
+        const pastedSlash = clicked.ok ? await bridge.pasteText('/') : clicked;
+        const typed = pastedSlash.ok ? await bridge.typeText('h2') : pastedSlash;
+        await sleep(150);
+        const blockSlashMenu = (): HTMLElement | null =>
+          document.querySelector<HTMLElement>('[data-testid="block-slash-menu"]');
+        const blockSlashItem = (): HTMLElement | null =>
+          blockSlashMenu()?.querySelector<HTMLElement>('[data-slash-item="block:heading:2"]') ??
+          null;
+        const blockSlashOpen = await waitFor(
+          () =>
+            !!blockSlashMenu() &&
+            blockSlashMenu()?.getAttribute('role') === 'listbox' &&
+            blockSlashMenu()?.getAttribute('aria-label') === '快捷插入动作' &&
+            blockSlashMenu()?.style.display !== 'none' &&
+            !!blockSlashItem() &&
+            blockSlashItem()?.getAttribute('aria-selected') === 'true',
+        );
+        // Keep every edit/navigation action on Electron's trusted WebContents path. The
+        // renderer can inspect only the visible result; synthetic KeyboardEvents would not
+        // exercise ProseMirror's packaged Chromium key handling.
+        const selected = blockSlashOpen ? await bridge.pressKey('ArrowDown') : null;
+        await bridge.pressKey('ArrowUp');
+        const confirmed = selected ? await bridge.pressKey('Enter') : null;
+        await sleep(150);
+        check(
+          'TipTap 真实键入 /：菜单可见、可键盘选择、消费触发词并转换 H2',
+          typed.ok &&
+            selected?.ok === true &&
+            confirmed?.ok === true &&
+            blockSlashOpen &&
+            blockSlashKernel.editor.state.selection.$from.parent.type.name === 'heading' &&
+            blockSlashKernel.editor.state.selection.$from.parent.attrs.level === 2 &&
+            !blockSlashKernel.getMarkdown().includes('/h2') &&
+            blockSlashMenu()?.style.display === 'none',
+          blockSlashKernel.getMarkdown().slice(-70),
+        );
+        // The slash conversion is asserted above, then restore the pre-scenario document
+        // so the following selection/AI smoke scenarios retain their original fixture.
+        blockSlashKernel.setMarkdown(slashBaselineMarkdown);
+        blockSlashKernel.editor.commands.focus();
+        await sleep(1200);
+      } else {
+        check('TipTap 真实键入 /：块编辑器已挂载', false);
+      }
+
       // DEV-023 块编辑「双链」按钮：选中「第一块」经内核 wikilink 节点插入（可 undo）。
       const blockKernel = getActiveEditor();
       if (blockKernel) {
@@ -477,11 +546,7 @@ export async function runSmokeIfEnabled(): Promise<void> {
         }
       }
       useTabStore.getState().closeTab(leftPageTab.id);
-      useTabStore.getState().openTab({
-        kind: 'page',
-        title: '冒烟页面 A',
-        pagePath: '冒烟页面 A.md',
-      });
+      await openDocumentTab('冒烟页面 A.md');
       const reopenedEditor = () =>
         document.querySelector(
           '[data-testid="editor-view"][data-path="冒烟页面 A.md"] .ProseMirror',
@@ -649,10 +714,10 @@ export async function runSmokeIfEnabled(): Promise<void> {
       );
 
       // 场景 C：请求级失败（HTTP 500，无任何片段）→ 未完成标记 + Reject 退出
-      const httpFail = await bridge.aiMockTune({ chunkDelayMs: 30, failNextChatWith: 500 });
-      check('mock provider 可置下一次生成请求失败', httpFail.ok, httpFail.error);
+      const httpFail = await bridge.aiMockTune({ chunkDelayMs: 30, failAfterChunks: 0 });
+      check('mock provider 可模拟无片段请求失败', httpFail.ok, httpFail.error);
       check(
-        'DEV-037 请求失败场景：重新划词触发改写',
+        'DEV-037 无片段失败场景：重新划词触发改写',
         selectRewriteTarget(writeKernel) && (await triggerBlockRewrite()),
       );
       const errored = await waitFor(() => writingStatus() === 'error', 10_000);
@@ -968,7 +1033,7 @@ export async function runSmokeIfEnabled(): Promise<void> {
     useUiStore.getState().setSidebarWidth(SIDEBAR_MAX_WIDTH);
     const resized = await bridge.setWindowSize(960, 600);
     check('冒烟可调整主窗口到最小尺寸', resized.ok, resized.error);
-    await sleep(600);
+    await waitFor(() => (toolbarActions()?.clientWidth ?? 0) > 100, 5_000);
     const actionsRow = toolbarActions();
     check(
       '窄窗下工具栏不横向裁切（单行保持）',
@@ -1069,10 +1134,16 @@ export async function runSmokeIfEnabled(): Promise<void> {
     useUiStore.getState().setDockVisible(false);
     useUiStore.getState().setSidebarWidth(260);
     await bridge.setWindowSize(REGULAR_WINDOW.width, REGULAR_WINDOW.height);
-    await sleep(400);
+    await waitFor(
+      () =>
+        (toolbarActions()?.clientWidth ?? 0) > 500 &&
+        !document.querySelector('[data-testid="toolbar-more"]'),
+      8_000,
+    );
     check(
       '恢复常规宽度后工具栏动作重新平铺',
-      await waitFor(() => !document.querySelector('[data-testid="toolbar-more"]'), 5_000),
+      (toolbarActions()?.clientWidth ?? 0) > 500 &&
+        !document.querySelector('[data-testid="toolbar-more"]'),
     );
 
     // ── 5. 文档格式边界：native-block 不进源码；markdown sidecar 才进源码 ──
@@ -1189,12 +1260,56 @@ export async function runSmokeIfEnabled(): Promise<void> {
     // 划词工具栏可见性改由下方 DEV-023 段在真实 GUI 中断言（选区 → body 挂载 → 按钮集 → Esc 隐藏）。
 
     check(
-      '源码模式无块编辑交互',
-      !document.querySelector('[data-testid="slash-menu"]') &&
-        !document.querySelector('[data-testid="selection-bubble"]') &&
-        !document.querySelector('[data-testid="block-menu"]') &&
-        !document.querySelector('[data-testid="drag-handle"]'),
+      'Markdown 源码 slash 菜单初始关闭（不以不存在 selector 假绿）',
+      !document.querySelector('[data-testid="source-slash-menu"]') ||
+        document.querySelector<HTMLElement>('[data-testid="source-slash-menu"]')?.style.display ===
+          'none',
     );
+    // 真正输入路径：源码菜单的稳定 selector 必须在 `/` 键入后出现，能过滤、键盘选择并消费。
+    const initialSource = getActiveSourceEditor();
+    const initialSourceDom = document.querySelector<HTMLElement>(
+      '[data-testid="source-editor-pane"] .cm-content',
+    );
+    if (initialSource && initialSourceDom) {
+      const slashStart = initialSource.view.state.doc.length;
+      const slashCoords = initialSource.view.coordsAtPos(slashStart);
+      const sourceClicked = slashCoords
+        ? await bridge.clickAtPoint(Math.round(slashCoords.left), Math.round(slashCoords.top))
+        : { ok: false, error: '源码 slash 光标坐标不可用' };
+      const sourceTyped = sourceClicked.ok ? await bridge.typeText('/h2') : sourceClicked;
+      const sourceSlashMenu = (): HTMLElement | null =>
+        document.querySelector<HTMLElement>('[data-testid="source-slash-menu"]');
+      const sourceSlashItem = (): HTMLElement | null =>
+        sourceSlashMenu()?.querySelector<HTMLElement>('[data-slash-item="block:heading:2"]') ??
+        null;
+      const sourceSlashOpen = await waitFor(
+        () =>
+          !!sourceSlashMenu() &&
+          sourceSlashMenu()?.getAttribute('role') === 'listbox' &&
+          sourceSlashMenu()?.getAttribute('aria-label') === '快捷插入动作' &&
+          sourceSlashMenu()?.style.display !== 'none' &&
+          !!sourceSlashItem() &&
+          sourceSlashItem()?.getAttribute('aria-selected') === 'true',
+      );
+      const sourceSelected = sourceSlashOpen ? await bridge.pressKey('ArrowDown') : null;
+      await bridge.pressKey('ArrowUp');
+      const sourceConfirmed = sourceSelected ? await bridge.pressKey('Enter') : null;
+      await sleep(150);
+      const sourceSlashResult = initialSource.view.state.doc.toString();
+      check(
+        'Markdown 真实键入 /：菜单可见、可键盘选择、消费触发词并写入 H2',
+        sourceTyped.ok &&
+          sourceSelected?.ok === true &&
+          sourceConfirmed?.ok === true &&
+          sourceSlashOpen &&
+          !sourceSlashResult.includes('/h2') &&
+          sourceSlashResult.endsWith('## ') &&
+          sourceSlashMenu()?.style.display === 'none',
+        sourceSlashResult.slice(-48),
+      );
+    } else {
+      check('Markdown 真实键入 /：源码编辑器已挂载', false);
+    }
     check(
       '右侧只读 Live Preview 渲染正文',
       (await waitFor(
@@ -1289,7 +1404,8 @@ export async function runSmokeIfEnabled(): Promise<void> {
           'ai:rewrite,ai:polish,ai:condense,ai:expand,ai:fillgaps,ai:evidence,chat:ask-selection,translate:selection' &&
         (sourceMenu()?.textContent ?? '').includes('⌘⌥R'),
     );
-    (document.activeElement ?? document.body).dispatchEvent(
+    const sourceAiMenuItem = sourceMenu()?.querySelector<HTMLElement>('[data-ai-menu-action]');
+    sourceAiMenuItem?.dispatchEvent(
       new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true }),
     );
     await sleep(150);
@@ -1351,36 +1467,50 @@ export async function runSmokeIfEnabled(): Promise<void> {
       );
     }
 
-    // Markdown 的 Cmd/Ctrl+E 是预览分栏开关，不切换为 TipTap。
-    window.dispatchEvent(
-      new KeyboardEvent('keydown', {
-        key: 'e',
-        [isMac ? 'metaKey' : 'ctrlKey']: true,
-        bubbles: true,
-        cancelable: true,
-      }),
+    // Markdown 的 Mod+E（editor.toggleSourceMode）在源码/分栏之间切换，不切换为 TipTap。
+    // 断言只经真实快捷键与可见 DOM：视图切换有 flush 守卫，异步落点必须等它稳定，
+    // 否则随后的态切换会与仍在飞行中的切换互相覆盖（本轮 packaged 失败即此竞态）。
+    const markdownTabId = useTabStore.getState().activeTabId;
+    const markdownViewNow = (): string | undefined =>
+      useTabStore.getState().tabs.find((tab) => tab.id === markdownTabId)?.markdownView;
+    const markdownToggleKey = (): void => {
+      window.dispatchEvent(
+        new KeyboardEvent('keydown', {
+          key: 'e',
+          [isMac ? 'metaKey' : 'ctrlKey']: true,
+          bubbles: true,
+          cancelable: true,
+        }),
+      );
+    };
+    // 归一化到分栏，避免继承上一步的视图状态。
+    clickToolbarAction('view:split');
+    await waitFor(
+      () =>
+        markdownViewNow() === 'split' && !!document.querySelector('[data-testid="live-preview"]'),
     );
-    clickToolbarAction('view:preview');
-    const markdownTabId = useTabStore.getState().tabs.find((t) => t.pagePath === markdownPath)?.id;
-    const hidePreview = async (): Promise<void> => {
-      if (markdownTabId) useTabStore.getState().togglePreview(markdownTabId, false);
-      await sleep(150);
-    };
-    const showPreview = async (): Promise<void> => {
-      if (markdownTabId) useTabStore.getState().togglePreview(markdownTabId, true);
-      await sleep(150);
-    };
-    await hidePreview();
+    markdownToggleKey();
+    const previewHidden = await waitFor(
+      () =>
+        markdownViewNow() === 'source' &&
+        !document.querySelector('[data-testid="live-preview"]') &&
+        !!document.querySelector('[data-testid="source-editor-pane"] .cm-content'),
+    );
     check(
       'Markdown Cmd/Ctrl+E 隐藏预览但保持源码',
-      (await waitFor(() => !document.querySelector('[data-testid="live-preview"]'))) &&
-        !!document.querySelector('[data-testid="source-editor-pane"] .cm-content'),
+      previewHidden,
+      `view=${markdownViewNow()} preview=${!!document.querySelector('[data-testid="live-preview"]')}`,
     );
-    await showPreview();
+    markdownToggleKey();
     check(
       'Markdown Cmd/Ctrl+E 恢复双栏预览',
-      (await waitFor(() => !!document.querySelector('[data-testid="live-preview"]'))) &&
-        !!document.querySelector('[data-testid="source-editor-pane"] .cm-content'),
+      await waitFor(
+        () =>
+          markdownViewNow() === 'split' &&
+          !!document.querySelector('[data-testid="live-preview"]') &&
+          !!document.querySelector('[data-testid="source-editor-pane"] .cm-content'),
+      ),
+      `view=${markdownViewNow()}`,
     );
 
     const toggleCommand = commandRegistry.get('editor.toggleSourceMode');
@@ -1427,7 +1557,8 @@ export async function runSmokeIfEnabled(): Promise<void> {
         15_000,
       );
       if (!wikilinkReady && !document.querySelector('[data-testid="live-preview"]')) {
-        await showPreview();
+        clickToolbarAction('view:split');
+        await waitFor(() => !!document.querySelector('[data-testid="live-preview"]'));
       }
       document
         .querySelector<HTMLElement>('[data-testid="live-preview"] [data-wikilink-target]')
@@ -2574,7 +2705,7 @@ export async function runSmokeIfEnabled(): Promise<void> {
       parentDir: '',
       name: 'DEV-047 冒烟',
       content:
-        '---\ntitle: DEV-047\n---\n\n# DEV-047 冒烟\n\n## 章节 甲\n\n正文甲\n\n## 章节 乙\n\n正文乙\n',
+        '---\ntitle: DEV-047\n---\n\n# DEV-047 冒烟\n\n## 章节 甲\n\n正文甲\n\n### 章节 甲子节\n\n子节正文\n\n## 章节 乙\n\n正文乙\n',
       format: 'markdown',
     });
     await openDocumentTab(dev047Path);
@@ -2586,12 +2717,45 @@ export async function runSmokeIfEnabled(): Promise<void> {
     );
 
     // 1) 源码页工具栏动作集（平铺或「更多」溢出菜单均视为可达）。
-    const toolbarReachableIds = async (): Promise<string[]> => {
-      const ids = new Set(rowEntryIds().filter((id) => id !== 'toolbar:more'));
-      if (moreButton()) {
-        moreButton()?.click();
+    const sourceToolbarRoot = (): HTMLElement | null =>
+      document.querySelector<HTMLElement>(
+        '[data-testid="source-mode-view"] [data-testid="editor-toolbar"]',
+      );
+    const sourceToolbarEntry = (id: string): HTMLButtonElement | null =>
+      sourceToolbarRoot()?.querySelector<HTMLButtonElement>(
+        `[data-testid="toolbar-entry-${CSS.escape(id)}"]`,
+      ) ?? null;
+    const sourceMoreButton = (): HTMLButtonElement | null =>
+      sourceToolbarRoot()?.querySelector<HTMLButtonElement>('[data-testid="toolbar-more"]') ?? null;
+    const sourceToolbarMenuItems = (): HTMLElement[] => [
+      ...(document
+        .querySelector('[data-testid="toolbar-more-menu"]')
+        ?.querySelectorAll<HTMLElement>('[role="menuitem"]') ?? []),
+    ];
+    const sourceToolbarReachableIds = async (): Promise<string[]> => {
+      const ids = new Set(
+        [
+          ...(sourceToolbarRoot()?.querySelectorAll<HTMLElement>(
+            'button[data-toolbar-item="true"]',
+          ) ?? []),
+        ]
+          .map((el) => el.dataset.itemId ?? '')
+          .filter((id) => id !== 'toolbar:more'),
+      );
+      for (const menuId of ['menu:format', 'menu:insert', 'ai']) {
+        sourceToolbarEntry(menuId)?.click();
+        await sleep(100);
+        for (const item of document.querySelectorAll<HTMLElement>(
+          '[data-testid="toolbar-menu"] [role="menuitem"]',
+        ))
+          ids.add((item.dataset.testid ?? '').replace('toolbar-menu-item-', ''));
+        document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+      }
+      if (sourceMoreButton()) {
+        sourceMoreButton()?.click();
         await sleep(250);
-        for (const id of menuItemIds()) ids.add(id);
+        for (const item of sourceToolbarMenuItems())
+          ids.add((item.dataset.testid ?? '').replace('toolbar-menu-item-', ''));
         document
           .querySelector('[data-testid="toolbar-more-menu"]')
           ?.dispatchEvent(
@@ -2604,18 +2768,26 @@ export async function runSmokeIfEnabled(): Promise<void> {
     // 与 clickToolbarAction 不同：动作收进「更多」时先开菜单并等 React 渲染一拍再点
     // （同步 click 后菜单尚未挂载，立即查找会落空）。
     const clickToolbarEntry = async (id: string): Promise<boolean> => {
-      const inline = findToolbarAction(id);
-      if (inline) {
-        inline.click();
-        return true;
+      let target = sourceToolbarEntry(id);
+      const menuItem = (): HTMLButtonElement | null =>
+        sourceToolbarRoot()?.querySelector<HTMLButtonElement>(
+          `[data-testid="toolbar-menu-item-${CSS.escape(id)}"]`,
+        ) ?? null;
+      if (!target) {
+        const menuId = id.startsWith('format:') ? 'menu:format' : 'menu:insert';
+        sourceToolbarEntry(menuId)?.click();
+        await sleep(250);
+        target = menuItem();
       }
-      moreButton()?.click();
-      await sleep(250);
-      const target = findToolbarAction(id);
+      if (!target && sourceMoreButton()) {
+        sourceMoreButton()?.click();
+        await sleep(250);
+        target = menuItem();
+      }
       target?.click();
       return !!target;
     };
-    const dev047ToolbarIds = await toolbarReachableIds();
+    const dev047ToolbarIds = await sourceToolbarReachableIds();
     check(
       'DEV-047 源码页工具栏含 撤销/重做/表格/流程图/甘特图/正文目录/格式化选区/格式化全文',
       [
@@ -2630,6 +2802,44 @@ export async function runSmokeIfEnabled(): Promise<void> {
       ].every((id) => dev047ToolbarIds.includes(id)),
       dev047ToolbarIds.join(' | '),
     );
+
+    const sourceToolbar = sourceToolbarRoot();
+    const sourceAi = sourceToolbar?.querySelector<HTMLButtonElement>(
+      '[data-testid="toolbar-entry-ai"]',
+    );
+    sourceAi?.focus({ preventScroll: true });
+    // Hover the AI trigger through a trusted Chromium mouse move; programmatic focus does
+    // not set :focus-visible in packaged runs, while pointer discovery must also work.
+    if (sourceAi) {
+      const rect = sourceAi.getBoundingClientRect();
+      await bridge.hoverAtPoint(
+        Math.round(rect.left + rect.width / 2),
+        Math.round(rect.top + rect.height / 2),
+      );
+      await sleep(150);
+    }
+    check(
+      'Icon-first 工具栏：AI 为 Sparkles + AI + chevron，Tooltip 与 accessible name 可达',
+      !!sourceAi &&
+        sourceAi.getAttribute('aria-label') === 'AI' &&
+        (sourceAi.textContent ?? '').includes('AI') &&
+        !!sourceAi.querySelector('svg') &&
+        !!sourceAi.querySelector('svg.lucide-chevron-down') &&
+        sourceAi.matches(':focus-visible, :focus') &&
+        (await waitFor(
+          () =>
+            !!sourceAi.getAttribute('aria-describedby') &&
+            !!document.getElementById(sourceAi.getAttribute('aria-describedby') ?? '') &&
+            document
+              .getElementById(sourceAi.getAttribute('aria-describedby') ?? '')
+              ?.getAttribute('role') === 'tooltip',
+        )) &&
+        !!sourceToolbar?.querySelector('[data-testid="toolbar-entry-edit:undo"]') &&
+        !!sourceToolbar?.querySelector('[data-testid="toolbar-entry-menu:format"]') &&
+        !!sourceToolbar?.querySelector('[data-testid="toolbar-entry-menu:insert"]'),
+      sourceAi?.textContent ?? '(missing AI)',
+    );
+    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
 
     // 预览视图是只读边界：工具栏收敛为「视图切换 + 悬浮目录」。
     const dev047TabId = useTabStore.getState().tabs.find((t) => t.pagePath === dev047Path)?.id;
@@ -2900,6 +3110,85 @@ export async function runSmokeIfEnabled(): Promise<void> {
       );
     }
 
+    // 6b) Markdown 标题折叠：可访问 disclosure、嵌套状态、目录 reveal、全部展开、重开默认展开，且不触碰字节。
+    {
+      const foldSource = getActiveSourceEditor();
+      const foldOriginal = await invoke('fs:readTextFile', { path: dev047Path });
+      const foldEditorText = foldSource?.view.state.doc.toString();
+      const foldButtons = (): HTMLButtonElement[] => [
+        ...document.querySelectorAll<HTMLButtonElement>('.cm-heading-fold-toggle'),
+      ];
+      const foldReady =
+        !!foldSource &&
+        (await waitFor(() => foldButtons().length >= 3)) &&
+        foldButtons().every(
+          (button) =>
+            button.getAttribute('aria-label') === '折叠章节' &&
+            button.getAttribute('aria-expanded') === 'true',
+        );
+      const parentFold = foldButtons()[0];
+      const childFold = foldButtons()[1];
+      childFold?.click();
+      parentFold?.click();
+      const nestedFolded =
+        !!foldSource &&
+        sourceFoldState(foldSource.view.state)?.folded.size === 2 &&
+        !(document.querySelector('[data-testid="source-editor-pane"]')?.textContent ?? '').includes(
+          '子节正文',
+        );
+      parentFold?.click();
+      check(
+        'Markdown 嵌套标题折叠：可访问控件、父重开后子折叠仍保留且原文未改',
+        foldReady &&
+          nestedFolded &&
+          sourceFoldState(foldSource!.view.state)?.folded.size === 1 &&
+          foldSource!.view.state.doc.toString() === foldEditorText,
+        `folded=${foldSource ? sourceFoldState(foldSource.view.state)?.folded.size : 'no editor'}`,
+      );
+      const outlineForFold = document.querySelector<HTMLButtonElement>(
+        '[data-testid="toolbar-entry-view:outline"]',
+      );
+      outlineForFold?.click();
+      await waitFor(() => !!document.querySelector('[data-testid="outline-panel"]'));
+      [...document.querySelectorAll<HTMLButtonElement>('[data-testid^="outline-entry-"]')]
+        .find((entry) => (entry.textContent ?? '') === '章节 甲子节')
+        ?.click();
+      check(
+        'Markdown 目录跳转自动展开祖先章节',
+        !!foldSource &&
+          (await waitFor(() => sourceFoldState(foldSource.view.state)?.folded.size === 0)) &&
+          foldSource.view.state.doc
+            .lineAt(foldSource.view.state.selection.main.head)
+            .text.includes('章节 甲子节'),
+      );
+      parentFold?.click();
+      document.querySelector<HTMLButtonElement>('[data-testid="outline-expand-all"]')?.click();
+      check(
+        'Markdown「全部展开」清空当前折叠且 Markdown 字节保持',
+        !!foldSource &&
+          (await waitFor(() => sourceFoldState(foldSource.view.state)?.folded.size === 0)) &&
+          foldSource.view.state.doc.toString() === foldEditorText,
+      );
+      const dev047CurrentTab = useTabStore
+        .getState()
+        .tabs.find((tab) => tab.pagePath === dev047Path);
+      if (dev047CurrentTab) {
+        parentFold?.click();
+        useTabStore.getState().closeTab(dev047CurrentTab.id);
+        await openDocumentTab(dev047Path);
+        await waitFor(
+          () => !!document.querySelector('[data-testid="source-editor-pane"] .cm-content'),
+        );
+        const reopenedFoldSource = getActiveSourceEditor();
+        check(
+          'Markdown 重开全部展开且保存前后字节不变',
+          !!reopenedFoldSource &&
+            sourceFoldState(reopenedFoldSource.view.state)?.folded.size === 0 &&
+            (await invoke('fs:readTextFile', { path: dev047Path })) === foldOriginal,
+        );
+      }
+    }
+
     // 7) 页面树：点击文件夹行主体（非 chevron）切换展开/收起。
     {
       // 10a 段把侧栏切到了局部图谱；页面树检查前先切回 pages 面板（树只挂载于该面板）。
@@ -3060,8 +3349,10 @@ export async function runSmokeIfEnabled(): Promise<void> {
       );
       const outlineLongOpened =
         (await clickToolbarEntry('view:outline')) &&
-        (await waitFor(() =>
-          outlineEntries().some((el) => (el.textContent ?? '') === midHeadingText),
+        (await waitFor(
+          () =>
+            outlineEntries().length >= 14 &&
+            outlineEntries().some((el) => (el.textContent ?? '') === midHeadingText),
         ));
       outlineEntries()
         .find((el) => (el.textContent ?? '') === midHeadingText)
@@ -3072,9 +3363,16 @@ export async function runSmokeIfEnabled(): Promise<void> {
         height: number;
       } | null => {
         const host = document.querySelector<HTMLElement>('[data-testid="live-preview"]');
-        const heading = [...(host?.querySelectorAll<HTMLElement>('h2') ?? [])].find(
-          (el) => (el.textContent ?? '').trim() === midHeadingText,
-        );
+        // ProseMirror heading fold widgets render an aria-hidden › inside each h2;
+        // textContent includes that icon although the accessible heading text does not.
+        const heading = [...(host?.querySelectorAll<HTMLElement>('h2') ?? [])].find((el) => {
+          const text = [...el.childNodes]
+            .filter((node) => !(node instanceof Element && node.matches('.nexnote-fold-toggle')))
+            .map((node) => node.textContent ?? '')
+            .join('')
+            .trim();
+          return text === midHeadingText;
+        });
         if (!host || !heading) return null;
         return {
           scrollTop: host.scrollTop,

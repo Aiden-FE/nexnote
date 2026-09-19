@@ -20,8 +20,9 @@ const channel = resolveChannel();
 // Must match the git origin, not a placeholder.
 const REPO_OWNER = 'Aiden-FE';
 const REPO_NAME = 'nexnote';
-// Only insert the override when building distributables; `--dir`/prepackaged don't need it.
-const args = [...process.argv.slice(2), '-c.npmRebuild=false'];
+// Keep caller arguments intact. electron-builder accepts boolean config overrides as
+// `--config.npmRebuild false`; the old `-c.npmRebuild=false` form was parsed as a string.
+const args = process.argv.slice(2);
 if (channel !== 'stable') {
   const publish = JSON.stringify([
     { provider: 'github', owner: REPO_OWNER, repo: REPO_NAME, channel },
