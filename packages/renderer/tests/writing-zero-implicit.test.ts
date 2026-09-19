@@ -76,7 +76,7 @@ describe('DEV-037 写作请求层零隐式请求', () => {
     view.dispatch(view.state.tr.insertText('/', view.state.selection.to));
     expect(writingSlashItems(controller)).toHaveLength(7);
     // 5) 工具栏 / 菜单项构建 + 停止控件挂载（纯 UI，不发请求）
-    expect(writingAiMenuActions()).toHaveLength(8);
+    expect(writingAiMenuActions()).toHaveLength(9);
     expect(writingContextMenu({ target: 'selection' })).toHaveLength(1);
     const stop = writingStopControl();
     document.body.append(stop.dom);

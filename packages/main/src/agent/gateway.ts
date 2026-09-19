@@ -158,7 +158,10 @@ export class AgentGateway {
     const effectiveRequest: AgentRunRequest = request.translation
       ? { ...request, params: withTranslationParams(request.params) }
       : request;
-    const assignment = this.deps.ai.getState().features[scenarioFeature(scenario)];
+    const stateFeatures = this.deps.ai.getState().features;
+    const directFeature = scenarioFeature(scenario);
+    const assignment =
+      stateFeatures[directFeature] ?? (scenario === 'translation' ? stateFeatures.writing : null);
     const aiState = this.deps.ai.getState();
     const assignedProfile = assignment
       ? aiState.profiles.find((p) => p.id === assignment.profileId)
@@ -247,12 +250,13 @@ export class AgentGateway {
             ...(context ? [{ role: 'system' as const, content: `参考上下文：\n${context}` }] : []),
             ...incomingMessages.filter((m) => m.role !== 'system'),
           ];
-    const supportsTools = this.aiSupportsTools(scenario);
+    const scenarioHasTools = profile.tools.length > 0;
+    const supportsTools = scenarioHasTools && this.aiSupportsTools(scenario);
     let tools = supportsTools ? this.buildSdkTools(runId, scenario) : [];
     let terminalError: Extract<AgentRunEvent, { type: 'error' }> | undefined;
     // 只允许一次运行期降级重试，避免供应商持续拒绝时反复发请求。
     let allowToolFallback = supportsTools && tools.length > 0;
-    if (!supportsTools) this.markToolFallback(runId, scenario, emit, messages);
+    if (scenarioHasTools && !supportsTools) this.markToolFallback(runId, scenario, emit, messages);
     const startAttempt = (attemptTools: ChatTool[]): ChatStreamHandle =>
       this.runtime.run({
         runId,
@@ -406,13 +410,31 @@ export class AgentGateway {
     }
     if (tool.access === 'write' || tool.requiresApproval) {
       if (tool.access === 'write') {
-        const target = typeof input === 'object' && input !== null ? (input as Record<string, unknown>).path : undefined;
+        const target =
+          typeof input === 'object' && input !== null
+            ? (input as Record<string, unknown>).path
+            : undefined;
         const inScope = typeof target === 'string' && state.contextPaths.includes(target);
-        const forbidden = /shell|command|delete|remove|rename|config|setting|vault/i.test(`${name} ${JSON.stringify(input)}`);
+        const forbidden = /shell|command|delete|remove|rename|config|setting|vault/i.test(
+          `${name} ${JSON.stringify(input)}`,
+        );
         if (forbidden || !inScope) {
           const code = forbidden ? 'FULL_MODE_TOOL_FORBIDDEN' : 'FULL_MODE_SCOPE_DENIED';
-          this.audit.append({ runId, scenario, event: 'tool', status: 'denied', tool: name, code, at: Date.now() });
-          emit({ type: 'tool', tool: name, status: 'denied', summary: '护栏拒绝：仅允许当前会话上下文中的文档编辑。' });
+          this.audit.append({
+            runId,
+            scenario,
+            event: 'tool',
+            status: 'denied',
+            tool: name,
+            code,
+            at: Date.now(),
+          });
+          emit({
+            type: 'tool',
+            tool: name,
+            status: 'denied',
+            summary: '护栏拒绝：仅允许当前会话上下文中的文档编辑。',
+          });
           throw Object.assign(new Error('写操作超出当前会话文档作用域'), { code });
         }
       }
@@ -438,16 +460,18 @@ export class AgentGateway {
       }
       if (state.permissionMode === 'full') {
         // Five hard guardrails: no shell, delete, rename, vault/settings config, or path escape.
-        const forbidden = /shell|command|delete|remove|rename|config|setting|vault/i.test(`${name} ${JSON.stringify(input)}`);
+        const forbidden = /shell|command|delete|remove|rename|config|setting|vault/i.test(
+          `${name} ${JSON.stringify(input)}`,
+        );
         const target =
           typeof input === 'object' && input !== null
             ? (input as Record<string, unknown>).path
             : undefined;
         const inScope =
           typeof target !== 'string' ||
-          state.contextPaths.length > 0 &&
-          typeof target === 'string' &&
-          state.contextPaths.some((p) => target === p || target.startsWith(`${p}/`));
+          (state.contextPaths.length > 0 &&
+            typeof target === 'string' &&
+            state.contextPaths.some((p) => target === p || target.startsWith(`${p}/`)));
         if (forbidden || !inScope) {
           this.audit.append({
             runId,

@@ -3,7 +3,7 @@ import { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { TextSelection } from '@tiptap/pm/state';
-import { defaultVaultSettings } from '@nexnote/shared';
+import { defaultVaultSettings, TRANSLATION_MAX_TEXT_CHARS } from '@nexnote/shared';
 import { EditorView } from '../src/editor/EditorView';
 import { getActiveEditor } from '../src/editor/active-editor';
 import { createSourceEditor } from '../src/editor/source/codemirror-host';
@@ -16,7 +16,11 @@ import {
   isIncomplete,
   useTranslationStore,
 } from '../src/features/ai/translation/translation-store';
-import { readLastTargetLanguage } from '../src/features/ai/translation/languages';
+import {
+  closeTranslationWorkbench,
+  openTranslationWorkbench,
+} from '../src/features/ai/translation/workbench';
+import { commandRegistry } from '../src/registries';
 
 /**
  * DEV-041 临时翻译：
@@ -40,8 +44,12 @@ interface Bridge {
 
 function installBridge(diskText = ''): Bridge {
   const listeners: Record<string, Set<Listener>> = {};
+  let runSequence = 0;
   const invokeSpy = vi.fn(async (channel: string) => {
-    if (channel === 'agent:run:translation') return { ok: true, data: { runId: 'stream-1' } };
+    if (channel === 'agent:run:translation') {
+      runSequence += 1;
+      return { ok: true, data: { runId: `stream-${runSequence}` } };
+    }
     if (channel === 'agent:cancel') return { ok: true, data: { cancelled: true } };
     if (channel === 'fs:exists') return { ok: true, data: true };
     if (channel === 'fs:readTextFile') return { ok: true, data: diskText };
@@ -108,7 +116,7 @@ async function mount(node: React.ReactElement): Promise<void> {
 
 beforeEach(() => {
   globalThis.localStorage?.clear();
-  useTranslationStore.setState({ selection: null, document: null });
+  useTranslationStore.setState({ selection: null, document: null, input: null });
   useTabStore.setState({ tabs: [], activeTabId: null });
   vi.clearAllMocks();
 });
@@ -119,7 +127,7 @@ afterEach(async () => {
   container?.remove();
   document.body.innerHTML = '';
   delete (window as unknown as { nexnote?: unknown }).nexnote;
-  useTranslationStore.setState({ selection: null, document: null });
+  useTranslationStore.setState({ selection: null, document: null, input: null });
 });
 
 describe('DEV-041 翻译请求与流式状态', () => {
@@ -207,7 +215,7 @@ describe('DEV-041 翻译请求与流式状态', () => {
     expect(isIncomplete(session)).toBe(true);
   });
 
-  it('目标语言每次可选并记住上次选择，切换语言以同一原文重译', async () => {
+  it('目标语言每次可选但不覆盖全局默认，切换语言以同一原文重译', async () => {
     const bridge = installBridge();
     const c = controller();
     c.translateSelection({ text: '你好', coords: { top: 0, left: 0 } });
@@ -219,14 +227,31 @@ describe('DEV-041 翻译请求与流式状态', () => {
     const second = translationPayloads(bridge)[1]!;
     expect(second.translation.targetLanguage).toBe('日本語');
     expect(second.translation.text).toBe('你好');
-    expect(readLastTargetLanguage()).toBe('日本語');
 
-    // 关闭后再次翻译沿用上次选择
+    // 当次覆盖不持久化；关闭后恢复全局/兼容默认
     c.closeSelection();
-    c.translateSelection({ text: 'plain ascii text', coords: { top: 0, left: 0 } });
+    c.translateSelection({ text: '你好', coords: { top: 0, left: 0 } });
     await bridge.flush();
     const third = translationPayloads(bridge)[2]!;
-    expect(third.translation.targetLanguage).toBe('日本語');
+    expect(third.translation.targetLanguage).toBe('English');
+  });
+
+  it('划词与全文同受 200k 单源上限：超限明确报错且不提交、不截断', async () => {
+    const bridge = installBridge();
+    const oversized = 'x'.repeat(TRANSLATION_MAX_TEXT_CHARS + 1);
+    const c = controller(() => oversized);
+    c.translateSelection({ text: oversized, coords: { top: 0, left: 0 } });
+    expect(useTranslationStore.getState().selection).toMatchObject({
+      status: 'error',
+      sourceText: oversized,
+    });
+    expect(useTranslationStore.getState().selection?.error).toContain('200,000');
+    c.translateDocument();
+    expect(useTranslationStore.getState().document).toMatchObject({
+      status: 'error',
+      sourceText: oversized,
+    });
+    expect(bridge.calls('agent:run:translation')).toHaveLength(0);
   });
 
   it('全文翻译为内存态：不写盘、不进文档树、关闭即弃', async () => {
@@ -252,6 +277,188 @@ describe('DEV-041 翻译请求与流式状态', () => {
     c.closeDocument();
     expect(useTranslationStore.getState().document).toBeNull();
     expect(bridge.calls('agent:cancel')).toEqual([['agent:cancel', { runId: 'stream-1' }]]);
+  });
+});
+
+describe('DEV-059 翻译工作台（独立临时输入）', () => {
+  it('命令面板/划词 AI 下拉/块 slash 均可打开工作台，且仅在显式提交时请求', async () => {
+    const bridge = installBridge();
+    await import('../src/features/ai');
+    expect(commandRegistry.get('ai.translation.workbench')).toMatchObject({
+      category: 'AI',
+      title: '翻译工作台',
+    });
+    const sessionStore = openTranslationWorkbench();
+    expect(useTranslationStore.getState().input).not.toBeNull();
+    expect(bridge.calls('agent:run:translation')).toHaveLength(0);
+
+    // 在无 runId 阶段之前输入、粘贴都不产生隐式 AI
+    await act(async () => {
+      sessionStore.setDraft('在控制台中粘贴一大段原文');
+      await bridge.flush();
+    });
+    expect(bridge.calls('agent:run:translation')).toHaveLength(0);
+
+    await act(async () => {
+      sessionStore.submit();
+      await bridge.flush();
+    });
+    const payloads = translationPayloads(bridge);
+    const workbenchCall = payloads.find(
+      (payload) => payload.translation.mode === 'input' && payload.translation.text.length > 0,
+    );
+    expect(workbenchCall).toBeDefined();
+    expect(workbenchCall?.translation.targetLanguage).toBeTruthy();
+    sessionStore.close();
+  });
+
+  it('显式 Cmd/Ctrl+Enter 提交并禁用 IME Enter；超限禁用提交并保留输入可编辑', async () => {
+    const bridge = installBridge();
+    const session = openTranslationWorkbench();
+    const draft = 'x'.repeat(TRANSLATION_MAX_TEXT_CHARS + 1);
+    await act(async () => {
+      session.setDraft(draft);
+      await bridge.flush();
+    });
+    const state = useTranslationStore.getState().input!;
+    expect(state.overLimit).toBe(true);
+    expect(state.canSubmit).toBe(false);
+    expect(state.draft.length).toBe(TRANSLATION_MAX_TEXT_CHARS + 1);
+
+    await act(async () => {
+      session.submit({ ime: false });
+      await bridge.flush();
+    });
+    expect(bridge.calls('agent:run:translation')).toHaveLength(0);
+
+    await act(async () => {
+      session.setDraft('Hello world');
+      await bridge.flush();
+    });
+    expect(useTranslationStore.getState().input!.overLimit).toBe(false);
+    await act(async () => {
+      session.submit({ ime: true });
+      await bridge.flush();
+    });
+    expect(bridge.calls('agent:run:translation')).toHaveLength(0);
+    await act(async () => {
+      session.submit({ ime: false });
+      await bridge.flush();
+    });
+    expect(bridge.calls('agent:run:translation')).toHaveLength(1);
+    session.close();
+  });
+
+  it('并发请求使用唯一 runId；晚到事件被丢弃；关闭即取消', async () => {
+    const bridge = installBridge();
+    const session = openTranslationWorkbench();
+    await act(async () => {
+      session.setDraft('并发请求');
+      await bridge.flush();
+    });
+    await act(async () => {
+      session.submit();
+      await bridge.flush();
+    });
+    const firstRunId = translationPayloads(bridge).at(-1) as
+      { translation: Record<string, string> } | undefined;
+    expect(firstRunId).toBeDefined();
+    await act(async () => {
+      session.setDraft('第二次提交');
+      session.submit();
+      await bridge.flush();
+    });
+    const payloads = translationPayloads(bridge);
+    expect(payloads.length).toBeGreaterThanOrEqual(2);
+    expect(payloads.at(-1)?.translation.text).toBe('第二次提交');
+
+    // 当前会话的 runId 是最近一次
+    const current = useTranslationStore.getState().input!;
+    expect(current.runId).toBeTruthy();
+
+    // 上一会话的迟到 delta 不再改写当前会话
+    await act(async () => {
+      bridge.emit('agent:runEvent', {
+        runId: 'stream-1',
+        scenario: 'translation',
+        event: { type: 'delta', text: '应被丢弃' },
+      });
+      await bridge.flush();
+    });
+    expect(useTranslationStore.getState().input!.output).not.toContain('应被丢弃');
+
+    // 关闭 → 取消当前会话且丢弃结果
+    await act(async () => {
+      session.close();
+      await bridge.flush();
+    });
+    expect(useTranslationStore.getState().input).toBeNull();
+    expect(bridge.calls('agent:cancel').length).toBeGreaterThan(0);
+  });
+
+  it('vault 切换与延迟翻译上下文通过同一会话关闭路径生效', async () => {
+    const bridge = installBridge();
+    const session = openTranslationWorkbench();
+    await act(async () => {
+      session.setDraft('临时翻译稿');
+      session.submit();
+      await bridge.flush();
+    });
+    expect(useTranslationStore.getState().input).not.toBeNull();
+    await act(async () => {
+      closeTranslationWorkbench();
+      await bridge.flush();
+    });
+    expect(useTranslationStore.getState().input).toBeNull();
+    expect(bridge.calls('agent:cancel').length).toBeGreaterThan(0);
+  });
+
+  it('复制后关闭工作台：再次打开为全新会话', async () => {
+    const bridge = installBridge();
+    const session = openTranslationWorkbench();
+    await mount(<TranslationLayer />);
+    await act(async () => {
+      session.setDraft('copy me');
+      session.submit();
+      await bridge.flush();
+    });
+    await act(async () => {
+      bridge.emit('agent:runEvent', {
+        runId: useTranslationStore.getState().input!.runId!,
+        scenario: 'translation',
+        event: { type: 'delta', text: 'copied translation' },
+      });
+      bridge.emit('agent:runEvent', {
+        runId: useTranslationStore.getState().input!.runId!,
+        scenario: 'translation',
+        event: { type: 'done' },
+      });
+      await bridge.flush();
+    });
+    const copyText = vi.fn().mockResolvedValue(undefined);
+    Object.defineProperty(navigator, 'clipboard', {
+      configurable: true,
+      value: { writeText: copyText },
+    });
+    await act(async () => {
+      document.querySelector<HTMLButtonElement>('[data-testid="translation-input-copy"]')!.click();
+      await bridge.flush();
+    });
+    expect(copyText).toHaveBeenCalled();
+    await act(async () => {
+      session.close();
+      await bridge.flush();
+    });
+    const closedId = useTranslationStore.getState().input?.id;
+    expect(closedId).toBeUndefined();
+    let reopened!: ReturnType<typeof openTranslationWorkbench>;
+    await act(async () => {
+      reopened = openTranslationWorkbench();
+      await bridge.flush();
+    });
+    expect(useTranslationStore.getState().input!.id).not.toBe(closedId);
+    expect(useTranslationStore.getState().input!.draft).toBe('');
+    await act(async () => reopened.close());
   });
 });
 
@@ -401,6 +608,17 @@ describe('DEV-041 选区消失清理', () => {
     });
     expect(useTranslationStore.getState().selection).not.toBeNull();
     expect(translationPayloads(bridge)[0]!.translation.mode).toBe('selection');
+
+    // 同一 AI 下拉的工作台入口使用选区作为 draft，但不得自动请求。
+    await act(async () => {
+      bubble!.querySelector<HTMLButtonElement>('[data-bubble-action="ai:menu"]')!.click();
+      bubble!
+        .querySelector<HTMLButtonElement>('[data-ai-menu-action="translate:workbench"]')!
+        .click();
+    });
+    expect(useTranslationStore.getState().input?.draft).toBe('正文');
+    expect(translationPayloads(bridge)).toHaveLength(1);
+    useTranslationStore.getState().input?.onClose();
 
     await act(async () => {
       kernel.editor.view.dispatch(

@@ -9,6 +9,7 @@ import { invoke, onEvent } from '../../../lib/ipc';
  */
 
 export interface TranslationStreamHandlers {
+  onRunId?: (runId: string) => void;
   onDelta: (text: string) => void;
   onDone: () => void;
   onError: (message: string, code?: string) => void;
@@ -49,6 +50,7 @@ export function startTranslationStream(
         return;
       }
       runId = res.runId;
+      handlers.onRunId?.(res.runId);
     })
     .catch((e: unknown) => {
       if (finished) return;

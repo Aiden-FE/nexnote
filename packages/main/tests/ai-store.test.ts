@@ -239,15 +239,23 @@ describe('AiStore（Profile 存储 + 密钥安全）', () => {
     expect(state.features.chat).toBeNull();
   });
 
-  it('分功能指定三处独立；embedding 指纹与 generation 变更检测', () => {
+  it('分功能指定含独立翻译；翻译默认语言持久化；embedding 指纹与 generation 变更检测', () => {
     const a = store.saveProfile(undefined, input);
     const b = store.saveProfile(undefined, { ...input, name: 'Embed 服务', apiKey: null });
     store.setFeatureAssignment('writing', { profileId: a.id, model: 'gpt-4o' });
     store.setFeatureAssignment('chat', { profileId: a.id, model: 'gpt-4o-mini' });
+    store.setFeatureAssignment('translation', { profileId: a.id, model: 'gpt-4o' });
+    store.setTranslationTargetLanguage('日本語');
     store.setFeatureAssignment('embedding', { profileId: b.id, model: 'text-embedding-3-small' });
 
     let state = store.getState();
     expect(state.features.writing?.model).toBe('gpt-4o');
+    expect(state.features.translation?.profileId).toBe(a.id);
+    expect(state.translationTargetLanguage).toBe('日本語');
+    expect(new AiStore(path.join(tmp, 'ai.json'), secrets).getState()).toMatchObject({
+      translationTargetLanguage: '日本語',
+      features: { translation: { profileId: a.id, model: 'gpt-4o' } },
+    });
     expect(state.features.embedding?.profileId).toBe(b.id);
     expect(state.embeddingGeneration).toBe(2); // 默认跟随源 + 显式 embedding 指定各触发一次
     expect(state.embeddingFingerprint).toBe(`${b.id}:text-embedding-3-small:auto:cosine`);

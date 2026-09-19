@@ -20,7 +20,10 @@ import {
   writingAiMenuActions,
   writingStopControl,
 } from '../src/features/ai/writing';
-import { TRANSLATE_SELECTION_ACTION_ID } from '../src/features/ai/translation';
+import {
+  OPEN_TRANSLATION_WORKBENCH_ID,
+  TRANSLATE_SELECTION_ACTION_ID,
+} from '../src/features/ai/translation';
 import { createEditor } from '@nexnote/kernel';
 import { TextSelection } from '@tiptap/pm/state';
 import { formatBubbleActions } from '../src/editor/interactions/formatting';
@@ -364,6 +367,7 @@ describe('源码模式划词工具栏（CodeMirror selection bubble）', () => {
       'ai:evidence',
       SOURCE_CHAT_ASK_ACTION,
       TRANSLATE_SELECTION_ACTION_ID,
+      OPEN_TRANSLATION_WORKBENCH_ID,
     ]);
     expect(bubble.querySelector('[data-ai-dropdown]')).not.toBeNull();
     editor.destroy();
@@ -810,13 +814,13 @@ describe('DEV-034 划词工具栏 AI 下拉（源码模式）', () => {
     expect(document.activeElement).toBe(menu.querySelector('[data-ai-menu-action="ai:polish"]'));
     key(menu, 'End');
     expect(document.activeElement).toBe(
-      menu.querySelector(`[data-ai-menu-action="${TRANSLATE_SELECTION_ACTION_ID}"]`),
+      menu.querySelector(`[data-ai-menu-action="${OPEN_TRANSLATION_WORKBENCH_ID}"]`),
     );
     key(menu, 'Home');
     expect(document.activeElement).toBe(menu.querySelector('[data-ai-menu-action="ai:rewrite"]'));
     key(menu, 'ArrowUp');
     expect(document.activeElement).toBe(
-      menu.querySelector(`[data-ai-menu-action="${TRANSLATE_SELECTION_ACTION_ID}"]`),
+      menu.querySelector(`[data-ai-menu-action="${OPEN_TRANSLATION_WORKBENCH_ID}"]`),
     );
     key(menu, 'Home');
 
@@ -1095,8 +1099,8 @@ describe('DEV-034 两模式按钮集一致（源码 vs 块编辑）', () => {
       tooltip: button.querySelector<HTMLElement>('[role="tooltip"]')?.textContent,
     }));
     expect(blockActions).toEqual(sourceActions);
-    // 六写作动作 + 询问 AI + 划词翻译（DEV-041）
-    expect(blockMenu).toHaveLength(8);
+    // 六写作动作 + 询问 AI + 划词翻译 + 工作台（DEV-059）
+    expect(blockMenu).toHaveLength(9);
     kernel.destroy();
   });
 });

@@ -8,3 +8,4 @@
  */
 export const TRANSLATE_SELECTION_ACTION_ID = 'translate:selection';
 export const TRANSLATE_DOCUMENT_ID = 'translate:document';
+export const OPEN_TRANSLATION_WORKBENCH_ID = 'translate:workbench';

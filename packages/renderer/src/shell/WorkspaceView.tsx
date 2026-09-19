@@ -9,7 +9,6 @@ import { bindVaultFsEvents, usePageTreeStore } from '../stores/page-tree-store';
 import { useTabStore } from '../stores/tab-store';
 import { bindIndexEvents, useIndexStore } from '../stores/index-store';
 import { WritingAssistantLayer } from '../features/ai/writing';
-import { TranslationLayer } from '../features/ai/translation';
 import { PluginHost } from '../features/plugins';
 import { GuidedTour } from '../tour/GuidedTour';
 
@@ -47,7 +46,6 @@ export function WorkspaceView({ vault }: { vault: VaultInfo }) {
       </div>
       <StatusBar />
       {!previewOnly && <WritingAssistantLayer />}
-      {!previewOnly && <TranslationLayer />}
       <PluginHost />
       <GuidedTour />
     </div>

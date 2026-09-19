@@ -111,16 +111,19 @@ export class AiService {
   /** 解析目标：显式 profileId > feature 指定 > 全局默认。 */
   private resolve(options: {
     profileId?: string;
-    feature?: 'writing' | 'chat' | 'embedding';
+    feature?: 'writing' | 'translation' | 'chat' | 'embedding';
     model?: string;
     params?: ChatParams;
   }): ResolvedTarget {
     const state = this.deps.store.get();
     let profile: AiStoredProfile | undefined;
     if (options.profileId) profile = this.deps.store.getProfile(options.profileId);
-    if (!profile && options.feature) {
-      const assignment = state.features[options.feature];
-      if (assignment) profile = this.deps.store.getProfile(assignment.profileId);
+    const featureAssignment = options.feature
+      ? (state.features[options.feature] ??
+        (options.feature === 'translation' ? state.features.writing : null))
+      : null;
+    if (!profile && featureAssignment) {
+      profile = this.deps.store.getProfile(featureAssignment.profileId);
     }
     if (!profile && state.defaultProfileId) {
       profile = this.deps.store.getProfile(state.defaultProfileId);
@@ -134,9 +137,8 @@ export class AiService {
     }
 
     let model = options.model?.trim();
-    if (!model && options.feature) {
-      const assignment = state.features[options.feature];
-      if (assignment?.profileId === profile.id) model = assignment.model;
+    if (!model && featureAssignment?.profileId === profile.id) {
+      model = featureAssignment.model;
     }
     model = model || profile.defaultModel;
 
@@ -224,10 +226,16 @@ export class AiService {
   }
 
   setFeatureAssignment(
-    feature: 'writing' | 'chat' | 'embedding',
+    feature: 'writing' | 'translation' | 'chat' | 'embedding',
     assignment: { profileId: string; model: string; dimensions?: number | null } | null,
   ): { state: AiConfigState } {
     this.deps.store.setFeatureAssignment(feature, assignment);
+    this.emitConfigChanged();
+    return { state: this.deps.store.getState() };
+  }
+
+  setTranslationTargetLanguage(targetLanguage: string): { state: AiConfigState } {
+    this.deps.store.setTranslationTargetLanguage(targetLanguage);
     this.emitConfigChanged();
     return { state: this.deps.store.getState() };
   }
@@ -303,7 +311,7 @@ export class AiService {
   async chatCompletion(options: {
     messages: ChatMessage[];
     profileId?: string;
-    feature?: 'writing' | 'chat' | 'embedding';
+    feature?: 'writing' | 'translation' | 'chat' | 'embedding';
     model?: string;
     params?: ChatParams;
   }): Promise<ChatCompletionResult> {
@@ -316,7 +324,7 @@ export class AiService {
     options: {
       messages: ChatMessage[];
       profileId?: string;
-      feature?: 'writing' | 'chat' | 'embedding';
+      feature?: 'writing' | 'translation' | 'chat' | 'embedding';
       model?: string;
       params?: ChatParams;
       tools?: ChatTool[];
@@ -343,7 +351,7 @@ export class AiService {
     options: {
       messages: ChatMessage[];
       profileId?: string;
-      feature?: 'writing' | 'chat' | 'embedding';
+      feature?: 'writing' | 'translation' | 'chat' | 'embedding';
       model?: string;
       params?: ChatParams;
     },
@@ -384,7 +392,7 @@ export class AiService {
    */
   supportsTools(options: {
     profileId?: string;
-    feature?: 'writing' | 'chat' | 'embedding';
+    feature?: 'writing' | 'translation' | 'chat' | 'embedding';
     model?: string;
   }): boolean {
     try {

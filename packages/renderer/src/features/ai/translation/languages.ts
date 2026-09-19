@@ -23,39 +23,20 @@ export const TRANSLATION_LANGUAGES: TranslationLanguageOption[] = [
   { id: 'Русский', label: 'Русский' },
 ];
 
-const STORAGE_KEY = 'nexnote.translation.targetLanguage';
-
 export function isKnownLanguage(value: string): boolean {
   return TRANSLATION_LANGUAGES.some((language) => language.id === value);
 }
 
-/** 含显著 CJK 的原文默认译为英文，否则默认译为简体中文（仅作初始值，用户可改）。 */
+/** 含显著 CJK 的原文默认译为英文，否则默认译为简体中文（旧配置缺省时的兼容兜底）。 */
 export function guessTargetLanguage(text: string): string {
   const cjk = (text.match(/[\u3400-\u9fff\uf900-\ufaff]/g) ?? []).length;
   const letters = (text.match(/\p{L}/gu) ?? []).length;
   return letters > 0 && cjk / letters > 0.2 ? 'English' : '简体中文';
 }
 
-/** 读取上次选择的目标语言；无记忆或值非法时返回 null。 */
-export function readLastTargetLanguage(): string | null {
-  try {
-    const raw = globalThis.localStorage?.getItem(STORAGE_KEY);
-    return raw && isKnownLanguage(raw) ? raw : null;
-  } catch {
-    return null;
-  }
-}
-
-/** 记住本次选择；localStorage 不可用（沙箱/隐私模式）时静默跳过。 */
-export function rememberTargetLanguage(language: string): void {
-  try {
-    globalThis.localStorage?.setItem(STORAGE_KEY, language);
-  } catch {
-    // 记忆是便利功能，不可用不应阻塞翻译
-  }
-}
-
-/** 首次翻译的初始目标语言：上次选择优先，否则按原文语言猜测。 */
-export function resolveInitialTargetLanguage(text: string): string {
-  return readLastTargetLanguage() ?? guessTargetLanguage(text);
+/** 触发点临时切换不持久化；全局默认只由 AI 设置写入主进程。 */
+export function resolveInitialTargetLanguage(text: string, globalDefault?: string): string {
+  return globalDefault && isKnownLanguage(globalDefault)
+    ? globalDefault
+    : guessTargetLanguage(text);
 }

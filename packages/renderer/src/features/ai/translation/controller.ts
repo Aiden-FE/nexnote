@@ -1,6 +1,7 @@
-import type { TranslationStreamHandle } from './translate-stream';
-import { rememberTargetLanguage, resolveInitialTargetLanguage } from './languages';
-import { startTranslationStream } from './translate-stream';
+import { TRANSLATION_MAX_TEXT_CHARS } from '@nexnote/shared';
+import { useAiConfig } from '../ai-config';
+import { resolveInitialTargetLanguage } from './languages';
+import { startTranslationStream, type TranslationStreamHandle } from './translate-stream';
 import {
   nextTranslationId,
   useTranslationStore,
@@ -8,13 +9,17 @@ import {
   type SelectionTranslationSession,
 } from './translation-store';
 
+function currentTranslationTargetLanguage(): string | undefined {
+  return useAiConfig.getState().state?.translationTargetLanguage;
+}
+
 /**
  * 临时翻译编排器（DEV-041）。
  *
  * 划词翻译与全文翻译共用同一控制器：组装内存会话 → 流式请求 → 追加译文。
  * - 关闭（close）：取消上游流并丢弃结果（不写盘、不进文档树）
  * - 停止（stop）：取消上游流但保留已显示内容，状态标记为 cancelled（未完成）
- * - 切换目标语言：以会话记录的原文重译，并记住本次选择
+ * - 切换目标语言：仅以会话记录的原文重译，不覆盖 AI 设置中的全局默认
  */
 
 export interface TranslationControllerDeps {
@@ -45,24 +50,32 @@ export function createTranslationController(
   let selectionStream: TranslationStreamHandle | null = null;
   let documentStream: TranslationStreamHandle | null = null;
 
-  const runSelection = (sourceText: string, coords: { top: number; left: number }, language: string) => {
+  const runSelection = (
+    sourceText: string,
+    coords: { top: number; left: number },
+    language: string,
+  ) => {
     selectionStream?.cancel();
     const id = nextTranslationId('selection');
-    rememberTargetLanguage(language);
+    const overLimit = sourceText.length > TRANSLATION_MAX_TEXT_CHARS;
     const session: SelectionTranslationSession = {
       id,
       kind: 'selection',
       language,
-      status: 'streaming',
+      status: overLimit ? 'error' : 'streaming',
       output: '',
-      error: null,
+      error: overLimit ? '原文超过 200,000 字符限制，请缩短后重试' : null,
       sourceText,
       coords,
-      onChangeLanguage: (next) => setTargetLanguage(next),
+      onChangeLanguage: (next) => runSelection(sourceText, coords, next),
       onStop: () => stopSelection(),
       onClose: () => closeSelection(),
     };
     useTranslationStore.getState().openSelection(session);
+    if (overLimit) {
+      selectionStream = null;
+      return;
+    }
     selectionStream = startTranslationStream(
       { translation: { mode: 'selection', targetLanguage: language, text: sourceText } },
       {
@@ -89,25 +102,33 @@ export function createTranslationController(
     );
   };
 
-  const runDocument = (sourceText: string, meta: { path: string; title: string }, language: string) => {
+  const runDocument = (
+    sourceText: string,
+    meta: { path: string; title: string },
+    language: string,
+  ) => {
     documentStream?.cancel();
     const id = nextTranslationId('document');
-    rememberTargetLanguage(language);
+    const overLimit = sourceText.length > TRANSLATION_MAX_TEXT_CHARS;
     const session: DocumentTranslationSession = {
       id,
       kind: 'document',
       language,
-      status: 'streaming',
+      status: overLimit ? 'error' : 'streaming',
       output: '',
-      error: null,
+      error: overLimit ? '原文超过 200,000 字符限制，请缩短后重试' : null,
       sourceText,
       path: meta.path,
       title: meta.title,
-      onChangeLanguage: (next) => setTargetLanguage(next),
+      onChangeLanguage: (next) => runDocument(sourceText, meta, next),
       onStop: () => stopDocument(),
       onClose: () => closeDocument(),
     };
     useTranslationStore.getState().openDocument(session);
+    if (overLimit) {
+      documentStream = null;
+      return;
+    }
     documentStream = startTranslationStream(
       { translation: { mode: 'document', targetLanguage: language, text: sourceText } },
       {
@@ -163,19 +184,28 @@ export function createTranslationController(
   const setTargetLanguage = (language: string) => {
     const { selection, document } = useTranslationStore.getState();
     if (selection) runSelection(selection.sourceText, selection.coords, language);
-    if (document) runDocument(document.sourceText, { path: document.path, title: document.title }, language);
+    if (document)
+      runDocument(document.sourceText, { path: document.path, title: document.title }, language);
   };
 
   return {
     translateSelection: (target) => {
       const text = target.text;
       if (!text.trim()) return;
-      runSelection(text, target.coords, resolveInitialTargetLanguage(text));
+      runSelection(
+        text,
+        target.coords,
+        resolveInitialTargetLanguage(text, currentTranslationTargetLanguage()),
+      );
     },
     translateDocument: () => {
       const text = deps.getDocumentText();
       if (!text.trim()) return;
-      runDocument(text, deps.getDocumentMeta(), resolveInitialTargetLanguage(text));
+      runDocument(
+        text,
+        deps.getDocumentMeta(),
+        resolveInitialTargetLanguage(text, currentTranslationTargetLanguage()),
+      );
     },
     setTargetLanguage,
     stopSelection,

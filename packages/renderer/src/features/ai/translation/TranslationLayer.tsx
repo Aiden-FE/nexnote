@@ -1,7 +1,8 @@
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Check, Copy, Languages, Loader2, Square, TriangleAlert, X } from 'lucide-react';
 import { Button } from '../../../components/ui/button';
 import { cn } from '../../../lib/utils';
+import { useTabStore } from '../../../stores/tab-store';
 import { TRANSLATION_LANGUAGES } from './languages';
 import { isIncomplete, useTranslationStore, type TranslationSession } from './translation-store';
 
@@ -13,7 +14,7 @@ import { isIncomplete, useTranslationStore, type TranslationSession } from './tr
  * - 两者都没有写回按钮：译文永远不会被写进文档
  */
 
-type Scope = 'selection' | 'document';
+type Scope = 'selection' | 'document' | 'input';
 const testId = (scope: Scope, name: string) => `translation-${scope}-${name}`;
 
 async function copyText(text: string): Promise<boolean> {
@@ -153,13 +154,97 @@ function TranslationBody({
   );
 }
 
+function TranslationWorkbench({
+  session,
+}: {
+  session: Extract<TranslationSession, { kind: 'input' }>;
+}) {
+  const inputRef = useRef<HTMLTextAreaElement>(null);
+  useEffect(() => inputRef.current?.focus(), []);
+  return (
+    <div
+      data-testid="translation-input-workbench"
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-6"
+    >
+      <div
+        role="dialog"
+        aria-modal="true"
+        aria-label="翻译工作台"
+        className="flex max-h-[88vh] w-[min(960px,94vw)] flex-col rounded-xl border bg-popover text-popover-foreground shadow-2xl"
+      >
+        <TranslationHeader scope="input" session={session} />
+        <div className="grid min-h-0 flex-1 gap-3 p-3 md:grid-cols-2">
+          <div className="flex min-h-[18rem] flex-col rounded-lg border">
+            <label
+              htmlFor="translation-input-draft"
+              className="border-b px-3 py-2 text-xs font-medium"
+            >
+              原文
+            </label>
+            <textarea
+              id="translation-input-draft"
+              ref={inputRef}
+              data-testid="translation-input-draft"
+              value={session.draft}
+              onChange={(event) => session.onDraftChange(event.target.value)}
+              onKeyDown={(event) => {
+                if (
+                  (event.metaKey || event.ctrlKey) &&
+                  event.key === 'Enter' &&
+                  !event.nativeEvent.isComposing
+                ) {
+                  event.preventDefault();
+                  session.onSubmit();
+                }
+              }}
+              placeholder="输入或粘贴要翻译的内容"
+              className="min-h-0 flex-1 resize-none bg-transparent p-3 text-sm outline-none"
+            />
+            <div
+              className={cn(
+                'border-t px-3 py-2 text-[11px]',
+                session.overLimit ? 'text-destructive' : 'text-muted-foreground',
+              )}
+            >
+              {session.overLimit
+                ? `已超出 ${Math.abs(session.remaining)} 个字符，请删减后提交`
+                : `剩余 ${session.remaining.toLocaleString()} 个字符`}
+            </div>
+          </div>
+          <div className="flex min-h-[18rem] flex-col rounded-lg border">
+            <div className="border-b px-3 py-2 text-xs font-medium">译文 · 只读</div>
+            <TranslationBody scope="input" session={session} outputClassName="min-h-0 flex-1" />
+          </div>
+        </div>
+        <div className="flex items-center gap-2 border-t px-3 py-2">
+          <span className="mr-auto text-[11px] text-muted-foreground">
+            ⌘/Ctrl + Enter 提交 · 输入、粘贴和打开均不会自动请求
+          </span>
+          <Button
+            data-testid="translation-input-submit"
+            disabled={!session.canSubmit || session.status === 'streaming'}
+            onClick={() => session.onSubmit()}
+          >
+            翻译
+          </Button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export function TranslationLayer() {
   const selection = useTranslationStore((state) => state.selection);
   const documentSession = useTranslationStore((state) => state.document);
+  const inputSession = useTranslationStore((state) => state.input);
+  const previewOnly = useTabStore((state) => {
+    const tab = state.tabs.find((candidate) => candidate.id === state.activeTabId);
+    return tab?.format === 'markdown' && (tab.markdownView ?? 'split') === 'preview';
+  });
 
   return (
     <>
-      {selection && (
+      {selection && !previewOnly && (
         <div
           data-testid="translation-selection-popover"
           data-status={selection.status}
@@ -175,7 +260,9 @@ export function TranslationLayer() {
         </div>
       )}
 
-      {documentSession && (
+      {inputSession && <TranslationWorkbench session={inputSession} />}
+
+      {documentSession && !previewOnly && (
         <div
           data-testid="translation-document-view"
           data-status={documentSession.status}

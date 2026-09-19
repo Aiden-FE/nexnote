@@ -1,5 +1,6 @@
 import { useRef, useState } from 'react';
 import type { AiFeatureKey, AiProfileView, ConnectionTestResult } from '@nexnote/shared';
+import { TRANSLATION_LANGUAGES } from './translation/languages';
 import { invoke } from '../../lib/ipc';
 import { useAiConfig, useAiWizard } from './ai-config';
 import { Button } from '../../components/ui/button';
@@ -28,6 +29,7 @@ const FEATURE_LABELS: Array<{ key: AiFeatureKey; label: string; hint: string; ic
       hint: '改写 / 扩写 / 润色',
       icon: PenLine,
     },
+    { key: 'translation', label: '翻译', hint: '划词 / 全文 / 工作台', icon: Bot },
     { key: 'chat', label: '对话', hint: '对话与上下文注入', icon: MessageSquareText },
     { key: 'embedding', label: 'Embedding', hint: '向量索引与召回', icon: Bot },
   ];
@@ -77,6 +79,11 @@ export function AiSettingsSection() {
       feature,
       assignment: profileId && model ? { profileId, model } : null,
     });
+    apply(next);
+  };
+
+  const setTranslationTargetLanguage = async (targetLanguage: string) => {
+    const { state: next } = await invoke('ai:translation:setTargetLanguage', { targetLanguage });
     apply(next);
   };
 
@@ -295,6 +302,28 @@ export function AiSettingsSection() {
             }}
           />
         </div>
+      </section>
+
+      <section className="space-y-2.5" data-testid="ai-translation-defaults">
+        <h4 className="text-[13px] font-medium">翻译默认设置</h4>
+        <label className="flex items-center gap-3 rounded-lg border p-2.5 text-[13px]">
+          <span className="w-28 shrink-0 font-medium">默认目标语言</span>
+          <select
+            data-testid="ai-translation-target-language"
+            value={state?.translationTargetLanguage ?? 'English'}
+            onChange={(event) => void setTranslationTargetLanguage(event.target.value)}
+            className="h-8 rounded-md border bg-transparent px-2 text-xs"
+          >
+            {TRANSLATION_LANGUAGES.map((language) => (
+              <option key={language.id} value={language.id}>
+                {language.label}
+              </option>
+            ))}
+          </select>
+          <span className="ml-auto text-[11px] text-muted-foreground">
+            触发点临时切换仅影响当次翻译
+          </span>
+        </label>
       </section>
 
       {/* 分功能指定 */}

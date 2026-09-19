@@ -38,6 +38,7 @@ export interface AiStoreData {
   profiles: AiStoredProfile[];
   defaultProfileId: string | null;
   features: Record<AiFeatureKey, AiFeatureAssignment | null>;
+  translationTargetLanguage: string;
   /** 用户已看过或跳过首启动 AI 引导；不进入导出捆绑。 */
   setupPromptDismissed: boolean;
   /** embedding 配置指纹（profileId:model:dimensions:metric） */
@@ -50,7 +51,8 @@ export function defaultAiStoreData(): AiStoreData {
     version: 1,
     profiles: [],
     defaultProfileId: null,
-    features: { writing: null, chat: null, embedding: null },
+    features: { writing: null, translation: null, chat: null, embedding: null },
+    translationTargetLanguage: 'English',
     setupPromptDismissed: false,
     embeddingFingerprint: null,
     embeddingGeneration: 0,
@@ -112,9 +114,14 @@ function coerce(raw: unknown): AiStoreData {
         : null,
     features: {
       writing: coerceAssignment(features.writing),
+      translation: coerceAssignment(features.translation),
       chat: coerceAssignment(features.chat),
       embedding: coerceAssignment(features.embedding),
     },
+    translationTargetLanguage:
+      typeof d.translationTargetLanguage === 'string' && d.translationTargetLanguage.trim()
+        ? d.translationTargetLanguage
+        : base.translationTargetLanguage,
     setupPromptDismissed:
       typeof d.setupPromptDismissed === 'boolean' ? d.setupPromptDismissed : false,
     embeddingFingerprint:
@@ -253,9 +260,11 @@ export class AiStore {
       defaultProfileId: this.data.defaultProfileId,
       features: {
         writing: this.data.features.writing,
+        translation: this.data.features.translation,
         chat: this.data.features.chat,
         embedding: this.data.features.embedding,
       },
+      translationTargetLanguage: this.data.translationTargetLanguage,
       needsOnboarding: this.data.profiles.length === 0,
       setupPromptDismissed: this.data.setupPromptDismissed,
       embeddingFingerprint: this.data.embeddingFingerprint,
@@ -443,6 +452,13 @@ export class AiStore {
     this.refreshEmbeddingFingerprint();
   }
 
+  setTranslationTargetLanguage(targetLanguage: string): void {
+    const next = targetLanguage.trim();
+    if (!next) throw new Error('目标语言不能为空');
+    this.data = { ...this.data, translationTargetLanguage: next };
+    this.persist();
+  }
+
   /**
    * embedding 维度/度量探测回写（首次 embed 成功后调用）。
    * 返回 true 表示 state 实际变更（调用方据此广播 ai:configChanged）。
@@ -507,6 +523,13 @@ export class AiStore {
               model: f.writing.model,
             }
           : null,
+        translation: f.translation
+          ? {
+              profileRef: f.translation.profileId,
+              name: nameOf(f.translation.profileId) ?? '',
+              model: f.translation.model,
+            }
+          : null,
         chat: f.chat
           ? {
               profileRef: f.chat.profileId,
@@ -525,6 +548,7 @@ export class AiStore {
       },
       defaultProfileRef: this.data.defaultProfileId,
       defaultProfileName: nameOf(this.data.defaultProfileId),
+      translationTargetLanguage: this.data.translationTargetLanguage,
     };
   }
 
@@ -586,6 +610,7 @@ export class AiStore {
     };
     const features = {
       writing: resolve(bundle.features.writing),
+      translation: resolve(bundle.features.translation ?? null),
       chat: resolve(bundle.features.chat),
       embedding: resolve(bundle.features.embedding),
     };
@@ -600,7 +625,16 @@ export class AiStore {
       // 仅当本地空置且 bundle 未声明时，才以首个可聊天 Profile 作兜底。
       defaultProfileId = this.firstChatCapableProfile()?.id ?? null;
     }
-    this.data = { ...this.data, features, defaultProfileId };
+    this.data = {
+      ...this.data,
+      features,
+      defaultProfileId,
+      translationTargetLanguage:
+        typeof bundle.translationTargetLanguage === 'string' &&
+        bundle.translationTargetLanguage.trim()
+          ? bundle.translationTargetLanguage
+          : this.data.translationTargetLanguage,
+    };
     this.persist();
     this.refreshEmbeddingFingerprint();
     return { imported, skipped };

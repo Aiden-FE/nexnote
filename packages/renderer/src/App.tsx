@@ -7,6 +7,11 @@ import { WorkspaceView } from './shell/WorkspaceView';
 import { OnboardingWizard } from './onboarding/OnboardingWizard';
 import { CommandPalette } from './palette/CommandPalette';
 import { AiGlobalLayer } from './features/ai';
+import {
+  closeTranslationWorkbench,
+  TranslationLayer,
+  useTranslationStore,
+} from './features/ai/translation';
 import { SearchPanel, useJumpToInjection } from './features/search';
 import { useSettingsBootstrap } from './hooks/use-settings-effects';
 import { useShortcutRuntime } from './shortcuts/use-shortcut-runtime';
@@ -37,7 +42,12 @@ function App() {
     // 首次加载为异步 IPC 拉取，setState 均在 await 之后（非同步级联渲染）
     // eslint-disable-next-line react-hooks/set-state-in-effect
     void refresh();
-    return onEvent('vault:changed', () => void refresh());
+    return onEvent('vault:changed', () => {
+      useTranslationStore.getState().selection?.onClose();
+      useTranslationStore.getState().document?.onClose();
+      closeTranslationWorkbench();
+      void refresh();
+    });
   }, [refresh]);
 
   // DEV-016：设置系统启动（全局设置加载 + 主题迁移 + 视觉效果应用）
@@ -59,6 +69,7 @@ function App() {
         )}
         {state.phase === 'ready' && <WorkspaceView vault={state.vault} />}
         <CommandPalette />
+        <TranslationLayer />
         <AiGlobalLayer />
         <SearchPanel />
       </VaultContext.Provider>
