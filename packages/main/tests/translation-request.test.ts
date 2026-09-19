@@ -3,6 +3,10 @@ import type { AgentRunEvent, AiConfigState } from '@nexnote/shared';
 import { AgentGateway } from '../src/agent/gateway';
 import { AuditStore } from '../src/agent/audit-store';
 import { ToolRegistry, type AgentTool } from '../src/agent/tool-registry';
+import {
+  createReasoningStreamFilter,
+  sanitizeReasoningArtifacts,
+} from '../src/agent/reasoning-filter';
 import { TRANSLATION_REASONING_EFFORT } from '../src/agent/translation';
 import type { ChatStreamHandle } from '../src/ai/provider/types';
 import { OpenAIProtocolAdapter } from '../src/ai/provider/openai';
@@ -63,13 +67,19 @@ function deferredStream() {
   return { handle: { abort: vi.fn(), done } as ChatStreamHandle, resolve };
 }
 
-function setup(options: { stream?: () => ChatStreamHandle; tools?: AgentTool[] } = {}) {
+function setup(
+  options: { stream?: () => ChatStreamHandle; tools?: AgentTool[]; emitted?: AgentRunEvent[] } = {},
+) {
   const calls: StreamCall[] = [];
   const events: Array<{ runId: string; scenario: string; event: AgentRunEvent }> = [];
   const ai = {
     getState: () => aiState,
-    openChatStream: (opts: StreamCall): ChatStreamHandle => {
+    openChatStream: (
+      opts: StreamCall,
+      onEvent: (event: AgentRunEvent) => void,
+    ): ChatStreamHandle => {
       calls.push(opts);
+      for (const event of options.emitted ?? []) onEvent(event);
       return options.stream ? options.stream() : immediateStream();
     },
   };
@@ -145,6 +155,34 @@ describe('DEV-041 临时翻译请求层', () => {
     await deferred.handle.done;
   });
 
+  it('翻译消息过滤 reasoningDelta 与跨片段思考标记，只转发译文', async () => {
+    const { gateway, events } = setup({
+      emitted: [
+        { type: 'delta', text: 'Hello ' },
+        { type: 'delta', text: '<thi' },
+        { type: 'delta', text: 'nk>internal' },
+        { type: 'reasoningDelta', text: 'hidden reasoning' },
+        { type: 'delta', text: '</think>world' },
+        { type: 'done' },
+      ],
+    });
+
+    await gateway.run('translation', { translation });
+    await new Promise((resolve) => setTimeout(resolve, 5));
+
+    const forwarded = events.map((entry) => entry.event);
+    expect(forwarded.filter((event) => event.type === 'reasoningDelta')).toHaveLength(0);
+    expect(
+      forwarded
+        .filter(
+          (event): event is Extract<AgentRunEvent, { type: 'delta' }> => event.type === 'delta',
+        )
+        .map((event) => event.text)
+        .join(''),
+    ).toBe('Hello world');
+    expect(forwarded.at(-1)?.type).toBe('done');
+  });
+
   it('翻译消息模板区分划词与全文，均不注入上下文/技能', async () => {
     const { gateway, calls } = setup();
     await gateway.run('translation', {
@@ -188,6 +226,20 @@ describe('DEV-041 reasoning 关闭值到达 provider', () => {
   });
   afterAll(async () => {
     await mock.close();
+  });
+
+  it('sanitizeReasoningArtifacts 同时去除 think 与 analysis 残留（含未闭合块）', () => {
+    const filter = createReasoningStreamFilter();
+    expect(filter.push('A<think>hidden</think>B') + filter.finish()).toBe('AB');
+    expect(filter.push('A<analysis>internal</analysis>B') + filter.finish()).toBe('AB');
+    expect(filter.push('<think>未结束') + filter.finish()).toBe('');
+    expect(filter.push('前缀<thi') + filter.finish()).toBe('前缀');
+  });
+
+  it('sanitizeReasoningArtifacts 单函数版本去除跨片段的 think 块', () => {
+    expect(sanitizeReasoningArtifacts('<think>hidden</think>可见')).toBe('可见');
+    expect(sanitizeReasoningArtifacts('<analysis>hidden</analysis>')).toBe('');
+    expect(sanitizeReasoningArtifacts('普通<think>跨片段尾巴')).toBe('普通');
   });
 
   it('适配层把关闭值翻译为 provider reasoning_effort', async () => {

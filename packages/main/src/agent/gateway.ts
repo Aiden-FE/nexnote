@@ -14,6 +14,7 @@ import { ApprovalStore } from './approval-store';
 import { BuiltinLoopRuntime, PiRuntime } from './runtime';
 import type { ToolRegistry } from './tool-registry';
 import type { SkillService } from '../skills/skill-service';
+import { createReasoningStreamFilter } from './reasoning-filter';
 import { scenarioFeature } from './scenario';
 import {
   buildTranslationMessages,
@@ -250,6 +251,7 @@ export class AgentGateway {
     const supportsTools = this.aiSupportsTools(scenario);
     let tools = supportsTools ? this.buildSdkTools(runId, scenario) : [];
     let terminalError: Extract<AgentRunEvent, { type: 'error' }> | undefined;
+    const reasoningFilter = scenario === 'translation' ? createReasoningStreamFilter() : null;
     // 只允许一次运行期降级重试，避免供应商持续拒绝时反复发请求。
     let allowToolFallback = supportsTools && tools.length > 0;
     if (!supportsTools) this.markToolFallback(runId, scenario, emit, messages);
@@ -265,6 +267,18 @@ export class AgentGateway {
             terminalError = event;
             // 供应商拒绝 tools：先不把 error 推给渲染层，交由 settle 走一次无工具降级重试。
             if (allowToolFallback && event.code === 'PROVIDER_TOOLS_UNSUPPORTED') return;
+          }
+          if (reasoningFilter) {
+            if (event.type === 'reasoningDelta') return;
+            if (event.type === 'delta') {
+              const text = reasoningFilter.push(event.text);
+              if (text) emit({ type: 'delta', text });
+              return;
+            }
+            if (event.type === 'done') {
+              const text = reasoningFilter.finish();
+              if (text) emit({ type: 'delta', text });
+            }
           }
           emit(event);
         },
@@ -406,13 +420,31 @@ export class AgentGateway {
     }
     if (tool.access === 'write' || tool.requiresApproval) {
       if (tool.access === 'write') {
-        const target = typeof input === 'object' && input !== null ? (input as Record<string, unknown>).path : undefined;
+        const target =
+          typeof input === 'object' && input !== null
+            ? (input as Record<string, unknown>).path
+            : undefined;
         const inScope = typeof target === 'string' && state.contextPaths.includes(target);
-        const forbidden = /shell|command|delete|remove|rename|config|setting|vault/i.test(`${name} ${JSON.stringify(input)}`);
+        const forbidden = /shell|command|delete|remove|rename|config|setting|vault/i.test(
+          `${name} ${JSON.stringify(input)}`,
+        );
         if (forbidden || !inScope) {
           const code = forbidden ? 'FULL_MODE_TOOL_FORBIDDEN' : 'FULL_MODE_SCOPE_DENIED';
-          this.audit.append({ runId, scenario, event: 'tool', status: 'denied', tool: name, code, at: Date.now() });
-          emit({ type: 'tool', tool: name, status: 'denied', summary: '护栏拒绝：仅允许当前会话上下文中的文档编辑。' });
+          this.audit.append({
+            runId,
+            scenario,
+            event: 'tool',
+            status: 'denied',
+            tool: name,
+            code,
+            at: Date.now(),
+          });
+          emit({
+            type: 'tool',
+            tool: name,
+            status: 'denied',
+            summary: '护栏拒绝：仅允许当前会话上下文中的文档编辑。',
+          });
           throw Object.assign(new Error('写操作超出当前会话文档作用域'), { code });
         }
       }
@@ -438,16 +470,18 @@ export class AgentGateway {
       }
       if (state.permissionMode === 'full') {
         // Five hard guardrails: no shell, delete, rename, vault/settings config, or path escape.
-        const forbidden = /shell|command|delete|remove|rename|config|setting|vault/i.test(`${name} ${JSON.stringify(input)}`);
+        const forbidden = /shell|command|delete|remove|rename|config|setting|vault/i.test(
+          `${name} ${JSON.stringify(input)}`,
+        );
         const target =
           typeof input === 'object' && input !== null
             ? (input as Record<string, unknown>).path
             : undefined;
         const inScope =
           typeof target !== 'string' ||
-          state.contextPaths.length > 0 &&
-          typeof target === 'string' &&
-          state.contextPaths.some((p) => target === p || target.startsWith(`${p}/`));
+          (state.contextPaths.length > 0 &&
+            typeof target === 'string' &&
+            state.contextPaths.some((p) => target === p || target.startsWith(`${p}/`)));
         if (forbidden || !inScope) {
           this.audit.append({
             runId,
