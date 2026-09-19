@@ -3,7 +3,11 @@ import { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { TextSelection } from '@tiptap/pm/state';
-import { defaultVaultSettings, TRANSLATION_MAX_TEXT_CHARS, type AiConfigState } from '@nexnote/shared';
+import {
+  defaultVaultSettings,
+  TRANSLATION_MAX_TEXT_CHARS,
+  type AiConfigState,
+} from '@nexnote/shared';
 import { EditorView } from '../src/editor/EditorView';
 import { getActiveEditor } from '../src/editor/active-editor';
 import { createSourceEditor } from '../src/editor/source/codemirror-host';
@@ -103,7 +107,16 @@ function deferred<T>() {
 }
 
 function aiConfig(language = 'English'): AiConfigState {
-  return { profiles: [], defaultProfileId: null, features: { writing: null, chat: null, embedding: null, translation: null }, translationTargetLanguage: language, needsOnboarding: true, setupPromptDismissed: true, embeddingFingerprint: null, embeddingGeneration: 0 };
+  return {
+    profiles: [],
+    defaultProfileId: null,
+    features: { writing: null, chat: null, embedding: null, translation: null },
+    translationTargetLanguage: language,
+    needsOnboarding: true,
+    setupPromptDismissed: true,
+    embeddingFingerprint: null,
+    embeddingGeneration: 0,
+  };
 }
 
 function controller(
@@ -628,7 +641,9 @@ describe('DEV-059 翻译工作台（独立临时输入）', () => {
     openTranslationWorkbench();
     await mount(<TranslationLayer />);
     await act(async () => {
-      const select = document.querySelector<HTMLSelectElement>('[data-testid="translation-input-language"]')!;
+      const select = document.querySelector<HTMLSelectElement>(
+        '[data-testid="translation-input-language"]',
+      )!;
       select.value = '日本語';
       select.dispatchEvent(new Event('change', { bubbles: true }));
       pending.resolve({ ok: true, data: aiConfig('English') });
@@ -642,7 +657,8 @@ describe('DEV-059 翻译工作台（独立临时输入）', () => {
     const bridge = installBridge();
     const oldConfig = deferred<unknown>();
     const newConfig = deferred<unknown>();
-    bridge.invokeSpy.mockImplementationOnce(() => oldConfig.promise)
+    bridge.invokeSpy
+      .mockImplementationOnce(() => oldConfig.promise)
       .mockImplementationOnce(() => newConfig.promise);
     useAiConfig.setState({ state: null });
     const old = openTranslationWorkbench();
@@ -656,7 +672,10 @@ describe('DEV-059 翻译工作台（独立临时输入）', () => {
     expect(useTranslationStore.getState().input?.language).toBe('Deutsch');
     oldConfig.resolve({ ok: true, data: aiConfig('English') });
     await bridge.flush();
-    expect(useTranslationStore.getState().input).toMatchObject({ id: freshId, language: 'Deutsch' });
+    expect(useTranslationStore.getState().input).toMatchObject({
+      id: freshId,
+      language: 'Deutsch',
+    });
     old.setDraft('stale draft');
     old.submit();
     expect(useTranslationStore.getState().input?.draft).toBe('');

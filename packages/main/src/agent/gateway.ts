@@ -4,7 +4,6 @@ import type {
   AgentRunRequest,
   AgentScenario,
   AgentWritingActionId,
-  ChatPermissionMode,
   ChatMessage,
   IpcEventMap,
 } from '@nexnote/shared';
@@ -103,14 +102,13 @@ function summarizeToolResult(result: unknown): string {
 
 type RunState = {
   scenario: AgentScenario;
-  permissionMode: ChatPermissionMode;
+  permissionMode: import('@nexnote/shared').ChatPermissionMode;
   contextPaths: string[];
   started: number;
   status: 'active' | 'completed' | 'cancelled' | 'error';
   handle?: ChatStreamHandle;
   timer?: ReturnType<typeof setTimeout>;
 };
-
 export interface AgentGatewayDeps {
   ai: AiService;
   sendEvent: <C extends keyof IpcEventMap>(channel: C, payload: IpcEventMap[C]) => void;
@@ -160,10 +158,7 @@ export class AgentGateway {
     const effectiveRequest: AgentRunRequest = request.translation
       ? { ...request, params: withTranslationParams(request.params) }
       : request;
-    const stateFeatures = this.deps.ai.getState().features;
-    const directFeature = scenarioFeature(scenario);
-    const assignment =
-      stateFeatures[directFeature] ?? (scenario === 'translation' ? stateFeatures.writing : null);
+    const assignment = this.deps.ai.getState().features[scenarioFeature(scenario)];
     const aiState = this.deps.ai.getState();
     const assignedProfile = assignment
       ? aiState.profiles.find((p) => p.id === assignment.profileId)
@@ -252,13 +247,12 @@ export class AgentGateway {
             ...(context ? [{ role: 'system' as const, content: `参考上下文：\n${context}` }] : []),
             ...incomingMessages.filter((m) => m.role !== 'system'),
           ];
-    const scenarioHasTools = profile.tools.length > 0;
-    const supportsTools = scenarioHasTools && this.aiSupportsTools(scenario);
+    const supportsTools = this.aiSupportsTools(scenario);
     let tools = supportsTools ? this.buildSdkTools(runId, scenario) : [];
     let terminalError: Extract<AgentRunEvent, { type: 'error' }> | undefined;
     // 只允许一次运行期降级重试，避免供应商持续拒绝时反复发请求。
     let allowToolFallback = supportsTools && tools.length > 0;
-    if (scenarioHasTools && !supportsTools) this.markToolFallback(runId, scenario, emit, messages);
+    if (!supportsTools) this.markToolFallback(runId, scenario, emit, messages);
     const startAttempt = (attemptTools: ChatTool[]): ChatStreamHandle =>
       this.runtime.run({
         runId,
