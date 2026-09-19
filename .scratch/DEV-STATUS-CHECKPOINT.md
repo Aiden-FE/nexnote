@@ -357,3 +357,11 @@ DEV-006 ← DEV-004；DEV-008 ← DEV-004+007；DEV-010 ← DEV-002+009；DEV-01
 - **DEV-060**: 无思考 AI 请求加固 — 翻译请求在协议参数层显式关闭 thinking/reasoning，覆盖外部覆盖，并对输出做 `<think>`/`<analysis>` 残留清洗。
 
 约束：每票独立 worktree + dev 分支；合入前必须通过 typecheck / test / lint / build / changed-format / diff-check 门禁。
+
+## 翻译与知识库同步护栏轮次（2026-09-20，已合并）
+
+- **DEV-058 知识库同步护栏**：候选 `a0e7094`（代码，经多轮双轴审查最终 PASS），集成提交 `48c1ca8`，master 合并 `7f83430`。覆盖：`.gitignore` 模板含 `.DS_Store`/`Thumbs.db`/`desktop.ini` 与 `.nexnote` allowlist；create/open/clone/startup restore 全部在 session 上线前执行幂等护栏；staging 前仅按叶子文件过滤、禁止目录递归、isolated index 隔离用户预暂存并 fail-closed；存量违规文件 `git rm --cached` 保留磁盘与历史；BOM/非 UTF-8 字节与用户规则 last-match 语义保留；Windows 跨盘/混合分隔符与祖先 symlink 防护；普通 `user.db` 不泛化屏蔽；跳过/迁移仅记数量日志。
+- **DEV-059 输入翻译工作台**：代码候选 `17d6109`（HEAD `6a1633a`），净移植后 master 合并 `ab80b3d`。新增独立临时工作台（命令面板 + 块/Markdown 划词 AI 下拉，预览视图无入口）；三入口显式提交、切换语言不自动请求；全局默认 + 当次临时目标语言；独立翻译 Profile（回退 writing/默认）；共享 200k 上限与剩余额度提示；runId 缓冲/取消/迟到事件隔离；只读不落盘。
+- **DEV-060 无思考 AI 请求加固**：候选 `0a68725`，master 合并 `4073b42`。翻译 `reasoning_effort=none`（流/非流、OpenAI/Azure），屏蔽 reasoningDelta，流式/未闭合 `<think>`/`<analysis>` 跨 chunk 清洗且普通文本保真；provider 拒绝参数显式失败不静默重试；非翻译场景零影响。
+- **门禁**：post-merge master 六门禁 PASS — typecheck、full test `156 files / 1463 tests passed (2 skipped)`、lint `0 errors / 4 pre-existing warnings`、build、changed-format、`git diff --check`。
+- **NOT_RUN**：Electron packaged smoke（macOS 打包产物）、真实 provider 翻译端到端、Windows/Ubuntu 物理安装；未虚报。

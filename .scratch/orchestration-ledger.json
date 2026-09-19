@@ -341,29 +341,32 @@
     "DEV-058": {
       "title": "知识库同步护栏：gitignore 模板扩展 + staging 二次拒绝 + 存量 untrack",
       "deps": [],
-      "status": "open",
+      "status": "done",
       "agent": null,
       "branch": "dev/DEV-058",
-      "merged": null,
-      "verdict": null
+      "merged": "7f83430",
+      "verdict": "Standards PASS + Spec PASS (independent dual-axis review); post-merge gates PASS",
+      "candidate": "a0e7094"
     },
     "DEV-059": {
       "title": "输入翻译工作台：独立面板 + 命令面板/划词入口 + 200k 上限",
       "deps": [],
-      "status": "open",
+      "status": "done",
       "agent": null,
       "branch": "dev/DEV-059",
-      "merged": null,
-      "verdict": null
+      "merged": "ab80b3d",
+      "verdict": "Standards PASS + Spec PASS (independent dual-axis review); post-merge gates PASS",
+      "candidate": "17d6109"
     },
     "DEV-060": {
       "title": "无思考 AI 请求加固：翻译请求参数不可覆盖 + 输出清洗",
       "deps": [],
-      "status": "open",
+      "status": "done",
       "agent": null,
       "branch": "dev/DEV-060",
-      "merged": null,
-      "verdict": null
+      "merged": "4073b42",
+      "verdict": "Standards PASS + Spec PASS (independent dual-axis review); post-merge gates PASS",
+      "candidate": "0a68725"
     }
   },
   "phase": "20/20 全部完成（DEV-001~DEV-020 已合入 master）；仅剩 release-checklist §6 外部人工验收项",
@@ -396,7 +399,7 @@
     "paused": false,
     "note": "DEV-010 已完成；外部环境验收不得伪造。"
   },
-  "updated": "2026-09-19",
+  "updated": "2026-09-20",
   "status": "done",
   "completed": "26/26"
 }
