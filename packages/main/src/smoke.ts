@@ -297,8 +297,8 @@ export class SmokeController {
       electronAbi: process.versions.modules,
       notRun: ['Windows packaged smoke', 'Linux packaged smoke'],
       manualSteps: [
-        'On Windows runner: stage Electron ABI149 and run NEXNOTE_APP_PATH=<binary> pnpm smoke:ci.',
-        'On Linux runner: stage Electron ABI149 and run NEXNOTE_APP_PATH=<binary> pnpm smoke:ci.',
+        'On the Windows runner: stage Electron ABI149, set full NEXNOTE_SMOKE_CANDIDATE_SHA, NEXNOTE_SMOKE_EXPECTED_VERSION, NEXNOTE_SMOKE_EXPECTED_ELECTRON_VERSION, NEXNOTE_SMOKE_EXPECTED_PLATFORM=win32 and NEXNOTE_SMOKE_EXPECTED_ABI, then run NEXNOTE_APP_PATH=<binary> pnpm smoke:ci.',
+        'On the Linux runner: stage Electron ABI149, set full NEXNOTE_SMOKE_CANDIDATE_SHA, NEXNOTE_SMOKE_EXPECTED_VERSION, NEXNOTE_SMOKE_EXPECTED_ELECTRON_VERSION, NEXNOTE_SMOKE_EXPECTED_PLATFORM=linux and NEXNOTE_SMOKE_EXPECTED_ABI, then run NEXNOTE_APP_PATH=<binary> pnpm smoke:ci.',
       ],
     };
     await writeFile(

@@ -403,26 +403,19 @@ export async function runSmokeIfEnabled(): Promise<void> {
       const blockSlashKernel = getActiveEditor();
       if (blockSlashKernel && blockSlashInput) {
         const slashBaselineMarkdown = blockSlashKernel.getMarkdown();
-        // Move through the real DOM with End+Enter so `/` begins on a fresh empty
-        // paragraph: exactly the block-type trigger context a user would create.
+        // Use End+Enter to create a fresh empty paragraph, then drive `/h2` through
+        // Electron's trusted Chromium edit path. The empty paragraph is the same
+        // block-type trigger a keyboard user reaches; the fixture is restored below.
         await bridge.pressKey('End');
         await bridge.pressKey('Enter');
         await sleep(80);
         const slashPosition = blockSlashKernel.editor.state.selection.from;
         const slashCoords = blockSlashKernel.editor.view.coordsAtPos(slashPosition);
-        // Real Electron mouse click places both DOM selection and focus at the end of the
-        // editable block; a programmatic ProseMirror selection alone leaves packaged Chromium's
-        // trusted text path without the contenteditable focus required by handleTextInput.
         const clicked = await bridge.clickAtPoint(
           Math.round(slashCoords.left),
           Math.round(slashCoords.top),
         );
         await sleep(100);
-        // Use Electron WebContents key events: synthetic renderer KeyboardEvents are untrusted and
-        // Chromium does not run their contenteditable editing default action in packaged builds.
-        // Chromium's trusted paste produces a real DOM insertion even when its IPC
-        // char path skips ProseMirror's legacy keypress handler. Paste the slash alone
-        // so the Electron-only DOMObserver fallback opens the menu; h2 still uses keys.
         const pastedSlash = clicked.ok ? await bridge.pasteText('/') : clicked;
         const typed = pastedSlash.ok ? await bridge.typeText('h2') : pastedSlash;
         await sleep(150);
@@ -462,7 +455,8 @@ export async function runSmokeIfEnabled(): Promise<void> {
         // The slash conversion is asserted above, then restore the pre-scenario document
         // so the following selection/AI smoke scenarios retain their original fixture.
         blockSlashKernel.setMarkdown(slashBaselineMarkdown);
-        await sleep(250);
+        blockSlashKernel.editor.commands.focus();
+        await sleep(1200);
       } else {
         check('TipTap 真实键入 /：块编辑器已挂载', false);
       }
