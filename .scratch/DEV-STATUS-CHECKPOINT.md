@@ -8,6 +8,12 @@
 
 ## 0. 最新状态（持续更新，优先于下方陈旧冻结段）
 
+- **当前状态（2026-09-19）**：DEV-050～DEV-057 八张票据已全部实现、独立 Standards + Spec 双轴审查通过并合入 master。master 当前 `f08ad0d`（merge: complete DEV-057 toolbar slash folding integration smoke），工作区除状态文档外保持 clean。本轮目标为「完成所有待开发票据 → 验收 → 发布新版」。
+- **八票结项（固定候选 → 双轴审查）**：DEV-050 `5383c20`、DEV-054 `d59c337`、DEV-051 `2d6e505`、DEV-052 `52d75cb`、DEV-055 `dc3fa03`、DEV-053 `d4e9c55`、DEV-056 `d6f08ce`、DEV-057 `48f9604`（merge `f08ad0d`）。全部 Standards PASS + Spec PASS；候选均已 `merge-base --is-ancestor` 确认在 master 历史内。
+- **DEV-057 packaged smoke**：真实 macOS arm64 Electron 44.2.0 产物，**260/260 PASS**，退出码 0；证据 `.scratch/nexnote-build/smoke/DEV-057-<48f9604 完整 SHA>/`（40 张截图 + results.json，已强制入库），报告绑定 `candidateSha=48f9604`、`appVersion=0.0.14`、`platform=darwin`、`electronVersion=44.2.0`、`electronAbi=149`。Windows/Linux packaged smoke 为 `NOT_RUN`，manualSteps 已记录跨 runner ABI staging、完整 SHA、版本、平台、ABI 参数。
+- **发布状态**：现有 tag 至 `v0.0.14`（root `package.json` version=0.0.14，`d0422e1` prepare / `94ee506` bind candidate）。待发布版本为 **v0.0.15**；发布前须在 master 复跑全量门禁（typecheck / full test / lint / build / changed-format / diff-check）并核对 release 配置与 artifact contract。
+- **外部/跨平台不可验证项（NOT_RUN）**：真实 GitHub Actions 运行与发布、Intel runner 产物、Windows/Ubuntu 物理安装、真实 N-1 网络升级、平台签名凭据路径；macOS arm64 Ad hoc 产物与 packaged smoke 已本机验证，但不替代上述证据。公开 publish 仍要求 `release-qa` Environment（当前无 required reviewer 配置，须如实记录）。
+
 - **续接状态（2026-09-16）**：DEV-027～DEV-044 已全部实现并合入；packaged smoke 与发布门禁已完成。最终正式发布基线为 **v0.0.11**，tag commit `39b39cb`，master 当前 `b12c009`。
 - **当前可执行门禁**：`CI=true pnpm -r typecheck`、`env -u GIT_EDITOR -u GIT_SEQUENCE_EDITOR -u EDITOR CI=true pnpm test`、lint、build、release-config 31/31、diff-check 全部通过；最新全量结果为 145 test files passed / 1 skipped，1152 tests passed / 2 skipped。
 - **DEV-042 packaged smoke**：使用真实 macOS arm64 Electron 44.2.0 产物运行；首次发现 better-sqlite3 ABI 147/149 不匹配，按仓库 staging 配方修复。修正 smoke 的 DOM helper、AI 菜单动作合同、Markdown 字段场景 active tab、AI Dock profile/ready 前置后，最终 `.scratch/nexnote-build/smoke/RELEASE-0.0.2-final2/results.json` 为 **215/215 PASS**，退出码 0。

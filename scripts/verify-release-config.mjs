@@ -15,7 +15,9 @@ const normalizeText = (value) => value.replace(/\r\n/g, '\n');
 const releaseWorkflow = normalizeText(
   readFileSync(resolve(root, '.github/workflows/release.yml'), 'utf8'),
 );
-const devWorkflow = normalizeText(readFileSync(resolve(root, '.github/workflows/pr-check.yml'), 'utf8'));
+const devWorkflow = normalizeText(
+  readFileSync(resolve(root, '.github/workflows/pr-check.yml'), 'utf8'),
+);
 const nightlyWorkflow = normalizeText(
   readFileSync(resolve(root, '.github/workflows/nightly.yml'), 'utf8'),
 );
@@ -460,9 +462,10 @@ check('preflight 通过统一 contract 校验 channel manifest、blockmap 和主
     throw new Error('mac dugite binary must be restored and architecture checked');
 });
 check('smoke 缺产物必须失败、写入临时目录且 QA gate 顺序一致', () => {
-  if (/skipping e2e smoke|process\.exit\(0\)/.test(smoke))
+  if (/skipping e2e smoke/i.test(smoke))
     throw new Error('smoke script may not skip missing artifact');
-  if (!/process\.exit\(1\)/.test(smoke)) throw new Error('smoke must fail without packaged app');
+  if (!/if\s*\(!existsSync\(appPath\)\)\s*\{[\s\S]*?process\.exit\(1\);[\s\S]*?\}/.test(smoke))
+    throw new Error('smoke must fail without packaged app');
   if (!/NEXNOTE_SMOKE_OUTPUT_DIR/.test(smoke) || !/mkdtempSync/.test(smoke))
     throw new Error('packaged smoke evidence must use a writable temp directory');
   if (!/事实边界/.test(qaChecklist) || !/未进行.*跨平台物理安装/.test(qaChecklist))

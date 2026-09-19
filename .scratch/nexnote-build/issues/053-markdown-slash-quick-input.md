@@ -2,7 +2,7 @@
 
 Type: dev
 Module: editor
-Status: implementation-complete
+Status: closed
 Blocked by: DEV-052（共享 `/` 菜单语义完成块编辑落地）
 Depends: DEV-020（CodeMirror 原文编辑）、DEV-038（快捷插入）
 Effort: L
@@ -54,4 +54,4 @@ Priority: P1
 - 2026-09-18 审查修复（本轮 FAIL → 修复）：发现 block/source 各自维护评分、按组优先排序且 source 未以 `quickInsert.capability` 授权；已收敛至 shared 的 framework-agnostic `filterQuickInsertCandidates`，先按精确/前缀/包含匹配，再以组序 tiebreak，并在两端统一能力过滤。发现 CodeMirror CRLF 的 JS 字符串长度位置、软换行段落边界、正则围栏/数学回退以及 tab/视图曾失活会话可重放问题；已以 `Text.length`、Lezer `MathBlock`/`InlineMath`、顶层语法块边界、失活 epoch 修复。媒体导入已收敛工具栏与 slash 的文件选择/编码/IPC/失效/错误处理路径。新增定向覆盖 CRLF 字节、软换行、四反引号/多行数学、排序别名、真实 source/split 确认、媒体成功与过期、插件失败、无编辑 tab 切换及 AI anchor 失效。
 - 本轮门禁：定向 `source-slash-menu` + kernel slash 3 文件、73 tests 通过；`CI=true pnpm typecheck` 通过；完整 `env -u GIT_EDITOR -u GIT_SEQUENCE_EDITOR -u EDITOR CI=true pnpm test -- --maxWorkers=1 --testTimeout=60000` 通过（156 passed、1 skipped 文件；1,402 passed、2 skipped tests）；`pnpm lint` 通过（既有 4 warnings），`pnpm build`、`bash scripts/check-changed-format.sh`、`git diff --check` 均通过。Electron smoke 仍为 NOT_RUN；未预填独立 Standards/Spec 双轴 PASS。
 
-- 2026-09-18 独立双轴复审（固定候选 `d4e9c55`）：Standards PASS、Spec PASS、输入安全对抗 PASS。审查确认 shared `filterQuickInsertCandidates` 单一来源、CRLF/Lezer 边界、epoch 失活、真实 CodeMirror DOM 输入测试；Electron Chromium smoke 仍为 NOT_RUN，归 DEV-057。
+- 2026-09-18 独立双轴复审（固定候选 `d4e9c55`）：Standards PASS、Spec PASS、输入安全对抗 PASS。审查确认 shared `filterQuickInsertCandidates` 单一来源、CRLF/Lezer 边界、epoch 失活、真实 CodeMirror DOM 输入测试；Electron Chromium smoke 仍为 NOT_RUN，归 DEV-057。据此将本票关闭；packaged smoke 已由 DEV-057 在 260/260 证据中覆盖。
