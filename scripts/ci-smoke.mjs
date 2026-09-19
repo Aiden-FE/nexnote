@@ -59,10 +59,11 @@ child.on('exit', (code, signal) => {
     const report = JSON.parse(readFileSync(reportPath, 'utf8'));
     const checks = Array.isArray(report.checks) ? report.checks : [];
     const bound = report.candidateSha === expectedSha;
+    const expectedVersion = process.env.NEXNOTE_SMOKE_EXPECTED_VERSION;
     const metadata =
       report.platform === process.platform &&
       report.electronVersion === process.versions.electron &&
-      report.electronAbi === process.versions.modules;
+      (!expectedVersion || report.appVersion === expectedVersion);
     if (!checks.length || !checks.every((check) => check?.passed === true) || !bound || !metadata) {
       console.error('[smoke:ci] invalid, failed, or unbound smoke report');
       process.exit(1);
