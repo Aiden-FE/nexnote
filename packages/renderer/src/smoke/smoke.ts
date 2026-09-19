@@ -1033,7 +1033,7 @@ export async function runSmokeIfEnabled(): Promise<void> {
     useUiStore.getState().setSidebarWidth(SIDEBAR_MAX_WIDTH);
     const resized = await bridge.setWindowSize(960, 600);
     check('冒烟可调整主窗口到最小尺寸', resized.ok, resized.error);
-    await sleep(600);
+    await waitFor(() => (toolbarActions()?.clientWidth ?? 0) > 100, 5_000);
     const actionsRow = toolbarActions();
     check(
       '窄窗下工具栏不横向裁切（单行保持）',
@@ -1134,10 +1134,16 @@ export async function runSmokeIfEnabled(): Promise<void> {
     useUiStore.getState().setDockVisible(false);
     useUiStore.getState().setSidebarWidth(260);
     await bridge.setWindowSize(REGULAR_WINDOW.width, REGULAR_WINDOW.height);
-    await sleep(400);
+    await waitFor(
+      () =>
+        (toolbarActions()?.clientWidth ?? 0) > 500 &&
+        !document.querySelector('[data-testid="toolbar-more"]'),
+      8_000,
+    );
     check(
       '恢复常规宽度后工具栏动作重新平铺',
-      await waitFor(() => !document.querySelector('[data-testid="toolbar-more"]'), 5_000),
+      (toolbarActions()?.clientWidth ?? 0) > 500 &&
+        !document.querySelector('[data-testid="toolbar-more"]'),
     );
 
     // ── 5. 文档格式边界：native-block 不进源码；markdown sidecar 才进源码 ──
@@ -1398,7 +1404,8 @@ export async function runSmokeIfEnabled(): Promise<void> {
           'ai:rewrite,ai:polish,ai:condense,ai:expand,ai:fillgaps,ai:evidence,chat:ask-selection,translate:selection' &&
         (sourceMenu()?.textContent ?? '').includes('⌘⌥R'),
     );
-    (document.activeElement ?? document.body).dispatchEvent(
+    const sourceAiMenuItem = sourceMenu()?.querySelector<HTMLElement>('[data-ai-menu-action]');
+    sourceAiMenuItem?.dispatchEvent(
       new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true }),
     );
     await sleep(150);

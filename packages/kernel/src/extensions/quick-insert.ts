@@ -119,7 +119,7 @@ export const QuickInsert = Extension.create<QuickInsertOptions, SlashMenuState>(
     let menu: QuickInsertView | null = null;
     let context: SlashExecutionContext | null = null;
     let composing = false;
-    let suppressNextSmokeFallback = false;
+    let suppressNextTextInput = false;
     let pendingInput: {
       from: number;
       text: string;
@@ -273,6 +273,26 @@ export const QuickInsert = Extension.create<QuickInsertOptions, SlashMenuState>(
         // Keep original text after an action failure; the un-dispatched transaction is discarded.
       }
     };
+    const prepareSlashInput = (view: EditorView, from: number, text: string): boolean => {
+      const index = text.indexOf('/');
+      if (index < 0) return false;
+      const next = triggerContext(view, from + index);
+      if (!next) return false;
+      context = next;
+      pendingInput = {
+        from: next.triggerFrom,
+        text: text.slice(index),
+        before: '',
+        previousCursor: from,
+        documentDelta: text.slice(index).length,
+      };
+      extension.storage.open = true;
+      extension.storage.query = text.slice(index + 1);
+      extension.storage.activeIndex = 0;
+      refresh(view);
+      return true;
+    };
+
     return [
       new Plugin<SlashMenuState>({
         key: slashMenuPluginKey,
@@ -288,53 +308,6 @@ export const QuickInsert = Extension.create<QuickInsertOptions, SlashMenuState>(
           view.dom.parentElement?.append(menu.dom);
           return {
             update(view, previousState) {
-              const smokeBridgeEnabled =
-                typeof window !== 'undefined' &&
-                'nexnoteSmoke' in window &&
-                view.dom.ownerDocument.defaultView === window;
-              if (
-                smokeBridgeEnabled &&
-                !extension.storage.open &&
-                !previousState.doc.eq(view.state.doc)
-              ) {
-                // Packaged Chromium's automation keyboard path can bypass
-                // ProseMirror's legacy keypress/handleTextInput path. The fallback
-                // exists only in the smoke build and only recognizes a real slash
-                // inserted by the trusted WebContents input bridge.
-                const sel = view.state.selection;
-                if (suppressNextSmokeFallback) {
-                  suppressNextSmokeFallback = false;
-                  sync(view);
-                  return;
-                }
-                const tail = view.state.doc.textBetween(
-                  Math.max(0, sel.from - 3),
-                  sel.from,
-                  undefined,
-                  '\ufffc',
-                );
-                const hasSlashTail = sel.empty && (tail.endsWith('/') || tail.endsWith(' /'));
-                const slashPos = hasSlashTail ? sel.from - 1 : -1;
-                if (slashPos >= 0) {
-                  const next = triggerContext(view, slashPos);
-                  if (next) {
-                    context = next;
-                    pendingInput = {
-                      from: next.triggerFrom,
-                      text: '/',
-                      before: '',
-                      previousCursor: slashPos,
-                      documentDelta: 1,
-                    };
-                    extension.storage.open = true;
-                    extension.storage.query = '';
-                    extension.storage.activeIndex = 0;
-                    refresh(view);
-                  }
-                }
-                sync(view);
-                return;
-              }
               if (!extension.storage.open || !context) {
                 sync(view);
                 return;
@@ -380,37 +353,37 @@ export const QuickInsert = Extension.create<QuickInsertOptions, SlashMenuState>(
         },
         props: {
           handleDOMEvents: {
+            beforeinput(view, event) {
+              const input = event as InputEvent;
+              if (composing || view.composing || input.inputType !== 'insertText' || !input.data)
+                return false;
+              if (
+                !extension.storage.open &&
+                prepareSlashInput(view, view.state.selection.from, input.data)
+              ) {
+                // The subsequent keypress, when present, belongs to this same browser edit.
+                // Let the DOMObserver validate the inserted text instead of opening twice.
+                suppressNextTextInput = true;
+              }
+              return false;
+            },
             compositionstart() {
               composing = true;
               return false;
             },
             compositionend() {
               composing = false;
-              suppressNextSmokeFallback = true;
               return false;
             },
           },
           handleTextInput(view, from, _to, text) {
             if (composing || view.composing) return false;
+            if (suppressNextTextInput) {
+              suppressNextTextInput = false;
+              return false;
+            }
             if (!extension.storage.open) {
-              const index = text.indexOf('/');
-              if (index >= 0) {
-                const next = triggerContext(view, from + index);
-                if (next) {
-                  context = next;
-                  pendingInput = {
-                    from: next.triggerFrom,
-                    text: text.slice(index),
-                    before: '',
-                    previousCursor: from,
-                    documentDelta: text.slice(index).length,
-                  };
-                  extension.storage.open = true;
-                  extension.storage.query = text.slice(index + 1);
-                  extension.storage.activeIndex = 0;
-                  refresh(view);
-                }
-              }
+              prepareSlashInput(view, from, text);
               return false;
             }
             // A second slash turns this into a path/URL-like token. Close and retain
