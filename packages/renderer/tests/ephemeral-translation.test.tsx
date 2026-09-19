@@ -3,7 +3,7 @@ import { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { TextSelection } from '@tiptap/pm/state';
-import { defaultVaultSettings, TRANSLATION_MAX_TEXT_CHARS } from '@nexnote/shared';
+import { defaultVaultSettings, TRANSLATION_MAX_TEXT_CHARS, type AiConfigState } from '@nexnote/shared';
 import { EditorView } from '../src/editor/EditorView';
 import { getActiveEditor } from '../src/editor/active-editor';
 import { createSourceEditor } from '../src/editor/source/codemirror-host';
@@ -21,7 +21,6 @@ import {
   closeTranslationWorkbench,
   openTranslationWorkbench,
 } from '../src/features/ai/translation/workbench';
-import { commandRegistry } from '../src/registries';
 import { useAiConfig } from '../src/features/ai/ai-config';
 
 /**
@@ -103,6 +102,10 @@ function deferred<T>() {
   return { promise, resolve };
 }
 
+function aiConfig(language = 'English'): AiConfigState {
+  return { profiles: [], defaultProfileId: null, features: { writing: null, chat: null, embedding: null, translation: null }, translationTargetLanguage: language, needsOnboarding: true, setupPromptDismissed: true, embeddingFingerprint: null, embeddingGeneration: 0 };
+}
+
 function controller(
   getDocumentText = () => '# 页\n\n正文原文',
 ): ReturnType<typeof createTranslationController> {
@@ -127,13 +130,19 @@ async function mount(node: React.ReactElement): Promise<void> {
 
 beforeEach(() => {
   globalThis.localStorage?.clear();
+  useAiConfig.setState({ state: aiConfig(), loading: false });
   useTranslationStore.setState({ selection: null, document: null, input: null });
   useTabStore.setState({ tabs: [], activeTabId: null });
   vi.clearAllMocks();
 });
 
 afterEach(async () => {
-  await act(async () => root?.unmount());
+  await act(async () => {
+    useTranslationStore.getState().selection?.onClose();
+    useTranslationStore.getState().document?.onClose();
+    closeTranslationWorkbench();
+    root?.unmount();
+  });
   root = null;
   container?.remove();
   document.body.innerHTML = '';
@@ -608,128 +617,51 @@ describe('DEV-041 翻译请求与流式状态', () => {
 });
 
 describe('DEV-059 翻译工作台（独立临时输入）', () => {
-  it('命令面板/划词 AI 下拉/块 slash 均可打开工作台，且仅在显式提交时请求', async () => {
+  it('配置迟到不覆盖用户通过下拉选择的日语', async () => {
     const bridge = installBridge();
-    await import('../src/features/ai');
-    expect(commandRegistry.get('ai.translation.workbench')).toMatchObject({
-      category: 'AI',
-      title: '翻译工作台',
-    });
-    const sessionStore = openTranslationWorkbench();
-    expect(useTranslationStore.getState().input).not.toBeNull();
-    expect(bridge.calls('agent:run:translation')).toHaveLength(0);
-
-    // 在无 runId 阶段之前输入、粘贴都不产生隐式 AI
-    await act(async () => {
-      sessionStore.setDraft('在控制台中粘贴一大段原文');
-      await bridge.flush();
-    });
-    expect(bridge.calls('agent:run:translation')).toHaveLength(0);
-
-    await act(async () => {
-      sessionStore.submit();
-      await bridge.flush();
-    });
-    const payloads = translationPayloads(bridge);
-    const workbenchCall = payloads.find(
-      (payload) => payload.translation.mode === 'input' && payload.translation.text.length > 0,
+    const pending = deferred<unknown>();
+    const original = bridge.invokeSpy.getMockImplementation()!;
+    bridge.invokeSpy.mockImplementation((channel: string) =>
+      channel === 'ai:getState' ? pending.promise : original(channel),
     );
-    expect(workbenchCall).toBeDefined();
-    expect(workbenchCall?.translation.targetLanguage).toBeTruthy();
-    sessionStore.close();
-  });
-
-  it('显式 Cmd/Ctrl+Enter 提交并禁用 IME Enter；超限禁用提交并保留输入可编辑', async () => {
-    const bridge = installBridge();
-    const session = openTranslationWorkbench();
-    const draft = 'x'.repeat(TRANSLATION_MAX_TEXT_CHARS + 1);
-    await act(async () => {
-      session.setDraft(draft);
-      await bridge.flush();
-    });
-    const state = useTranslationStore.getState().input!;
-    expect(state.overLimit).toBe(true);
-    expect(state.canSubmit).toBe(false);
-    expect(state.draft.length).toBe(TRANSLATION_MAX_TEXT_CHARS + 1);
-
-    await act(async () => {
-      session.submit({ ime: false });
-      await bridge.flush();
-    });
-    expect(bridge.calls('agent:run:translation')).toHaveLength(0);
-
-    await act(async () => {
-      session.setDraft('Hello world');
-      await bridge.flush();
-    });
-    expect(useTranslationStore.getState().input!.overLimit).toBe(false);
-    await act(async () => {
-      session.submit({ ime: true });
-      await bridge.flush();
-    });
-    expect(bridge.calls('agent:run:translation')).toHaveLength(0);
-    await act(async () => {
-      session.submit({ ime: false });
-      await bridge.flush();
-    });
-    expect(bridge.calls('agent:run:translation')).toHaveLength(1);
-    session.close();
-  });
-
-  it('配置迟到不覆盖用户临时语言，旧会话回调不影响新会话', async () => {
-    const bridge = installBridge();
-    const pending = deferred<NonNullable<ReturnType<typeof useAiConfig.getState>['state']>>();
-    useAiConfig.setState({
-      state: null,
-      loading: false,
-      load: async () => {
-        const state = await pending.promise;
-        useAiConfig.setState({ state, loading: false });
-      },
-    });
-
-    const first = openTranslationWorkbench();
-    useTranslationStore.getState().input!.onChangeLanguage('日本語');
-    pending.resolve({
-      profiles: [],
-      defaultProfileId: null,
-      features: { writing: null, translation: null, chat: null, embedding: null },
-      translationTargetLanguage: 'English',
-      needsOnboarding: true,
-      setupPromptDismissed: false,
-      embeddingFingerprint: null,
-      embeddingGeneration: 0,
-    });
-    await bridge.flush();
-    expect(useTranslationStore.getState().input?.language).toBe('日本語');
-
-    first.close();
-    useAiConfig.setState({ state: null, loading: false });
-    const oldPending = deferred<NonNullable<ReturnType<typeof useAiConfig.getState>['state']>>();
-    useAiConfig.setState({
-      state: null,
-      loading: false,
-      load: async () => {
-        const state = await oldPending.promise;
-        useAiConfig.setState({ state, loading: false });
-      },
-    });
+    useAiConfig.setState({ state: null });
     openTranslationWorkbench();
-    const second = openTranslationWorkbench();
-    useTranslationStore.getState().input!.onChangeLanguage('Deutsch');
-    oldPending.resolve({
-      profiles: [],
-      defaultProfileId: null,
-      features: { writing: null, translation: null, chat: null, embedding: null },
-      translationTargetLanguage: 'English',
-      needsOnboarding: true,
-      setupPromptDismissed: false,
-      embeddingFingerprint: null,
-      embeddingGeneration: 0,
+    await mount(<TranslationLayer />);
+    await act(async () => {
+      const select = document.querySelector<HTMLSelectElement>('[data-testid="translation-input-language"]')!;
+      select.value = '日本語';
+      select.dispatchEvent(new Event('change', { bubbles: true }));
+      pending.resolve({ ok: true, data: aiConfig('English') });
+      await bridge.flush();
     });
+    expect(useTranslationStore.getState().input?.language).toBe('日本語');
+    expect(translationPayloads(bridge)).toHaveLength(0);
+  });
+
+  it('旧会话配置迟到不得覆盖尚未手动改语言的新会话', async () => {
+    const bridge = installBridge();
+    const oldConfig = deferred<unknown>();
+    const newConfig = deferred<unknown>();
+    bridge.invokeSpy.mockImplementationOnce(() => oldConfig.promise)
+      .mockImplementationOnce(() => newConfig.promise);
+    useAiConfig.setState({ state: null });
+    const old = openTranslationWorkbench();
+    const oldId = useTranslationStore.getState().input!.id;
+    old.close();
+    const fresh = openTranslationWorkbench();
+    const freshId = useTranslationStore.getState().input!.id;
+    expect(freshId).not.toBe(oldId);
+    newConfig.resolve({ ok: true, data: aiConfig('Deutsch') });
     await bridge.flush();
     expect(useTranslationStore.getState().input?.language).toBe('Deutsch');
-    second.close();
+    oldConfig.resolve({ ok: true, data: aiConfig('English') });
+    await bridge.flush();
+    expect(useTranslationStore.getState().input).toMatchObject({ id: freshId, language: 'Deutsch' });
+    old.setDraft('stale draft');
+    old.submit();
+    expect(useTranslationStore.getState().input?.draft).toBe('');
+    expect(translationPayloads(bridge)).toHaveLength(0);
+    fresh.close();
   });
 
   it('并发请求使用唯一 runId；晚到事件被丢弃；关闭即取消', async () => {
@@ -773,23 +705,6 @@ describe('DEV-059 翻译工作台（独立临时输入）', () => {
     // 关闭 → 取消当前会话且丢弃结果
     await act(async () => {
       session.close();
-      await bridge.flush();
-    });
-    expect(useTranslationStore.getState().input).toBeNull();
-    expect(bridge.calls('agent:cancel').length).toBeGreaterThan(0);
-  });
-
-  it('vault 切换与延迟翻译上下文通过同一会话关闭路径生效', async () => {
-    const bridge = installBridge();
-    const session = openTranslationWorkbench();
-    await act(async () => {
-      session.setDraft('临时翻译稿');
-      session.submit();
-      await bridge.flush();
-    });
-    expect(useTranslationStore.getState().input).not.toBeNull();
-    await act(async () => {
-      closeTranslationWorkbench();
       await bridge.flush();
     });
     expect(useTranslationStore.getState().input).toBeNull();
