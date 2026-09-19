@@ -47,10 +47,10 @@ Priority: P1
 
 ## Implementation evidence
 
-- 隔离实现：dev/DEV-057 与 .wt/DEV-057，基线 1cd11d7；最终代码候选 SHA：a7a0ae5。最终 evidence JSON 的 candidateSha 绑定该候选；scripts/ci-smoke.mjs 在缺失结果、超时、非零退出、候选 SHA 或平台/版本元数据不匹配时返回非零。
-- Windows/Linux packaged smoke 在当前 macOS arm64 环境 NOT_RUN；results.json 的 notRun 与 manualSteps 字段记录目标平台和人工步骤。跨平台 runner 需先 staging Electron ABI，设置完整 NEXNOTE_SMOKE_CANDIDATE_SHA 后运行 NEXNOTE_APP_PATH=<binary> pnpm smoke:ci。
-- 稳定 selector：块菜单 data-testid=block-slash-menu，源码菜单 data-testid=source-slash-menu；两者保留 data-slash-menu、role=listbox、aria-label=快捷插入动作。断言菜单可见、候选、键盘选择、触发词消费和 H2 结果，不查询不存在的 selector。
-- 可信输入：块/源码路径经 preload 到 main 的 WebContents 鼠标定位、键盘和粘贴输入驱动 packaged Chromium；渲染层不调用 slash hook、不注入菜单状态或内部 transaction。旧的合成 KeyboardEvent + execCommand helper 已删除。
-- 最终证据：.scratch/nexnote-build/smoke/DEV-057-a7a0ae5/results.json（强制入库）；appVersion=0.0.14、platform=darwin、electronVersion=44.2.0、electronAbi=149，261/261 checks passed，含 40 个相对截图文件名。执行后已运行 pnpm pretest，恢复 Node ABI147。
+- 隔离实现：dev/DEV-057 与 .wt/DEV-057，基线 1cd11d7；最终代码候选 SHA：f52b547a5c8f27fa0759a9249b576b5edae1e718。唯一新增最终证据目录为 .scratch/nexnote-build/smoke/DEV-057-f52b547a5c8f27fa0759a9249b576b5edae1e718/，results.json 的 candidateSha 绑定该候选；scripts/ci-smoke.mjs 强制要求完整 SHA、结果新鲜、全绿 checks、平台/版本/ABI 元数据，缺失/超时/不匹配返回非零。
+- Windows/Linux packaged smoke 在当前 macOS arm64 环境 NOT_RUN；results.json 的 notRun/manualSteps 字段记录目标平台和操作步骤（包括完整 SHA、版本、Electron 版本、目标平台与 ABI 参数）。
+- 稳定 selector：块菜单 data-testid=block-slash-menu，源码菜单 data-testid=source-slash-menu；保留 data-slash-menu、role=listbox、aria-label=快捷插入动作。断言菜单可见、候选、键盘选择、触发词消费和 H2 结果。
+- 可信输入：块/源码路径经 preload 到 main 的 WebContents 鼠标定位、键盘与编辑输入驱动 packaged Chromium；渲染层不调用 slash hook、不注入菜单状态或内部 transaction。源码/块路径均在真实可见 UI 上断言结果。
+- 最终证据：results.json appVersion=0.0.14、platform=darwin、electronVersion=44.2.0、electronAbi=149，261/261 checks passed；40 个截图与 JSON 同目录并强制入库。执行后 pnpm pretest 恢复 Node ABI147。
 - 非打包门禁：CI=true pnpm typecheck、完整测试 156 files / 1403 passed / 2 skipped、lint 0 errors / 4 existing warnings、build、changed-format、diff-check 均通过。
-- 独立 Standards/Spec/证据对抗审查：最终候选 a7a0ae5 待主代理复审；本票不预填 PASS。
+- 独立 Standards/Spec/证据对抗审查：固定最终候选 f52b547a5c8f27fa0759a9249b576b5edae1e718 待主代理复审；本票不预填 PASS。
