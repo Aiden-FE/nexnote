@@ -468,6 +468,16 @@ check('smoke 缺产物必须失败、写入临时目录且 QA gate 顺序一致'
     throw new Error('smoke must fail without packaged app');
   if (!/NEXNOTE_SMOKE_OUTPUT_DIR/.test(smoke) || !/mkdtempSync/.test(smoke))
     throw new Error('packaged smoke evidence must use a writable temp directory');
+  for (const binding of [
+    'NEXNOTE_SMOKE_CANDIDATE_SHA',
+    'NEXNOTE_SMOKE_EXPECTED_VERSION',
+    'NEXNOTE_SMOKE_EXPECTED_ELECTRON_VERSION',
+    'NEXNOTE_SMOKE_EXPECTED_PLATFORM',
+    'NEXNOTE_SMOKE_EXPECTED_ABI',
+  ]) {
+    if (!releaseWorkflow.includes(binding))
+      throw new Error(`release smoke must provide ${binding}`);
+  }
   if (!/事实边界/.test(qaChecklist) || !/未进行.*跨平台物理安装/.test(qaChecklist))
     throw new Error('QA checklist must truthfully record physical-validation boundary');
   if (!/preflight.*dependency job.*全部通过[\s\S]*release-qa.*Environment.*审批/.test(qaChecklist))
