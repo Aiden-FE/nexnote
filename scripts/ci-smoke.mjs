@@ -7,7 +7,7 @@
  * publication workflow can never report a skipped smoke test as passing.
  */
 import { spawn } from 'node:child_process';
-import { existsSync, mkdtempSync } from 'node:fs';
+import { existsSync, mkdtempSync, readFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 
@@ -35,12 +35,35 @@ const child = spawn(appPath, [], {
 // The full integration scenario can exceed three minutes on a cold packaged run.
 // Keep the default for CI; permit an explicit local timeout for comprehensive smoke evidence.
 const timeoutMs = Number(process.env.NEXNOTE_SMOKE_TIMEOUT_MS ?? 180_000);
+let timedOut = false;
 const timer = setTimeout(() => {
+  timedOut = true;
   console.error(`[smoke:ci] timeout (${timeoutMs}ms)`);
   child.kill('SIGTERM');
 }, timeoutMs);
-child.on('exit', (code) => {
+child.on('exit', (code, signal) => {
   clearTimeout(timer);
-  console.log(`[smoke:ci] app exited with code ${code}`);
-  process.exit(code === 0 ? 0 : 1);
+  console.log(`[smoke:ci] app exited with code ${code}${signal ? ` signal=${signal}` : ''}`);
+  if (timedOut || code !== 0) process.exit(1);
+  const reportPath = join(outputDir, 'results.json');
+  if (!existsSync(reportPath)) {
+    console.error('[smoke:ci] smoke exited without results.json');
+    process.exit(1);
+  }
+  try {
+    const report = JSON.parse(readFileSync(reportPath, 'utf8'));
+    const checks = Array.isArray(report.checks) ? report.checks : [];
+    const expectedSha = process.env.NEXNOTE_SMOKE_CANDIDATE_SHA;
+    const bound = !expectedSha || report.candidateSha === expectedSha;
+    if (!checks.length || !checks.every((check) => check?.passed === true) || !bound) {
+      console.error('[smoke:ci] invalid, failed, or unbound smoke report');
+      process.exit(1);
+    }
+  } catch (error) {
+    console.error(
+      `[smoke:ci] cannot validate results.json: ${error instanceof Error ? error.message : String(error)}`,
+    );
+    process.exit(1);
+  }
+  process.exit(0);
 });

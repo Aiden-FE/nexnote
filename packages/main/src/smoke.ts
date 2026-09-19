@@ -17,6 +17,14 @@ export interface SmokeReport {
   captures: string[];
 }
 
+interface BoundSmokeReport extends SmokeReport {
+  candidateSha: string | null;
+  appVersion: string;
+  platform: NodeJS.Platform;
+  electronVersion: string;
+  electronAbi: string;
+}
+
 /**
  * 冒烟测试控制器（NEXNOTE_SMOKE=1 时启用）：
  * - userData 隔离到 tmp 目录（不污染真实应用数据）
@@ -277,7 +285,15 @@ export class SmokeController {
   }
 
   async finish(report: SmokeReport): Promise<void> {
-    const finalReport: SmokeReport = { ...report, captures: [...this.captures] };
+    const finalReport: BoundSmokeReport = {
+      ...report,
+      captures: [...this.captures],
+      candidateSha: process.env.NEXNOTE_SMOKE_CANDIDATE_SHA ?? null,
+      appVersion: app.getVersion(),
+      platform: process.platform,
+      electronVersion: process.versions.electron,
+      electronAbi: process.versions.modules,
+    };
     await writeFile(
       path.join(this.deps.outputDir, 'results.json'),
       `${JSON.stringify(finalReport, null, 2)}\n`,

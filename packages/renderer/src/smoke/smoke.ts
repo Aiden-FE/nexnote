@@ -87,23 +87,6 @@ async function waitFor(predicate: () => boolean, timeout = 12000): Promise<boole
   return predicate();
 }
 
-/**
- * 走 Chromium 的可编辑 DOM 输入链路；不得调用编辑器 hook 或直接 dispatch 编辑器状态。
- * keydown 保留真实键盘语义，execCommand 触发浏览器的 beforeinput/input 与各编辑器 DOM observer。
- */
-async function typeWithKeyboard(target: HTMLElement, text: string): Promise<void> {
-  target.focus();
-  for (const character of text) {
-    target.dispatchEvent(
-      new KeyboardEvent('keydown', { key: character, bubbles: true, cancelable: true }),
-    );
-    if (!document.execCommand('insertText', false, character)) {
-      throw new Error(`Chromium 未接受输入字符: ${character}`);
-    }
-    await sleep(30);
-  }
-}
-
 function smokeBridge(): SmokeBridge | null {
   return (window as { nexnoteSmoke?: SmokeBridge }).nexnoteSmoke ?? null;
 }
@@ -1289,8 +1272,11 @@ export async function runSmokeIfEnabled(): Promise<void> {
     );
     if (initialSource && initialSourceDom) {
       const slashStart = initialSource.view.state.doc.length;
-      initialSource.view.dispatch({ selection: { anchor: slashStart } });
-      await typeWithKeyboard(initialSourceDom, '/h2');
+      const slashCoords = initialSource.view.coordsAtPos(slashStart);
+      const sourceClicked = slashCoords
+        ? await bridge.clickAtPoint(Math.round(slashCoords.left), Math.round(slashCoords.top))
+        : { ok: false, error: '源码 slash 光标坐标不可用' };
+      const sourceTyped = sourceClicked.ok ? await bridge.typeText('/h2') : sourceClicked;
       const sourceSlashMenu = (): HTMLElement | null =>
         document.querySelector<HTMLElement>('[data-testid="source-slash-menu"]');
       const sourceSlashItem = (): HTMLElement | null =>
@@ -1305,20 +1291,17 @@ export async function runSmokeIfEnabled(): Promise<void> {
           !!sourceSlashItem() &&
           sourceSlashItem()?.getAttribute('aria-selected') === 'true',
       );
-      sourceSlashItem()?.dispatchEvent(
-        new KeyboardEvent('keydown', { key: 'ArrowDown', bubbles: true, cancelable: true }),
-      );
-      sourceSlashItem()?.dispatchEvent(
-        new KeyboardEvent('keydown', { key: 'ArrowUp', bubbles: true, cancelable: true }),
-      );
-      initialSourceDom.dispatchEvent(
-        new KeyboardEvent('keydown', { key: 'Enter', bubbles: true, cancelable: true }),
-      );
+      const sourceSelected = sourceSlashOpen ? await bridge.pressKey('ArrowDown') : null;
+      await bridge.pressKey('ArrowUp');
+      const sourceConfirmed = sourceSelected ? await bridge.pressKey('Enter') : null;
       await sleep(150);
       const sourceSlashResult = initialSource.view.state.doc.toString();
       check(
         'Markdown 真实键入 /：菜单可见、可键盘选择、消费触发词并写入 H2',
-        sourceSlashOpen &&
+        sourceTyped.ok &&
+          sourceSelected?.ok === true &&
+          sourceConfirmed?.ok === true &&
+          sourceSlashOpen &&
           !sourceSlashResult.includes('/h2') &&
           sourceSlashResult.endsWith('## ') &&
           sourceSlashMenu()?.style.display === 'none',
