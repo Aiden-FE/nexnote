@@ -2,7 +2,7 @@
   "schema": "nexnote-release-qa/v1",
   "repository": "Aiden-FE/nexnote",
   "tag": "v0.0.15",
-  "commit": "843b00530e3a0675713c0e7b35e9f4694da0d745",
+  "commit": "4feefddce2e4e7e9c2e86410fc52c307a40dda9e",
   "channel": "stable",
   "allRequiredChecksPassed": true,
   "scope": "v0.0.15-release-candidate",
@@ -12,7 +12,7 @@
     "tests": "156 files passed, 1403 tests passed, 1 file skipped, 2 tests skipped",
     "build": "passed",
     "releaseConfig": "31/31 passed",
-    "packagedSmoke": "261/261 passed (macOS arm64, Electron 44.2.0, ABI 149, candidateSha bound, darwin; local offline build Ad hoc signed; DEV-057 integration scenario includes toolbar/slash/folding coverage)"
+    "packagedSmoke": "261/261 passed (macOS arm64 Ad hoc, Electron 44.2.0, ABI 149, candidateSha 843b005 bound, darwin; local offline build)"
   },
   "candidateContents": {
     "tickets": "DEV-050~DEV-057 all closed and merged (candidates 5383c20, d59c337, 2d6e505, 52d75cb, dc3fa03, d4e9c55, d6f08ce, 48f9604)",
@@ -22,15 +22,15 @@
       "Icon-first selection bubble with roving tabindex + shared slash quick insert in block editor (DEV-051/052)",
       "CodeMirror slash menu with shared filtering, CRLF/Lezer boundaries (DEV-053)",
       "outline reveal and expand-all wired to both editors (DEV-056)",
-      "release workflow now binds packaged smoke to release commit/version/platform/ABI; release config verifier covers smoke binding variables"
+      "release workflow binds packaged smoke to release commit/version/platform/ABI; release config verifier enforces the smoke binding variables"
     ]
   },
   "notRun": [
-    "GitHub Actions runner execution for this candidate (release workflow will run on tag push)",
-    "Windows packaged smoke and Linux packaged smoke (CI release workflow runs them on native runners; local steps recorded in smoke report manualSteps)",
+    "GitHub Actions runner execution for this candidate (the release workflow will run on tag push)",
+    "Windows packaged smoke and Linux packaged smoke: the release workflow only runs packaged smoke on the macos-14 runner today; cross-platform packaged smoke is gated by extending the matrix with windows/linux smoke jobs and is recorded as NOT_RUN with manualSteps in the local smoke report",
     "physical platform installation verification",
     "public N-1 to v0.0.15 network upgrade",
     "post-publication 24-hour monitoring"
   ],
-  "notes": "macOS artifacts are Ad hoc signed without notarization; release-qa environment currently has no required reviewers configured, recorded here truthfully; unsigned Windows/Linux artifacts may publish when credentials are unavailable."
+  "notes": "macOS artifacts are Ad hoc signed without notarization; release-qa environment currently has no required reviewers configured (truthfully recorded); unsigned Windows/Linux artifacts may publish when credentials are unavailable."
 }
