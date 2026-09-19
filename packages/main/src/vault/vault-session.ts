@@ -23,9 +23,15 @@ export class VaultSession {
     return this.currentVault;
   }
 
-  async open(root: string): Promise<VaultInfo> {
+  async open(
+    root: string,
+    beforeCommit?: (candidate: VaultInfo) => Promise<void>,
+  ): Promise<VaultInfo> {
     const info = await ensureVault(root);
-    // 原子性：index/watch/git 等初始化全部成功后才提交 currentVault/持久化/广播。
+    // Guard/preflight belongs to the same transaction as index/watch binding. Until it
+    // resolves, getCurrent/lastVault/broadcast must continue exposing the old session.
+    await beforeCommit?.(info);
+    // 原子性：guard/index/watch/git 等初始化全部成功后才提交 currentVault/持久化/广播。
     const previous = this.currentVault;
     try {
       await this.deps.onChanged?.(info);
@@ -52,16 +58,19 @@ export class VaultSession {
   }
 
   /** 启动时恢复上次 vault；目录已不存在则静默跳过并清除记录。 */
-  async restoreLast(): Promise<VaultInfo | null> {
+  async restoreLast(
+    beforeCommit?: (candidate: VaultInfo) => Promise<void>,
+  ): Promise<VaultInfo | null> {
     const last = this.deps.appStore.get().lastVaultPath;
     if (!last) return null;
+    let safe: string;
     try {
-      await validateVaultRoot(last);
+      safe = await validateVaultRoot(last);
     } catch {
       this.deps.appStore.setLastVault(null);
       return null;
     }
-    return this.open(last);
+    return this.open(safe, beforeCommit);
   }
 
   private emitChanged(): void {

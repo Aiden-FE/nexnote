@@ -1,11 +1,12 @@
 import { createHash } from 'node:crypto';
-import { mkdirSync } from 'node:fs';
+import { constants, mkdirSync } from 'node:fs';
 import { promises as fsp } from 'node:fs';
 import * as path from 'node:path';
 import { tmpdir } from 'node:os';
 import { simpleGit, type SimpleGit } from 'simple-git';
 import { resolveInstalledGitRuntime, type GitRuntimeResolution } from './git-runtime';
 import { isDocumentPath } from '../document/document-domain';
+import { safeVaultPath } from '../vault/vault-manager';
 import type {
   GitCommit,
   GitOperationResult,
@@ -27,6 +28,20 @@ export function normalizeDebounceMs(raw: unknown): number {
   const n = typeof raw === 'number' ? raw : Number(raw);
   if (!Number.isFinite(n)) return DEFAULT_DEBOUNCE_MS;
   return Math.min(DEBOUNCE_RANGE_MS.max, Math.max(DEBOUNCE_RANGE_MS.min, Math.round(n)));
+}
+
+const VERSIONED_NEXNOTE_FILES = ['config.json', 'layout.json'] as const;
+const OS_METADATA_FILES = ['.DS_Store', 'Thumbs.db', 'desktop.ini'] as const;
+const VERSIONED_NEXNOTE_PATHS = VERSIONED_NEXNOTE_FILES.map((file) => `.nexnote/${file}`);
+const OS_METADATA_FILES_LOWER = OS_METADATA_FILES.map((file) => file.toLowerCase());
+
+export function isVaultSyncGuardedPath(file: string): boolean {
+  // Git emits '/' separators on every platform; a backslash can be a literal
+  // filename character on Unix, so do not reinterpret it as a directory here.
+  const normalized = file.replace(/^\.\//, '');
+  const segments = normalized.toLowerCase().split('/');
+  if (segments.some((segment) => OS_METADATA_FILES_LOWER.includes(segment))) return true;
+  return segments[0] === '.nexnote' && !VERSIONED_NEXNOTE_PATHS.includes(normalized);
 }
 
 export class GitServiceError extends Error {
@@ -202,20 +217,14 @@ export class GitService {
   }
 
   async initialize(root: string): Promise<GitOperationResult> {
-    const git = this.git(root);
-    if (!(await this.isRepository(root))) await git.init();
-    await this.ensureIdentity(git);
-    await this.writeDefaultGitignore(root);
-    await this.untrackIgnoredNexnoteArtifacts(git);
-    const status = await git.status();
-    if (status.files.length > 0) {
-      await git.add(['.']);
-      await git.commit(INITIAL_MESSAGE);
-      this.lastCommitAt = Date.now();
-    }
+    const safe = await safeVaultPath(root);
+    const git = this.git(safe);
+    if (!(await this.isRepository(safe))) await git.init();
+    await this.ensureSyncGuard(safe);
+    await this.commit(safe, INITIAL_MESSAGE);
     const result = {
       message: 'Git 仓库已初始化并创建初始提交',
-      status: await this.statusFor(root),
+      status: await this.statusFor(safe),
     };
     this.notifyStatus(result.status);
     return result;
@@ -531,9 +540,11 @@ export class GitService {
     if (path.dirname(targetDir) !== path.resolve(parentDir)) {
       throw new GitServiceError('克隆目标必须是父目录的直接子目录', 'INVALID_PATH');
     }
-    await this.git(parentDir).clone(url, targetDir);
-    this.setRoot(targetDir);
-    return this.notified({ message: '克隆完成', root: targetDir });
+    const safeParent = await safeVaultPath(parentDir);
+    const safeTarget = await safeVaultPath(path.join(safeParent, name));
+    await this.git(safeParent).clone(url, safeTarget);
+    this.setRoot(safeTarget);
+    return this.notified({ message: '克隆完成', root: safeTarget });
   }
 
   /** 轻量探测：ls-remote --heads，仅验证远端可达（不下载仓库内容）。 */
@@ -614,13 +625,115 @@ export class GitService {
   private async commit(root: string, message: string): Promise<void> {
     const git = this.git(root);
     await this.ensureIdentity(git);
-    const status = await git.status();
-    if (status.files.length === 0) return;
-    const files = status.files.map((file) => file.path.replace(/\\/g, '/'));
-    await git.add(['.']);
-    await git.commit(message);
-    this.lastCommitAt = Date.now();
-    if (files.length > 0) this.commitListener?.(root, files);
+    const hasHead = Boolean(
+      (await git.raw(['rev-parse', '--verify', 'HEAD']).catch(() => '')).trim(),
+    );
+    // --no-renames reports both endpoints of a rename as separate add/delete entries;
+    // with rename detection the source would collapse into the destination.
+    const stagedBefore = new Set(
+      (await git.raw(['diff', '--cached', '--name-only', '-z', '--no-renames']))
+        .split('\0')
+        .filter(Boolean),
+    );
+    // Leaf paths only: modified files plus tracked paths whose worktree entry is gone.
+    // `git diff --name-only` can report a former FILE that is now a DIRECTORY; staging
+    // through that name would recursively absorb the directory, so deletions are
+    // derived from the tracked index instead and directories never become add inputs.
+    const modified = (await git.raw(['diff', '--name-only', '-z', '--no-renames']))
+      .split('\0')
+      .filter(Boolean);
+    const tracked = (await git.raw(['ls-files', '-z'])).split('\0').filter(Boolean);
+    const worktreeMissing = new Set<string>();
+    for (const file of tracked) {
+      const stat = await fsp.lstat(path.join(root, file)).catch(() => null);
+      if (!stat || stat.isDirectory()) worktreeMissing.add(file);
+    }
+    const untracked = (await git.raw(['ls-files', '-z', '--others', '--exclude-standard']))
+      .split('\0')
+      .filter(Boolean);
+    const conflictsWithStaged = (file: string): boolean =>
+      [...stagedBefore].some(
+        (staged) =>
+          file === staged || file.startsWith(`${staged}/`) || staged.startsWith(`${file}/`),
+      );
+    // A path already staged by the user owns its entire file/directory namespace.
+    // This prevents a staged file later replaced by `file/inner.md` from being
+    // overwritten in the isolated index by the descendant path.
+    const leaves = [...new Set([...modified, ...untracked])].filter(
+      (file) => !conflictsWithStaged(file) && !worktreeMissing.has(file),
+    );
+    const deletions = [...new Set([...worktreeMissing, ...modified])].filter(
+      (file) => worktreeMissing.has(file) || !tracked.includes(file),
+    );
+    // Only accept paths that currently resolve to a regular file on disk.
+    const allowed: string[] = [];
+    for (const file of leaves) {
+      if (stagedBefore.has(file) || isVaultSyncGuardedPath(file)) continue;
+      const stat = await fsp.lstat(path.join(root, file)).catch(() => null);
+      if (stat?.isFile()) allowed.push(file);
+    }
+    const removed = [...new Set(deletions)].filter(
+      (file) => !conflictsWithStaged(file) && !isVaultSyncGuardedPath(file),
+    );
+    const guardedInHead = hasHead
+      ? (await git.raw(['ls-tree', '-r', '-z', '--name-only', 'HEAD']))
+          .split('\0')
+          .filter(Boolean)
+          .filter(isVaultSyncGuardedPath)
+      : [];
+    const guardedCandidates = (await git.raw(['ls-files', '-z', '--others']))
+      .split('\0')
+      .filter(Boolean)
+      .filter(isVaultSyncGuardedPath);
+    if (guardedCandidates.length)
+      console.info('[git] sync guard skipped:', guardedCandidates.length);
+
+    // Clean the real index first, including force-added guarded files. Do not reset:
+    // migration deletions stay staged and all files remain on disk.
+    await this.untrackGuardedArtifacts(git);
+
+    // Commit through an isolated index seeded from HEAD. This guarantees unrelated
+    // user-staged content cannot leak into NexNote manual/automatic commits.
+    const temp = await fsp.mkdtemp(path.join(tmpdir(), 'nexnote-git-index-'));
+    try {
+      const isolated = this.git(root, this.resolveRuntime(), {
+        GIT_INDEX_FILE: path.join(temp, 'index'),
+      });
+      await isolated.raw(hasHead ? ['read-tree', 'HEAD'] : ['read-tree', '--empty']);
+      await this.stageLiteralPaths(isolated, ['rm', '--cached', '-f', '--ignore-unmatch'], removed);
+      await this.stageLiteralPaths(isolated, ['add'], allowed);
+      await this.stageLiteralPaths(
+        isolated,
+        ['rm', '--cached', '-f', '--ignore-unmatch'],
+        guardedInHead,
+      );
+      // Fail closed: the isolated index must end with zero guarded paths. A violation
+      // aborts the commit instead of being committed or silently rewritten.
+      const finalPaths = (await isolated.raw(['ls-files', '-z', '--cached']))
+        .split('\0')
+        .filter(Boolean);
+      const leaked = finalPaths.filter(isVaultSyncGuardedPath);
+      if (leaked.length > 0) {
+        console.error('[git] sync guard blocked commit:', leaked.length);
+        throw new GitServiceError(
+          '同步护栏检测到受保护路径即将进入提交，已中止',
+          'SYNC_GUARD_VIOLATION',
+        );
+      }
+      const committed = (await isolated.raw(['diff', '--cached', '--name-only', '-z']))
+        .split('\0')
+        .filter(Boolean);
+      if (committed.length === 0) return;
+      await isolated.commit(message);
+      // Align only paths owned by this commit in the real index. User-staged paths
+      // were excluded above and remain byte-for-byte staged.
+      await this.stageLiteralPaths(git, ['rm', '--cached', '-f', '--ignore-unmatch'], removed);
+      await this.stageLiteralPaths(git, ['add'], allowed);
+      this.lastCommitAt = Date.now();
+      this.commitListener?.(root, committed);
+    } finally {
+      await fsp.rm(temp, { recursive: true, force: true });
+    }
   }
 
   private async ensureIdentity(git: SimpleGit): Promise<void> {
@@ -636,7 +749,7 @@ export class GitService {
    * Vault-local `.gitignore` 模板（ADR 0003）：
    *  - 默认忽略 `.nexnote/` 整目录（运行时索引、缓存、锁、数据库等）。
    *  - 用 allowlist 把可重建配置（config.json / layout.json）重新纳入版本化。
-   *  - 幂等：每次启动检查缺失行并补齐，不覆盖用户自定义条目。
+   *  - 绑定时幂等修复：完整模板前置，用户规则逐字保留且拥有后置优先级。
    */
   static readonly GITIGNORE_LINES: readonly string[] = [
     '# NexNote: ignore the entire .nexnote/ runtime directory by default, then re-allow',
@@ -644,39 +757,114 @@ export class GitService {
     '.nexnote/',
     '!/.nexnote/',
     '.nexnote/*',
-    '!/.nexnote/config.json',
-    '!/.nexnote/layout.json',
+    ...VERSIONED_NEXNOTE_FILES.map((file) => `!/.nexnote/${file}`),
+    '# NexNote: operating-system metadata never belongs in the knowledge base.',
+    ...OS_METADATA_FILES,
   ];
 
   async writeDefaultGitignore(root: string): Promise<void> {
-    const filename = path.join(root, '.gitignore');
-    const required = GitService.GITIGNORE_LINES;
-    const existing = await fsp.readFile(filename, 'utf8').catch(() => '');
-    const missing = required.filter((line) => !existing.split(/\r?\n/).includes(line));
-    if (missing.length)
-      await fsp.writeFile(
-        filename,
-        `${existing.trimEnd()}${existing.trim() ? '\n' : ''}${missing.join('\n')}\n`,
+    const safe = await safeVaultPath(root);
+    const filename = path.join(safe, '.gitignore');
+    // O_NOFOLLOW prevents following a vault symlink outside its root.
+    const handle = await fsp
+      .open(filename, constants.O_RDWR | constants.O_CREAT | constants.O_NOFOLLOW, 0o666)
+      .catch((error: NodeJS.ErrnoException) => {
+        if (error.code === 'ELOOP') {
+          throw new GitServiceError('同步护栏要求 .gitignore 为普通文件', 'INVALID_PATH');
+        }
+        throw error;
+      });
+    try {
+      const opened = await handle.stat();
+      if (!opened.isFile() || opened.nlink > 1) {
+        throw new GitServiceError('同步护栏要求 .gitignore 为独立普通文件', 'INVALID_PATH');
+      }
+      const existing = await handle.readFile();
+      const bomBytes = Buffer.from([0xef, 0xbb, 0xbf]);
+      const hasBom = existing.subarray(0, bomBytes.length).equals(bomBytes);
+      const originalUserBytes = hasBom ? existing.subarray(bomBytes.length) : existing;
+      const templateBytes = Buffer.from(`${GitService.GITIGNORE_LINES.join('\n')}\n`, 'utf8');
+      const crlfTemplateBytes = Buffer.from(
+        `${GitService.GITIGNORE_LINES.join('\r\n')}\r\n`,
         'utf8',
       );
+      const templateBlocks = findTemplateBlocks(originalUserBytes, [
+        templateBytes,
+        crlfTemplateBytes,
+      ]);
+      if (
+        templateBlocks.length === 1 &&
+        templateBlocks[0]!.start === 0 &&
+        templateBlocks[0]!.bytes.equals(templateBytes)
+      ) {
+        return;
+      }
+      // Move every complete canonical block out of the user byte stream before
+      // prepending one LF-canonical block. User bytes are sliced and concatenated,
+      // never decoded/re-encoded, so malformed UTF-8 remains byte-identical.
+      const remainingUserBytes = removeTemplateBlocks(originalUserBytes, templateBlocks);
+      const content = Buffer.concat([
+        hasBom ? bomBytes : Buffer.alloc(0),
+        templateBytes,
+        remainingUserBytes,
+      ]);
+      await handle.write(content, 0, content.length, 0);
+      await handle.truncate(content.length);
+    } finally {
+      await handle.close();
+    }
+  }
+
+  async ensureSyncGuard(root: string): Promise<void> {
+    const git = this.git(root);
+    await this.writeDefaultGitignore(root);
+    await this.untrackGuardedArtifacts(git);
   }
 
   /**
    * Upgrade migration for vaults created before ADR 0003. `git rm --cached`
-   * removes only always-local runtime files from the index; files remain on disk.
+   * removes only guarded local artifacts from the index; files remain on disk.
    * Config/layout are deliberately not touched because the gitignore allowlist
    * makes them portable vault state.
    */
-  private async untrackIgnoredNexnoteArtifacts(git: SimpleGit): Promise<void> {
-    const tracked = await git.raw(['ls-files', '-z', '--', '.nexnote']);
-    const alwaysLocal = tracked
-      .split('\0')
-      .filter(Boolean)
-      .filter((file) => file !== '.nexnote/config.json' && file !== '.nexnote/layout.json');
-    if (alwaysLocal.length > 0) await git.raw(['rm', '--cached', '--', ...alwaysLocal]);
+  private async untrackGuardedArtifacts(git: SimpleGit): Promise<void> {
+    const tracked = await git.raw(['ls-files', '-z']);
+    const guarded = [
+      ...new Set(tracked.split('\0').filter(Boolean).filter(isVaultSyncGuardedPath)),
+    ];
+    // -f permits removing a staged blob that differs from both HEAD and disk.
+    // --cached is mandatory: no worktree file is ever removed.
+    await this.stageLiteralPaths(git, ['rm', '--cached', '-f', '--ignore-unmatch'], guarded);
+    if (guarded.length) console.info('[git] sync guard untracked:', guarded.length);
   }
 
-  private git(baseDir: string, runtime: GitRuntimeResolution = this.resolveRuntime()): SimpleGit {
+  /** NUL file input avoids argv limits, quoting, wildcard and pathspec interpretation. */
+  private async stageLiteralPaths(
+    git: SimpleGit,
+    command: string[],
+    files: string[],
+  ): Promise<void> {
+    if (files.length === 0) return;
+    const temp = await fsp.mkdtemp(path.join(tmpdir(), 'nexnote-git-paths-'));
+    try {
+      const filename = path.join(temp, 'paths');
+      await fsp.writeFile(filename, `${files.join('\0')}\0`, { mode: 0o600 });
+      await git.raw([
+        '--literal-pathspecs',
+        ...command,
+        `--pathspec-from-file=${filename}`,
+        '--pathspec-file-nul',
+      ]);
+    } finally {
+      await fsp.rm(temp, { recursive: true, force: true });
+    }
+  }
+
+  private git(
+    baseDir: string,
+    runtime: GitRuntimeResolution = this.resolveRuntime(),
+    extraEnv: NodeJS.ProcessEnv = {},
+  ): SimpleGit {
     if (runtime.source === 'missing') {
       throw new GitServiceError(
         '应用内捆绑 Git 缺失（安装或打包异常），且未启用系统 Git 回退；请重新安装或到设置中启用「使用系统 Git」',
@@ -693,12 +881,12 @@ export class GitService {
     // Do not inject dugite paths when its downloaded executable is unavailable.
     // In that development fallback, preserve the user's normal Git environment.
     const binary = runtime.binary;
-    const env = sanitizeGitProcessEnv(runtime.environment ?? process.env);
+    const env = { ...sanitizeGitProcessEnv(runtime.environment ?? process.env), ...extraEnv };
     return simpleGit({
       baseDir,
       binary,
       maxConcurrentProcesses: 1,
-      trimmed: true,
+      trimmed: false,
       unsafe: {
         allowUnsafePack: true,
         allowUnsafeCustomBinary: true,
@@ -772,6 +960,56 @@ export class GitService {
       conflict ? 'MERGE_CONFLICT' : 'REMOTE_OPERATION_FAILED',
     );
   }
+}
+
+interface TemplateBlock {
+  start: number;
+  end: number;
+  bytes: Buffer;
+}
+
+/** Find the next line-boundary match, continuing past inline false positives. */
+function findNextTemplateBlock(input: Buffer, bytes: Buffer, from: number): TemplateBlock | null {
+  let search = from;
+  while (search < input.length) {
+    const index = input.indexOf(bytes, search);
+    if (index < 0) return null;
+    if (index === 0 || input[index - 1] === 0x0a) {
+      return { start: index, end: index + bytes.length, bytes };
+    }
+    search = index + 1;
+  }
+  return null;
+}
+
+/** Find all complete template bodies at line boundaries without decoding user bytes. */
+function findTemplateBlocks(input: Buffer, variants: Buffer[]): TemplateBlock[] {
+  const blocks: TemplateBlock[] = [];
+  let cursor = 0;
+  while (cursor < input.length) {
+    const candidates = variants
+      .map((bytes) => findNextTemplateBlock(input, bytes, cursor))
+      .filter((block): block is TemplateBlock => block !== null)
+      .sort((left, right) => left.start - right.start || right.bytes.length - left.bytes.length);
+    const found = candidates[0];
+    if (!found) break;
+    blocks.push(found);
+    cursor = found.end;
+  }
+  return blocks;
+}
+
+/** Remove template bodies only; adjacent user line terminators always remain untouched. */
+function removeTemplateBlocks(input: Buffer, blocks: TemplateBlock[]): Buffer {
+  if (blocks.length === 0) return input;
+  const pieces: Buffer[] = [];
+  let cursor = 0;
+  for (const block of blocks) {
+    if (block.start > cursor) pieces.push(input.subarray(cursor, block.start));
+    cursor = Math.max(cursor, block.end);
+  }
+  if (cursor < input.length) pieces.push(input.subarray(cursor));
+  return Buffer.concat(pieces);
 }
 
 function cleanSummary(value: string): string {

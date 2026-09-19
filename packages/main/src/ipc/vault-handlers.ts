@@ -18,8 +18,9 @@ import type {
   VaultStartupState,
 } from '@nexnote/shared';
 
-/** 启动状态查询只做一次恢复（懒执行，避免在模块加载期做 IO）。 */
+/** 启动恢复共享同一个 in-flight Promise；guard 成功前 session 不可见。 */
 let restoreAttempted = false;
+let restoreInFlight: Promise<VaultInfo | null> | null = null;
 
 /**
  * 根据 URL 推导默认的本地目录名。
@@ -63,7 +64,26 @@ export function registerVaultHandlers(registrar: IpcRegistrar): void {
       let current = services.vaultSession.getCurrent();
       if (!current && !restoreAttempted) {
         restoreAttempted = true;
-        current = await services.vaultSession.restoreLast();
+        restoreInFlight ??= services.vaultSession.restoreLast(async (candidate) => {
+          if (!(await services.git.isRepository(candidate.root))) {
+            throw new Error('RESTORED_VAULT_NOT_REPOSITORY');
+          }
+          // Guard is inside VaultSession.open's pre-commit transaction: current/last/
+          // broadcast remain unchanged while this awaits, including reentrant getState.
+          await services.git.ensureSyncGuard(candidate.root);
+        });
+      }
+      if (!current && restoreInFlight) {
+        try {
+          current = await restoreInFlight;
+        } catch (error) {
+          services.git.setRoot(null);
+          services.appStore.setLastVault(null);
+          restoreAttempted = false;
+          throw error;
+        } finally {
+          restoreInFlight = null;
+        }
       }
       if (current) {
         const isRepo = await services.git.isRepository(current.root);
@@ -100,9 +120,8 @@ export function registerVaultHandlers(registrar: IpcRegistrar): void {
       const op = operationId ? services.vaultOperations.start(context.senderId, 'create') : null;
       try {
         const info = await createVault(parentDir, name);
-        if (initGit) {
-          await services.git.initialize(info.root);
-        }
+        if (initGit) await services.git.initialize(info.root);
+        else await services.git.writeDefaultGitignore(info.root);
         const opened = await services.vaultSession.open(info.root);
         if (initGit) {
           services.git.setRoot(opened.root);
@@ -118,11 +137,11 @@ export function registerVaultHandlers(registrar: IpcRegistrar): void {
   registrar.register(
     'vault:open',
     async ({ path, initGit }, services): Promise<Result<VaultInfo>> => {
-      await validateVaultRoot(path);
-      if (!(await services.git.isRepository(path))) {
+      const safe = await validateVaultRoot(path);
+      if (!(await services.git.isRepository(safe))) {
         if (initGit) {
-          services.git.setRoot(path);
-          await services.git.initialize(path);
+          services.git.setRoot(safe);
+          await services.git.initialize(safe);
         } else {
           return {
             ok: false,
@@ -130,8 +149,10 @@ export function registerVaultHandlers(registrar: IpcRegistrar): void {
             code: 'GIT_INITIALIZATION_REQUIRED',
           };
         }
+      } else {
+        await services.git.ensureSyncGuard(safe);
       }
-      const opened = await services.vaultSession.open(path);
+      const opened = await services.vaultSession.open(safe);
       services.git.setRoot(opened.root);
       services.windows.sendToMainWindow('git:statusChanged', await services.git.status());
       return ok(opened);
@@ -141,9 +162,9 @@ export function registerVaultHandlers(registrar: IpcRegistrar): void {
   registrar.register(
     'vault:clone',
     async ({ url, parentDir, name, preflightToken, operationId }, services, context) => {
-      await validateVaultRoot(parentDir);
+      const safeParent = await validateVaultRoot(parentDir);
       // 解析目标目录：与 preflight 共用逻辑，保证 token 绑定的 targetDir 完全一致
-      const resolved = resolveCloneTarget(parentDir, url, name);
+      const resolved = resolveCloneTarget(safeParent, url, name);
       if (!resolved.ok) {
         return err(resolved.reason, resolved.code);
       }
@@ -186,7 +207,9 @@ export function registerVaultHandlers(registrar: IpcRegistrar): void {
           await fsp.rm(tmpDir, { recursive: true, force: true }).catch(() => {});
         }
 
-        const opened = await services.vaultSession.open(targetDir);
+        const safeTarget = await validateVaultRoot(targetDir);
+        await services.git.ensureSyncGuard(safeTarget);
+        const opened = await services.vaultSession.open(safeTarget);
         services.git.setRoot(opened.root);
         // 真实 post-clone status：从 GitService 查询，包含 branch/ahead/behind/remote 等
         const status = await services.git.status();
@@ -233,9 +256,9 @@ export function registerVaultHandlers(registrar: IpcRegistrar): void {
       services,
       context,
     ): Promise<Result<{ reachable: boolean; preflightToken?: string; error?: string }>> => {
-      await validateVaultRoot(parentDir);
+      const safeParent = await validateVaultRoot(parentDir);
       // 先解析目标目录，保证 token 与 clone 消费端绑定同一个 canonical targetDir
-      const resolved = resolveCloneTarget(parentDir, url, name);
+      const resolved = resolveCloneTarget(safeParent, url, name);
       if (!resolved.ok) {
         return err(resolved.reason, resolved.code);
       }
@@ -267,10 +290,10 @@ export function registerVaultHandlers(registrar: IpcRegistrar): void {
   registrar.register('vault:initGit', async ({ path }, services): Promise<Result<VaultInfo>> => {
     // This is deliberately a separate, user-confirmed IPC path. vault:open never
     // initializes a folder by itself, preventing accidental .git creation.
-    await validateVaultRoot(path);
-    services.git.setRoot(path);
-    await services.git.initialize(path);
-    const opened = await services.vaultSession.open(path);
+    const safe = await validateVaultRoot(path);
+    services.git.setRoot(safe);
+    await services.git.initialize(safe);
+    const opened = await services.vaultSession.open(safe);
     services.git.setRoot(opened.root);
     services.windows.sendToMainWindow('git:statusChanged', await services.git.status());
     return ok(opened);
@@ -340,4 +363,5 @@ export function registerVaultHandlers(registrar: IpcRegistrar): void {
 /** 供单测重置懒恢复标记。 */
 export function __resetVaultStateRestore(): void {
   restoreAttempted = false;
+  restoreInFlight = null;
 }
