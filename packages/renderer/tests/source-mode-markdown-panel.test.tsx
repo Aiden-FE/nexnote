@@ -169,9 +169,9 @@ describe('Markdown 文档属性面板（DEV-025）', () => {
     act(() => {
       trigger?.dispatchEvent(new PointerEvent('pointerover', { bubbles: true }));
     });
-    expect(document.querySelector('[data-testid="toolbar-tooltip"]')?.textContent).toBe(
-      '编辑文档属性',
-    );
+    expect(
+      document.querySelector('[data-testid="toolbar-tooltip"]:not([hidden])')?.textContent,
+    ).toBe('编辑文档属性');
     expect(trigger?.hasAttribute('title')).toBe(false);
     act(() => trigger?.click());
     expect(document.querySelector('[data-testid="frontmatter-panel"]')).not.toBeNull();

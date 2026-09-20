@@ -42,18 +42,17 @@ export function ToolbarTooltip({ text, children }: ToolbarTooltipProps) {
       {cloneElement(children, {
         onPointerEnter: () => setOpen(true),
         onFocus: () => setOpen(true),
-        'aria-describedby': open ? id : undefined,
+        'aria-describedby': id,
       })}
-      {open && (
-        <span
-          id={id}
-          role="tooltip"
-          data-testid="toolbar-tooltip"
-          className="pointer-events-none absolute left-1/2 top-full z-[60] mt-1 -translate-x-1/2 whitespace-nowrap rounded border bg-popover px-2 py-1 text-[11px] text-popover-foreground shadow-md"
-        >
-          {text}
-        </span>
-      )}
+      <span
+        id={id}
+        role="tooltip"
+        data-testid="toolbar-tooltip"
+        hidden={!open}
+        className="pointer-events-none absolute left-1/2 top-full z-[60] mt-1 -translate-x-1/2 whitespace-nowrap rounded border bg-popover px-2 py-1 text-[11px] text-popover-foreground shadow-md"
+      >
+        {text}
+      </span>
     </span>
   );
 }

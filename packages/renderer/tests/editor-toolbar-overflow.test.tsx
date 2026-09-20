@@ -260,11 +260,11 @@ describe('Icon-first 与统一 Tooltip（DEV-050）', () => {
     act(() => bold.dispatchEvent(new PointerEvent('pointerover', { bubbles: true })));
     expect(byTestId('toolbar-tooltip')?.textContent).toContain('动作 bold');
     act(() => bold.dispatchEvent(new PointerEvent('pointerout', { bubbles: true })));
-    expect(byTestId('toolbar-tooltip')).toBeNull();
+    expect(byTestId('toolbar-tooltip')?.hasAttribute('hidden')).toBe(true);
     act(() => bold.focus());
     expect(byTestId('toolbar-tooltip')).not.toBeNull();
     press(bold, 'Escape');
-    expect(byTestId('toolbar-tooltip')).toBeNull();
+    expect(byTestId('toolbar-tooltip')?.hasAttribute('hidden')).toBe(true);
   });
 });
 

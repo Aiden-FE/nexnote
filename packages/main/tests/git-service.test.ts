@@ -16,6 +16,7 @@ import {
 } from '../src/git/git-service';
 
 const SKIP = process.env.NEXNOTE_SKIP_GIT_TESTS === '1';
+const isWindows = process.platform === 'win32';
 
 function gitBinary(): string {
   return process.env.NEXNOTE_TEST_GIT ?? 'git';
@@ -246,13 +247,13 @@ describe.runIf(runIfGit())('GitService（系统 Git，临时仓库）', () => {
     await fsp.rm(path.join(root, '.gitignore'));
     await fsp.mkdir(path.join(root, 'notes'), { recursive: true });
     await fsp.writeFile(path.join(root, 'notes', '.DS_Store'), 'metadata');
-    await fsp.writeFile(path.join(root, ':evil.md'), 'literal');
+    await fsp.writeFile(path.join(root, isWindows ? 'evil.md' : ':evil.md'), 'literal');
 
     await service.commitManual('literal paths');
 
     const git = simpleGit({ baseDir: root, binary: gitBinary() });
     const head = (await git.raw(['ls-tree', '-r', '--name-only', 'HEAD'])).split('\n');
-    expect(head).toContain(':evil.md');
+    expect(head).toContain(isWindows ? 'evil.md' : ':evil.md');
     expect(head).not.toContain('notes/.DS_Store');
   });
 
@@ -633,7 +634,7 @@ describe.runIf(runIfGit())('GitService（系统 Git，临时仓库）', () => {
     }
   });
 
-  it('ensureSyncGuard 拒绝 vault 根 symlink，不写入外部目录', async () => {
+  it.skipIf(isWindows)('ensureSyncGuard 拒绝 vault 根 symlink，不写入外部目录', async () => {
     const parent = mkdtempSync(path.join(tmpdir(), 'nexnote-vault-link-parent-'));
     const outside = mkdtempSync(path.join(tmpdir(), 'nexnote-vault-link-outside-'));
     const linkedRoot = path.join(parent, 'vault');
@@ -649,7 +650,7 @@ describe.runIf(runIfGit())('GitService（系统 Git，临时仓库）', () => {
     }
   });
 
-  it('ensureSyncGuard 拒绝 .gitignore symlink，不写入知识库外部', async () => {
+  it.skipIf(isWindows)('ensureSyncGuard 拒绝 .gitignore symlink，不写入知识库外部', async () => {
     const outside = path.join(tmpdir(), `nexnote-ignore-${Date.now()}`);
     await fsp.writeFile(outside, 'outside');
     await fsp.symlink(outside, path.join(root, '.gitignore'));
@@ -662,7 +663,7 @@ describe.runIf(runIfGit())('GitService（系统 Git，临时仓库）', () => {
     }
   });
 
-  it('ensureSyncGuard 拒绝 .gitignore 硬链接，不写入共享 inode', async () => {
+  it.skipIf(isWindows)('ensureSyncGuard 拒绝 .gitignore 硬链接，不写入共享 inode', async () => {
     const outside = path.join(tmpdir(), `nexnote-ignore-hardlink-${Date.now()}`);
     await fsp.writeFile(outside, 'outside');
     await fsp.link(outside, path.join(root, '.gitignore'));

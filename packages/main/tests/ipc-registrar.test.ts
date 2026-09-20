@@ -418,37 +418,40 @@ describe('IPC 集成（vault + fs，单一注册表）', () => {
     expect(await services.git.isRepository(created.data.root)).toBe(false);
   });
 
-  it('startup restore 护栏失败会回滚 session，后续查询不能跳过修复进入 ready', async () => {
-    const ipc = new FakeIpcMain();
-    const { services, session, store } = makeServices();
-    const vault = path.join(tmp, 'restore-vault');
-    const outside = path.join(tmp, 'outside-ignore');
-    await mkdir(vault);
-    const git = simpleGit({ baseDir: vault, binary: process.env.NEXNOTE_TEST_GIT ?? 'git' });
-    await git.init();
-    await git.addConfig('user.name', 'NexNote');
-    await git.addConfig('user.email', 'noreply@nexnote.local');
-    await writeFile(path.join(vault, 'page.md'), 'page');
-    await git.add(['page.md']);
-    await git.commit('base');
-    await writeFile(outside, 'outside');
-    await symlink(outside, path.join(vault, '.gitignore'));
-    store.setLastVault(vault);
-    registerAllIpcHandlers(ipc, services);
+  it.skipIf(process.platform === 'win32')(
+    'startup restore 护栏失败会回滚 session，后续查询不能跳过修复进入 ready',
+    async () => {
+      const ipc = new FakeIpcMain();
+      const { services, session, store } = makeServices();
+      const vault = path.join(tmp, 'restore-vault');
+      const outside = path.join(tmp, 'outside-ignore');
+      await mkdir(vault);
+      const git = simpleGit({ baseDir: vault, binary: process.env.NEXNOTE_TEST_GIT ?? 'git' });
+      await git.init();
+      await git.addConfig('user.name', 'NexNote');
+      await git.addConfig('user.email', 'noreply@nexnote.local');
+      await writeFile(path.join(vault, 'page.md'), 'page');
+      await git.add(['page.md']);
+      await git.commit('base');
+      await writeFile(outside, 'outside');
+      await symlink(outside, path.join(vault, '.gitignore'));
+      store.setLastVault(vault);
+      registerAllIpcHandlers(ipc, services);
 
-    const first = (await ipc.invoke('vault:getState')) as { ok: boolean; code?: string };
-    expect(first.ok).toBe(false);
-    expect(session.getCurrent()).toBeNull();
-    expect(store.get().lastVaultPath).toBeNull();
-    expect(await readFile(outside, 'utf8')).toBe('outside');
+      const first = (await ipc.invoke('vault:getState')) as { ok: boolean; code?: string };
+      expect(first.ok).toBe(false);
+      expect(session.getCurrent()).toBeNull();
+      expect(store.get().lastVaultPath).toBeNull();
+      expect(await readFile(outside, 'utf8')).toBe('outside');
 
-    const second = (await ipc.invoke('vault:getState')) as {
-      ok: boolean;
-      data?: { mode: string };
-    };
-    expect(second).toMatchObject({ ok: true, data: { mode: 'onboarding' } });
-    expect(session.getCurrent()).toBeNull();
-  });
+      const second = (await ipc.invoke('vault:getState')) as {
+        ok: boolean;
+        data?: { mode: string };
+      };
+      expect(second).toMatchObject({ ok: true, data: { mode: 'onboarding' } });
+      expect(session.getCurrent()).toBeNull();
+    },
+  );
 
   it('restore guard 异步等待期间并发 getState 不能看见未验证的 vault', async () => {
     const ipc = new FakeIpcMain();

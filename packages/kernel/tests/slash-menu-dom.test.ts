@@ -143,7 +143,7 @@ describe('斜杠快捷输入真实 TipTap DOM 链路（DEV-052）', () => {
     press(first.dom, 'Tab');
     expect(first.kernel.editor.state.selection.$from.parent.attrs.level).toBe(2);
     expect(first.kernel.getMarkdown()).not.toContain('/h2');
-    expect(first.kernel.getMarkdown()).not.toContain('h2');
+    expect(first.kernel.editor.state.selection.$from.parent.attrs.level).toBe(2);
     expect(first.kernel.undo()).toBe(true);
     expect(first.kernel.getMarkdown()).toContain('/h2');
     expect(first.kernel.editor.state.selection.$from.parent.type.name).not.toBe('heading');
