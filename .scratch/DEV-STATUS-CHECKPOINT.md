@@ -367,3 +367,14 @@ DEV-006 ← DEV-004；DEV-008 ← DEV-004+007；DEV-010 ← DEV-002+009；DEV-01
 - **NOT_RUN**：Electron packaged smoke（macOS 打包产物）、真实 provider 翻译端到端、Windows/Ubuntu 物理安装；未虚报。
 
 - **v0.0.17 正式发布（2026-09-20）**：因 v0.0.16 自动 Release run 在 Windows 上暴露 4 个跨平台测试问题，immutable `v0.0.16` 保留为失败候选、不移动 tag；v0.0.17 在候选 `b713c2a` 上修复 Windows 文件名/symlink/slash 测试兼容与 toolbar ARIA tooltip 稳定性。候选本地六门禁 PASS（156 files / 1463 tests passed，2 skipped），macOS arm64 packaged smoke **261/261 PASS**；QA evidence 提交 `d86e623`。tag-push Release workflow `35483630301` 的 prepare、4×build、smoke、preflight 全部 success，经 `release-qa` Environment 审批后 publish success。GitHub Release v0.0.17 为 stable、non-draft、non-prerelease，published `2026-09-20T02:52:23Z`：https://github.com/Aiden-FE/nexnote/releases/tag/v0.0.17；公开资产 17 个，`SHA256SUMS` 与 Release asset digest 已回读一致。v0.0.15 同样经过 release-qa gate；当时使用 workflow_dispatch 并由有权限身份通过 API 审批，本次 tag push 初始等待人工网页审批是预期行为，不是流程偏差。
+
+## 编辑器 UI 修正轮次（2026-09-20，已合并）
+
+- **DEV-061 统一左侧 gutter**：候选 `61f5d09`，master 合并 `bb8ae20`。折叠 chevron 从 heading 内 widget 迁移到 host 级 gutter overlay（`packages/kernel/src/editor/unified-gutter.ts`），chevron 常显、拖拽手柄 hover 显示于其左列；左内边距 3.75rem 双列，移除 heading `padding-left:1.55em`；拖拽手柄去掉 `translateX(-1.9rem)`，改 Floating UI `offset` middleware + `::before` 热区桥接。
+- **DEV-062 slash/suggestion 视口约束**：候选 `4c305dd`，master 合并 `702958b`。共享 `menu-viewport.ts`（max-height + 内部滚动 + 底部翻转 + active scrollIntoView），PM slash、CM slash、suggestion 三处接入。
+- **DEV-063 划词工具栏 Lucide SVG 图标**：候选 `dacd53f`，master 合并 `1a8c2c0`。kernel `defaultBubbleIconRenderer`（createElementNS、无 innerHTML）+ 渲染层单一 `selectionBubbleIconRenderer` 注入 PM/CM；strike 对齐主工具栏，AI chevron SVG 垂直居中；wikilink fallback `[[]]`。
+- **DEV-064 VS Code 风格折叠交互**：候选 `c58a27e`，master 合并 `371909c`。折叠态不再降透明度；块编辑行尾可点击 `…` + hover ghost preview；源码模式 placeholder 升级为可点击；快捷键 `Mod+Shift+[`/`]` 折叠/展开当前章节（`Mod+K Mod+L` chord 因 ShortcutRuntime 不支持序列而延后，ADR-0013 已记录）；命令面板新增折叠/展开/切换当前章节与折叠到 H1/H2/H3，不做 Fold All。
+- **双轴审查（c360f75..4a72bef）**：Standards 发现 S5（源码 slash 菜单 place() 覆盖视口翻转结果）等 7 项、Spec 判 DEV-064 PARTIAL（chord 假绑定）；修复提交 `d76e1a0`（S5 视口覆盖、V1 fold opacity 残留、S2 重名导出合并、S6 死代码移除、S7 clip 语义、chord 声明移除）。审查 Agent 独立执行，主 Agent 逐项验证。
+- **门禁**：post-merge master 六门禁 PASS — typecheck、full test `158 files / 1480 tests passed (2 skipped)`、lint `0 errors / 4 pre-existing warnings`、build、changed-format、`git diff --check`、release-config 31/31。
+- **v0.0.18 发布候选**：bump `9ac5f1a`；macOS arm64 Ad hoc 打包（Electron 44.2.0、ABI 149 staging + `-c.npmRebuild=false`），packaged smoke **261/261 PASS**（`NEXNOTE_SMOKE_TIMEOUT_MS=360000`，候选 SHA 绑定）；QA evidence 提交 `d149aa4`。
+- **NOT_RUN**：Windows/Linux packaged smoke、物理安装验证、N-1 网络升级、发布后 24h 监控；未虚报。
