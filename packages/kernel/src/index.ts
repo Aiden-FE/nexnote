@@ -59,12 +59,24 @@ export {
   foldPluginKey,
   canFoldBlock,
   clearBlockFolds,
+  collectFoldHeadings,
   expandAllBlockFolds,
   isBlockFolded,
   revealBlockFoldAt,
   toggleBlockFold,
+  toggleFoldActionLabel,
 } from './extensions/fold';
-export { createKernelDragHandle } from './extensions/drag-handle';
+export type { FoldHeadingDescriptor } from './extensions/fold';
+export {
+  EDITOR_GUTTER_WIDTH_REM,
+  EDITOR_GUTTER_HANDLE_COLUMN_REM,
+  EDITOR_GUTTER_CHEVRON_COLUMN_REM,
+  buildDragHandleMiddleware,
+  createKernelDragHandle,
+  topLevelBlockIdAt,
+} from './extensions/drag-handle';
+export { mountUnifiedGutter } from './editor/unified-gutter';
+export type { UnifiedGutterController } from './editor/unified-gutter';
 export {
   SelectionBubble,
   selectionBubblePluginKey,

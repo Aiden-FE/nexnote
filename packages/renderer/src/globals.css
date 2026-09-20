@@ -145,12 +145,17 @@
 
 /* 编辑器挂载点：selection bubble / slash menu 的 absolute 定位锚点。
    kernel 以 editorView.dom.parentElement 为参照换算 top/left，
-   本元素必须是其包含块（positioned），否则浮层随文档长度漂移。 */
+   本元素必须是其包含块（positioned），否则浮层随文档长度漂移。
+   DEV-061：编辑器挂载点改为 2 列网格（gutter + content），双列浮层均以本元素为锚。 */
 .nexnote-editor-host {
   position: relative;
+  display: grid;
+  grid-template-columns: 3.75rem minmax(0, 1fr);
+  align-items: start;
 }
 
 .nexnote-editor-host .ProseMirror {
+  grid-column: 2;
   min-height: calc(100vh - 9rem);
   outline: none;
   color: var(--foreground);
@@ -181,15 +186,15 @@
   line-height: 1.25;
   letter-spacing: -0.02em;
 }
-/* DEV-054：所有编辑标题为 disclosure chevron 预留左侧 gutter，
-   无章节内容时不渲染按钮，gutter 保持文本左缘稳定。 */
+/* DEV-061：折叠 chevron 与拖拽手柄统一编辑器宿主级 gutter（双列布局）；
+   标题不再为 chevron 预留 padding-left，多行标题折行顶到内容左缘。 */
 .nexnote-editor-host .ProseMirror h1,
 .nexnote-editor-host .ProseMirror h2,
 .nexnote-editor-host .ProseMirror h3,
 .nexnote-editor-host .ProseMirror h4,
 .nexnote-editor-host .ProseMirror h5,
 .nexnote-editor-host .ProseMirror h6 {
-  padding-left: 1.55em;
+  padding-left: 0;
 }
 
 .nexnote-editor-host .ProseMirror h1:first-child {
@@ -378,7 +383,6 @@
   display: flex;
   width: 1.6rem;
   height: 1.6rem;
-  transform: translateX(-1.9rem);
   align-items: center;
   justify-content: center;
   border-radius: 0.3rem;
@@ -389,12 +393,18 @@
     opacity 120ms,
     background-color 120ms;
 }
-.nexnote-editor-relative:hover .nexnote-drag-handle {
+/* DEV-061：拖拽手柄 wrapper 由 Floating UI offset middleware 推到 chevron 左侧；
+   不能再用 translateX hack —— 那会让 mouse path 出现 0.3rem 不可命中空白。 */
+.nexnote-editor-host:hover .nexnote-drag-handle,
+.nexnote-editor-host:focus-within .nexnote-drag-handle,
+.nexnote-drag-handle:hover {
   opacity: 1;
 }
-.nexnote-drag-handle:hover {
+.nexnote-drag-handle:hover,
+.nexnote-drag-handle:focus-visible {
   background: var(--accent);
   color: var(--foreground);
+  outline: none;
 }
 .nexnote-drag-handle:active {
   cursor: grabbing;
@@ -402,6 +412,17 @@
 .nexnote-drag-handle__icon {
   font-size: 1.15rem;
   line-height: 1;
+}
+/* DEV-061：手柄命中桥接。从正文 → 手柄的鼠标 path 必须保持 TipTap wrapper 内部，
+   否则 mouseleave 会隐藏手柄；该元素透明铺到手柄右上、贴 chevron 列内侧。 */
+.nexnote-drag-handle__bridge {
+  position: absolute;
+  inset: 0;
+  width: 2.1rem;
+  height: 1.6rem;
+  transform: translate(100%, 0);
+  pointer-events: auto;
+  background: transparent;
 }
 
 .nexnote-slash-menu {
@@ -968,54 +989,60 @@
   z-index: 52;
 }
 
-/* ── DEV-054 块文档标题章节折叠 ── */
-.nexnote-fold-toggle {
+/* ── DEV-054 块文档标题章节折叠（DEV-061 改为宿主级 overlay） ── */
+/* 折叠 chevron overlay 容器：与编辑器宿主的 gutter 列同位（绝对定位、贴左上）。 */
+.nexnote-fold-overlay {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+.nexnote-fold-overlay__toggle {
+  position: absolute;
+  /* 第二列（chevron）起点：3.75rem 减去 1.6rem 自身宽度 → 距离宿主左缘 2.15rem */
+  left: calc(3.75rem - 1.6rem);
+  top: 0;
   display: inline-flex;
+  width: 1.6rem;
+  height: 1.6rem;
   align-items: center;
   justify-content: center;
-  width: 1.35em;
-  height: 1.35em;
-  margin-left: -1.55em;
-  margin-right: 0.2em;
   padding: 0;
   border: 0;
-  border-radius: 0.25rem;
+  border-radius: 0.3rem;
   background: transparent;
-  color: color-mix(in srgb, var(--muted-foreground) 55%, transparent);
+  color: color-mix(in srgb, var(--muted-foreground) 70%, transparent);
   font: inherit;
-  font-size: 0.62em;
+  font-size: 0.85rem;
   line-height: 1;
-  vertical-align: 0.12em;
   cursor: pointer;
-  opacity: 0.68;
+  opacity: 0.85;
+  pointer-events: auto;
   transition:
     color 120ms ease,
     background-color 120ms ease,
     opacity 120ms ease;
 }
-.nexnote-fold-toggle__icon {
+.nexnote-fold-overlay__toggle__icon {
   display: block;
   transform: rotate(90deg);
   transition: transform 120ms ease;
 }
-.nexnote-fold-toggle[data-fold-state='collapsed'] .nexnote-fold-toggle__icon {
+.nexnote-fold-overlay__toggle[data-fold-state='collapsed'] .nexnote-fold-overlay__toggle__icon {
   transform: rotate(0deg);
 }
-.nexnote-editor-host .ProseMirror h1:hover > .nexnote-fold-toggle,
-.nexnote-editor-host .ProseMirror h2:hover > .nexnote-fold-toggle,
-.nexnote-editor-host .ProseMirror h3:hover > .nexnote-fold-toggle,
-.nexnote-editor-host .ProseMirror h4:hover > .nexnote-fold-toggle,
-.nexnote-editor-host .ProseMirror h5:hover > .nexnote-fold-toggle,
-.nexnote-editor-host .ProseMirror h6:hover > .nexnote-fold-toggle,
-.nexnote-fold-toggle:hover,
-.nexnote-fold-toggle:focus-visible {
+.nexnote-fold-overlay__toggle:hover,
+.nexnote-fold-overlay__toggle:focus-visible {
   color: var(--foreground);
   background: var(--accent);
   opacity: 1;
 }
-.nexnote-fold-toggle:focus-visible {
+.nexnote-fold-overlay__toggle:focus-visible {
   outline: 2px solid color-mix(in srgb, var(--ring) 65%, transparent);
   outline-offset: 1px;
+}
+.nexnote-fold-overlay__toggle[data-stale='true'] {
+  opacity: 0;
+  pointer-events: none;
 }
 .nexnote-folded {
   opacity: 0.88;

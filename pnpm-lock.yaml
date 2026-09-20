@@ -119,6 +119,9 @@ importers:
 
   packages/kernel:
     dependencies:
+      '@floating-ui/dom':
+        specifier: ^1.8.0
+        version: 1.8.0
       '@nexnote/shared':
         specifier: workspace:*
         version: link:../shared
