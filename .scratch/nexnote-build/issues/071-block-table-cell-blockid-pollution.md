@@ -50,8 +50,19 @@ None (can start immediately).
 
 ## 实现记录
 
-待实现后填写。
+- 候选 SHA：`2fb3757`（dev/DEV-071，基于 master `240d52c`）。
+- 实现落点：`packages/kernel/src/markdown/block-id.ts`（非 brief 中预估的 renderer 路径，kernel 包为权威实现处）。
+- serialize 方向：`injectPlaceholderForBlockIds` 拆出 `injectPlaceholderForBlockIdsInContext(node, inCell)`，进入 `tableCell`/`tableHeader` 后对 paragraph/heading 剥除 blockId 属性而非注入占位符；`stripIdsInCell` 处理无内容节点。
+- parse 方向：`liftPlaceholdersToBlockIds` 在 walkNodes 之后追加 `stripCellAnchorsDeep`——递归进入单元格宿主，剥除段落末位文本节点的 `^id`（`CELL_TRAILING_ANCHOR_RE` 要求锚点前有空白；`CELL_ONLY_ANCHOR_RE` 处理整段仅锚点的空 cell 污染形态），中部 `^alpha` 字面文本保留。打开脏文件即完成迁移，幂等。
+- 脏数据迁移：采用「下次打开自动清理」方案（parse 时剥除 + 下次保存写盘干净），无需独立一次性命令。
+- 测试：新增 `packages/kernel/tests/block-id-cells.test.ts` 7 用例（serialize 不注入 / 脏数据剥除+幂等 / 整段锚点 / 中部保留 / 模拟 UniqueID 补 ID 全链路 / 非表格段落不回归 / 表格整体锚点不回归）。
 
 ## 门禁与证据
 
-待实现后填写。
+- vitest：159 files passed / 1 skipped，1489 passed / 2 skipped（含新增 7 用例；kernel 包 18 files 240/240）。
+- typecheck（pnpm -r）：PASS。
+- eslint（改动文件 + 全仓门禁口径）：PASS。
+- build（electron-vite）：PASS。
+- verify-release-config：31/31 PASS。
+- `git diff --check master...HEAD`：PASS。
+- 双轴审查：Standards PASS / Spec PASS（对照候选 `0d4bd90`）。
