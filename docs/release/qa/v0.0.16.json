@@ -1,0 +1,37 @@
+{
+  "schema": "nexnote-release-qa/v1",
+  "repository": "Aiden-FE/nexnote",
+  "tag": "v0.0.16",
+  "commit": "5114498",
+  "channel": "stable",
+  "allRequiredChecksPassed": true,
+  "scope": "v0.0.16-release-candidate",
+  "machineChecks": {
+    "typecheck": "passed",
+    "lint": "passed (0 errors, 4 pre-existing warnings)",
+    "tests": "156 files passed, 1463 tests passed, 1 file skipped, 2 tests skipped",
+    "build": "passed",
+    "releaseConfig": "31/31 passed",
+    "changedFormat": "passed",
+    "diffCheck": "passed",
+    "packagedSmoke": "261/261 passed (macOS arm64 Ad hoc, Electron 44.2.0, ABI 149, candidateSha 5114498 bound, darwin; local offline build)"
+  },
+  "candidateContents": {
+    "tickets": "DEV-058~DEV-060 implemented, independently reviewed, merged to master",
+    "highlights": [
+      "Vault Sync Guard: gitignore OS metadata and .nexnote runtime protection, staging isolation, tracked-artifact migration, symlink and cross-platform path hardening",
+      "Translation Workbench: explicit input translation with command-palette and selection-AI entry points, shared 200k limit, profile selection, run isolation",
+      "No-reasoning translation requests: reasoning_effort=none, reasoning artifact filtering, provider rejection fail-closed",
+      "Packaged smoke contract updated for the Translation Workbench AI menu entry and focus-safe toolbar tooltip"
+    ]
+  },
+  "notRun": [
+    "GitHub Actions v0.0.16 workflow execution",
+    "Windows packaged smoke and Linux packaged smoke",
+    "Windows/Ubuntu physical installation verification",
+    "macOS physical installation and Gatekeeper verification",
+    "public N-1 to v0.0.16 network upgrade",
+    "post-publication 24-hour monitoring"
+  ],
+  "notes": "macOS artifact is Ad hoc signed without notarization. Local packaged smoke passed with a staged Electron ABI149 better-sqlite3 binding; Node ABI147 was restored after smoke. Public release still requires GitHub release-qa Environment approval and immutable evidence variable binding."
+}
