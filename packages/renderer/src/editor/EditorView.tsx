@@ -3,6 +3,7 @@ import { pickFile, readFileAsBase64, attachmentTargetPath } from './media-import
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { AlertCircle, Check, LoaderCircle } from 'lucide-react';
 import { createEditor, revealBlockFoldAt } from '@nexnote/kernel';
+import { mountUnifiedGutter } from '@nexnote/kernel';
 import { TextSelection } from '@tiptap/pm/state';
 import { invoke } from '../lib/ipc';
 import { useTabStore, type TabDescriptor } from '../stores/tab-store';
@@ -658,6 +659,7 @@ export function EditorView({ tab }: EditorViewProps) {
       },
     });
     kernelRef.current = kernel;
+    const gutter = hostRef.current ? mountUnifiedGutter(hostRef.current, kernel.editor) : null;
     const refreshOutline = () => {
       if (outlineVisibleRef.current) setOutline(parseBlockOutline(kernel.editor.state.doc));
     };
@@ -682,6 +684,7 @@ export function EditorView({ tab }: EditorViewProps) {
       unregisterAppSave();
       unregisterModeSwitch();
       window.removeEventListener('blur', flush);
+      gutter?.destroy();
       kernel.editor.off('selectionUpdate', onSelectionUpdate);
       kernel.editor.off('update', refreshOutline);
       editorRegistration.unregister();

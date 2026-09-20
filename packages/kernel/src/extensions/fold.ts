@@ -10,6 +10,10 @@ import type { EditorView } from '@tiptap/pm/view';
  *
  * 折叠状态只存在于当前 ProseMirror 视图，按稳定 blockId 记录。标题章节边界由
  * 当前顶层 H1–H6 结构实时派生，任何折叠操作都不修改文档或 Markdown。
+ *
+ * 折叠控件（chevron）从标题内部 ProseMirror widget 迁移为宿主级 overlay
+ * （DEV-061）；视图层通过 {@link collectFoldHeadings} 取标题位置/折叠态，
+ * 通过 {@link foldPluginKey} 订阅插件状态变化以重定位 overlay。
  */
 
 export interface FoldPluginState {
@@ -23,12 +27,6 @@ export const foldPluginKey = new PluginKey<FoldPluginState>('nexnoteFold');
  * 同一节点改 attrs 时身份确定，折叠状态允许保留并按新层级重算。
  */
 const FOLD_TRUSTED_IDS_META = 'nexnoteFoldTrustedIds';
-
-/** 键盘激活后与原生 click 的去重窗口（毫秒）。 */
-const KEYBOARD_CLICK_DEDUPE_MS = 500;
-
-/** 每个编辑视图键盘切换后等待重建 chevron 承接焦点的 blockId。 */
-const pendingKeyboardFocus = new WeakMap<EditorView, string>();
 
 type FoldMeta =
   | { type: 'toggle'; blockId: string }
@@ -275,63 +273,50 @@ export function revealBlockFoldAt(view: EditorView, pos: number): void {
   );
 }
 
-function createToggleButton(
-  blockId: string,
-  folded: boolean,
-  getView: () => EditorView | null,
-): HTMLButtonElement {
-  const action = folded ? '展开章节' : '折叠章节';
-  const button = document.createElement('button');
-  button.type = 'button';
-  button.className = 'nexnote-fold-toggle';
-  const icon = document.createElement('span');
-  icon.className = 'nexnote-fold-toggle__icon';
-  icon.textContent = '›';
-  icon.setAttribute('aria-hidden', 'true');
-  button.append(icon);
-  button.title = action;
-  button.setAttribute('aria-label', action);
-  button.setAttribute('aria-expanded', String(!folded));
-  button.setAttribute('data-fold-state', folded ? 'collapsed' : 'expanded');
-  button.setAttribute('data-fold-id', blockId);
-  button.contentEditable = 'false';
-  button.draggable = false;
-  button.tabIndex = 0;
-
-  let lastKeyToggleAt = 0;
-  const toggle = (restoreKeyboardFocus = false) => {
-    const view = getView();
-    if (!view) return;
-    if (restoreKeyboardFocus) pendingKeyboardFocus.set(view, blockId);
-    if (!toggleBlockFold(view, blockId)) pendingKeyboardFocus.delete(view);
-  };
-  button.addEventListener('mousedown', (event) => {
-    // 保留正文焦点、光标和选区；按钮仍可由 Tab 获得键盘焦点。
-    event.preventDefault();
-    event.stopPropagation();
-  });
-  button.addEventListener('keydown', (event) => {
-    if (event.key !== 'Enter' && event.key !== ' ') return;
-    event.preventDefault();
-    event.stopPropagation();
-    lastKeyToggleAt = Date.now();
-    toggle(true);
-  });
-  button.addEventListener('click', (event) => {
-    event.preventDefault();
-    event.stopPropagation();
-    // 键盘原生激活可能在 keydown 后再派发 detail=0 的 click，避免双切换。
-    if (event.detail === 0 && Date.now() - lastKeyToggleAt < KEYBOARD_CLICK_DEDUPE_MS) return;
-    toggle(false);
-  });
-  return button;
+/** 顶层标题位置描述（渲染层 overlay 据此放置 chevron）。 */
+export interface FoldHeadingDescriptor {
+  blockId: string;
+  level: number;
+  /** 标题块文档位置。 */
+  from: number;
+  to: number;
+  /** 标题当前是否处于折叠态。 */
+  folded: boolean;
+  /** 折叠/展开章节的中文标签，供 accessible name 使用。 */
+  actionLabel: string;
 }
 
-/** 为所有有内容的标题绘制 chevron，并隐藏所有折叠祖先覆盖的块。 */
+/**
+ * 取当前文档中所有可折叠标题的描述（稳定数组，可直接订阅 foldPluginKey 重算）。
+ * 渲染层宿主 overlay 用此数组定位 chevron DOM，避免在标题内部嵌入 widget。
+ */
+export function collectFoldHeadings(state: EditorState): FoldHeadingDescriptor[] {
+  const blocks = listTopLevelBlocks(state);
+  const folded = foldPluginKey.getState(state)?.folded ?? new Set<string>();
+  const out: FoldHeadingDescriptor[] = [];
+  for (let i = 0; i < blocks.length; i++) {
+    const block = blocks[i]!;
+    if (!block.blockId || block.level == null || !hasSectionContent(blocks, i)) continue;
+    const isFolded = folded.has(block.blockId);
+    out.push({
+      blockId: block.blockId,
+      level: block.level,
+      from: block.from,
+      to: block.to,
+      folded: isFolded,
+      actionLabel: isFolded ? '展开章节' : '折叠章节',
+    });
+  }
+  return out;
+}
+
+/**
+ * 顶层标题层级描述（DEV-061：渲染层即便内容长度变化也能稳定定位 chevron 列）。
+ * 不渲染按钮，仅为 ProseMirror 节点附加 aria 标签/语义锚点，便于 overlay 锚定。
+ */
 function buildDecorations(
   state: EditorState,
   folded: ReadonlySet<string>,
-  getView: () => EditorView | null,
 ): DecorationSet {
   const decorations: Decoration[] = [];
   const blocks = listTopLevelBlocks(state);
@@ -347,34 +332,15 @@ function buildDecorations(
         }),
       );
     }
-    if (!block.blockId || block.level == null || !hasSectionContent(blocks, i)) continue;
-
-    const isFolded = folded.has(block.blockId);
-    if (isFolded) {
-      decorations.push(Decoration.node(block.from, block.to, { class: 'nexnote-folded' }));
+    if (
+      !block.blockId ||
+      block.level == null ||
+      !hasSectionContent(blocks, i) ||
+      !folded.has(block.blockId)
+    ) {
+      continue;
     }
-    const blockId = block.blockId;
-    decorations.push(
-      Decoration.widget(
-        block.from + 1,
-        () => {
-          const button = createToggleButton(blockId, isFolded, getView);
-          const view = getView();
-          if (view && pendingKeyboardFocus.get(view) === blockId) {
-            pendingKeyboardFocus.delete(view);
-            // ProseMirror 会先把旧 widget 移除；新 widget 插入 DOM 后再承接焦点。
-            queueMicrotask(() => {
-              if (button.isConnected) button.focus({ preventScroll: true });
-            });
-          }
-          return button;
-        },
-        {
-          side: -1,
-          key: `fold-${blockId}-${isFolded ? 'closed' : 'open'}`,
-        },
-      ),
-    );
+    decorations.push(Decoration.node(block.from, block.to, { class: 'nexnote-folded' }));
   }
   return DecorationSet.create(state.doc, decorations);
 }
@@ -464,6 +430,17 @@ export function clampMouseSelection(view: EditorView): void {
   );
 }
 
+/** 块菜单"折叠章节 / 展开章节"动作的可选切换入口（位于块菜单面板）。 */
+export function toggleFoldActionLabel(state: EditorState, blockId: string): string {
+  if (!canFoldBlock(state, blockId)) return '该标题无可折叠章节';
+  return isBlockFolded(state, blockId) ? '展开章节' : '折叠章节';
+}
+
+/** 代理：把块菜单/键盘触发的切换请求转交给当前视图。 */
+export function toggleFoldById(view: EditorView, blockId: string): boolean {
+  return toggleBlockFold(view, blockId);
+}
+
 export const Fold = Extension.create({
   name: 'nexnoteFold',
 
@@ -503,7 +480,6 @@ export const Fold = Extension.create({
             return buildDecorations(
               state,
               foldPluginKey.getState(state)?.folded ?? new Set<string>(),
-              () => viewRef,
             );
           },
           handleKeyDown(view, event) {
@@ -517,7 +493,9 @@ export const Fold = Extension.create({
             const target = event.target;
             mouseSelecting =
               event.button === 0 &&
-              !(target instanceof Element && target.closest('.nexnote-fold-toggle'));
+              // 标题内部不再有 widget；命中 overlay 按钮（位于宿主 gutter）时仍允许拖选，
+              // 由 overlay 自身的 click 监听消费，不在这里拦截。
+              !(target instanceof Element && target.closest('.nexnote-fold-overlay__toggle'));
           };
           const onMouseUp = () => {
             if (!mouseSelecting) return;

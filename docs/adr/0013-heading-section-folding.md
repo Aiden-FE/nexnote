@@ -18,6 +18,9 @@ Markdown 首期折叠范围覆盖 ATX H1–H6 与 Setext H1/H2。blockquote 内�
 
 提供“全部展开”命令，入口位于标题目录菜单与命令面板；本轮不提供无差别“全部折叠”。若未来增加批量折叠，应采用“折叠到 H1/H2/H3 层级”的明确语义。
 
+
+- 修订（2026-09-19，DEV-061 统一块编辑器左侧 gutter）：块编辑模式折叠控件从标题内部 ProseMirror widget 迁移为宿主级 overlay（位于 `.nexnote-editor-host` 内），与拖拽手柄共享统一的 3.75rem 双列 gutter：手柄列 1.6rem + chevron 列 1.6rem + 0.5rem 列间距。标题不再为 chevron 预留 `padding-left`，多行标题折行顶到内容左缘。拖拽手柄移除 `translateX(-1.9rem)` hack，改用 `@floating-ui/dom` `offset` middleware（mainAxis = gutter - 手柄列宽 ≈ 2.15rem）参与布局计算；拖拽手柄增加透明 `.nexnote-drag-handle__bridge` 桥接元素，鼠标从正文移到 gutter 不再触发 TipTap `mouseleave` 隐藏。Markdown 源码（DEV-055）的 CodeMirror gutter 折叠与本决策独立，按既有 contract 保持不变。验收边界同步更新：chevron 常显、可键盘承接焦点、与拖拽手柄对齐成稳定双列；窄分栏下手柄/chevron 不被滚动容器裁剪。
+
 ## Considered Options
 
 - **把折叠写入正文**：会污染用户原文并影响其他 Markdown 工具，否决。
