@@ -107,12 +107,7 @@ export interface GraphSnapshot {
 
 /** DEV-008 置信度因子键。 */
 export type ConfidenceFactorKey =
-  | 'stability'
-  | 'review_count'
-  | 'author_count'
-  | 'age'
-  | 'link_authority'
-  | 'manual_boost';
+  'stability' | 'review_count' | 'author_count' | 'age' | 'link_authority' | 'manual_boost';
 
 /** 单个置信度因子的归一化分数与最终贡献。 */
 export interface ConfidenceFactor {
