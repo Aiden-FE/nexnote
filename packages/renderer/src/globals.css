@@ -1044,9 +1044,6 @@
   opacity: 0;
   pointer-events: none;
 }
-.nexnote-folded {
-  opacity: 0.88;
-}
 .nexnote-fold-hidden {
   display: none;
 }

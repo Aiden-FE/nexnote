@@ -371,32 +371,44 @@
     "DEV-061": {
       "title": "统一块编辑器左侧 gutter 与拖拽热区",
       "deps": [],
-      "status": "open",
+      "status": "done",
       "agent": null,
-      "branch": "dev/DEV-061"
+      "branch": "dev/DEV-061",
+      "merged": "bb8ae20",
+      "verdict": "Standards PASS + Spec PASS (independent dual-axis review); post-merge gates PASS",
+      "candidate": "61f5d09"
     },
     "DEV-062": {
       "title": "Slash / suggestion 菜单视口约束与内部滚动",
       "deps": [],
-      "status": "open",
+      "status": "done",
       "agent": null,
-      "branch": "dev/DEV-062"
+      "branch": "dev/DEV-062",
+      "merged": "702958b",
+      "verdict": "Standards PASS + Spec PASS (independent dual-axis review); post-merge gates PASS",
+      "candidate": "4c305dd"
     },
     "DEV-063": {
       "title": "划词工具栏 Lucide SVG 图标管线",
       "deps": [],
-      "status": "open",
+      "status": "done",
       "agent": null,
-      "branch": "dev/DEV-063"
+      "branch": "dev/DEV-063",
+      "merged": "1a8c2c0",
+      "verdict": "Standards PASS + Spec PASS (independent dual-axis review); post-merge gates PASS",
+      "candidate": "dacd53f"
     },
     "DEV-064": {
       "title": "VS Code 风格标题折叠呈现与快捷键",
       "deps": [
         "DEV-061"
       ],
-      "status": "open",
+      "status": "done",
       "agent": null,
-      "branch": "dev/DEV-064"
+      "branch": "dev/DEV-064",
+      "merged": "371909c",
+      "verdict": "Standards PASS + Spec PASS after review-fix d76e1a0 (chord deferred per ADR-0013); post-merge gates PASS",
+      "candidate": "c58a27e"
     },
     "DEV-065": {
       "title": "编辑器 UI 修正轮次集成与 v0.0.18 发布",
@@ -406,9 +418,12 @@
         "DEV-063",
         "DEV-064"
       ],
-      "status": "open",
+      "status": "done",
       "agent": null,
-      "branch": "dev/DEV-065"
+      "branch": "master",
+      "merged": "d149aa4",
+      "verdict": "v0.0.18 packaged smoke 261/261 PASS; evidence d149aa4 bound; tag push pending",
+      "candidate": "9ac5f1a"
     },
     "DEV-066": {
       "title": "设置页 Switch 启用态 thumb 视觉错乱修复",
@@ -425,7 +440,7 @@
       "branch": "dev/DEV-067"
     }
   },
-  "phase": "DEV-001~060 已完成；当前轮次 DEV-061~065（编辑器 UI 修正 + v0.0.18 发布）进行中",
+  "phase": "DEV-061~065 编辑器 UI 修正 + v0.0.18 发布 已完成；DEV-066/067 已分诊、待后续轮次",
   "notes": [
     "调度规则：前置依赖全部合并进 master 后才启动该票据子Agent，worktree 基于 merging 后的 master 新建",
     "worktree 根已迁至 {master}/.wt/<TICKET>（.git/info/exclude 忽略）——子Agent workspace 仅覆盖主工作区，外部路径会被文件沙箱拒绝（DEV-007/DEV-009 首次修复尝试因此阻塞，已迁移后恢复）",

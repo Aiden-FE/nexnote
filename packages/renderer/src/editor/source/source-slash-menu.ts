@@ -298,18 +298,17 @@ export function sourceSlashMenu(options: SourceSlashMenuOptions): Extension {
       const coords = view.coordsAtPos(view.state.selection.main.head);
       const hostEl = view.dom.parentElement;
       if (!coords || !hostEl) return false;
-      const hostRect = hostEl.getBoundingClientRect();
       const viewportEl = findScrollViewport(view.dom);
       const viewport = readMenuViewport(viewportEl);
-      const placement = applyMenuViewportPlacement({
+      // applyMenuViewportPlacement 已经写好 top/left/maxHeight/overflowY（含上下翻转），
+      // 这里不再覆盖原始 caret 坐标，否则视口约束失效。
+      applyMenuViewportPlacement({
         menu: menu!,
         host: hostEl,
         anchor: { top: coords.top, bottom: coords.bottom, left: coords.left },
         viewport,
         desiredHeight: readMenuHeight(menu!),
       });
-      menu!.style.top = `${placement.top - hostRect.top}px`;
-      menu!.style.left = `${coords.left - hostRect.left}px`;
       return true;
     };
     view.requestMeasure({
