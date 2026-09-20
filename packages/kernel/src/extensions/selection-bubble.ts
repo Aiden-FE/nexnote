@@ -16,15 +16,25 @@ export {
   refreshBubbleButton,
   bubbleTooltipText,
 } from './selection-bubble-helpers';
-export type { BubbleAction, BubbleAiMenuOptions, BubbleAiMenuView, BubbleExtraControl } from './selection-bubble-helpers';
+import type {
+  BubbleAction,
+  BubbleAiMenuOptions,
+  BubbleExtraControl,
+} from './selection-bubble-helpers';
+import type { BubbleIconRenderer } from './selection-bubble-icons';
+export type {
+  BubbleAction,
+  BubbleAiMenuOptions,
+  BubbleAiMenuView,
+  BubbleExtraControl,
+} from './selection-bubble-helpers';
 export type { BubbleIconName, BubbleIconRenderer } from './selection-bubble-icons';
 
 export interface SelectionBubbleOptions {
-  actions: import('./selection-bubble-helpers').BubbleAction[];
-  aiMenu?: import('./selection-bubble-helpers').BubbleAiMenuOptions;
-  extraControl?: import('./selection-bubble-helpers').BubbleExtraControl;
-  /** 图标渲染器（DEV-063）：语义名解析为 SVG 节点，缺省走 lucide renderer。 */
-  iconRenderer?: import('./selection-bubble-icons').BubbleIconRenderer;
+  actions: BubbleAction[];
+  aiMenu?: BubbleAiMenuOptions;
+  extraControl?: BubbleExtraControl;
+  iconRenderer?: BubbleIconRenderer;
   onAction: (id: string, ctx: EditorActionContext) => void;
   className?: string;
 }
@@ -58,20 +68,30 @@ export const SelectionBubble = Extension.create<SelectionBubbleOptions, { visibl
       ext.options.onAction(id, ctx);
     };
 
+    // host / manuallyDismissed 提升到插件级闭包，让 props.handleKeyDown /
+    // handleDOMEvents 也能通过闭包与 view() 共享同一组状态。
+    let host: SelectionToolbarHost | null = null;
+    let manuallyDismissed = false;
+
+    const hideAndDismiss = () => {
+      manuallyDismissed = true;
+      ext.storage.visible = false;
+      host?.hide();
+    };
+
     return [
       new Plugin({
         key: selectionBubblePluginKey,
         view(editorView) {
-          let manuallyDismissed = false;
-          let host: SelectionToolbarHost | null = createSelectionToolbarHost({
+          host = createSelectionToolbarHost({
             actions: ext.options.actions,
             aiMenu: ext.options.aiMenu,
             extraControl: ext.options.extraControl,
             iconRenderer: ext.options.iconRenderer,
             className: ext.options.className,
             datasetFlag: 'selectionBubble',
-            // PM：挂到编辑器宿主 DOM，坐标以容器为参照（与历史行为一致，
-            // 保留既有 container.querySelector('[data-selection-bubble]') 测试）。
+            // PM：挂到编辑器宿主 DOM，坐标以容器为参照（保留既有
+            // container.querySelector('[data-selection-bubble]') 测试）。
             mount: editorView.dom.parentElement,
             coordinateSpace: 'parent',
             // PM：动作触发后保留工具栏（AI 生成中的停止控件必须保持可点）
@@ -80,16 +100,10 @@ export const SelectionBubble = Extension.create<SelectionBubbleOptions, { visibl
               trigger(editorView, id);
             },
             onToolbarFocusOut() {
-              // 焦点真正离开工具栏（落到工具栏外）：与原 PM 行为一致，
-              // 通过 host 隐藏 + 设置 manuallyDismissed 防止下次 sync 复活。
-              manuallyDismissed = true;
-              ext.storage.visible = false;
-              host?.hide();
+              hideAndDismiss();
             },
             onToolbarEscape() {
-              manuallyDismissed = true;
-              ext.storage.visible = false;
-              host?.hide();
+              hideAndDismiss();
               editorView.focus();
             },
           });
@@ -131,6 +145,7 @@ export const SelectionBubble = Extension.create<SelectionBubbleOptions, { visibl
               document.removeEventListener('scroll', onScroll, true);
               host?.destroy();
               host = null;
+              manuallyDismissed = false;
             },
           };
         },
@@ -141,8 +156,7 @@ export const SelectionBubble = Extension.create<SelectionBubbleOptions, { visibl
             const eventFromBubble = bubbleDom?.contains(event.target as Node | null) ?? false;
             if (event.key === 'Escape' && ext.storage.visible && !eventFromBubble) {
               event.preventDefault();
-              ext.storage.visible = false;
-              if (bubbleDom) bubbleDom.style.display = 'none';
+              hideAndDismiss();
               return true;
             }
             if (view.state.selection.empty) return false;
@@ -158,8 +172,7 @@ export const SelectionBubble = Extension.create<SelectionBubbleOptions, { visibl
                 view.dom.parentElement?.querySelector<HTMLElement>('[data-selection-bubble]');
               const related = event.relatedTarget as Node | null;
               if (bubbleDom && related && bubbleDom.contains(related)) return false;
-              ext.storage.visible = false;
-              if (bubbleDom) bubbleDom.style.display = 'none';
+              hideAndDismiss();
               return false;
             },
             focusout(view, event) {
@@ -170,8 +183,7 @@ export const SelectionBubble = Extension.create<SelectionBubbleOptions, { visibl
               const goingIntoBubble = bubbleDom && related && bubbleDom.contains(related);
               const goingIntoEditor = related && view.dom.contains(related);
               if (leavingEditor && !goingIntoBubble && !goingIntoEditor) {
-                ext.storage.visible = false;
-                if (bubbleDom) bubbleDom.style.display = 'none';
+                hideAndDismiss();
               }
               return false;
             },

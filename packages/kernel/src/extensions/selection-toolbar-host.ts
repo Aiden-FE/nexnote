@@ -19,10 +19,14 @@ import {
  * 编辑器共用的「划词工具栏外壳」。宿主负责：
  *
  * - DOM 构建（动作按钮、AI 下拉、附加控件、roving focus、键盘可达性）
- * - 挂载（document.body + position:fixed，React/编辑器宿主重建后自愈）
- * - 定位（选区起点上方 8px，translate(-50%,-100%)，水平/垂直钳制在视口内）
- * - 滚动/重排自愈（rAF 帧循环 + document 捕获阶段滚动监听）
+ * - 挂载（`mount` 给出宿主元素时挂宿主并按容器坐标定位；为 null 时挂
+ *   document.body + position:fixed。React/编辑器宿主重建后由 `ensureMounted` 自愈）
+ * - 定位（选区起点上方 8px，translate(-50%,-100%)，水平/垂直钳制在参照框内）
  * - 关闭语义（focusout 焦点真正离开、Escape 由编辑器侧主动通知）
+ *
+ * 定位驱动是同步的：编辑器侧在自身事务/update 时机调用 `sync(visible, coords)`；
+ * 滚动与 rAF 重定位归编辑器侧所有（CodeMirror 禁止在 dispatch 期间读布局，
+ * 由其适配器推迟到 rAF；ProseMirror 由 document 捕获阶段滚动监听驱动重 sync）。
  *
  * 宿主**不**感知编辑器类型：编辑器侧只负责把「当前是否可见」与「锚点视口坐标」
  * 推给宿主（`sync(visible, coords)`），由宿主决定要不要移动 DOM。
@@ -194,12 +198,10 @@ export function createSelectionToolbarHost(
 
   const ensureMounted = () => {
     if (destroyed) return;
-    if (dom.ownerDocument !== document) {
-      document.body.append(dom);
-    } else if (mountTarget && dom.parentElement !== mountTarget) {
-      mountTarget.append(dom);
-    } else if (!mountTarget && dom.parentElement !== document.body) {
-      document.body.append(dom);
+    // 编辑器宿主可能被 React 重建：挂点失效时回退 document.body，保证工具栏存续。
+    const desiredParent = mountTarget ?? document.body;
+    if (dom.ownerDocument !== document || dom.parentElement !== desiredParent) {
+      desiredParent.append(dom);
     }
     dom.style.position = coordinateSpace === 'viewport' ? 'fixed' : 'absolute';
   };

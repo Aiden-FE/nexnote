@@ -9,10 +9,6 @@ function makeActions(): BubbleAction[] {
   ];
 }
 
-function flushRaf(): Promise<void> {
-  return new Promise((resolve) => requestAnimationFrame(() => resolve()));
-}
-
 describe('划词工具栏宿主（DEV-ARCH-001）', () => {
   beforeEach(() => {
     document.body.innerHTML = '';
@@ -22,7 +18,7 @@ describe('划词工具栏宿主（DEV-ARCH-001）', () => {
     document.body.innerHTML = '';
   });
 
-  it('默认隐藏；sync(visible=true, coords) 后显示并定位到选区上方', async () => {
+  it('默认隐藏；sync(visible=true, coords) 后显示并定位到选区上方', () => {
     const onAction = vi.fn();
     const host = createSelectionToolbarHost({
       actions: makeActions(),
@@ -41,7 +37,7 @@ describe('划词工具栏宿主（DEV-ARCH-001）', () => {
     // translate(-50%, -100%) 保证显示在选区上方
     expect(host.dom.style.transform).toBe('translate(-50%, -100%)');
 
-    await flushRaf();
+    // sync 同步完成定位（host 无 rAF；滚动/rAF 归编辑器侧）。
     expect(host.dom.style.top).not.toBe('');
     expect(host.dom.style.left).not.toBe('');
 

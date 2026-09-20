@@ -2,6 +2,7 @@ import type { Extension } from '@codemirror/state';
 import { type EditorView, ViewPlugin, type ViewUpdate } from '@codemirror/view';
 import {
   createSelectionToolbarHost,
+  dispatchBubbleShortcut,
   type SelectionToolbarHost,
   type BubbleAiMenuOptions,
   type BubbleExtraControl,
@@ -135,27 +136,9 @@ export function sourceSelectionBubble(options: SourceBubbleOptions): Extension {
         const eventFromBubble = this.host.dom.contains(event.target as Node | null);
         if (eventFromBubble) return;
         const shortcutActions = [...options.actions, ...(options.aiMenu?.actions ?? [])];
-        // 复用内核快捷键分发；不再重复 matchesBubbleShortcut/dispatchBubbleShortcut 实现
-        for (const action of shortcutActions) {
-          const sc = action.shortcut;
-          if (!sc) continue;
-          const modOk = sc.mod ? event.metaKey || event.ctrlKey : true;
-          const altOk = sc.alt ? event.altKey : !event.altKey;
-          const shiftOk = sc.shift ? event.shiftKey : !event.shiftKey;
-          if (
-            modOk &&
-            altOk &&
-            shiftOk &&
-            event.key.toLowerCase() === sc.key.toLowerCase()
-          ) {
-            // 命中即吞下事件（避免与编辑器自身快捷键冲突）；disabled 时仍 preventDefault 但不触发。
-            event.preventDefault();
-            const disabled =
-              typeof action.disabled === 'function' ? action.disabled() : (action.disabled ?? false);
-            if (disabled) return;
-            this.emitAction(action.id);
-            return;
-          }
+        // 复用内核快捷键分发：命中即吞事件；disabled 动作同样被消费但不触发。
+        if (dispatchBubbleShortcut(event, shortcutActions, (id) => this.emitAction(id))) {
+          return true;
         }
         if (event.key === 'Escape' && this.visible) {
           event.preventDefault();

@@ -1,3 +1,11 @@
+/**
+ * 划词工具栏共享 DOM 构造（DEV-ARCH-001）：块编辑（PM）与源码（CM）两条
+ * 编辑器路径共用的按钮装饰、Tooltip 与 AI 下拉菜单。
+ *
+ * 只持有「从 BubbleAction 描述构造安全 DOM」的逻辑；挂载、定位与可见性归
+ * `selection-toolbar-host.ts`，编辑器状态翻译归两侧适配器。
+ */
+
 import type { BubbleIconName, BubbleIconRenderer } from './selection-bubble-icons';
 
 export type { BubbleIconRenderer } from './selection-bubble-icons';
