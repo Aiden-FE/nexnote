@@ -9,9 +9,11 @@ import {
   moveSelectionBubbleToolbarFocus,
   refreshBubbleButton,
   syncSelectionBubbleToolbarTabStop,
+  defaultBubbleIconRenderer,
   type BubbleAiMenuOptions,
   type BubbleAiMenuView,
   type BubbleExtraControl,
+  type BubbleIconRenderer,
 } from '@nexnote/kernel';
 import { AI_ACTION_PREFIX } from '../../features/ai/writing/actions';
 import type { BubbleAction } from '@nexnote/kernel';
@@ -26,6 +28,8 @@ import type { BubbleAction } from '@nexnote/kernel';
  * - 复用 .nexnote-selection-bubble 样式（暗色经 CSS 变量自动适配）
  * - DEV-034：AI 动作经共享 AI 下拉收口（createBubbleAiMenu，与块编辑同一键盘语义），
  *   生成中的停止控件由渲染层经 extraControl 注入
+ * - DEV-063：图标由内核共享 SVG icon renderer 提供（与 PM selection bubble 同一实例），
+ *   保证两模式图标视觉一致
  */
 
 export type SourceBubbleAction = BubbleAction;
@@ -46,6 +50,11 @@ export interface SourceBubbleOptions {
   aiMenu?: BubbleAiMenuOptions;
   /** 附加控件（如生成中的停止按钮） */
   extraControl?: BubbleExtraControl;
+  /**
+   * 图标渲染器（DEV-063）：与块编辑模式 PM selection bubble 共用同一实例。
+   * 缺省走内核默认 renderer（lucide-react 1.41 几何数据，与顶部工具栏同源）。
+   */
+  iconRenderer?: BubbleIconRenderer;
   /** 所属源码编辑器当前是否允许显示划词 UI（预览视图返回 false）。 */
   isEnabled?: () => boolean;
   /**
@@ -83,13 +92,16 @@ export function sourceSelectionBubble(options: SourceBubbleOptions): Extension {
       private rafId: number | null = null;
       private readonly aiMenu: BubbleAiMenuView | null;
       private readonly disposeRoving: () => void;
+      private readonly renderer: BubbleIconRenderer;
 
       constructor(readonly view: EditorView) {
+        this.renderer = options.iconRenderer ?? defaultBubbleIconRenderer;
         this.dom = this.createDom();
         this.aiMenu = options.aiMenu
           ? createBubbleAiMenu(
               BUBBLE_CLASS,
               options.aiMenu,
+              this.renderer,
               (id) => this.emitAction(id),
               () => this.view.focus(),
             )
@@ -285,7 +297,7 @@ export function sourceSelectionBubble(options: SourceBubbleOptions): Extension {
           btn.type = 'button';
           btn.className = `${BUBBLE_CLASS}__action`;
           btn.dataset.bubbleAction = action.id;
-          decorateBubbleButton(btn, BUBBLE_CLASS, action);
+          decorateBubbleButton(btn, BUBBLE_CLASS, action, this.renderer);
           btn.addEventListener('mousedown', (e) => {
             // 阻止 mousedown 抢夺编辑器选区
             e.preventDefault();

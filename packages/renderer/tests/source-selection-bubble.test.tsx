@@ -1032,6 +1032,185 @@ describe('DEV-034 划词工具栏 AI 下拉（源码模式）', () => {
   });
 });
 
+describe('DEV-063 划词工具栏 Lucide SVG 图标管线', () => {
+  it('bold/italic/strike/code/link/sparkles/stop 全部使用 SVG namespace 与 lucide 几何', () => {
+    const { parent, editor } = mount('第一句原文。第二句。');
+    selectWithCoords(editor, parent, 0, 6, { top: 300, left: 100, right: 120, bottom: 320 });
+    const bubble = bubbleOf();
+    const strike = bubble.querySelector<HTMLElement>('[data-icon="strike"]')!;
+    const strikeSvg = strike.querySelector('svg')!;
+    expect(strikeSvg.namespaceURI).toBe('http://www.w3.org/2000/svg');
+    expect(strikeSvg.getAttribute('viewBox')).toBe('0 0 24 24');
+    const strikeLine = strikeSvg.querySelector('line');
+    expect(strikeLine?.getAttribute('x1')).toBe('4');
+    expect(strikeLine?.getAttribute('x2')).toBe('20');
+    expect(strikeSvg.querySelectorAll('path')).toHaveLength(2);
+    expect(strike.textContent?.trim()).toBe('');
+
+    const sparkles = bubble.querySelector<HTMLElement>('[data-icon="sparkles"]')!;
+    const sparklesSvg = sparkles.querySelector('svg')!;
+    expect(sparklesSvg.namespaceURI).toBe('http://www.w3.org/2000/svg');
+    expect(sparklesSvg.querySelectorAll('path').length + sparklesSvg.querySelectorAll('circle').length).toBeGreaterThanOrEqual(3);
+
+    const stop = bubble.querySelector<HTMLElement>('[data-icon="stop"]')!;
+    const stopSvg = stop.querySelector('svg')!;
+    expect(stopSvg.namespaceURI).toBe('http://www.w3.org/2000/svg');
+    expect(stopSvg.querySelector('rect')?.getAttribute('rx')).toBe('2');
+
+    // bold/italic/code/link 共享同一命名空间 + viewBox，节点结构来自 lucide 单图标数据
+    for (const name of ['bold', 'italic', 'code', 'link']) {
+      const node = bubble.querySelector<HTMLElement>(`[data-icon="${name}"]`)!;
+      const svg = node.querySelector('svg')!;
+      expect(svg.namespaceURI, name).toBe('http://www.w3.org/2000/svg');
+      expect(svg.getAttribute('viewBox'), name).toBe('0 0 24 24');
+    }
+    // wikilink 没有官方对应：保留紧凑文字表达并居中（与顶部 [[]] 视觉一致）
+    const wikilink = bubble.querySelector<HTMLElement>('[data-icon="wikilink"]')!;
+    expect(wikilink.querySelector('svg')).toBeNull();
+    expect(wikilink.textContent).toBe('[[]]');
+    editor.destroy();
+  });
+
+  it('AI 下拉箭头为 ChevronDown SVG 且与 AI 标签、Sparkles 垂直对齐', () => {
+    const { parent, editor } = mount('第一句原文。第二句。');
+    selectWithCoords(editor, parent, 0, 6, { top: 300, left: 100, right: 120, bottom: 320 });
+    const bubble = bubbleOf();
+    const trigger = bubble.querySelector<HTMLButtonElement>('[data-bubble-action="ai:menu"]')!;
+    const sparkles = trigger.querySelector<HTMLElement>('[data-icon="sparkles"]')!;
+    const label = trigger.querySelector<HTMLElement>('.nexnote-selection-bubble__ai-label')!;
+    const chevron = trigger.querySelector<HTMLElement>('[data-icon="chevron-down"]')!;
+    expect(chevron.querySelector('svg')?.namespaceURI).toBe('http://www.w3.org/2000/svg');
+    expect(chevron.querySelector('svg path')?.getAttribute('d')).toBe('m6 9 6 6 6-6');
+    expect(chevron.textContent?.trim()).toBe('');
+
+    // 显式父级布局：trigger 自身 inline-flex，子项居中即整体居中
+    const triggerStyle = (trigger as HTMLElement).style;
+    expect(triggerStyle.display === '' || /flex|inline-flex/.test(triggerStyle.display)).toBe(true);
+    const sparklesRect = sparkles.getBoundingClientRect();
+    const labelRect = label.getBoundingClientRect();
+    const chevronRect = chevron.getBoundingClientRect();
+    // 子项几何中心与 trigger 行内中心一致 ⇒ AI 项视觉上居中
+    expect(Math.abs((sparklesRect.top + sparklesRect.bottom) / 2 - (labelRect.top + labelRect.bottom) / 2)).toBeLessThanOrEqual(2);
+    expect(Math.abs((chevronRect.top + chevronRect.bottom) / 2 - (labelRect.top + labelRect.bottom) / 2)).toBeLessThanOrEqual(2);
+    editor.destroy();
+  });
+
+  it('源码模式与块编辑使用同一 renderer：两模式调用的 icon 序列与 DOM data-icon 完全一致', () => {
+    const sourceUsed: string[] = [];
+    const source: BubbleIconNameSpy = (icon) => {
+      sourceUsed.push(icon);
+      return null;
+    };
+    const { parent, editor } = mountWithIconSpy(source);
+    selectWithCoords(editor, parent, 0, 6, { top: 300, left: 100, right: 120, bottom: 320 });
+    const sourceBubble = bubbleOf();
+    const sourceNames = Array.from(sourceBubble.querySelectorAll<HTMLElement>('[data-icon]')).map(
+      (el) => el.dataset.icon,
+    );
+    editor.destroy();
+
+    const blockUsed: string[] = [];
+    const block: BubbleIconNameSpy = (icon) => {
+      blockUsed.push(icon);
+      return null;
+    };
+    const host = document.createElement('div');
+    document.body.append(host);
+    const kernel = createEditor(host, {
+      initialMarkdown: '第一句原文。第二句。',
+      slashMenu: false,
+      dragHandle: false,
+      selectionBubble: {
+        actions: formatBubbleActions(),
+        aiMenu: { label: 'AI', actions: writingAiMenuActions() },
+        extraControl: writingStopControl(),
+        iconRenderer: block,
+        onAction: () => undefined,
+      },
+    });
+    const doc = kernel.editor.view.state.doc;
+    kernel.editor.view.dispatch(
+      kernel.editor.view.state.tr.setSelection(TextSelection.create(doc, 1, 6)),
+    );
+    const blockBubble = host.querySelector<HTMLElement>('[data-selection-bubble]')!;
+    const blockNames = Array.from(blockBubble.querySelectorAll<HTMLElement>('[data-icon]')).map(
+      (el) => el.dataset.icon,
+    );
+    kernel.destroy();
+
+    expect(sourceUsed).toEqual(blockUsed);
+    expect(sourceNames).toEqual(blockNames);
+    expect(sourceUsed.length).toBeGreaterThan(0);
+  });
+
+  it('默认 renderer 路径：源码模式与块编辑关键图标 SVG 命名空间与 viewBox 一致', () => {
+    const iconSvg = (bubble: HTMLElement, icon: string): SVGSVGElement | null =>
+      bubble.querySelector<HTMLElement>(`[data-icon="${icon}"]`)?.querySelector('svg') ?? null;
+
+    const { parent, editor } = mount('第一句原文。第二句。');
+    selectWithCoords(editor, parent, 0, 6, { top: 300, left: 100, right: 120, bottom: 320 });
+    const sourceBubble = bubbleOf();
+
+    const host = document.createElement('div');
+    document.body.append(host);
+    const kernel = createEditor(host, {
+      initialMarkdown: '第一句原文。第二句。',
+      slashMenu: false,
+      dragHandle: false,
+      selectionBubble: {
+        actions: formatBubbleActions(),
+        aiMenu: { label: 'AI', actions: writingAiMenuActions() },
+        extraControl: writingStopControl(),
+        onAction: () => undefined,
+      },
+    });
+    kernel.editor.view.dispatch(
+      kernel.editor.view.state.tr.setSelection(
+        TextSelection.create(kernel.editor.view.state.doc, 1, 6),
+      ),
+    );
+    const blockBubble = host.querySelector<HTMLElement>('[data-selection-bubble]')!;
+
+    for (const bubble of [sourceBubble, blockBubble]) {
+      const strike = iconSvg(bubble, 'strike');
+      expect(strike?.namespaceURI).toBe('http://www.w3.org/2000/svg');
+      expect(strike?.getAttribute('viewBox')).toBe('0 0 24 24');
+      const chevron = iconSvg(bubble, 'chevron-down');
+      expect(chevron?.namespaceURI).toBe('http://www.w3.org/2000/svg');
+      expect(chevron?.querySelector('path')?.getAttribute('d')).toBe('m6 9 6 6 6-6');
+      const stop = iconSvg(bubble, 'stop');
+      expect(stop?.namespaceURI).toBe('http://www.w3.org/2000/svg');
+    }
+    editor.destroy();
+    kernel.destroy();
+  });
+});
+
+type BubbleIconNameSpy = (
+  icon: string,
+) => SVGElement | null;
+
+function mountWithIconSpy(spy: BubbleIconNameSpy) {
+  const parent = document.createElement('div');
+  document.body.append(parent);
+  parent.getBoundingClientRect = () =>
+    makeRect({ top: 0, left: 0, right: 800, bottom: 600, width: 800, height: 600 });
+  const editor: SourceEditorHandle = createSourceEditor(parent, {
+    initialText: '第一句原文。第二句。',
+    onChange: () => undefined,
+    extraExtensions: [
+      sourceSelectionBubble({
+        actions: sourceFormatBubbleActions(),
+        aiMenu: { label: 'AI', actions: writingAiMenuActions() },
+        extraControl: writingStopControl(),
+        iconRenderer: spy,
+        onAction: () => undefined,
+      }),
+    ],
+  });
+  return { parent, editor };
+}
+
 describe('DEV-034 两模式按钮集一致（源码 vs 块编辑）', () => {
   it('平铺动作与 AI 下拉动作完全一致（同一装配函数）', () => {
     // 源码模式实际装配

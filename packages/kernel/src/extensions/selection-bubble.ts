@@ -10,18 +10,22 @@ import {
   moveSelectionBubbleToolbarFocus,
   syncSelectionBubbleToolbarTabStop,
 } from './selection-bubble-roving';
+import {
+  defaultBubbleIconRenderer,
+  type BubbleIconRenderer,
+} from './selection-bubble-icons';
 
-/**
- * 选区浮动工具栏（框架无关 DOM 实现）。
- *
- * 非折叠文本选区时，在选区上方居中浮现工具条；按钮来自配置（渲染层注入六个 AI 动作）。
- * - mousedown 拦截以保留选区；点击触发 onAction(id, ctx)（ctx.target = selection）
- * - 快捷键：mod(+alt)+<key> 且选区非折叠时触发同一动作
- * - 折叠选区 / 编辑器失焦 / 选区为空时隐藏
- */
+export type { BubbleIconRenderer } from './selection-bubble-icons';
 
 export type BubbleIconName =
-  'bold' | 'italic' | 'strike' | 'code' | 'link' | 'wikilink' | 'sparkles' | 'stop';
+  | 'bold'
+  | 'italic'
+  | 'strike'
+  | 'code'
+  | 'link'
+  | 'wikilink'
+  | 'sparkles'
+  | 'stop';
 
 export interface BubbleAction {
   id: string;
@@ -51,6 +55,12 @@ export interface SelectionBubbleOptions {
   actions: BubbleAction[];
   aiMenu?: BubbleAiMenuOptions;
   extraControl?: BubbleExtraControl;
+  /**
+   * 图标渲染器（DEV-063）：把语义名解析为 SVG 节点。缺省走 `defaultBubbleIconRenderer`
+   * （lucide-react 1.41 同版本几何数据）；未匹配的几何（如 wikilink）由 fallback 文字表达。
+   * 渲染层如需自定义，可在创建 extension 时注入同一实例，使 PM 与 CodeMirror 工具栏视觉一致。
+   */
+  iconRenderer?: BubbleIconRenderer;
   onAction: (id: string, ctx: EditorActionContext) => void;
   className: string;
 }
@@ -85,11 +95,32 @@ function bubbleTooltipText(action: BubbleAction): string {
   return reason ? `${label} — ${reason}` : label;
 }
 
-function createBubbleIcon(className: string, icon: BubbleIconName): HTMLSpanElement {
+/**
+ * 创建图标容器（DEV-063）。
+ * - 优先调用 `renderer` 解析语义名为 SVG；命中后 SVG 直接挂载。
+ * - renderer 未命中（如 wikilink 没有 lucide 对应）回退到紧凑文字表达，保留 data-icon 语义。
+ * - 永不设置 innerHTML；只通过 document.createElementNS / setAttribute / textContent。
+ */
+function createBubbleIcon(
+  className: string,
+  icon: BubbleIconName | 'chevron-down',
+  renderer: BubbleIconRenderer,
+): HTMLSpanElement {
   const span = document.createElement('span');
   span.className = `${className}__icon`;
   span.dataset.icon = icon;
   span.setAttribute('aria-hidden', 'true');
+  const svg = renderer(icon);
+  if (svg) {
+    span.append(svg);
+    return span;
+  }
+  if (icon === 'wikilink') {
+    span.classList.add(`${className}__icon--fallback`);
+    span.textContent = '[[]]';
+  } else {
+    span.textContent = '•';
+  }
   return span;
 }
 
@@ -137,10 +168,11 @@ export function decorateBubbleButton(
   button: HTMLButtonElement,
   className: string,
   action: BubbleAction,
+  renderer: BubbleIconRenderer,
   options: { menuItem?: boolean; tooltip?: boolean } = {},
 ): void {
   refreshBubbleButton(button, action);
-  if (action.icon) button.append(createBubbleIcon(className, action.icon));
+  if (action.icon) button.append(createBubbleIcon(className, action.icon, renderer));
   if (!action.icon || options.menuItem) {
     const label = document.createElement('span');
     label.className = `${className}__label`;
@@ -155,6 +187,7 @@ export function decorateBubbleButton(
 export function createBubbleAiMenu(
   className: string,
   options: BubbleAiMenuOptions,
+  renderer: BubbleIconRenderer,
   onTrigger: (id: string) => void,
   restoreEditorFocus?: () => void,
 ): BubbleAiMenuView {
@@ -169,14 +202,12 @@ export function createBubbleAiMenu(
   trigger.setAttribute('aria-haspopup', 'menu');
   trigger.setAttribute('aria-expanded', 'false');
   trigger.setAttribute('aria-label', 'AI 菜单');
-  trigger.append(createBubbleIcon(className, 'sparkles'));
+  trigger.append(createBubbleIcon(className, 'sparkles', renderer));
   const triggerLabel = document.createElement('span');
   triggerLabel.className = `${className}__ai-label`;
   triggerLabel.textContent = options.label ?? 'AI';
-  const chevron = document.createElement('span');
-  chevron.className = `${className}__chevron`;
-  chevron.setAttribute('aria-hidden', 'true');
-  chevron.textContent = '⌄';
+  const chevron = createBubbleIcon(className, 'chevron-down', renderer);
+  chevron.classList.add(`${className}__chevron`);
   trigger.append(triggerLabel, chevron);
   const triggerTooltip = attachBubbleTooltip(trigger, className, () => 'AI 写作、询问与翻译');
 
@@ -196,7 +227,7 @@ export function createBubbleAiMenu(
     item.className = `${className}__ai-item`;
     item.dataset.aiMenuAction = action.id;
     item.setAttribute('role', 'menuitem');
-    decorateBubbleButton(item, className, action, { menuItem: true, tooltip: false });
+    decorateBubbleButton(item, className, action, renderer, { menuItem: true, tooltip: false });
     item.tabIndex = -1;
     const hint = action.shortcutLabel ?? action.hint;
     if (hint) {
@@ -222,7 +253,8 @@ export function createBubbleAiMenu(
     menu.append(item);
   }
 
-  const enabledItems = () => items.filter((item) => item.getAttribute('aria-disabled') !== 'true');
+  const enabledItems = () =>
+    items.filter((item) => item.getAttribute('aria-disabled') !== 'true');
   const focusItem = (index: number) => {
     const enabled = enabledItems();
     enabled[(index + enabled.length) % enabled.length]?.focus();
@@ -318,6 +350,7 @@ function createBubbleDom(
   actions: BubbleAction[],
   aiMenuOptions: BubbleAiMenuOptions | undefined,
   extraControl: BubbleExtraControl | undefined,
+  renderer: BubbleIconRenderer,
   onTrigger: (id: string) => void,
   onDismiss: (options?: { focusEditor?: boolean }) => void,
   restoreEditorFocus: () => void,
@@ -336,7 +369,7 @@ function createBubbleDom(
     btn.type = 'button';
     btn.className = `${className}__action`;
     btn.dataset.bubbleAction = action.id;
-    decorateBubbleButton(btn, className, action);
+    decorateBubbleButton(btn, className, action, renderer);
     btn.addEventListener('mousedown', (e) => {
       // 阻止 mousedown 抢夺编辑器选区
       e.preventDefault();
@@ -350,7 +383,7 @@ function createBubbleDom(
   }
 
   const aiMenu = aiMenuOptions
-    ? createBubbleAiMenu(className, aiMenuOptions, onTrigger, restoreEditorFocus)
+    ? createBubbleAiMenu(className, aiMenuOptions, renderer, onTrigger, restoreEditorFocus)
     : null;
   if (aiMenu) dom.append(aiMenu.dom);
   if (extraControl) dom.append(extraControl.dom);
@@ -452,6 +485,7 @@ export const SelectionBubble = Extension.create<SelectionBubbleOptions, { visibl
             ext.options.actions,
             ext.options.aiMenu,
             ext.options.extraControl,
+            ext.options.iconRenderer ?? defaultBubbleIconRenderer,
             (id) => trigger(editorView, id),
             (options) => {
               manuallyDismissed = true;

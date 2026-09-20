@@ -95,6 +95,64 @@ describe('computeEditorActionContext', () => {
 });
 
 describe('选区浮动工具栏（SelectionBubble）', () => {
+  it('支持框架无关 icon renderer 注入并保留 data-icon，未注入时保留 lucide fallback', () => {
+    const rendered: string[] = [];
+    const { container, kernel } = mount('第一段示例文字', {
+      selectionBubble: {
+        actions: [{ id: 'format:strike', title: '删除线', icon: 'strike' }],
+        aiMenu: { label: 'AI', actions: [] },
+        iconRenderer: (icon) => {
+          rendered.push(icon);
+          const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+          svg.setAttribute('viewBox', '0 0 24 24');
+          return svg;
+        },
+        onAction: vi.fn(),
+      },
+    });
+    // 触发可见 bubble（需非折叠选区）
+    kernel.editor.view.dispatch(
+      kernel.editor.view.state.tr.setSelection(
+        TextSelection.create(kernel.editor.view.state.doc, 1, 4),
+      ),
+    );
+    const bubble = container.querySelector<HTMLElement>('[data-selection-bubble]')!;
+    const strike = bubble.querySelector<HTMLElement>('[data-icon="strike"]')!;
+    const sparkles = bubble.querySelector<HTMLElement>('[data-icon="sparkles"]')!;
+    const chevron = bubble.querySelector<HTMLElement>('[data-icon="chevron-down"]')!;
+    expect(rendered).toEqual(expect.arrayContaining(['strike', 'sparkles', 'chevron-down']));
+    for (const icon of [strike, sparkles, chevron]) {
+      const svg = icon.querySelector('svg')!;
+      expect(svg.namespaceURI).toBe('http://www.w3.org/2000/svg');
+      expect(svg.getAttribute('viewBox')).toBe('0 0 24 24');
+    }
+    kernel.destroy();
+
+    // 未注入 renderer：默认 lucide renderer 仍生效；wikilink 没有 lucide 对应会走文字 fallback
+    const fallback = mount('第二段示例文字', {
+      selectionBubble: {
+        actions: [
+          { id: 'format:bold', title: '粗体', icon: 'bold' },
+          { id: 'format:wikilink', title: '双链', icon: 'wikilink' },
+        ],
+        aiMenu: { label: 'AI', actions: [] },
+        onAction: vi.fn(),
+      },
+    });
+    fallback.kernel.editor.view.dispatch(
+      fallback.kernel.editor.view.state.tr.setSelection(
+        TextSelection.create(fallback.kernel.editor.view.state.doc, 1, 4),
+      ),
+    );
+    const fallbackBubble = fallback.container.querySelector<HTMLElement>('[data-selection-bubble]')!;
+    const boldIcon = fallbackBubble.querySelector<HTMLElement>('[data-icon="bold"]')!;
+    expect(boldIcon.querySelector('svg')?.namespaceURI).toBe('http://www.w3.org/2000/svg');
+    const wikiIcon = fallbackBubble.querySelector<HTMLElement>('[data-icon="wikilink"]')!;
+    expect(wikiIcon.classList.contains('nexnote-selection-bubble__icon--fallback')).toBe(true);
+    expect(wikiIcon.textContent).toBe('[[]]');
+    fallback.kernel.destroy();
+  });
+
   it('非折叠选区出现工具栏，点击按钮触发对应动作且保留选区', () => {
     const onAction = vi.fn();
     const { kernel } = mount('这是第一段的示例文字\n\n第二段', {

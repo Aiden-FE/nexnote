@@ -28,6 +28,7 @@ import {
 import { pluginQuickInsertMetadata } from '@nexnote/shared';
 import { getActiveSourceEditor, registerSourceEditor } from './active-source-editor';
 import { sourceSelectionBubble } from './source-bubble';
+import { selectionBubbleIconRenderer } from '../bubble-icons';
 import { applySourceFormat, sourceFormatBubbleActions } from './source-formatting';
 import { handleSourceBubbleAction, openSourceCursorInsertSession } from './source-ai-assist';
 import type { SourceBubbleContext } from './source-bubble';
@@ -607,6 +608,8 @@ export function SourceModeView({ tab }: { tab: TabDescriptor }) {
           actions: sourceFormatBubbleActions(),
           aiMenu: { label: 'AI', actions: writingAiMenuActions() },
           extraControl: writingStopControl(),
+          // DEV-063：与块编辑共用同一 icon renderer
+          iconRenderer: selectionBubbleIconRenderer,
           isEnabled: () => !previewOnlyRef.current,
           // 选区消失（折叠/空文本）时关闭划词翻译浮层
           onSelectionLost: () => translationControllerRef.current?.closeSelection(),

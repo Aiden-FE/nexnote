@@ -73,9 +73,16 @@ export {
   decorateBubbleButton,
   refreshBubbleButton,
 } from './extensions/selection-bubble';
+export {
+  defaultBubbleIconRenderer,
+  buildLucideSvg,
+  SVG_NS,
+  LUCIDE_VIEWBOX,
+} from './extensions/selection-bubble-icons';
 export type {
   BubbleAction,
   BubbleIconName,
+  BubbleIconRenderer,
   BubbleAiMenuOptions,
   BubbleAiMenuView,
   BubbleExtraControl,
