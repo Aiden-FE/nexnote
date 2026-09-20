@@ -182,12 +182,63 @@ function literalAnchorParagraph(id: string): JSONContent {
   return { type: 'paragraph', content: [{ type: 'text', text: `^${id}` }] };
 }
 
+/** 单元格宿主节点：其内部段落/标题的 `^id` 字面文本视为污染，parse 时直接剥除。 */
+const isTableCellHost = (type: string | undefined): boolean =>
+  type === 'tableCell' || type === 'tableHeader';
+
+/** 单元格内段落末尾 `^id` 文本（Obsidian 单元格不支持块锚点；行尾形态要求锚点前有空白）。 */
+const CELL_TRAILING_ANCHOR_RE = new RegExp(`[ \\t]\\^(${BLOCK_ID_RE_SOURCE})[ \\t]*$`);
+/** 整段仅为 `^id` 的形态（空单元格污染，锚点前无空白）。 */
+const CELL_ONLY_ANCHOR_RE = new RegExp(`^[ \\t]*\\^(${BLOCK_ID_RE_SOURCE})[ \\t]*$`);
+
 /**
- * parse 后处理：占位符 → blockId 属性。
+ * 把段落最后一个文本节点的尾部 `^id`（若存在）剥掉；仅检查末位文本节点，
+ * 中部 `^alpha` 字面文本不受影响。
+ */
+function stripTrailingCellAnchor(paragraph: JSONContent): JSONContent {
+  const content = paragraph.content;
+  if (!Array.isArray(content) || content.length === 0) return paragraph;
+  const last = content[content.length - 1];
+  if (!isText(last)) return paragraph;
+  if (CELL_ONLY_ANCHOR_RE.test(last.text)) {
+    const head = content.slice(0, -1);
+    return { ...paragraph, content: head };
+  }
+  const stripped = last.text.replace(CELL_TRAILING_ANCHOR_RE, '');
+  if (stripped === last.text) return paragraph;
+  const next = content.slice();
+  if (stripped.length === 0) {
+    next.pop();
+  } else {
+    next[next.length - 1] = { ...last, text: stripped };
+  }
+  return { ...paragraph, content: next };
+}
+
+/** 递归剥除单元格宿主（tableCell/tableHeader）内段落末尾的 `^id` 字面文本与 blockId 属性。 */
+function stripCellAnchorsDeep(node: JSONContent, inCell: boolean): JSONContent {
+  const hostFlag = inCell || isTableCellHost(node.type);
+  if (!Array.isArray(node.content) || node.content.length === 0) {
+    return hostFlag ? { ...node, attrs: withoutBlockId(node.attrs) } : node;
+  }
+  const content = node.content.map((child) => {
+    let updated: JSONContent = stripCellAnchorsDeep(child, hostFlag);
+    if (hostFlag && child.type === 'paragraph') {
+      updated = stripTrailingCellAnchor(updated);
+    }
+    if (hostFlag) updated = { ...updated, attrs: withoutBlockId(updated.attrs) };
+    return updated;
+  });
+  return { ...node, content };
+}
+
+/**
+ * parse 后处理：占位符 → blockId 属性；表格单元格内字面 `^id` 文本 → 剥除（DEV-071 脏数据迁移）。
  */
 export function liftPlaceholdersToBlockIds(node: JSONContent): JSONContent {
-  const { content } = walkNodes(node.content ?? []);
-  return { ...node, content };
+  const walked = walkNodes(node.content ?? []);
+  const cleaned = stripCellAnchorsDeep({ ...node, content: walked.content }, false);
+  return cleaned;
 }
 
 function walkNodes(nodes: JSONContent[]): { content: JSONContent[] } {
@@ -283,14 +334,26 @@ function findAttachable(nodes: JSONContent[]): JSONContent | null {
  * - paragraph/heading → 内联末尾追加 ` \uFFF0id\uFFF1`
  * - listItem/taskItem → 注入第一个段落末尾
  * - codeBlock/table → 不注入（由 renderMarkdown 扩展追加独立 `^id` 行）
+ * - 表格单元格宿主内的段落/标题 → 不注入，剥除 blockId 属性（DEV-071）
  */
 export function injectPlaceholderForBlockIds(node: JSONContent): JSONContent {
-  if (!node.content) return stripIds(node);
+  return injectPlaceholderForBlockIdsInContext(node, false);
+}
+
+function injectPlaceholderForBlockIdsInContext(
+  node: JSONContent,
+  inCell: boolean,
+): JSONContent {
+  if (!node.content) return inCell ? stripIdsInCell(node) : stripIds(node);
+  const hostFlag = inCell || isTableCellHost(node.type);
   const content = node.content.map((child) => {
     let current: JSONContent = { ...child };
     const blockId = current.attrs?.blockId;
     if (typeof blockId === 'string' && blockId.length > 0) {
-      if (
+      if (hostFlag && (current.type === 'paragraph' || current.type === 'heading')) {
+        // 单元格宿主内的内联 ID 节点：不注入 `^id`，剥除属性，避免污染 Markdown。
+        current = { ...current, attrs: withoutBlockId(current.attrs) };
+      } else if (
         current.type === 'paragraph' &&
         (current.content ?? []).every((item) => isText(item) && item.text.trim().length === 0)
       ) {
@@ -304,9 +367,18 @@ export function injectPlaceholderForBlockIds(node: JSONContent): JSONContent {
       }
       // codeBlock/table 由 renderMarkdown 扩展处理，这里保留属性
     }
-    return injectPlaceholderForBlockIds(current);
+    return injectPlaceholderForBlockIdsInContext(current, hostFlag);
   });
   return { ...node, content };
+}
+
+/** 单元格宿主下的 stripIds：保留 blockId 不持久化（由内联宿主剥除）。 */
+function stripIdsInCell(node: JSONContent): JSONContent {
+  return {
+    ...node,
+    attrs: withoutBlockId(node.attrs),
+    content: node.content?.map((c) => injectPlaceholderForBlockIdsInContext(c, true)),
+  };
 }
 
 function withoutBlockId(
