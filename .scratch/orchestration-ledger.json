@@ -409,6 +409,20 @@
       "status": "open",
       "agent": null,
       "branch": "dev/DEV-065"
+    },
+    "DEV-066": {
+      "title": "设置页 Switch 启用态 thumb 视觉错乱修复",
+      "deps": [],
+      "status": "open",
+      "agent": null,
+      "branch": "dev/DEV-066"
+    },
+    "DEV-067": {
+      "title": "编辑器工具栏按钮 hover tooltip 可见性修复",
+      "deps": [],
+      "status": "open",
+      "agent": null,
+      "branch": "dev/DEV-067"
     }
   },
   "phase": "DEV-001~060 已完成；当前轮次 DEV-061~065（编辑器 UI 修正 + v0.0.18 发布）进行中",
