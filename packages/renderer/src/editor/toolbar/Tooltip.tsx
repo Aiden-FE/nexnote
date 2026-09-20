@@ -1,4 +1,12 @@
-import { cloneElement, useEffect, useId, useState, type ReactElement } from 'react';
+import {
+  cloneElement,
+  useEffect,
+  useId,
+  useState,
+  type FocusEvent,
+  type PointerEvent,
+  type ReactElement,
+} from 'react';
 
 export interface ToolbarTooltipProps {
   text: string;
@@ -23,13 +31,19 @@ export function ToolbarTooltip({ text, children }: ToolbarTooltipProps) {
     <span
       className="relative inline-flex shrink-0"
       onPointerEnter={() => setOpen(true)}
-      onPointerLeave={() => setOpen(false)}
+      onPointerLeave={(event: PointerEvent<HTMLElement>) => {
+        if (!event.currentTarget.contains(event.relatedTarget as Node | null)) setOpen(false);
+      }}
       onFocusCapture={() => setOpen(true)}
-      onBlurCapture={(event) => {
+      onBlurCapture={(event: FocusEvent<HTMLElement>) => {
         if (!event.currentTarget.contains(event.relatedTarget as Node | null)) setOpen(false);
       }}
     >
-      {cloneElement(children, { 'aria-describedby': open ? id : undefined })}
+      {cloneElement(children, {
+        onPointerEnter: () => setOpen(true),
+        onFocus: () => setOpen(true),
+        'aria-describedby': open ? id : undefined,
+      })}
       {open && (
         <span
           id={id}

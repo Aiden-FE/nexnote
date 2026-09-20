@@ -508,7 +508,7 @@ export async function runSmokeIfEnabled(): Promise<void> {
               Array.from(blockBubble.querySelectorAll<HTMLElement>('[data-ai-menu-action]'))
                 .map((el) => el.dataset.aiMenuAction)
                 .join(',') ===
-                'ai:rewrite,ai:polish,ai:condense,ai:expand,ai:fillgaps,ai:evidence,chat:ask-selection,translate:selection',
+                'ai:rewrite,ai:polish,ai:condense,ai:expand,ai:fillgaps,ai:evidence,chat:ask-selection,translate:selection,translate:workbench',
           );
           blockTrigger?.dispatchEvent(
             new KeyboardEvent('keydown', { key: 'ArrowDown', bubbles: true, cancelable: true }),
@@ -1401,7 +1401,7 @@ export async function runSmokeIfEnabled(): Promise<void> {
       sourceMenu()?.hidden === false &&
         sourceTrigger()?.getAttribute('aria-expanded') === 'true' &&
         aiMenuIds().join(',') ===
-          'ai:rewrite,ai:polish,ai:condense,ai:expand,ai:fillgaps,ai:evidence,chat:ask-selection,translate:selection' &&
+          'ai:rewrite,ai:polish,ai:condense,ai:expand,ai:fillgaps,ai:evidence,chat:ask-selection,translate:selection,translate:workbench' &&
         (sourceMenu()?.textContent ?? '').includes('⌘⌥R'),
     );
     const sourceAiMenuItem = sourceMenu()?.querySelector<HTMLElement>('[data-ai-menu-action]');
@@ -2816,28 +2816,53 @@ export async function runSmokeIfEnabled(): Promise<void> {
         Math.round(rect.left + rect.width / 2),
         Math.round(rect.top + rect.height / 2),
       );
-      await sleep(150);
+      sourceAi.focus({ preventScroll: true });
+      await sleep(250);
     }
+    // Toolbar state can re-render the trigger after focus/hover; re-discover the
+    // current node and replay the trusted pointer/focus sequence on that node.
+    let currentSourceAi = sourceToolbar?.querySelector<HTMLButtonElement>(
+      '[data-testid="toolbar-entry-ai"]',
+    );
+    if (currentSourceAi) {
+      const rect = currentSourceAi.getBoundingClientRect();
+      await bridge.hoverAtPoint(
+        Math.round(rect.left + rect.width / 2),
+        Math.round(rect.top + rect.height / 2),
+      );
+      currentSourceAi.focus({ preventScroll: true });
+      await sleep(250);
+      currentSourceAi =
+        sourceToolbar?.querySelector<HTMLButtonElement>('[data-testid="toolbar-entry-ai"]') ??
+        currentSourceAi;
+    }
+    const tooltipId = currentSourceAi?.getAttribute('aria-describedby');
+    const tooltip = tooltipId ? document.getElementById(tooltipId) : null;
+    const activeToolbarAi =
+      document.activeElement?.getAttribute('data-testid') === 'toolbar-entry-ai';
     check(
       'Icon-first 工具栏：AI 为 Sparkles + AI + chevron，Tooltip 与 accessible name 可达',
-      !!sourceAi &&
-        sourceAi.getAttribute('aria-label') === 'AI' &&
-        (sourceAi.textContent ?? '').includes('AI') &&
-        !!sourceAi.querySelector('svg') &&
-        !!sourceAi.querySelector('svg.lucide-chevron-down') &&
-        sourceAi.matches(':focus-visible, :focus') &&
-        (await waitFor(
-          () =>
-            !!sourceAi.getAttribute('aria-describedby') &&
-            !!document.getElementById(sourceAi.getAttribute('aria-describedby') ?? '') &&
-            document
-              .getElementById(sourceAi.getAttribute('aria-describedby') ?? '')
-              ?.getAttribute('role') === 'tooltip',
-        )) &&
+      !!currentSourceAi &&
+        currentSourceAi.getAttribute('aria-label') === 'AI' &&
+        (currentSourceAi.textContent ?? '').includes('AI') &&
+        !!currentSourceAi.querySelector('svg') &&
+        !!currentSourceAi.querySelector('svg.lucide-chevron-down') &&
+        activeToolbarAi &&
+        tooltip?.getAttribute('role') === 'tooltip' &&
         !!sourceToolbar?.querySelector('[data-testid="toolbar-entry-edit:undo"]') &&
         !!sourceToolbar?.querySelector('[data-testid="toolbar-entry-menu:format"]') &&
         !!sourceToolbar?.querySelector('[data-testid="toolbar-entry-menu:insert"]'),
-      sourceAi?.textContent ?? '(missing AI)',
+      currentSourceAi
+        ? JSON.stringify({
+            label: currentSourceAi.getAttribute('aria-label'),
+            active: document.activeElement?.getAttribute('data-testid'),
+            tooltipId,
+            tooltipRole: tooltip?.getAttribute('role'),
+            hasSvg: !!currentSourceAi.querySelector('svg'),
+            hasChevron: !!currentSourceAi.querySelector('svg.lucide-chevron-down'),
+            activeToolbarAi,
+          })
+        : '(missing AI)',
     );
     document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
 
