@@ -74,7 +74,7 @@ commandRegistry.register({
   },
 });
 
-// DEV-064：当前章节折叠 / 展开 / 切换快捷键 + 折叠到 H1/H2/H3 命令。
+// 当前章节折叠 / 展开 / 切换快捷键 + 折叠到 H1/H2/H3 命令。
 // 不提供无差别 Fold All，沿用 ADR-0013 边界：折叠必须明确指向章节或层级。
 commandRegistry.register({
   id: 'editor.foldCurrentSection',
@@ -111,7 +111,7 @@ commandRegistry.register({
 });
 
 for (const [id, title, level, keywords] of [
-  ['editor.foldToLevel1', '折叠到 H1', 1, ['fold', 'level', 'H1', '层级', '全部折叠']],
+  ['editor.foldToLevel1', '折叠到 H1', 1, ['fold', 'level', 'H1', '层级', '折叠到层级']],
   ['editor.foldToLevel2', '折叠到 H2', 2, ['fold', 'level', 'H2', '层级']],
   ['editor.foldToLevel3', '折叠到 H3', 3, ['fold', 'level', 'H3', '层级']],
 ] as const) {
