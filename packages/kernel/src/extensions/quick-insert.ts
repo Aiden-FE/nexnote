@@ -1,4 +1,4 @@
-import { Extension } from '@tiptap/core';
+import { Extension, isNodeActive } from '@tiptap/core';
 import { Plugin, PluginKey } from '@tiptap/pm/state';
 import { closeHistory } from '@tiptap/pm/history';
 import type { EditorView } from '@tiptap/pm/view';
@@ -19,6 +19,14 @@ import {
   type QuickInsertView,
 } from './menu-view';
 
+/** view → editor 注册表：表格命令需经 editor.commands 在 slash 提交后执行。 */
+const editorByView = new WeakMap<EditorView, import('@tiptap/core').Editor>();
+export function registerEditorView(view: EditorView, editor: import('@tiptap/core').Editor): void {
+  editorByView.set(view, editor);
+}
+export function getEditorForView(view: EditorView): import('@tiptap/core').Editor | undefined {
+  return editorByView.get(view);
+}
 export interface QuickInsertItem {
   id: string;
   title: string;
@@ -106,6 +114,8 @@ function triggerContext(view: EditorView, from: number): SlashExecutionContext |
       'editable-line',
       'explicit-ai',
       'plugin-defined',
+      // DEV-070：光标位于表格 cell 内时追加表格行列动作能力
+      ...(isNodeActive(view.state, 'table') ? (['table-cursor'] as const) : []),
       ...(emptyBlock ? (['empty-block'] as const) : []),
     ]),
   };
@@ -274,6 +284,7 @@ export const QuickInsert = Extension.create<QuickInsertOptions, SlashMenuState>(
           return;
         }
         view.dispatch(closeHistory(transaction.tr.scrollIntoView()));
+        for (const callback of afterSlashCommit) callback();
         close(view);
       } catch {
         // Keep original text after an action failure; the un-dispatched transaction is discarded.
@@ -304,6 +315,8 @@ export const QuickInsert = Extension.create<QuickInsertOptions, SlashMenuState>(
         key: slashMenuPluginKey,
         view(view) {
           menu = createQuickInsertView(extension.options.className);
+          // DEV-070：登记 view → editor，供 quick-insert-catalog 的表格动作调用 editor.commands
+          registerEditorView(view, extension.editor);
           menu.dom.addEventListener('mousedown', (event) => {
             event.preventDefault();
             const id = (event.target as HTMLElement).closest<HTMLElement>('[data-slash-item]')
