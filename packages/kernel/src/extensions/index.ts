@@ -24,6 +24,7 @@ import { Fold } from './fold';
 import { SelectionBubble } from './selection-bubble';
 import type { BubbleAction, BubbleAiMenuOptions, BubbleExtraControl, BubbleIconRenderer } from './selection-bubble';
 import { ContextMenu } from './context-menu';
+import { ListDev069 } from './list-dev069';
 import type { ContextMenuItem } from './context-menu';
 import { BlockMenu, blockMenuPluginKey } from './block-menu';
 import type { BlockMenuContext, BlockMenuState } from './block-menu';
@@ -100,6 +101,10 @@ export function buildKernelExtensions(options: KernelExtensionsOptions = {}): Ex
       link: false, // 由下方独立 Link 配置（支持 setLink/unsetLink 命令）
       trailingNode: {},
       undoRedo: { depth: 200, newGroupDelay: 400 },
+      orderedList: {
+        // DEV-069：合并相邻 <ol> 时保留 start 属性，删中间项后序号连续不重置
+        keepAttributes: true,
+      },
     }),
     Link.configure({
       openOnClick: false,
@@ -128,6 +133,7 @@ export function buildKernelExtensions(options: KernelExtensionsOptions = {}): Ex
     MathInline,
     Fold,
     ...createBlockIdExtensions(),
+    ListDev069,
     Markdown.configure({ marked: createObsidianMarked() }),
   ];
 
