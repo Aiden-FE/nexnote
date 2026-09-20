@@ -12,7 +12,12 @@ import {
   type SlashExecutionContext,
   type SlashExecutionContract,
 } from './slash-contract';
-import { createQuickInsertView, quickInsertCaretCoords, type QuickInsertView } from './menu-view';
+import {
+  createQuickInsertView,
+  positionQuickInsertMenu,
+  quickInsertCaretCoords,
+  type QuickInsertView,
+} from './menu-view';
 
 export interface QuickInsertItem {
   id: string;
@@ -130,9 +135,10 @@ export const QuickInsert = Extension.create<QuickInsertOptions, SlashMenuState>(
     const sync = (view: EditorView) => {
       if (!menu) return;
       if (extension.storage.open && !menu.dom.isConnected) view.dom.parentElement?.append(menu.dom);
-      if (extension.storage.open)
+      if (extension.storage.open) {
         menu.render({ ...extension.storage }, quickInsertCaretCoords(view));
-      else menu.hide();
+        positionQuickInsertMenu(view, menu.dom);
+      } else menu.hide();
     };
     const close = (view: EditorView) => {
       pendingInput = null;

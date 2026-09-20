@@ -1,5 +1,13 @@
 import type { EditorView } from '@tiptap/pm/view';
 import type { SlashMenuState } from './quick-insert';
+import {
+  applyMenuViewportPlacement,
+  findScrollViewport,
+  MENU_VIEWPORT_GAP,
+  readMenuHeight,
+  readMenuViewport,
+  scrollActiveMenuItemIntoView,
+} from './menu-viewport';
 
 export interface QuickInsertView {
   dom: HTMLDivElement;
@@ -17,7 +25,7 @@ export function createQuickInsertView(className: string): QuickInsertView {
   dom.dataset.testid = 'block-slash-menu';
   dom.setAttribute('role', 'listbox');
   dom.setAttribute('aria-label', '快捷插入动作');
-  dom.style.cssText = 'display:none;position:absolute;z-index:40';
+  dom.style.cssText = 'display:none;position:absolute;z-index:40;overflow-y:auto';
   return {
     dom,
     render(state, coords) {
@@ -94,6 +102,7 @@ export function createQuickInsertView(className: string): QuickInsertView {
       dom.style.display = state.open ? 'block' : 'none';
       dom.style.top = `${coords.top}px`;
       dom.style.left = `${coords.left}px`;
+      if (state.open && state.items.length) scrollActiveMenuItemIntoView(dom);
     },
     hide() {
       dom.style.display = 'none';
@@ -107,5 +116,22 @@ export function createQuickInsertView(className: string): QuickInsertView {
 export function quickInsertCaretCoords(view: EditorView): { top: number; left: number } {
   const rect = view.coordsAtPos(view.state.selection.from);
   const host = view.dom.parentElement?.getBoundingClientRect();
-  return { top: rect.bottom - (host?.top ?? 0) + 6, left: rect.left - (host?.left ?? 0) };
+  return {
+    top: rect.bottom - (host?.top ?? 0) + MENU_VIEWPORT_GAP,
+    left: rect.left - (host?.left ?? 0),
+  };
+}
+
+export function positionQuickInsertMenu(view: EditorView, dom: HTMLDivElement): void {
+  const host = view.dom.parentElement;
+  if (!host) return;
+  const rect = view.coordsAtPos(view.state.selection.from);
+  const viewport = findScrollViewport(view.dom);
+  applyMenuViewportPlacement({
+    menu: dom,
+    host,
+    anchor: { top: rect.top, bottom: rect.bottom, left: rect.left },
+    viewport: readMenuViewport(viewport),
+    desiredHeight: readMenuHeight(dom),
+  });
 }

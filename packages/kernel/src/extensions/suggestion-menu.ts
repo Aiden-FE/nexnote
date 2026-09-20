@@ -1,4 +1,11 @@
 import { Extension } from '@tiptap/core';
+import {
+  applyMenuViewportPlacement,
+  findScrollViewport,
+  readMenuHeight,
+  readMenuViewport,
+  scrollActiveMenuItemIntoView,
+} from './menu-viewport';
 import { Plugin, PluginKey } from '@tiptap/pm/state';
 import type { EditorView } from '@tiptap/pm/view';
 
@@ -56,10 +63,7 @@ interface ActiveMenu {
 
 function caretCoords(view: EditorView, pos: number): { bottom: number; left: number } | null {
   const domAt = view.domAtPos(pos);
-  const el =
-    domAt.node.nodeType === 1
-      ? (domAt.node as HTMLElement)
-      : domAt.node.parentElement;
+  const el = domAt.node.nodeType === 1 ? (domAt.node as HTMLElement) : domAt.node.parentElement;
   if (!el) return null;
   const range = document.createRange();
   range.setStart(domAt.node, domAt.offset);
@@ -76,10 +80,8 @@ function createMenu(
   hide: () => void;
   destroy: () => void;
 } {
-const dom = document.createElement('div');
-    dom.className = [trigger.className, trigger.modifierClassName ?? '']
-      .filter(Boolean)
-      .join(' ');
+  const dom = document.createElement('div');
+  dom.className = [trigger.className, trigger.modifierClassName ?? ''].filter(Boolean).join(' ');
   dom.style.display = 'none';
   dom.style.position = 'absolute';
   dom.style.zIndex = '46';
@@ -113,10 +115,34 @@ const dom = document.createElement('div');
       });
       dom.append(row);
     });
-    const host = dom.parentElement?.getBoundingClientRect();
+    const hostEl = dom.parentElement;
     dom.style.display = 'block';
-    dom.style.top = `${coords.bottom - (host?.top ?? 0) + 6}px`;
-    dom.style.left = `${coords.left - (host?.left ?? 0)}px`;
+    const anchor = { top: coords.bottom - 6, bottom: coords.bottom, left: coords.left };
+    if (hostEl) {
+      const viewport = readMenuViewport(findScrollViewport(hostEl));
+      applyMenuViewportPlacement({
+        menu: dom,
+        host: hostEl,
+        anchor,
+        viewport,
+        desiredHeight: readMenuHeight(dom),
+      });
+    } else {
+      const rect = {
+        top: 0,
+        bottom: 0,
+        left: 0,
+        right: 0,
+        width: 0,
+        height: 0,
+        x: 0,
+        y: 0,
+        toJSON() {},
+      } as DOMRect;
+      dom.style.top = `${coords.bottom - rect.top + 6}px`;
+      dom.style.left = `${coords.left - rect.left}px`;
+    }
+    scrollActiveMenuItemIntoView(dom);
   };
   const hide = () => {
     dom.style.display = 'none';

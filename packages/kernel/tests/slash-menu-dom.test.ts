@@ -1,5 +1,5 @@
 // @vitest-environment happy-dom
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { TextSelection } from '@tiptap/pm/state';
 import { createEditor } from '../src/editor';
 
@@ -173,6 +173,64 @@ describe('斜杠快捷输入真实 TipTap DOM 链路（DEV-052）', () => {
     expect(host.querySelector('[data-slash-menu]')?.getAttribute('aria-activedescendant')).toBe(
       row?.id,
     );
+  });
+
+  it('菜单按编辑滚动视口翻转并限制高度，键盘 active 项滚入可视区', async () => {
+    const { kernel, dom, host } = mount('\u00a0');
+    const scrollViewport = host.parentElement!;
+    Object.defineProperty(scrollViewport, 'scrollHeight', { configurable: true, value: 800 });
+    Object.defineProperty(scrollViewport, 'clientHeight', { configurable: true, value: 200 });
+    scrollViewport.style.overflowY = 'auto';
+    scrollViewport.getBoundingClientRect = () =>
+      ({
+        top: 20,
+        bottom: 220,
+        left: 0,
+        right: 500,
+        width: 500,
+        height: 200,
+        x: 0,
+        y: 20,
+        toJSON() {},
+      }) as DOMRect;
+    host.getBoundingClientRect = () =>
+      ({
+        top: 20,
+        bottom: 820,
+        left: 0,
+        right: 500,
+        width: 500,
+        height: 800,
+        x: 0,
+        y: 20,
+        toJSON() {},
+      }) as DOMRect;
+    vi.spyOn(kernel.editor.view, 'coordsAtPos').mockReturnValue({
+      top: 190,
+      bottom: 210,
+      left: 40,
+      right: 41,
+    });
+    selectAt(kernel, kernel.editor.state.doc.content.size - 1);
+    await type(kernel, '/');
+    const menu = host.querySelector<HTMLElement>('[data-testid="block-slash-menu"]')!;
+    Object.defineProperty(menu, 'scrollHeight', { configurable: true, value: 400 });
+    kernel.editor.view.dispatch(kernel.editor.state.tr.setMeta('viewport-test', true));
+    expect(menu.dataset.placement).toBe('above');
+    expect(menu.style.maxHeight).toBe('156px');
+    expect(menu.style.overflowY).toBe('auto');
+    const scrollIntoView = vi.fn();
+    const original = HTMLElement.prototype.scrollIntoView;
+    HTMLElement.prototype.scrollIntoView = function patched(arg) {
+      if (this.closest?.('[data-testid="block-slash-menu"]')) scrollIntoView(arg);
+      return original.call(this, arg);
+    };
+    try {
+      press(dom, 'ArrowDown');
+      expect(scrollIntoView).toHaveBeenCalledWith({ block: 'nearest' });
+    } finally {
+      HTMLElement.prototype.scrollIntoView = original;
+    }
   });
 
   it('trigger 前后任一有效正文均隐藏转换且不删除后文', async () => {
