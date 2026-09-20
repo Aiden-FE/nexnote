@@ -4,10 +4,7 @@ import { resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
 
 describe('DEV-061 统一块编辑器左侧 gutter CSS 合同', () => {
-  const css = readFileSync(
-    resolve(import.meta.dirname, '../src/globals.css'),
-    'utf8',
-  );
+  const css = readFileSync(resolve(import.meta.dirname, '../src/globals.css'), 'utf8');
 
   it('编辑器挂载点改为双列网格（gutter + 内容），双列均不依赖 padding-left hack', () => {
     expect(css).toMatch(

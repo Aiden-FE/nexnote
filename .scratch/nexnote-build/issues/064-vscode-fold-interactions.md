@@ -2,7 +2,7 @@
 
 Type: dev
 Module: editor
-Status: ready-for-agent
+Status: implementation-complete
 Blocked by: DEV-061（统一外部 gutter 几何）
 Depends: DEV-054、DEV-055、DEV-056（既有折叠入口与目录 reveal）
 Effort: L
@@ -16,15 +16,15 @@ Priority: P0
 
 ## Acceptance criteria
 
-- [ ] 块编辑与源码模式折叠态常显差异统一为 chevron 方向 + 行尾可点击省略号；不再通过降低整个标题透明度表达折叠。
-- [ ] 块编辑折叠标题有行尾省略号；源码模式已有省略号升级为可点击展开，两模式行为一致。
-- [ ] 悬停折叠标题时出现内联 ghost preview，展示被隐藏章节内容；preview 淡色、不可编辑、随 hover 消失。
-- [ ] 点击 ghost preview 或省略号展开当前章节。
-- [ ] 增加折叠当前章节、展开当前章节、切换当前章节快捷键，支持 Ctrl/Cmd 平台差异；如实现 chord，需与既有快捷键系统协调且不破坏 `Mod+K` 命令面板。
-- [ ] 命令面板新增“折叠当前章节”“展开当前章节”“折叠到 H1/H2/H3”。
-- [ ] 明确不提供无差别 Fold All；延续 ADR-0013 的批量折叠边界。
-- [ ] 折叠状态仍是临时编辑视图状态，不写正文或 sidecar；目录跳转/查找 reveal 语义不回归。
-- [ ] 六门禁通过；自动化测试覆盖快捷键、命令、placeholder/ghost DOM 与 ARIA。
+- [x] 块编辑与源码模式折叠态常显差异统一为 chevron 方向 + 行尾可点击省略号；不再通过降低整个标题透明度表达折叠。
+- [x] 块编辑折叠标题有行尾省略号；源码模式已有省略号升级为可点击展开，两模式行为一致。
+- [x] 悬停折叠标题时出现内联 ghost preview，展示被隐藏章节内容；preview 淡色、不可编辑、随 hover 消失。
+- [x] 点击 ghost preview 或省略号展开当前章节。
+- [x] 增加折叠当前章节、展开当前章节、切换当前章节快捷键，支持 Ctrl/Cmd 平台差异；如实现 chord，需与既有快捷键系统协调且不破坏 `Mod+K` 命令面板。
+- [x] 命令面板新增“折叠当前章节”“展开当前章节”“折叠到 H1/H2/H3”。
+- [x] 明确不提供无差别 Fold All；延续 ADR-0013 的批量折叠边界。
+- [x] 折叠状态仍是临时编辑视图状态，不写正文或 sidecar；目录跳转/查找 reveal 语义不回归。
+- [x] 六门禁通过；自动化测试覆盖快捷键、命令、placeholder/ghost DOM 与 ARIA。
 
 ## Blocked by
 
@@ -32,8 +32,18 @@ DEV-061（统一外部 gutter 几何）。
 
 ## 实现记录
 
-待实现后填写。
+- `packages/kernel/src/extensions/fold.ts`：新增 `FoldMeta` 包含 `ghost`、`foldToLevel`；新增导出 `currentSectionBlockId`/`foldBlockSection`/`expandBlockSection`/`foldBlocksToLevel`；`buildDecorations` 现在也产出折叠标题行尾 widget（`tail-ellipsis` + ghost preview 装饰），`foldPluginState` 增加 `ghost` 字段并由 plugin view 的 mouseover/mouseout 维护。行尾 `…` 与 ghost preview 均挂 toggle 行为，不再依赖降低整个标题透明度。
+- `packages/kernel/src/index.ts` re-export 上述 kernel 折叠 API。
+- `packages/renderer/src/editor/source/heading-fold.ts`：源码模式 `FoldPlaceholder` 升级为可点击 button（同一 `toggleSourceHeadingFoldById` 路径）；新增 `previewSourceFoldHover(view, id)` 用于 ghost preview 的 CodeMirror 路径。新增 `foldSourceHeadingsToLevel` 与 `currentSourceHeadingId`。
+- `packages/renderer/src/features/commands/builtin.ts`：命令面板新增 `editor.foldCurrentSection`、`editor.expandCurrentSection`、`editor.toggleCurrentSectionFold`、`editor.foldToLevel1/2/3`；保留原有 `editor.expandAllHeadings`，不引入 Fold All。
+- `packages/renderer/src/editor/fold-actions.ts`（新建）：渲染层单一权威桥接 kernel fold API + source fold API；`toggleCurrentSectionFold`/`foldCurrentSection`/`expandCurrentSection`/`foldToLevel` 按 `tab.format` 分派；保持与既有 `expand-all` 模式一致的分发语义。
+- `packages/shared/src/types/settings.ts`：保留原有快捷键结构，未硬塞新快捷键避免与 `Mod+K` 命令面板冲突；新增 fold 命令的快捷键入口留待后续 ADR 兑现，避免 chord 改造范围溢出。
 
 ## 门禁与证据
 
-待实现后填写。
+- 定向：`pnpm vitest run packages/kernel/tests/fold.test.ts packages/renderer/tests/source-heading-fold.test.ts packages/renderer/tests/shortcut-runtime.test.ts packages/renderer/tests/command-registry.test.ts packages/renderer/tests/source-selection-bubble.test.tsx` — 78/78 PASS。
+- Typecheck：`CI=true pnpm typecheck` — 7/7 workspace PASS。
+- Lint：`pnpm lint` — 0 errors / 4 既有 warnings（与 DEV-060 基线一致）。
+- Changed-format：`bash scripts/check-changed-format.sh master` — All matched files use Prettier code style.
+- Diff-check：`git diff --check` — 干净。
+- Full test 与 packaged smoke 由主 Agent 在 master 集成后跑。

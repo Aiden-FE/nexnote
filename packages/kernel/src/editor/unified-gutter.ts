@@ -1,10 +1,6 @@
 import type { EditorView } from '@tiptap/pm/view';
 import type { Editor } from '@tiptap/core';
-import {
-  collectFoldHeadings,
-  type FoldHeadingDescriptor,
-  toggleBlockFold,
-} from '@nexnote/kernel';
+import { collectFoldHeadings, type FoldHeadingDescriptor, toggleBlockFold } from '@nexnote/kernel';
 
 export interface UnifiedGutterController {
   destroy(): void;
@@ -27,29 +23,26 @@ export interface UnifiedGutterController {
  * 拖拽手柄 wrapper（TipTap 自带）以同样方式挂入 host，所以两个 overlay
  * 共用相同的滚动与重定位时机。
  */
-export function mountUnifiedGutter(
-  host: HTMLElement,
-  editor: Editor,
-): UnifiedGutterController {
+export function mountUnifiedGutter(host: HTMLElement, editor: Editor): UnifiedGutterController {
   const view: EditorView = editor.view;
-    /**
-     * 编辑器挂载点之内的可滚动容器：
-     * - 真实渲染场景：`.nexnote-editor-scroll` 是 `overflow:auto`，包围 host；
-     * - 测试场景：父级可能不是 overflow:auto，但 view.dom.parentElement 已是最接近的偏移元素。
-     * 我们沿父链查找第一个可滚动祖先；找不到时回退到 view.dom 的 parentElement。
-     */
-    const resolveScrollContainer = (root: HTMLElement): HTMLElement => {
-      let node: HTMLElement | null = root.parentElement;
-      while (node && node !== document.body) {
-        const style = window.getComputedStyle(node);
-        if (/(auto|scroll|overlay)/.test(style.overflow + style.overflowY + style.overflowX)) {
-          return node;
-        }
-        node = node.parentElement;
+  /**
+   * 编辑器挂载点之内的可滚动容器：
+   * - 真实渲染场景：`.nexnote-editor-scroll` 是 `overflow:auto`，包围 host；
+   * - 测试场景：父级可能不是 overflow:auto，但 view.dom.parentElement 已是最接近的偏移元素。
+   * 我们沿父链查找第一个可滚动祖先；找不到时回退到 view.dom 的 parentElement。
+   */
+  const resolveScrollContainer = (root: HTMLElement): HTMLElement => {
+    let node: HTMLElement | null = root.parentElement;
+    while (node && node !== document.body) {
+      const style = window.getComputedStyle(node);
+      if (/(auto|scroll|overlay)/.test(style.overflow + style.overflowY + style.overflowX)) {
+        return node;
       }
-      return root.parentElement ?? root;
-    };
-    const scrollContainer = resolveScrollContainer(host);
+      node = node.parentElement;
+    }
+    return root.parentElement ?? root;
+  };
+  const scrollContainer = resolveScrollContainer(host);
   const overlay = document.createElement('div');
   overlay.className = 'nexnote-fold-overlay';
   overlay.dataset.testid = 'fold-overlay';
@@ -104,12 +97,8 @@ export function mountUnifiedGutter(
         overlay.append(button);
       }
       syncButton(button, heading);
-      const node = root.querySelector<HTMLElement>(
-        `[blockId="${cssEscape(heading.blockId)}"]`,
-      );
-      const coords = node
-        ? node.getBoundingClientRect()
-        : fallbackCoords(view, heading);
+      const node = root.querySelector<HTMLElement>(`[blockId="${cssEscape(heading.blockId)}"]`);
+      const coords = node ? node.getBoundingClientRect() : fallbackCoords(view, heading);
       const layoutKey = `${coords.top.toFixed(1)}|${scrollTop}|${heading.folded}`;
       if (lastLayoutKey.get(heading.blockId) !== layoutKey) {
         // 顶对齐到该标题的可见 top；overlay 容器 `inset:0` 以 host 为坐标系。
@@ -121,8 +110,7 @@ export function mountUnifiedGutter(
       }
       // 视口外/已卸载：标记 stale，让 CSS 隐藏，避免占用 Tab 顺序。
       const viewport = (view as unknown as { viewport?: { from: number; to: number } }).viewport;
-      const outOfView =
-        viewport && (heading.from < viewport.from || heading.to > viewport.to);
+      const outOfView = viewport && (heading.from < viewport.from || heading.to > viewport.to);
       button.dataset.stale = String(Boolean(outOfView));
     }
 

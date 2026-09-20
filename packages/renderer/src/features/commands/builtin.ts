@@ -8,6 +8,12 @@ import { openSettings } from '../../lib/open-settings';
 import { createPage } from '../editor/create-page';
 import { expandAllCurrentHeadingFolds } from '../../editor/expand-all';
 import {
+  expandCurrentSection,
+  foldCurrentSection,
+  foldToLevel,
+  toggleCurrentSectionFold,
+} from '../../editor/fold-actions';
+import {
   requestActiveMarkdownPreviewToggle,
   requestActiveMarkdownView,
   requestActiveSourceModeToggle,
@@ -67,6 +73,58 @@ commandRegistry.register({
     expandAllCurrentHeadingFolds();
   },
 });
+
+// DEV-064：当前章节折叠 / 展开 / 切换快捷键 + 折叠到 H1/H2/H3 命令。
+// 不提供无差别 Fold All，沿用 ADR-0013 边界：折叠必须明确指向章节或层级。
+commandRegistry.register({
+  id: 'editor.foldCurrentSection',
+  title: '折叠当前章节',
+  category: '编辑器',
+  keywords: ['fold', 'collapse', '折叠', '章节', 'section'],
+  shortcut: '⌘/Ctrl+Shift+[',
+  run: () => {
+    foldCurrentSection();
+  },
+});
+commandRegistry.register({
+  id: 'editor.expandCurrentSection',
+  title: '展开当前章节',
+  category: '编辑器',
+  keywords: ['expand', 'unfold', '展开', '章节', 'section'],
+  shortcut: '⌘/Ctrl+Shift+]',
+  run: () => {
+    expandCurrentSection();
+  },
+});
+commandRegistry.register({
+  id: 'editor.toggleCurrentSectionFold',
+  title: '切换当前章节折叠',
+  category: '编辑器',
+  keywords: ['toggle', 'fold', '切换', '折叠', '章节'],
+  shortcut: '⌘/Ctrl+K ⌘/Ctrl+L',
+  run: () => {
+    // chord 首段 Mod+K 仍打开 palette；折叠切换前先收起面板，避免遮蔽结果。
+    const palette = usePaletteStore.getState();
+    if (palette.open) palette.setOpen(false);
+    toggleCurrentSectionFold();
+  },
+});
+
+for (const [id, title, level, keywords] of [
+  ['editor.foldToLevel1', '折叠到 H1', 1, ['fold', 'level', 'H1', '层级', '全部折叠']],
+  ['editor.foldToLevel2', '折叠到 H2', 2, ['fold', 'level', 'H2', '层级']],
+  ['editor.foldToLevel3', '折叠到 H3', 3, ['fold', 'level', 'H3', '层级']],
+] as const) {
+  commandRegistry.register({
+    id,
+    title,
+    category: '编辑器',
+    keywords: [...keywords],
+    run: () => {
+      foldToLevel(level);
+    },
+  });
+}
 
 commandRegistry.register({
   id: 'editor.toggleSourceMode',

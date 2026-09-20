@@ -40,12 +40,7 @@ export function topLevelBlockIdAt(editor: Editor, pos: number): string | null {
   return typeof id === 'string' && id.length > 0 ? id : null;
 }
 
-type DragHandleClick = (
-  e: MouseEvent,
-  pos: number,
-  blockId: string | null,
-  editor: Editor,
-) => void;
+type DragHandleClick = (e: MouseEvent, pos: number, blockId: string | null, editor: Editor) => void;
 
 /**
  * 构建 Floating UI middleware 链。

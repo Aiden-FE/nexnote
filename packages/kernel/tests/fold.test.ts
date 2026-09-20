@@ -78,13 +78,19 @@ function replaceBlockType(
   return block ? kernel.convertBlock(kind, block.from, block.to) : false;
 }
 
-const handles: Array<{ kernel: ReturnType<typeof make>['kernel']; gutter: ReturnType<typeof mountUnifiedGutter> }> = [];
+const handles: Array<{
+  kernel: ReturnType<typeof make>['kernel'];
+  gutter: ReturnType<typeof mountUnifiedGutter>;
+}> = [];
 function trackedMake(markdown: string) {
   const result = make(markdown);
   // DEV-061：宿主级 overlay 在挂载时已经同步完成首批布局；测试可立即查询 chevron DOM。
   const gutter = mountUnifiedGutter(result.container, result.kernel.editor);
   handles.push({ kernel: result.kernel, gutter });
-  return Object.assign(result, { gutter, buttonFor: (id: string) => buttonFor(result.container, id) });
+  return Object.assign(result, {
+    gutter,
+    buttonFor: (id: string) => buttonFor(result.container, id),
+  });
 }
 
 function buttonFor(container: HTMLElement, blockId: string): HTMLButtonElement | null {
@@ -602,71 +608,76 @@ describe('DEV-054 块文档标题章节折叠', () => {
     expect(kernel.getMarkdown()).toBe(beforeMarkdown);
   });
 
-describe('DEV-061 宿主级统一 gutter overlay', () => {
-  it('chevron 不再渲染在标题内部，而是宿主 overlay 内、常显且可折叠标题全覆盖', () => {
-    const { container, kernel } = trackedMake(
-      '# A ^a\n\nA正文 ^ap\n\n## B ^b\n\nB正文 ^bp\n\n# 空 ^empty\n\n# 尾 ^tail\n',
-    );
-    const headingIds = topBlocks(kernel)
-      .filter((block) => block.level != null)
-      .map((block) => block.blockId);
-    expect(container.querySelectorAll('.ProseMirror h1 .nexnote-fold-overlay__toggle')).toHaveLength(0);
-    expect(container.querySelectorAll('.ProseMirror .nexnote-fold-toggle')).toHaveLength(0);
+  describe('DEV-061 宿主级统一 gutter overlay', () => {
+    it('chevron 不再渲染在标题内部，而是宿主 overlay 内、常显且可折叠标题全覆盖', () => {
+      const { container, kernel } = trackedMake(
+        '# A ^a\n\nA正文 ^ap\n\n## B ^b\n\nB正文 ^bp\n\n# 空 ^empty\n\n# 尾 ^tail\n',
+      );
+      const headingIds = topBlocks(kernel)
+        .filter((block) => block.level != null)
+        .map((block) => block.blockId);
+      expect(
+        container.querySelectorAll('.ProseMirror h1 .nexnote-fold-overlay__toggle'),
+      ).toHaveLength(0);
+      expect(container.querySelectorAll('.ProseMirror .nexnote-fold-toggle')).toHaveLength(0);
 
-    const overlay = container.querySelector('.nexnote-fold-overlay');
-    expect(overlay).not.toBeNull();
-    for (const id of headingIds) {
-      if (kernel.canFoldBlock(id)) {
-        const button = container.querySelector<HTMLButtonElement>(
-          `.nexnote-fold-overlay__toggle[data-fold-id="${id}"]`,
-        );
-        expect(button?.tabIndex).toBe(0);
-        expect(button?.getAttribute('aria-label')).toBe('折叠章节');
-        expect(button?.getAttribute('aria-expanded')).toBe('true');
-        expect(button?.getAttribute('data-fold-state')).toBe('expanded');
-        expect(button?.querySelector('.nexnote-fold-overlay__toggle__icon')?.textContent).toBe('›');
+      const overlay = container.querySelector('.nexnote-fold-overlay');
+      expect(overlay).not.toBeNull();
+      for (const id of headingIds) {
+        if (kernel.canFoldBlock(id)) {
+          const button = container.querySelector<HTMLButtonElement>(
+            `.nexnote-fold-overlay__toggle[data-fold-id="${id}"]`,
+          );
+          expect(button?.tabIndex).toBe(0);
+          expect(button?.getAttribute('aria-label')).toBe('折叠章节');
+          expect(button?.getAttribute('aria-expanded')).toBe('true');
+          expect(button?.getAttribute('data-fold-state')).toBe('expanded');
+          expect(button?.querySelector('.nexnote-fold-overlay__toggle__icon')?.textContent).toBe(
+            '›',
+          );
+        }
       }
-    }
-  });
+    });
 
-  it('无章节内容的标题不产生 chevron，块菜单动作标签正确', () => {
-    const { container, kernel } = trackedMake('# 空 ^empty\n\n# 尾 ^tail\n');
-    expect(container.querySelectorAll('.nexnote-fold-overlay__toggle')).toHaveLength(0);
-    expect(kernel.canFoldBlock('empty')).toBe(false);
-    expect(toggleFoldActionLabel(kernel.editor.state, 'empty')).toBe('该标题无可折叠章节');
-  });
+    it('无章节内容的标题不产生 chevron，块菜单动作标签正确', () => {
+      const { container, kernel } = trackedMake('# 空 ^empty\n\n# 尾 ^tail\n');
+      expect(container.querySelectorAll('.nexnote-fold-overlay__toggle')).toHaveLength(0);
+      expect(kernel.canFoldBlock('empty')).toBe(false);
+      expect(toggleFoldActionLabel(kernel.editor.state, 'empty')).toBe('该标题无可折叠章节');
+    });
 
-  it('键盘 Enter/Space 切换后焦点承接到重建后的 overlay 按钮', async () => {
-    const { container, kernel } = trackedMake('# A ^a\n\n正文 ^p\n\n# B ^b\n\n尾 ^tail\n');
-    const button = container.querySelector<HTMLButtonElement>(
-      `.nexnote-fold-overlay__toggle[data-fold-id="a"]`,
-    )!;
-    button.focus();
-    expect(document.activeElement).toBe(button);
-    button.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
-    expect(kernel.isBlockFolded('a')).toBe(true);
-    const collapsed = container.querySelector<HTMLButtonElement>(
-      `.nexnote-fold-overlay__toggle[data-fold-id="a"]`,
-    )!;
-    await vi.waitFor(() => expect(document.activeElement).toBe(collapsed));
-    expect(collapsed.getAttribute('aria-label')).toBe('展开章节');
-    expect(collapsed.getAttribute('aria-expanded')).toBe('false');
-  });
+    it('键盘 Enter/Space 切换后焦点承接到重建后的 overlay 按钮', async () => {
+      const { container, kernel } = trackedMake('# A ^a\n\n正文 ^p\n\n# B ^b\n\n尾 ^tail\n');
+      const button = container.querySelector<HTMLButtonElement>(
+        `.nexnote-fold-overlay__toggle[data-fold-id="a"]`,
+      )!;
+      button.focus();
+      expect(document.activeElement).toBe(button);
+      button.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
+      expect(kernel.isBlockFolded('a')).toBe(true);
+      const collapsed = container.querySelector<HTMLButtonElement>(
+        `.nexnote-fold-overlay__toggle[data-fold-id="a"]`,
+      )!;
+      await vi.waitFor(() => expect(document.activeElement).toBe(collapsed));
+      expect(collapsed.getAttribute('aria-label')).toBe('展开章节');
+      expect(collapsed.getAttribute('aria-expanded')).toBe('false');
+    });
 
-  it('滚动或内容变化时 overlay 重定位并保留常显状态', () => {
-    const { container, kernel } = trackedMake(
-      Array.from({ length: 30 }, (_, i) => `# H${i} ^h${i}\n\n正文 ${i} ^p${i}`).join('\n\n') + '\n',
-    );
-    const overlay = container.querySelector('.nexnote-fold-overlay');
-    expect(overlay).not.toBeNull();
-    const first = container.querySelector<HTMLButtonElement>(
-      `.nexnote-fold-overlay__toggle[data-fold-id="h0"]`,
-    )!;
-    const scrollHost = kernel.editor.view.dom.parentElement ?? kernel.editor.view.dom;
-    scrollHost.scrollTop = 200;
-    scrollHost.dispatchEvent(new Event('scroll', { bubbles: true }));
-    // 重定位是异步（queueMicrotask）；不强制断言具体坐标，只要求 overlay 仍常显。
-    expect(first.dataset.stale === 'true').toBe(false);
+    it('滚动或内容变化时 overlay 重定位并保留常显状态', () => {
+      const { container, kernel } = trackedMake(
+        Array.from({ length: 30 }, (_, i) => `# H${i} ^h${i}\n\n正文 ${i} ^p${i}`).join('\n\n') +
+          '\n',
+      );
+      const overlay = container.querySelector('.nexnote-fold-overlay');
+      expect(overlay).not.toBeNull();
+      const first = container.querySelector<HTMLButtonElement>(
+        `.nexnote-fold-overlay__toggle[data-fold-id="h0"]`,
+      )!;
+      const scrollHost = kernel.editor.view.dom.parentElement ?? kernel.editor.view.dom;
+      scrollHost.scrollTop = 200;
+      scrollHost.dispatchEvent(new Event('scroll', { bubbles: true }));
+      // 重定位是异步（queueMicrotask）；不强制断言具体坐标，只要求 overlay 仍常显。
+      expect(first.dataset.stale === 'true').toBe(false);
+    });
   });
-});
 });

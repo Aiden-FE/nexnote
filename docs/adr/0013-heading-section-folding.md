@@ -36,3 +36,12 @@ Markdown 首期折叠范围覆盖 ATX H1–H6 与 Setext H1/H2。blockquote 内�
 - 折叠控件必须可通过键盘操作，具有可辨的展开状态、准确的 accessible name，并纳入 Tooltip 与 focus-visible 规则。
 - 查找、选区、复制与隐藏 DOM/Decoration 的实现必须验证不会把临时视觉隐藏误当成内容删除。
 - 验收必须覆盖：同级与高层级边界、嵌套折叠、标题删除与类型转换、标题升降级、空标题与同名标题、目录跳转自动展开祖先、键盘跳过隐藏内容、重新打开全部展开，以及 Markdown 折叠前后文件字节不变。
+
+## 修订（2026-09-20，DEV-064）
+
+- 折叠标题不再通过降低整个标题透明度表达折叠（移除旧 `.nexnote-folded { opacity: 0.88 }` 的全局降灰语义）。常显差异只剩 chevron 方向与标题行尾的可点击 `…`；块编辑（`packages/kernel/src/extensions/fold.ts`）与源码模式（`packages/renderer/src/editor/source/heading-fold.ts`）统一行为。
+- 块编辑新增折叠标题行尾可点击 `…` 装饰；源码模式的 `FoldPlaceholder` 升级为可点击 button，两模式均以 `toggleBlockFold` / `toggleSourceHeadingFoldById` 为单一权威。
+- 块编辑新增内联 ghost preview：悬停折叠标题时显示被隐藏章节内容的淡色、不可编辑预览（不修改文档），并随 hover 消失；preview 与行尾 `…` 都是展开入口。源码模式由 `previewSourceFoldHover` 提供对等能力。
+- 新增命令面板条目：`折叠当前章节`、`展开当前章节`、`切换当前章节`、`折叠到 H1 / H2 / H3`；渲染层统一入口在 `packages/renderer/src/editor/fold-actions.ts`，按当前 tab 格式分派到 kernel 与 source-fold API。
+- 当前章节折叠/展开快捷键：`Ctrl/Cmd+Shift+[` / `Ctrl/Cmd+Shift+]`。`Ctrl/Cmd+K Ctrl/Cmd+L` chord 留待后续 chord 改造落地，本轮不破坏既有 `Mod+K` 命令面板单段绑定。
+- 延续本 ADR L19「不提供无差别 Fold All」决策；批量折叠仅通过 `折叠到 H1/H2/H3` 提供明确语义。
