@@ -36,7 +36,7 @@ export type QuickInsertExecution =
   | 'explicit-ai'
   | 'external-command';
 export type QuickInsertCapability =
-  'empty-block' | 'editable-line' | 'explicit-ai' | 'plugin-defined';
+  'empty-block' | 'editable-line' | 'explicit-ai' | 'plugin-defined' | 'table-cursor';
 
 export const SLASH_ACTION_GROUP_ORDER: readonly QuickInsertGroup[] = [
   '基础块',
@@ -321,6 +321,60 @@ export const EDITOR_ACTION_CATALOG: readonly EditorActionCatalogEntry[] = [
       'grid',
       '|',
       '表格',
+    ]),
+  },
+  {
+    id: 'table:row-below',
+    name: '表格 · 下方插入行',
+    hint: '在当前行下方插入一行（光标需位于表格内）',
+    icon: 'table',
+    semantic: 'insert',
+    group: 'insert',
+    modes: ['block'],
+    quickInsert: quick('插入', 'structure', 'insert-at-cursor', 'table-cursor', [
+      'row',
+      '行',
+      '插入行',
+    ]),
+  },
+  {
+    id: 'table:column-right',
+    name: '表格 · 右侧插入列',
+    hint: '在当前列右侧插入一列（光标需位于表格内）',
+    icon: 'table',
+    semantic: 'insert',
+    group: 'insert',
+    modes: ['block'],
+    quickInsert: quick('插入', 'structure', 'insert-at-cursor', 'table-cursor', [
+      'column',
+      '列',
+      '插入列',
+    ]),
+  },
+  {
+    id: 'table:row-delete',
+    name: '表格 · 删除当前行',
+    hint: '删除光标所在行（光标需位于表格内）',
+    icon: 'table',
+    semantic: 'insert',
+    group: 'insert',
+    modes: ['block'],
+    quickInsert: quick('插入', 'structure', 'insert-at-cursor', 'table-cursor', [
+      '删除行',
+      'delete row',
+    ]),
+  },
+  {
+    id: 'table:column-delete',
+    name: '表格 · 删除当前列',
+    hint: '删除光标所在列（光标需位于表格内）',
+    icon: 'table',
+    semantic: 'insert',
+    group: 'insert',
+    modes: ['block'],
+    quickInsert: quick('插入', 'structure', 'insert-at-cursor', 'table-cursor', [
+      '删除列',
+      'delete column',
     ]),
   },
   {

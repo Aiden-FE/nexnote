@@ -48,6 +48,10 @@ export const FORMAT_DOCUMENT_ID = 'format:document';
 export const INSERT_FLOWCHART_ID = 'insert:mermaid-flowchart';
 export const INSERT_GANTT_ID = 'insert:mermaid-gantt';
 export const INSERT_TOC_ID = 'insert:toc';
+export const TABLE_ROW_BELOW_ID = 'table:row-below';
+export const TABLE_COLUMN_RIGHT_ID = 'table:column-right';
+export const TABLE_ROW_DELETE_ID = 'table:row-delete';
+export const TABLE_COLUMN_DELETE_ID = 'table:column-delete';
 export const TOGGLE_OUTLINE_ID = 'view:outline';
 export const VIEW_SOURCE_ID = 'view:source';
 export const VIEW_SPLIT_ID = 'view:split';
@@ -286,8 +290,20 @@ function editableEntries(
 export function blockToolbarEntries(options: {
   sourceModeToggle: boolean;
   headingState?: HeadingActionState;
+  inTable?: boolean;
 }): ToolbarEntrySpec[] {
   const entries = editableEntries('block', options.headingState);
+  // DEV-070：光标位于表格内时，在插入菜单前插入 4 个表格上下文动作
+  if (options.inTable) {
+    const tableActions = [
+      'table:row-below',
+      'table:column-right',
+      'table:row-delete',
+      'table:column-delete',
+    ].map((id) => actionEntry(id));
+    const insertMenuIdx = entries.findIndex((e) => e.id === INSERT_MENU_ID);
+    entries.splice(insertMenuIdx, 0, ...tableActions);
+  }
   if (options.sourceModeToggle)
     entries.push(
       viewEntry(

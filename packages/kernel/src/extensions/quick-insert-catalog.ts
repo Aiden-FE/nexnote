@@ -1,6 +1,10 @@
 import { findWrapping } from '@tiptap/pm/transform';
+import type { SingleCommands } from '@tiptap/core';
 import { editorActionCatalogEntry, quickInsertCatalog } from '@nexnote/shared';
-import type { QuickInsertItem } from './quick-insert';
+import {
+  getEditorForView,
+  type QuickInsertItem,
+} from './quick-insert';
 import { insertAtSafeBlockBoundary } from './slash-contract';
 
 function item(id: string, action: QuickInsertItem['action']): QuickInsertItem {
@@ -98,6 +102,24 @@ export function defaultQuickInsertItems(): QuickInsertItem[] {
     tr.insertText('[[').scrollIntoView();
     return true;
   });
+  // DEV-070：表格行/列动作（capability 'table-cursor' 由 quick-insert 在菜单打开时过滤）。
+  // 命令在 slash trigger 消费并提交后执行（afterSlashCommit），此时光标仍在原 cell。
+  const tableAction =
+    (id: string, run: (commands: SingleCommands) => boolean) =>
+    handlers.set(id, ({ view, afterSlashCommit }) => {
+      const editor = getEditorForView(view);
+      if (!editor) return false;
+      afterSlashCommit(() => {
+        run(editor.commands);
+        return undefined;
+      });
+      return true;
+    });
+  tableAction('table:row-below', (commands) => commands.addRowAfter());
+  tableAction('table:column-right', (commands) => commands.addColumnAfter());
+  tableAction('table:row-delete', (commands) => commands.deleteRow());
+  tableAction('table:column-delete', (commands) => commands.deleteColumn());
+
   return quickInsertCatalog('block').flatMap((definition) => {
     const handler = handlers.get(definition.id);
     return handler ? [item(definition.id, handler)] : [];

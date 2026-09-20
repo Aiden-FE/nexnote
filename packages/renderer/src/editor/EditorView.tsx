@@ -83,6 +83,10 @@ import { OutlinePanel } from './OutlinePanel';
 import {
   AI_ASK_ID,
   blockToolbarEntries,
+  TABLE_ROW_BELOW_ID,
+  TABLE_COLUMN_RIGHT_ID,
+  TABLE_ROW_DELETE_ID,
+  TABLE_COLUMN_DELETE_ID,
   INSERT_ATTACHMENT_ID,
   INSERT_IMAGE_ID,
   VIEW_SOURCE_ID,
@@ -318,6 +322,8 @@ export function EditorView({ tab }: EditorViewProps) {
   const unmountedRef = useRef(false);
   const [fmData, setFmData] = useState<FrontmatterData>({});
   const [fmSource, setFmSource] = useState('');
+  // DEV-070：光标是否位于表格内（工具栏表格动作显隐）
+  const [inTable, setInTable] = useState(false);
   const [fmLocked, setFmLocked] = useState(false);
   const [fmParseError, setFmParseError] = useState<string | null>(null);
   const [knownTags, setKnownTags] = useState<string[]>([]);
@@ -673,6 +679,13 @@ export function EditorView({ tab }: EditorViewProps) {
       if (from === to) translationControllerRef.current?.closeSelection();
     };
     kernel.editor.on('selectionUpdate', onSelectionUpdate);
+    // DEV-070：表格上下文动作随光标进出表格显隐；布尔比对，仅跨越边界才重渲工具栏。
+    const onTableContextUpdate = () => {
+      const inTable = kernel.editor.isActive('table');
+      setInTable((prev) => (prev === inTable ? prev : inTable));
+    };
+    kernel.editor.on('selectionUpdate', onTableContextUpdate);
+    kernel.editor.on('update', onTableContextUpdate);
     const editorRegistration = registerEditor(kernel, tab.id);
     const unregisterModeSwitch = registerModeSwitchHandler(tab.id, async () => {
       await kernel.flushPendingSave();
@@ -918,6 +931,18 @@ export function EditorView({ tab }: EditorViewProps) {
       case INSERT_TOC_ID:
         kernelRef.current?.editor.commands.insertTableOfContents();
         return;
+      case TABLE_ROW_BELOW_ID:
+        kernelRef.current?.editor.commands.addRowAfter();
+        return;
+      case TABLE_COLUMN_RIGHT_ID:
+        kernelRef.current?.editor.commands.addColumnAfter();
+        return;
+      case TABLE_ROW_DELETE_ID:
+        kernelRef.current?.editor.commands.deleteRow();
+        return;
+      case TABLE_COLUMN_DELETE_ID:
+        kernelRef.current?.editor.commands.deleteColumn();
+        return;
       case FORMAT_BOLD:
       case FORMAT_ITALIC:
       case FORMAT_STRIKE:
@@ -1012,6 +1037,7 @@ export function EditorView({ tab }: EditorViewProps) {
         entries={blockToolbarEntries({
           sourceModeToggle: tab.format === 'markdown',
           headingState: blockHeadingState,
+          inTable,
         })}
         onCommand={runToolbarCommand}
         tools={
