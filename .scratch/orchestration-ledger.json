@@ -367,9 +367,51 @@
       "merged": "4073b42",
       "verdict": "Standards PASS + Spec PASS (independent dual-axis review); post-merge gates PASS",
       "candidate": "0a68725"
+    },
+    "DEV-061": {
+      "title": "统一块编辑器左侧 gutter 与拖拽热区",
+      "deps": [],
+      "status": "open",
+      "agent": null,
+      "branch": "dev/DEV-061"
+    },
+    "DEV-062": {
+      "title": "Slash / suggestion 菜单视口约束与内部滚动",
+      "deps": [],
+      "status": "open",
+      "agent": null,
+      "branch": "dev/DEV-062"
+    },
+    "DEV-063": {
+      "title": "划词工具栏 Lucide SVG 图标管线",
+      "deps": [],
+      "status": "open",
+      "agent": null,
+      "branch": "dev/DEV-063"
+    },
+    "DEV-064": {
+      "title": "VS Code 风格标题折叠呈现与快捷键",
+      "deps": [
+        "DEV-061"
+      ],
+      "status": "open",
+      "agent": null,
+      "branch": "dev/DEV-064"
+    },
+    "DEV-065": {
+      "title": "编辑器 UI 修正轮次集成与 v0.0.18 发布",
+      "deps": [
+        "DEV-061",
+        "DEV-062",
+        "DEV-063",
+        "DEV-064"
+      ],
+      "status": "open",
+      "agent": null,
+      "branch": "dev/DEV-065"
     }
   },
-  "phase": "20/20 全部完成（DEV-001~DEV-020 已合入 master）；仅剩 release-checklist §6 外部人工验收项",
+  "phase": "DEV-001~060 已完成；当前轮次 DEV-061~065（编辑器 UI 修正 + v0.0.18 发布）进行中",
   "notes": [
     "调度规则：前置依赖全部合并进 master 后才启动该票据子Agent，worktree 基于 merging 后的 master 新建",
     "worktree 根已迁至 {master}/.wt/<TICKET>（.git/info/exclude 忽略）——子Agent workspace 仅覆盖主工作区，外部路径会被文件沙箱拒绝（DEV-007/DEV-009 首次修复尝试因此阻塞，已迁移后恢复）",
