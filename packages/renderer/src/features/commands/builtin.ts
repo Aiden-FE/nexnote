@@ -101,11 +101,7 @@ commandRegistry.register({
   title: '切换当前章节折叠',
   category: '编辑器',
   keywords: ['toggle', 'fold', '切换', '折叠', '章节'],
-  shortcut: '⌘/Ctrl+K ⌘/Ctrl+L',
   run: () => {
-    // chord 首段 Mod+K 仍打开 palette；折叠切换前先收起面板，避免遮蔽结果。
-    const palette = usePaletteStore.getState();
-    if (palette.open) palette.setOpen(false);
     toggleCurrentSectionFold();
   },
 });

@@ -440,16 +440,6 @@ export function currentSourceHeadingId(state: EditorState): number | null {
   return best?.id ?? null;
 }
 
-/** 显式设置指定标题的折叠状态（幂等）。不可折叠或不存在时返回 false。 */
-export function setSourceHeadingFold(view: EditorView, id: number, folded: boolean): boolean {
-  const model = sourceFoldState(view.state);
-  const heading = model?.headings.find((candidate) => candidate.id === id && candidate.content);
-  if (!heading || heading.quoted) return false;
-  if (model!.folded.has(id) === folded) return false;
-  toggleSourceHeadingFold(view, id);
-  return true;
-}
-
 /** 对外暴露的标题切换入口（块编辑 `toggleBlockFold` 的对位 API）。 */
 export function toggleSourceHeadingFoldById(view: EditorView, id: number): boolean {
   const model = sourceFoldState(view.state);

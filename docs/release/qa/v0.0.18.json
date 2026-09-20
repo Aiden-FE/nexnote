@@ -1,0 +1,37 @@
+{
+  "schema": "nexnote-release-qa/v1",
+  "repository": "Aiden-FE/nexnote",
+  "tag": "v0.0.18",
+  "commit": "9ac5f1a",
+  "channel": "stable",
+  "allRequiredChecksPassed": true,
+  "scope": "v0.0.18-release-candidate",
+  "machineChecks": {
+    "typecheck": "passed (workspaces: apps/website, packages/plugin-api, packages/shared, packages/kernel, packages/renderer)",
+    "lint": "passed (0 errors, 4 pre-existing warnings identical to v0.0.17 baseline)",
+    "tests": "158 files passed, 1480 tests passed, 1 file skipped, 2 tests skipped; chokidar watch-service observed one timing flake in isolation that passes on rerun and is unrelated to this wave",
+    "build": "passed",
+    "releaseConfig": "31/31 passed",
+    "changedFormat": "passed",
+    "diffCheck": "passed",
+    "packagedSmoke": "261/261 passed (macOS arm64 Ad hoc, Electron 44.2.0, ABI 149, candidateSha 9ac5f1a bound, darwin; local offline build with NEXNOTE_SMOKE_TIMEOUT_MS=360000 and staged Electron ABI149 better-sqlite3 binding; Node ABI147 restored after smoke)"
+  },
+  "candidateContents": {
+    "tickets": "DEV-061~DEV-064 implemented, independently reviewed (Standards + Spec), merged to master; DEV-065 is this release ticket; DEV-066/DEV-067 were triaged during the wave but are not part of v0.0.18",
+    "highlights": [
+      "Unified host-level gutter: fold chevrons always visible alongside drag handle; drag handle reachable from prose without disappearing (DEV-061)",
+      "Slash and suggestion menus stay inside the editor viewport with internal scrolling and flip when near the bottom (DEV-062)",
+      "Selection bubble icons switch to Lucide SVG so strikethrough matches the top toolbar and the AI chevron is vertically centered (DEV-063)",
+      "VS Code style heading folding: inline ellipsis, hover ghost preview, click-to-expand, Mod+Shift+[ / ], fold-to-H1/H2/H3 commands; fold-all intentionally not provided per ADR-0013 (DEV-064)"
+    ]
+  },
+  "notRun": [
+    "GitHub Actions v0.0.18 workflow execution (triggered by immutable tag push)",
+    "Windows packaged smoke and Linux packaged smoke",
+    "Windows/Ubuntu physical installation verification",
+    "macOS physical installation and Gatekeeper verification",
+    "public N-1 to v0.0.18 network upgrade",
+    "post-publication 24-hour monitoring"
+  ],
+  "notes": "macOS artifact is Ad hoc signed without notarization. Local packaged smoke passed with staged Electron ABI149 better-sqlite3 binding and -c.npmRebuild=false so electron-builder did not overwrite the staged binding; Node ABI147 was restored after smoke. The Mod+K Mod+L chord toggle shortcut from DEV-064 was intentionally left unwired because ShortcutRuntime does not yet support chord sequences; the toggle is reachable from the command palette, and ADR-0013 records the deferral."
+}
