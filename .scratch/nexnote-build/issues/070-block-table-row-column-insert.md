@@ -58,8 +58,23 @@ None (can start immediately).
 
 ## 实现记录
 
-待实现后填写。
+- 候选 SHA：`32e1abc5740a15e897d45b58b461b1e98f670a0b`（dev/DEV-070，基于 master `2129a3b`）。
+- shared（`src/editor/editor-actions.ts`）：新增 `QuickInsertCapability` 值 `'table-cursor'`；新增 4 个 catalog 动作 `table:row-below` / `table:column-right` / `table:row-delete` / `table:column-delete`，`modes: ['block']`、quick 契约 execution `insert-at-cursor` + capability `table-cursor`。
+- kernel：
+  - `quick-insert.ts`：新增 view→editor WeakMap 注册表（`registerEditorView`/`getEditorForView`），plugin `view()` 回调登记；`triggerContext` 在 `isNodeActive(view.state, 'table')` 时把 `'table-cursor'` 加入 capabilities，slash 菜单可见性由既有 capability 管道自动过滤；sync 提交路径补齐 `afterSlashCommit` 回调执行（与 explicit-ai/external-command 路径对齐）。
+  - `quick-insert-catalog.ts`：4 个 handler 经 `afterSlashCommit` 在 slash trigger 消费提交后调用 editor 官方命令 `addRowAfter`/`addColumnAfter`/`deleteRow`/`deleteColumn`。
+- renderer：
+  - `toolbar/entries.tsx`：`blockToolbarEntries` 新增 `inTable` 选项，true 时把 4 个动作插入插入菜单之前；导出 4 个动作 id 常量。
+  - `EditorView.tsx`：新增 `inTable` 反应式状态，selectionUpdate/update 时布尔比对仅跨越边界才 setState；`runToolbarCommand` 分发 4 个表格命令。
+- 划词工具栏按 brief 不增加表格按钮；Markdown 手敲路径不变。
 
 ## 门禁与证据
 
-待实现后填写。
+- 新增测试：`kernel/tests/slash-table-actions.test.ts` 4 用例（cell 内可见 / 普通段落隐藏 / row 动作执行后行数 +1 且 trigger 消费 / deleteRow 行数 -1）；`renderer/tests/toolbar-table-entries.test.tsx` 3 用例（inTable 显隐、插入菜单前排序、动作类型）。
+- vitest 全量：163 files passed / 1 skipped，1505 passed / 2 skipped（首轮 1 fail 为 chokidar flake 既有基线，重跑全绿）。
+- typecheck（pnpm -r）：PASS。
+- eslint（改动文件 0 errors）：PASS。
+- build（electron-vite）：PASS。
+- verify-release-config：31/31 PASS。
+- `git diff --check master...HEAD`：PASS。
+- 双轴审查：Standards PASS / Spec PASS（候选 `32e1abc5740a15e897d45b58b461b1e98f670a0b`）。
