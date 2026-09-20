@@ -1,4 +1,4 @@
-import { attachBubbleTooltip } from '@nexnote/kernel';
+import { attachBubbleTooltip, defaultBubbleIconRenderer } from '@nexnote/kernel';
 import { useWritingStore, type WritingSession } from './writing-store';
 
 /**
@@ -10,6 +10,9 @@ import { useWritingStore, type WritingSession } from './writing-store';
  * - 原生 button：Tab 可达，Enter/Space 触发停止（无需自定义键盘处理）
  * - 点击走会话 stop（DEV-037）：取消上游流后保留已显示内容并标记未完成，
  *   浮层继续提供 Accept/Reject；与浮层「停止生成」按钮同语义
+ *
+ * DEV-063：图标改为内核 SVG icon renderer（与顶部 lucide-react `Square` 同源），
+ * 不再使用字形字符 `■`。
  */
 
 export interface BubbleStopControl {
@@ -28,7 +31,9 @@ export function writingStopControl(): BubbleStopControl {
   icon.className = 'nexnote-selection-bubble__icon';
   icon.dataset.icon = 'stop';
   icon.setAttribute('aria-hidden', 'true');
-  icon.textContent = '■';
+  const svg = defaultBubbleIconRenderer('stop');
+  if (svg) icon.append(svg);
+  dom.append(icon);
   attachBubbleTooltip(dom, 'nexnote-selection-bubble', () => '停止生成');
   // 与其它工具栏按钮一致：mousedown 不抢编辑器选区
   dom.addEventListener('mousedown', (event) => event.preventDefault());

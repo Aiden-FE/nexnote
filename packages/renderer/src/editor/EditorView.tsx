@@ -25,6 +25,7 @@ import {
   writingContextMenu,
   writingSlashItems,
 } from '../features/ai/writing';
+import { selectionBubbleIconRenderer } from './bubble-icons';
 import {
   createTranslationController,
   OPEN_TRANSLATION_WORKBENCH_ID,
@@ -545,6 +546,8 @@ export function EditorView({ tab }: EditorViewProps) {
         aiMenu: { label: 'AI', actions: writingAiMenuActions() },
         // 生成中的独立停止控件（会话非流式时隐藏）
         extraControl: writingStopControl(),
+        // DEV-063：与 SourceModeView 共享同一 icon renderer，跨模式视觉一致
+        iconRenderer: selectionBubbleIconRenderer,
         onAction: (id, ctx) => {
           if (runFormatAction(id, kernelRef.current, ctx.text)) return;
           // DEV-041：划词翻译只开只读浮层，不写回、不改选区语义。

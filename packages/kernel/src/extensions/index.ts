@@ -22,7 +22,7 @@ import type { SlashMenuItem } from './slash-menu';
 import { createKernelDragHandle } from './drag-handle';
 import { Fold } from './fold';
 import { SelectionBubble } from './selection-bubble';
-import type { BubbleAction, BubbleAiMenuOptions, BubbleExtraControl } from './selection-bubble';
+import type { BubbleAction, BubbleAiMenuOptions, BubbleExtraControl, BubbleIconRenderer } from './selection-bubble';
 import { ContextMenu } from './context-menu';
 import type { ContextMenuItem } from './context-menu';
 import { BlockMenu, blockMenuPluginKey } from './block-menu';
@@ -60,6 +60,8 @@ export interface KernelExtensionsOptions {
         aiMenu?: BubbleAiMenuOptions;
         /** DEV-034：附加控件（生成中的停止按钮由渲染层注入）。 */
         extraControl?: BubbleExtraControl;
+        /** DEV-063：图标渲染器注入；缺省走内核 lucide renderer。 */
+        iconRenderer?: BubbleIconRenderer;
         onAction: (id: string, ctx: EditorActionContext) => void;
       };
   /** 编辑器右键菜单（false/缺省关闭）。 */
@@ -193,6 +195,7 @@ export function buildKernelExtensions(options: KernelExtensionsOptions = {}): Ex
         actions: options.selectionBubble.actions,
         aiMenu: options.selectionBubble.aiMenu,
         extraControl: options.selectionBubble.extraControl,
+        iconRenderer: options.selectionBubble.iconRenderer,
         onAction: options.selectionBubble.onAction,
       }),
     );
