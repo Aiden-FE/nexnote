@@ -46,8 +46,19 @@ None (can start immediately).
 
 ## 实现记录
 
-待实现后填写。
+- 候选 SHA：`fb85a0aa401308c3af97a773ec35761d9b9d700b`（dev/DEV-068，基于 master `1f67326`）。
+- `features/ai/translation/languages.ts`：新增 `mapInterfaceLanguageToTranslationTarget(tag)`（zh→简体中文、en→English、ja/ko/fr/de/es/ru 同理，未知 tag 返回 undefined）；`resolveInitialTargetLanguage` 扩展第三参数 `interfaceLanguage`，优先级：AI 设置全局默认 > 界面语言映射 > 原文猜测。
+- `controller.ts`：`TranslationControllerDeps` 新增可选 `getInterfaceLanguage`，`translateSelection`/`translateDocument` 实时求值传入。
+- 接线：`EditorView.tsx` 与 `SourceModeView.tsx` 两个创建点传入 `getInterfaceLanguage: () => useSettingsStore.getState().global?.appearance.language`（设置常规 appearance.language）。
+- 进行中会话不受影响（初始语言仅在会话创建时求值）；会话内手动切换语言行为不变。
 
 ## 门禁与证据
 
-待实现后填写。
+- 新增测试：`renderer/tests/translation-default-language.test.ts` 6 用例（三档优先级、九语言映射、未知 tag 兜底、非法全局默认回落）。
+- vitest 全量：164 files passed / 1 skipped，1511 passed / 2 skipped。
+- typecheck（pnpm -r）：PASS。
+- eslint（改动文件 0 问题）：PASS。
+- build（electron-vite）：PASS。
+- verify-release-config：31/31 PASS。
+- `git diff --check master...HEAD`：PASS。
+- 双轴审查：Standards PASS / Spec PASS（候选 `fb85a0aa401308c3af97a773ec35761d9b9d700b`）。
