@@ -14,10 +14,17 @@ import type { EditorView } from '@tiptap/pm/view';
  * 折叠控件（chevron）从标题内部 ProseMirror widget 迁移为宿主级 overlay
  * （DEV-061）；视图层通过 {@link collectFoldHeadings} 取标题位置/折叠态，
  * 通过 {@link foldPluginKey} 订阅插件状态变化以重定位 overlay。
+ *
+ * 折叠标题行尾的 `…` 展开按钮（行尾省略号）与悬停 ghost preview 由此插件的
+ * ProseMirror widget 装饰提供：折叠态常显差别不再依赖标题整体透明度（DEV-064
+ * 移除 `.nexnote-folded opacity 0.88`），折叠 / 展开的可辨性由 gutter chevron
+ * 方向 + 行尾可点击 `…` 承担。
  */
 
 export interface FoldPluginState {
   folded: ReadonlySet<string>;
+  /** 当前悬停的折叠标题 blockId；null 表示无悬停。Ghost preview 仅对悬停目标显示。 */
+  ghost: string | null;
 }
 
 export const foldPluginKey = new PluginKey<FoldPluginState>('nexnoteFold');
@@ -31,7 +38,10 @@ const FOLD_TRUSTED_IDS_META = 'nexnoteFoldTrustedIds';
 type FoldMeta =
   | { type: 'toggle'; blockId: string }
   | { type: 'clear' }
-  | { type: 'set'; folded: ReadonlySet<string> };
+  | { type: 'set'; folded: ReadonlySet<string> }
+  | { type: 'setFold'; blockId: string; folded: boolean }
+  | { type: 'foldToLevel'; level: number }
+  | { type: 'ghost'; blockId: string | null };
 
 interface TopLevelBlock {
   from: number;
@@ -218,41 +228,64 @@ export function isBlockFolded(state: EditorState, blockId: string): boolean {
   return foldPluginKey.getState(state)?.folded.has(blockId) ?? false;
 }
 
-/** 切换折叠；无章节内容、非标题或不存在时返回 false。 */
-export function toggleBlockFold(view: EditorView, blockId: string): boolean {
-  const state = view.state;
-  if (!canFoldBlock(state, blockId)) return false;
-  const tr = state.tr;
-  if (!isBlockFolded(state, blockId)) {
-    const blocks = listTopLevelBlocks(state);
-    const index = topLevelBlockIndexById(blocks, blockId);
-    const heading = blocks[index];
-    const end = sectionEndIndex(blocks, index);
-    const lastHidden = blocks[end - 1];
-    if (heading && lastHidden) {
-      const { from, to } = state.selection;
-      if (from < lastHidden.to && to > heading.to) {
-        const anchor = Math.min(heading.to - 1, tr.doc.content.size);
-        tr.setSelection(TextSelection.create(tr.doc, anchor));
+/**
+ * 当前光标所在的最深可折叠标题 blockId；光标在不可折叠标题中时回退到祖先标题；
+ * 光标位于首标题之前或未在任何章节内时返回 null。
+ */
+export function currentSectionBlockId(state: EditorState): string | null {
+  const blocks = listTopLevelBlocks(state);
+  const pos = state.selection.head;
+  let bestIndex = -1;
+  let bestLevel = -Infinity;
+  for (let i = 0; i < blocks.length; i++) {
+    const b = blocks[i]!;
+    if (b.level == null || !b.blockId || !hasSectionContent(blocks, i)) continue;
+    const end = sectionEndIndex(blocks, i);
+    const sectionTo = blocks[end - 1]!.to;
+    if (pos >= b.from && pos <= sectionTo) {
+      if (b.level >= bestLevel) {
+        bestIndex = i;
+        bestLevel = b.level;
       }
     }
   }
-  tr.setMeta(foldPluginKey, { type: 'toggle', blockId } satisfies FoldMeta);
-  view.dispatch(tr);
-  return true;
+  return bestIndex >= 0 ? blocks[bestIndex]!.blockId : null;
 }
 
-/** 页面重载/切换时清空临时折叠状态。 */
-export function clearBlockFolds(view: EditorView): void {
-  if ((foldPluginKey.getState(view.state)?.folded.size ?? 0) === 0) return;
-  view.dispatch(view.state.tr.setMeta(foldPluginKey, { type: 'clear' } satisfies FoldMeta));
+/** 取折叠章节内容的纯文本预览（首约 80 字符）。空字符串表示无内容或未折叠。 */
+function sectionPreviewText(
+  state: EditorState,
+  blocks: readonly TopLevelBlock[],
+  headingIndex: number,
+  max = 80,
+): string {
+  const end = sectionEndIndex(blocks, headingIndex);
+  const parts: string[] = [];
+  for (let i = headingIndex + 1; i < end && parts.length < 4; i++) {
+    const node = state.doc.nodeAt(blocks[i]!.from);
+    if (!node) continue;
+    const text = node.textContent.replace(/\s+/g, ' ').trim();
+    if (text) parts.push(text);
+  }
+  const joined = parts.join(' · ');
+  return joined.length > max ? `${joined.slice(0, max)}…` : joined;
 }
 
-/** 展开当前编辑视图中的全部章节；仅改变 ProseMirror 插件视图状态。 */
-export function expandAllBlockFolds(view: EditorView): number {
-  const count = foldPluginKey.getState(view.state)?.folded.size ?? 0;
-  clearBlockFolds(view);
-  return count;
+/**
+ * 折叠指定 blockId 标题（幂等）。无章节内容或不存在时返回 false。
+ * 折叠前若光标落在即将隐藏的章节内，安全移回标题行尾。
+ */
+export function foldBlockSection(view: EditorView, blockId: string): boolean {
+  if (!canFoldBlock(view.state, blockId)) return false;
+  if (isBlockFolded(view.state, blockId)) return false;
+  return toggleBlockFold(view, blockId);
+}
+
+/** 展开指定 blockId 标题（幂等）。无章节内容或不存在时返回 false。 */
+export function expandBlockSection(view: EditorView, blockId: string): boolean {
+  if (!canFoldBlock(view.state, blockId)) return false;
+  if (!isBlockFolded(view.state, blockId)) return false;
+  return toggleBlockFold(view, blockId);
 }
 
 /**
@@ -271,6 +304,36 @@ export function revealBlockFoldAt(view: EditorView, pos: number): void {
   view.dispatch(
     view.state.tr.setMeta(foldPluginKey, { type: 'set', folded: next } satisfies FoldMeta),
   );
+}
+
+/**
+ * 折叠到指定层级：把所有 `level <= level` 且有章节内容的标题折叠，
+ * 其余清空展开。同时把落在新隐藏区里的选区安全移回所属标题行尾。
+ */
+export function foldBlocksToLevel(view: EditorView, level: number): number {
+  const blocks = listTopLevelBlocks(view.state);
+  const target = new Set<string>();
+  for (let i = 0; i < blocks.length; i++) {
+    const b = blocks[i]!;
+    if (!b.blockId || b.level == null || b.level > level) continue;
+    if (!hasSectionContent(blocks, i)) continue;
+    target.add(b.blockId);
+  }
+  const foldedRanges = foldedSectionRanges(blocks, target);
+  const tr = view.state.tr;
+  let selection = view.state.selection;
+  for (const range of foldedRanges) {
+    if (selection.from < range.to && selection.to > range.from) {
+      const heading = blocks[range.headingIndex]!;
+      const anchor = Math.min(heading.to - 1, tr.doc.content.size);
+      selection = TextSelection.create(tr.doc, anchor);
+      break;
+    }
+  }
+  if (selection !== view.state.selection) tr.setSelection(selection);
+  tr.setMeta(foldPluginKey, { type: 'set', folded: target } satisfies FoldMeta);
+  view.dispatch(tr);
+  return target.size;
 }
 
 /** 顶层标题位置描述（渲染层 overlay 据此放置 chevron）。 */
@@ -311,16 +374,69 @@ export function collectFoldHeadings(state: EditorState): FoldHeadingDescriptor[]
 }
 
 /**
+ * 折叠标题行尾装饰：行尾可点击 `…` 省略号 +（悬停时）内联 ghost preview。
+ *
+ * - 折叠态下渲染 widget；点击省略号或 ghost preview 调用 toggleBlockFold 展开。
+ * - 悬停状态由 foldPluginState.ghost 提供；其变化由插件 view() 的 mouseover/mouseout
+ *   监听派发，并仅对当前 fold.ghost 命中的标题渲染 ghost 文本。
+ * - DEV-064：折叠/展开的常显差别由此装饰与宿主 overlay chevron 共同承担，
+ *   标题节点不再附加 opacity 样式。
+ */
+function buildTailWidget(state: EditorState, block: TopLevelBlock, ghost: string | null) {
+  const blocks = listTopLevelBlocks(state);
+  const headingIndex = topLevelBlockIndexById(blocks, block.blockId!);
+  const preview =
+    ghost === block.blockId && headingIndex >= 0
+      ? sectionPreviewText(state, blocks, headingIndex)
+      : '';
+  return (view: EditorView): HTMLElement => {
+    const wrap = document.createElement('span');
+    wrap.className = 'nexnote-fold-tail';
+    wrap.contentEditable = 'false';
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.className = 'nexnote-fold-ellipsis';
+    button.textContent = '…';
+    button.title = '展开章节';
+    button.setAttribute('aria-label', '展开章节');
+    button.tabIndex = -1;
+    button.setAttribute('data-fold-ellipsis', block.blockId ?? '');
+    const onPress = (event: Event) => {
+      event.preventDefault();
+      event.stopPropagation();
+      if (block.blockId) toggleBlockFold(view, block.blockId);
+    };
+    button.addEventListener('mousedown', (event) => {
+      event.preventDefault();
+      event.stopPropagation();
+    });
+    button.addEventListener('click', onPress);
+    wrap.append(button);
+    if (preview) {
+      const ghostNode = document.createElement('span');
+      ghostNode.className = 'nexnote-fold-ghost';
+      ghostNode.textContent = preview;
+      ghostNode.setAttribute('aria-hidden', 'true');
+      ghostNode.addEventListener('mousedown', (event) => {
+        event.preventDefault();
+        event.stopPropagation();
+      });
+      ghostNode.addEventListener('click', onPress);
+      wrap.append(ghostNode);
+    }
+    return wrap;
+  };
+}
+
+/**
  * 顶层标题层级描述（DEV-061：渲染层即便内容长度变化也能稳定定位 chevron 列）。
  * 不渲染按钮，仅为 ProseMirror 节点附加 aria 标签/语义锚点，便于 overlay 锚定。
  */
-function buildDecorations(
-  state: EditorState,
-  folded: ReadonlySet<string>,
-): DecorationSet {
+function buildDecorations(state: EditorState, folded: ReadonlySet<string>): DecorationSet {
   const decorations: Decoration[] = [];
   const blocks = listTopLevelBlocks(state);
   const hidden = hiddenBlockIndexes(blocks, folded);
+  const ghost = foldPluginKey.getState(state)?.ghost ?? null;
 
   for (let i = 0; i < blocks.length; i++) {
     const block = blocks[i]!;
@@ -340,7 +456,18 @@ function buildDecorations(
     ) {
       continue;
     }
+    // 节点层 `nexnote-folded` 类仅作为状态 / 辅助选择器锚点；可视差别由行尾省略号与
+    // gutter chevron 共同承担，DEV-064 已移除对应的 opacity 规则。
     decorations.push(Decoration.node(block.from, block.to, { class: 'nexnote-folded' }));
+    const tailPos = Math.max(block.from + 1, block.to - 1);
+    decorations.push(
+      Decoration.widget(tailPos, buildTailWidget(state, block, ghost), {
+        side: 1,
+        ignoreSelection: true,
+        // key 稳定时 ProseMirror 复用 widget DOM，避免悬停 ghost 重建打断 mouseout。
+        key: `fold-tail-${block.blockId}${ghost === block.blockId ? ':ghost' : ''}`,
+      }),
+    );
   }
   return DecorationSet.create(state.doc, decorations);
 }
@@ -441,6 +568,48 @@ export function toggleFoldById(view: EditorView, blockId: string): boolean {
   return toggleBlockFold(view, blockId);
 }
 
+function clampGhost(folded: ReadonlySet<string>, ghost: string | null): string | null {
+  if (ghost == null) return null;
+  return folded.has(ghost) ? ghost : null;
+}
+
+/** 切换折叠；无章节内容、非标题或不存在时返回 false。 */
+export function toggleBlockFold(view: EditorView, blockId: string): boolean {
+  const state = view.state;
+  if (!canFoldBlock(state, blockId)) return false;
+  const tr = state.tr;
+  if (!isBlockFolded(state, blockId)) {
+    const blocks = listTopLevelBlocks(state);
+    const index = topLevelBlockIndexById(blocks, blockId);
+    const heading = blocks[index];
+    const end = sectionEndIndex(blocks, index);
+    const lastHidden = blocks[end - 1];
+    if (heading && lastHidden) {
+      const { from, to } = state.selection;
+      if (from < lastHidden.to && to > heading.to) {
+        const anchor = Math.min(heading.to - 1, tr.doc.content.size);
+        tr.setSelection(TextSelection.create(tr.doc, anchor));
+      }
+    }
+  }
+  tr.setMeta(foldPluginKey, { type: 'toggle', blockId } satisfies FoldMeta);
+  view.dispatch(tr);
+  return true;
+}
+
+/** 页面重载/切换时清空临时折叠状态。 */
+export function clearBlockFolds(view: EditorView): void {
+  if ((foldPluginKey.getState(view.state)?.folded.size ?? 0) === 0) return;
+  view.dispatch(view.state.tr.setMeta(foldPluginKey, { type: 'clear' } satisfies FoldMeta));
+}
+
+/** 展开当前编辑视图中的全部章节；仅改变 ProseMirror 插件视图状态。 */
+export function expandAllBlockFolds(view: EditorView): number {
+  const count = foldPluginKey.getState(view.state)?.folded.size ?? 0;
+  clearBlockFolds(view);
+  return count;
+}
+
 export const Fold = Extension.create({
   name: 'nexnoteFold',
 
@@ -451,7 +620,7 @@ export const Fold = Extension.create({
       new Plugin<FoldPluginState>({
         key: foldPluginKey,
         state: {
-          init: (): FoldPluginState => ({ folded: new Set<string>() }),
+          init: (): FoldPluginState => ({ folded: new Set<string>(), ghost: null }),
           apply(
             tr: Transaction,
             old: FoldPluginState,
@@ -459,6 +628,7 @@ export const Fold = Extension.create({
           ): FoldPluginState {
             const meta = tr.getMeta(foldPluginKey) as FoldMeta | undefined;
             let folded = old.folded;
+            let ghost = old.ghost;
             if (meta?.type === 'clear') {
               folded = new Set<string>();
             } else if (meta?.type === 'set') {
@@ -468,11 +638,31 @@ export const Fold = Extension.create({
               if (next.has(meta.blockId)) next.delete(meta.blockId);
               else next.add(meta.blockId);
               folded = next;
+            } else if (meta?.type === 'setFold') {
+              const next = new Set(folded);
+              if (meta.folded) next.add(meta.blockId);
+              else next.delete(meta.blockId);
+              folded = next;
+            } else if (meta?.type === 'foldToLevel') {
+              const blocks = listTopLevelBlocksFromDoc(tr.doc);
+              const next = new Set<string>();
+              for (let i = 0; i < blocks.length; i++) {
+                const b = blocks[i]!;
+                if (!b.blockId || b.level == null || b.level > meta.level) continue;
+                const end = sectionEndIndex(blocks, i);
+                if (end <= i + 1) continue;
+                next.add(b.blockId);
+              }
+              folded = next;
+            } else if (meta?.type === 'ghost') {
+              ghost = meta.blockId;
             }
             if (tr.docChanged) {
               folded = reconcileFoldedAfterDocChange(tr, oldEditorState, folded);
             }
-            return folded === old.folded ? old : { folded };
+            ghost = clampGhost(folded, ghost);
+            if (folded === old.folded && ghost === old.ghost) return old;
+            return { folded, ghost };
           },
         },
         props: {
@@ -505,12 +695,55 @@ export const Fold = Extension.create({
               if (viewRef === editorView) clampMouseSelection(editorView);
             });
           };
+          const dispatchGhost = (blockId: string | null) => {
+            const current = foldPluginKey.getState(editorView.state);
+            if (!current || current.ghost === blockId) return;
+            editorView.dispatch(
+              editorView.state.tr.setMeta(foldPluginKey, {
+                type: 'ghost',
+                blockId,
+              } satisfies FoldMeta),
+            );
+          };
+          const onMouseOver = (event: MouseEvent) => {
+            const target = event.target;
+            if (!(target instanceof Element)) return;
+            const heading = target.closest('[blockId]');
+            if (!heading) {
+              dispatchGhost(null);
+              return;
+            }
+            const blockId = heading.getAttribute('blockId');
+            if (!blockId) return;
+            const state = foldPluginKey.getState(editorView.state);
+            if (!state || !state.folded.has(blockId)) {
+              dispatchGhost(null);
+              return;
+            }
+            dispatchGhost(blockId);
+          };
+          const onMouseOut = (event: MouseEvent) => {
+            const target = event.target;
+            if (!(target instanceof Element)) return;
+            const heading = target.closest('[blockId]');
+            if (!heading) return;
+            const related = event.relatedTarget as Element | null;
+            if (related && heading.contains(related)) return;
+            const blockId = heading.getAttribute('blockId');
+            if (!blockId) return;
+            const state = foldPluginKey.getState(editorView.state);
+            if (state?.ghost === blockId) dispatchGhost(null);
+          };
           editorView.dom.addEventListener('mousedown', onMouseDown);
           document.addEventListener('mouseup', onMouseUp);
+          editorView.dom.addEventListener('mouseover', onMouseOver);
+          editorView.dom.addEventListener('mouseout', onMouseOut);
           return {
             destroy() {
               editorView.dom.removeEventListener('mousedown', onMouseDown);
               document.removeEventListener('mouseup', onMouseUp);
+              editorView.dom.removeEventListener('mouseover', onMouseOver);
+              editorView.dom.removeEventListener('mouseout', onMouseOut);
               if (viewRef === editorView) viewRef = null;
             },
           };
