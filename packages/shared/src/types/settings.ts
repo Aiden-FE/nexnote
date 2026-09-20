@@ -95,10 +95,10 @@ export const DEFAULT_SHORTCUTS: readonly ShortcutOverride[] = [
   { commandId: 'tab.next', key: 'Ctrl+Tab', disabled: false },
   { commandId: 'tab.prev', key: 'Ctrl+Shift+Tab', disabled: false },
   { commandId: 'app.settings', key: 'Mod+,', disabled: false },
-  // DEV-064：折叠当前章节 / 展开当前章节 / toggle 当前章节（chord，尊重 Mod+K palette）。
+  // DEV-064：折叠当前章节 / 展开当前章节。chord 形式（Mod+K Mod+L）留待后续 chord
+  // 改造落地，避免 ShortcutRuntime 不消费 sequence 时命令假绑定。
   { commandId: 'editor.foldCurrentSection', key: 'Mod+Shift+[', disabled: false },
   { commandId: 'editor.expandCurrentSection', key: 'Mod+Shift+]', disabled: false },
-  { commandId: 'editor.toggleCurrentSectionFold', key: 'Mod+K Mod+L', disabled: false },
 ];
 
 export function defaultGlobalSettings(): GlobalSettings {
