@@ -428,19 +428,23 @@
     "DEV-066": {
       "title": "设置页 Switch 启用态 thumb 视觉错乱修复",
       "deps": [],
-      "status": "open",
+      "status": "done",
       "agent": null,
-      "branch": "dev/DEV-066"
+      "branch": "dev/DEV-066",
+      "merged": "dev/DEV-066: bb88b4b merge, DEV-067: c14669f",
+      "verdict": "15/15 settings-ui PASS + 六门禁；随 v0.0.19 发布（run 35506878662, tag v0.0.19）"
     },
     "DEV-067": {
       "title": "编辑器工具栏按钮 hover tooltip 可见性修复",
       "deps": [],
-      "status": "open",
+      "status": "done",
       "agent": null,
-      "branch": "dev/DEV-067"
+      "branch": "dev/DEV-067",
+      "merged": "c14669f",
+      "verdict": "34/34 toolbar PASS + 六门禁；随 v0.0.19 发布（run 35506878662, tag v0.0.19）"
     }
   },
-  "phase": "DEV-061~065 编辑器 UI 修正 + v0.0.18 发布 已完成；DEV-066/067 已分诊、待后续轮次",
+  "phase": "DEV-001~065 已完成（v0.0.18 已发）；DEV-066/067 补丁轮已完成并随 v0.0.19 发布",
   "notes": [
     "调度规则：前置依赖全部合并进 master 后才启动该票据子Agent，worktree 基于 merging 后的 master 新建",
     "worktree 根已迁至 {master}/.wt/<TICKET>（.git/info/exclude 忽略）——子Agent workspace 仅覆盖主工作区，外部路径会被文件沙箱拒绝（DEV-007/DEV-009 首次修复尝试因此阻塞，已迁移后恢复）",
