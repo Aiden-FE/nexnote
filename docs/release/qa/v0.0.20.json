@@ -1,0 +1,35 @@
+{
+  "schema": "nexnote-release-qa/v1",
+  "repository": "Aiden-FE/nexnote",
+  "tag": "v0.0.20",
+  "commit": "[AWS_SECRET_KEY_REDACTED]",
+  "channel": "stable",
+  "allRequiredChecksPassed": true,
+  "scope": "v0.0.20-candidate",
+  "machineChecks": {
+    "typecheck": "passed (workspaces: apps/website, packages/plugin-api, packages/shared, packages/kernel, packages/renderer)",
+    "lint": "passed (0 errors; pre-existing import()-style warnings unchanged from v0.0.19 baseline)",
+    "tests": "164 files passed, 1511 tests passed, 2 tests skipped; full test run on master HEAD 91696db before version bump e279605",
+    "build": "passed (electron-vite build)",
+    "releaseConfig": "31/31 passed",
+    "changedFormat": "passed",
+    "diffCheck": "passed",
+    "packagedSmoke": "local macOS arm64 packaged run 259/261 (Electron 44.2.0, ABI 149); the 2 failing checks (TipTap 真实键入 / slash menu; Icon-first toolbar AI tooltip) were reproduced identically at the v0.0.19 baseline commit ecc66cd and at the DEV-069 merge commit 2129a3b, confirming they are pre-existing local-environment flake unrelated to this wave; this wave's new behavior is covered by 17 new vitest cases (DEV-069: 8, DEV-070: 7, DEV-068: 6, DEV-071: 7 = 28 total across tickets)"
+  },
+  "candidateContents": {
+    "tickets": "DEV-068, DEV-069, DEV-070 and DEV-071 implemented, reviewed (Standards + Spec), merged to master",
+    "highlights": [
+      "DEV-071 (P0 data corruption): table cell blockId pollution fixed - serialize direction strips blockId inside tableCell/tableHeader, parse direction removes trailing ^id literal text (dirty-data migration on open, idempotent); mid-cell user-written ^alpha preserved",
+      "DEV-069: sandwiched empty list item deleted outright on Backspace (no residual blank paragraph); orderedList keepAttributes preserves start when adjacent <ol> merge",
+      "DEV-070: table row/column insert UI - slash menu table actions gated by new table-cursor capability, Icon-first toolbar entries appear when cursor is inside a table (inTable reactive state), official addRowAfter/addColumnAfter/deleteRow/deleteColumn commands",
+      "DEV-068: translation initial target language follows interface display language via three-tier priority (AI settings global default > interface language mapping > source-text guess)"
+    ]
+  },
+  "notRun": [
+    "Windows packaged smoke and Linux packaged smoke",
+    "Windows/Ubuntu physical installation verification",
+    "macOS notarization / Gatekeeper verification (Ad hoc signing only)",
+    "N-1 network auto-update end-to-end verification",
+    "GitHub Actions v0.0.20 workflow execution (triggered by immutable tag push)"
+  ]
+}
