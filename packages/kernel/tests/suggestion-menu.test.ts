@@ -1,5 +1,5 @@
 // @vitest-environment happy-dom
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { TextSelection } from '@tiptap/pm/state';
 import { createEditor } from '../src/editor';
 import type { EditorKernelInstance } from '../src/editor';
@@ -25,13 +25,10 @@ function typeText(view: Parameters<never>[0] | never, text: string): void {
 
 function pressKey(view: never, key: string): boolean {
   let result = false;
-  view.someProp(
-    'handleKeyDown',
-    (f: (v: typeof view, e: KeyboardEvent) => boolean) => {
-      result = f(view, new KeyboardEvent('keydown', { key, bubbles: true }));
-      return false;
-    },
-  );
+  view.someProp('handleKeyDown', (f: (v: typeof view, e: KeyboardEvent) => boolean) => {
+    result = f(view, new KeyboardEvent('keydown', { key, bubbles: true }));
+    return false;
+  });
   return result;
 }
 
@@ -39,9 +36,7 @@ function pressKey(view: never, key: string): boolean {
 function placeCursorAtEnd(kernel: EditorKernelInstance): void {
   const view = kernel.editor.view;
   const pos = view.state.doc.content.size;
-  view.dispatch(
-    view.state.tr.setSelection(TextSelection.near(view.state.doc.resolve(pos))),
-  );
+  view.dispatch(view.state.tr.setSelection(TextSelection.near(view.state.doc.resolve(pos))));
 }
 
 function make() {
@@ -65,7 +60,12 @@ function make() {
     wikilinkSuggestions: (q) =>
       pages
         .filter((p) => p.title.includes(q) || p.id.includes(q))
-        .map((p) => ({ id: p.id, title: p.title, hint: p.hint, ...(p.meta ? { meta: p.meta } : {}) })),
+        .map((p) => ({
+          id: p.id,
+          title: p.title,
+          hint: p.hint,
+          ...(p.meta ? { meta: p.meta } : {}),
+        })),
     hashtagSuggestions: (q) => tags.filter((t) => t.title.includes(q)).map((t) => ({ ...t })),
   });
   placeCursorAtEnd(kernel);
@@ -90,7 +90,9 @@ describe('wikilink 补全（DEV-017）', () => {
   it('输入 [[ 弹出候选，Enter 插入 wikilink 节点', () => {
     const { kernel, container } = make();
     typeText(kernel.editor.view as never, '[[');
-    const menu = container.parentElement?.querySelector('.nexnote-suggestion--wikilink') as HTMLElement;
+    const menu = container.parentElement?.querySelector(
+      '.nexnote-suggestion--wikilink',
+    ) as HTMLElement;
     expect(menu).toBeTruthy();
     expect(menu.style.display).not.toBe('none');
     const rows = () => [...menu.querySelectorAll('[data-suggestion-item]')];
@@ -121,7 +123,9 @@ describe('wikilink 补全（DEV-017）', () => {
     typeText(kernel.editor.view as never, '[[');
     // 输入「总结」只命中 项目总结（其显示标题是别名「计划」）
     typeText(kernel.editor.view as never, '总结');
-    const menu = container.parentElement?.querySelector('.nexnote-suggestion--wikilink') as HTMLElement;
+    const menu = container.parentElement?.querySelector(
+      '.nexnote-suggestion--wikilink',
+    ) as HTMLElement;
     const rows = [...menu.querySelectorAll<HTMLElement>('[data-suggestion-item]')];
     expect(rows.length).toBe(1);
     expect(rows[0]?.dataset.suggestionItem).toBe('项目总结');
@@ -134,9 +138,14 @@ describe('wikilink 补全（DEV-017）', () => {
   it('Esc 关闭补全，不插入节点', () => {
     const { kernel, container } = make();
     typeText(kernel.editor.view as never, '[[');
-    expect((container.parentElement?.querySelector('.nexnote-suggestion--wikilink') as HTMLElement).style.display).not.toBe('none');
+    expect(
+      (container.parentElement?.querySelector('.nexnote-suggestion--wikilink') as HTMLElement).style
+        .display,
+    ).not.toBe('none');
     pressKey(kernel.editor.view as never, 'Escape');
-    const menu = container.parentElement?.querySelector('.nexnote-suggestion--wikilink') as HTMLElement;
+    const menu = container.parentElement?.querySelector(
+      '.nexnote-suggestion--wikilink',
+    ) as HTMLElement;
     expect(menu.style.display).toBe('none');
     kernel.destroy();
     container.remove();
@@ -170,10 +179,14 @@ describe('wikilink 补全（DEV-017）', () => {
     expect(kernel.getMarkdown()).toContain('[[项目计划]]');
     kernel.undo();
     const json = kernel.getJSON();
-    const links = json.content!.flatMap((n) => n.content ?? []).filter((n) => n.type === 'wikilink');
+    const links = json
+      .content!.flatMap((n) => n.content ?? [])
+      .filter((n) => n.type === 'wikilink');
     expect(links.length).toBe(0); // wikilink 节点被撤销
     // 触发串与查询词随单事务一并还原（序列化时 [[ 会被转义，故断言 JSON 文本）
-    const text = json.content!.map((n) => (n.content ?? []).map((c) => c.text ?? '').join('')).join('\n');
+    const text = json
+      .content!.map((n) => (n.content ?? []).map((c) => c.text ?? '').join(''))
+      .join('\n');
     expect(text).toContain('[[项目');
     kernel.destroy();
     container.remove();
@@ -207,7 +220,9 @@ describe('hashtag 补全（DEV-017）', () => {
     const { kernel, container } = make();
     typeText(kernel.editor.view as never, '笔记 ');
     typeText(kernel.editor.view as never, '#');
-    const menu = container.parentElement?.querySelector('.nexnote-suggestion--hashtag') as HTMLElement;
+    const menu = container.parentElement?.querySelector(
+      '.nexnote-suggestion--hashtag',
+    ) as HTMLElement;
     expect(menu).toBeTruthy();
     expect(menu.style.display).not.toBe('none');
     typeText(kernel.editor.view as never, '项目');
@@ -228,8 +243,73 @@ describe('hashtag 补全（DEV-017）', () => {
   it('mid-word 的 # 不触发（避免数字/锚点误触）', () => {
     const { kernel, container } = make();
     typeText(kernel.editor.view as never, 'C#');
-    const menu = container.parentElement?.querySelector('.nexnote-suggestion--hashtag') as HTMLElement;
+    const menu = container.parentElement?.querySelector(
+      '.nexnote-suggestion--hashtag',
+    ) as HTMLElement;
     expect(menu.style.display).toBe('none');
+    kernel.destroy();
+    container.remove();
+  });
+});
+
+describe('suggestion 菜单视口定位（DEV-062）', () => {
+  it('suggestion 菜单按编辑滚动视口翻转并限制高度，键盘 active 项滚入可视区', () => {
+    const { kernel, container } = make();
+    const editorHost = container;
+    editorHost.setAttribute('data-testid', 'editor-host');
+    Object.defineProperty(editorHost, 'scrollHeight', { configurable: true, value: 900 });
+    Object.defineProperty(editorHost, 'clientHeight', { configurable: true, value: 200 });
+    editorHost.getBoundingClientRect = () =>
+      ({
+        top: 30,
+        bottom: 230,
+        left: 0,
+        right: 400,
+        width: 400,
+        height: 200,
+        x: 0,
+        y: 30,
+        toJSON() {},
+      }) as DOMRect;
+    typeText(kernel.editor.view as never, '[[');
+    const menu = container.querySelector<HTMLElement>('.nexnote-suggestion--wikilink')!;
+    Object.defineProperty(menu, 'scrollHeight', { configurable: true, value: 360 });
+    // caretCoords uses Range#getBoundingClientRect; make it return coords near the bottom of the viewport
+    // so the helper must flip above.
+    const originalGetBCR = Range.prototype.getBoundingClientRect;
+    Range.prototype.getBoundingClientRect = function patched() {
+      return {
+        top: 210,
+        bottom: 218,
+        left: 30,
+        right: 31,
+        width: 1,
+        height: 8,
+        x: 30,
+        y: 210,
+        toJSON() {},
+      } as DOMRect;
+    };
+    try {
+      kernel.editor.view.dispatch(kernel.editor.state.tr.setMeta('viewport-test', true));
+      expect(menu.dataset.placement).toBe('above');
+      expect(menu.style.overflowY).toBe('auto');
+      expect(menu.style.maxHeight).not.toBe('');
+    } finally {
+      Range.prototype.getBoundingClientRect = originalGetBCR;
+    }
+    const scrollIntoView = vi.fn();
+    const original = HTMLElement.prototype.scrollIntoView;
+    HTMLElement.prototype.scrollIntoView = function patched(arg) {
+      if (this.closest?.('.nexnote-suggestion')) scrollIntoView(arg);
+      return original.call(this, arg);
+    };
+    try {
+      pressKey(kernel.editor.view as never, 'ArrowDown');
+      expect(scrollIntoView).toHaveBeenCalledWith({ block: 'nearest' });
+    } finally {
+      HTMLElement.prototype.scrollIntoView = original;
+    }
     kernel.destroy();
     container.remove();
   });

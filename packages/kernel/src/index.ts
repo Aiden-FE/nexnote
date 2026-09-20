@@ -93,6 +93,22 @@ export type { ContextMenuItem, ContextMenuOptions } from './extensions/context-m
 export { PluginBlock, PLUGIN_BLOCK_FENCE } from './extensions/plugin-block';
 export type { PluginBlockAttributes } from './extensions/plugin-block';
 export { SuggestionMenu } from './extensions/suggestion-menu';
+export {
+  applyMenuViewportPlacement,
+  computeMenuViewportPlacement,
+  findScrollViewport,
+  positionMenuInViewport,
+  readMenuHeight,
+  readMenuViewport,
+  scrollActiveMenuItemIntoView,
+  MENU_VIEWPORT_GAP,
+  MENU_VIEWPORT_MARGIN,
+} from './extensions/menu-viewport';
+export type {
+  MenuAnchorRect,
+  MenuViewportPlacement,
+  MenuViewportRect,
+} from './extensions/menu-viewport';
 export type {
   SuggestionItem,
   SuggestionKind,

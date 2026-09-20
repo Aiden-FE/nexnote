@@ -1,6 +1,13 @@
 import { Prec, type EditorState, type Extension } from '@codemirror/state';
 import { syntaxTree } from '@codemirror/language';
 import { EditorView, ViewPlugin, keymap } from '@codemirror/view';
+import {
+  applyMenuViewportPlacement,
+  findScrollViewport,
+  readMenuHeight,
+  readMenuViewport,
+  scrollActiveMenuItemIntoView,
+} from '@nexnote/kernel';
 import { filterQuickInsertCandidates, quickInsertCatalog } from '@nexnote/shared';
 import type {
   EditorActionCatalogEntry,
@@ -287,21 +294,29 @@ export function sourceSlashMenu(options: SourceSlashMenuOptions): Extension {
       menu.append(empty);
     }
     menu.style.display = 'block';
+    const place = () => {
+      const coords = view.coordsAtPos(view.state.selection.main.head);
+      const hostEl = view.dom.parentElement;
+      if (!coords || !hostEl) return false;
+      const hostRect = hostEl.getBoundingClientRect();
+      const viewportEl = findScrollViewport(view.dom);
+      const viewport = readMenuViewport(viewportEl);
+      const placement = applyMenuViewportPlacement({
+        menu: menu!,
+        host: hostEl,
+        anchor: { top: coords.top, bottom: coords.bottom, left: coords.left },
+        viewport,
+        desiredHeight: readMenuHeight(menu!),
+      });
+      menu!.style.top = `${placement.top - hostRect.top}px`;
+      menu!.style.left = `${coords.left - hostRect.left}px`;
+      return true;
+    };
     view.requestMeasure({
-      read: (v) => {
-        const coords = v.coordsAtPos(v.state.selection.main.head);
-        const host = v.dom.parentElement?.getBoundingClientRect();
-        return {
-          top: (coords?.bottom ?? 0) - (host?.top ?? 0) + 6,
-          left: (coords?.left ?? 0) - (host?.left ?? 0),
-        };
-      },
-      write: (position) => {
-        if (!menu || !session) return;
-        menu.style.top = `${position.top}px`;
-        menu.style.left = `${position.left}px`;
-      },
+      read: () => true,
+      write: place,
     });
+    scrollActiveMenuItemIntoView(menu);
   };
   const availableItems = (query: string, emptyBlock: boolean) => {
     try {

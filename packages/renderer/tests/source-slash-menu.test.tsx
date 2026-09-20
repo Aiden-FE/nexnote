@@ -42,6 +42,30 @@ function mount(
   };
 }
 
+function mountWithViewport(): Fixture {
+  const pane = document.createElement('div');
+  pane.setAttribute('data-testid', 'source-editor-pane');
+  document.body.append(pane);
+  const mountRoot = document.createElement('div');
+  pane.append(mountRoot);
+  const ai = vi.fn(() => true);
+  const editor = createSourceEditor(mountRoot, {
+    initialText: '',
+    onChange: () => undefined,
+    extraExtensions: [sourceSlashMenu({ isEnabled: () => true, onAiInsert: ai })],
+  });
+  editor.view.dispatch({ selection: { anchor: editor.view.state.doc.length } });
+  return {
+    parent: pane,
+    editor,
+    ai,
+    cleanup: () => {
+      editor.destroy();
+      pane.remove();
+    },
+  };
+}
+
 globalThis.IS_REACT_ACT_ENVIRONMENT = true;
 
 /** Deliberately walk browser events, not `view.dispatch`: DOM insertion causes CodeMirror's input path. */
@@ -307,6 +331,53 @@ describe('Markdown CodeMirror / 快捷输入（DEV-053）', () => {
     expect(fixture.editor.getText()).toBe(
       '首行\n第二行 \n\n| 列 1 | 列 2 |\n| --- | --- |\n|  |  |\n',
     );
+    fixture.cleanup();
+  });
+
+  it('CodeMirror 源菜单按滚动视口翻转并限制高度，active 项滚入', async () => {
+    const fixture = mountWithViewport();
+    const pane = fixture.parent;
+    Object.defineProperty(pane, 'clientHeight', { configurable: true, value: 200 });
+    Object.defineProperty(pane, 'scrollHeight', { configurable: true, value: 800 });
+    pane.getBoundingClientRect = () =>
+      ({
+        top: 40,
+        bottom: 240,
+        left: 0,
+        right: 200,
+        width: 200,
+        height: 200,
+        x: 0,
+        y: 40,
+        toJSON() {},
+      }) as DOMRect;
+    vi.spyOn(fixture.editor.view, 'coordsAtPos').mockReturnValue({
+      top: 220,
+      bottom: 230,
+      left: 12,
+      right: 13,
+    });
+    await type(fixture, '/');
+    const menu = pane.querySelector<HTMLElement>('[data-testid="source-slash-menu"]')!;
+    Object.defineProperty(menu, 'scrollHeight', { configurable: true, value: 360 });
+    // Force a rerender via ArrowDown so the helper sees the populated menu + viewport.
+    const scrollIntoView = vi.fn();
+    const original = HTMLElement.prototype.scrollIntoView;
+    HTMLElement.prototype.scrollIntoView = function patched(arg) {
+      if (this.closest?.('[data-testid="source-slash-menu"]')) scrollIntoView(arg);
+      return original.call(this, arg);
+    };
+    try {
+      press(fixture, 'ArrowDown');
+      // requestMeasure defers to next animation frame in CodeMirror
+      await new Promise((resolve) => requestAnimationFrame(() => resolve(null)));
+      expect(menu.dataset.placement).toBe('above');
+      expect(menu.style.overflowY).toBe('auto');
+      expect(menu.style.maxHeight).not.toBe('');
+      expect(scrollIntoView).toHaveBeenCalledWith({ block: 'nearest' });
+    } finally {
+      HTMLElement.prototype.scrollIntoView = original;
+    }
     fixture.cleanup();
   });
 
