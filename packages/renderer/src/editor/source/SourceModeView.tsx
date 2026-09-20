@@ -497,6 +497,9 @@ export function SourceModeView({ tab }: { tab: TabDescriptor }) {
         path: pathRef.current,
         title: titleFromPath(pathRef.current),
       }),
+      // DEV-068：界面显示语言作为翻译默认目标语言的第二优先级
+      getInterfaceLanguage: () =>
+        useSettingsStore.getState().global?.appearance.language,
     });
     return () => {
       translationControllerRef.current?.closeSelection();

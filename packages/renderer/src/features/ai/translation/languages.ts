@@ -34,9 +34,39 @@ export function guessTargetLanguage(text: string): string {
   return letters > 0 && cjk / letters > 0.2 ? 'English' : '简体中文';
 }
 
-/** 触发点临时切换不持久化；全局默认只由 AI 设置写入主进程。 */
-export function resolveInitialTargetLanguage(text: string, globalDefault?: string): string {
-  return globalDefault && isKnownLanguage(globalDefault)
-    ? globalDefault
-    : guessTargetLanguage(text);
+/**
+ * 界面语言 tag → 翻译目标语言（DEV-068）。
+ * 仅映射 TRANSLATION_LANGUAGES 内存在的语言；未知 tag 返回 undefined 走兜底。
+ */
+export function mapInterfaceLanguageToTranslationTarget(
+  tag: string | undefined,
+): string | undefined {
+  if (!tag) return undefined;
+  const lower = tag.toLowerCase();
+  if (lower.startsWith('zh')) return '简体中文';
+  if (lower.startsWith('en')) return 'English';
+  if (lower.startsWith('ja')) return '日本語';
+  if (lower.startsWith('ko')) return '한국어';
+  if (lower.startsWith('fr')) return 'Français';
+  if (lower.startsWith('de')) return 'Deutsch';
+  if (lower.startsWith('es')) return 'Español';
+  if (lower.startsWith('ru')) return 'Русский';
+  return undefined;
+}
+
+/**
+ * 初始目标语言三档优先级（DEV-068）：
+ * 1. AI 设置显式全局默认（translationTargetLanguage）
+ * 2. 界面显示语言映射（设置常规 appearance.language）
+ * 3. 按原文语种猜测（旧兼容兜底）
+ */
+export function resolveInitialTargetLanguage(
+  text: string,
+  globalDefault?: string,
+  interfaceLanguage?: string,
+): string {
+  if (globalDefault && isKnownLanguage(globalDefault)) return globalDefault;
+  const fromInterface = mapInterfaceLanguageToTranslationTarget(interfaceLanguage);
+  if (fromInterface) return fromInterface;
+  return guessTargetLanguage(text);
 }

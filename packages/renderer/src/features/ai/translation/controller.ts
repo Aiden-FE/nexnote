@@ -27,6 +27,8 @@ export interface TranslationControllerDeps {
   getDocumentText: () => string;
   /** 当前活动文档的路径与标题（临时视图只用于展示，不写盘）。 */
   getDocumentMeta: () => { path: string; title: string };
+  /** DEV-068：读取设置常规的界面显示语言 tag（如 zh-CN / en-US）。 */
+  getInterfaceLanguage?: () => string | undefined;
 }
 
 export interface TranslationSelectionTarget {
@@ -208,7 +210,11 @@ export function createTranslationController(
       runSelection(
         text,
         target.coords,
-        resolveInitialTargetLanguage(text, currentTranslationTargetLanguage()),
+        resolveInitialTargetLanguage(
+          text,
+          currentTranslationTargetLanguage(),
+          deps.getInterfaceLanguage?.(),
+        ),
       );
     },
     translateDocument: () => {
@@ -217,7 +223,11 @@ export function createTranslationController(
       runDocument(
         text,
         deps.getDocumentMeta(),
-        resolveInitialTargetLanguage(text, currentTranslationTargetLanguage()),
+        resolveInitialTargetLanguage(
+          text,
+          currentTranslationTargetLanguage(),
+          deps.getInterfaceLanguage?.(),
+        ),
       );
     },
     setTargetLanguage,
