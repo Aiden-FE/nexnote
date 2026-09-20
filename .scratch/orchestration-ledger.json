@@ -401,5 +401,16 @@
   },
   "updated": "2026-09-20",
   "status": "done",
-  "completed": "26/26"
+  "completed": "26/26",
+  "releases": {
+    "v0.0.17": {
+      "status": "published",
+      "workflowRunId": 35483630301,
+      "candidate": "b713c2a",
+      "evidence": "d86e623",
+      "url": "https://github.com/Aiden-FE/nexnote/releases/tag/v0.0.17",
+      "assets": 17,
+      "qaGate": "release-qa approved after automated build/smoke/preflight"
+    }
+  }
 }
