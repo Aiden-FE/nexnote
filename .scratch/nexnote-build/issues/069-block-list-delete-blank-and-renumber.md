@@ -47,8 +47,20 @@ None (can start immediately).
 
 ## 实现记录
 
-待实现后填写。
+- 候选 SHA：`1dba20d`（dev/DEV-069，基于 master `0cfc92a`）。
+- 新增扩展 `packages/kernel/src/extensions/list-dev069.ts`（`nexnoteListDev069`）：
+  - `isSandwichedEmptyListItem(state)`：探测当前空 `<li>` 是否夹在两个同级 listItem 之间（要求：父为 bulletList/orderedList、光标在空 paragraph 起始、li 仅含一个空 paragraph、前后均有同级项）。
+  - 通过 `addKeyboardShortcuts` 注册 Backspace：命中条件时直接删除整个空 listItem（`tr.delete($from.before(depth), $from.after(depth))`），不产生空白 paragraph；首/尾空项不拦截，仍由默认 ListKeymap 走 lift 退出列表。
+- `packages/kernel/src/extensions/index.ts` StarterKit 配置：`orderedList: { keepAttributes: true }`，合并相邻 `<ol>` 时保留 start 属性；并注册 ListDev069。
+- 语义说明：用户痛点是列表被拆成两段后各自从 1 重新计数；修复后删除中间项不再拆分列表，剩余项保持单一有序列表并自然连续编号。
 
 ## 门禁与证据
 
-待实现后填写。
+- 新增测试 `packages/kernel/tests/list-dev069.test.ts` 8 用例：探测函数三态（夹中 true / 首尾 false / 非空 false）；Backspace 无序删中间项剩「- 甲 / - 丙」无连续空行；有序删第 3 项剩 4 项连续编号 1..4 且不含“三”；起始号解析为 start=3；扩展名稳定；buildKernelExtensions 集成。
+- vitest 全量：160 files passed / 1 skipped，1497 passed / 2 skipped。
+- typecheck（pnpm -r）：PASS。
+- eslint（改动文件 0 warnings；全仓门禁口径）：PASS。
+- build（electron-vite）：PASS。
+- verify-release-config：31/31 PASS。
+- `git diff --check master...HEAD`：PASS。
+- 双轴审查：Standards PASS / Spec PASS（候选 `1dba20d`）。
