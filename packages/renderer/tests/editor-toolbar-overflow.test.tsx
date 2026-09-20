@@ -77,6 +77,8 @@ const press = (el: Element, key: string): void => {
     el.dispatchEvent(new KeyboardEvent('keydown', { key, bubbles: true, cancelable: true }));
   });
 };
+const tick = (ms = 0): Promise<void> => new Promise((r) => setTimeout(r, ms));
+
 const click = (el: Element | null): void => {
   act(() => {
     el?.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
@@ -254,17 +256,26 @@ describe('Icon-first 与统一 Tooltip（DEV-050）', () => {
     }
   });
 
-  it('hover 与 keyboard focus 打开 Tooltip，Escape 关闭', () => {
+  it('hover 与 keyboard focus 打开 Tooltip，Escape 关闭', async () => {
     mount(makeEntries());
     const bold = byTestId('toolbar-entry-bold')!;
+    // DEV-067: tooltip 通过 portal 渲染到 document.body；React 由 pointerover/out
+    // 合成 onPointerEnter/Leave，happy-dom 下派发冒泡的 over/out 事件。
+    const tip = () => document.body.querySelector<HTMLElement>('[data-testid="toolbar-tooltip"]');
     act(() => bold.dispatchEvent(new PointerEvent('pointerover', { bubbles: true })));
-    expect(byTestId('toolbar-tooltip')?.textContent).toContain('动作 bold');
+    await tick(0);
+    expect(tip()?.textContent).toContain('动作 bold');
     act(() => bold.dispatchEvent(new PointerEvent('pointerout', { bubbles: true })));
-    expect(byTestId('toolbar-tooltip')?.hasAttribute('hidden')).toBe(true);
+    await tick(0);
+    expect(tip()).toBeNull();
     act(() => bold.focus());
-    expect(byTestId('toolbar-tooltip')).not.toBeNull();
-    press(bold, 'Escape');
-    expect(byTestId('toolbar-tooltip')?.hasAttribute('hidden')).toBe(true);
+    await tick(0);
+    expect(tip()).not.toBeNull();
+    act(() => {
+      window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+    });
+    await tick(0);
+    expect(tip()).toBeNull();
   });
 });
 
