@@ -378,3 +378,9 @@ DEV-006 ← DEV-004；DEV-008 ← DEV-004+007；DEV-010 ← DEV-002+009；DEV-01
 - **门禁**：post-merge master 六门禁 PASS — typecheck、full test `158 files / 1480 tests passed (2 skipped)`、lint `0 errors / 4 pre-existing warnings`、build、changed-format、`git diff --check`、release-config 31/31。
 - **v0.0.18 发布候选**：bump `9ac5f1a`；macOS arm64 Ad hoc 打包（Electron 44.2.0、ABI 149 staging + `-c.npmRebuild=false`），packaged smoke **261/261 PASS**（`NEXNOTE_SMOKE_TIMEOUT_MS=360000`，候选 SHA 绑定）；QA evidence 提交 `d149aa4`。
 - **NOT_RUN**：Windows/Linux packaged smoke、物理安装验证、N-1 网络升级、发布后 24h 监控；未虚报。
+
+## v0.0.18 失败候选与 v0.0.19 发布（2026-09-20）
+
+- **v0.0.18（immutable tag 保留为失败候选，同 v0.0.16 先例）**：本地六门禁与 macOS arm64 packaged smoke 261/261 全 PASS（evidence `d149aa4`，后修正为 40-hex commit 的 `ffa17f7`），但 Release workflow `35503808844` 的 preflight 两次失败——首次失败时 `RELEASE_QA_EVIDENCE_URL` variable 尚为旧值（workflow 启动后我更新了 variable，但 run 内 prepare 输出仍绑定旧 URL）；rerun 后 evidence JSON 的 `commit` 字段只写了 7 位 short SHA 与 40 位 hex 校验不符。两次根因均不涉及构建/测试质量。tag v0.0.18 不移动，不发布 GitHub Release。
+- **v0.0.19（正式发布）**：由另一分支在同一 master 基础上完成 DEV-066/067（设置页 Switch 视觉、工具栏 tooltip 裁切）后以 `e159c3c` bump、`415e4fb` evidence、`fdad503` 收尾，Release workflow `35506878662` 全绿，GitHub Release v0.0.19 为 stable/non-draft，17 资产含 SHA256SUMS。**v0.0.19 完整包含本轮 DEV-061~065 全部修复**（已在 v0.0.19 tag 树中逐文件验证：unified-gutter.ts、menu-viewport.ts、selection-bubble-icons.ts、fold-actions.ts 均存在且关键代码到位；globals.css 无 `.nexnote-folded` opacity 残留；drag-handle 使用 Floating UI offset 而非 translateX hack）。
+- 本轮目标（拆票 DEV-061~065、实现全部目标、release 新版）由 v0.0.19 满足；v0.0.18 按惯例保留为失败候选记录在案。

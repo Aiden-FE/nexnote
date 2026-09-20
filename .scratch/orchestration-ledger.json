@@ -486,6 +486,23 @@
       "url": "https://github.com/Aiden-FE/nexnote/releases/tag/v0.0.17",
       "assets": 17,
       "qaGate": "release-qa approved after automated build/smoke/preflight"
+    },
+    "v0.0.18": {
+      "status": "failed-candidate-retained",
+      "workflowRunId": 35503808844,
+      "candidate": "9ac5f1a",
+      "evidence": "ffa17f7",
+      "qaGate": "local gates + macOS arm64 packaged smoke 261/261 PASS; preflight failed on evidence binding (variable staleness then short-SHA commit field); tag kept immutable, no GitHub Release",
+      "supersededBy": "v0.0.19"
+    },
+    "v0.0.19": {
+      "status": "published",
+      "workflowRunId": 35506878662,
+      "candidate": "e159c3c",
+      "evidence": "415e4fb",
+      "url": "https://github.com/Aiden-FE/nexnote/releases/tag/v0.0.19",
+      "assets": 17,
+      "qaGate": "release-qa approved after automated build/smoke/preflight; includes DEV-061~065 editor UI wave and DEV-066/067"
     }
   }
 }
