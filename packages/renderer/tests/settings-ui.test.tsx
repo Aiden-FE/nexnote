@@ -365,3 +365,42 @@ describe('快捷键设置可编辑', () => {
     unsubscribe();
   });
 });
+describe('DEV-066 设置页 Toggle 视觉修复', () => {
+  async function openShortcuts(): Promise<void> {
+    await mountAndLoad();
+    const navBtn = container.querySelector<HTMLButtonElement>(
+      '[data-testid="settings-nav-shortcuts"]',
+    )!;
+    await act(async () => {
+      navBtn.click();
+      await tick(20);
+    });
+  }
+
+  it('开关轨道约束 thumb 不外溢：轨道 overflow-hidden，thumb 深色模式下可读（bg-background）', async () => {
+    installBridge();
+    await openShortcuts();
+    const toggle = container.querySelector<HTMLButtonElement>('[role="switch"]')!;
+    expect(toggle.className).toContain('overflow-hidden');
+    const thumb = toggle.querySelector('span[aria-hidden="true"]')!;
+    expect(thumb).toBeTruthy();
+    expect(thumb.className).toContain('bg-background');
+    expect(thumb.className).toContain('shadow-sm');
+  });
+
+  it('保留 role=switch 与 aria-checked 语义，点击触发 setShortcuts 持久化', async () => {
+    const { invokeSpy } = installBridge();
+    await openShortcuts();
+    const toggle = container.querySelector<HTMLButtonElement>('[role="switch"]')!;
+    expect(toggle.getAttribute('role')).toBe('switch');
+    expect(toggle.hasAttribute('aria-checked')).toBe(true);
+    await act(async () => {
+      toggle.click();
+      await tick(20);
+    });
+    expect(invokeSpy).toHaveBeenCalledWith(
+      'settings:setShortcuts',
+      expect.objectContaining({ shortcuts: expect.any(Array) }),
+    );
+  });
+});

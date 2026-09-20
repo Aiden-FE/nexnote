@@ -130,12 +130,13 @@ function Toggle({ checked, onChange }: { checked: boolean; onChange: (v: boolean
       role="switch"
       aria-checked={checked}
       onClick={() => onChange(!checked)}
-      className={`relative h-5 w-9 rounded-full transition-colors ${
+      className={`relative inline-flex h-5 w-9 shrink-0 items-center overflow-hidden rounded-full transition-colors ${
         checked ? 'bg-primary' : 'bg-muted'
       }`}
     >
       <span
-        className={`absolute top-0.5 h-4 w-4 rounded-full bg-white shadow transition-transform ${
+        aria-hidden="true"
+        className={`pointer-events-none block h-4 w-4 rounded-full bg-background shadow-sm ring-1 ring-black/5 transition-transform ${
           checked ? 'translate-x-4' : 'translate-x-0.5'
         }`}
       />
