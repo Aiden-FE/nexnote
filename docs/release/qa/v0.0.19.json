@@ -1,0 +1,35 @@
+{
+  "schema": "nexnote-release-qa/v1",
+  "repository": "Aiden-FE/nexnote",
+  "tag": "v0.0.19",
+  "commit": "e159c3cf23e54366a3829a65095c7cc7fddcf6b4",
+  "channel": "stable",
+  "allRequiredChecksPassed": true,
+  "scope": "v0.0.19-patch-candidate",
+  "machineChecks": {
+    "typecheck": "passed (workspaces: apps/website, packages/plugin-api, packages/shared, packages/kernel, packages/renderer)",
+    "lint": "passed (0 errors, 4 pre-existing warnings identical to v0.0.18 baseline)",
+    "tests": "158 files passed, 1482 tests passed, 2 tests skipped; full test run on master HEAD c14669f before version bump",
+    "build": "passed (electron-vite build)",
+    "releaseConfig": "31/31 passed",
+    "changedFormat": "passed",
+    "diffCheck": "passed",
+    "packagedSmoke": "not re-run locally for this patch; v0.0.18 packaged smoke 261/261 (macOS arm64, Electron 44.2.0, ABI 149) applies as baseline; this patch is a pure renderer-side UI fix that does not change native bindings, packaged protocols, or installer artifacts"
+  },
+  "candidateContents": {
+    "tickets": "DEV-066 and DEV-067 implemented, reviewed (Standards + Spec), merged to master",
+    "highlights": [
+      "Settings Switch thumb: track overflow-hidden + bg-background + shadow-sm + ring, prevents white-circle overflow in dark/light themes (DEV-066)",
+      "Editor toolbar tooltip: fixed-position createPortal escape overflow-hidden clip; horizontal viewport clamp; ref-preserving wrapper span avoids breaking EditorToolbar register ref used for width measurement and menu positioning (DEV-067)"
+    ]
+  },
+  "notRun": [
+    "Local packaged smoke re-run for this patch (deferred; v0.0.18 packaged smoke 261/261 baseline applies since native bindings, packaged protocols and installer artifacts are unchanged)",
+    "GitHub Actions v0.0.19 workflow execution (triggered by immutable tag push)",
+    "Windows packaged smoke and Linux packaged smoke",
+    "Windows/Ubuntu physical installation verification",
+    "macOS physical installation and Gatekeeper verification",
+    "public N-1 to v0.0.19 network upgrade",
+    "post-publication 24-hour monitoring"
+  ]
+}
