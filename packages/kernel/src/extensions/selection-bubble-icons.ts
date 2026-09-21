@@ -13,7 +13,16 @@
  * 框架无关的 kernel 工具栏）。仅复用已安装 lucide 包内同版本的图标几何数据。
  */
 
-import type { BubbleIconName } from './selection-bubble';
+export type BubbleIconName =
+  | 'bold'
+  | 'italic'
+  | 'strike'
+  | 'code'
+  | 'link'
+  | 'wikilink'
+  | 'sparkles'
+  | 'stop';
+
 
 export type BubbleIconRenderer = (
   icon: BubbleIconName | 'chevron-down',

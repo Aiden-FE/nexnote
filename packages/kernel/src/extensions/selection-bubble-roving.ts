@@ -1,4 +1,4 @@
-import type { BubbleAction } from './selection-bubble';
+import type { BubbleAction } from './selection-bubble-helpers';
 
 /** Top-level controls available to keyboard traversal in a selection bubble. */
 function allToolbarControls(root: HTMLElement): HTMLButtonElement[] {

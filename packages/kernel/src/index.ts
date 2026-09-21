@@ -89,6 +89,11 @@ export {
   decorateBubbleButton,
   refreshBubbleButton,
 } from './extensions/selection-bubble';
+export { createSelectionToolbarHost } from './extensions/selection-toolbar-host';
+export type {
+  SelectionToolbarHost,
+  SelectionToolbarHostOptions,
+} from './extensions/selection-toolbar-host';
 export {
   defaultBubbleIconRenderer,
   buildLucideSvg,
