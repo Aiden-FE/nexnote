@@ -1,0 +1,34 @@
+{
+  "schema": "nexnote-release-qa/v1",
+  "repository": "Aiden-FE/nexnote",
+  "tag": "v0.0.22",
+  "commit": "f703ad4d9d3c95fb3b287ad5145461469b6cb4ee",
+  "channel": "stable",
+  "allRequiredChecksPassed": true,
+  "scope": "v0.0.22-candidate",
+  "machineChecks": {
+    "typecheck": "passed (PR checks job on master HEAD f703ad4, run 35575810756; lint + test + typecheck + releaseConfig 4m29s green)",
+    "lint": "passed (0 errors; pre-existing import()-style warnings unchanged from earlier baselines)",
+    "tests": "1532 passed | 7 skipped (1539) on Windows CI run 35575814100 build windows-x64; 1537 passed | 2 skipped (1539) on local macOS run at f703ad4; full test files 166 passed | 1 skipped (167)",
+    "build": "passed (electron-vite build, all 4 matrix targets: mac-arm64, mac-x64, windows-x64, linux-x64)",
+    "releaseConfig": "31/31 passed (PR checks step)",
+    "changedFormat": "passed (PR checks step)",
+    "diffCheck": "passed (PR checks step)",
+    "packagedSmoke": "passed 261/261 checks (macOS arm64 packaged zip, Electron 44.2.0 ABI 149, NEXNOTE_SMOKE_CANDIDATE_SHA f703ad4d9d3c95fb3b287ad5145461469b6cb4ee); smoke-evidence-35575814100 artifact uploaded; preflight artifact merge/flatten/preflight checks passed before evidence-fetch gate failed"
+  },
+  "candidateContents": {
+    "tickets": "DEV-072 and DEV-073 implemented, reviewed, merged to master (version bump to 0.0.22 in f703ad4)",
+    "highlights": [
+      "DEV-072: OS proxy detection - mode=follow-system reads system proxy from macOS scutil --proxy / Windows registry / Linux env + gsettings with 30s TTL; detected proxy injected into AI requests and Git sync; apps launched from Finder now follow system proxy",
+      "DEV-073: one-click sync fix - sync failure auto-diagnoses; when safe-fix available, single-click 'let Agent fix it' completes prepare + execute (safety gates unchanged); when not auto-fixable, 'let Agent help' opens AI chat with sanitized diagnostic context",
+      "DEV-072/073: 22 new vitest cases covering system-proxy parsing + caching and network-proxy derivation"
+    ]
+  },
+  "notRun": [
+    "Windows packaged smoke and Linux packaged smoke",
+    "Windows/Ubuntu physical installation verification",
+    "macOS notarization / Gatekeeper verification (Ad hoc signing only)",
+    "public N-1 to v0.0.22 network upgrade end-to-end verification",
+    "post-publication 24-hour monitoring"
+  ]
+}
