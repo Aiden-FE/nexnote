@@ -92,6 +92,42 @@ export function registerGitHandlers(registrar: IpcRegistrar): void {
   );
 
   registrar.register(
+    'git:sync',
+    async (_payload, services): Promise<Result<GitOperationResult>> => {
+      const vault = services.vaultSession.getCurrent();
+      if (!vault) throw new GitServiceError('尚未打开任何知识库', 'NO_VAULT');
+      const { readVaultSettings } = await import('../vault/vault-manager');
+      const vaultSettings = await readVaultSettings(vault.root);
+      const strategy = vaultSettings.git.syncStrategy === 'merge' ? 'merge' : 'rebase';
+      const result = await services.git.sync({
+        strategy,
+        onProgress: (event) => services.windows.sendToMainWindow('git:syncProgress', event),
+      });
+      // 把自动同步应用到当前 vault 的配置（每次 sync 时刷新——简化 vault 切换时重启计时器的复杂度）。
+      services.git.configureAutoSync(vaultSettings.git.autoSyncIntervalSec, strategy);
+      return ok(result);
+    },
+  );
+
+  registrar.register(
+    'git:configureAutoSync',
+    async (_payload, services): Promise<Result<void>> => {
+      const vault = services.vaultSession.getCurrent();
+      if (!vault) {
+        services.git.stopAutoSync();
+        return ok(undefined);
+      }
+      const { readVaultSettings } = await import('../vault/vault-manager');
+      const vaultSettings = await readVaultSettings(vault.root);
+      services.git.configureAutoSync(
+        vaultSettings.git.autoSyncIntervalSec,
+        vaultSettings.git.syncStrategy === 'merge' ? 'merge' : 'rebase',
+      );
+      return ok(undefined);
+    },
+  );
+
+  registrar.register(
     'git:previewRestore',
     async ({ path, commit }, services): Promise<Result<GitRestorePreview>> => {
       return ok(await services.git.previewRestore(path, commit));

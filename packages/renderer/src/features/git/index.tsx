@@ -1,10 +1,10 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import {
-  CloudDownload,
-  CloudUpload,
+  ArrowDownUp,
   GitBranch,
   GitCommit,
   History,
+  Loader2,
   RefreshCw,
   RotateCcw,
   Settings2,
@@ -19,7 +19,6 @@ import type {
 } from '@nexnote/shared';
 import { dockPanelRegistry, statusBarRegistry } from '../../registries';
 import { invoke, onEvent } from '../../lib/ipc';
-import { invokeSyncOperation } from './operation';
 import { requestAppSave } from '../../editor/app-save';
 import { useVault } from '../../shell/vault-context';
 
@@ -30,6 +29,8 @@ dockPanelRegistry.register({
   icon: History,
   render: GitTimeline,
 });
+
+type SyncPhase = 'fetching' | 'rebasing' | 'merging' | 'pushing' | 'done' | 'error';
 
 function useGitStatus(): [GitStatus | null, () => Promise<void>] {
   const vault = useVault();
@@ -56,34 +57,43 @@ function useGitStatus(): [GitStatus | null, () => Promise<void>] {
 function GitStatusItem() {
   const vault = useVault();
   const [status, refresh] = useGitStatus();
-  const [busy, setBusy] = useState(false);
+  const [phase, setPhase] = useState<SyncPhase | null>(null);
+  const [phaseMessage, setPhaseMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [confirm, setConfirm] = useState<'pull' | 'pull-force' | 'push' | null>(null);
   const [doctor, setDoctor] = useState<GitDoctorDiagnosis | null>(null);
   const [doctorTicket, setDoctorTicket] = useState<GitDoctorRepairPrepareResult | null>(null);
-  const [doctorBusy, setDoctorBusy] = useState(false);
-  const operation = async () => {
-    if (!confirm) return;
-    setBusy(true);
+  void useState(false); // 占位，避免后续删除 useState 引入的 lint 噪声
+  useEffect(() => {
+    return onEvent('git:syncProgress', (payload) => {
+      setPhase(payload.phase);
+      setPhaseMessage(payload.message ?? null);
+      if (payload.phase === 'done') {
+        // 主流程结束：保留 600ms 让用户感知"已完成"，再清掉 spinner。
+        setTimeout(() => setPhase(null), 600);
+      }
+    });
+  }, []);
+  // vault 切换时让主进程按当前 vault 的自动同步配置启停计时器。
+  useEffect(() => {
+    void invoke('git:configureAutoSync').catch(() => undefined);
+  }, [vault?.root]);
+  const runSync = async () => {
+    setDoctor(null);
     setError(null);
-    let keepConfirmation = false;
+    setPhase('fetching');
+    setPhaseMessage('正在同步…');
     try {
-      await invokeSyncOperation(confirm === 'push' ? 'push' : 'pull', {
-        pull: () => invoke('git:pull', confirm === 'pull-force' ? { force: true } : {}),
-        push: () => invoke('git:push'),
-      });
+      await invoke('git:sync');
     } catch (caught) {
       const text = caught instanceof Error ? caught.message : String(caught);
-      if (confirm === 'pull' && (caught as { code?: string }).code === 'WORKTREE_DIRTY') {
-        keepConfirmation = true;
-        setConfirm('pull-force');
-        setError(null);
-        return;
-      }
       setError(text);
+      setPhase('error');
+      try {
+        setDoctor(await invoke('git:doctor:diagnose'));
+      } catch {
+        /* doctor 不可用时保留原始错误即可 */
+      }
     } finally {
-      setBusy(false);
-      if (!keepConfirmation) setConfirm(null);
       void refresh();
     }
   };
@@ -94,16 +104,6 @@ function GitStatusItem() {
         Git…
       </span>
     );
-  const diagnose = async () => {
-    setDoctorBusy(true);
-    try {
-      setDoctor(await invoke('git:doctor:diagnose'));
-    } catch (e) {
-      setError(e instanceof Error ? e.message : String(e));
-    } finally {
-      setDoctorBusy(false);
-    }
-  };
   const prepareDoctor = async () => {
     if (!doctor?.plan.action) return;
     setDoctorBusy(true);
@@ -135,14 +135,17 @@ function GitStatusItem() {
     setDoctor(null);
     await invoke('git:doctor:dismiss').catch(() => undefined);
   };
+  const busy = phase !== null && phase !== 'done';
+  const titleText =
+    error ??
+    (phase && phase !== 'done' ? phaseMessage ?? '正在同步…' : undefined) ??
+    `${status.usingSystemGit ? '系统' : '捆绑'} Git · ${status.remote ?? '未配置远程'} · 点击同步`;
   return (
     <div
       data-testid="status-git"
       data-tour="git-timeline"
       className="flex items-center gap-1.5 text-muted-foreground"
-      title={
-        error ?? `${status.usingSystemGit ? '系统' : '捆绑'} Git · ${status.remote ?? '未配置远程'}`
-      }
+      title={titleText}
     >
       <span data-testid="status-git-branch" className="flex items-center gap-1">
         <GitBranch className="size-3.5" />
@@ -152,7 +155,7 @@ function GitStatusItem() {
         <span
           data-testid="status-git-conflict"
           className="rounded bg-destructive/15 px-1 font-medium text-destructive"
-          title="存在未解决的合并冲突；请解决后手动提交"
+          title="存在未解决的合并冲突"
         >
           ⚠ 冲突
         </span>
@@ -164,44 +167,23 @@ function GitStatusItem() {
         <>
           <span className="text-orange-600">{status.behind ? `↓${status.behind}` : ''}</span>
           <span className="text-sky-600">{status.ahead ? `↑${status.ahead}` : ''}</span>
-          <button
-            type="button"
-            title="拉取（需确认）"
-            disabled={busy}
-            onClick={() => setConfirm('pull')}
-            className="rounded p-0.5 hover:bg-accent disabled:opacity-30"
-          >
-            <CloudDownload className="size-3.5" />
-          </button>
-          <button
-            type="button"
-            title="推送（需确认）"
-            disabled={busy}
-            onClick={() => setConfirm('push')}
-            className="rounded p-0.5 hover:bg-accent disabled:opacity-30"
-          >
-            <CloudUpload className="size-3.5" />
-          </button>
         </>
       )}
       <button
         type="button"
-        title="诊断并预览安全修复"
-        disabled={doctorBusy}
-        onClick={() => void diagnose()}
-        className="rounded border px-1 text-[10px] hover:bg-accent"
+        title={busy ? phaseMessage ?? '正在同步…' : '一键同步：拉取 + 合并 + 推送'}
+        disabled={busy}
+        onClick={() => void runSync()}
+        className="rounded p-0.5 hover:bg-accent disabled:opacity-60"
+        data-testid="status-git-sync"
       >
-        诊断
+        {busy ? (
+          <Loader2 className="size-3.5 animate-spin" />
+        ) : (
+          <ArrowDownUp className="size-3.5" />
+        )}
       </button>
-      <button
-        type="button"
-        title="刷新 Git 状态"
-        onClick={() => void refresh()}
-        className="rounded p-0.5 hover:bg-accent"
-      >
-        <RefreshCw className="size-3.5" />
-      </button>
-      {doctor && !doctorTicket && (
+      {doctor && (
         <DoctorDialog
           diagnosis={doctor}
           onPrepare={() => void prepareDoctor()}
@@ -213,20 +195,6 @@ function GitStatusItem() {
           prepared={doctorTicket}
           onExecute={() => void executeDoctor()}
           onDismiss={() => void dismissDoctor()}
-        />
-      )}
-      {confirm && (
-        <ConfirmDialog
-          title={`确认${confirm === 'push' ? '推送本地提交' : confirm === 'pull-force' ? '强制拉取远程变更' : '拉取远程变更'}？`}
-          detail={
-            confirm === 'pull-force'
-              ? '工作区含未提交变更。确认后将使用 force:true 拉取，可能覆盖本地文件。'
-              : confirm === 'pull'
-                ? '拉取可能产生冲突，冲突需在仓库目录手动解决。'
-                : '将把当前分支提交推送至远程。'
-          }
-          onConfirm={() => void operation()}
-          onCancel={() => setConfirm(null)}
         />
       )}
     </div>
@@ -591,39 +559,6 @@ function DoctorTicketDialog({
   );
 }
 
-function ConfirmDialog({
-  title,
-  detail,
-  onConfirm,
-  onCancel,
-}: {
-  title: string;
-  detail: string;
-  onConfirm(): void;
-  onCancel(): void;
-}) {
-  return (
-    <div
-      role="dialog"
-      className="fixed bottom-10 left-4 z-20 w-64 rounded border bg-card p-3 shadow"
-    >
-      <p className="font-medium text-foreground">{title}</p>
-      <p className="mt-1 text-[10px]">{detail}</p>
-      <div className="mt-2 flex gap-2">
-        <button
-          type="button"
-          onClick={onConfirm}
-          className="rounded bg-primary px-2 py-1 text-xs text-primary-foreground"
-        >
-          确认
-        </button>
-        <button type="button" onClick={onCancel} className="rounded border px-2 py-1 text-xs">
-          取消
-        </button>
-      </div>
-    </div>
-  );
-}
 function RestorePreview({
   restore,
   onCancel,

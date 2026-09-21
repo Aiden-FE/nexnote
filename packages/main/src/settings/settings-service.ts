@@ -66,6 +66,7 @@ export class SettingsService {
       ...(patch.updates ? { updates: patch.updates } : {}),
       ...(patch.startup ? { startup: patch.startup } : {}),
       ...(patch.git ? { git: patch.git } : {}),
+      ...(patch.network ? { network: patch.network } : {}),
     };
     // 合并后再 normalize 一次，prune 未知子字段，防止 IPC payload 带的多余字段污染持久化。
     this.data = normalizeStoredGlobal(mergeGlobalPatch(this.data, sanitized));
@@ -300,6 +301,41 @@ export const SEARCH_ENTRIES: SettingSearchEntry[] = [
     keywords: ['version', 'about', '版本', '关于'],
     scope: 'global',
   },
+  {
+    id: 'network.mode',
+    sectionId: 'network',
+    title: '网络模式',
+    keywords: ['network', 'proxy', '代理', 'system', '跟随系统'],
+    scope: 'global',
+  },
+  {
+    id: 'network.applyToAi',
+    sectionId: 'network',
+    title: '代理 AI 请求',
+    keywords: ['network', 'ai', 'proxy', '代理'],
+    scope: 'global',
+  },
+  {
+    id: 'network.applyToGit',
+    sectionId: 'network',
+    title: '代理 Git 操作',
+    keywords: ['network', 'git', 'proxy', '代理'],
+    scope: 'global',
+  },
+  {
+    id: 'git.autoSyncIntervalSec',
+    sectionId: 'git',
+    title: '自动同步间隔',
+    keywords: ['git', 'sync', 'interval', '同步', '自动'],
+    scope: 'vault',
+  },
+  {
+    id: 'git.syncStrategy',
+    sectionId: 'git',
+    title: '同步策略',
+    keywords: ['git', 'sync', 'rebase', 'merge', '同步', '策略'],
+    scope: 'vault',
+  },
 ];
 
 export function mergeVaultSettings(base: VaultSettings, patch: VaultSettingsPatch): VaultSettings {
@@ -314,6 +350,7 @@ export function normalizeStoredGlobal(raw: unknown): GlobalSettings {
   const updates = asRecord(value.updates);
   const startup = asRecord(value.startup);
   const git = asRecord(value.git);
+  const network = asRecord(value.network);
   return {
     version: 1,
     appearance: {
@@ -362,6 +399,43 @@ export function normalizeStoredGlobal(raw: unknown): GlobalSettings {
     },
     git: {
       useSystemGit: hasKey(git, 'useSystemGit') ? git.useSystemGit === true : base.git.useSystemGit,
+    },
+    network: {
+      mode:
+        network.mode === 'http' ||
+        network.mode === 'https' ||
+        network.mode === 'socks5' ||
+        network.mode === 'off'
+          ? network.mode
+          : base.network.mode,
+      host:
+        typeof network.host === 'string' && network.host.trim()
+          ? network.host.trim()
+          : base.network.host,
+      port:
+        typeof network.port === 'number' &&
+        Number.isFinite(network.port) &&
+        network.port > 0 &&
+        network.port <= 65535
+          ? Math.round(network.port)
+          : base.network.port,
+      username:
+        typeof network.username === 'string' && network.username.trim()
+          ? network.username.trim()
+          : base.network.username,
+      password:
+        typeof network.password === 'string' && network.password
+          ? network.password
+          : base.network.password,
+      bypass: Array.isArray(network.bypass)
+        ? network.bypass.filter(
+            (entry): entry is string => typeof entry === 'string' && entry.trim().length > 0,
+          )
+        : base.network.bypass,
+      applyToAi: hasKey(network, 'applyToAi') ? network.applyToAi === true : base.network.applyToAi,
+      applyToGit: hasKey(network, 'applyToGit')
+        ? network.applyToGit === true
+        : base.network.applyToGit,
     },
     shortcuts: Array.isArray(value.shortcuts)
       ? // DEV-022：旧设置文件缺少新登记的默认命令时按默认键补齐（用户条目覆盖同名默认），

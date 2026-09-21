@@ -17,12 +17,14 @@ export function mergeGlobalPatch(base: GlobalSettings, patch: GlobalSettingsPatc
   const updates = patch.updates ? { ...base.updates, ...patch.updates } : base.updates;
   const startup = patch.startup ? { ...base.startup, ...patch.startup } : base.startup;
   const git = patch.git ? { ...base.git, ...patch.git } : base.git;
+  const network = patch.network ? { ...base.network, ...patch.network } : base.network;
   const result: GlobalSettings = {
     ...base,
     appearance: pruneUndefined(appearance),
     updates: pruneUndefined(updates),
     startup: pruneUndefined(startup),
     git: pruneUndefined(git),
+    network: pruneUndefined(network as unknown as Record<string, unknown>) as unknown as GlobalSettings['network'],
   };
   // Re-normalize anything the caller may have typed loosely before persisting.
   return {
@@ -61,6 +63,32 @@ export function mergeGlobalPatch(base: GlobalSettings, patch: GlobalSettingsPatc
           ? result.startup.specificVaultPath
           : null,
     },
+    network: normalizeNetwork(result.network, base.network),
+  };
+}
+
+function isNetworkMode(value: unknown): value is 'system' | 'http' | 'https' | 'socks5' | 'off' {
+  return value === 'system' || value === 'http' || value === 'https' || value === 'socks5' || value === 'off';
+}
+
+function normalizeNetwork(
+  raw: GlobalSettings['network'],
+  fallback: GlobalSettings['network'],
+): GlobalSettings['network'] {
+  return {
+    mode: isNetworkMode(raw.mode) ? raw.mode : fallback.mode,
+    host: typeof raw.host === 'string' && raw.host.trim() ? raw.host.trim() : null,
+    port:
+      typeof raw.port === 'number' && Number.isFinite(raw.port) && raw.port > 0 && raw.port <= 65535
+        ? Math.round(raw.port)
+        : null,
+    username: typeof raw.username === 'string' && raw.username.trim() ? raw.username.trim() : null,
+    password: typeof raw.password === 'string' && raw.password ? raw.password : null,
+    bypass: Array.isArray(raw.bypass)
+      ? raw.bypass.filter((entry): entry is string => typeof entry === 'string' && entry.trim().length > 0)
+      : [],
+    applyToAi: raw.applyToAi === true,
+    applyToGit: raw.applyToGit === true,
   };
 }
 
@@ -84,6 +112,16 @@ export function mergeVaultPatch(base: VaultSettings, patch: VaultSettingsPatch):
         10 * 60_000,
         base.git.autoCommitIntervalMs,
       ),
+      autoSyncIntervalSec: clampInt(
+        result.git.autoSyncIntervalSec,
+        0,
+        24 * 60 * 60,
+        base.git.autoSyncIntervalSec,
+      ),
+      syncStrategy:
+        result.git.syncStrategy === 'merge' || result.git.syncStrategy === 'rebase'
+          ? result.git.syncStrategy
+          : base.git.syncStrategy,
       defaultBranch: sanitizeBranchName(result.git.defaultBranch)
         ? result.git.defaultBranch
         : base.git.defaultBranch,

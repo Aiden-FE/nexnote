@@ -31,14 +31,14 @@ const COMMAND_PREVIEW: Record<GitRepairAction, string> = {
 
 const MANUAL_GUIDANCE: Record<GitSyncIssueCategory, string> = {
   conflict:
-    '存在未解决的合并冲突：AI 与自动修复都不会覆盖冲突文件，请在仓库目录中逐文件人工解决后重新同步。',
-  dirty: '工作区有未提交变更：可先提交，或手动 stash 后再同步。',
-  auth: '远程认证失败：请检查 HTTPS 凭证或 SSH key（可在系统凭据管理器 / ssh-agent 中更新），应用不会代填密钥。',
-  network: '网络不可达：请检查网络连接或远程地址后重试。',
-  'non-fast-forward': '本地与远程历史不一致：先拉取合并（或人工在终端 rebase），再推送。',
+    '存在合并冲突：AI 不会覆盖冲突文件。可以点击「让 Agent 帮助解决」让 AI 引导你完成合并；如需手动干预，请前往仓库目录操作。',
+  dirty: '工作区有未提交变更：可以让 Agent 帮你提交保存，或一键暂存后继续同步。',
+  auth: '远程认证失败：请在设置中更新 HTTPS 凭证或 SSH key（应用不会代填密钥）。',
+  network: '网络不可达：请检查网络连接或远程地址后重试，或在设置中配置代理。',
+  'non-fast-forward': '本地与远程历史不一致：可以让 Agent 帮你拉取合并，或选择以本地为准覆盖远程。',
   'no-remote': '当前分支未配置远程仓库：请在设置中添加远程地址。',
   'git-missing': '应用内捆绑 Git 不可用：请重新安装应用，或在设置中启用「使用系统 Git」。',
-  unknown: '未能识别该同步问题：请手动检查仓库状态（git status / git log）。',
+  unknown: '未能识别该同步问题：可以让 Agent 协助诊断，或在仓库目录查看 git status。',
 };
 
 export class GitSyncDoctorError extends Error {

@@ -13,6 +13,21 @@ export interface ShortcutOverride {
   disabled: boolean;
 }
 
+export type NetworkMode = 'system' | 'http' | 'https' | 'socks5' | 'off';
+
+export interface NetworkSettings {
+  /** 跟随系统（默认）、自定义 http/https/socks5 代理、或关闭代理。 */
+  mode: NetworkMode;
+  host: string | null;
+  port: number | null;
+  username: string | null;
+  /** 密码仅保存在本机 settings 文件，不参与 IPC 错误信息或日志。 */
+  password: string | null;
+  bypass: string[];
+  applyToAi: boolean;
+  applyToGit: boolean;
+}
+
 export interface GlobalSettings {
   version: 1;
   appearance: {
@@ -36,6 +51,8 @@ export interface GlobalSettings {
     /** The bundled Git remains the safe default. */
     useSystemGit: boolean;
   };
+  /** DEV-072：网络/代理设置。默认 mode=system，AI + Git 自动跟随系统代理。 */
+  network: NetworkSettings;
   shortcuts: ShortcutOverride[];
 }
 
@@ -53,6 +70,10 @@ export interface VaultSettings {
     autoCommitIntervalMs: number;
     commitMessageTemplate: string;
     defaultBranch: string;
+    /** DEV-073：自动同步间隔（秒）。0 = 关闭。默认 5 分钟。 */
+    autoSyncIntervalSec: number;
+    /** DEV-073：拉取/同步策略，rebase（默认）或 merge。 */
+    syncStrategy: 'rebase' | 'merge';
   };
 }
 
@@ -61,6 +82,7 @@ export type GlobalSettingsPatch = {
   updates?: Partial<GlobalSettings['updates']>;
   startup?: Partial<GlobalSettings['startup']>;
   git?: Partial<GlobalSettings['git']>;
+  network?: Partial<NetworkSettings>;
 };
 
 export type VaultSettingsPatch = {
@@ -78,7 +100,16 @@ export interface ShortcutExportBundle {
 
 export interface SettingSearchEntry {
   id: string;
-  sectionId: 'general' | 'editor' | 'ai' | 'git' | 'plugins' | 'skills' | 'shortcuts' | 'about';
+  sectionId:
+    | 'general'
+    | 'editor'
+    | 'ai'
+    | 'git'
+    | 'network'
+    | 'plugins'
+    | 'skills'
+    | 'shortcuts'
+    | 'about';
   title: string;
   keywords: string[];
   scope: 'global' | 'vault' | 'domain';
@@ -115,6 +146,16 @@ export function defaultGlobalSettings(): GlobalSettings {
     updates: { checkOnLaunch: true, autoDownload: false, channel: 'stable' },
     startup: { behavior: 'restore', specificVaultPath: null },
     git: { useSystemGit: false },
+    network: {
+      mode: 'system',
+      host: null,
+      port: null,
+      username: null,
+      password: null,
+      bypass: [],
+      applyToAi: true,
+      applyToGit: true,
+    },
     shortcuts: DEFAULT_SHORTCUTS.map((shortcut) => ({ ...shortcut })),
   };
 }
@@ -133,6 +174,8 @@ export function defaultVaultSettings(): VaultSettings {
       autoCommitIntervalMs: 30_000,
       commitMessageTemplate: '保存 {summary}',
       defaultBranch: 'main',
+      autoSyncIntervalSec: 300,
+      syncStrategy: 'rebase',
     },
   };
 }

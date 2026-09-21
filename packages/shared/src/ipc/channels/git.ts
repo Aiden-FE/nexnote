@@ -59,6 +59,8 @@ export const GIT_CHANNELS = [
   'git:listRemotes',
   'git:pull',
   'git:push',
+  'git:sync',
+  'git:configureAutoSync',
   'git:previewRestore',
   'git:restoreFile',
   'git:setUseSystemGit',
@@ -88,6 +90,8 @@ export interface GitChannelMap {
   'git:listRemotes': { request: void; response: Result<GitRemote[]> };
   'git:pull': { request: { force?: boolean }; response: Result<GitOperationResult> };
   'git:push': { request: void; response: Result<GitOperationResult> };
+  /** DEV-073：一键同步 — fetch → 按 vault.git.syncStrategy rebase/merge → push。 */
+  'git:sync': { request: void; response: Result<GitOperationResult> };
   'git:previewRestore': {
     request: { path: string; commit: string };
     response: Result<GitRestorePreview>;
@@ -105,6 +109,7 @@ export interface GitChannelMap {
     response: Result<{ milliseconds: number }>;
   };
   'git:doctor:diagnose': { request: void; response: Result<GitDoctorDiagnosis> };
+  'git:configureAutoSync': { request: void; response: Result<void> };
   'git:doctor:repairPrepare': {
     request: { action: GitRepairAction };
     response: Result<GitDoctorRepairPrepareResult>;

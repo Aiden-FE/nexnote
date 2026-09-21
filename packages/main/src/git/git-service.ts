@@ -67,6 +67,22 @@ export interface GitServiceOptions {
   minCommitIntervalMs?: number;
 }
 
+export interface SyncProgressEvent {
+  phase: 'fetching' | 'rebasing' | 'merging' | 'pushing' | 'done' | 'error';
+  message?: string;
+}
+
+export interface SyncOptions {
+  strategy: 'rebase' | 'merge';
+  onProgress?: (event: SyncProgressEvent) => void;
+}
+
+/** DEV-073：一键同步 — fetch → 按策略合并 → push（仅当 ahead>0）。返回最新状态。 */
+export interface SyncResult {
+  message: string;
+  status: GitStatus;
+}
+
 export interface GitHistoryEvent {
   date: string;
   additions: number;
@@ -121,8 +137,16 @@ export class GitService {
   private lastCommitAt = 0;
   private statusListener: ((status: GitStatus) => void) | null = null;
   private commitListener: ((root: string, files: string[]) => void) | null = null;
+  private syncProgressListener: ((event: SyncProgressEvent) => void) | null = null;
   /** 当前生效的自动提交防抖窗口。setDebounceMs 写入；fs handler 同步读它。 */
   private debounceMs: number;
+  /** DEV-072：本进程生命周期内的网络代理配置；从 SettingsService 注入。 */
+  private networkProxyEnv: NodeJS.ProcessEnv | null = null;
+  private networkCliConfig: string[] | null = null;
+  /** DEV-073：定时自动同步计时器（vault 活跃时按 vault 配置触发 sync）。 */
+  private autoSyncTimer: ReturnType<typeof setInterval> | null = null;
+  private autoSyncIntervalSec = 0;
+  private autoSyncStrategy: 'rebase' | 'merge' = 'rebase';
 
   /**
    * 分支绑定的上游远程；`branch.<name>.remote` 显式配置优先，
@@ -160,6 +184,50 @@ export class GitService {
   setUseSystemGit(enabled: boolean): void {
     this.useSystemGit = enabled;
     this.systemFallbackWarned = false;
+  }
+
+  /** DEV-072：注入代理配置。applyToGit=false 或 mode=off 时传 null 清空。 */
+  setNetworkProxy(input: { env: NodeJS.ProcessEnv | null; cliConfig: string[] | null }): void {
+    this.networkProxyEnv = input.env;
+    this.networkCliConfig = input.cliConfig;
+  }
+
+  /** DEV-073：注册同步进度事件监听。 */
+  onSyncProgress(listener: ((event: SyncProgressEvent) => void) | null): void {
+    this.syncProgressListener = listener;
+  }
+
+  /** DEV-073：配置自动同步。intervalSec=0 关闭；网络失败自动退避（指数递增到 4×interval）。 */
+  configureAutoSync(intervalSec: number, strategy: 'rebase' | 'merge'): void {
+    this.autoSyncIntervalSec = Math.max(0, Math.round(intervalSec));
+    this.autoSyncStrategy = strategy;
+    if (this.autoSyncTimer) clearInterval(this.autoSyncTimer);
+    this.autoSyncTimer = null;
+    if (this.autoSyncIntervalSec <= 0) return;
+    let backoff = 1;
+    this.autoSyncTimer = setInterval(
+      () => {
+        if (!this.root) return;
+        void this.sync({
+          strategy: this.autoSyncStrategy,
+          onProgress: undefined,
+        }).then(
+          () => {
+            backoff = 1;
+          },
+          () => {
+            backoff = Math.min(backoff * 2, 4);
+          },
+        );
+      },
+      this.autoSyncIntervalSec * 1000 * backoff,
+    );
+  }
+
+  stopAutoSync(): void {
+    if (this.autoSyncTimer) clearInterval(this.autoSyncTimer);
+    this.autoSyncTimer = null;
+    this.autoSyncIntervalSec = 0;
   }
 
   /** 实际生效的 Git 是否来自系统 PATH（含开发环境 payload 缺失的回退）。 */
@@ -529,6 +597,56 @@ export class GitService {
     return this.notified({ message: '推送完成', root });
   }
 
+  /**
+   * DEV-073：一键同步 = fetch → 按 vault.syncStrategy rebase/merge → push（仅当 ahead>0）。
+   * 全程禁止 --force；遇冲突或分叉时中止并通知 UI 让 Agent 接管。
+   */
+  async sync(options: SyncOptions): Promise<SyncResult> {
+    const root = this.requireRoot();
+    const emit = (event: SyncProgressEvent) => {
+      try {
+        options.onProgress?.(event);
+        this.syncProgressListener?.(event);
+      } catch {
+        /* listener self-contained */
+      }
+    };
+    this.cancelAutoCommit();
+    const git = this.git(root);
+    try {
+      emit({ phase: 'fetching', message: '正在拉取远程更新…' });
+      const preStatus = await git.status();
+      const remote = preStatus.current ? await this.branchRemote(git, preStatus.current) : null;
+      if (!remote || !preStatus.current)
+        throw new GitServiceError('尚未绑定可同步的远程分支', 'NO_REMOTE');
+      await git.fetch(remote);
+      const afterFetch = await git.status();
+      if (afterFetch.behind > 0) {
+        const phase = options.strategy === 'rebase' ? 'rebasing' : 'merging';
+        emit({ phase, message: options.strategy === 'rebase' ? '正在对齐远程提交…' : '正在合并远程变更…' });
+        if (options.strategy === 'rebase') {
+          await git.rebase(remote + '/' + preStatus.current);
+        } else {
+          await git.merge([remote + '/' + preStatus.current, '--no-edit']);
+        }
+      }
+      const postMerge = await git.status();
+      if (postMerge.ahead > 0) {
+        emit({ phase: 'pushing', message: '正在推送本地提交…' });
+        await git.push(['-u', remote, preStatus.current]);
+      }
+      emit({ phase: 'done' });
+      const final = await this.statusFor(root);
+      this.notifyStatus(final);
+      return { message: '同步完成', status: final };
+    } catch (error) {
+      emit({ phase: 'error', message: error instanceof Error ? error.message : String(error) });
+      await this.notifyCurrentStatus();
+      if (error instanceof GitServiceError) throw error;
+      throw this.remoteOperationError('同步', error);
+    }
+  }
+
   /** Clone only into a validated direct child name under a caller-validated parent. */
   async cloneInto(url: string, parentDir: string, name: string): Promise<GitOperationResult> {
     if (!path.isAbsolute(parentDir))
@@ -881,8 +999,12 @@ export class GitService {
     // Do not inject dugite paths when its downloaded executable is unavailable.
     // In that development fallback, preserve the user's normal Git environment.
     const binary = runtime.binary;
-    const env = { ...sanitizeGitProcessEnv(runtime.environment ?? process.env), ...extraEnv };
-    return simpleGit({
+    const env = {
+      ...sanitizeGitProcessEnv(runtime.environment ?? process.env),
+      ...(this.networkProxyEnv ?? {}),
+      ...extraEnv,
+    };
+    const instance = simpleGit({
       baseDir,
       binary,
       maxConcurrentProcesses: 1,
@@ -897,6 +1019,11 @@ export class GitService {
         allowUnsafeAskPass: true,
       },
     }).env(env);
+    // DEV-072：通过 `git -c http.proxy=...` 给单次调用注入代理，不污染用户 ~/.gitconfig。
+    if (this.networkCliConfig && this.networkCliConfig.length > 0) {
+      for (const flag of this.networkCliConfig) instance.raw(['-c', flag]);
+    }
+    return instance;
   }
 
   private resolveRuntime(): GitRuntimeResolution {

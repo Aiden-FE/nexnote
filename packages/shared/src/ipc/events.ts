@@ -29,6 +29,11 @@ export interface IpcEventMap {
   'ai:configChanged': { state: AiConfigState };
   /** Git 工作区/上游状态变化；自动提交、pull/push 后推送。 */
   'git:statusChanged': GitStatus;
+  /** DEV-073：同步生命周期事件，用于状态栏 loading 阶段文案。 */
+  'git:syncProgress': {
+    phase: 'fetching' | 'rebasing' | 'merging' | 'pushing' | 'done' | 'error';
+    message?: string;
+  };
   /** 插件安装/启停/授权/崩溃/命令注册变化（DEV-013）。 */
   'plugins:changed': { reason: string };
   /** 检索 Skill 启停/排序/参数变化（DEV-014）。 */
@@ -62,6 +67,7 @@ export const IPC_EVENT_CHANNELS: readonly string[] = [
   'ai:retrievalStatus',
   'ai:configChanged',
   'git:statusChanged',
+  'git:syncProgress',
   'plugins:changed',
   'skills:changed',
   'index:statusChanged',

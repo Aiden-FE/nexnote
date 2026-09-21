@@ -184,7 +184,7 @@ describe('GitSyncDoctor 修复计划（白名单 + 禁止破坏命令）', () =>
     expect(d.issue.category).toBe('conflict');
     expect(d.plan.action).toBeNull();
     expect(d.plan.safe).toBe(false);
-    expect(d.plan.manualGuidance).toContain('人工');
+    expect(d.plan.manualGuidance).toContain('Agent');
   });
   it('所有 commandPreview 均不含破坏性命令', async () => {
     for (const action of GIT_REPAIR_ACTIONS) {

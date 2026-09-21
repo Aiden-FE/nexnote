@@ -646,6 +646,8 @@ const VALIDATORS: Partial<Record<IpcChannel, PayloadValidator>> = {
   'git:setAutoCommitDebounce': autoCommitDebounce,
   'git:doctor:repairPrepare': doctorPrepare,
   'git:doctor:repairExecute': doctorExecute,
+  'git:sync': () => null,
+  'git:configureAutoSync': () => null,
   'index:backlinks': indexBacklinks,
   'index:search': indexQuery,
   'index:jumpTo': indexQuery,

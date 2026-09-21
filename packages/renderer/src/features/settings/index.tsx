@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { Settings as SettingsIcon, FileText, Keyboard, GitBranch, Info } from 'lucide-react';
+import { Settings as SettingsIcon, FileText, Keyboard, GitBranch, Globe, Info } from 'lucide-react';
 import { settingsSectionRegistry } from '../../registries';
 import { useSettingsStore } from '../../stores/settings-store';
 import { useUiStore } from '../../stores/ui-store';
@@ -11,6 +11,7 @@ import type {
   UpdateChannel,
   CodeTheme,
   ShortcutOverride,
+  NetworkMode,
 } from '@nexnote/shared';
 import { normalizeShortcut } from '@nexnote/shared';
 
@@ -42,6 +43,14 @@ settingsSectionRegistry.register({
   icon: GitBranch,
   order: 30,
   render: () => <GitSection />,
+});
+
+settingsSectionRegistry.register({
+  id: 'network',
+  title: '网络',
+  icon: Globe,
+  order: 35,
+  render: () => <NetworkSection />,
 });
 
 settingsSectionRegistry.register({
@@ -286,6 +295,87 @@ function GeneralSection() {
       </div>
 
       <p className="text-[11px] text-muted-foreground/70">NexNote v{appVersion}</p>
+    </div>
+  );
+}
+
+function NetworkSection() {
+  const { global, setGlobal } = useGlobalSettings();
+  const net = global.network;
+  const setNet = useCallback(
+    (patch: Partial<typeof net>) => {
+      void setGlobal({ network: patch });
+    },
+    [setGlobal],
+  );
+  return (
+    <div className="space-y-6">
+      <SectionHeader
+        title="网络"
+        description="AI 请求与 Git 同步的网络代理。默认跟随系统代理；如无系统代理则直连。"
+      />
+      <Row label="代理模式" description="system = 跟随系统；off = 不走代理；自定义 = 走指定代理">
+        <Select
+          value={net.mode}
+          onChange={(v) => setNet({ mode: v as NetworkMode })}
+          options={[
+            { value: 'system', label: '跟随系统' },
+            { value: 'http', label: 'HTTP' },
+            { value: 'https', label: 'HTTPS' },
+            { value: 'socks5', label: 'SOCKS5' },
+            { value: 'off', label: '关闭代理' },
+          ]}
+        />
+      </Row>
+      {net.mode !== 'system' && net.mode !== 'off' && (
+        <>
+          <Row label="主机" description="代理服务器地址（IP 或域名）">
+            <input
+              type="text"
+              value={net.host ?? ''}
+              onChange={(e) => setNet({ host: e.target.value.trim() || null })}
+              placeholder="127.0.0.1"
+              className="h-8 w-48 rounded-md border bg-background px-2 text-sm"
+            />
+          </Row>
+          <Row label="端口" description="1–65535">
+            <input
+              type="number"
+              min={1}
+              max={65535}
+              value={net.port ?? ''}
+              onChange={(e) => {
+                const n = Number(e.target.value);
+                setNet({ port: Number.isFinite(n) && n > 0 && n <= 65535 ? Math.round(n) : null });
+              }}
+              placeholder="7890"
+              className="h-8 w-24 rounded-md border bg-background px-2 text-sm"
+            />
+          </Row>
+          <Row label="账号" description="（可选）需要认证时填写">
+            <input
+              type="text"
+              value={net.username ?? ''}
+              onChange={(e) => setNet({ username: e.target.value.trim() || null })}
+              className="h-8 w-48 rounded-md border bg-background px-2 text-sm"
+            />
+          </Row>
+          <Row label="密码" description="（可选）仅保存在本机 settings 文件">
+            <input
+              type="password"
+              value={net.password ?? ''}
+              onChange={(e) => setNet({ password: e.target.value || null })}
+              className="h-8 w-48 rounded-md border bg-background px-2 text-sm"
+            />
+          </Row>
+        </>
+      )}
+      <Row label="代理 AI 请求" description="为 AI provider 调用注入代理">
+        <Toggle checked={net.applyToAi} onChange={(v) => setNet({ applyToAi: v })} />
+      </Row>
+      <Row label="代理 Git 操作" description="为 Git 同步/推送注入代理">
+        <Toggle checked={net.applyToGit} onChange={(v) => setNet({ applyToGit: v })} />
+      </Row>
     </div>
   );
 }

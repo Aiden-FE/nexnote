@@ -61,6 +61,20 @@ function logRedactedProviderError(res: Response, op: string): void {
   console.warn(`[ai:${op}] HTTP ${res.status} (provider response body redacted)`);
 }
 
+/** DEV-072：用 undici ProxyAgent 绑定的 fetch，让 AI 请求走指定代理（HTTP/HTTPS/SOCKS5）。undici 未安装时静默回退全局 fetch。 */
+function undiciFetchWithProxy(proxyUrl: string): typeof fetch {
+  return (input: RequestInfo | URL, init?: RequestInit) => {
+    // 用变量拼接模块名 + @vite-ignore，让 rollup 无法静态解析（undici 是可选依赖）；未安装时静默回退。
+    const moduleId = 'un' + 'dici';
+    return import(/* @vite-ignore */ moduleId)
+      .then(({ ProxyAgent, fetch: undiciFetch }) => {
+        const dispatcher = new ProxyAgent({ uri: proxyUrl });
+        return undiciFetch(input as never, { ...(init ?? {}), dispatcher } as never);
+      })
+      .catch(() => globalThis.fetch(input, init)) as unknown as Promise<Response>;
+  };
+}
+
 /** 通用状态消息：仅状态 + 静态提示词（不含 body），安全进入 IPC。 */
 function safeMessageFromStatus(status: number): string {
   const hint =
@@ -94,7 +108,10 @@ export class OpenAIProtocolAdapter implements ProviderAdapter {
     this.base = normalizeBase(opts.baseUrl);
     this.apiKey = opts.apiKey.trim();
     this.apiVersion = opts.apiVersion ?? '2024-10-21';
-    this.fetchImpl = opts.fetchImpl ?? globalThis.fetch;
+    // DEV-072：自定义代理时构造 undici.ProxyAgent 绑定的 fetch；system/off 沿用全局 fetch。
+    this.fetchImpl =
+      opts.fetchImpl ??
+      (opts.proxyUrl ? undiciFetchWithProxy(opts.proxyUrl) : globalThis.fetch);
   }
 
   private headers(json: boolean): Record<string, string> {
