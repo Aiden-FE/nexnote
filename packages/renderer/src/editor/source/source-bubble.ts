@@ -79,6 +79,8 @@ export function sourceSelectionBubble(options: SourceBubbleOptions): Extension {
           // CM：除 AI 生成动作外都让位（停止控件必须始终可点）
           hideOnAction: (id) => !id.startsWith(AI_ACTION_PREFIX),
           onAction: (id) => this.emitAction(id),
+          // AI 菜单项通常把上下文交给对话 dock；关闭后焦点归还编辑器。
+          restoreEditorFocus: () => this.view.focus(),
           onToolbarEscape: () => {
             this.host.dismiss();
             this.visible = false;
@@ -166,10 +168,18 @@ export function sourceSelectionBubble(options: SourceBubbleOptions): Extension {
           return;
         }
         // 立即让工具栏可见（display:flex），但 coordsAtPos 不能在 dispatch 同步期内调用；
-        // rAF 推迟到事务提交后读布局并补定位。
+        // rAF 推迟到事务提交后读布局并补定位。host 处于 dismissed 态时 sync 是 no-op，
+        // 本地 visible 不翻 true，避免 Escape 后空转 rAF 与误吞 Escape。
         this.host.sync(true, null);
-        this.scheduleCoordRefresh();
-        this.visible = true;
+        if (!this.hostDismissed) {
+          this.visible = true;
+          this.scheduleCoordRefresh();
+        }
+      }
+
+      /** host 的 dismissed 是私有状态；以「host DOM 是否显示」为准同步本地标志。 */
+      private get hostDismissed(): boolean {
+        return this.host.dom.style.display === 'none';
       }
 
       private rafId: number | null = null;

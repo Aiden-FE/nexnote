@@ -38,6 +38,11 @@ import {
 export interface SelectionToolbarHostOptions {
   /** 平铺动作（格式化 / 双链 / 等）。 */
   actions: readonly BubbleAction[];
+  /**
+   * AI 下拉关闭后归还编辑器焦点的回调（DEV-034）：AI 菜单项通常把上下文交给
+   * 对话 dock，此时工具栏可能已隐藏、焦点滞留；CM 路径传 `() => view.focus()`。
+   */
+  restoreEditorFocus?: () => void;
   /** AI 动作收口下拉（DEV-034；label 缺省 'AI'）。 */
   aiMenu?: BubbleAiMenuOptions;
   /** 附加控件（生成中的停止按钮由渲染层注入）。 */
@@ -106,13 +111,20 @@ function positionInFrame(
 }
 
 function frameFor(
+  hostEl: HTMLElement | null | undefined,
   mount: HTMLElement | null | undefined,
   space: 'parent' | 'viewport',
 ): { left: number; right: number; top: number } {
   if (space === 'viewport') {
     return { left: 0, right: window.innerWidth, top: 0 };
   }
-  const rect = mount?.getBoundingClientRect() ?? { left: 0, right: window.innerWidth, top: 0 };
+  // 容器空间下，优先用 host 元素的真实 offsetParent（含块）作参照框；
+  // offsetParent 缺失（无布局环境）时退回 mount 元素。避免 absolute top/left
+  // 锚定在非包含块元素上时随文档长度漂移的历史缺陷。
+  const frameEl = (hostEl?.offsetParent as HTMLElement | null) ?? mount ?? null;
+  const rect =
+    frameEl?.getBoundingClientRect?.() ??
+    ({ left: 0, right: window.innerWidth, top: 0 } as DOMRect);
   return { left: rect.left, right: rect.right, top: rect.top };
 }
 
@@ -162,10 +174,16 @@ export function createSelectionToolbarHost(
   }
 
   const aiMenu = options.aiMenu
-    ? createBubbleAiMenu(className, options.aiMenu, renderer, (id) => {
-        if (hideOnAction(id)) hideDom();
-        options.onAction(id);
-      })
+    ? createBubbleAiMenu(
+        className,
+        options.aiMenu,
+        renderer,
+        (id) => {
+          if (hideOnAction(id)) hideDom();
+          options.onAction(id);
+        },
+        options.restoreEditorFocus,
+      )
     : null;
   if (aiMenu) dom.append(aiMenu.dom);
   if (options.extraControl) dom.append(options.extraControl.dom);
@@ -208,7 +226,7 @@ export function createSelectionToolbarHost(
 
   const positionToCoords = () => {
     if (!lastCoords) return;
-    const frame = frameFor(mountTarget, coordinateSpace);
+    const frame = frameFor(dom, mountTarget, coordinateSpace);
     const pos = positionInFrame(lastCoords, frame, dom.offsetWidth, dom.offsetHeight);
     dom.style.top = `${pos.top}px`;
     dom.style.left = `${pos.left}px`;
