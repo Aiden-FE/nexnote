@@ -29,6 +29,11 @@ import { PluginService } from './plugins/plugin-service';
 import { SkillService } from './skills/skill-service';
 import { SettingsService } from './settings/settings-service';
 import { extractUpdateSettings, syncUpdaterSettings } from './settings/update-settings-sync';
+import { detectSystemProxy } from './settings/system-proxy';
+import {
+  deriveAiProxyUrlFromCache,
+  deriveNetworkProxyFromCache,
+} from './settings/network-proxy';
 import { VaultOperationsController } from './vault/vault-operations-controller';
 import { VaultCloneController } from './vault/vault-clone-controller';
 import { BUILTIN_PLUGIN_MANIFESTS } from './plugins/builtin/builtin-manifests';
@@ -146,7 +151,7 @@ async function bootstrap(): Promise<void> {
   const ai = new AiService({
     store: aiStore,
     sendEvent: (channel, payload) => winRef.sendToMainWindow(channel, payload),
-    getProxyUrl: () => deriveAiProxyUrl(settings.get().network),
+    getProxyUrl: () => deriveAiProxyUrlFromCache(settings.get().network),
   });
 
   const gitDoctor = new GitSyncDoctor({
@@ -217,12 +222,16 @@ async function bootstrap(): Promise<void> {
   const applyGlobalSettings = (global: ReturnType<SettingsService['get']>): void => {
     const useSystemGit = global.git.useSystemGit;
     git.setUseSystemGit(useSystemGit);
-    git.setNetworkProxy(deriveNetworkProxy(global.network));
+    git.setNetworkProxy(deriveNetworkProxyFromCache(global.network));
     if (appStore.getUseSystemGit() !== useSystemGit) {
       appStore.setUseSystemGit(useSystemGit);
     }
   };
   applyGlobalSettings(settings.get());
+  // DEV-072：启动即探测 OS 代理，完成后立即把系统代理应用到 Git（AI 每次创建 adapter 时读缓存）。
+  void detectSystemProxy().then(() => {
+    git.setNetworkProxy(deriveNetworkProxyFromCache(settings.get().network));
+  });
   // DEV-016：updater 设置以 SettingsService.updates 为唯一权威，
   // 启动时同步到 updater 运行态 + AppStore 镜像；onChange 持续 diff-apply。
   syncUpdaterSettings(settings, appStore);
@@ -383,59 +392,6 @@ async function bootstrap(): Promise<void> {
 app.on('window-all-closed', () => {
   if (process.platform !== 'darwin') app.quit();
 });
-
-/**
- * DEV-072：把用户网络设置转为 Git 子进程 env / git -c 配置。
- * mode=system 时跟随系统（继承 process.env 已包含的系统代理变量；Git CLI 自身读
- * HTTPS_PROXY/HTTP_PROXY/ALL_PROXY；AI 走 undici 也读 env）。
- * mode=off 显式清空。自定义 mode 同时生成 env 与 `git -c http.proxy=` 双通道。
- */
-export function deriveNetworkProxy(network: {
-  mode: string;
-  host: string | null;
-  port: number | null;
-  username: string | null;
-  password: string | null;
-  applyToAi: boolean;
-  applyToGit: boolean;
-}): { env: NodeJS.ProcessEnv | null; cliConfig: string[] | null } {
-  if (!network.applyToGit || network.mode === 'off') return { env: null, cliConfig: null };
-  if (network.mode === 'system') return { env: null, cliConfig: null };
-  if (!network.host || !network.port) return { env: null, cliConfig: null };
-  const scheme = network.mode === 'socks5' ? 'socks5' : network.mode;
-  const auth = network.username
-    ? `${encodeURIComponent(network.username)}:${encodeURIComponent(network.password ?? '')}@`
-    : '';
-  const proxyUrl = `${scheme}://${auth}${network.host}:${network.port}`;
-  const env: NodeJS.ProcessEnv = {
-    HTTPS_PROXY: proxyUrl,
-    HTTP_PROXY: proxyUrl,
-  };
-  const cliConfig =
-    network.mode === 'socks5'
-      ? [`http.proxy=socks5://${network.host}:${network.port}`]
-      : [`http.proxy=${proxyUrl}`, `https.proxy=${proxyUrl}`];
-  return { env, cliConfig };
-}
-
-/** DEV-072：AI 侧代理 URL 派生（独立于 Git 侧，尊重 applyToAi 开关）。 */
-function deriveAiProxyUrl(network: {
-  mode: string;
-  host: string | null;
-  port: number | null;
-  username: string | null;
-  password: string | null;
-  applyToAi: boolean;
-}): string | null {
-  if (!network.applyToAi) return null;
-  if (network.mode === 'off' || network.mode === 'system') return null;
-  if (!network.host || !network.port) return null;
-  const scheme = network.mode === 'socks5' ? 'socks5' : network.mode;
-  const auth = network.username
-    ? `${encodeURIComponent(network.username)}:${encodeURIComponent(network.password ?? '')}@`
-    : '';
-  return `${scheme}://${auth}${network.host}:${network.port}`;
-}
 
 app.on('web-contents-created', (_event, contents) => {
   // 兜底：任何 webContents 都不允许被导航去未知 origin（与窗口层校验双保险）

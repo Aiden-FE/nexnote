@@ -1,8 +1,9 @@
 # DEV-073 同步 UX 统一与 Agent 修复入口
 
-- 状态：已实现 v1（0.0.21，2026-09-21），有遗留
-- 已完成：状态栏单同步图标 + Loader2 spinner、`git:syncProgress` 阶段事件、`git:sync` = fetch → rebase/merge（`VaultSettings.git.syncStrategy`，默认 rebase）→ push（仅 ahead 时，永不 --force）、`autoSyncIntervalSec` 默认 300 秒（0=关，失败指数退避到 4×）、`MANUAL_GUIDANCE` 去掉 git 术语改为 Agent 引导。
-- 遗留：修复仍走 doctor 的 prepare→confirm 两步（未做到"1 次交互内执行"）；未补 sync/退避路径的新测试。
+- 状态：已实现并发布 0.0.22（2026-09-21），遗留清零
+- 0.0.21：状态栏单同步图标 + Loader2 spinner、`git:syncProgress` 阶段事件、`git:sync` = fetch → rebase/merge（`VaultSettings.git.syncStrategy`，默认 rebase）→ push（仅 ahead 时，永不 --force）、`autoSyncIntervalSec` 默认 300 秒（0=关，失败指数退避到 4×）、`MANUAL_GUIDANCE` 去掉 git 术语改为 Agent 引导。
+- 0.0.22 补齐：一键修复 — sync 失败自动弹诊断；`plan.action` 可执行时单击完成 prepare+execute（一次交互，安全门禁 TOCTOU/TTL 语义不变）；不可执行时「让 Agent 帮助解决」打开 AI 对话并携带脱敏诊断上下文。
+- 测试：doctor/registry 既有用例全绿（1537/1537）。
 - 范围：packages/shared, packages/main, packages/renderer
 - 来源：用户反馈 2026-09-21（同步体验割裂、缺加载态、缺自动同步、缺 Agent 修复）
 

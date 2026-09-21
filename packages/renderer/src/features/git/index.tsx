@@ -15,12 +15,14 @@ import type {
   GitRestorePreview,
   GitStatus,
   GitDoctorDiagnosis,
-  GitDoctorRepairPrepareResult,
 } from '@nexnote/shared';
 import { dockPanelRegistry, statusBarRegistry } from '../../registries';
 import { invoke, onEvent } from '../../lib/ipc';
 import { requestAppSave } from '../../editor/app-save';
 import { useVault } from '../../shell/vault-context';
+import { useUiStore } from '../../stores/ui-store';
+import { useChatStore } from '../ai/chat/chat-store';
+import { startNewSession } from '../ai/chat/chat-runtime';
 
 statusBarRegistry.register({ id: 'git', align: 'left', render: GitStatusItem });
 dockPanelRegistry.register({
@@ -61,8 +63,7 @@ function GitStatusItem() {
   const [phaseMessage, setPhaseMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [doctor, setDoctor] = useState<GitDoctorDiagnosis | null>(null);
-  const [doctorTicket, setDoctorTicket] = useState<GitDoctorRepairPrepareResult | null>(null);
-  void useState(false); // 占位，避免后续删除 useState 引入的 lint 噪声
+  const [doctorBusy, setDoctorBusy] = useState(false);
   useEffect(() => {
     return onEvent('git:syncProgress', (payload) => {
       setPhase(payload.phase);
@@ -104,25 +105,15 @@ function GitStatusItem() {
         Git…
       </span>
     );
-  const prepareDoctor = async () => {
+  // DEV-073 一键修复：plan.action 可执行时 prepare + execute 在一次交互内完成。
+  const runOneClickRepair = async () => {
     if (!doctor?.plan.action) return;
     setDoctorBusy(true);
+    setError(null);
     try {
-      setDoctorTicket(await invoke('git:doctor:repairPrepare', { action: doctor.plan.action }));
-    } catch (e) {
-      setError(e instanceof Error ? e.message : String(e));
-    } finally {
-      setDoctorBusy(false);
-    }
-  };
-  const executeDoctor = async () => {
-    if (!doctorTicket) return;
-    setDoctorBusy(true);
-    try {
-      await invoke('git:doctor:repairExecute', { ticket: doctorTicket.ticket });
-      setDoctorTicket(null);
+      const prepared = await invoke('git:doctor:repairPrepare', { action: doctor.plan.action });
+      await invoke('git:doctor:repairExecute', { ticket: prepared.ticket });
       setDoctor(null);
-      setError(null);
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
     } finally {
@@ -130,8 +121,29 @@ function GitStatusItem() {
       void refresh();
     }
   };
+  // DEV-073：不可自动修复时把脱敏诊断带入 AI 对话，让 Agent 引导解决。
+  const openAgentHelp = async () => {
+    const ui = useUiStore.getState();
+    ui.setActiveDockPanel('ai-chat');
+    const store = useChatStore.getState();
+    const ensure = store.active ? Promise.resolve() : startNewSession();
+    await ensure;
+    useChatStore.getState().addChip({
+      id: `sync-help-${Date.now()}`,
+      kind: 'selection',
+      label: '同步问题诊断',
+      text: [
+        `Git 同步出现问题：${doctor?.issue.message ?? '未知错误'}`,
+        doctor ? `类别：${doctor.issue.category}（${doctor.issue.code}）` : '',
+        doctor?.explanation ?? '',
+        error ? `错误信息：${error}` : '',
+        '请用简体中文一步一步指导我解决这个问题。不要假设我了解 git。',
+      ]
+        .filter(Boolean)
+        .join('\n'),
+    });
+  };
   const dismissDoctor = async () => {
-    setDoctorTicket(null);
     setDoctor(null);
     await invoke('git:doctor:dismiss').catch(() => undefined);
   };
@@ -186,14 +198,9 @@ function GitStatusItem() {
       {doctor && (
         <DoctorDialog
           diagnosis={doctor}
-          onPrepare={() => void prepareDoctor()}
-          onDismiss={() => void dismissDoctor()}
-        />
-      )}
-      {doctorTicket && (
-        <DoctorTicketDialog
-          prepared={doctorTicket}
-          onExecute={() => void executeDoctor()}
+          busy={doctorBusy}
+          onOneClickRepair={() => void runOneClickRepair()}
+          onOpenAgentHelp={() => void openAgentHelp()}
           onDismiss={() => void dismissDoctor()}
         />
       )}
@@ -487,72 +494,51 @@ function CommitRow({
 }
 function DoctorDialog({
   diagnosis,
-  onPrepare,
+  busy,
+  onOneClickRepair,
+  onOpenAgentHelp,
   onDismiss,
 }: {
   diagnosis: GitDoctorDiagnosis;
-  onPrepare(): void;
+  busy: boolean;
+  onOneClickRepair(): void;
+  onOpenAgentHelp(): void;
   onDismiss(): void;
 }) {
+  const canRepair = diagnosis.plan.action !== null;
   return (
     <div
       role="dialog"
       aria-label="Git 同步诊断"
       className="fixed bottom-10 left-4 z-20 w-80 rounded border bg-card p-3 shadow"
     >
-      <p className="font-medium">Git 同步诊断：{diagnosis.issue.category}</p>
+      <p className="font-medium">同步遇到问题：{diagnosis.issue.message}</p>
       <p className="mt-1 text-xs">{diagnosis.explanation}</p>
       {diagnosis.conflictFiles.length > 0 && (
         <p className="mt-1 text-[10px]">冲突文件：{diagnosis.conflictFiles.join('、')}</p>
       )}
       <p className="mt-1 text-[10px] text-muted-foreground">{diagnosis.plan.manualGuidance}</p>
       <div className="mt-2 flex gap-2">
-        {diagnosis.plan.action && (
+        {canRepair ? (
           <button
             type="button"
-            onClick={onPrepare}
+            disabled={busy}
+            onClick={onOneClickRepair}
+            className="rounded bg-primary px-2 py-1 text-xs text-primary-foreground disabled:opacity-60"
+          >
+            {busy ? '正在修复…' : '让 Agent 修复'}
+          </button>
+        ) : (
+          <button
+            type="button"
+            onClick={onOpenAgentHelp}
             className="rounded bg-primary px-2 py-1 text-xs text-primary-foreground"
           >
-            预览并准备
+            让 Agent 帮助解决
           </button>
         )}
         <button type="button" onClick={onDismiss} className="rounded border px-2 py-1 text-xs">
           忽略
-        </button>
-      </div>
-    </div>
-  );
-}
-function DoctorTicketDialog({
-  prepared,
-  onExecute,
-  onDismiss,
-}: {
-  prepared: GitDoctorRepairPrepareResult;
-  onExecute(): void;
-  onDismiss(): void;
-}) {
-  return (
-    <div
-      role="dialog"
-      aria-label="确认 Git 修复"
-      className="fixed bottom-10 left-4 z-20 w-80 rounded border border-amber-500/40 bg-card p-3 shadow"
-    >
-      <p className="font-medium">确认执行安全修复？</p>
-      <p className="mt-1 text-xs">{prepared.diagnosis.plan.commandPreview}</p>
-      <p className="mt-1 text-[10px]">
-        票据有效至 {new Date(prepared.ticketExpiresAt).toLocaleTimeString()}
-      </p>
-      <div className="mt-2 flex gap-2">
-        <button
-          type="button"
-          onClick={onExecute}
-          className="rounded bg-primary px-2 py-1 text-xs text-primary-foreground"
-        >
-          确认执行
-        </button>
-        <button type="button" onClick={onDismiss} className="rounded border px-2 py-1 text-xs">
-          拒绝
         </button>
       </div>
     </div>

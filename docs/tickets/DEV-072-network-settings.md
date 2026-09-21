@@ -1,8 +1,9 @@
 # DEV-072 应用网络设置（默认跟随系统）
 
-- 状态：已实现 v1（0.0.21，2026-09-21），有遗留
-- 已完成：schema、设置页「网络」section、AI 经 undici ProxyAgent 注入（动态 import，未装 undici 时回退全局 fetch）、Git 经 env（HTTP_PROXY/HTTPS_PROXY）+ `git -c http.proxy=` 双通道注入。
-- 遗留：`mode=system` 当前只继承 process.env，未在主进程主动读取 macOS/Windows OS 代理设置（从 Finder 启动的应用拿不到终端 env）；未补新增单元测试。
+- 状态：已实现并发布 0.0.22（2026-09-21），遗留清零
+- 0.0.21：schema、设置页「网络」section、AI 经 undici ProxyAgent 注入（动态 import，未装 undici 时回退全局 fetch）、Git 经 env（HTTP_PROXY/HTTPS_PROXY）+ `git -c http.proxy=` 双通道注入。
+- 0.0.22 补齐：`mode=system` 主进程主动探测 OS 代理（macOS `scutil --proxy` / Windows `reg query` / Linux env+gsettings，30s TTL 缓存），探测结果注入 AI 与 Git；派生逻辑抽到 `packages/main/src/settings/network-proxy.ts`（纯函数可测）。
+- 测试：`system-proxy.test.ts`（解析器 10 例 + 缓存）、`network-proxy.test.ts`（派生 12 例）。
 - 范围：packages/shared, packages/main, packages/renderer
 - 来源：用户反馈 2026-09-21（同步链路需正确识别网络环境）
 

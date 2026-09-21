@@ -301,13 +301,14 @@ function GeneralSection() {
 
 function NetworkSection() {
   const { global, setGlobal } = useGlobalSettings();
-  const net = global.network;
+  const net = global?.network ?? null;
   const setNet = useCallback(
-    (patch: Partial<typeof net>) => {
+    (patch: Partial<NonNullable<typeof net>>) => {
       void setGlobal({ network: patch });
     },
     [setGlobal],
   );
+  if (!net) return <div className="text-sm text-muted-foreground">加载中…</div>;
   return (
     <div className="space-y-6">
       <SectionHeader
