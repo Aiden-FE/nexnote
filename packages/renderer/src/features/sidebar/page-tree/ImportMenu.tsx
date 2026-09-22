@@ -1,45 +1,48 @@
 import { useEffect, useRef, useState } from 'react';
-import { ChevronDown, FilePlus2 } from 'lucide-react';
+import { ChevronDown } from 'lucide-react';
 import { cn } from '../../../lib/utils';
-import type { NewNoteFormat } from './ops';
 
-interface NewNoteMenuItem {
-  format: NewNoteFormat;
-  /** 格式徽标短字：块 / MD */
+type ImportKind = 'docx' | 'xlsx' | 'xmind';
+
+interface ImportMenuItem {
+  kind: ImportKind;
+  /** 格式徽标：DOCX / XLSX / XMIND */
   badge: string;
-  badgeClass: string;
   label: string;
-  /** 悬停说明：解释与另一格式的差异 */
   description: string;
 }
 
-const ITEMS: NewNoteMenuItem[] = [
+const ITEMS: ImportMenuItem[] = [
   {
-    format: 'native-block',
-    badge: '块',
-    badgeClass: 'bg-primary/15 text-primary',
-    label: '新建文档（块编辑）',
-    description: '所见即所得的块编辑体验（默认）',
+    kind: 'docx',
+    badge: 'DOCX',
+    label: '导入 DOCX',
+    description: '语义级往返：段落/标题/加粗斜体/表格/字体色/对齐保留；页眉页脚、编号样式、上下标不保留',
   },
   {
-    format: 'markdown',
-    badge: 'MD',
-    badgeClass: 'bg-muted text-muted-foreground',
-    label: '新建 Markdown（源码模式）',
-    description: '编辑 Markdown 源码，右侧实时预览',
+    kind: 'xlsx',
+    badge: 'XLSX',
+    label: '导入 XLSX',
+    description: '多 sheet、公式、合并单元格可编辑；宏/图表/透视表只读标注',
+  },
+  {
+    kind: 'xmind',
+    badge: 'XMIND',
+    label: '导入 XMIND',
+    description: '文本/树结构/备注/超链接/标签/概要可编辑；外框/关联线只读标注',
   },
 ];
 
-interface NewNoteMenuProps {
-  /** 按所选格式新建（两种格式都写纯标准 Markdown，format 持久化到 sidecar）。 */
-  onCreate(format: NewNoteFormat): void;
+interface ImportMenuProps {
+  /** 按所选 kind 触发对应导入（docx/xlsx/xmind）。 */
+  onImport(kind: ImportKind): void;
 }
 
 /**
- * 「新建」下拉按钮：主按钮保持原单一按钮行为（默认格式直接新建），箭头展开格式菜单。
- * 键盘：↑/↓ 打开并在项间移动，Enter 选中，Esc/Tab 关闭（Esc 后焦点回到触发按钮）。
+ * 「导入」下拉按钮：与「新建」并列于页面树工具栏右侧。
+ * 键盘：↑/↓ 打开并在项间移动，Enter 选中，Esc/Tab 关闭。
  */
-export function NewNoteMenu({ onCreate }: NewNoteMenuProps) {
+export function ImportMenu({ onImport }: ImportMenuProps) {
   const [open, setOpen] = useState(false);
   const [anchor, setAnchor] = useState({ x: 0, y: 0 });
   const wrapRef = useRef<HTMLDivElement>(null);
@@ -50,7 +53,6 @@ export function NewNoteMenu({ onCreate }: NewNoteMenuProps) {
     setOpen(false);
     if (refocus) triggerRef.current?.focus();
   };
-
   const openMenu = (): void => {
     const rect = wrapRef.current?.getBoundingClientRect();
     setAnchor({ x: rect?.left ?? 0, y: (rect?.bottom ?? 0) + 4 });
@@ -110,21 +112,11 @@ export function NewNoteMenu({ onCreate }: NewNoteMenuProps) {
   return (
     <div ref={wrapRef} className="flex items-center">
       <button
-        type="button"
-        data-testid="tree-new-note"
-        title="新建文档（块编辑）"
-        aria-label="新建文档（块编辑）"
-        onClick={() => onCreate('native-block')}
-        className="rounded p-1 text-muted-foreground hover:bg-accent hover:text-foreground"
-      >
-        <FilePlus2 className="size-3.5" />
-      </button>
-      <button
         ref={triggerRef}
         type="button"
-        data-testid="tree-new-note-menu"
-        title="选择文档格式"
-        aria-label="选择文档格式"
+        data-testid="tree-import-menu"
+        title="导入文档"
+        aria-label="导入文档"
         aria-haspopup="menu"
         aria-expanded={open}
         onClick={() => (open ? close(false) : openMenu())}
@@ -141,24 +133,24 @@ export function NewNoteMenu({ onCreate }: NewNoteMenuProps) {
       {open && (
         <div
           role="menu"
-          aria-label="新建文档格式"
-          data-testid="new-note-menu"
+          aria-label="导入文档"
+          data-testid="import-menu"
           style={{ left: Math.min(anchor.x, Math.max(8, window.innerWidth - 240)), top: anchor.y }}
           onKeyDown={onMenuKeyDown}
           className="fixed z-50 w-60 rounded-md border bg-popover p-1 text-popover-foreground shadow-lg"
         >
           {ITEMS.map((item, i) => (
             <button
-              key={item.format}
+              key={item.kind}
               ref={(el) => {
                 itemRefs.current[i] = el;
               }}
               type="button"
               role="menuitem"
-              data-testid={`new-note-${item.format}`}
+              data-testid={`import-${item.kind}`}
               title={`${item.label}——${item.description}`}
               onClick={() => {
-                onCreate(item.format);
+                onImport(item.kind);
                 close(true);
               }}
               className="flex w-full items-start gap-2 rounded-sm px-2 py-1.5 text-left hover:bg-accent"
@@ -166,8 +158,7 @@ export function NewNoteMenu({ onCreate }: NewNoteMenuProps) {
               <span
                 aria-hidden="true"
                 className={cn(
-                  'mt-0.5 inline-flex w-7 shrink-0 items-center justify-center rounded px-1 py-0.5 text-[10px] font-medium',
-                  item.badgeClass,
+                  'mt-0.5 inline-flex w-9 shrink-0 items-center justify-center rounded bg-muted px-1 py-0.5 text-[10px] font-medium text-muted-foreground',
                 )}
               >
                 {item.badge}
