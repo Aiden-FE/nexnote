@@ -88,6 +88,25 @@ export function GuidedTour() {
     setStepIndex((i) => Math.max(0, i - 1));
   }, []);
 
+  // DEV-081：进入新步前执行 prepare（展开右栏）；离开该步时执行 cleanup。
+  // ai-dock 步：进入前快照 dockVisible；若原本收起则展开；离开时若仍是引导展开的则收起，
+  // 否则尊重用户的本步内手动改动（与工单 §6 边界一致）。
+  useEffect(() => {
+    if (!tourOpen) return;
+    let snapshot: { dockVisible: boolean } | null = null;
+    if (step.id === 'ai-dock') {
+      const ui = useUiStore.getState();
+      snapshot = { dockVisible: ui.dockVisible };
+      if (!ui.dockVisible) ui.setDockVisible(true);
+    }
+    return () => {
+      if (step.id !== 'ai-dock' || snapshot === null) return;
+      const ui = useUiStore.getState();
+      // 仅当本次引导确实把它从 false 改成 true 时才恢复；保留用户本步内手动收起的状态。
+      if (snapshot.dockVisible === false && ui.dockVisible) ui.setDockVisible(false);
+    };
+  }, [tourOpen, step.id]);
+
   useEffect(() => {
     if (!tourOpen) return;
     const onKey = (e: KeyboardEvent) => {

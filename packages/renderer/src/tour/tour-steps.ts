@@ -10,6 +10,17 @@ export interface TourStep {
   targetSelector: string;
   title: string;
   description: string;
+  /**
+   * DEV-081：进入该步前的前置动作。返回值会传给同一步的 cleanup。
+   * 不在这里直接调用 ui-store —— 实际执行由 GuidedTour 在 React effect 中触发，
+   * 保证副作用在正确的生命周期内。
+   */
+  prepare?: () => unknown;
+  /**
+   * DEV-081：离开该步时的清理动作。snapshot 是 prepare 的返回值。
+   * 语义见 tour-steps 注释：若用户在该步期间手动改动了 dockVisible，cleanup 不强行复原。
+   */
+  cleanup?: (snapshot: unknown) => void;
 }
 
 export const TOUR_STEPS: TourStep[] = [
@@ -33,6 +44,9 @@ export const TOUR_STEPS: TourStep[] = [
     title: 'AI 对话与写作',
     description:
       '右侧 Dock 提供 AI 对话与写作辅助，可边写边获得建议。通过欢迎页或命令面板都能随时展开与收起 Dock。',
+    // DEV-081：进入该步前快照 dockVisible，由 GuidedTour 决定展开动作。
+    prepare: () => null,
+    cleanup: () => undefined,
   },
   {
     id: 'git-timeline',
