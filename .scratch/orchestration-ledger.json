@@ -442,6 +442,18 @@
       "branch": "dev/DEV-067",
       "merged": "c14669f",
       "verdict": "34/34 toolbar PASS + 六门禁；随 v0.0.19 发布（run 35506878662, tag v0.0.19）"
+    },
+    "DEV-076": {
+      "title": "冲突提示可诊断、Agent 修复入口与同步转圈收尾",
+      "deps": [
+        "DEV-073"
+      ],
+      "status": "done",
+      "agent": "main",
+      "branch": "dev/DEV-076",
+      "merged": "a7d3c45",
+      "candidate": "b3dab03",
+      "verdict": "双轴 PASS：state-machine 纯函数覆盖 done/error 终态收尾 / conflictHoverText / 自动同步 listener 注入；main 配置 + ipc index 双 hook。typecheck/test 1548 passed / 2 skipped，lint 0 errors，build + release-config 31/31 + diff-check 全绿。GUI smoke 同步冲突路径未覆盖（NOT_RUN）。"
     }
   },
   "phase": "DEV-001~065 已完成（v0.0.18 已发）；DEV-066/067 补丁轮已完成并随 v0.0.19 发布",
