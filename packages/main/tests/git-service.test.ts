@@ -1,5 +1,5 @@
 import { execFileSync } from 'node:child_process';
-import { promises as fsp, mkdtempSync, rmSync } from 'node:fs';
+import { promises as fsp, mkdtempSync, mkdirSync, writeFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import * as path from 'node:path';
 import { simpleGit } from 'simple-git';
@@ -1110,3 +1110,98 @@ function baseStatusForTest(): GitStatus {
     usingSystemGit: true,
   };
 }
+
+describe.runIf(runIfGit())('DEV-082 rebase/merge in-progress 时的自动提交与中止', () => {
+  // 现实里一个 paused rebase 是在 `git rebase` 撞到内容冲突时自然形成的，
+  // 但生产 git 在没有 TTY 的测试环境里行为不稳（自动 3-way merge / rerere
+  // 可能让 rebase 直接成功）。这里直接手工伪造 `.git/rebase-merge/` 的最小
+  // 文件集，保证 GitService.isRebaseOrMergeInProgress() 一定返回 true。
+  async function setupPausedRebase(): Promise<{ cleanup: () => void }> {
+    await service.initialize(root);
+    const headSha = execFileSync(gitBinary(), ['rev-parse', 'HEAD'], { cwd: root })
+      .toString()
+      .trim();
+    const rebaseDir = path.join(root, '.git', 'rebase-merge');
+    mkdirSync(rebaseDir, { recursive: true });
+    writeFileSync(path.join(rebaseDir, 'head-name'), 'refs/heads/master\n');
+    writeFileSync(path.join(rebaseDir, 'onto'), `${headSha}\n`);
+    writeFileSync(path.join(rebaseDir, 'orig-head'), `${headSha}\n`);
+    writeFileSync(path.join(rebaseDir, 'msgnum'), '1\n');
+    return {
+      cleanup: () => {
+        rmSync(rebaseDir, { recursive: true, force: true });
+      },
+    };
+  }
+
+  it('commitAuto 在 rebase 暂停时拒绝创建提交，不修改 HEAD', async () => {
+    const { cleanup } = await setupPausedRebase();
+    try {
+      const before = execFileSync(gitBinary(), ['rev-parse', 'HEAD'], { cwd: root }).toString();
+      const beforeCount = (await service.timeline()).length;
+      const listener = vi.fn();
+      service.onStatusChanged(listener);
+      await fsp.writeFile(path.join(root, 'extra.md'), 'extra\n');
+      await service.commitAuto('保存页面');
+      const after = execFileSync(gitBinary(), ['rev-parse', 'HEAD'], { cwd: root }).toString();
+      expect(after).toBe(before);
+      expect((await service.timeline()).length).toBe(beforeCount);
+      expect(listener).toHaveBeenCalled();
+      const last = listener.mock.calls.at(-1)?.[0] as { rebaseInProgress?: boolean } | undefined;
+      expect(last?.rebaseInProgress).toBe(true);
+    } finally {
+      cleanup();
+    }
+  });
+
+  it('scheduleAutoCommit 在 rebase 暂停时调度窗口不落地为提交', async () => {
+    const { cleanup } = await setupPausedRebase();
+    try {
+      await fsp.writeFile(path.join(root, 'extra.md'), 'extra\n');
+      service.scheduleAutoCommit('保存页面', 50);
+      await new Promise((resolve) => setTimeout(resolve, 200));
+      const timeline = await service.timeline();
+      expect(timeline.some((entry) => entry.message.includes('保存页面'))).toBe(false);
+    } finally {
+      cleanup();
+    }
+  });
+
+  it('abortInProgressRebaseOrMerge 清理 rebase-merge/ 并回到干净 HEAD', async () => {
+    const { cleanup } = await setupPausedRebase();
+    try {
+      const before = execFileSync(gitBinary(), ['rev-parse', 'HEAD'], { cwd: root }).toString();
+      const result = await service.abortInProgressRebaseOrMerge();
+      expect(result.message).toMatch(/rebase/);
+      const gitDirRaw = execFileSync(gitBinary(), ['rev-parse', '--git-dir'], { cwd: root })
+        .toString();
+      const gitDir = path.join(root, gitDirRaw.trim());
+      const rebaseMergeExists = await fsp
+        .access(path.join(gitDir, 'rebase-merge'))
+        .then(() => true)
+        .catch(() => false);
+      const rebaseApplyExists = await fsp
+        .access(path.join(gitDir, 'rebase-apply'))
+        .then(() => true)
+        .catch(() => false);
+      expect(rebaseMergeExists).toBe(false);
+      expect(rebaseApplyExists).toBe(false);
+      const after = execFileSync(gitBinary(), ['rev-parse', 'HEAD'], { cwd: root }).toString();
+      expect(after).toBe(before);
+      const status = await service.status();
+      expect(status.rebaseInProgress).toBe(false);
+    } finally {
+      cleanup();
+    }
+  });
+
+  it('abortInProgressRebaseOrMerge 在没有进行中操作时抛 NO_OPERATION', async () => {
+    await service.initialize(root);
+    await fsp.writeFile(path.join(root, 'doc.md'), 'hi\n');
+    await service.commitAuto('seed');
+    await expect(service.abortInProgressRebaseOrMerge()).rejects.toMatchObject({
+      code: 'NO_OPERATION',
+    });
+  });
+});
+

@@ -28,6 +28,7 @@ function fakeGit(status: Partial<GitStatus> = {}): FakeGit {
       behind: 0,
       remote: 'origin',
       conflict: false,
+      rebaseInProgress: false,
       usingSystemGit: false,
       ...status,
     })),
@@ -213,6 +214,7 @@ describe('ticket 一次性 / TTL / 参数漂移（TOCTOU）', () => {
       behind: 0,
       remote: 'origin',
       conflict: false,
+      rebaseInProgress: false,
       usingSystemGit: false,
     });
     const { doctor } = doctorWith(git);
@@ -226,6 +228,7 @@ describe('ticket 一次性 / TTL / 参数漂移（TOCTOU）', () => {
       behind: 0,
       remote: 'origin',
       conflict: false,
+      rebaseInProgress: false,
       usingSystemGit: false,
     });
     await doctor.execute(ticket);
@@ -365,11 +368,84 @@ describe('AI 解释（脱敏降级）', () => {
 });
 
 describe('常量', () => {
-  it('TTL 默认 5 分钟；action 白名单固定三项', () => {
+  it('TTL 默认 5 分钟；action 白名单包含新 abort-rebase-or-merge', () => {
     expect(GIT_DOCTOR_TICKET_TTL_MS).toBe(5 * 60_000);
-    expect(GIT_REPAIR_ACTIONS).toEqual(['commit', 'pull', 'push']);
+    expect(GIT_REPAIR_ACTIONS).toEqual([
+      'commit',
+      'pull',
+      'push',
+      'abort-rebase-or-merge',
+    ]);
   });
   it('GitSyncDoctorError 携带稳定 code', () => {
     expect(new GitSyncDoctorError('x', 'TICKET_EXPIRED').code).toBe('TICKET_EXPIRED');
+  });
+});
+
+describe('DEV-082 rebase-in-progress 路径', () => {
+  it('classifySyncIssue 在 rebaseInProgress 时返回 REBASE_IN_PROGRESS，conflict 字段不抢占', () => {
+    const base = {
+      repository: true,
+      changed: 0,
+      ahead: 0,
+      behind: 0,
+      remote: 'origin',
+    };
+    expect(classifySyncIssue({ ...base, conflict: false, rebaseInProgress: true })).toMatchObject({
+      category: 'conflict',
+      code: 'REBASE_IN_PROGRESS',
+    });
+  });
+
+  it('诊断 rebaseInProgress 时 plan.action 命中 abort-rebase-or-merge', async () => {
+    const git = fakeGit({ rebaseInProgress: true });
+    const { doctor } = doctorWith(git);
+    const diagnosis = await doctor.diagnose();
+    expect(diagnosis.issue.code).toBe('REBASE_IN_PROGRESS');
+    expect(diagnosis.plan.action).toBe('abort-rebase-or-merge');
+    expect(diagnosis.plan.requiresConfirmation).toBe(true);
+    expect(diagnosis.plan.safe).toBe(true);
+  });
+
+  it('诊断无 rebaseInProgress 时 plan.action 为 null（保持旧 conflict 引导）', async () => {
+    const git = fakeGit({ conflict: true });
+    const { doctor } = doctorWith(git);
+    const diagnosis = await doctor.diagnose();
+    expect(diagnosis.issue.code).toBe('MERGE_CONFLICT');
+    expect(diagnosis.plan.action).toBeNull();
+  });
+
+  it('prepare(abort-rebase-or-merge) 在 conflict 状态下以前会被拒绝，现在允许', async () => {
+    const git = fakeGit({ rebaseInProgress: true });
+    git.abortInProgressRebaseOrMerge = vi.fn(async () => ({
+      message: '已中止未完成的 rebase/merge',
+      status: {} as GitStatus,
+    }));
+    const { doctor } = doctorWith(git);
+    const { ticket } = await doctor.prepare('abort-rebase-or-merge');
+    expect(ticket).toMatch(/^[0-9a-f-]{36}$/i);
+    await doctor.execute(ticket);
+    expect(git.abortInProgressRebaseOrMerge).toHaveBeenCalledOnce();
+  });
+
+  it('execute 期间 rebase 已自然结束 → NO_OPERATION，doctor 不再触发 abort', async () => {
+    const git = fakeGit({ rebaseInProgress: true });
+    git.abortInProgressRebaseOrMerge = vi.fn();
+    const { doctor } = doctorWith(git);
+    const { ticket } = await doctor.prepare('abort-rebase-or-merge');
+    // simulate the rebase being resolved or aborted before the user clicked confirm
+    git.statusFor.mockResolvedValue({
+      repository: true,
+      branch: 'main',
+      changed: 0,
+      ahead: 0,
+      behind: 0,
+      remote: 'origin',
+      conflict: false,
+      rebaseInProgress: false,
+      usingSystemGit: false,
+    });
+    await expect(doctor.execute(ticket)).rejects.toMatchObject({ code: 'NO_OPERATION' });
+    expect(git.abortInProgressRebaseOrMerge).not.toHaveBeenCalled();
   });
 });

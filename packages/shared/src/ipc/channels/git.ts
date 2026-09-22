@@ -27,6 +27,8 @@ export interface GitStatus {
   remote: string | null;
   /** 有未解决的合并冲突（unmerged index 或文件内冲突标记）。 */
   conflict: boolean;
+  /** DEV-082：当前 vault 处于 paused rebase/merge（.git/rebase-merge 等），UI 需展示徽标并禁用自动提交。 */
+  rebaseInProgress: boolean;
   usingSystemGit: boolean;
 }
 

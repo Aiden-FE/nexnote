@@ -798,6 +798,7 @@ describe('IPC 集成（vault + fs，单一注册表）', () => {
       remote: 'origin',
       usingSystemGit: true,
       conflict: false,
+      rebaseInProgress: false,
     };
     vi.spyOn(services.git, 'lsRemote').mockResolvedValue();
     vi.spyOn(services.git, 'cloneInto').mockImplementation(async (_url, temporaryParent, name) => {

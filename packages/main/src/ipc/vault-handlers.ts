@@ -313,6 +313,7 @@ export function registerVaultHandlers(registrar: IpcRegistrar): void {
       remote: null,
       usingSystemGit: services.git.effectiveUsesSystemGit(),
       conflict: false,
+      rebaseInProgress: false,
     });
     return ok(undefined);
   });

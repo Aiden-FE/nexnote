@@ -222,6 +222,15 @@ function GitStatusItem() {
           ⚠ 冲突
         </button>
       )}
+      {status.rebaseInProgress && (
+        <span
+          data-testid="status-git-rebase"
+          className="rounded bg-amber-500/15 px-1 font-medium text-amber-700"
+          title="存在未完成的 rebase/merge，请点击一键恢复"
+        >
+          ⤴︎ 同步中
+        </span>
+      )}
       {status.changed > 0 && (
         <span className="rounded bg-amber-500/15 px-1 text-amber-700">● {status.changed}</span>
       )}
@@ -576,7 +585,11 @@ function DoctorDialog({
             onClick={onOneClickRepair}
             className="rounded bg-primary px-2 py-1 text-xs text-primary-foreground disabled:opacity-60"
           >
-            {busy ? '正在修复…' : '让 Agent 修复'}
+            {busy
+              ? '正在修复…'
+              : diagnosis.plan.action === 'abort-rebase-or-merge'
+                ? '中止 rebase 并继续'
+                : '让 Agent 修复'}
           </button>
         ) : (
           <button

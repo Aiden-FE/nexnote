@@ -319,6 +319,13 @@ export class GitService {
   async commitAuto(summary = '保存页面'): Promise<void> {
     this.autoTimer = null;
     const root = this.requireRoot();
+    // A paused rebase/merge must never receive another layout commit: doing so
+    // is what scrambled the todo list and stacked unstaged changes on top of
+    // the conflict. Surface status so the UI shows the rebase badge instead.
+    if (await this.isRebaseOrMergeInProgress(root)) {
+      await this.notifyCurrentStatus();
+      return;
+    }
     const wait = this.minCommitIntervalMs - (Date.now() - this.lastCommitAt);
     if (wait > 0) {
       this.autoTimer = setTimeout(() => void this.commitAuto(summary).catch(() => undefined), wait);
@@ -330,6 +337,13 @@ export class GitService {
       await this.notifyCurrentStatus();
       return;
     }
+    // Skip a layout-only auto-commit when the versioned config/layout blobs are
+    // already byte-identical to HEAD. This stops the recurring pattern of many
+    // "保存知识库布局" commits that rewrite config.json without a real change.
+    if (await this.versionedConfigAlreadyAtHead(root, summary)) {
+      await this.notifyCurrentStatus();
+      return;
+    }
     await this.commit(root, `${AUTO_PREFIX} ${cleanSummary(summary)}`);
     await this.notifyCurrentStatus();
   }
@@ -338,10 +352,75 @@ export class GitService {
     const root = this.requireRoot();
     const text = cleanSummary(message);
     if (!text) throw new GitServiceError('提交说明不能为空', 'EMPTY_MESSAGE');
+    if (await this.isRebaseOrMergeInProgress(root)) {
+      throw new GitServiceError(
+        '存在未完成的 rebase/merge，请先在同步面板中止或继续后再提交',
+        'REBASE_IN_PROGRESS',
+      );
+    }
     await this.commit(root, `${MANUAL_PREFIX} ${text}`);
     const result = { message: '已创建手动提交', status: await this.statusFor(root) };
     this.notifyStatus(result.status);
     return result;
+  }
+
+  /**
+   * Abort a paused rebase or merge. Only callable through a doctor ticket after
+   * TOCTOU validation — never exposed directly to the renderer. Neither
+   * `rebase --abort` nor `merge --abort` touches worktree files; both restore
+   * the pre-operation HEAD and index.
+   */
+  async abortInProgressRebaseOrMerge(): Promise<GitOperationResult> {
+    const root = this.requireRoot();
+    const git = this.git(root);
+    const [hasRebase, hasMerge] = await Promise.all([
+      this.hasGitDirEntry(root, 'rebase-merge').then((v) =>
+        v ? true : this.hasGitDirEntry(root, 'rebase-apply'),
+      ),
+      this.hasGitDirEntry(root, 'MERGE_HEAD'),
+    ]);
+    if (hasRebase) {
+      await git.raw(['rebase', '--abort']);
+    } else if (hasMerge) {
+      await git.raw(['merge', '--abort']);
+    } else {
+      throw new GitServiceError('当前没有进行中的 rebase 或 merge', 'NO_OPERATION');
+    }
+    return this.notified({ message: '已中止未完成的 rebase/merge', root });
+  }
+
+  private async hasGitDirEntry(root: string, name: string): Promise<boolean> {
+    const git = this.git(root);
+    const gitDirRaw = await git.raw(['rev-parse', '--git-dir']).catch(() => '');
+    const gitDir = gitDirRaw.trim();
+    if (!gitDir) return false;
+    const base = path.isAbsolute(gitDir) ? gitDir : path.join(root, gitDir);
+    return fsp
+      .access(path.join(base, name))
+      .then(() => true)
+      .catch(() => false);
+  }
+
+  /**
+   * True when a layout auto-commit has no actual file changes left by the time
+   * the debounce fires. A genuinely modified config.json still appears in
+   * `git diff --name-only` and commits normally; this only swallows timer
+   * firings whose bytes were already saved by an earlier commit.
+   */
+  private async versionedConfigAlreadyAtHead(root: string, summary: string): Promise<boolean> {
+    if (summary !== '保存知识库布局') return false;
+    const git = this.git(root);
+    const hasHead = Boolean(
+      (await git.raw(['rev-parse', '--verify', 'HEAD']).catch(() => '')).trim(),
+    );
+    if (!hasHead) return false;
+    const modified = (await git.raw(['diff', '--name-only', '-z', '--no-renames']))
+      .split('\0')
+      .filter(Boolean);
+    const untracked = (await git.raw(['ls-files', '-z', '--others', '--exclude-standard']))
+      .split('\0')
+      .filter(Boolean);
+    return modified.length === 0 && untracked.length === 0;
   }
 
   async status(): Promise<GitStatus> {
@@ -411,6 +490,7 @@ export class GitService {
         behind: 0,
         remote: null,
         conflict: false,
+        rebaseInProgress: false,
         usingSystemGit: runtime.source === 'system',
       };
     }
@@ -426,6 +506,7 @@ export class GitService {
       behind: status.behind,
       remote,
       conflict,
+      rebaseInProgress: await this.isRebaseOrMergeInProgress(root),
       usingSystemGit: runtime.source === 'system',
     };
   }
@@ -712,6 +793,36 @@ export class GitService {
       status.conflicted.length > 0 ||
       status.files.some((file) => file.index === 'U' || file.working_dir === 'U')
     );
+  }
+
+  /**
+   * Detect a paused rebase/merge without invoking status(): the presence of any
+   * of git's state files under GIT_DIR is authoritative and read-only. A rebase
+   * paused on a content conflict leaves rebase-merge/ (interactive) or
+   * rebase-apply/ (am) even before the index reports an unmerged path, so this
+   * catches the window where commitAuto() used to stack more layout commits.
+   */
+  private async isRebaseOrMergeInProgress(root: string): Promise<boolean> {
+    const git = this.git(root);
+    const gitDirRaw = await git.raw(['rev-parse', '--git-dir']).catch(() => '');
+    const gitDir = gitDirRaw.trim();
+    if (!gitDir) return false;
+    const base = path.isAbsolute(gitDir) ? gitDir : path.join(root, gitDir);
+    const markers = [
+      'rebase-merge',
+      'rebase-apply',
+      'MERGE_HEAD',
+      'REBASE_HEAD',
+    ];
+    const checks = await Promise.all(
+      markers.map((name) =>
+        fsp
+          .access(path.join(base, name))
+          .then(() => true)
+          .catch(() => false),
+      ),
+    );
+    return checks.some(Boolean);
   }
 
   private async hasConflictMarkers(

@@ -15,10 +15,15 @@ import type { AiService } from '../ai/ai-service';
 
 /** 修复票据 TTL：预览到显式确认执行之间的最大窗口。 */
 export const GIT_DOCTOR_TICKET_TTL_MS = 5 * 60_000;
-export const GIT_REPAIR_ACTIONS: readonly GitRepairAction[] = ['commit', 'pull', 'push'];
+export const GIT_REPAIR_ACTIONS: readonly GitRepairAction[] = [
+  'commit',
+  'pull',
+  'push',
+  'abort-rebase-or-merge',
+];
 
 /**
- * 白名单：doctor 只可能执行这三条等价操作（经 GitService 既有安全路径）。
+ * 白名单：doctor 只可能执行这四条等价操作（经 GitService 既有安全路径）。
  * 任何破坏性命令（reset --hard / clean / checkout -- . / push --force）都没有入口。
  */
 const COMMAND_PREVIEW: Record<GitRepairAction, string> = {
@@ -27,11 +32,14 @@ const COMMAND_PREVIEW: Record<GitRepairAction, string> = {
   commit: 'git add . && git commit（手动提交，消息由应用生成）',
   pull: 'git pull --no-rebase（拒绝脏工作区）',
   push: 'git push（普通推送，从不 force）',
+  // DEV-082: rebase/merge --abort is read-mostly: it restores HEAD and the
+  // pre-operation index without touching worktree files. Safe to expose.
+  'abort-rebase-or-merge': 'git rebase --abort（或 git merge --abort，按当前状态选择）',
 };
 
 const MANUAL_GUIDANCE: Record<GitSyncIssueCategory, string> = {
   conflict:
-    '存在合并冲突：AI 不会覆盖冲突文件。可以点击「让 Agent 帮助解决」让 AI 引导你完成合并；如需手动干预，请前往仓库目录操作。',
+    '存在未完成的 rebase 或合并冲突：AI 不会覆盖冲突文件。点击「让 Agent 帮助解决」让 AI 引导你完成合并，或选择「中止 rebase 并继续」回退到操作前的状态；如需手动干预，请前往仓库目录操作。',
   dirty: '工作区有未提交变更：可以让 Agent 帮你提交保存，或一键暂存后继续同步。',
   auth: '远程认证失败：请在设置中更新 HTTPS 凭证或 SSH key（应用不会代填密钥）。',
   network: '网络不可达：请检查网络连接或远程地址后重试，或在设置中配置代理。',
@@ -52,7 +60,9 @@ export class GitSyncDoctorError extends Error {
       | 'TICKET_EXPIRED'
       | 'ROOT_CHANGED'
       | 'STATE_DRIFT'
-      | 'CONFLICT_PRESENT',
+      | 'CONFLICT_PRESENT'
+      | 'NO_OPERATION'
+      | 'STATUS_FAILED',
   ) {
     super(message);
     this.name = 'GitSyncDoctorError';
@@ -84,18 +94,21 @@ function snapshotOf(
     behind: number;
     remote: string | null;
     conflict: boolean;
+    rebaseInProgress?: boolean;
   },
   fingerprint?: Awaited<ReturnType<GitService['doctorFingerprint']>>,
 ): GitDoctorStatusSnapshot {
-  return {
+  const snapshot: GitDoctorStatusSnapshot = {
     branch: status.branch,
     changed: status.changed,
     ahead: status.ahead,
     behind: status.behind,
     remote: status.remote,
     conflict: status.conflict,
+    rebaseInProgress: status.rebaseInProgress ?? false,
     ...(fingerprint ?? {}),
   };
+  return snapshot;
 }
 
 function sameFiles(
@@ -134,6 +147,7 @@ export function sanitizeDiagnosticText(value: string): string {
 export function classifySyncIssue(input: {
   repository: boolean;
   conflict: boolean;
+  rebaseInProgress?: boolean;
   changed: number;
   ahead: number;
   behind: number;
@@ -141,6 +155,16 @@ export function classifySyncIssue(input: {
 }): { category: GitSyncIssueCategory; code: string; message: string } {
   if (!input.repository)
     return { category: 'git-missing', code: 'NOT_A_REPOSITORY', message: '当前目录不是 Git 仓库' };
+  // DEV-082: rebase/merge paused state surfaces before unmerged-index conflicts
+  // because it covers the wider window where the user is locked out of
+  // committing even though git status may not yet report unmerged entries.
+  if (input.rebaseInProgress) {
+    return {
+      category: 'conflict',
+      code: 'REBASE_IN_PROGRESS',
+      message: '存在未完成的 rebase/merge',
+    };
+  }
   if (input.conflict)
     return { category: 'conflict', code: 'MERGE_CONFLICT', message: '存在未解决的合并冲突' };
   if (input.changed > 0)
@@ -208,6 +232,7 @@ function planFor(
     ahead: number;
     behind: number;
     remote: string | null;
+    rebaseInProgress?: boolean;
   },
 ): {
   action: GitRepairAction | null;
@@ -220,6 +245,23 @@ function planFor(
     manualGuidance: MANUAL_GUIDANCE[category],
   };
   switch (category) {
+    case 'conflict':
+      // DEV-082: a paused rebase/merge is the one conflict case we can resolve
+      // without touching worktree files. Other conflict states keep the
+      // "agent/manual only" guidance.
+      if (status.rebaseInProgress) {
+        return {
+          action: 'abort-rebase-or-merge',
+          allowedAction: 'abort-rebase-or-merge',
+          plan: {
+            ...manual,
+            requiresConfirmation: true,
+            safe: true,
+            commandPreview: COMMAND_PREVIEW['abort-rebase-or-merge'],
+          },
+        };
+      }
+      return { action: null, allowedAction: null, plan: { ...manual, commandPreview: null } };
     case 'dirty':
       return {
         action: 'commit',
@@ -366,8 +408,11 @@ export class GitSyncDoctor {
     if (!GIT_REPAIR_ACTIONS.includes(action))
       throw new GitSyncDoctorError(`不支持的修复操作: ${String(action)}`, 'INVALID_ACTION');
     const diagnosis = await this.diagnose();
-    const { category } = diagnosis.issue;
-    if (category === 'conflict')
+    const { category, code } = diagnosis.issue;
+    // DEV-082: REBASE_IN_PROGRESS keeps the user inside the conflict category
+    // but the doctor offers a one-click abort — let prepare proceed so the
+    // ticket pipeline can show the action button in the dialog.
+    if (category === 'conflict' && code !== 'REBASE_IN_PROGRESS')
       throw new GitSyncDoctorError(
         '存在未解决的冲突：自动修复不会覆盖冲突文件，请人工解决后重新诊断',
         'CONFLICT_PRESENT',
@@ -428,9 +473,21 @@ export class GitSyncDoctor {
       entry.fingerprint.remoteOid === fingerprint.remoteOid &&
       entry.fingerprint.porcelain === fingerprint.porcelain &&
       sameFiles(entry.fingerprint.files, fingerprint.files);
+    // DEV-082: a rebase that ended on its own between prepare and execute is
+    // the only drift we want to translate into NO_OPERATION rather than the
+    // blanket STATE_DRIFT. Resolve that case first so users get an accurate
+    // "already resolved" message instead of "you must re-diagnose".
+    if (entry.action === 'abort-rebase-or-merge' && !(snapshot.rebaseInProgress ?? false))
+      throw new GitSyncDoctorError(
+        '当前已经没有进行中的 rebase/merge，无需中止',
+        'NO_OPERATION',
+      );
     if (!sameRootState || !sameContent)
       throw new GitSyncDoctorError('仓库状态在确认后发生了变化，请重新诊断', 'STATE_DRIFT');
-    if (snapshot.conflict)
+    // DEV-082: a true unmerged-index conflict still aborts even for the abort
+    // action — `git rebase --abort` may refuse to run when the user has staged
+    // partial resolutions that diverge from the original HEAD, so refuse early.
+    if (snapshot.conflict && entry.action !== 'abort-rebase-or-merge')
       throw new GitSyncDoctorError('检测到未解决冲突，拒绝执行', 'CONFLICT_PRESENT');
 
     let message: string;
@@ -440,6 +497,9 @@ export class GitSyncDoctor {
     } else if (entry.action === 'pull') {
       await this.deps.git.pull();
       message = '已拉取远程更新';
+    } else if (entry.action === 'abort-rebase-or-merge') {
+      await this.deps.git.abortInProgressRebaseOrMerge();
+      message = '已中止未完成的 rebase/merge';
     } else {
       await this.deps.git.push();
       message = '已推送本地提交';
