@@ -76,11 +76,6 @@ export const STANDARD_FIELD_CATALOG: readonly StandardFieldDef[] = [
     readonly: true,
   },
   {
-    key: 'type',
-    type: 'string',
-    description: '文档类型（如 note、chat）：区分普通笔记与会话页面',
-  },
-  {
     key: 'confidence',
     type: 'number',
     description: '由 Git 提交历史计算的可信分数（0-100）',
@@ -322,9 +317,12 @@ function findKeyColon(line: string): number {
 /**
  * 把结构化数据序列化为 YAML 字符串（不含两端 ---）。
  * 顺序：先标准字段（按约定序），再自定义字段（按字母序，确定性）。
+ *
+ * DEV-080：standardOrder 直接从 STANDARD_FIELD_CATALOG 派生（之前两处分别维护
+ * catalog 与 hardcoded order 数组，存在双源；'type' 也已随 catalog 一起移除）。
  */
 export function serializeFrontmatterYaml(data: FrontmatterData): string {
-  const standardOrder = ['title', 'tags', 'aliases', 'created', 'updated', 'type', 'confidence'];
+  const standardOrder = STANDARD_FIELD_CATALOG.map((f) => f.key);
   const allKeys = Object.keys(data);
   const standardKeys = standardOrder.filter((k) => Object.prototype.hasOwnProperty.call(data, k));
   const customKeys = allKeys

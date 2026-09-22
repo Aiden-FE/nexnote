@@ -13,6 +13,26 @@ export interface PropertiesPanelProps {
   /** 入链 / 出链数量（由 DEV-004 Link Index 实时提供）。 */
   linkCounts?: { in: number; out: number };
   confidence?: ConfidenceResult | null;
+  /** DEV-080：当前文档派生 format，用于「类型」行展示（替代被移除的 frontmatter.type）。 */
+  format?: string | null;
+}
+
+/** DEV-080：DocumentFormat → 用户可读标签的映射，集中一处便于扩展。 */
+function formatLabel(format: string | null | undefined): string {
+  switch (format) {
+    case 'native-block':
+      return '块文档';
+    case 'markdown':
+      return 'Markdown 源码';
+    case 'docx':
+      return 'DOCX 文档';
+    case 'xlsx':
+      return 'Excel 工作簿';
+    case 'mindmap':
+      return 'XMind 思维导图';
+    default:
+      return '普通文档';
+  }
 }
 
 /** 右侧「文档属性」面板。 */
@@ -22,6 +42,7 @@ export function PropertiesPanel({
   filePath,
   linkCounts = { in: 0, out: 0 },
   confidence = null,
+  format = null,
 }: PropertiesPanelProps) {
   const stats = useMemo(() => pageStatistics(markdown), [markdown]);
   const tags = getList(data, 'tags');
@@ -52,7 +73,7 @@ export function PropertiesPanel({
           <span className="truncate">{getString(data, 'title') || '（未设置）'}</span>
         </InfoRow>
         <InfoRow label="类型">
-          <span className="truncate">{getString(data, 'type') || '普通文档'}</span>
+          <span className="truncate">{formatLabel(format)}</span>
         </InfoRow>
         <InfoRow label="别名">
           {aliases.length === 0 ? (
