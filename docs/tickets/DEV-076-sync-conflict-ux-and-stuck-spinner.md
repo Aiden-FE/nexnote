@@ -1,6 +1,8 @@
 # DEV-076 冲突提示可诊断、Agent 修复入口与同步转圈收尾
 
-- 状态：已合并 `a7d3c45`（候选 `b3dab03`，双轴 PASS，typecheck/test 1548/lint/build 31-31 全绿）
+- 状态：已合并 `a7d3c45` + `4cec30b`（GUI 组件覆盖补齐，NOT_RUN 清零）
+- 首轮候选 `b3dab03`：状态机 / 冲突徽标可点 / hover 实质 / 自动同步不再静默 / dismiss 重置
+- 二轮候选 `d998788`：真实 GitStatusItem 组件集成测试覆盖全部 UI 验收点（6 例）+ main 进程 onProgress 注入等价验证；全量 1554 passed / 2 skipped
 - 分类：bug
 - 优先级：P0
 - 工作量：M

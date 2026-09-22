@@ -453,7 +453,12 @@
       "branch": "dev/DEV-076",
       "merged": "a7d3c45",
       "candidate": "b3dab03",
-      "verdict": "双轴 PASS：state-machine 纯函数覆盖 done/error 终态收尾 / conflictHoverText / 自动同步 listener 注入；main 配置 + ipc index 双 hook。typecheck/test 1548 passed / 2 skipped，lint 0 errors，build + release-config 31/31 + diff-check 全绿。GUI smoke 同步冲突路径未覆盖（NOT_RUN）。"
+      "verdict": "双轴 PASS：state-machine 纯函数覆盖 done/error 终态收尾 / conflictHoverText / 自动同步 listener 注入；main 配置 + ipc index 双 hook。typecheck/test 1548 passed / 2 skipped，lint 0 errors，build + release-config 31/31 + diff-check 全绿。GUI smoke 同步冲突路径未覆盖（NOT_RUN）。",
+      "followup": {
+        "candidate": "d998788",
+        "merged": "4cec30b",
+        "verdict": "补齐真实 GitStatusItem 组件集成测试（happy-dom + mock bridge），覆盖冲突可点/hover/doctor 弹出/降级/spinner 收尾/dismiss 重置。typecheck/test 1554 passed/lint 0 errors/build 31-31 全绿。本轮 NOT_RUN 标记清零。"
+      }
     }
   },
   "phase": "DEV-001~065 已完成（v0.0.18 已发）；DEV-066/067 补丁轮已完成并随 v0.0.19 发布",
