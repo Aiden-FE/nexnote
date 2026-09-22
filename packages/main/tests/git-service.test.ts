@@ -1037,3 +1037,51 @@ describe.runIf(runIfGit())('GitService（系统 Git，临时仓库）', () => {
     expect(preview.target).toBe('origin\n');
   });
 });
+
+// DEV-076：sync 阶段事件应经 syncProgressListener 全局可监听。
+// 包括自动同步触发的那一次——修复前 setInterval 内部传 onProgress: undefined，
+// 导致 UI 完全静默收不到阶段/终态文案，spinner 也没法收尾。
+describe.runIf(runIfGit())('DEV-076 GitService syncProgressListener 全局可达', () => {
+  it('sync() 的 error 路径会发 fetching 起头 + 终态给 onSyncProgress listener', async () => {
+    await service.initialize(root);
+    const events: Array<{ phase: string; message?: string }> = [];
+    service.onSyncProgress((event) => events.push(event));
+    try {
+      await service.sync({ strategy: 'rebase' });
+    } catch {
+      // 没有远程时必然报错；本测试只关心 listener 是否被调用
+    } finally {
+      service.onSyncProgress(null);
+    }
+    expect(events.length).toBeGreaterThan(0);
+    expect(events[0]!.phase).toBe('fetching');
+    expect(events.some((e) => e.phase === 'done' || e.phase === 'error')).toBe(true);
+  });
+
+  it('configureAutoSync 的 sync 调用注入 syncProgressListener 作为 onProgress（静态不变量）', () => {
+    // 通过读取 configureAutoSync 闭包的源代码片段验证实现选择：
+    // 它必须把 this.syncProgressListener 注入为 sync() 的 onProgress，
+    // 否则 renderer 会在自动同步阶段静默，看不到任何阶段/终态。
+    // 这条断言同时也是回归保护：未来重构若把 onProgress 改回 undefined，
+    // 测试失败，提醒实现者保留"自动同步路径"的全局进度事件可达性。
+    const source = configureAutoSyncSource.toString();
+    expect(source).toMatch(/onProgress:\s*this\.syncProgressListener\s*\?\?\s*undefined/);
+  });
+});
+
+/**
+ * 把 GitService.prototype.configureAutoSync 转成函数源码字符串，便于在静态层断言
+ * "onProgress 不再是 undefined"。比设 setInterval 计时器更稳定。
+ */
+const configureAutoSyncSource = (function () {
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  const ts = require('fs').readFileSync(
+    require('path').join(__dirname, '..', 'src', 'git', 'git-service.ts'),
+    'utf8',
+  );
+  const match = /configureAutoSync\([^)]*\)\s*:\s*void\s*{([\s\S]*?)\n\s{2}\}\n/.exec(ts);
+  if (!match) throw new Error('无法在源码中匹配 configureAutoSync 方法');
+  // 用一个空函数包住，便于 toString 拿到完整方法体
+  // eslint-disable-next-line no-new-func
+  return new Function(`return (function configureAutoSync() {${match[1]}});`);
+})();

@@ -20,6 +20,9 @@ export function registerAllIpcHandlers(ipcMain: IpcMainLike, services: IpcServic
   services.git.onStatusChanged((status) =>
     services.windows.sendToMainWindow('git:statusChanged', status),
   );
+  // DEV-076：sync 阶段的进度事件（含自动同步触发的那次）也要广播到主窗口，
+  // 让 UI 显示阶段文案并在 done/error 终态收尾 spinner。
+  services.git.onSyncProgress((event) => services.windows.sendToMainWindow('git:syncProgress', event));
   const registrar = createIpcRegistrar(ipcMain, services);
   registerAppHandlers(registrar);
   registerVaultHandlers(registrar);

@@ -77,7 +77,7 @@ beforeEach(async () => {
     appStore: {},
     vaultSession: {},
     fs: {},
-    git: { onStatusChanged: () => undefined },
+    git: { onStatusChanged: () => undefined, onSyncProgress: () => undefined },
     ai,
     agent: new AgentGateway({
       ai,
