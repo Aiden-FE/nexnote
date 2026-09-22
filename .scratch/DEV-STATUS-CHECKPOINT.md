@@ -8,6 +8,9 @@
 
 ## 0. 最新状态（持续更新，优先于下方陈旧冻结段）
 
+- **当前状态（2026-09-22）**：验收反馈本轮（DEV-075～DEV-081）已建票，DEV-076（同步冲突 UX & 转圈收尾，P0）已完成实现并合入 master。候选 `b3dab03`，merge `a7d3c45`，ticket 状态标注 `fcb350c`。当前 master `fcb350c`。
+- **DEV-076 验收门禁**：`CI=true pnpm -r typecheck` PASS；Vitest **167 files passed / 1 skipped、1548 passed / 2 skipped**；lint 0 errors；build PASS；release-config **31/31**；changed-format 与 diff-check PASS。同步阶段状态机抽到 `packages/renderer/src/features/git/state-machine.ts` 纯函数模块；main 侧 `configureAutoSync` 闭包把 `syncProgressListener` 注入 `sync().onProgress`（修掉自动同步静默）；ipc 索引层注册 `services.git.onSyncProgress` 广播到主窗口。
+- **GUI smoke 未覆盖**：UI 行为（spinner 收尾 / hover 文案 / 冲突徽标点击）已用纯函数单测确保；Electron packaged smoke 含同步冲突路径需另起 NOT_RUN 任务与 CI 验证。
 - **当前状态（2026-09-20）**：DEV-050～DEV-057 八张票据已全部实现、独立 Standards + Spec 双轴审查通过并合入 master；**v0.0.15 已正式发布**。代码候选与远端 `refs/tags/v0.0.15` 均为 `843b005`；tag 后 master 仅含 QA evidence、checkpoint 与发布事实记录。
 - **八票结项（固定候选 → 双轴审查）**：DEV-050 `5383c20`、DEV-054 `d59c337`、DEV-051 `2d6e505`、DEV-052 `52d75cb`、DEV-055 `dc3fa03`、DEV-053 `d4e9c55`、DEV-056 `d6f08ce`、DEV-057 `48f9604`（merge `f08ad0d`）。全部 Standards PASS + Spec PASS；候选均已 `merge-base --is-ancestor` 确认在 master 历史内。
 - **v0.0.15 候选门禁**：`CI=true pnpm typecheck` PASS；完整 Vitest **156 files passed / 1 skipped、1403 passed / 2 skipped**；lint 0 errors / 4 个既有 warnings；build PASS；release-config **31/31**；changed-format 与 diff-check PASS。本机真实 macOS arm64 Ad hoc 产物绑定 `candidateSha=843b005`、`appVersion=0.0.15`、Electron 44.2.0、ABI 149，packaged smoke **261/261 PASS**、40 张截图；Node ABI 已恢复 147。
