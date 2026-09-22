@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { ChevronDown, ChevronRight, MoreHorizontal, Plus, Trash2 } from 'lucide-react';
+import { ChevronDown, ChevronRight, Plus, Trash2 } from 'lucide-react';
 import { cn } from '../../lib/utils';
 import type { FrontmatterData, FrontmatterValue, StandardFieldDef } from '@nexnote/kernel';
 import {
@@ -73,7 +73,7 @@ export function FieldEditor({ data, onChange, knownTags, onRename }: FieldEditor
   };
 
   const remove = (key: string) => {
-    if (isStandardField(key)) return;
+    // DEV-079: 标准字段与自定义字段删除行为一致——不再按 isStandardField 早返。
     const next = { ...data };
     delete next[key];
     onChange(next);
@@ -224,6 +224,8 @@ function FieldRow({ name, value, onChange, onRemove, onRename, knownTags }: Fiel
   const [editingKey, setEditingKey] = useState(false);
   const [draft, setDraft] = useState(name);
   const [collapsed, setCollapsed] = useState(false);
+  // DEV-079: 标准字段删除前需要轻量确认（自定义字段直接删除）。
+  const [confirmRemove, setConfirmRemove] = useState(false);
   const type = fieldTypeOf(value);
 
   const toggle = () => setCollapsed((c) => !c);
@@ -286,21 +288,42 @@ function FieldRow({ name, value, onChange, onRemove, onRename, knownTags }: Fiel
           </span>
         )}
         <TypeBadge type={type} />
-        <button
-          type="button"
-          onClick={onRemove}
-          disabled={standard}
-          className={cn(
-            'rounded p-1 text-muted-foreground',
-            standard
-              ? 'cursor-not-allowed opacity-40'
-              : 'hover:bg-destructive/10 hover:text-destructive',
-          )}
-          aria-label="删除字段"
-          title={standard ? '标准字段不可删除' : '删除字段'}
-        >
-          {standard ? <MoreHorizontal className="size-3.5" /> : <Trash2 className="size-3.5" />}
-        </button>
+        {confirmRemove ? (
+          <span
+            data-testid={`field-remove-confirm-${name}`}
+            className="flex shrink-0 items-center gap-1 text-[10px]"
+          >
+            <span className="text-muted-foreground">删除 {name}？</span>
+            <Button
+              size="sm"
+              variant="destructive"
+              onClick={() => {
+                onRemove();
+                setConfirmRemove(false);
+              }}
+            >
+              删除
+            </Button>
+            <Button size="sm" variant="ghost" onClick={() => setConfirmRemove(false)}>
+              取消
+            </Button>
+          </span>
+        ) : (
+          <button
+            type="button"
+            onClick={() => {
+              if (standard) setConfirmRemove(true);
+              else onRemove();
+            }}
+            className={cn(
+              'rounded p-1 text-muted-foreground hover:bg-destructive/10 hover:text-destructive',
+            )}
+            aria-label="删除字段"
+            title={standard ? '删除标准字段（需确认）' : '删除字段'}
+          >
+            <Trash2 className="size-3.5" />
+          </button>
+        )}
       </div>
       {!collapsed && (
         <div className="border-t px-2 py-2">
