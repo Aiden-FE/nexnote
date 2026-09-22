@@ -33,6 +33,7 @@ import {
 } from '../../../page-tree/tree-utils';
 import * as ops from './ops';
 import { NewNoteMenu } from './NewNoteMenu';
+import { ImportMenu } from './ImportMenu';
 import { sidebarPanelRegistry } from '../../../registries';
 
 /** DEV-074：可在页面树显示 / 点击打开的文档（Markdown 与三类二进制）。 */
@@ -130,19 +131,6 @@ function PageTreePanel() {
           },
           { kind: 'separator' },
           {
-            label: '导入 DOCX',
-            onSelect: () => run(() => ops.importDocxIn(parentDir)),
-          },
-          {
-            label: '导入 XLSX',
-            onSelect: () => run(() => ops.importBinaryIn('xlsx', parentDir)),
-          },
-          {
-            label: '导入 XMIND',
-            onSelect: () => run(() => ops.importBinaryIn('mindmap', parentDir)),
-          },
-          { kind: 'separator' },
-          {
             label: '重命名',
             hint: 'Enter',
             onSelect: () =>
@@ -162,6 +150,19 @@ function PageTreePanel() {
           {
             label: '在 Finder 中显示',
             onSelect: () => run(() => ops.revealInFinder(node.path)),
+          },
+          { kind: 'separator' },
+          {
+            label: '导入 DOCX',
+            onSelect: () => run(() => ops.importDocxIn(parentDir)),
+          },
+          {
+            label: '导入 XLSX',
+            onSelect: () => run(() => ops.importBinaryIn('xlsx', parentDir)),
+          },
+          {
+            label: '导入 XMIND',
+            onSelect: () => run(() => ops.importBinaryIn('mindmap', parentDir)),
           },
         ]
       : [
@@ -284,11 +285,13 @@ function PageTreePanel() {
             className="h-7 w-full rounded-md border bg-background/60 pl-7 pr-2 text-xs outline-none placeholder:text-muted-foreground/60 focus-visible:ring-1 focus-visible:ring-ring"
           />
         </div>
-        <NewNoteMenu
-          onCreate={(format) => run(() => ops.createNoteIn('', format))}
-          onImportDocx={() => run(() => ops.importDocxIn(''))}
-          onImportXlsx={() => run(() => ops.importBinaryIn('xlsx', ''))}
-          onImportXmind={() => run(() => ops.importBinaryIn('mindmap', ''))}
+        <NewNoteMenu onCreate={(format) => run(() => ops.createNoteIn('', format))} />
+        <ImportMenu
+          onImport={(kind) => {
+            if (kind === 'docx') void run(() => ops.importDocxIn(''));
+            else if (kind === 'xlsx') void run(() => ops.importBinaryIn('xlsx', ''));
+            else void run(() => ops.importBinaryIn('mindmap', ''));
+          }}
         />
         <button
           type="button"
