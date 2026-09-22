@@ -1,7 +1,7 @@
 {
   "name": "nexnote",
   "productName": "NexNote",
-  "version": "0.0.24",
+  "version": "0.0.25",
   "private": true,
   "description": "NexNote - local-first knowledge base desktop app (block editor x wikilinks x git x AI)",
   "author": "NexNote",
