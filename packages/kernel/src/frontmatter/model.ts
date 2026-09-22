@@ -37,6 +37,11 @@ export interface StandardFieldDef {
   type: StandardFieldType;
   /** 一句话说明：字段目录 UI 的唯一文案来源（DEV-025），不散落各组件。 */
   description: string;
+  /**
+   * DEV-077：应用维护字段。true 时属性面板呈现为只读（禁用输入、不提供类型切换），
+   * 该字段的值由 NexNote 在保存链路自动刷新，用户不应直接编辑。
+   */
+  readonly?: boolean;
 }
 
 /**
@@ -67,7 +72,8 @@ export const STANDARD_FIELD_CATALOG: readonly StandardFieldDef[] = [
   {
     key: 'updated',
     type: 'date',
-    description: '最近修改时间（ISO 日期）：供版本时间线与统计展示',
+    description: '最近修改时间（ISO 日期）：由 NexNote 在保存时自动维护，无需手动编辑',
+    readonly: true,
   },
   {
     key: 'type',
@@ -97,6 +103,12 @@ export function fieldTypeOf(
 
 export function isStandardField(key: string): boolean {
   return Object.prototype.hasOwnProperty.call(STANDARD_FIELDS, key);
+}
+
+/** DEV-077：标准字段是否为应用维护（只读）字段，如 updated。 */
+export function isReadonlyStandardField(key: string): boolean {
+  const def = STANDARD_FIELD_CATALOG.find((f) => f.key === key);
+  return def?.readonly === true;
 }
 
 /**

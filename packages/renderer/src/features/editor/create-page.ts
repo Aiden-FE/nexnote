@@ -13,9 +13,12 @@ export async function createPage(title = '未命名页面') {
     seq += 1;
   }
   const actualTitle = titleFromPath(path);
+  // DEV-077：新建时自动写入 created；首次编辑保存时再由 saveSourceText 刷 updated。
+  const created = new Date();
+  const content = `---\ncreated: ${created.toISOString()}\n---\n\n# ${actualTitle}\n\n`;
   await invoke('fs:writeTextFile', {
     path,
-    content: `# ${actualTitle}\n\n`,
+    content,
     createParentDirs: true,
   });
   // 应用自身已确认写入成功：立即更新树，避免依赖异步 watcher 回流造成可见滞后。

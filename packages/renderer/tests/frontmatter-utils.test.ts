@@ -8,6 +8,7 @@ import {
   removeFrontmatterValue,
   renameFrontmatterKey,
   setFrontmatterValue,
+  stampUpdated,
   tokenizeYaml,
   writeFrontmatter,
 } from '../src/features/frontmatter/frontmatter-utils';
@@ -65,6 +66,45 @@ describe('字段操作', () => {
     expect(() => renameFrontmatterKey(data, 'custom', 'title')).toThrow('已存在');
     expect(() => renameFrontmatterKey(data, 'custom', '  ')).toThrow();
     expect(() => renameFrontmatterKey(data, 'custom', '__proto__')).toThrow(/不安全/);
+  });
+});
+
+describe('DEV-077 stampUpdated', () => {
+  const fixedNow = new Date('2026-09-22T10:00:00.000Z');
+
+  it('文档已含 updated 字段时刷新为 now', () => {
+    const md = '---\nupdated: 2026-01-01T00:00:00.000Z\n---\n\n# body';
+    const out = stampUpdated(md, fixedNow);
+    expect(out).toContain('updated: 2026-09-22T10:00:00.000Z');
+    expect(out).not.toContain('2026-01-01T00:00:00.000Z');
+    expect(out).toContain('# body');
+  });
+
+  it('文档无 updated 字段时不新增该键（删除后不写回）', () => {
+    const md = '---\ntitle: T\n---\n\n# body';
+    const out = stampUpdated(md, fixedNow);
+    expect(out).toBe(md);
+    expect(out).not.toContain('updated');
+  });
+
+  it('文档无 frontmatter 头时原样返回', () => {
+    const md = '# body\n\ntext';
+    const out = stampUpdated(md, fixedNow);
+    expect(out).toBe(md);
+  });
+
+  it('不可解析的 YAML 头部原样返回（fail-closed）', () => {
+    const md = '---\nupdated: not-a-date\n:invalid\n---\n\n# body';
+    const out = stampUpdated(md, fixedNow);
+    expect(out).toBe(md);
+  });
+
+  it('updated 刷新后 created 不被改动', () => {
+    const md =
+      '---\ncreated: 2026-01-01T00:00:00.000Z\nupdated: 2026-01-02T00:00:00.000Z\n---\n\n# body';
+    const out = stampUpdated(md, fixedNow);
+    expect(out).toContain('created: 2026-01-01T00:00:00.000Z');
+    expect(out).toContain('updated: 2026-09-22T10:00:00.000Z');
   });
 });
 

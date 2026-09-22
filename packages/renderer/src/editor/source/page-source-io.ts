@@ -1,5 +1,6 @@
 import type { FileInfo } from '@nexnote/shared';
 import { firstH1, pagePathForTitle, sanitizePageTitle } from '../title-sync';
+import { stampUpdated } from '../../features/frontmatter/frontmatter-utils';
 
 /**
  * 源码模式的文件读写协议（DEV-020）。
@@ -81,7 +82,16 @@ export async function saveSourceText(params: {
     }
   }
 
-  const written = await io.write(targetPath, text);
+  // DEV-088 + DEV-077：内容真有变化时把 markdown 的 frontmatter.updated 刷新为当前时间。
+  // 仅作用于 .md 格式（其他格式由 fs-service 路径接管，不走 saveSourceText）。
+  // 内容与磁盘字节一致时（无编辑往返）跳过刷新，保证 ADR-0004 的字节保真语义。
+  const diskText = await io.read(path).catch(() => null);
+  let finalText = text;
+  if (diskText !== null && diskText !== text) {
+    finalText = stampUpdated(text);
+  }
+
+  const written = await io.write(targetPath, finalText);
   return { kind: 'saved', path: targetPath, version: fileVersionOf(written), title, renamedFrom };
 }
 

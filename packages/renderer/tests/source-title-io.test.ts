@@ -14,6 +14,10 @@ describe('标题绑定与源码保存链路（DEV-020 GUI 反馈）', () => {
         isFile: true,
         isDirectory: false,
       }),
+      // DEV-077：saveSourceText 现在调用 io.read 来比对磁盘字节；mock 必须实现。
+      // 这里返回一个与 text 不同的串以模拟"磁盘内容与编辑文本不一致"，让
+      // stampUpdated 路径被走通。
+      read: async () => '# ^edbjrskc\n\n磁盘旧内容。\n',
       exists: async (path) => path === '研究/外部笔记.md',
       write: async (path, content) => {
         writes.push({ path, content });

@@ -142,6 +142,8 @@ export function registerFsHandlers(registrar: IpcRegistrar): void {
         content,
         sidecar,
         format ?? 'native-block',
+        // DEV-077：新建笔记自动写入 created（当前时间）；不写 updated（首次实质编辑才刷新）。
+        { created: new Date() },
       );
       await recordWrite(services, `创建笔记 ${result.path}`);
       return ok(result);
