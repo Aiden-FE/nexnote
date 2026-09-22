@@ -23,6 +23,12 @@ import { useVault } from '../../shell/vault-context';
 import { useUiStore } from '../../stores/ui-store';
 import { useChatStore } from '../ai/chat/chat-store';
 import { startNewSession } from '../ai/chat/chat-runtime';
+import {
+  reduceSyncProgress,
+  conflictHoverText,
+  initialPhaseMessage,
+  type SyncPhase,
+} from './state-machine';
 
 statusBarRegistry.register({ id: 'git', align: 'left', render: GitStatusItem });
 dockPanelRegistry.register({
@@ -32,7 +38,13 @@ dockPanelRegistry.register({
   render: GitTimeline,
 });
 
-type SyncPhase = 'fetching' | 'rebasing' | 'merging' | 'pushing' | 'done' | 'error';
+export type { SyncPhase } from './state-machine';
+export {
+  reduceSyncProgress,
+  conflictHoverText,
+  initialPhaseMessage,
+  isBusyPhase,
+} from './state-machine';
 
 function useGitStatus(): [GitStatus | null, () => Promise<void>] {
   const vault = useVault();
@@ -64,39 +76,66 @@ function GitStatusItem() {
   const [error, setError] = useState<string | null>(null);
   const [doctor, setDoctor] = useState<GitDoctorDiagnosis | null>(null);
   const [doctorBusy, setDoctorBusy] = useState(false);
+  const clearTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   useEffect(() => {
     return onEvent('git:syncProgress', (payload) => {
-      setPhase(payload.phase);
-      setPhaseMessage(payload.message ?? null);
-      if (payload.phase === 'done') {
-        // 主流程结束：保留 600ms 让用户感知"已完成"，再清掉 spinner。
-        setTimeout(() => setPhase(null), 600);
+      const next = reduceSyncProgress(
+        { phase, phaseMessage },
+        { phase: payload.phase, message: payload.message ?? null },
+      );
+      // 取消上一次未触发的清理定时器，避免 done 期间被新一轮进度覆盖
+      if (clearTimer.current) {
+        clearTimeout(clearTimer.current);
+        clearTimer.current = null;
+      }
+      setPhase(next.phase);
+      setPhaseMessage(next.phaseMessage);
+      if (next.clearAfterMs !== null && next.clearAfterMs !== undefined) {
+        clearTimer.current = setTimeout(() => setPhase(null), next.clearAfterMs);
       }
     });
+    // reducer 是纯函数；phase/phaseMessage 的最新值由 setState 后下一次事件带入
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+  useEffect(
+    () => () => {
+      if (clearTimer.current) clearTimeout(clearTimer.current);
+    },
+    [],
+  );
   // vault 切换时让主进程按当前 vault 的自动同步配置启停计时器。
   useEffect(() => {
     void invoke('git:configureAutoSync').catch(() => undefined);
   }, [vault?.root]);
+  const diagnose = async (failureMessage?: string) => {
+    if (failureMessage) setError(failureMessage);
+    try {
+      const diagnosis = await invoke('git:doctor:diagnose');
+      setDoctor(diagnosis);
+      return diagnosis;
+    } catch {
+      // doctor 不可用时保留错误信息即可，不强制弹窗
+      setDoctor(null);
+      return null;
+    }
+  };
   const runSync = async () => {
     setDoctor(null);
     setError(null);
     setPhase('fetching');
-    setPhaseMessage('正在同步…');
+    setPhaseMessage(initialPhaseMessage('fetching'));
     try {
       await invoke('git:sync');
     } catch (caught) {
       const text = caught instanceof Error ? caught.message : String(caught);
-      setError(text);
-      setPhase('error');
-      try {
-        setDoctor(await invoke('git:doctor:diagnose'));
-      } catch {
-        /* doctor 不可用时保留原始错误即可 */
-      }
+      await diagnose(text);
     } finally {
       void refresh();
     }
+  };
+  // DEV-076：冲突徽标可点击 → 自动触发诊断并弹出 DoctorDialog
+  const openConflictDiagnosis = async () => {
+    await diagnose();
   };
   if (!vault) return null;
   if (!status)
@@ -139,18 +178,27 @@ function GitStatusItem() {
         error ? `错误信息：${error}` : '',
         '请用简体中文一步一步指导我解决这个问题。不要假设我了解 git。',
       ]
-        .filter(Boolean)
-        .join('\n'),
+      .filter(Boolean)
+      .join('\n'),
     });
   };
   const dismissDoctor = async () => {
     setDoctor(null);
+    setError(null);
+    // 关闭弹窗时显式收尾 spinner（error 状态也会被同步清掉）
+    if (clearTimer.current) {
+      clearTimeout(clearTimer.current);
+      clearTimer.current = null;
+    }
+    setPhase(null);
+    setPhaseMessage(null);
     await invoke('git:doctor:dismiss').catch(() => undefined);
   };
-  const busy = phase !== null && phase !== 'done';
+  // DEV-076：error 与 done 同为终态，spinner 不再无限转圈
+  const busy = phase !== null && phase !== 'done' && phase !== 'error';
   const titleText =
     error ??
-    (phase && phase !== 'done' ? phaseMessage ?? '正在同步…' : undefined) ??
+    (busy ? phaseMessage ?? '正在同步…' : undefined) ??
     `${status.usingSystemGit ? '系统' : '捆绑'} Git · ${status.remote ?? '未配置远程'} · 点击同步`;
   return (
     <div
@@ -164,13 +212,15 @@ function GitStatusItem() {
         {status.branch ?? '未初始化'}
       </span>
       {status.conflict && (
-        <span
+        <button
+          type="button"
           data-testid="status-git-conflict"
-          className="rounded bg-destructive/15 px-1 font-medium text-destructive"
-          title="存在未解决的合并冲突"
+          className="cursor-pointer rounded bg-destructive/15 px-1 font-medium text-destructive hover:bg-destructive/25"
+          title={conflictHoverText(status)}
+          onClick={() => void openConflictDiagnosis()}
         >
           ⚠ 冲突
-        </span>
+        </button>
       )}
       {status.changed > 0 && (
         <span className="rounded bg-amber-500/15 px-1 text-amber-700">● {status.changed}</span>

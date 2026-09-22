@@ -210,7 +210,7 @@ export class GitService {
         if (!this.root) return;
         void this.sync({
           strategy: this.autoSyncStrategy,
-          onProgress: undefined,
+          onProgress: this.syncProgressListener ?? undefined,
         }).then(
           () => {
             backoff = 1;
