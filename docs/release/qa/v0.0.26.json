@@ -1,0 +1,46 @@
+{
+  "schema": "nexnote-release-qa/v1",
+  "repository": "Aiden-FE/nexnote",
+  "tag": "v0.0.26",
+  "commit": "9224a3e35fb89dc8eaab4dd74a72deeb7c01c64e",
+  "channel": "stable",
+  "allRequiredChecksPassed": true,
+  "scope": "v0.0.26-candidate",
+  "machineChecks": {
+    "typecheck": "passed (pnpm -r typecheck: shared/plugin-api/website/kernel/renderer all Done; main TS errors unchanged from master pre-existing set)",
+    "lint": "passed (pnpm lint: 0 errors; 9 pre-existing import()-style warnings unchanged from earlier baselines)",
+    "tests": "1627 passed | 2 skipped (1631) on local macOS run at 9224a3e; full test files unchanged from baseline; renderer + main + kernel suites all green",
+    "build": "passed (electron-vite build; renderer asset bundle emitted successfully)",
+    "releaseConfig": "31/31 passed (node scripts/verify-release-config.mjs)",
+    "changedFormat": "covered by release config gate",
+    "diffCheck": "covered by release config gate",
+    "packagedSmoke": "deferred to candidate pipeline: tag push triggers matrix build + packaged macOS smoke bound to tag commit 9224a3e with NEXNOTE_SMOKE_EXPECTED_VERSION=0.0.26"
+  },
+  "candidateContents": {
+    "tickets": "11 tickets implemented, tested, and merged to master (commits 041d553 / 4325c7a / 11b2ff6 / 6d5ec06 / 2073307 / 81ae21a / f65af02 / a9269a1 / 074dd10 / 6b05912 / a4ff196); version bump to 0.0.26 in current commit; one follow-up fix (9224a3e) restores TableCellPlusButtons registration in extensions/index and EditorView event binding that was lost during a stash pop",
+    "highlights": [
+      "DEV-088 (P0): git:status 在 conflict / rebaseInProgress 时自动触发 git:doctor:diagnose 弹窗；sync() 加 WORKTREE_DIRTY 守卫与 .gitignore 重复块收敛；runSync catch 路径与 auto-sync onProgress 接通",
+      "DEV-079 (P1): FieldEditor.remove 不再拒绝标准字段；标准字段删除需轻量确认；目录「已添加」态由数据真实状态驱动",
+      "DEV-077 (P1): STANDARD_FIELD_CATALOG.updated 标 readonly=true；saveSourceText 仅在内容变化时通过 stampUpdated 刷 updated 时间戳；新建文档自动写入 created",
+      "DEV-080 (P1): STANDARD_FIELD_CATALOG 移除 type 项；standardOrder 数组改为从 catalog 派生（消除双源）；PropertiesPanel 类型行展示 formatLabel(format) 派生值",
+      "DEV-086 (P2): 工具栏表格上下文动作从 4 个顶级按钮折叠为单一「表格」菜单（带 hint、overflowGroup、菜单子项）",
+      "DEV-087 (P2): 块编辑器表格单元格加号装饰插件（行末加行 / 列首加列），纯 ProseMirror Decoration.widget 注入；点击事件通过 CustomEvent 转发，renderer 侧 EditorView 监听后调用 addRowAfter / addColumnAfter 命令链",
+      "DEV-078 (P2): kernel 新增 formatDisplayDateTime 纯函数（Date / ISO 字符串 → 本地时区 YYYY-MM-DD HH:mm:ss，无法解析时原样回退）；PropertiesPanel 时间区、FrontmatterValueDisplay 的 Date 分支、FieldEditor 的 readonly 显示全部接入",
+      "DEV-081 (P2): GuidedTour 新增 step-level prepare/cleanup 生命周期；ai-dock 步进入前快照 dockVisible 并自动展开，离开时若仍是引导展开的状态则收起，保留用户在本步内手动改动的状态",
+      "DEV-075 (P2): AiSettingsSection 的模型字段改 ModelPicker Combobox 组件：聚焦拉取候选（同一 profile 模块级缓存），blur/Enter/commit 提交（不再每字符 IPC），失败静默降级为自由输入；候选人/无候选人切换由 commitBaseline 内部状态保证不重复提交",
+      "DEV-084 (P2): BinaryService.createBinary(kind, opts) 在 vault 内创建空白 docx / xlsx / xmind；命名复用 nextUntitledName 模式，sanitizeBaseName 清理路径分隔符与控制字符；KIND_FILTERS 补 docx 项；shared BinaryKind 扩展为 'docx' | 'xlsx' | 'mindmap'；binary:create IPC handler",
+      "DEV-085 (P2): 工具栏导入入口从 NewNoteMenu 抽出为独立 ImportMenu，与「新建」并列；右键菜单的导入项移入文件操作区（与 rename / delete / 在 Finder 中显示同组）",
+      "Hardening: ADR-0004 / ADR-0016 字节保真语义边界（updated 刷新不破坏 frontmatter round-trip；savedLayout 不再触发 Git 自动提交）；ensureSyncGuard 收敛 .gitignore 重复块"
+    ]
+  },
+  "notRun": [
+    "matrix signed builds for mac-arm64/mac-x64/windows-x64/linux-x64 (run by candidate pipeline after tag push)",
+    "packaged macOS smoke in CI (run by candidate pipeline smoke job)",
+    "Windows packaged smoke and Linux packaged smoke",
+    "Windows/Ubuntu physical installation verification",
+    "macOS notarization / Gatekeeper verification (Ad hoc signing only)",
+    "public N-1 to v0.0.26 network upgrade end-to-end verification",
+    "release-qa Environment required-reviewer approval (operational gate before publish)",
+    "post-publication 24-hour monitoring"
+  ]
+}
