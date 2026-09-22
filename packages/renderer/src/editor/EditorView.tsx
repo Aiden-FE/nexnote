@@ -689,6 +689,18 @@ export function EditorView({ tab }: EditorViewProps) {
     };
     kernel.editor.on('selectionUpdate', onTableContextUpdate);
     kernel.editor.on('update', onTableContextUpdate);
+    // DEV-087：表格单元格焦点加号点击转发到 TipTap 命令（addRowAfter / addColumnAfter）。
+    const onTablePlusRow = (event: Event) => {
+      event.preventDefault();
+      kernel.editor.chain().focus().addRowAfter().run();
+    };
+    const onTablePlusCol = (event: Event) => {
+      event.preventDefault();
+      kernel.editor.chain().focus().addColumnAfter().run();
+    };
+    const hostEl = hostRef.current;
+    hostEl?.addEventListener('nexnote:table-cell-plus:row-after', onTablePlusRow);
+    hostEl?.addEventListener('nexnote:table-cell-plus:col-after', onTablePlusCol);
     const editorRegistration = registerEditor(kernel, tab.id);
     const unregisterModeSwitch = registerModeSwitchHandler(tab.id, async () => {
       await kernel.flushPendingSave();
@@ -706,6 +718,9 @@ export function EditorView({ tab }: EditorViewProps) {
       gutter?.destroy();
       kernel.editor.off('selectionUpdate', onSelectionUpdate);
       kernel.editor.off('update', refreshOutline);
+      // DEV-087：清理表格加号事件监听
+      hostEl?.removeEventListener('nexnote:table-cell-plus:row-after', onTablePlusRow);
+      hostEl?.removeEventListener('nexnote:table-cell-plus:col-after', onTablePlusCol);
       editorRegistration.unregister();
       // 卸载时取消所有挂起的文件选择器（隐藏 input / 悬挂 promise）。
       // 集合身份稳定，无需进依赖数组。

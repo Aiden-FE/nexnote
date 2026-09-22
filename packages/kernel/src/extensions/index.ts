@@ -16,6 +16,7 @@ import {
   KernelTableHeader,
   KernelTableRow,
 } from './code-table';
+import { TableCellPlusButtons } from './table-cell-plus-buttons';
 import { createBlockIdExtensions } from './block-id';
 import { SlashMenu, defaultSlashMenuItems, dedupeSlashItems, filterSlashItems } from './slash-menu';
 import type { SlashMenuItem } from './slash-menu';
@@ -119,6 +120,8 @@ export function buildKernelExtensions(options: KernelExtensionsOptions = {}): Ex
     KernelTableRow,
     KernelTableHeader,
     KernelTableCell,
+    // DEV-087：表格单元格焦点加号（行末插入行 / 列首插入列）
+    TableCellPlusButtons,
     Image.configure({ allowBase64: options.allowBase64 ?? true, inline: false }),
     Frontmatter,
     Callout,
