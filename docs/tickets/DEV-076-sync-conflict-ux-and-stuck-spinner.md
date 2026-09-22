@@ -1,6 +1,6 @@
 # DEV-076 冲突提示可诊断、Agent 修复入口与同步转圈收尾
 
-- 状态：ready-for-agent
+- 状态：已合并 `a7d3c45`（候选 `b3dab03`，双轴 PASS，typecheck/test 1548/lint/build 31-31 全绿）
 - 分类：bug
 - 优先级：P0
 - 工作量：M
