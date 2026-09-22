@@ -46,6 +46,101 @@ afterEach(() => {
   document.body.innerHTML = '';
 });
 
+describe('字段删除行为（DEV-079）', () => {
+  it('自定义字段删除直接移除，无需确认', () => {
+    const { container, onChange } = renderFieldEditor({ title: 'T', category: 'x' });
+    const row = container.querySelector('[data-testid="frontmatter-field-category"]');
+    const removeBtn = row?.querySelector('button[aria-label="删除字段"]');
+    expect(removeBtn).not.toBeNull();
+    act(() => {
+      removeBtn!.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    });
+    expect(onChange).toHaveBeenCalledWith(expect.not.objectContaining({ category: expect.anything() }));
+    expect(onChange).toHaveBeenCalledWith(expect.objectContaining({ title: 'T' }));
+  });
+
+  it('标准字段删除需点击 trash 进入确认态，确认后才调用 onChange', () => {
+    const { container, onChange } = renderFieldEditor({ title: 'T', updated: new Date() });
+    const row = container.querySelector('[data-testid="frontmatter-field-updated"]');
+    const removeBtn = row?.querySelector('button[aria-label="删除字段"]');
+    expect(removeBtn).not.toBeNull();
+    // 第一次点击 → 确认态，不调用 onChange
+    act(() => {
+      removeBtn!.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    });
+    expect(onChange).not.toHaveBeenCalled();
+    // 确认态出现
+    const confirm = container.querySelector('[data-testid="field-remove-confirm-updated"]');
+    expect(confirm).not.toBeNull();
+    // 点击「删除」按钮
+    const confirmDelete = [...confirm!.querySelectorAll('button')].find(
+      (b) => b.textContent?.trim() === '删除',
+    );
+    expect(confirmDelete).toBeDefined();
+    act(() => {
+      confirmDelete!.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    });
+    expect(onChange).toHaveBeenCalledWith(expect.not.objectContaining({ updated: expect.anything() }));
+  });
+
+  it('标准字段删除确认态点「取消」不调用 onChange', () => {
+    const { container, onChange } = renderFieldEditor({ created: new Date(), custom: 'v' });
+    const row = container.querySelector('[data-testid="frontmatter-field-created"]');
+    const removeBtn = row?.querySelector('button[aria-label="删除字段"]');
+    act(() => {
+      removeBtn!.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    });
+    const confirm = container.querySelector('[data-testid="field-remove-confirm-created"]');
+    const cancel = [...confirm!.querySelectorAll('button')].find(
+      (b) => b.textContent?.trim() === '取消',
+    );
+    act(() => {
+      cancel!.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    });
+    expect(onChange).not.toHaveBeenCalled();
+    // 确认态消失，trash 按钮恢复
+    expect(container.querySelector('[data-testid="field-remove-confirm-created"]')).toBeNull();
+  });
+
+  it('标准字段删除后目录中该项恢复可添加（disabled 解除）', () => {
+    const { openCatalog, item, onChange, root } = renderFieldEditor({
+      title: 'T',
+      confidence: 0.5,
+    });
+    // 先删除 confidence
+    const row = document.querySelector('[data-testid="frontmatter-field-confidence"]');
+    const removeBtn = row?.querySelector('button[aria-label="删除字段"]');
+    act(() => {
+      removeBtn!.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    });
+    const confirm = document.querySelector('[data-testid="field-remove-confirm-confidence"]');
+    const confirmDelete = [...confirm!.querySelectorAll('button')].find(
+      (b) => b.textContent?.trim() === '删除',
+    );
+    act(() => {
+      confirmDelete!.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    });
+    // onChange 被调用且不含 confidence
+    expect(onChange).toHaveBeenCalledWith(
+      expect.not.objectContaining({ confidence: expect.anything() }),
+    );
+    // 用删除后的新 data 重新渲染（模拟父组件受控更新），目录中 confidence 应恢复可添加
+    const nextData = onChange.mock.calls[0]![0] as FrontmatterData;
+    act(() => {
+      root.render(
+        <FieldEditor
+          data={nextData}
+          onChange={() => undefined}
+          knownTags={[]}
+          onRename={() => undefined}
+        />,
+      );
+    });
+    openCatalog();
+    expect(item('confidence')?.disabled).toBe(false);
+  });
+});
+
 describe('字段目录选择器（DEV-025）', () => {
   it('「添加字段」打开目录：7 个标准字段全部可见、带类型与说明', () => {
     const { openCatalog, item } = renderFieldEditor({ title: '已有标题' });
