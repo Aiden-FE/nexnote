@@ -127,8 +127,9 @@ describe('pageStatistics', () => {
     const stats = pageStatistics(md);
     expect(stats.blocks).toBe(3);
     expect(stats.words).toBeGreaterThan(0);
-    expect(stats.created).toContain('2024-03-01');
-    expect(stats.updated).toContain('2024-06-15');
+    // DEV-078：created/updated 展示为本地时区 YYYY-MM-DD HH:mm:ss（不再是 ISO）
+    expect(stats.created).toMatch(/^2024-03-01 \d{2}:\d{2}:\d{2}$/);
+    expect(stats.updated).toMatch(/^2024-06-15 \d{2}:\d{2}:\d{2}$/);
   });
 
   it('空 frontmatter 显示占位符', () => {

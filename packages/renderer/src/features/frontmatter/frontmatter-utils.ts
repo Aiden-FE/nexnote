@@ -1,6 +1,7 @@
 import type { DirEntry } from '@nexnote/shared';
 import {
   assertSafeFrontmatterKey,
+  formatDisplayDateTime,
   parseFrontmatterYaml,
   serializeFrontmatterYaml,
   splitFrontmatter,
@@ -200,18 +201,15 @@ export function pageStatistics(markdown: string): PageStatistics {
     .filter(Boolean).length;
   const inspected = inspectFrontmatter(markdown);
   const data = inspected.parseError ? {} : inspected.data;
-  const created =
-    data.created instanceof Date
-      ? data.created.toISOString()
-      : typeof data.created === 'string'
-        ? data.created
-        : '—';
-  const updated =
-    data.updated instanceof Date
-      ? data.updated.toISOString()
-      : typeof data.updated === 'string'
-        ? data.updated
-        : '—';
+  // DEV-078：created/updated 展示为本地时区可读时间（YYYY-MM-DD HH:mm:ss）。
+  // 未解析或字段缺失时回退为「—」。
+  const formatOrDash = (v: unknown): string => {
+    if (v === undefined) return '—';
+    const out = formatDisplayDateTime(v as Date | string | null | undefined);
+    return out === '' ? '—' : out;
+  };
+  const created = formatOrDash(data.created);
+  const updated = formatOrDash(data.updated);
   return { words, blocks, created, updated };
 }
 

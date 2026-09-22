@@ -5,6 +5,7 @@ import type { FrontmatterData, FrontmatterValue, StandardFieldDef } from '@nexno
 import {
   assertSafeFrontmatterKey,
   fieldTypeOf,
+  formatDisplayDateTime,
   isStandardField,
   isReadonlyStandardField,
   STANDARD_FIELD_CATALOG,
@@ -344,9 +345,9 @@ function FieldRow({ name, value, onChange, onRemove, onRename, knownTags }: Fiel
   );
 }
 
-/** DEV-077：只读字段展示值（Date → ISO，其余原样），不含格式化逻辑（归 DEV-078）。 */
+/** DEV-077：只读字段展示值。DEV-078：Date 走本地时区可读格式。 */
 function readonlyDisplayValue(value: FrontmatterValue): string {
-  if (value instanceof Date) return value.toISOString();
+  if (value instanceof Date) return formatDisplayDateTime(value);
   if (Array.isArray(value)) return JSON.stringify(value);
   if (value === null) return '—';
   return String(value);
