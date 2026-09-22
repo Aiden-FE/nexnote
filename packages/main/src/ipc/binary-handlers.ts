@@ -12,6 +12,7 @@ import { BinaryService, MAX_BINARY_BYTES } from '../binary/binary-service';
  */
 
 const KIND_FILTERS: Record<BinaryKind, { name: string; extensions: string[] }> = {
+  docx: { name: 'Word 文档', extensions: ['docx'] },
   xlsx: { name: 'Excel 工作簿', extensions: ['xlsx'] },
   mindmap: { name: 'XMind 思维导图', extensions: ['xmind'] },
 };
@@ -84,6 +85,20 @@ export function registerBinaryHandlers(registrar: IpcRegistrar): void {
       return toErrorResult(e);
     }
   });
+
+  // DEV-084：在 vault 内创建空白二进制文档（docx/xlsx/xmind），与导入分离。
+  registrar.register(
+    'binary:create',
+    async ({ kind, title, targetDir }, services) => {
+      try {
+        const result = await service(services).createBinary(kind, { title, targetDir });
+        await recordWrite(services, `新建空白 ${kind.toUpperCase()} ${result.path}`);
+        return ok(result);
+      } catch (e) {
+        return toErrorResult(e);
+      }
+    },
+  );
 
   registrar.register('binary:save', async ({ kind, path, data, expectedSha256 }, services) => {
     try {

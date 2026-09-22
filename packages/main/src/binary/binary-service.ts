@@ -21,7 +21,11 @@ import { XmindError } from './xmind-convert';
 
 export const MAX_BINARY_BYTES = 200 * 1024 * 1024;
 
-const EXT_BY_KIND: Record<BinaryKind, string> = { xlsx: '.xlsx', mindmap: '.xmind' };
+const EXT_BY_KIND: Record<BinaryKind, string> = {
+  docx: '.docx',
+  xlsx: '.xlsx',
+  mindmap: '.xmind',
+};
 
 export class BinaryServiceError extends Error {
   constructor(
@@ -95,6 +99,39 @@ export class BinaryService {
     let name = path.basename(raw).length > 0 ? path.basename(raw) : `导入文档${ext}`;
     if (!name.toLowerCase().endsWith(ext)) name = `${name}${ext}`;
     const relPath = targetDir ? `${targetDir}/${name}` : name;
+    const written = await this.fs.importBinaryFile(relPath, bytes, { createParentDirs: true });
+    const sha256 = createHash('sha256').update(bytes).digest('hex');
+    await new MetadataStore(root).write(written, { format: kind, sourceSha256: sha256 });
+    return { path: written, sha256 };
+  }
+
+  /**
+   * DEV-084：在 vault 内创建空白二进制文档。
+   * - docx：调用 blocksToDocx([], title) 生成含 1 个空段落的最小 docx。
+   * - xlsx：生成单 sheet 空工作簿（与 cel 表完全对应）。
+   * - xmind：生成单根节点思维导图。
+   * - 命名沿用 nextUntitledName 模式（page-ops 内部生成 "未命名 N"），目标目录可空。
+   */
+  async createBinary(
+    kind: BinaryKind,
+    opts: { title?: string; targetDir?: string } = {},
+  ): Promise<{ path: string; sha256: string }> {
+    const root = this.requireRoot();
+    const title = opts.title ?? '未命名';
+    const baseName = sanitizeBaseName(title);
+    const ext = EXT_BY_KIND[kind];
+    const name = baseName.endsWith(ext) ? baseName : `${baseName}${ext}`;
+    const targetDir = opts.targetDir ?? '';
+    let relPath = targetDir ? `${targetDir}/${name}` : name;
+    let n = 1;
+    while (await this.fs.exists(relPath)) {
+      n += 1;
+      const stem = baseName.endsWith(ext) ? baseName.slice(0, -ext.length) : baseName;
+      const candidate = `${stem} ${n}${ext}`;
+      relPath = targetDir ? `${targetDir}/${candidate}` : candidate;
+    }
+
+    const bytes = await renderEmptyBinary(kind, title);
     const written = await this.fs.importBinaryFile(relPath, bytes, { createParentDirs: true });
     const sha256 = createHash('sha256').update(bytes).digest('hex');
     await new MetadataStore(root).write(written, { format: kind, sourceSha256: sha256 });
@@ -206,6 +243,29 @@ async function atomicWrite(abs: string, bytes: Buffer): Promise<void> {
   } finally {
     await fsp.rm(tmp, { force: true }).catch(() => undefined);
   }
+}
+
+/** 简单文件名清洗（去除路径分隔符与控制字符；不与 fs-service.sanitizeEntryName 重复避免循环依赖）。 */
+function sanitizeBaseName(raw: string): string {
+  const trimmed = raw.trim();
+  if (!trimmed) return '未命名';
+  // eslint-disable-next-line no-control-regex -- 主动清理控制字符
+  return trimmed.replace(/[\\/:*?"<>|\x00-\x1f]/g, '_').slice(0, 80);
+}
+
+/** DEV-084：生成空白 docx / xlsx / xmind 字节。 */
+async function renderEmptyBinary(kind: BinaryKind, title: string): Promise<Buffer> {
+  if (kind === 'docx') {
+    const { bytes } = await blocksToDocx([], title);
+    return bytes;
+  }
+  if (kind === 'xlsx') {
+    return writeModelToXlsx({
+      sheets: [{ name: 'Sheet1', celldata: [], config: {} }],
+    });
+  }
+  // xmind
+  return writeModelToXmind({ data: { text: title }, children: [] }, title);
 }
 
 export { XlsxError, XmindError };
