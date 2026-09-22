@@ -1,0 +1,40 @@
+{
+  "schema": "nexnote-release-qa/v1",
+  "repository": "Aiden-FE/nexnote",
+  "tag": "v0.0.25",
+  "commit": "8b56ac434dd74705c5082228e079dedfe7137612",
+  "channel": "stable",
+  "allRequiredChecksPassed": true,
+  "scope": "v0.0.25-candidate",
+  "machineChecks": {
+    "typecheck": "passed (pnpm -r typecheck: shared/plugin-api/website/kernel/renderer all Done; main TS errors unchanged from master pre-existing set)",
+    "lint": "passed (pnpm lint: 0 errors; 7 pre-existing import()-style warnings unchanged from earlier baselines)",
+    "tests": "632 passed | 2 skipped (634) on local macOS run at 8b56ac4; full test files 58 passed | 1 skipped (59); renderer 663 passed (master pre-existing selection-bubble failure unchanged)",
+    "build": "passed (electron-vite build; renderer asset bundle emitted successfully)",
+    "releaseConfig": "31/31 passed (node scripts/verify-release-config.mjs)",
+    "changedFormat": "covered by release config gate",
+    "diffCheck": "covered by release config gate",
+    "packagedSmoke": "deferred to candidate pipeline: tag push triggers matrix build + packaged macOS smoke bound to tag commit 8b56ac4 with NEXNOTE_SMOKE_EXPECTED_VERSION=0.0.25"
+  },
+  "candidateContents": {
+    "tickets": "DEV-083 implemented, tested, merged to master (bbbb932); version bump to 0.0.25 in 8b56ac4",
+    "highlights": [
+      "DEV-083: .nexnote/config.json and .nexnote/layout.json are no longer versioned into git (ADR-0016 supersedes ADR-0003 allowlist). UI/layout state is per-device only; existing vaults get a one-time git rm --cached migration in ensureSyncGuard.",
+      "DEV-083: vault:saveLayout IPC no longer calls scheduleAutoCommit. Layout-only debounced writes are also skipped when the diff is empty (no spurious commits).",
+      "DEV-083: new doctor repair action 'preserve-local-and-abort' is the new default when a rebase/merge is paused. It uses git format-patch to export ahead commits to .nexnote/.rebase-recovery/<ts>/, then git rebase --abort, then git am --3way to replay patches one at a time. Failed patches are quarantined to FAILED/ inside the recovery directory — never silently lost.",
+      "DEV-083: secondary doctor action 'force-abort-rebase-or-merge' exposed only as a destructive second button (red border, explicit 'drop ahead commits' label) for users who genuinely want to discard local notes.",
+      "DEV-083: DoctorDialog rebase-in-progress copy now leads with '保留笔记并中止 rebase' instead of the previous destructive default. User feedback 2026-09-22 reported 'content reverted → re-edit → conflict again → loop'; the root cause was that rebase --abort drops local commits.",
+      "Hardening: NO_AHEAD_TO_PRESERVE and PRESERVE_LOCAL_FAILED added to GitSyncDoctorError; execute() translates matching GitServiceError codes so the UI sees stable identifiers."
+    ]
+  },
+  "notRun": [
+    "matrix signed builds for mac-arm64/mac-x64/windows-x64/linux-x64 (run by candidate pipeline after tag push)",
+    "packaged macOS smoke in CI (run by candidate pipeline smoke job)",
+    "Windows packaged smoke and Linux packaged smoke",
+    "Windows/Ubuntu physical installation verification",
+    "macOS notarization / Gatekeeper verification (Ad hoc signing only)",
+    "public N-1 to v0.0.25 network upgrade end-to-end verification",
+    "release-qa Environment required-reviewer approval (operational gate before publish)",
+    "post-publication 24-hour monitoring"
+  ]
+}
