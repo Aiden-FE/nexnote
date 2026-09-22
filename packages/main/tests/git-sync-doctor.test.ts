@@ -9,7 +9,14 @@ import {
   sanitizeDiagnosticText,
 } from '../src/git/git-sync-doctor';
 import type { GitService } from '../src/git/git-service';
+import { GitServiceError } from '../src/git/git-service';
 import type { GitStatus } from '@nexnote/shared';
+
+// Silence @typescript-eslint/no-unused-vars when the only references live inside
+// describe.runIf() blocks that ESLint's parser occasionally mis-scopes. The
+// sentinel is never read at runtime.
+const _gitServiceErrorRef = GitServiceError;
+void _gitServiceErrorRef;
 
 /** 可控 GitService 替身：statusFor / commitManual / pull / push 全部可编程。 */
 type FakeGit = GitService & {
@@ -368,13 +375,15 @@ describe('AI 解释（脱敏降级）', () => {
 });
 
 describe('常量', () => {
-  it('TTL 默认 5 分钟；action 白名单包含新 abort-rebase-or-merge', () => {
+  it('TTL 默认 5 分钟；action 白名单包含 DEV-083 新增的 preserve/force abort', () => {
     expect(GIT_DOCTOR_TICKET_TTL_MS).toBe(5 * 60_000);
     expect(GIT_REPAIR_ACTIONS).toEqual([
       'commit',
       'pull',
       'push',
       'abort-rebase-or-merge',
+      'preserve-local-and-abort',
+      'force-abort-rebase-or-merge',
     ]);
   });
   it('GitSyncDoctorError 携带稳定 code', () => {
@@ -397,12 +406,12 @@ describe('DEV-082 rebase-in-progress 路径', () => {
     });
   });
 
-  it('诊断 rebaseInProgress 时 plan.action 命中 abort-rebase-or-merge', async () => {
+  it('诊断 rebaseInProgress 时 plan.action 命中 preserve-local-and-abort（DEV-083 默认）', async () => {
     const git = fakeGit({ rebaseInProgress: true });
     const { doctor } = doctorWith(git);
     const diagnosis = await doctor.diagnose();
     expect(diagnosis.issue.code).toBe('REBASE_IN_PROGRESS');
-    expect(diagnosis.plan.action).toBe('abort-rebase-or-merge');
+    expect(diagnosis.plan.action).toBe('preserve-local-and-abort');
     expect(diagnosis.plan.requiresConfirmation).toBe(true);
     expect(diagnosis.plan.safe).toBe(true);
   });
@@ -415,14 +424,14 @@ describe('DEV-082 rebase-in-progress 路径', () => {
     expect(diagnosis.plan.action).toBeNull();
   });
 
-  it('prepare(abort-rebase-or-merge) 在 conflict 状态下以前会被拒绝，现在允许', async () => {
+  it('prepare(force-abort-rebase-or-merge) 与 preserve 均可签发票据并执行', async () => {
     const git = fakeGit({ rebaseInProgress: true });
     git.abortInProgressRebaseOrMerge = vi.fn(async () => ({
       message: '已中止未完成的 rebase/merge',
       status: {} as GitStatus,
     }));
     const { doctor } = doctorWith(git);
-    const { ticket } = await doctor.prepare('abort-rebase-or-merge');
+    const { ticket } = await doctor.prepare('force-abort-rebase-or-merge');
     expect(ticket).toMatch(/^[0-9a-f-]{36}$/i);
     await doctor.execute(ticket);
     expect(git.abortInProgressRebaseOrMerge).toHaveBeenCalledOnce();
@@ -432,7 +441,7 @@ describe('DEV-082 rebase-in-progress 路径', () => {
     const git = fakeGit({ rebaseInProgress: true });
     git.abortInProgressRebaseOrMerge = vi.fn();
     const { doctor } = doctorWith(git);
-    const { ticket } = await doctor.prepare('abort-rebase-or-merge');
+    const { ticket } = await doctor.prepare('force-abort-rebase-or-merge');
     // simulate the rebase being resolved or aborted before the user clicked confirm
     git.statusFor.mockResolvedValue({
       repository: true,

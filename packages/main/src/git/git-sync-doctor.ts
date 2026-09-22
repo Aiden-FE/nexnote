@@ -10,7 +10,7 @@ import type {
   GitSyncIssueCategory,
 } from '@nexnote/shared';
 import type { GitService } from './git-service';
-import { sanitizeRemoteText } from './git-service';
+import { GitServiceError, sanitizeRemoteText } from './git-service';
 import type { AiService } from '../ai/ai-service';
 
 /** 修复票据 TTL：预览到显式确认执行之间的最大窗口。 */
@@ -20,10 +20,12 @@ export const GIT_REPAIR_ACTIONS: readonly GitRepairAction[] = [
   'pull',
   'push',
   'abort-rebase-or-merge',
+  'preserve-local-and-abort',
+  'force-abort-rebase-or-merge',
 ];
 
 /**
- * 白名单：doctor 只可能执行这四条等价操作（经 GitService 既有安全路径）。
+ * 白名单：doctor 只可能执行这六条等价操作（经 GitService 既有安全路径）。
  * 任何破坏性命令（reset --hard / clean / checkout -- . / push --force）都没有入口。
  */
 const COMMAND_PREVIEW: Record<GitRepairAction, string> = {
@@ -35,11 +37,20 @@ const COMMAND_PREVIEW: Record<GitRepairAction, string> = {
   // DEV-082: rebase/merge --abort is read-mostly: it restores HEAD and the
   // pre-operation index without touching worktree files. Safe to expose.
   'abort-rebase-or-merge': 'git rebase --abort（或 git merge --abort，按当前状态选择）',
+  // DEV-083: preserve-local-and-abort does NOT touch worktree files. It uses
+  // git format-patch to export ahead commits to .nexnote/.rebase-recovery/,
+  // aborts the rebase, then replays patches via git am --3way. Failures are
+  // quarantined into FAILED/ inside the recovery directory, never silently lost.
+  'preserve-local-and-abort':
+    'git format-patch（ahead→.nexnote/.rebase-recovery/）→ git rebase --abort → git am --3way',
+  // DEV-083: explicit user-confirmed destructive variant of abort-rebase-or-merge.
+  // Drops ahead commits without backup. Surfaced only when the user opts in.
+  'force-abort-rebase-or-merge': 'git rebase --abort（丢弃 ahead commits，不备份）',
 };
 
 const MANUAL_GUIDANCE: Record<GitSyncIssueCategory, string> = {
   conflict:
-    '存在未完成的 rebase 或合并冲突：AI 不会覆盖冲突文件。点击「让 Agent 帮助解决」让 AI 引导你完成合并，或选择「中止 rebase 并继续」回退到操作前的状态；如需手动干预，请前往仓库目录操作。',
+    '存在未完成的 rebase 或合并冲突：AI 不会覆盖冲突文件。默认推荐「保留笔记并中止 rebase」——它会把本地未推送的笔记提交导出为补丁、应用完中止后自动回放，不会丢笔记内容；也可以点击「让 Agent 帮助解决」获取步骤指引；如需手动干预，请前往仓库目录操作。',
   dirty: '工作区有未提交变更：可以让 Agent 帮你提交保存，或一键暂存后继续同步。',
   auth: '远程认证失败：请在设置中更新 HTTPS 凭证或 SSH key（应用不会代填密钥）。',
   network: '网络不可达：请检查网络连接或远程地址后重试，或在设置中配置代理。',
@@ -62,6 +73,8 @@ export class GitSyncDoctorError extends Error {
       | 'STATE_DRIFT'
       | 'CONFLICT_PRESENT'
       | 'NO_OPERATION'
+      | 'NO_AHEAD_TO_PRESERVE'
+      | 'PRESERVE_LOCAL_FAILED'
       | 'STATUS_FAILED',
   ) {
     super(message);
@@ -246,18 +259,19 @@ function planFor(
   };
   switch (category) {
     case 'conflict':
-      // DEV-082: a paused rebase/merge is the one conflict case we can resolve
-      // without touching worktree files. Other conflict states keep the
-      // "agent/manual only" guidance.
+      // DEV-083: rebase/merge 暂停时的默认推荐动作改为「保留本地 ahead 提交并中止」。
+      // 这避免了 `git rebase --abort` 把用户未推送的笔记提交也撤回的副作用——
+      // 用户感知到的「内容被还原」正是这个根源。
+      // 旧的 `abort-rebase-or-merge` 仍然保留在白名单里供显式降级使用。
       if (status.rebaseInProgress) {
         return {
-          action: 'abort-rebase-or-merge',
-          allowedAction: 'abort-rebase-or-merge',
+          action: 'preserve-local-and-abort',
+          allowedAction: 'preserve-local-and-abort',
           plan: {
             ...manual,
             requiresConfirmation: true,
             safe: true,
-            commandPreview: COMMAND_PREVIEW['abort-rebase-or-merge'],
+            commandPreview: COMMAND_PREVIEW['preserve-local-and-abort'],
           },
         };
       }
@@ -418,7 +432,19 @@ export class GitSyncDoctor {
         'CONFLICT_PRESENT',
       );
     const { allowedAction } = planFor(category, diagnosis.status);
-    if (allowedAction !== action)
+    // DEV-083: REBASE_IN_PROGRESS 的 plan 默认推荐 preserve-local-and-abort，
+    // 但弹窗同时提供 force-abort（用户显式放弃本地）与旧 abort 入口；
+    // 三个 abort 系 action 都被允许签发票据，安全边界由 execute 的
+    // TOCTOU + GitService 层保持。
+    const abortFamily: readonly GitRepairAction[] = [
+      'abort-rebase-or-merge',
+      'preserve-local-and-abort',
+      'force-abort-rebase-or-merge',
+    ];
+    const actionAllowed =
+      allowedAction === action ||
+      (code === 'REBASE_IN_PROGRESS' && abortFamily.includes(action));
+    if (!actionAllowed)
       throw new GitSyncDoctorError(
         `当前问题（${category}）不允许执行 ${action}；${diagnosis.plan.manualGuidance}`,
         'ACTION_NOT_ALLOWED',
@@ -473,11 +499,16 @@ export class GitSyncDoctor {
       entry.fingerprint.remoteOid === fingerprint.remoteOid &&
       entry.fingerprint.porcelain === fingerprint.porcelain &&
       sameFiles(entry.fingerprint.files, fingerprint.files);
-    // DEV-082: a rebase that ended on its own between prepare and execute is
-    // the only drift we want to translate into NO_OPERATION rather than the
+    // DEV-082/083: a rebase that ended on its own between prepare and execute
+    // is the only drift we want to translate into NO_OPERATION rather than the
     // blanket STATE_DRIFT. Resolve that case first so users get an accurate
     // "already resolved" message instead of "you must re-diagnose".
-    if (entry.action === 'abort-rebase-or-merge' && !(snapshot.rebaseInProgress ?? false))
+    if (
+      (entry.action === 'abort-rebase-or-merge' ||
+        entry.action === 'preserve-local-and-abort' ||
+        entry.action === 'force-abort-rebase-or-merge') &&
+      !(snapshot.rebaseInProgress ?? false)
+    )
       throw new GitSyncDoctorError(
         '当前已经没有进行中的 rebase/merge，无需中止',
         'NO_OPERATION',
@@ -487,10 +518,19 @@ export class GitSyncDoctor {
     // DEV-082: a true unmerged-index conflict still aborts even for the abort
     // action — `git rebase --abort` may refuse to run when the user has staged
     // partial resolutions that diverge from the original HEAD, so refuse early.
-    if (snapshot.conflict && entry.action !== 'abort-rebase-or-merge')
+    // DEV-083: preserve-local-and-abort still allows unmerged conflicts because
+    // format-patch + git am --3way replays patches one at a time and quarantines
+    // any failure into FAILED/ — the user can reconcile later.
+    if (
+      snapshot.conflict &&
+      entry.action !== 'abort-rebase-or-merge' &&
+      entry.action !== 'preserve-local-and-abort' &&
+      entry.action !== 'force-abort-rebase-or-merge'
+    )
       throw new GitSyncDoctorError('检测到未解决冲突，拒绝执行', 'CONFLICT_PRESENT');
 
     let message: string;
+    let preserve: GitDoctorRepairExecuteResult['preserve'] | undefined;
     if (entry.action === 'commit') {
       await this.deps.git.commitManual('nexnote:doctor: 同步前保存本地变更');
       message = '已提交本地变更';
@@ -500,6 +540,32 @@ export class GitSyncDoctor {
     } else if (entry.action === 'abort-rebase-or-merge') {
       await this.deps.git.abortInProgressRebaseOrMerge();
       message = '已中止未完成的 rebase/merge';
+    } else if (entry.action === 'preserve-local-and-abort') {
+      let result;
+      try {
+        result = await this.deps.git.preserveLocalAndAbortRebaseOrMerge();
+      } catch (error) {
+        if (error instanceof GitServiceError) {
+          if (error.code === 'NO_OPERATION')
+            throw new GitSyncDoctorError(error.message, 'NO_OPERATION');
+          if (error.code === 'NO_AHEAD_TO_PRESERVE')
+            throw new GitSyncDoctorError(error.message, 'NO_AHEAD_TO_PRESERVE');
+          if (error.code === 'PRESERVE_LOCAL_FAILED')
+            throw new GitSyncDoctorError(error.message, 'PRESERVE_LOCAL_FAILED');
+        }
+        throw error;
+      }
+      preserve = {
+        aheadCount: result.aheadCount,
+        exported: result.exported,
+        replayed: result.replayed,
+        failed: result.failed,
+        recoveryDir: result.recoveryDir,
+      };
+      message = result.message;
+    } else if (entry.action === 'force-abort-rebase-or-merge') {
+      await this.deps.git.abortInProgressRebaseOrMerge();
+      message = '已丢弃本地 ahead commits 并中止 rebase';
     } else {
       await this.deps.git.push();
       message = '已推送本地提交';
@@ -511,7 +577,7 @@ export class GitSyncDoctor {
       throw new GitSyncDoctorError('修复已执行，但读取最新状态失败，请手动刷新', 'STATUS_FAILED');
     }
     const [afterSnapshot] = await this.captureSnapshot(entry.root, after);
-    return { message, status: afterSnapshot };
+    return { message, status: afterSnapshot, ...(preserve ? { preserve } : {}) };
   }
 
   /** 渲染层「忽略」：清空所有未消费票据。 */

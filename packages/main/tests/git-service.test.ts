@@ -84,9 +84,8 @@ afterEach(() => {
 });
 
 describe.runIf(runIfGit())('GitService（系统 Git，临时仓库）', () => {
-  it('initialize 创建仓库、写 .gitignore（ADR 0003 allowlist）、提交初始版本', async () => {
-    // Pre-seed the vault config & a search index so we can assert the allowlist
-    // re-includes config while the index remains ignored.
+  it('initialize 创建仓库、写 .gitignore（ADR-0016 整 .nexnote/ ignore）、提交初始版本', async () => {
+    // DEV-083：`.nexnote/` 整目录 ignore，UI/config 状态仅在本设备保留。
     await fsp.mkdir(path.join(root, '.nexnote', 'index'), { recursive: true });
     await fsp.writeFile(path.join(root, '.nexnote', 'config.json'), '{"version":1}');
     await fsp.writeFile(path.join(root, '.nexnote', 'index', 'blob.bin'), 'idx');
@@ -94,18 +93,17 @@ describe.runIf(runIfGit())('GitService（系统 Git，临时仓库）', () => {
 
     const result = await service.initialize(root);
     expect(result.status.repository).toBe(true);
-    expect(result.status.changed).toBe(0);
     const ignore = await fsp.readFile(path.join(root, '.gitignore'), 'utf8');
     expect(ignore).toMatch(/^\.nexnote\/$/m);
-    expect(ignore).toMatch(/!\/\.nexnote\/config\.json/);
-    expect(ignore).toMatch(/!\/\.nexnote\/layout\.json/);
+    expect(ignore).not.toMatch(/!\/\.nexnote\/config\.json/);
+    expect(ignore).not.toMatch(/!\/\.nexnote\/layout\.json/);
     expect(ignore).toMatch(/^\.DS_Store$/m);
     expect(ignore).toMatch(/^Thumbs\.db$/m);
     expect(ignore).toMatch(/^desktop\.ini$/m);
 
-    // The config MUST be tracked (versioned); the index MUST NOT be tracked.
+    // config/layout MUST NOT be tracked; the index MUST NOT be tracked.
     const tracked = await simpleGit({ baseDir: root, binary: gitBinary() }).raw(['ls-files']);
-    expect(tracked).toContain('.nexnote/config.json');
+    expect(tracked).not.toContain('.nexnote/config.json');
     expect(tracked).not.toContain('.nexnote/index/');
 
     const log = await service.timeline();
@@ -175,18 +173,19 @@ describe.runIf(runIfGit())('GitService（系统 Git，临时仓库）', () => {
     expect(sanitized.HOME).toBe('/Users/dev');
   });
 
-  it('同步护栏识别 OS 元数据和 .nexnote 运行时产物，但保留 allowlist', () => {
+  it('同步护栏识别 OS 元数据和 .nexnote 运行时产物（DEV-083/ADR-0016 无 allowlist）', () => {
     expect(isVaultSyncGuardedPath('.DS_Store')).toBe(true);
     expect(isVaultSyncGuardedPath('docs/.DS_Store')).toBe(true);
     expect(isVaultSyncGuardedPath('Thumbs.db')).toBe(true);
     expect(isVaultSyncGuardedPath('assets/desktop.ini')).toBe(true);
     expect(isVaultSyncGuardedPath('.nexnote/index/index.db')).toBe(true);
-    expect(isVaultSyncGuardedPath('.nexnote/config.json')).toBe(false);
-    expect(isVaultSyncGuardedPath('.nexnote/layout.json')).toBe(false);
+    // DEV-083：config/layout 现在也在 `.nexnote/` ignore 范围内。
+    expect(isVaultSyncGuardedPath('.nexnote/config.json')).toBe(true);
+    expect(isVaultSyncGuardedPath('.nexnote/layout.json')).toBe(true);
     expect(isVaultSyncGuardedPath('page.md')).toBe(false);
   });
 
-  it('initialize 升级旧仓库时 untrack 本地产物和 OS 元数据但保留 config/layout', async () => {
+  it('initialize 升级旧仓库时 untrack 本地产物和 OS 元数据（DEV-083：包含 config/layout）', async () => {
     const git = simpleGit({ baseDir: root, binary: gitBinary() });
     await git.init();
     await git.addConfig('user.name', 'NexNote');
@@ -202,10 +201,14 @@ describe.runIf(runIfGit())('GitService（系统 Git，临时仓库）', () => {
     await service.initialize(root);
 
     const tracked = (await git.raw(['ls-files'])).split('\n');
-    expect(tracked).toContain('.nexnote/config.json');
-    expect(tracked).toContain('.nexnote/layout.json');
+    // DEV-083：config/layout 也从索引移除
+    expect(tracked).not.toContain('.nexnote/config.json');
+    expect(tracked).not.toContain('.nexnote/layout.json');
     expect(tracked).not.toContain('.nexnote/index/legacy.db');
     expect(tracked).not.toContain('.DS_Store');
+    // 文件仍在磁盘
+    expect(await fsp.readFile(path.join(root, '.nexnote', 'config.json'), 'utf8')).toBe('{}');
+    expect(await fsp.readFile(path.join(root, '.nexnote', 'layout.json'), 'utf8')).toBe('{}');
     expect(await fsp.readFile(path.join(root, '.nexnote', 'index', 'legacy.db'), 'utf8')).toBe(
       'local',
     );
@@ -1107,6 +1110,7 @@ function baseStatusForTest(): GitStatus {
     behind: 0,
     remote: null,
     conflict: false,
+    rebaseInProgress: false,
     usingSystemGit: true,
   };
 }

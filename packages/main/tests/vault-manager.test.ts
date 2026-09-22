@@ -1,4 +1,4 @@
-import { mkdtemp, mkdir, readdir, rm, stat, symlink, writeFile } from 'node:fs/promises';
+import { mkdtemp, mkdir, readdir, readFile, rm, stat, symlink, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import * as path from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
@@ -136,6 +136,21 @@ describe('ensureVault（打开文件夹即初始化）', () => {
     await writeVaultConfig(tmp, config);
     const read = await readVaultConfig(tmp);
     expect(read.lastSession.tabs).toEqual([{ kind: 'page', title: '首页' }]);
+  });
+
+  it('saveVaultLayout 写磁盘但不触发任何 git 操作（DEV-083）', async () => {
+    // 不调用 ensureVault：vault 不是 git 仓库，但 saveVaultLayout 必须能工作。
+    // writeVaultConfig 只写 config.json；layout 字段合并回 config.json。
+    await writeVaultConfig(tmp, defaultVaultConfig());
+    await saveVaultLayout(tmp, { ...defaultVaultLayout(), tabOrder: ['x.md', 'y.md'] });
+    const onDisk = JSON.parse(
+      await readFile(path.join(tmp, '.nexnote', 'config.json'), 'utf8'),
+    );
+    expect(onDisk.layout.tabOrder).toEqual(['x.md', 'y.md']);
+    // 没有创建 .git 目录：saveVaultLayout 严格只做本地文件写入。
+    const gitDir = path.join(tmp, '.git');
+    const statResult = await stat(gitDir).catch(() => null);
+    expect(statResult).toBeNull();
   });
 });
 

@@ -7,7 +7,13 @@ export type GitSyncIssueCategory =
   | 'no-remote'
   | 'git-missing'
   | 'unknown';
-export type GitRepairAction = 'commit' | 'pull' | 'push' | 'abort-rebase-or-merge';
+export type GitRepairAction =
+  | 'commit'
+  | 'pull'
+  | 'push'
+  | 'abort-rebase-or-merge'
+  | 'preserve-local-and-abort'
+  | 'force-abort-rebase-or-merge';
 export interface GitSyncIssue {
   category: GitSyncIssueCategory;
   message: string;
@@ -52,4 +58,15 @@ export interface GitDoctorRepairPrepareResult {
 export interface GitDoctorRepairExecuteResult {
   message: string;
   status: GitDoctorStatusSnapshot;
+  /**
+   * DEV-083：仅当 `preserve-local-and-abort` 成功执行时填充，告诉 UI
+   * 保留与回放的统计信息，以及未能自动 replay 的 patches 路径（供 reconcile）。
+   */
+  preserve?: {
+    aheadCount: number;
+    exported: number;
+    replayed: number;
+    failed: string[];
+    recoveryDir: string;
+  };
 }

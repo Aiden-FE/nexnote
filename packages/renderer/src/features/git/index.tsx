@@ -15,6 +15,7 @@ import type {
   GitRestorePreview,
   GitStatus,
   GitDoctorDiagnosis,
+  GitRepairAction,
 } from '@nexnote/shared';
 import { dockPanelRegistry, statusBarRegistry } from '../../registries';
 import { invoke, onEvent } from '../../lib/ipc';
@@ -147,10 +148,14 @@ function GitStatusItem() {
   // DEV-073 一键修复：plan.action 可执行时 prepare + execute 在一次交互内完成。
   const runOneClickRepair = async () => {
     if (!doctor?.plan.action) return;
+    await runRepair(doctor.plan.action);
+  };
+  // DEV-083：显式指定 action 的修复（用于弹窗里的两个分流按钮）。
+  const runRepair = async (action: GitRepairAction) => {
     setDoctorBusy(true);
     setError(null);
     try {
-      const prepared = await invoke('git:doctor:repairPrepare', { action: doctor.plan.action });
+      const prepared = await invoke('git:doctor:repairPrepare', { action });
       await invoke('git:doctor:repairExecute', { ticket: prepared.ticket });
       setDoctor(null);
     } catch (e) {
@@ -259,6 +264,7 @@ function GitStatusItem() {
           diagnosis={doctor}
           busy={doctorBusy}
           onOneClickRepair={() => void runOneClickRepair()}
+          onRepairAction={(action) => void runRepair(action)}
           onOpenAgentHelp={() => void openAgentHelp()}
           onDismiss={() => void dismissDoctor()}
         />
@@ -555,16 +561,21 @@ function DoctorDialog({
   diagnosis,
   busy,
   onOneClickRepair,
+  onRepairAction,
   onOpenAgentHelp,
   onDismiss,
 }: {
   diagnosis: GitDoctorDiagnosis;
   busy: boolean;
   onOneClickRepair(): void;
+  onRepairAction(action: GitRepairAction): void;
   onOpenAgentHelp(): void;
   onDismiss(): void;
 }) {
   const canRepair = diagnosis.plan.action !== null;
+  const isRebaseRepair =
+    diagnosis.plan.action === 'preserve-local-and-abort' ||
+    diagnosis.plan.action === 'abort-rebase-or-merge';
   return (
     <div
       role="dialog"
@@ -577,19 +588,35 @@ function DoctorDialog({
         <p className="mt-1 text-[10px]">冲突文件：{diagnosis.conflictFiles.join('、')}</p>
       )}
       <p className="mt-1 text-[10px] text-muted-foreground">{diagnosis.plan.manualGuidance}</p>
-      <div className="mt-2 flex gap-2">
-        {canRepair ? (
+      <div className="mt-2 flex flex-wrap gap-2">
+        {canRepair && isRebaseRepair ? (
+          <>
+            <button
+              type="button"
+              disabled={busy}
+              onClick={() => onRepairAction('preserve-local-and-abort')}
+              className="rounded bg-primary px-2 py-1 text-xs text-primary-foreground disabled:opacity-60"
+            >
+              {busy ? '正在保留…' : '保留笔记并中止 rebase'}
+            </button>
+            <button
+              type="button"
+              disabled={busy}
+              onClick={() => onRepairAction('force-abort-rebase-or-merge')}
+              className="rounded border border-destructive/40 px-2 py-1 text-xs text-destructive disabled:opacity-60"
+              title="会丢弃你未推送的笔记提交——仅在你想完全放弃本地修改时使用"
+            >
+              {busy ? '正在中止…' : '放弃本地改动'}
+            </button>
+          </>
+        ) : canRepair ? (
           <button
             type="button"
             disabled={busy}
             onClick={onOneClickRepair}
             className="rounded bg-primary px-2 py-1 text-xs text-primary-foreground disabled:opacity-60"
           >
-            {busy
-              ? '正在修复…'
-              : diagnosis.plan.action === 'abort-rebase-or-merge'
-                ? '中止 rebase 并继续'
-                : '让 Agent 修复'}
+            {busy ? '正在修复…' : '让 Agent 修复'}
           </button>
         ) : (
           <button

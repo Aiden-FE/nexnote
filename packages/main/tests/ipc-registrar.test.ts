@@ -578,7 +578,7 @@ describe('IPC 集成（vault + fs，单一注册表）', () => {
     expect(git.autoTimer).toBeNull();
   });
 
-  it('所有写操作路径都会安排自动提交', async () => {
+  it('所有写操作路径都会安排自动提交（DEV-083：vault:saveLayout 不再触发）', async () => {
     const ipc = new FakeIpcMain();
     const { services } = makeServices();
     registerAllIpcHandlers(ipc, services);
@@ -593,6 +593,7 @@ describe('IPC 集成（vault + fs，单一注册表）', () => {
     expect(git.autoTimer).not.toBeNull();
     services.git.cancelAutoCommit();
 
+    // DEV-083/ADR-0016：layout 仅本地保留，vault:saveLayout 不再 scheduleAutoCommit。
     await ipc.invoke('vault:saveLayout', {
       layout: {
         sidebarWidth: 300,
@@ -602,7 +603,7 @@ describe('IPC 集成（vault + fs，单一注册表）', () => {
         dockWidth: 320,
       },
     });
-    expect(git.autoTimer).not.toBeNull();
+    expect(git.autoTimer).toBeNull();
   });
 
   it('git:statusChanged 事件在写入、自动提交、手动提交后发送', async () => {

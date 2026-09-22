@@ -209,11 +209,11 @@ describe('ChatService 会话内部 JSONL 存储（ADR-0007）', () => {
     expect(draft.path).not.toMatch(/\.md$/);
   });
 
-  it('sessions 目录保持 Git 忽略（ADR-0003 策略不 allowlist 会话）', async () => {
+  it('sessions 目录保持 Git 忽略（DEV-083/ADR-0016：整 .nexnote/ ignore）', async () => {
     const git = new GitService({ useSystemGit: true });
     await git.writeDefaultGitignore(vaultRoot);
     const ignore = await readFile(path.join(vaultRoot, '.gitignore'), 'utf8');
-    expect(ignore).toContain('.nexnote/*');
+    expect(ignore).toContain('.nexnote/');
     expect(ignore).not.toContain('!/.nexnote/sessions');
 
     let systemGit = true;

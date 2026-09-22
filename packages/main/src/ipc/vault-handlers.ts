@@ -344,13 +344,8 @@ export function registerVaultHandlers(registrar: IpcRegistrar): void {
     const current = services.vaultSession.getCurrent();
     if (!current) return { ok: false, error: '尚未打开任何知识库', code: 'NO_VAULT' };
     await saveVaultLayout(current.root, layout);
-    services.git.scheduleAutoCommit('保存知识库布局');
-    // Layout persistence is successful even if Git status is temporarily unavailable.
-    try {
-      services.windows.sendToMainWindow('git:statusChanged', await services.git.status());
-    } catch {
-      // The scheduled commit will publish status later.
-    }
+    // DEV-083/ADR-0016：layout 仅在本设备保留（`.nexnote/layout.json` 已脱离 git），
+    // 因此不再 scheduleAutoCommit，也不再推送 layout 相关的状态变更事件。
     return ok(undefined);
   });
 

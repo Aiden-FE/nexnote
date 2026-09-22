@@ -30,7 +30,7 @@ export function normalizeDebounceMs(raw: unknown): number {
   return Math.min(DEBOUNCE_RANGE_MS.max, Math.max(DEBOUNCE_RANGE_MS.min, Math.round(n)));
 }
 
-const VERSIONED_NEXNOTE_FILES = ['config.json', 'layout.json'] as const;
+const VERSIONED_NEXNOTE_FILES: readonly string[] = [];
 const OS_METADATA_FILES = ['.DS_Store', 'Thumbs.db', 'desktop.ini'] as const;
 const VERSIONED_NEXNOTE_PATHS = VERSIONED_NEXNOTE_FILES.map((file) => `.nexnote/${file}`);
 const OS_METADATA_FILES_LOWER = OS_METADATA_FILES.map((file) => file.toLowerCase());
@@ -38,6 +38,8 @@ const OS_METADATA_FILES_LOWER = OS_METADATA_FILES.map((file) => file.toLowerCase
 export function isVaultSyncGuardedPath(file: string): boolean {
   // Git emits '/' separators on every platform; a backslash can be a literal
   // filename character on Unix, so do not reinterpret it as a directory here.
+  // DEV-083/ADR-0016: `.nexnote/` 整目录默认 ignore，UI/config 状态不再跨设备同步。
+  // 同步护栏只阻断 OS 临时文件与 `.nexnote/` 下所有运行时产物。
   const normalized = file.replace(/^\.\//, '');
   const segments = normalized.toLowerCase().split('/');
   if (segments.some((segment) => OS_METADATA_FILES_LOWER.includes(segment))) return true;
@@ -81,6 +83,22 @@ export interface SyncOptions {
 export interface SyncResult {
   message: string;
   status: GitStatus;
+}
+
+/** DEV-083：保留本地 ahead commits 并中止 rebase 的统计结果。 */
+export interface PreserveLocalAbortResult {
+  message: string;
+  root: string;
+  /** 探测到的 ahead commit 数（rebase orig-head 到 HEAD 之间）。 */
+  aheadCount: number;
+  /** 实际写入恢复目录的 patch 文件数。 */
+  exported: number;
+  /** 成功 `git am` 回放的 patch 数。 */
+  replayed: number;
+  /** 回放失败的 patch 文件名（已移到 `<recoveryDir>/FAILED/`）。 */
+  failed: string[];
+  /** vault 相对路径，便于 UI 提示用户前往 reconcile。 */
+  recoveryDir: string;
 }
 
 export interface GitHistoryEvent {
@@ -389,6 +407,171 @@ export class GitService {
     return this.notified({ message: '已中止未完成的 rebase/merge', root });
   }
 
+  /**
+   * DEV-083：保留本地 ahead commits 并中止 rebase/merge。流程：
+   *  1. 从 rebase-merge/orig-head 读出 rebase 起点 `baseSha`；
+   *  2. 用 `git format-patch baseSha..HEAD` 把 ahead commits 导出到
+   *     `.nexnote/.rebase-recovery/<timestamp>/`（该目录受 `.nexnote/` ignore
+   *     保护，不会再次被纳入版本化）；
+   *  3. `git rebase --abort` 回退 HEAD 与索引；
+   *  4. `git am --3way` 按序回放 patches；任何 3-way 应用失败的 patch 写入
+   *     `<timestamp>/FAILED/` 目录供用户后续 reconcile，绝不中断整体流程。
+   *  返回导出与回放的统计信息，便于 UI 显式告知「已保留 N 个笔记提交」。
+   */
+  async preserveLocalAndAbortRebaseOrMerge(): Promise<PreserveLocalAbortResult> {
+    const root = this.requireRoot();
+    const git = this.git(root);
+    const rebaseMergeDir = await this.resolveGitDirEntry(root, 'rebase-merge');
+    const rebaseApplyDir = await this.resolveGitDirEntry(root, 'rebase-apply');
+    const isRebase = Boolean(rebaseMergeDir) || Boolean(rebaseApplyDir);
+    const hasMerge = await this.hasGitDirEntry(root, 'MERGE_HEAD');
+    if (!isRebase && !hasMerge) {
+      throw new GitServiceError(
+        '当前没有进行中的 rebase 或 merge，无需保留',
+        'NO_OPERATION',
+      );
+    }
+
+    // orig-head 指向 rebase 开始前的 HEAD；merge 没有等价物，按 MERGE_HEAD
+    // 退一步取 HEAD~0 直接放弃本地未提交变更。
+    let baseSha: string;
+    if (isRebase) {
+      const baseFile = path.join(rebaseMergeDir ?? rebaseApplyDir!, 'orig-head');
+      baseSha = (await fsp.readFile(baseFile, 'utf8')).trim();
+    } else {
+      // merge state 下保留本地 ahead commits 语义不清晰，直接中止并把 ahead
+      // 留给 doctor 用户在 doctor 之外通过 commit/push 自行处理。
+      await git.raw(['merge', '--abort']);
+      await this.notified({
+        message: '已中止 merge（merge 状态无法保留本地 commit）',
+        root,
+      });
+      return {
+        message: '已中止 merge（merge 状态无法保留本地 commit）',
+        root,
+        aheadCount: 0,
+        exported: 0,
+        replayed: 0,
+        failed: [],
+        recoveryDir: '',
+      };
+    }
+
+    const aheadShas = (await git.raw(['rev-list', `${baseSha}..HEAD`, '--reverse']))
+      .split('\n')
+      .map((s) => s.trim())
+      .filter(Boolean);
+
+    if (aheadShas.length === 0) {
+      // 没有 ahead commit 也要把 rebase abort 掉（doctor 仍然需要恢复）。
+      await git.raw(['rebase', '--abort']);
+      throw new GitServiceError(
+        '没有本地未推送的提交需要保留',
+        'NO_AHEAD_TO_PRESERVE',
+      );
+    }
+
+    const safe = await safeVaultPath(root);
+    const timestamp = new Date()
+      .toISOString()
+      .replace(/[:.]/g, '-')
+      .replace(/Z$/, '');
+    const recoveryDir = path.join(safe, '.nexnote', '.rebase-recovery', timestamp);
+    await fsp.mkdir(recoveryDir, { recursive: true });
+
+    let exported = 0;
+    let replayed = 0;
+    const failed: string[] = [];
+
+    try {
+      // 1. 导出 patches 到隔离 index（避免污染当前索引）
+      const tempIndex = await fsp.mkdtemp(path.join(tmpdir(), 'nexnote-format-patch-'));
+      try {
+        const isolated = this.git(root, this.resolveRuntime(), {
+          GIT_INDEX_FILE: path.join(tempIndex, 'index'),
+        });
+        await isolated.raw(['read-tree', 'HEAD']);
+        const patchOutput = await isolated.raw([
+          'format-patch',
+          '-o',
+          recoveryDir,
+          `${baseSha}..HEAD`,
+        ]);
+        exported = patchOutput
+          .split('\n')
+          .filter((line) => line.startsWith(recoveryDir))
+          .length;
+        if (exported === 0) {
+          // simple-git 不带绝对路径前缀，靠统计文件数兜底
+          const entries = await fsp.readdir(recoveryDir);
+          exported = entries.filter((name) => name.endsWith('.patch')).length;
+        }
+      } finally {
+        await fsp.rm(tempIndex, { recursive: true, force: true });
+      }
+
+      // 2. 中止 rebase（恢复 HEAD 与索引到 baseSha）
+      await git.raw(['rebase', '--abort']);
+
+      // 3. 按序回放 patches；失败的移到 FAILED/ 子目录并跳过
+      const patches = (await fsp.readdir(recoveryDir))
+        .filter((name) => name.endsWith('.patch'))
+        .sort();
+      const failedDir = path.join(recoveryDir, 'FAILED');
+      for (const patchFile of patches) {
+        const patchPath = path.join(recoveryDir, patchFile);
+        try {
+          await git.raw(['am', '--3way', patchPath]);
+          replayed += 1;
+        } catch {
+          failed.push(patchFile);
+          // 回滚 am 的部分状态：把已被应用的回退到 working tree
+          try {
+            await git.raw(['am', '--abort']);
+          } catch {
+            /* 没有 am 状态时忽略 */
+          }
+          await fsp.mkdir(failedDir, { recursive: true });
+          await fsp.rename(patchPath, path.join(failedDir, patchFile)).catch(() => undefined);
+        }
+      }
+    } catch (error) {
+      throw new GitServiceError(
+        `保留本地提交失败：${errorMessage(error)}`,
+        'PRESERVE_LOCAL_FAILED',
+      );
+    }
+
+    const message =
+      failed.length > 0
+        ? `已保留 ${exported} 个提交（${replayed} 已回放，${failed.length} 待 reconcile）`
+        : `已保留 ${exported} 个提交（全部回放成功）`;
+    return {
+      message,
+      root,
+      aheadCount: aheadShas.length,
+      exported,
+      replayed,
+      failed,
+      recoveryDir: path.relative(safe, recoveryDir),
+    };
+  }
+
+  /** `git rev-parse --git-dir` 的绝对路径或 `null`（不存在）。 */
+  private async resolveGitDirEntry(root: string, name: string): Promise<string | null> {
+    const git = this.git(root);
+    const gitDirRaw = await git.raw(['rev-parse', '--git-dir']).catch(() => '');
+    const gitDir = gitDirRaw.trim();
+    if (!gitDir) return null;
+    const base = path.isAbsolute(gitDir) ? gitDir : path.join(root, gitDir);
+    try {
+      await fsp.access(path.join(base, name));
+      return base;
+    } catch {
+      return null;
+    }
+  }
+
   private async hasGitDirEntry(root: string, name: string): Promise<boolean> {
     const git = this.git(root);
     const gitDirRaw = await git.raw(['rev-parse', '--git-dir']).catch(() => '');
@@ -402,10 +585,11 @@ export class GitService {
   }
 
   /**
-   * True when a layout auto-commit has no actual file changes left by the time
-   * the debounce fires. A genuinely modified config.json still appears in
-   * `git diff --name-only` and commits normally; this only swallows timer
-   * firings whose bytes were already saved by an earlier commit.
+   * True when a layout auto-commit has no actual tracked-file changes left by the
+   * time the debounce fires. After DEV-083/ADR-0016 `.nexnote/config.json` and
+   * `.nexnote/layout.json` are no longer tracked, so layout-only timer firings
+   * produce an empty `git diff --name-only` and can be skipped without losing any
+   * committed state.
    */
   private async versionedConfigAlreadyAtHead(root: string, summary: string): Promise<boolean> {
     if (summary !== '保存知识库布局') return false;
@@ -975,20 +1159,30 @@ export class GitService {
   }
 
   /**
-   * Vault-local `.gitignore` 模板（ADR 0003）：
-   *  - 默认忽略 `.nexnote/` 整目录（运行时索引、缓存、锁、数据库等）。
-   *  - 用 allowlist 把可重建配置（config.json / layout.json）重新纳入版本化。
+   * Vault-local `.gitignore` 模板（ADR-0016，取代 ADR-0003 的 allowlist 条款）：
+   *  - 默认忽略 `.nexnote/` 整目录（运行时索引、缓存、锁、数据库以及 UI/会话配置）；
+   *  - 跨设备同步只覆盖 vault 内用户笔记与二进制文档。
    *  - 绑定时幂等修复：完整模板前置，用户规则逐字保留且拥有后置优先级。
    */
   static readonly GITIGNORE_LINES: readonly string[] = [
-    '# NexNote: ignore the entire .nexnote/ runtime directory by default, then re-allow',
-    '# versioned, reconstructible configuration files. See ADR 0003.',
+    '# NexNote: ignore the entire .nexnote/ runtime directory (index, cache, locks,',
+    '# database, and per-device UI/session state). See ADR-0016.',
     '.nexnote/',
-    '!/.nexnote/',
-    '.nexnote/*',
-    ...VERSIONED_NEXNOTE_FILES.map((file) => `!/.nexnote/${file}`),
     '# NexNote: operating-system metadata never belongs in the knowledge base.',
     ...OS_METADATA_FILES,
+  ];
+
+  /**
+   * Legacy `.gitignore` block from ADR-0003 that allowed `config.json` and
+   * `layout.json` to be tracked. ADR-0016 retires this allowlist; the migration
+   * path strips every variant of this block from existing user `.gitignore`
+   * files so the new template (full `.nexnote/` ignore) takes effect.
+   */
+  static readonly LEGACY_GITIGNORE_ALLOWLIST_LINES: readonly string[] = [
+    '!/.nexnote/',
+    '.nexnote/*',
+    '!/.nexnote/config.json',
+    '!/.nexnote/layout.json',
   ];
 
   async writeDefaultGitignore(root: string): Promise<void> {
@@ -1017,9 +1211,22 @@ export class GitService {
         `${GitService.GITIGNORE_LINES.join('\r\n')}\r\n`,
         'utf8',
       );
+      // DEV-083/ADR-0016 migration: also strip the legacy ADR-0003 allowlist
+      // block (the `!/.nexnote/config.json` / `!/.nexnote/layout.json` lines) so
+      // older vaults fall back to the new full-`.nexnote/` ignore template.
+      const legacyAllowlistLf = Buffer.from(
+        `${GitService.LEGACY_GITIGNORE_ALLOWLIST_LINES.join('\n')}\n`,
+        'utf8',
+      );
+      const legacyAllowlistCrlf = Buffer.from(
+        `${GitService.LEGACY_GITIGNORE_ALLOWLIST_LINES.join('\r\n')}\r\n`,
+        'utf8',
+      );
       const templateBlocks = findTemplateBlocks(originalUserBytes, [
         templateBytes,
         crlfTemplateBytes,
+        legacyAllowlistLf,
+        legacyAllowlistCrlf,
       ]);
       if (
         templateBlocks.length === 1 &&
