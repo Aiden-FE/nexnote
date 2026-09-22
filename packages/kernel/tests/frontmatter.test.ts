@@ -4,6 +4,7 @@ import {
   fieldTypeOf,
   getList,
   getString,
+  isReadonlyStandardField,
   isStandardField,
   parseFrontmatterYaml,
   serializeFrontmatterYaml,
@@ -167,6 +168,16 @@ describe('标准字段目录（DEV-025）', () => {
       expect(isStandardField(field.key)).toBe(true);
     }
     expect(isStandardField('not_a_standard_field')).toBe(false);
+  });
+
+  it('DEV-077：updated 标 readonly=true；其余标准字段不变', () => {
+    const updated = STANDARD_FIELD_CATALOG.find((f) => f.key === 'updated');
+    expect(updated?.readonly).toBe(true);
+    // created/title 等其他标准字段保持非 readonly
+    expect(isReadonlyStandardField('created')).toBe(false);
+    expect(isReadonlyStandardField('title')).toBe(false);
+    expect(isReadonlyStandardField('updated')).toBe(true);
+    expect(isReadonlyStandardField('not_a_field')).toBe(false);
   });
 });
 

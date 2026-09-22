@@ -6,6 +6,7 @@ import {
   assertSafeFrontmatterKey,
   fieldTypeOf,
   isStandardField,
+  isReadonlyStandardField,
   STANDARD_FIELD_CATALOG,
 } from '@nexnote/kernel';
 import { Input } from '../../components/ui/input';
@@ -221,6 +222,8 @@ interface FieldRowProps {
 
 function FieldRow({ name, value, onChange, onRemove, onRename, knownTags }: FieldRowProps) {
   const standard = isStandardField(name);
+  // DEV-077: readonly 标准字段（updated）由应用维护，禁用输入与类型切换。
+  const readonly = isReadonlyStandardField(name);
   const [editingKey, setEditingKey] = useState(false);
   const [draft, setDraft] = useState(name);
   const [collapsed, setCollapsed] = useState(false);
@@ -327,11 +330,26 @@ function FieldRow({ name, value, onChange, onRemove, onRename, knownTags }: Fiel
       </div>
       {!collapsed && (
         <div className="border-t px-2 py-2">
-          <ValueEditor name={name} value={value} onChange={onChange} knownTags={knownTags} />
+          {readonly ? (
+            <div data-testid={`frontmatter-readonly-${name}`} className="text-xs text-muted-foreground">
+              <span className="font-mono">{readonlyDisplayValue(value)}</span>
+              <span className="ml-2">由 NexNote 自动维护</span>
+            </div>
+          ) : (
+            <ValueEditor name={name} value={value} onChange={onChange} knownTags={knownTags} />
+          )}
         </div>
       )}
     </div>
   );
+}
+
+/** DEV-077：只读字段展示值（Date → ISO，其余原样），不含格式化逻辑（归 DEV-078）。 */
+function readonlyDisplayValue(value: FrontmatterValue): string {
+  if (value instanceof Date) return value.toISOString();
+  if (Array.isArray(value)) return JSON.stringify(value);
+  if (value === null) return '—';
+  return String(value);
 }
 
 function TypeBadge({ type }: { type: FieldType }) {

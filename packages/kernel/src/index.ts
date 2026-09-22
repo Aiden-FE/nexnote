@@ -27,6 +27,7 @@ export {
   getList,
   getString,
   isStandardField,
+  isReadonlyStandardField,
   normalizeList,
   parseFrontmatterYaml,
   serializeFrontmatterYaml,

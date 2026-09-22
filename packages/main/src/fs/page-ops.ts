@@ -56,6 +56,8 @@ export async function nextUntitledName(
  * - 自动补 .md 后缀；名称经 sanitizeEntryName 校验
  * - content 为正文（纯标准 Markdown，不注入任何产品元数据）
  * - 传入 sidecar 时将 id/createdAt/format 写入 .nexnote 元数据侧车
+ * - DEV-077：若 frontmatter 提供了 created 字段（含 ISO Date），注入到 YAML 头；
+ *   否则仅写正文（与旧版兼容）。
  */
 export async function createNote(
   fs: VaultFsService,
@@ -64,6 +66,7 @@ export async function createNote(
   content = '',
   sidecar?: SidecarWriter,
   format: DocumentFormat = 'native-block',
+  frontmatter?: { created?: Date },
 ): Promise<FileInfo> {
   let finalName = name;
   if (finalName === undefined || finalName.trim() === '') {
@@ -80,7 +83,11 @@ export async function createNote(
     throw new FsError(`已存在同名笔记: ${relPath}`, 'TARGET_EXISTS');
   }
   const body = content.length > 0 ? `${content}\n` : `# ${sanitized.value}\n`;
-  const info = await fs.writeTextFile(relPath, body, true);
+  const info = await fs.writeTextFile(
+    relPath,
+    frontmatter?.created !== undefined ? `---\ncreated: ${frontmatter.created.toISOString()}\n---\n\n${body}` : body,
+    true,
+  );
   if (sidecar) await sidecar.write(relPath, defaultNoteMetadata(format));
   return info;
 }

@@ -106,6 +106,47 @@ describe('源码模式保存（DEV-020）', () => {
     });
     expect(result.kind).toBe('saved');
   });
+
+  it('DEV-077：内容变化且文档含 updated 时 write 收到刷新 updated 后的文本', async () => {
+    const write = vi.fn(async () => ({
+      path: 'a.md',
+      name: 'a.md',
+      kind: 'file' as const,
+      size: 5,
+      modifiedAt: 't2',
+    }));
+    const text = '---\nupdated: 2026-01-01T00:00:00.000Z\n---\n\n# A\nnew content';
+    await saveSourceText({
+      io: io({ write, read: async () => '---\nupdated: 2026-01-01T00:00:00.000Z\n---\n\n# A\nold content' }),
+      path: 'a.md',
+      text,
+      baseVersion: { modifiedAt: 't1', size: 1 },
+    });
+    expect(write).toHaveBeenCalledTimes(1);
+    const writtenText = write.mock.calls[0]![1] as string;
+    // updated 已被刷新（不再是 2026-01-01），正文保持新内容
+    expect(writtenText).not.toContain('updated: 2026-01-01T00:00:00.000Z');
+    expect(writtenText).toMatch(/updated: \d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z/);
+    expect(writtenText).toContain('new content');
+  });
+
+  it('DEV-077：磁盘字节与待写文本一致（无编辑往返）时不刷新 updated，原样写回', async () => {
+    const write = vi.fn(async () => ({
+      path: 'a.md',
+      name: 'a.md',
+      kind: 'file' as const,
+      size: 5,
+      modifiedAt: 't2',
+    }));
+    const text = '---\nupdated: 2026-01-01T00:00:00.000Z\n---\n\n# A\n';
+    await saveSourceText({
+      io: io({ write, read: async () => text }),
+      path: 'a.md',
+      text,
+      baseVersion: { modifiedAt: 't1', size: 1 },
+    });
+    expect(write).toHaveBeenCalledWith('a.md', text);
+  });
 });
 
 describe('外部变更分类（写入前版本检查）', () => {

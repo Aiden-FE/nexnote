@@ -148,6 +148,28 @@ export function renameFrontmatterKey(
   return next;
 }
 
+/**
+ * DEV-077：仅当文档已含 `updated` 字段时，把它的值刷新为当前时间并写回。
+ * - 文档无 frontmatter 或无可解析 frontmatter：原样返回（不新增 updated）。
+ * - 文档已删掉 updated：不再维护该字段（删除后应用不再写回，归 DEV-079）。
+ * - 字节保真：仅在 YAML 头部做替换，正文与其他头部字节不动（复用 replaceFrontmatterYaml）。
+ * 返回改写后的完整 markdown；无变化时返回原字符串引用。
+ */
+export function stampUpdated(markdown: string, now: Date = new Date()): string {
+  const { yaml } = splitFrontmatterParts(markdown);
+  if (yaml === null) return markdown;
+  let data: FrontmatterData;
+  try {
+    data = parseFrontmatterYaml(yaml);
+  } catch {
+    // 不可解析的 YAML 头部保持原样，不覆盖原文（fail-closed 与源码锁定语义一致）。
+    return markdown;
+  }
+  if (!Object.prototype.hasOwnProperty.call(data, 'updated')) return markdown;
+  const nextYaml = serializeFrontmatterYaml({ ...data, updated: now });
+  return replaceFrontmatterYaml(markdown, nextYaml);
+}
+
 export interface PageStatistics {
   words: number;
   blocks: number;
