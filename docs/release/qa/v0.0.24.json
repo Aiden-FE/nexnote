@@ -1,0 +1,42 @@
+{
+  "schema": "nexnote-release-qa/v1",
+  "repository": "Aiden-FE/nexnote",
+  "tag": "v0.0.24",
+  "commit": "bf5ce6f6ce08884b86e9ecef4f0f22f4bd559676",
+  "channel": "stable",
+  "allRequiredChecksPassed": true,
+  "scope": "v0.0.24-candidate",
+  "machineChecks": {
+    "typecheck": "passed (pnpm -r typecheck on master: shared, plugin-api, website, kernel, renderer all Done at bf5ce6f)",
+    "lint": "passed (pnpm lint: 0 errors, 7 pre-existing import()-style warnings unchanged from earlier baselines)",
+    "tests": "1575 passed | 2 skipped (1577) on local macOS run at 4864af2/bf5ce6f; full test files 172 passed | 1 skipped (173)",
+    "build": "passed (electron-vite build; renderer includes editor-host multi-page bundle; all assets emitted)",
+    "releaseConfig": "31/31 passed (node scripts/verify-release-config.mjs)",
+    "changedFormat": "covered by release config gate",
+    "diffCheck": "covered by release config gate",
+    "packagedSmoke": "deferred to candidate pipeline: tag push triggers matrix build + packaged macOS smoke bound to tag commit bf5ce6f with NEXNOTE_SMOKE_EXPECTED_VERSION=0.0.24"
+  },
+  "candidateContents": {
+    "tickets": "DEV-074 implemented, reviewed (dual-axis code review), merged to master (4864af2); version bump to 0.0.24 in bf5ce6f",
+    "highlights": [
+      "DEV-074: in-app binary editors - docx / xlsx / xmind documents now open and edit inside NexNote; import creates a vault copy (editable in place, Git versioned, usable by external software), broken/encrypted files fail-closed",
+      "DOCX semantic-level round-trip: mammoth read + TipTap editor + dolanmiu/docx rebuild; preserves paragraphs/headings/bold/italic/tables/font color/alignment; headers, footers, numbering styles and super/subscripts are explicitly unsupported and surfaced in the editor + user guide 8.5",
+      "XLSX: @fortune-sheet/react editing via fortune-excel parse and exceljs write; multi-sheet, formulas, merged cells and basic styles round-trip; macros (vbaProject), charts and pivot tables detected as read-only reserved regions",
+      "XMIND: simple-mind-map data layer replicated for Node; text, tree structure, notes, hyperlinks, labels and summaries round-trip; boundaries/relationships are read-only reserved regions",
+      "Editor host isolation: each binary editor runs in an independent WebContentsView (crash isolation from the main window); save timing = debounced edit-write plus pending flush on tab/window close",
+      "Concurrency: binary doc tab cap default 3 - opening beyond it closes the earliest tab (LRU); the cap is relaxable in Settings -> Editor (1-8)",
+      "Import entries: page-tree New menu, page-tree right-click, external-file drag-to-tree, and command palette; fs default view and filename search now cover .docx/.xlsx/.xmind; v1 excludes backlinks/relation index/AI recall",
+      "Licenses: licenses/binary-editors NOTICE + MIT.txt + BSD-2-CLAUSE.txt bundled"
+    ]
+  },
+  "notRun": [
+    "matrix signed builds for mac-arm64/mac-x64/windows-x64/linux-x64 (run by candidate pipeline after tag push)",
+    "packaged macOS smoke in CI (run by candidate pipeline smoke job)",
+    "Windows packaged smoke and Linux packaged smoke",
+    "Windows/Ubuntu physical installation verification",
+    "macOS notarization / Gatekeeper verification (Ad hoc signing only)",
+    "public N-1 to v0.0.24 network upgrade end-to-end verification",
+    "release-qa Environment required-reviewer approval (operational gate before publish)",
+    "post-publication 24-hour monitoring"
+  ]
+}
