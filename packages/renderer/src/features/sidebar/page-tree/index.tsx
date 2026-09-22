@@ -253,6 +253,8 @@ function PageTreePanel() {
         <NewNoteMenu
           onCreate={(format) => run(() => ops.createNoteIn('', format))}
           onImportDocx={() => run(() => ops.importDocxIn(''))}
+          onImportXlsx={() => run(() => ops.importBinaryIn('xlsx', ''))}
+          onImportXmind={() => run(() => ops.importBinaryIn('mindmap', ''))}
         />
         <button
           type="button"

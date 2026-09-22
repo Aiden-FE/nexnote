@@ -62,4 +62,11 @@ export function registerNamespacePingHandlers(registrar: IpcRegistrar): void {
       implementedBy: 'DEV-014' as const,
     }),
   );
+  registrar.register('binary:ping', async () =>
+    ok({
+      pong: true as const,
+      namespace: 'binary' as const,
+      implementedBy: 'DEV-074' as const,
+    }),
+  );
 }

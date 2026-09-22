@@ -19,35 +19,50 @@ const openPageMock = vi.fn((pagePath: string) => {
   tabState.activeTabId = tab.id;
   return tab;
 });
-const openDocxMock = vi.fn((pagePath: string) => {
-  const tab = { id: `t${tabState.tabs.length + 1}`, kind: 'docx', pagePath };
+// DEV-074：docx/xlsx/xmind 统一经 openBinary（含并发上限参数）。
+const openBinaryMock = vi.fn((pagePath: string, kind: string, maxConcurrent?: number) => {
+  const tab = { id: `t${tabState.tabs.length + 1}`, kind, pagePath };
   tabState.tabs.push(tab);
   tabState.activeTabId = tab.id;
+  void maxConcurrent;
   return tab;
 });
 
 vi.mock('../src/stores/tab-store', () => ({
   openPage: openPageMock,
-  openDocx: openDocxMock,
+  openBinary: openBinaryMock,
   getTabStore: () => ({ getState: () => tabState }),
+}));
+
+vi.mock('../src/stores/settings-store', () => ({
+  useSettingsStore: { getState: () => ({ vault: { binary: { maxConcurrentTabs: 3 } } }) },
 }));
 
 describe('openDocumentTab 统一打开入口', () => {
   beforeEach(() => {
     invokeMock.mockReset();
     openPageMock.mockClear();
-    openDocxMock.mockClear();
+    openBinaryMock.mockClear();
     tabState.tabs = [];
     tabState.activeTabId = null;
     tabState.toggleSourceMode.mockClear();
     tabState.updateTab.mockClear();
   });
 
-  it('.docx 打开只读预览 tab，不查询 markdown 元数据', async () => {
+  it('.docx 打开可编辑 tab（并发上限来自 vault 设置），不查询 markdown 元数据', async () => {
     const { openDocumentTab } = await import('../src/lib/open-document');
     const result = await openDocumentTab('reports/a.docx');
     expect(result.kind).toBe('docx');
-    expect(openDocxMock).toHaveBeenCalledWith('reports/a.docx', undefined);
+    expect(openBinaryMock).toHaveBeenCalledWith('reports/a.docx', 'docx', 3);
+    expect(openPageMock).not.toHaveBeenCalled();
+  });
+
+  it('.xlsx → xlsx tab；.xmind → mindmap tab（DEV-074）', async () => {
+    const { openDocumentTab } = await import('../src/lib/open-document');
+    expect((await openDocumentTab('sheets/b.xlsx')).kind).toBe('xlsx');
+    expect(openBinaryMock).toHaveBeenCalledWith('sheets/b.xlsx', 'xlsx', 3);
+    expect((await openDocumentTab('maps/c.xmind')).kind).toBe('mindmap');
+    expect(openBinaryMock).toHaveBeenCalledWith('maps/c.xmind', 'mindmap', 3);
     expect(openPageMock).not.toHaveBeenCalled();
   });
 

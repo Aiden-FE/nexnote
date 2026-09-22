@@ -35,7 +35,11 @@ export default defineConfig({
     plugins: [react(), tailwindcss()],
     build: {
       rollupOptions: {
-        input: { index: resolve(root, 'packages/renderer/index.html') },
+        input: {
+          index: resolve(root, 'packages/renderer/index.html'),
+          // DEV-074 二进制编辑器宿主（docx/xlsx/mindmap 各一个独立 WebContentsView）。
+          'editor-host': resolve(root, 'packages/renderer/editor-host.html'),
+        },
       },
     },
   },

@@ -1,10 +1,12 @@
 import type { Result } from '../result';
 
 /**
- * DOCX 命名空间（阶段6）：
- * - 原件只读：编辑一律走 native-block 副本（docx:createEditCopy），绝不写回原 .docx；
- * - 导入复用 fs:importBinaryFile 策略（base64/外部路径 + 碰撞去抖 + sidecar 元数据）；
- * - 导出只产出新 .docx（绝不覆盖已有文件）。
+ * DOCX 命名空间（DEV-074，ADR-0015）：
+ * - 仓库内副本语义：导入即在知识库内生成可原地覆写的副本，随 Git 版本化；
+ *   可编辑往返经 binary:docx:read / binary:docx:save（语义级，非字节级保真）。
+ * - 本命名空间保留 Markdown 投影降级路径（docx:createEditCopy 转 .md、docx:export 产新
+ *   .docx，导出目标已存在时拒绝）与导入 fail-closed 校验。
+ * - 导入复用 fs:importBinaryFile 策略（base64 + sidecar 元数据）。
  */
 
 export interface DocxPreviewPayload {

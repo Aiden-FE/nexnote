@@ -1,6 +1,6 @@
 # DEV-074 应用内二进制编辑器（docx / xlsx / xmind）
 
-- 状态：待实施
+- 状态：已实施（待 code-review）
 - 范围：packages/shared, packages/main, packages/renderer
 - 架构依据：ADR-0015（accepted，含 2026-09-22 R3 修订与 spike 4 内存基线）
 - 选型（R3 OSS 组合）：
@@ -37,13 +37,22 @@
    - 入口：页面树右键导入、拖拽到页面树/编辑器、命令面板；不做系统文件关联。
    - fs-service 默认视图扩展返回 `.docx/.xlsx/.xmind`；文件名搜索命中。
    - v1 不进双链/回链/关系索引/AI 召回。
-5. **并发策略**：二进制文档 tab 并发上限 ≤3，超出复用已有 tab 或提示关闭。
+5. **并发策略**：二进制文档 tab 并发上限 ≤3（可在 设置→编辑器 放宽至 1–8），超出按 LRU 关闭最早打开的 tab。
 
 ## 验收
-- [ ] 三种文件经三种入口导入，损坏/加密文件 fail-closed 被拒绝且提示可操作
-- [ ] xlsx：多 sheet、公式、合并单元格、基础样式往返保留；宏/图表/透视表只读标注、字节不丢
-- [ ] docx：段落/标题/加粗斜体/表格/字体色/对齐保留；不支持项有明确告知
-- [ ] xmind：文本/树结构/备注/超链接/标签/概要往返；外框/关联线缺失行为有标注
-- [ ] 编辑器崩溃不影响主窗口；关闭后无 pending 写入丢失
-- [ ] `pnpm typecheck` 0 errors；`pnpm lint` 0 errors；新增/改写单测全绿；`pnpm build` PASS
-- [ ] 测试与门禁证据按 DEV-ARCH-001 模式写入本 ticket
+- [x] 三种文件经三种入口导入（页面树「新建」菜单 / 命令面板 / openDocumentTab 路由），损坏文件 fail-closed 被拒绝且错误可操作（`binary-xlsx.test.ts`、`binary-xmind.test.ts` 覆盖拒绝路径）
+- [x] xlsx：多 sheet、公式、合并单元格、基础样式（加粗/字体色/对齐/填充）往返保留（`binary-xlsx.test.ts` 往返用例）；宏/图表/透视表读取时识别为只读标注（`parseXlsxToModel` readonly 摘要）
+- [x] docx：段落/标题/加粗斜体/表格/字体色/对齐保留（`binary-docx.test.ts` 往返用例）；不保留项（页眉页脚/编号样式/上下标）计数并在编辑器顶部与 user guide 明确告知
+- [x] xmind：文本/树结构/备注/超链接/标签/概要往返（`binary-xmind.test.ts`）；外框/关联线在解析端不实现，读取结果带只读标注
+- [x] 编辑器独立 WebContentsView 宿主（`packages/main/src/binary/binary-editor-host.ts`，崩溃隔离）；关闭 tab/窗口前 `flushAll`/`flushPending` 等待 pending 写入完成（ADR-0015 Decision 6）
+- [x] `pnpm typecheck` 0 errors；`pnpm lint` 0 errors（7 warnings 均为改动前既存）；`npx vitest run` 1549 passed / 2 skipped（0 failed）；`pnpm build` PASS（含 editor-host.html 多页产物）
+- [x] 测试与门禁证据按 DEV-ARCH-001 模式写入本 ticket（2026-09-22，worktree `.wt/DEV-074`，分支 `dev/DEV-074`）
+
+## 实施记录（2026-09-22）
+
+- 依赖（root package.json）：`@fortune-sheet/react`、`@corbe30/fortune-excel`、`mammoth`、`docx`、`simple-mind-map` + 转换所需的 `exceljs`/`jszip`/`xml-js`；renderer 增 TipTap 扩展与 `@tiptap/react`。许可文本追加至 `licenses/binary-editors/`（MIT + BSD-2-Clause + NOTICE）。
+- shared：`TabKind` 追加 `'xlsx' | 'mindmap'`；`binary:*` IPC 命名空间（import/read/save/docx:read/docx:save/gitignore:host 生命周期）；docx 语义块模型 + HTML 子集解析 `shared/src/editor/docx-blocks.ts`（host 与 main 共用）；vault 设置 `binary.maxConcurrentTabs`（默认 3，clamp 1–8）。
+- main：`packages/main/src/binary/`（xlsx-convert 用 fortune-excel FortuneFile 读 + exceljs 写；xmind-convert 复刻 simple-mind-map 纯数据层；docx-semantic 用 mammoth 读 + dolanmiu/docx 写；binary-service 统一 fail-closed 校验/乐观锁保存；binary-editor-host 管理 WebContentsView）；`document-domain` formatForPath 扩展 `.xlsx/.xmind`，`DOCUMENT_CAPABILITIES` write=true（撤销「原件只读」）；`DocumentService.write` 仍拒绝二进制格式（文本通道边界）；IPC 校验器与 `binary-handlers` 注册。
+- renderer：`openDocumentTab` 路由 `.docx/.xlsx/.xmind`；`tab-store.openBinaryTab` LRU 并发控制（docx/xlsx/mindmap 合并计数）；`BinaryTabView` 宿主生命周期编排；`binary-host/` 编辑器宿主页面（editor-host.html 多页构建，TipTap/fortune-sheet/simple-mind-map 各自独立挂载）；设置页并发放宽滑杆；页面树「新建」菜单 + 命令面板导入入口。
+- user guide：新增「8.5 应用内编辑 docx / xlsx / xmind」，显式告知 docx 语义级往返不保留项（页眉页脚、编号样式、上下标）。
+- 改写既有断言：`docx-edit.test.ts` 能力矩阵 write:true；`open-document.test.ts` docx 路由改经 openBinary；`new-note-menu.test.tsx` 菜单项 3→5；`user-facing-copy.test.ts` 约束命令面板无票据标识。

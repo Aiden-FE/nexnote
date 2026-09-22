@@ -285,12 +285,13 @@ describe('DOCX native round-trip', () => {
     });
   });
 
-  it('DocumentService.write 文本通道仍拒绝 DOCX，能力矩阵 write=false edit=true', async () => {
+  it('DocumentService.write 文本通道仍拒绝 DOCX，能力矩阵 edit=true（DEV-074 仓库内副本语义）', async () => {
     const { root, fs } = await setup();
     await fs.importBinaryFile('a.docx', multiPartDocx(SAMPLE_XML));
     const documents = new DocumentService(root);
     await expect(documents.write('a.docx', 'text')).rejects.toThrow('文档格式不可直接写入');
     const { DOCUMENT_CAPABILITIES } = await import('../src/document/document-domain');
-    expect(DOCUMENT_CAPABILITIES.docx).toMatchObject({ write: false, edit: true });
+    // DEV-074（ADR-0015）：docx 副本可原地覆写（write=true），文本通道依旧拒绝直写。
+    expect(DOCUMENT_CAPABILITIES.docx).toMatchObject({ write: true, edit: true });
   });
 });

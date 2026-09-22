@@ -36,9 +36,20 @@ export async function openDocument(path: string, knownFormat?: NewNoteFormat): P
   return path;
 }
 
-/** 经主进程文件选择器导入 DOCX，成功后打开只读预览 tab；取消选择返回 null。 */
+/** 经主进程文件选择器导入 DOCX，成功后打开可编辑 tab；取消选择返回 null。 */
 export async function importDocxIn(targetDir = ''): Promise<string | null> {
   const result = await invoke('docx:import', { targetDir });
+  if (!result) return null;
+  await openDocumentTab(result.path);
+  return result.path;
+}
+
+/** DEV-074：导入 vault 外 .xlsx / .xmind 为仓库内副本，成功后打开对应编辑器 tab。 */
+export async function importBinaryIn(
+  kind: 'xlsx' | 'mindmap',
+  targetDir = '',
+): Promise<string | null> {
+  const result = await invoke('binary:import', { kind, targetDir });
   if (!result) return null;
   await openDocumentTab(result.path);
   return result.path;

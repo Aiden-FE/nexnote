@@ -44,6 +44,21 @@ export interface IpcEventMap {
   'index:confidenceChanged': { paths: string[] | null };
   /** Settings authoritative state changed. Vault is null when no vault is open. */
   'settings:changed': { global: GlobalSettings; vault: VaultSettings | null };
+  /**
+   * DEV-074：主窗口 → 二进制编辑器宿主（WebContentsView）的控制指令。
+   * 宿主只处理 kind 与自身匹配的指令（kind 为宿主打开时的文档格式）。
+   */
+  'binary:editorCommand': BinaryEditorCommand;
+}
+
+export interface BinaryEditorCommand {
+  /** 'load'：加载文档；'flush'：等待 pending 写入落盘；'theme'：切换主题；'destroy'：销毁。 */
+  command: 'load' | 'flush' | 'theme' | 'destroy';
+  /** kind 与 TabKind 对齐；宿主用它过滤自身不关心的指令。 */
+  kind: 'docx' | 'xlsx' | 'mindmap';
+  /** 文档 vault 相对路径（load / flush / destroy 用）。 */
+  path?: string;
+  theme?: 'light' | 'dark';
 }
 
 export interface FsChangeEvent {
@@ -73,6 +88,7 @@ export const IPC_EVENT_CHANNELS: readonly string[] = [
   'index:statusChanged',
   'index:confidenceChanged',
   'settings:changed',
+  'binary:editorCommand',
 ];
 
 export type IpcEventChannel = keyof IpcEventMap & string;

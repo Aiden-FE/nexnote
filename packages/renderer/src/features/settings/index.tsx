@@ -428,6 +428,20 @@ function EditorSection() {
           onChange={(v) => void setVault({ editor: { vimMode: v } })}
         />
       </Row>
+      <Row
+        label="二进制文档编辑器并发上限"
+        description={`docx / xlsx / xmind tab 最多同时打开 ${vault.binary.maxConcurrentTabs} 个，超出自动关闭最早打开的（1–8）`}
+      >
+        <input
+          type="range"
+          min={1}
+          max={8}
+          step={1}
+          value={vault.binary.maxConcurrentTabs}
+          onChange={(e) => void setVault({ binary: { maxConcurrentTabs: Number(e.target.value) } })}
+          className="w-32"
+        />
+      </Row>
     </div>
   );
 }

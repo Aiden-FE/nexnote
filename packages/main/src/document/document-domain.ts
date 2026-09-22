@@ -1,6 +1,6 @@
 import path from 'node:path';
 
-export type DocumentFormat = 'native-block' | 'markdown' | 'docx';
+export type DocumentFormat = 'native-block' | 'markdown' | 'docx' | 'xlsx' | 'mindmap';
 
 export interface DocumentCapabilities {
   read: boolean;
@@ -50,14 +50,18 @@ export interface DocumentPayload {
 export const DOCUMENT_CAPABILITIES: Record<DocumentFormat, DocumentCapabilities> = {
   'native-block': { read: true, write: true, edit: true, export: true },
   markdown: { read: true, write: true, edit: true, export: true },
-  docx: { read: true, write: false, edit: true, export: true },
+  docx: { read: true, write: true, edit: true, export: true },
+  xlsx: { read: true, write: true, edit: true, export: true },
+  mindmap: { read: true, write: true, edit: true, export: true },
 };
 
 export function formatForPath(filePath: string): DocumentFormat | null {
   const extension = path.extname(filePath).toLowerCase();
-  if (extension !== '.md' && extension !== '.markdown' && extension !== '.docx') return null;
   if (extension === '.docx') return 'docx';
-  return 'markdown';
+  if (extension === '.xlsx') return 'xlsx';
+  if (extension === '.xmind') return 'mindmap';
+  if (extension === '.md' || extension === '.markdown') return 'markdown';
+  return null;
 }
 
 export function isDocumentPath(filePath: string): boolean {

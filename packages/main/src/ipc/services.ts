@@ -23,6 +23,7 @@ import type { RetrievalService } from '../retrieval/retrieval-service';
 import type { PluginService } from '../plugins/plugin-service';
 import type { SkillService } from '../skills/skill-service';
 import type { AgentGateway } from '../agent/gateway';
+import type { BinaryEditorHostManager } from '../binary/binary-editor-host';
 
 /** 注入给所有 IPC handler 的服务集合（全部可替身，便于单测）。 */
 export interface IpcServices {
@@ -60,8 +61,10 @@ export interface IpcServices {
   settings: SettingsService;
   /** DEV-016：vault 向导操作控制器（create/open/clone），sender/controller scoped，可取消。 */
   vaultOperations: VaultOperationsController;
-  /** DEV-016：一次性 clone 授权（sender scoped + TTL + bounded + revoke）。 */
+  /** DEV-016：一次性 clone 授权（sender scoped + TTL + bounded）。 */
   vaultClones: VaultCloneController;
+  /** DEV-074：二进制编辑器 WebContentsView 宿主管理（docx/xlsx/mindmap）。 */
+  binaryEditors: BinaryEditorHostManager;
   appInfo(): AppInfo;
   checkForUpdates(): Promise<UpdateCheckResult>;
   downloadUpdate(): Promise<UpdateCheckResult>;

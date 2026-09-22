@@ -4,7 +4,7 @@ import { useTabStore, type TabDescriptor } from '../stores/tab-store';
 import { WelcomePage } from '../pages/WelcomePage';
 import { PlaceholderPage } from '../pages/PlaceholderPage';
 import { SettingsPage } from '../pages/SettingsPage';
-import { DocxView } from '../pages/DocxView';
+import { BinaryTabView } from '../pages/BinaryTabView';
 import { EditorView } from '../editor/EditorView';
 import { SourceModeView } from '../editor/source/SourceModeView';
 import { GlobalGraphView } from '../features/graph/GlobalGraphView';
@@ -30,8 +30,12 @@ function TabContent({ tab }: { tab: TabDescriptor }) {
       return <SettingsPage />;
     case 'page':
       return <PageEditorHost key={tab.id} tab={tab} />;
+    case 'xlsx':
+    case 'mindmap':
+      return <BinaryTabView key={tab.id} tab={tab} />;
     case 'docx':
-      return <DocxView key={tab.id} tab={tab} />;
+      // DEV-074：docx 改为独立 WebContentsView 宿主（语义级往返），不再用旧只读段落视图。
+      return <BinaryTabView key={tab.id} tab={tab} />;
     default:
       return <PlaceholderPage title={tab.title} />;
   }

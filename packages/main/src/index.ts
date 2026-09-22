@@ -40,6 +40,7 @@ import { BUILTIN_PLUGIN_MANIFESTS } from './plugins/builtin/builtin-manifests';
 import { AgentGateway } from './agent/gateway';
 import { ToolRegistry } from './agent/tool-registry';
 import { createBuiltinTools } from './agent/builtin-tools';
+import { BinaryEditorHostManager } from './binary/binary-editor-host';
 
 const isSmokeMode = process.env.NEXNOTE_SMOKE === '1';
 
@@ -278,6 +279,7 @@ async function bootstrap(): Promise<void> {
     checkOnLaunch: extractUpdateSettings(settings).checkOnLaunch,
   });
 
+  const binaryEditors = new BinaryEditorHostManager();
   registerAllIpcHandlers(ipcMain, {
     windows,
     appStore,
@@ -287,6 +289,7 @@ async function bootstrap(): Promise<void> {
     agent,
     git,
     gitDoctor,
+    binaryEditors,
     dialogs: {
       async pickDirectory() {
         const win = windows?.getMainWindow() ?? null;
@@ -382,10 +385,24 @@ async function bootstrap(): Promise<void> {
     void smoke.init();
   }
 
-  windows.createMainWindow();
+  const mainWindow = windows.createMainWindow();
+  // DEV-074：二进制编辑器宿主挂到主窗口（WebContentsView 子视图满铺内容区）。
+  binaryEditors.attach(mainWindow);
+  // 关闭主窗口前等待全部二进制编辑器的 pending 写入完成（ADR-0015 Decision 6）。
+  mainWindow.on('close', (event) => {
+    if (binaryEditors.size === 0) return;
+    event.preventDefault();
+    void binaryEditors.flushAll().finally(() => {
+      binaryEditors.destroyAll();
+      mainWindow.destroy();
+    });
+  });
 
   app.on('activate', () => {
-    if (!windows?.getMainWindow()) windows?.createMainWindow();
+    if (!windows?.getMainWindow()) {
+      const win = windows?.createMainWindow();
+      if (win) binaryEditors.attach(win);
+    }
   });
 }
 
