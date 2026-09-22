@@ -97,9 +97,8 @@ export class BinaryEditorHostManager {
 
   /** 当前激活宿主的 pending 写入等待。 */
   async flush(key: string): Promise<void> {
-    const entry = this.hosts.get(key);
-    if (!entry) return;
-    await this.roundTrip(key, { command: 'flush', kind: entry.kind, path: entry.path });
+    if (!this.hosts.has(key)) return;
+    await this.roundTrip(key);
   }
 
   /** 切换主题：广播给全部宿主。 */
@@ -128,7 +127,7 @@ export class BinaryEditorHostManager {
     if (win && !win.isDestroyed() && win.contentView.children.includes(entry.view)) {
       win.contentView.removeChildView(entry.view);
     }
-    (entry.view.webContents as unknown as { destroy?: () => void }).destroy?.();
+    // close() 即销毁宿主渲染进程（WebContentsView 的标准回收路径），不再额外强转调用非公开 destroy。
     entry.view.webContents.close();
     this.hosts.delete(key);
     if (this.activeKey === key) this.activeKey = null;
@@ -177,13 +176,12 @@ export class BinaryEditorHostManager {
   }
 
   /**
-   * 向宿主发指令并等待回报：宿主完成后调用 window.nexnote.invoke('binary:host:setActive')
-   * 之外的轻量回报——这里复用 executeJavaScript 的返回值同步等待，语义最直接。
+   * 等待宿主 flush：宿主页面在 window 上暴露 __nexnoteHostFlush()（session.ts 装配）；
+   * 用 executeJavaScript 同步等待，宿主崩溃或未就绪时尽力而为、不阻塞销毁。
    */
-  private async roundTrip(key: string, command: BinaryEditorCommand): Promise<void> {
+  private async roundTrip(key: string): Promise<void> {
     const entry = this.hosts.get(key);
     if (!entry || entry.view.webContents.isDestroyed()) return;
-    // 宿主页面在 window 上暴露 __nexnoteHostFlush()（session.ts 装配）；执行它等待 flush 完成。
     try {
       await entry.view.webContents.executeJavaScript(
         `(window.__nexnoteHostFlush ? window.__nexnoteHostFlush() : Promise.resolve())`,
@@ -191,7 +189,6 @@ export class BinaryEditorHostManager {
     } catch {
       // 宿主崩溃或尚未就绪：flush 语义尽力而为，不阻塞销毁。
     }
-    void command;
   }
 }
 

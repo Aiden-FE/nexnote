@@ -152,15 +152,8 @@ export class BinaryService {
       bytes = await writeModelToXmind(model, path.basename(relPath, EXT_BY_KIND[kind]));
     }
     const { abs } = await this.fs.resolve(relPath);
-    const tmp = `${abs}.tmp-${process.pid}-${Date.now()}`;
-    try {
-      await fsp.writeFile(tmp, bytes);
-      await fsp.rename(tmp, abs);
-    } finally {
-      await fsp.rm(tmp, { force: true }).catch(() => undefined);
-    }
+    await atomicWrite(abs, bytes);
     const sha256 = createHash('sha256').update(bytes).digest('hex');
-    void meta;
     return { sha256, meta };
   }
 
@@ -198,15 +191,20 @@ export class BinaryService {
     }
     const blocks = htmlToBlocks(html);
     const { bytes, meta } = await blocksToDocx(blocks, path.basename(relPath, path.extname(relPath)));
-    const tmp = `${abs}.tmp-${process.pid}-${Date.now()}`;
-    try {
-      await fsp.writeFile(tmp, bytes);
-      await fsp.rename(tmp, abs);
-    } finally {
-      await fsp.rm(tmp, { force: true }).catch(() => undefined);
-    }
+    await atomicWrite(abs, bytes);
     const sha256 = createHash('sha256').update(bytes).digest('hex');
     return { sha256, meta };
+  }
+}
+
+/** tmp + rename 的原子写盘（两个 save 路径共用，避免半成品文件被读到）。 */
+async function atomicWrite(abs: string, bytes: Buffer): Promise<void> {
+  const tmp = `${abs}.tmp-${process.pid}-${Date.now()}`;
+  try {
+    await fsp.writeFile(tmp, bytes);
+    await fsp.rename(tmp, abs);
+  } finally {
+    await fsp.rm(tmp, { force: true }).catch(() => undefined);
   }
 }
 

@@ -31,7 +31,12 @@ export interface SessionState {
 const DEBOUNCE_MS = 1200;
 
 let session: SessionState | null = null;
-let dirtyPayload: { html?: string; sheets?: unknown[]; model?: unknown } | null = null;
+interface DirtyPayload {
+  html?: string;
+  sheets?: unknown[];
+  model?: unknown;
+}
+let dirtyPayload: DirtyPayload | null = null;
 let saveTimer: ReturnType<typeof setTimeout> | null = null;
 let saving = false;
 let pendingSaves = 0;
@@ -103,7 +108,12 @@ async function persistNow(): Promise<void> {
       session.conflict = true;
       session.status = '副本已被外部修改，未覆盖。请重新打开后再编辑。';
     } else {
-      session.status = e instanceof Error ? e.message : String(e);
+      // 保存失败不丢编辑：把内容放回 dirtyPayload，下一次编辑/flush 重试。
+      const retry: DirtyPayload = { ...payload };
+      if (dirtyPayload) Object.assign(retry, dirtyPayload);
+      dirtyPayload = retry;
+      session.status = `保存失败（将自动重试）：${e instanceof Error ? e.message : String(e)}`;
+      scheduleSave();
     }
   } finally {
     saving = false;
@@ -126,8 +136,9 @@ export function markDirty(patch: {
   sheets?: unknown[];
   model?: unknown;
 }): void {
+  if (!session) return; // load 完成前编辑器不可交互，防御性忽略。
   dirtyPayload = { ...dirtyPayload, ...patch };
-  session!.status = '编辑中…';
+  session.status = '编辑中…';
   emit();
   scheduleSave();
 }
