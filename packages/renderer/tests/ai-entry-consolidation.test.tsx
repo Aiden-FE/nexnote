@@ -193,3 +193,153 @@ describe('DEV-026 AI 配置入口收口', () => {
     expect(document.querySelector('[data-testid="ai-wizard"]')).toBeNull();
   });
 });
+
+describe('DEV-075 分功能指定模型：自由输入 + 下拉双模式', () => {
+  function mountWithAssignment(): void {
+    aiState = state({
+      profiles: [
+        {
+          id: 'p1',
+          name: 'Mock',
+          kind: 'openai-compatible',
+          baseUrl: 'https://example.com/v1',
+          defaultModel: 'gpt-x',
+          params: {},
+          hasApiKey: false,
+          keyStorage: 'system-credential',
+          createdAt: 1,
+          updatedAt: 1,
+        },
+      ],
+      features: {
+        ...state().features,
+        writing: { profileId: 'p1', model: 'gpt-x' },
+      },
+      needsOnboarding: false,
+    });
+    useAiConfig.setState({ state: aiState, loading: false });
+    mount(<AiSettingsSection />);
+  }
+
+  const nativeInputSetter =
+    Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')?.set;
+
+  it('逐字符输入不触发 ai:features:set；blur 才提交', async () => {
+    mountWithAssignment();
+    const input = document.querySelector<HTMLInputElement>(
+      '[data-testid="ai-feature-model-writing"]',
+    )!;
+    expect(input).not.toBeNull();
+    // 逐字符输入
+    act(() => {
+      if (nativeInputSetter) {
+        nativeInputSetter.call(input, 'gpt-x-turbo');
+        input.dispatchEvent(new Event('input', { bubbles: true }));
+      }
+    });
+    await act(async () => tick());
+        expect(invokeSpy).not.toHaveBeenCalledWith('ai:features:set', expect.anything());
+    // 触发 commit：blur 在 happy-dom 下不触发 React onBlur；Enter 走同一 commit 函数
+    act(() => {
+      input.dispatchEvent(
+        new KeyboardEvent('keydown', { key: 'Enter', bubbles: true, cancelable: true }),
+      );
+    });
+    await act(async () => tick());
+    expect(invokeSpy).toHaveBeenCalledWith('ai:features:set', {
+      feature: 'writing',
+      assignment: { profileId: 'p1', model: 'gpt-x-turbo' },
+    });
+  });
+
+  it('聚焦拉取候选（datalist 挂载），失败静默降级为自由输入', async () => {
+    // 成功路径
+    invokeSpy.mockImplementation((channel: string) => {
+      if (channel === 'ai:listModels') {
+        return Promise.resolve({
+          ok: true,
+          data: { models: ['m-a', 'm-b'] },
+        });
+      }
+      return Promise.resolve({ ok: true, data: null });
+    });
+    mountWithAssignment();
+    const input = document.querySelector<HTMLInputElement>(
+      '[data-testid="ai-feature-model-writing"]',
+    )!;
+    // React 监听 focusin；调用 .focus() 让 React onFocus 触发
+    act(() => input.focus());
+    await act(async () => tick(20));
+    const listId = input.getAttribute('list');
+    expect(listId).toBeTruthy();
+    const datalist = listId ? document.getElementById(listId) : null;
+    expect(datalist).not.toBeNull();
+    const options = datalist!.getElementsByTagName('option');
+    expect(options.length).toBe(2);
+    // ai:listModels 被调用过一次（缓存 + 同一 profile 不重复拉取）
+    expect(invokeSpy.mock.calls.filter(([c]) => c === 'ai:listModels')).toHaveLength(1);
+
+    // 失败路径（换 profileId，缓存未命中；新组件实例）
+    document.body.replaceChildren();
+    aiState = {
+      ...aiState,
+      profiles: [{ ...aiState.profiles[0]!, id: 'p2' }],
+      features: {
+        ...aiState.features,
+        writing: { profileId: 'p2', model: 'gpt-x' },
+      },
+    };
+    useAiConfig.setState({ state: aiState, loading: false });
+    invokeSpy.mockImplementation((channel: string) => {
+      if (channel === 'ai:listModels') return Promise.reject(new Error('network down'));
+      return Promise.resolve({ ok: true, data: null });
+    });
+    mount(<AiSettingsSection />);
+    const input2 = document.querySelector<HTMLInputElement>(
+      '[data-testid="ai-feature-model-writing"]',
+    )!;
+    act(() => input2.focus());
+    await act(async () => tick(20));
+    // 失败时不弹错误提示，自由输入仍然可用
+    expect(document.querySelector('[data-testid="ai-settings-notice"]')).toBeNull();
+    expect(input2).not.toBeNull();
+  });
+
+  it('Enter 提交；值未变化时不重复提交', async () => {
+    mountWithAssignment();
+    const input = document.querySelector<HTMLInputElement>(
+      '[data-testid="ai-feature-model-writing"]',
+    )!;
+    // Enter 提交新值
+    act(() => {
+      if (nativeInputSetter) {
+        nativeInputSetter.call(input, 'gpt-new');
+        input.dispatchEvent(new Event('input', { bubbles: true }));
+      }
+    });
+    act(() => {
+      input.dispatchEvent(
+        new KeyboardEvent('keydown', { key: 'Enter', bubbles: true, cancelable: true }),
+      );
+    });
+    await act(async () => tick());
+    expect(invokeSpy).toHaveBeenCalledWith('ai:features:set', {
+      feature: 'writing',
+      assignment: { profileId: 'p1', model: 'gpt-new' },
+    });
+    // 值未变化时 Enter 不重复提交
+    const callsBefore = invokeSpy.mock.calls.filter(
+      ([channel]) => channel === 'ai:features:set',
+    ).length;
+    act(() => {
+      input.dispatchEvent(
+        new KeyboardEvent('keydown', { key: 'Enter', bubbles: true, cancelable: true }),
+      );
+    });
+    await act(async () => tick());
+    const callsAfter = invokeSpy.mock.calls.filter(
+      ([channel]) => channel === 'ai:features:set',
+    ).length;
+    expect(callsAfter).toBe(callsBefore);
+  });
+});
