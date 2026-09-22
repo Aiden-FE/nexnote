@@ -244,4 +244,43 @@ describe('DEV-076 GitStatusItem 真实组件行为', () => {
     spinner = document.querySelector('[data-testid="status-git-sync"] .animate-spin');
     expect(spinner, 'done 后 600ms 清理后不应再有 spinner').toBeNull();
   });
+
+  it('DEV-088 mount 时 status.conflict=true 自动调 doctor 并弹窗（无需点徽标）', async () => {
+    const bridge = installBridge({
+      gitStatus: { ...baseStatus, conflict: true },
+      gitDiagnose: diagnosis,
+    });
+    renderGitStatusItem();
+    await flushAsync();
+    // mount-effect 应在下一个宏任务触发 diagnose（setTimeout 0）
+    await act(async () => {
+      await new Promise((r) => setTimeout(r, 50));
+    });
+    expect(bridge.calls.some((c) => c.channel === 'git:doctor:diagnose')).toBe(true);
+    const dialog = document.querySelector('[role="dialog"][aria-label="Git 同步诊断"]');
+    expect(dialog, 'DEV-088: mount 后应自动弹出 DoctorDialog').not.toBeNull();
+  });
+
+  it('DEV-088 mount 时 status.rebaseInProgress=true 自动调 doctor', async () => {
+    const bridge = installBridge({
+      gitStatus: { ...baseStatus, rebaseInProgress: true },
+      gitDiagnose: diagnosis,
+    });
+    renderGitStatusItem();
+    await flushAsync();
+    await act(async () => {
+      await new Promise((r) => setTimeout(r, 50));
+    });
+    expect(bridge.calls.some((c) => c.channel === 'git:doctor:diagnose')).toBe(true);
+  });
+
+  it('DEV-088 mount 时 status 干净（无 conflict/rebaseInProgress）不调 doctor', async () => {
+    const bridge = installBridge({ gitStatus: baseStatus });
+    renderGitStatusItem();
+    await flushAsync();
+    await act(async () => {
+      await new Promise((r) => setTimeout(r, 50));
+    });
+    expect(bridge.calls.some((c) => c.channel === 'git:doctor:diagnose')).toBe(false);
+  });
 });
