@@ -21,6 +21,28 @@ import {
   X,
 } from 'lucide-react';
 
+/**
+ * DEV-075：分功能指定模型的候选缓存（模块级 Map，同一 Profile 只拉一次；
+ * 「刷新」按钮可清除）。失败/空列表按 profileId 缓存为空数组并给出提示。
+ */
+const MODEL_CANDIDATES_CACHE = new Map<string, string[]>();
+
+async function fetchModelCandidates(profileId: string, force = false): Promise<string[]> {
+  if (!force && MODEL_CANDIDATES_CACHE.has(profileId)) {
+    return MODEL_CANDIDATES_CACHE.get(profileId)!;
+  }
+  try {
+    const result = await invoke('ai:listModels', { profileId });
+    const models = Array.isArray(result.models) ? result.models : [];
+    MODEL_CANDIDATES_CACHE.set(profileId, models);
+    return models;
+  } catch {
+    // 失败不缓存错误态：下次聚焦可重试；当前返回空列表走「自由输入」降级。
+    MODEL_CANDIDATES_CACHE.delete(profileId);
+    return [];
+  }
+}
+
 const FEATURE_LABELS: Array<{ key: AiFeatureKey; label: string; hint: string; icon: typeof Bot }> =
   [
     {
@@ -363,13 +385,12 @@ export function AiSettingsSection() {
               </select>
               {assignment && (
                 <>
-                  <input
+                  <ModelPicker
+                    feature={key}
+                    profileId={assignment.profileId}
+                    initialValue={assignment.model}
+                    onCommit={(model) => void setFeature(key, assignment.profileId, model)}
                     data-testid={`ai-feature-model-${key}`}
-                    value={assignment.model}
-                    onChange={(e) => void setFeature(key, assignment.profileId, e.target.value)}
-                    placeholder="模型名"
-                    className="h-8 w-44 rounded-md border bg-transparent px-2 font-mono text-xs"
-                    spellCheck={false}
                   />
                   {key === 'embedding' && assignment.dimensions != null && (
                     <span className="rounded-full border px-1.5 py-0.5 text-[10px] text-muted-foreground">
@@ -404,4 +425,98 @@ function assignmentModelHint(
   profileId: string,
 ): string {
   return state?.profiles.find((p) => p.id === profileId)?.defaultModel ?? '';
+}
+
+/**
+ * DEV-075：分功能指定模型的 Combobox。
+ * - 聚焦时拉取 /models（同一 profile 模块级缓存）；候选以 <datalist> 展示，
+ *   选中或自由输入都可以。
+ * - 仅在 blur（值与初始值不同）/ Enter / 候选点选时 commit；逐字符 onChange 不触发 IPC。
+ * - 候选拉取失败时静默降级为纯文本输入。
+ */
+function ModelPicker({
+  feature,
+  profileId,
+  initialValue,
+  onCommit,
+  ...rest
+}: {
+  feature: AiFeatureKey;
+  profileId: string;
+  initialValue: string;
+  onCommit(model: string): void;
+} & Omit<React.InputHTMLAttributes<HTMLInputElement>, 'onChange' | 'value'>) {
+  const [value, setValue] = useState(initialValue);
+  const [candidates, setCandidates] = useState<string[]>(
+    () => MODEL_CANDIDATES_CACHE.get(profileId) ?? [],
+  );
+  const [fetching, setFetching] = useState(false);
+  const inputRef = useRef<HTMLInputElement | null>(null);
+  const listId = `ai-model-list-${feature}-${profileId}`.replace(/[^a-zA-Z0-9_-]/g, '_');
+
+  const loadCandidates = async (force = false): Promise<void> => {
+    setFetching(true);
+    try {
+      const list = await fetchModelCandidates(profileId, force);
+      setCandidates(list);
+    } finally {
+      setFetching(false);
+    }
+  };
+
+  const [committedBaseline, setCommittedBaseline] = useState(initialValue);
+  const commit = (next: string): void => {
+    const trimmed = next;
+    if (trimmed === committedBaseline) {
+      setValue(committedBaseline);
+      return;
+    }
+    setCommittedBaseline(trimmed);
+    onCommit(trimmed);
+  };
+
+  return (
+    <span className="relative inline-flex items-center gap-1" data-testid={`ai-model-picker-${feature}-${profileId}`}>
+      <input
+        {...rest}
+        ref={(el) => {
+          inputRef.current = el;
+        }}
+        list={listId}
+        value={value}
+        onChange={(e) => setValue(e.target.value)}
+        onFocus={() => {
+          if (!MODEL_CANDIDATES_CACHE.has(profileId)) void loadCandidates();
+        }}
+        onBlur={() => commit(value)}
+        onKeyDown={(e) => {
+          if (e.key === 'Enter') {
+            e.preventDefault();
+            commit(value);
+            e.currentTarget.blur();
+          }
+          if (e.key === 'Escape') {
+            setValue(initialValue);
+          }
+        }}
+        placeholder="模型名（可自由输入）"
+        className="h-8 w-52 rounded-md border bg-transparent px-2 font-mono text-xs"
+        spellCheck={false}
+      />
+      <datalist id={listId}>
+        {candidates.map((c) => (
+          <option key={c} value={c} />
+        ))}
+      </datalist>
+      <button
+        type="button"
+        aria-label="刷新模型候选"
+        title="刷新模型候选"
+        onClick={() => void loadCandidates(true)}
+        className="rounded p-1 text-muted-foreground hover:bg-accent hover:text-foreground"
+      >
+        {fetching ? <Loader2 className="size-3 animate-spin" /> : <RefreshCw className="size-3" />}
+      </button>
+    </span>
+  );
 }
