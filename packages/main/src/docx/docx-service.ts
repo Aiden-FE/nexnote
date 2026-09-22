@@ -40,8 +40,10 @@ export interface OpenEditDocument {
 }
 
 /**
- * DOCX 领域服务（阶段6）：原件只读 + native-block 副本编辑 + 导出新 DOCX。
- * 硬约束：绝不写原 .docx（外部兼容性），导出绝不覆盖已有文件。
+ * DOCX 领域服务（DEV-074，ADR-0015）：仓库内副本语义的导入校验与 Markdown 降级路径。
+ * - 主编辑形态已迁至 binary:docx:read / binary:docx:save（语义级往返，副本可原地覆写）；
+ * - 本服务保留：导入 fail-closed 校验、Markdown 投影（readPreview / createEditCopy 降级）、
+ *   Markdown → 新 .docx 导出（导出目标已存在时拒绝，不覆写既有文件）。
  */
 export class DocxService {
   constructor(
@@ -131,7 +133,10 @@ export class DocxService {
     };
   }
 
-  /** 仅替换 word/document.xml；expectedSha256 不匹配时绝不覆盖原件。 */
+  /**
+   * 降级路径的段落级保存（仅替换 word/document.xml）：expectedSha256 不匹配时
+   * 拒绝保存并返回 DOCX_CONFLICT，避免覆盖外部修改。
+   */
   async saveDocx(
     relPath: string,
     document: EditDocument,
@@ -140,7 +145,7 @@ export class DocxService {
     const current = await this.readDocxBytes(relPath);
     const actual = createHash('sha256').update(current).digest('hex');
     if (actual !== expectedSha256)
-      throw new DocxServiceError('DOCX 原件已被外部修改', 'DOCX_CONFLICT');
+      throw new DocxServiceError('DOCX 已被外部修改', 'DOCX_CONFLICT');
     const xml = serializeEditDocument(document);
     let bytes = current;
     if (xml !== document.originalXml) {

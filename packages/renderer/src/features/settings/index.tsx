@@ -450,6 +450,31 @@ function GitSection() {
   const { vault } = useVaultSettingsEffects();
   const setVault = useSettingsStore((s) => s.setVault);
   const [message, setMessage] = useState<string | null>(null);
+  const [binaryUntracked, setBinaryUntracked] = useState<boolean | null>(null);
+
+  // DEV-074：二进制文档 Git 跟踪开关（写 vault 根 .gitignore）。
+  useEffect(() => {
+    let cancelled = false;
+    void invoke('binary:gitignore:get')
+      .then((r) => {
+        if (!cancelled) setBinaryUntracked(r.untracked);
+      })
+      .catch(() => undefined);
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  const setBinaryUntrack = async (untrack: boolean): Promise<void> => {
+    try {
+      const r = await invoke('binary:gitignore:set', { untrack });
+      setBinaryUntracked(r.untracked);
+      setMessage(untrack ? '二进制文档不再随 Git 跟踪' : '二进制文档恢复 Git 跟踪');
+      setTimeout(() => setMessage(null), 3000);
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : String(error));
+    }
+  };
 
   if (!vault) {
     return (
@@ -505,6 +530,17 @@ function GitSection() {
           className="h-8 w-40 rounded-md border bg-background px-2 text-sm"
         />
       </Row>
+      {binaryUntracked !== null && (
+        <Row
+          label="二进制文档不随 Git 跟踪"
+          description="docx / xlsx / xmind 默认随知识库版本化；开启后写入 .gitignore 不再跟踪"
+        >
+          <Toggle
+            checked={binaryUntracked}
+            onChange={(v) => void setBinaryUntrack(v)}
+          />
+        </Row>
+      )}
       {message && <p className="text-xs text-muted-foreground">{message}</p>}
     </div>
   );

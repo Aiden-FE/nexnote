@@ -134,6 +134,11 @@ export function registerBinaryHandlers(registrar: IpcRegistrar): void {
     return ok({ active: true as const });
   });
 
+  registrar.register('binary:editorTheme', async ({ theme }, services) => {
+    services.binaryEditors.applyTheme(theme);
+    return ok({ applied: true as const });
+  });
+
   registrar.register('binary:host:flush', async ({ kind, path }, services) => {
     await services.binaryEditors.flush(`${kind}:${path}`);
     return ok({ flushed: true as const });

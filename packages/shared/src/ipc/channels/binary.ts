@@ -48,6 +48,7 @@ export const BINARY_CHANNELS = [
   'binary:host:open',
   'binary:host:close',
   'binary:host:setActive',
+  'binary:editorTheme',
   'binary:docx:read',
   'binary:docx:save',
   'binary:gitignore:set',
@@ -126,5 +127,10 @@ export interface BinaryChannelMap {
   'binary:host:flush': {
     request: { kind: BinaryKind | 'docx'; path: string };
     response: Result<{ flushed: true }>;
+  };
+  /** 主题推送（ADR-0015 Decision 3「主题经 IPC 桥」）：广播给全部宿主。 */
+  'binary:editorTheme': {
+    request: { theme: 'light' | 'dark' };
+    response: Result<{ applied: true }>;
   };
 }

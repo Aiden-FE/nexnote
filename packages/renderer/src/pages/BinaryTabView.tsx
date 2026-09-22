@@ -1,6 +1,23 @@
 import { useEffect } from 'react';
 import { invoke } from '../lib/ipc';
 import { useTabStore, isBinaryKind, type TabDescriptor } from '../stores/tab-store';
+import { useThemeStore } from '../theme/theme-store';
+
+/**
+ * DEV-074：主题桥（ADR-0015 Decision 3「主题经 IPC 桥」）。
+ * 主窗口 resolved 主题变化时推送给全部二进制编辑器宿主。
+ */
+let themeBridgeInstalled = false;
+function installThemeBridge(): void {
+  if (themeBridgeInstalled) return;
+  themeBridgeInstalled = true;
+  let last: string | null = null;
+  useThemeStore.subscribe((state) => {
+    if (state.resolved === last) return;
+    last = state.resolved;
+    void invoke('binary:editorTheme', { theme: state.resolved }).catch(() => undefined);
+  });
+}
 
 /**
  * DEV-074 二进制 tab 容器（docx / xlsx / mindmap）。
@@ -31,6 +48,10 @@ export function BinaryTabView({ tab }: { tab: TabDescriptor }): React.JSX.Elemen
       isActive ? { kind, path } : null,
     ).catch(() => undefined);
   }, [isActive, kind, path]);
+
+  useEffect(() => {
+    installThemeBridge();
+  }, []);
 
   if (!kind) return <div className="p-4 text-sm text-muted-foreground">未知二进制类型</div>;
 

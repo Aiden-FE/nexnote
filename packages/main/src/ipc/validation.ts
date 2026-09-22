@@ -205,6 +205,12 @@ const binaryHostSetActive: PayloadValidator = (payload) => {
   if (payload === null) return null;
   return binaryHostRef(payload);
 };
+const binaryEditorTheme = object(['theme'], [
+  (p) => {
+    const theme = (p as Record<string, unknown>).theme;
+    return theme === 'light' || theme === 'dark' ? null : invalid('theme 必须是 light 或 dark');
+  },
+]);
 const binaryDocxSave = object(
   ['path', 'html', 'expectedSha256'],
   [stringField('path'), stringField('html'), stringField('expectedSha256')],
@@ -751,6 +757,7 @@ const VALIDATORS: Partial<Record<IpcChannel, PayloadValidator>> = {
   'binary:host:close': binaryHostRef,
   'binary:host:flush': binaryHostRef,
   'binary:host:setActive': binaryHostSetActive,
+  'binary:editorTheme': binaryEditorTheme,
   // 'binary:gitignore:get' 无 payload，走默认拒绝非空 payload
 };
 

@@ -26,6 +26,15 @@ export function isDocx(name: string): boolean {
   return name.toLowerCase().endsWith('.docx');
 }
 
+/** DEV-074：xlsx / xmind 二进制文档扩展名（页面树可见、点击路由到独立编辑器）。 */
+export function isXlsx(name: string): boolean {
+  return name.toLowerCase().endsWith('.xlsx');
+}
+
+export function isXmind(name: string): boolean {
+  return name.toLowerCase().endsWith('.xmind');
+}
+
 /** 文件显示名；默认隐藏 Markdown 后缀，其他格式始终保留后缀。 */
 export function displayName(
   node: { name: string; kind: 'file' | 'directory' },

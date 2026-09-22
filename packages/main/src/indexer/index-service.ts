@@ -312,10 +312,13 @@ export class LinkIndexService {
       return null;
     }
   }
-  /** 按格式解析文档：markdown 走 UTF-8 解析并合并 sidecar；docx 等二进制只做安全投影（不解码正文）。 */
+  /**
+   * 按格式解析文档：markdown 走 UTF-8 解析并合并 sidecar；二进制文档（docx/xlsx/xmind，
+   * DEV-074）只做安全投影（不解码正文，防二进制字节被当 UTF-8 产生垃圾索引）。
+   */
   private parseDocument(root: string, relPath: string): ParsedPage {
     const abs = path.join(root, relPath);
-    if (formatForPath(relPath) === 'docx')
+    if (formatForPath(relPath) !== 'markdown')
       return applySidecarMetadata(
         projectBinaryPage(relPath, readFileSync(abs)),
         this.loadSidecar(root, relPath),

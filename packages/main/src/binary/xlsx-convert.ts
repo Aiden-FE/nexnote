@@ -68,6 +68,13 @@ export function parseXlsxToModel(bytes: Buffer): XlsxModel & { readonly: string[
     throw new XlsxError('xlsx 缺少工作表', 'XLSX_NO_SHEETS');
   }
   const readonly: string[] = [];
+  // 宏：xl/vbaProject.bin 存在即标记（只读保留区，保存时原字节不参与重建）。
+  for (const entry of readZipEntries(bytes)) {
+    if (/^xl\/vbaProject\.bin$/i.test(entry.name)) {
+      readonly.push('宏（只读）');
+      break;
+    }
+  }
   for (const sheet of model.sheets as Record<string, unknown>[]) {
     if (Array.isArray(sheet.chart) && sheet.chart.length > 0) readonly.push('图表（只读）');
     if (sheet.isPivotTable === true) readonly.push('透视表（只读）');

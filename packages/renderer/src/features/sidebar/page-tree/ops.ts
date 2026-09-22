@@ -55,6 +55,39 @@ export async function importBinaryIn(
   return result.path;
 }
 
+/**
+ * DEV-074：外部文件拖入页面树 / 编辑器 → 读取字节按扩展名导入（不接收文件系统路径，
+ * 防 renderer 借拖拽通道传路径）；非 docx/xlsx/xmind 返回 null。
+ */
+export async function importDroppedFile(
+  file: { name: string; arrayBuffer(): Promise<ArrayBuffer> },
+  targetDir = '',
+): Promise<string | null> {
+  const name = file.name.toLowerCase();
+  const base64 = btoa(
+    Array.from(new Uint8Array(await file.arrayBuffer()), (b) => String.fromCharCode(b)).join(''),
+  );
+  if (name.endsWith('.docx')) {
+    const result = await invoke('docx:import', { data: base64, name: file.name, targetDir });
+    if (!result) return null;
+    await openDocumentTab(result.path);
+    return result.path;
+  }
+  if (name.endsWith('.xlsx')) {
+    const result = await invoke('binary:import', { kind: 'xlsx', data: base64, name: file.name, targetDir });
+    if (!result) return null;
+    await openDocumentTab(result.path);
+    return result.path;
+  }
+  if (name.endsWith('.xmind')) {
+    const result = await invoke('binary:import', { kind: 'mindmap', data: base64, name: file.name, targetDir });
+    if (!result) return null;
+    await openDocumentTab(result.path);
+    return result.path;
+  }
+  return null;
+}
+
 /** 在 parentDir 下创建不重名的文件夹，返回最终路径。 */
 export async function createFolderIn(parentDir: string, existing: DirEntry[]): Promise<string> {
   const siblings = new Set(
