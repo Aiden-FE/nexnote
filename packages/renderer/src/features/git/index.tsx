@@ -120,6 +120,18 @@ function GitStatusItem() {
       return null;
     }
   };
+  // DEV-088: vault 打开后若 status 已经是 conflict 或 rebaseInProgress，主动调
+  // doctor 并弹窗——不需要用户点徽标。重复触发由 doctor 自身的幂等性保证。
+  useEffect(() => {
+    if (!vault || !status) return;
+    if (!status.conflict && !status.rebaseInProgress) return;
+    // 延迟到下一微任务，避免在 effect 同步体内触发 diagnose() 内部的 setState
+    // （react-hooks/set-state-in-effect）；doctor 弹出本身是副作用而非状态派生。
+    const timer = setTimeout(() => void diagnose(), 0);
+    return () => clearTimeout(timer);
+    // 仅在 vault 切换或 status 边界变化时弹一次
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [vault?.root, status?.conflict, status?.rebaseInProgress]);
   const runSync = async () => {
     setDoctor(null);
     setError(null);
@@ -132,6 +144,15 @@ function GitStatusItem() {
       await diagnose(text);
     } finally {
       void refresh();
+      // DEV-088: clear stale spinner when the main-side sync threw before emitting a
+      // terminal phase (e.g. requireRoot / fetch up front). The next syncProgress event
+      // re-drives the reducer; this guard only removes the stuck 'fetching' badge.
+      if (clearTimer.current) {
+        clearTimeout(clearTimer.current);
+        clearTimer.current = null;
+      }
+      setPhase(null);
+      setPhaseMessage(null);
     }
   };
   // DEV-076：冲突徽标可点击 → 自动触发诊断并弹出 DoctorDialog

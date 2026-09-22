@@ -1101,6 +1101,79 @@ describe.runIf(runIfGit())('DEV-076 GitService syncProgressListener 全局可达
   });
 });
 
+describe.runIf(runIfGit())('DEV-088 sync() dirty 工作树守卫与 .gitignore 重复块收敛', () => {
+  // DEV-088 §期望行为 §1/§3：
+  //  - 工作区有用户可见内容（.md / docx / xlsx / xmind）时 sync() 抛 WORKTREE_DIRTY
+  //    （与 pull() 行为一致），doctor 引导用户先 commit / stash。
+  //  - 工作区仅 .gitignore 含两份 ADR-0016 模板块时 sync() 主动调
+  //    writeDefaultGitignore 把重复块收敛掉再继续。
+  //  - 工作区仅 .gitignore 但不含重复块（用户其他手动改动）时抛 WORKTREE_DIRTY。
+
+  it('sync() 在 dirty .md 上抛 WORKTREE_DIRTY（对齐 pull() 守卫）', async () => {
+    await service.initialize(root);
+    // 制造一个用户可见的未提交修改（.md 文件）
+    await fsp.writeFile(path.join(root, 'note.md'), '# hello\n');
+
+    await expect(service.sync({ strategy: 'rebase' })).rejects.toMatchObject({
+      code: 'WORKTREE_DIRTY',
+    });
+    // 文件不应被 sync 路径触碰
+    expect(await fsp.readFile(path.join(root, 'note.md'), 'utf8')).toBe('# hello\n');
+  });
+
+  it('sync() 在 dirty .docx/.xlsx/.xmind 上抛 WORKTREE_DIRTY', async () => {
+    await service.initialize(root);
+    await fsp.writeFile(path.join(root, 'sheet.xlsx'), 'PK\x03\x04fake');
+
+    await expect(service.sync({ strategy: 'rebase' })).rejects.toMatchObject({
+      code: 'WORKTREE_DIRTY',
+    });
+  });
+
+  it('sync() 遇到 dirty .gitignore 含两份 ADR-0016 模板块时自动收敛为单块', async () => {
+    await service.initialize(root);
+    // 模拟手动解冲突遗留：模板块重复出现两次
+    const template = `${GitService.GITIGNORE_LINES.join('\n')}\n`;
+    await fsp.writeFile(path.join(root, '.gitignore'), template + '\n' + template);
+
+    // sync() 会走到 "无远程" 错误（守卫通过后），但 .gitignore 必须先被收敛。
+    await expect(service.sync({ strategy: 'rebase' })).rejects.toMatchObject({
+      code: 'NO_REMOTE',
+    });
+
+    const result = await fsp.readFile(path.join(root, '.gitignore'), 'utf8');
+    const canonical = `${GitService.GITIGNORE_LINES.join('\n')}\n`;
+    // 收敛后只剩一份模板块，且模板块位于文件开头
+    expect(result.startsWith(canonical)).toBe(true);
+    expect(countBufferOccurrences(Buffer.from(result), Buffer.from(canonical))).toBe(1);
+  });
+
+  it('sync() 遇到 dirty .gitignore（无重复块）时抛 WORKTREE_DIRTY', async () => {
+    await service.initialize(root);
+    // 用户手改了 .gitignore 但不涉及模板块（追加一行自定义规则）
+    const canonical = `${GitService.GITIGNORE_LINES.join('\n')}\n`;
+    await fsp.writeFile(path.join(root, '.gitignore'), canonical + 'my-custom-rule.txt\n');
+
+    await expect(service.sync({ strategy: 'rebase' })).rejects.toMatchObject({
+      code: 'WORKTREE_DIRTY',
+    });
+    // 用户内容不应被触碰
+    const result = await fsp.readFile(path.join(root, '.gitignore'), 'utf8');
+    expect(result).toContain('my-custom-rule.txt');
+  });
+
+  it('sync() 遇到 dirty .gitignore（含重复块）+ dirty .md 时抛 WORKTREE_DIRTY（以 .md 为准）', async () => {
+    await service.initialize(root);
+    const template = `${GitService.GITIGNORE_LINES.join('\n')}\n`;
+    await fsp.writeFile(path.join(root, '.gitignore'), template + '\n' + template);
+    await fsp.writeFile(path.join(root, 'note.md'), '# dirty\n');
+
+    await expect(service.sync({ strategy: 'rebase' })).rejects.toMatchObject({
+      code: 'WORKTREE_DIRTY',
+    });
+  });
+});
+
 function baseStatusForTest(): GitStatus {
   return {
     repository: true,

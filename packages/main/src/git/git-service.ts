@@ -863,8 +863,13 @@ export class GitService {
   }
 
   /**
-   * DEV-073：一键同步 = fetch → 按 vault.syncStrategy rebase/merge → push（仅当 ahead>0）。
+   * DEV-073：sync = fetch → rebase/merge → push（仅 ahead>0）。
    * 全程禁止 --force；遇冲突或分叉时中止并通知 UI 让 Agent 接管。
+   *
+   * DEV-088：sync() 与 pull() 对齐，加 WORKTREE_DIRTY 守卫——工作区有用户可见的
+   * 未暂存内容（.md / docx / xlsx / xmind 等）时直接抛错，让 doctor 引导用户先
+   * commit 或 stash。.gitignore 含两份 ADR-0016 模板块的脏状态属于「用户解冲突
+   * 残留」，由 writeDefaultGitignore 收敛后再继续。
    */
   async sync(options: SyncOptions): Promise<SyncResult> {
     const root = this.requireRoot();
@@ -881,6 +886,28 @@ export class GitService {
     try {
       emit({ phase: 'fetching', message: '正在拉取远程更新…' });
       const preStatus = await git.status();
+      if (preStatus.files.length > 0) {
+        // 仅 dirty 在 .gitignore（且其内容含两份 ADR-0016 模板块）时自动收敛；
+        // 其他用户可见内容一律拒绝，与 pull() 行为一致。
+        const dirtyOnly = preStatus.files.map((file) => file.path).filter(Boolean);
+        const dirtyMeaningful = dirtyOnly.filter((p) => p !== '.gitignore');
+        const dirtyGitignore = dirtyOnly.includes('.gitignore');
+        if (dirtyMeaningful.length > 0) {
+          throw new GitServiceError(
+            `当前工作区有 ${dirtyMeaningful.length} 个未提交的变更；请先提交、暂存或显式确认后重试`,
+            'WORKTREE_DIRTY',
+          );
+        }
+        if (dirtyGitignore) {
+          const recovered = await this.recoverDuplicatedGitignore(root);
+          if (!recovered) {
+            throw new GitServiceError(
+              '.gitignore 存在未提交的修改，请先提交、暂存或显式确认后重试',
+              'WORKTREE_DIRTY',
+            );
+          }
+        }
+      }
       const remote = preStatus.current ? await this.branchRemote(git, preStatus.current) : null;
       if (!remote || !preStatus.current)
         throw new GitServiceError('尚未绑定可同步的远程分支', 'NO_REMOTE');
@@ -1263,6 +1290,28 @@ export class GitService {
    * Config/layout are deliberately not touched because the gitignore allowlist
    * makes them portable vault state.
    */
+  /**
+   * DEV-088: recover a duplicated `.gitignore` (two or more ADR-0016 template blocks)
+   * written by a pre-DEV-083 build before the dedup algorithm landed, or left over from
+   * a manual conflict resolution. Idempotent: delegates entirely to writeDefaultGitignore,
+   * which is byte-safe and only rewrites when the file does not already match the
+   * canonical single-block layout.
+   *
+   * @returns `true` when `.gitignore` was rewritten (the dirty state was recovered);
+   *          `false` when no duplication was found and the file was left untouched.
+   */
+  private async recoverDuplicatedGitignore(root: string): Promise<boolean> {
+    const safe = await safeVaultPath(root);
+    const filename = path.join(safe, '.gitignore');
+    const existing = await fsp.readFile(filename, 'utf8').catch(() => null);
+    if (existing === null) return false;
+    const template = GitService.GITIGNORE_LINES.join('\n');
+    const occurrences = existing.split(template).length - 1;
+    if (occurrences < 2) return false;
+    await this.writeDefaultGitignore(root);
+    return true;
+  }
+
   private async untrackGuardedArtifacts(git: SimpleGit): Promise<void> {
     const tracked = await git.raw(['ls-files', '-z']);
     const guarded = [
