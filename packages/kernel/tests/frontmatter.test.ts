@@ -138,20 +138,19 @@ describe('splitFrontmatter 集成', () => {
 });
 
 describe('标准字段目录（DEV-025）', () => {
-  it('恰好 7 个标准字段，顺序固定', () => {
+  it('DEV-080：标准字段 6 个（type 已移除），顺序固定', () => {
     expect(STANDARD_FIELD_CATALOG.map((field) => field.key)).toEqual([
       'title',
       'tags',
       'aliases',
       'created',
       'updated',
-      'type',
       'confidence',
     ]);
   });
 
   it('每个字段带类型与一句话说明（集中定义，不散落字符串）', () => {
-    expect(STANDARD_FIELD_CATALOG.length).toBe(7);
+    expect(STANDARD_FIELD_CATALOG.length).toBe(6);
     for (const field of STANDARD_FIELD_CATALOG) {
       expect(['string', 'list', 'date', 'number', 'boolean']).toContain(field.type);
       expect(field.description.trim().length).toBeGreaterThan(4);
@@ -163,11 +162,36 @@ describe('标准字段目录（DEV-025）', () => {
     expect(STANDARD_FIELD_CATALOG.find((f) => f.key === 'created')?.type).toBe('date');
   });
 
+  it('DEV-080：isStandardField("type") 返回 false', () => {
+    expect(isStandardField('type')).toBe(false);
+  });
+
   it('与 isStandardField 判定一致', () => {
     for (const field of STANDARD_FIELD_CATALOG) {
       expect(isStandardField(field.key)).toBe(true);
     }
     expect(isStandardField('not_a_standard_field')).toBe(false);
+  });
+
+  it('DEV-080：serializeFrontmatterYaml 不输出 type 且顺序由 catalog 派生', () => {
+    const yaml = serializeFrontmatterYaml({
+      title: 'T',
+      type: 'note',
+      confidence: 5,
+    });
+    expect(yaml).toContain('title: T');
+    expect(yaml).toContain('confidence: 5');
+    // type 是数据中存在但已不是标准字段：会被当作 custom key 输出。
+    // 若调用方希望彻底剥离，应在调用前从 data 删除 type（见 ticket §期望行为 §4）。
+    expect(yaml).toContain('type: note');
+    // 顺序：standard 在前（title, confidence），custom（type）在后
+    const lines = yaml.split('\n');
+    expect(lines.findIndex((l) => l.startsWith('title'))).toBeLessThan(
+      lines.findIndex((l) => l.startsWith('confidence')),
+    );
+    expect(lines.findIndex((l) => l.startsWith('confidence'))).toBeLessThan(
+      lines.findIndex((l) => l.startsWith('type')),
+    );
   });
 
   it('DEV-077：updated 标 readonly=true；其余标准字段不变', () => {

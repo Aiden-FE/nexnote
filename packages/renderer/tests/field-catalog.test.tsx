@@ -142,7 +142,7 @@ describe('字段删除行为（DEV-079）', () => {
 });
 
 describe('字段目录选择器（DEV-025）', () => {
-  it('「添加字段」打开目录：7 个标准字段全部可见、带类型与说明', () => {
+  it('DEV-080：目录列出 6 个标准字段（type 已移除），带类型与说明', () => {
     const { openCatalog, item } = renderFieldEditor({ title: '已有标题' });
     expect(document.querySelector('[data-testid="field-catalog"]')).toBeNull();
     openCatalog();

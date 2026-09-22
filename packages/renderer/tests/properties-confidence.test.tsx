@@ -44,3 +44,74 @@ describe('PropertiesPanel confidence', () => {
     container.remove();
   });
 });
+
+describe('PropertiesPanel 类型行（DEV-080）', () => {
+  async function render(props: {
+    format?: string | null;
+    data?: Parameters<typeof PropertiesPanel>[0]['data'];
+  }) {
+    const container = document.createElement('div');
+    document.body.appendChild(container);
+    const root = createRoot(container);
+    await act(async () => {
+      root.render(
+        <PropertiesPanel
+          markdown="# T"
+          data={props.data ?? {}}
+          filePath="x.md"
+          linkCounts={{ in: 0, out: 0 }}
+          confidence={null}
+          format={props.format ?? null}
+        />,
+      );
+    });
+    return { container, root };
+  }
+
+  it('format=native-block 显示「块文档」', async () => {
+    const { container, root } = await render({ format: 'native-block' });
+    expect(container.textContent).toContain('类型');
+    expect(container.textContent).toContain('块文档');
+    root.unmount();
+    container.remove();
+  });
+
+  it('format=markdown 显示「Markdown 源码」', async () => {
+    const { container, root } = await render({ format: 'markdown' });
+    expect(container.textContent).toContain('Markdown 源码');
+    root.unmount();
+    container.remove();
+  });
+
+  it('format=docx 显示「DOCX 文档」', async () => {
+    const { container, root } = await render({ format: 'docx' });
+    expect(container.textContent).toContain('DOCX 文档');
+    root.unmount();
+    container.remove();
+  });
+
+  it('format=mindmap 显示「XMind 思维导图」', async () => {
+    const { container, root } = await render({ format: 'mindmap' });
+    expect(container.textContent).toContain('XMind 思维导图');
+    root.unmount();
+    container.remove();
+  });
+
+  it('format 缺省时显示「普通文档」', async () => {
+    const { container, root } = await render({ format: null });
+    expect(container.textContent).toContain('普通文档');
+    root.unmount();
+    container.remove();
+  });
+
+  it('DEV-080：不再读取 frontmatter.type；data 中残留的 type 不会显示在「类型」行', async () => {
+    const { container, root } = await render({
+      format: 'native-block',
+      data: { type: 'note' as never, title: 'T' },
+    });
+    // 「类型」行应展示 formatLabel('native-block') = '块文档'，而非 frontmatter.type
+    expect(container.textContent).toContain('块文档');
+    root.unmount();
+    container.remove();
+  });
+});

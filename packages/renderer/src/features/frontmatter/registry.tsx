@@ -17,6 +17,7 @@ function DocumentPropertiesDockPanel() {
   const filePath = useDocumentPropertiesStore((s) => s.filePath);
   const markdown = useDocumentPropertiesStore((s) => s.markdown);
   const data = useDocumentPropertiesStore((s) => s.data);
+  const format = useDocumentPropertiesStore((s) => s.format);
   const linkCounts = useLinkCounts(filePath);
   const confidence = useConfidence(linkCounts.pageId);
 
@@ -38,6 +39,7 @@ function DocumentPropertiesDockPanel() {
       filePath={filePath}
       linkCounts={linkCounts}
       confidence={confidence}
+      format={format}
     />
   );
 }

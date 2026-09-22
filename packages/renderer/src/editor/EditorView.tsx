@@ -825,8 +825,8 @@ export function EditorView({ tab }: EditorViewProps) {
         // 保持之前的结构化数据
       }
     }
-    setDocument({ filePath: displayPath, markdown, data: parsed });
-  }, [load, displayPath, saveState, setDocument, fmData]);
+    setDocument({ filePath: displayPath, markdown, data: parsed, format: tab.format });
+  }, [load, displayPath, saveState, setDocument, fmData, tab.format]);
 
   // 已知标签：递归扫描 vault 全部 Markdown，接口与 DEV-004 索引替换 seam 一致。
   useEffect(() => {
