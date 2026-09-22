@@ -15,8 +15,8 @@ import type { Result } from '../result';
 
 export const BINARY_MAX_IMPORT_BYTES = 200 * 1024 * 1024;
 
-/** vault 副本的二进制文档格式（与 TabKind 的 'xlsx'/'mindmap' 对应；'docx' 走既有通道）。 */
-export type BinaryKind = 'xlsx' | 'mindmap';
+/** vault 副本的二进制文档格式（与 TabKind 的 'xlsx'/'mindmap'/'docx' 对应）。 */
+export type BinaryKind = 'docx' | 'xlsx' | 'mindmap';
 
 /** 保存结果信封：docx 语义级往返丢弃的结构计数（用于编辑器内/用户可见的只读标注）。 */
 export interface BinarySaveMeta {
@@ -42,6 +42,7 @@ export interface BinaryReadResult {
 export const BINARY_CHANNELS = [
   'binary:ping',
   'binary:import',
+  'binary:create',
   'binary:read',
   'binary:save',
   'binary:host:flush',
@@ -73,6 +74,11 @@ export interface BinaryChannelMap {
       targetDir?: string;
     };
     response: Result<{ path: string; sha256: string } | null>;
+  };
+  /** DEV-084：在 vault 内创建空白 docx / xlsx / xmind 文档（命名自动去重）。 */
+  'binary:create': {
+    request: { kind: BinaryKind; title?: string; targetDir?: string };
+    response: Result<{ path: string; sha256: string }>;
   };
   /** 读取 vault 内副本为语义模型（供 WebContentsView 编辑器渲染）。 */
   'binary:read': {

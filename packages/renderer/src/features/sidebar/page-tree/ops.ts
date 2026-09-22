@@ -55,6 +55,16 @@ export async function importBinaryIn(
   return result.path;
 }
 
+/** DEV-084：在 vault 内创建空白 docx / xlsx / xmind 文档并打开编辑器 tab。 */
+export async function createBinaryIn(
+  kind: 'docx' | 'xlsx' | 'mindmap',
+  targetDir = '',
+): Promise<string> {
+  const result = await invoke('binary:create', { kind, targetDir });
+  await openDocumentTab(result.path);
+  return result.path;
+}
+
 /**
  * DEV-074：外部文件拖入页面树 / 编辑器 → 读取字节按扩展名导入（不接收文件系统路径，
  * 防 renderer 借拖拽通道传路径）；非 docx/xlsx/xmind 返回 null。
