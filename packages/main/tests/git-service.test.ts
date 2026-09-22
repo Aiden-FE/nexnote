@@ -14,6 +14,7 @@ import {
   normalizeDebounceMs,
   sanitizeRemoteText,
 } from '../src/git/git-service';
+import type { GitStatus } from '@nexnote/shared';
 
 const SKIP = process.env.NEXNOTE_SKIP_GIT_TESTS === '1';
 const isWindows = process.platform === 'win32';
@@ -1058,30 +1059,54 @@ describe.runIf(runIfGit())('DEV-076 GitService syncProgressListener 全局可达
     expect(events.some((e) => e.phase === 'done' || e.phase === 'error')).toBe(true);
   });
 
-  it('configureAutoSync 的 sync 调用注入 syncProgressListener 作为 onProgress（静态不变量）', () => {
-    // 通过读取 configureAutoSync 闭包的源代码片段验证实现选择：
-    // 它必须把 this.syncProgressListener 注入为 sync() 的 onProgress，
-    // 否则 renderer 会在自动同步阶段静默，看不到任何阶段/终态。
-    // 这条断言同时也是回归保护：未来重构若把 onProgress 改回 undefined，
-    // 测试失败，提醒实现者保留"自动同步路径"的全局进度事件可达性。
-    const source = configureAutoSyncSource.toString();
-    expect(source).toMatch(/onProgress:\s*this\.syncProgressListener\s*\?\?\s*undefined/);
+  it('configureAutoSync 的 sync 调用注入 syncProgressListener 作为 onProgress（等价验证）', async () => {
+    // 等价验证"自动同步路径"的全局 listener 可达性：
+    // 注册 listener → configureAutoSync → 等一次 setInterval 触发
+    // → 验证 sync() 收到 onProgress 与 listener 是同一引用。
+    // 若实现回退为 onProgress: undefined（DEV-076 修复前），此测试失败。
+    // 注意：intervalSec 会被 Math.round，最小非零值是 1 秒。
+    await service.initialize(root);
+    const listener = vi.fn();
+    service.onSyncProgress(listener);
+
+    let capturedOnProgress: unknown = undefined;
+    let callCount = 0;
+    const originalSync = service.sync.bind(service);
+    Object.defineProperty(service, 'sync', {
+      value: (async (options: Parameters<typeof service.sync>[0]) => {
+        callCount += 1;
+        capturedOnProgress = options.onProgress;
+        // 不真正跑 git（避免 1s 窗口内被 IO 拖过），返回占位 status
+        return { message: 'skip', status: baseStatusForTest() };
+      }) as typeof service.sync,
+      writable: true,
+      configurable: true,
+    });
+
+    service.configureAutoSync(1, 'rebase');
+    await new Promise((r) => setTimeout(r, 1600));
+    service.stopAutoSync();
+    Object.defineProperty(service, 'sync', {
+      value: originalSync,
+      writable: true,
+      configurable: true,
+    });
+    service.onSyncProgress(null);
+
+    expect(callCount).toBeGreaterThan(0);
+    expect(capturedOnProgress).toBe(listener);
   });
 });
 
-/**
- * 把 GitService.prototype.configureAutoSync 转成函数源码字符串，便于在静态层断言
- * "onProgress 不再是 undefined"。比设 setInterval 计时器更稳定。
- */
-const configureAutoSyncSource = (function () {
-  // eslint-disable-next-line @typescript-eslint/no-require-imports
-  const ts = require('fs').readFileSync(
-    require('path').join(__dirname, '..', 'src', 'git', 'git-service.ts'),
-    'utf8',
-  );
-  const match = /configureAutoSync\([^)]*\)\s*:\s*void\s*{([\s\S]*?)\n\s{2}\}\n/.exec(ts);
-  if (!match) throw new Error('无法在源码中匹配 configureAutoSync 方法');
-  // 用一个空函数包住，便于 toString 拿到完整方法体
-  // eslint-disable-next-line no-new-func
-  return new Function(`return (function configureAutoSync() {${match[1]}});`);
-})();
+function baseStatusForTest(): GitStatus {
+  return {
+    repository: true,
+    branch: 'main',
+    changed: 0,
+    ahead: 0,
+    behind: 0,
+    remote: null,
+    conflict: false,
+    usingSystemGit: true,
+  };
+}
