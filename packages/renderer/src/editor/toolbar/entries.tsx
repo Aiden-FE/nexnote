@@ -293,16 +293,25 @@ export function blockToolbarEntries(options: {
   inTable?: boolean;
 }): ToolbarEntrySpec[] {
   const entries = editableEntries('block', options.headingState);
-  // DEV-070：光标位于表格内时，在插入菜单前插入 4 个表格上下文动作
+  // DEV-086：光标位于表格内时，把 4 个表格上下文动作折叠为单一「表格」菜单（替代 DEV-070 的平铺）。
   if (options.inTable) {
-    const tableActions = [
-      'table:row-below',
-      'table:column-right',
-      'table:row-delete',
-      'table:column-delete',
-    ].map((id) => actionEntry(id));
+    const tableMenu: ToolbarMenuSpec = {
+      kind: 'menu',
+      id: 'toolbar-table-menu',
+      label: '表格',
+      icon: <Table className="size-3.5" />,
+      hint: '表格内行/列操作',
+      priority: 'secondary',
+      overflowGroup: 'table-ops',
+      items: [
+        { id: 'table:row-below', label: '在下方插入行', icon: subItemIcon() },
+        { id: 'table:column-right', label: '在右侧插入列', icon: subItemIcon() },
+        { id: 'table:row-delete', label: '删除行', icon: subItemIcon() },
+        { id: 'table:column-delete', label: '删除列', icon: subItemIcon() },
+      ],
+    };
     const insertMenuIdx = entries.findIndex((e) => e.id === INSERT_MENU_ID);
-    entries.splice(insertMenuIdx, 0, ...tableActions);
+    entries.splice(insertMenuIdx, 0, tableMenu);
   }
   if (options.sourceModeToggle)
     entries.push(
@@ -315,6 +324,11 @@ export function blockToolbarEntries(options: {
     );
   entries.push(actionEntry(TOGGLE_OUTLINE_ID));
   return entries;
+}
+
+/** DEV-086：表格子菜单子项占位图标，避免空 icon 与现有菜单风格不一致。 */
+function subItemIcon(): ReactNode {
+  return <span className="block size-3.5 rounded-sm border border-current" aria-hidden="true" />;
 }
 export function sourceToolbarEntries(options: {
   isMarkdown: boolean;
