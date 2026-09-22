@@ -15,30 +15,39 @@ const TABLE_ACTIONS = [
   TABLE_COLUMN_DELETE_ID,
 ];
 
-describe('DEV-070 · 工具栏表格上下文动作', () => {
-  it('inTable=true：4 个表格动作出现在插入菜单之前', () => {
+const TABLE_MENU_ID = 'toolbar-table-menu';
+
+describe('DEV-086 · 工具栏表格上下文动作折叠为「表格」菜单', () => {
+  it('inTable=true：4 个表格动作不再平铺，而是收进 toolbar-table-menu 菜单', () => {
     const entries = blockToolbarEntries({ sourceModeToggle: false, inTable: true });
     const ids = entries.map((e) => e.id);
-    for (const id of TABLE_ACTIONS) expect(ids).toContain(id);
+    // 4 个 action id 不再是顶级 entry
+    for (const id of TABLE_ACTIONS) expect(ids).not.toContain(id);
+    // 顶级出现 toolbar-table-menu 菜单
+    expect(ids).toContain(TABLE_MENU_ID);
+    // 菜单位置在 INSERT_MENU_ID 之前
     const insertIdx = ids.indexOf(INSERT_MENU_ID);
-    for (const id of TABLE_ACTIONS) {
-      expect(ids.indexOf(id)).toBeGreaterThanOrEqual(0);
-      expect(ids.indexOf(id)).toBeLessThan(insertIdx);
-    }
+    const menuIdx = ids.indexOf(TABLE_MENU_ID);
+    expect(menuIdx).toBeLessThan(insertIdx);
   });
 
-  it('inTable=false（缺省）：不出现表格动作', () => {
+  it('表格菜单包含 4 个子项（顺序与原 action 一致）', () => {
+    const entries = blockToolbarEntries({ sourceModeToggle: false, inTable: true });
+    const menu = entries.find((e) => e.id === TABLE_MENU_ID);
+    expect(menu?.kind).toBe('menu');
+    if (menu?.kind !== 'menu') return;
+    expect(menu.items.map((i) => i.id)).toEqual(TABLE_ACTIONS);
+  });
+
+  it('inTable=false（缺省）：不出现表格菜单', () => {
     const entries = blockToolbarEntries({ sourceModeToggle: false });
     const ids = entries.map((e) => e.id);
-    for (const id of TABLE_ACTIONS) expect(ids).not.toContain(id);
+    expect(ids).not.toContain(TABLE_MENU_ID);
   });
 
-  it('表格动作声明为 insert 组动作（Icon-first 语义）', () => {
+  it('菜单 kind 必须是 menu（不回归到 4 个顶级 action）', () => {
     const entries = blockToolbarEntries({ sourceModeToggle: false, inTable: true });
-    const table = entries.filter((e) => TABLE_ACTIONS.includes(e.id));
-    expect(table).toHaveLength(4);
-    for (const entry of table) {
-      expect(entry.kind).toBe('action');
-    }
+    const topLevel = entries.filter((e) => TABLE_ACTIONS.includes(e.id));
+    expect(topLevel).toHaveLength(0);
   });
 });
