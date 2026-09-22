@@ -102,7 +102,7 @@ export function mergeVaultSettings(raw: unknown): VaultSettings {
   const base = defaultVaultSettings();
   if (typeof raw !== 'object' || raw === null || Array.isArray(raw)) return base;
   const value = raw as VaultSettings;
-  return mergeVaultPatch(base, { editor: value.editor, git: value.git });
+  return mergeVaultPatch(base, { editor: value.editor, git: value.git, binary: value.binary });
 }
 
 /** 持久化 vault 设置补丁：只改 settings 字段，保留其余配置。 */

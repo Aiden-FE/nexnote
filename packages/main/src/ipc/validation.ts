@@ -152,6 +152,70 @@ const docxImport: PayloadValidator = (payload) => {
   return null;
 };
 
+const binaryKind = (value: unknown): value is 'xlsx' | 'mindmap' =>
+  value === 'xlsx' || value === 'mindmap';
+const binaryImport: PayloadValidator = (payload) => {
+  const base = object(
+    ['kind', 'data', 'name', 'targetDir'],
+    [
+      (p) =>
+        binaryKind((p as Record<string, unknown>).kind)
+          ? null
+          : invalid('kind 必须是 xlsx 或 mindmap'),
+      optionalField('data', 'string'),
+      optionalField('name', 'string'),
+      optionalField('targetDir', 'string'),
+    ],
+  )(payload);
+  if (base) return base;
+  const value = payload as Record<string, unknown>;
+  if (value.data === undefined) return null;
+  if (typeof value.data !== 'string' || value.data.length === 0) return invalid('data 不能为空');
+  if (
+    value.data.length > 268_435_456 ||
+    value.data.length % 4 !== 0 ||
+    !/^[A-Za-z0-9+/]*={0,2}$/.test(value.data)
+  ) {
+    return invalid('data 不是合法 base64');
+  }
+  return null;
+};
+const binaryRead: PayloadValidator = (payload) => {
+  if (!isPlainObject(payload)) return invalid('payload 必须是普通对象');
+  if (!binaryKind(payload.kind)) return invalid('kind 必须是 xlsx 或 mindmap');
+  return stringField('path')(payload);
+};
+const binarySave: PayloadValidator = (payload) => {
+  if (!isPlainObject(payload)) return invalid('payload 必须是普通对象');
+  if (!binaryKind(payload.kind)) return invalid('kind 必须是 xlsx 或 mindmap');
+  const pathCheck = stringField('path')(payload);
+  if (pathCheck) return pathCheck;
+  const shaCheck = stringField('expectedSha256')(payload);
+  if (shaCheck) return shaCheck;
+  return payload.data !== undefined && payload.data !== null ? null : invalid('data 缺失');
+};
+const binaryGitignoreSet = object(['untrack'], [booleanField('untrack')]);
+const binaryHostKind = (v: unknown): boolean => v === 'docx' || v === 'xlsx' || v === 'mindmap';
+const binaryHostRef: PayloadValidator = (payload) => {
+  if (!isPlainObject(payload)) return invalid('payload 必须是普通对象');
+  if (!binaryHostKind(payload.kind)) return invalid('kind 必须是 docx / xlsx / mindmap');
+  return stringField('path')(payload);
+};
+const binaryHostSetActive: PayloadValidator = (payload) => {
+  if (payload === null) return null;
+  return binaryHostRef(payload);
+};
+const binaryEditorTheme = object(['theme'], [
+  (p) => {
+    const theme = (p as Record<string, unknown>).theme;
+    return theme === 'light' || theme === 'dark' ? null : invalid('theme 必须是 light 或 dark');
+  },
+]);
+const binaryDocxSave = object(
+  ['path', 'html', 'expectedSha256'],
+  [stringField('path'), stringField('html'), stringField('expectedSha256')],
+);
+
 const stringArrayField =
   (key: string): PayloadValidator =>
   (payload) => {
@@ -438,7 +502,7 @@ const settingsSetVault: PayloadValidator = (payload) => {
   if (typeof payload.patch !== 'object' || payload.patch === null || Array.isArray(payload.patch)) {
     return invalid('patch 必须是对象');
   }
-  const allowedTop = ['editor', 'git'];
+  const allowedTop = ['editor', 'git', 'binary'];
   for (const key of Object.keys(payload.patch as Record<string, unknown>)) {
     if (!allowedTop.includes(key)) return invalid(`patch 未知字段 ${key}`);
   }
@@ -682,6 +746,19 @@ const VALIDATORS: Partial<Record<IpcChannel, PayloadValidator>> = {
   'docx:export': docxExport,
   'docx:openEdit': docxOpenEdit,
   'docx:save': docxSave,
+  // binary（DEV-074，ADR-0015）
+  'binary:import': binaryImport,
+  'binary:read': binaryRead,
+  'binary:save': binarySave,
+  'binary:docx:read': docxPath,
+  'binary:docx:save': binaryDocxSave,
+  'binary:gitignore:set': binaryGitignoreSet,
+  'binary:host:open': binaryHostRef,
+  'binary:host:close': binaryHostRef,
+  'binary:host:flush': binaryHostRef,
+  'binary:host:setActive': binaryHostSetActive,
+  'binary:editorTheme': binaryEditorTheme,
+  // 'binary:gitignore:get' 无 payload，走默认拒绝非空 payload
 };
 
 /** Reject malformed input with a stable code before executing the registered handler. */

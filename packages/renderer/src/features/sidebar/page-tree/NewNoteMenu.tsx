@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { ChevronDown, FilePlus2, FileType2 } from 'lucide-react';
+import { ChevronDown, FilePlus2, FileType2, FileSpreadsheet, GitBranch } from 'lucide-react';
 import { cn } from '../../../lib/utils';
 import type { NewNoteFormat } from './ops';
 
@@ -35,13 +35,22 @@ interface NewNoteMenuProps {
   onCreate(format: NewNoteFormat): void;
   /** 经主进程文件选择器导入 DOCX 原件。 */
   onImportDocx(): void;
+  /** DEV-074：导入 .xlsx 为仓库内副本。 */
+  onImportXlsx(): void;
+  /** DEV-074：导入 .xmind 为仓库内副本。 */
+  onImportXmind(): void;
 }
 
 /**
  * 「新建」下拉按钮：主按钮保持原单一按钮行为（默认格式直接新建），箭头展开格式菜单。
  * 键盘：↑/↓ 打开并在项间移动，Enter 选中，Esc/Tab 关闭（Esc 后焦点回到触发按钮）。
  */
-export function NewNoteMenu({ onCreate, onImportDocx }: NewNoteMenuProps) {
+export function NewNoteMenu({
+  onCreate,
+  onImportDocx,
+  onImportXlsx,
+  onImportXmind,
+}: NewNoteMenuProps) {
   const [open, setOpen] = useState(false);
   const [anchor, setAnchor] = useState({ x: 0, y: 0 });
   const wrapRef = useRef<HTMLDivElement>(null);
@@ -203,7 +212,56 @@ export function NewNoteMenu({ onCreate, onImportDocx }: NewNoteMenuProps) {
             <span className="min-w-0 flex-1">
               <span className="block truncate text-xs">导入 DOCX</span>
               <span className="mt-0.5 block text-[10px] leading-4 text-muted-foreground">
-                原件只读，编辑时创建 Markdown 副本
+                语义级往返：段落/标题/加粗斜体/表格/字体色/对齐保留；页眉页脚、编号样式、上下标不保留
+              </span>
+            </span>
+          </button>
+          <div className="my-1 border-t" />
+          <button
+            type="button"
+            role="menuitem"
+            data-testid="new-note-xlsx"
+            title="导入 Excel 工作簿为仓库内副本"
+            onClick={() => {
+              onImportXlsx();
+              close(true);
+            }}
+            className="flex w-full items-start gap-2 rounded-sm px-2 py-1.5 text-left hover:bg-accent"
+          >
+            <span
+              aria-hidden="true"
+              className="mt-0.5 inline-flex w-7 shrink-0 items-center justify-center rounded bg-muted px-1 py-0.5 text-muted-foreground"
+            >
+              <FileSpreadsheet className="size-3" />
+            </span>
+            <span className="min-w-0 flex-1">
+              <span className="block truncate text-xs">导入 XLSX</span>
+              <span className="mt-0.5 block text-[10px] leading-4 text-muted-foreground">
+                多 sheet、公式、合并单元格可编辑；宏/图表/透视表只读标注
+              </span>
+            </span>
+          </button>
+          <button
+            type="button"
+            role="menuitem"
+            data-testid="new-note-xmind"
+            title="导入 XMind 思维导图为仓库内副本"
+            onClick={() => {
+              onImportXmind();
+              close(true);
+            }}
+            className="flex w-full items-start gap-2 rounded-sm px-2 py-1.5 text-left hover:bg-accent"
+          >
+            <span
+              aria-hidden="true"
+              className="mt-0.5 inline-flex w-7 shrink-0 items-center justify-center rounded bg-muted px-1 py-0.5 text-muted-foreground"
+            >
+              <GitBranch className="size-3" />
+            </span>
+            <span className="min-w-0 flex-1">
+              <span className="block truncate text-xs">导入 XMIND</span>
+              <span className="mt-0.5 block text-[10px] leading-4 text-muted-foreground">
+                文本/树结构/备注/超链接/标签/概要可编辑；外框/关联线只读标注
               </span>
             </span>
           </button>

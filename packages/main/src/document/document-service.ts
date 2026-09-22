@@ -42,7 +42,9 @@ export class DocumentService {
     metadata?: DocumentMetadata,
   ): Promise<DocumentPayload> {
     const ref = this.resolve(documentPath);
-    if (!DOCUMENT_CAPABILITIES[ref.format].write) {
+    // docx/xlsx/mindmap 的写盘走专用二进制通道（binary:*），本方法是 UTF-8 文本通道，
+    // 即使仓库内副本可原地覆写（DEV-074）也不在这里直写。
+    if (ref.format !== 'markdown' || !DOCUMENT_CAPABILITIES[ref.format].write) {
       throw new Error(`文档格式不可直接写入: ${ref.format}`);
     }
     const absolute = this.absolute(ref.path);

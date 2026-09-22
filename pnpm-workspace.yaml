@@ -17,6 +17,7 @@ allowBuilds:
   esbuild: true
 minimumReleaseAgeExclude:
   - lucide-react@1.41.0
+  - '@corbe30/fortune-excel@2.3.4'
 
 overrides:
   '@electron/get': 5.1.0

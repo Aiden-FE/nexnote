@@ -7,6 +7,7 @@ import { invoke } from '../../lib/ipc';
 import { openSettings } from '../../lib/open-settings';
 import { createPage } from '../editor/create-page';
 import { expandAllCurrentHeadingFolds } from '../../editor/expand-all';
+import { importDocxIn, importBinaryIn } from '../sidebar/page-tree/ops';
 import {
   expandCurrentSection,
   foldCurrentSection,
@@ -215,6 +216,31 @@ commandRegistry.register({
   keywords: ['settings', 'preferences', '设置', '首选项'],
   shortcut: '⌘,',
   run: () => openSettings(),
+});
+
+// 二进制文档导入命令入口（另两个入口为页面树「新建」菜单与拖拽导入）。
+commandRegistry.register({
+  id: 'binary.importDocx',
+  title: '导入 DOCX（应用内编辑）',
+  category: '文档',
+  keywords: ['import', 'docx', 'word', '导入', '文档'],
+  run: () => void importDocxIn('').catch(() => undefined),
+});
+
+commandRegistry.register({
+  id: 'binary.importXlsx',
+  title: '导入 XLSX（应用内编辑）',
+  category: '文档',
+  keywords: ['import', 'xlsx', 'excel', '导入', '表格'],
+  run: () => void importBinaryIn('xlsx', '').catch(() => undefined),
+});
+
+commandRegistry.register({
+  id: 'binary.importXmind',
+  title: '导入 XMIND（应用内编辑）',
+  category: '文档',
+  keywords: ['import', 'xmind', 'mindmap', '导入', '思维导图'],
+  run: () => void importBinaryIn('mindmap', '').catch(() => undefined),
 });
 
 commandRegistry.register({

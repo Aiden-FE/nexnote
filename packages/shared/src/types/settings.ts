@@ -75,6 +75,17 @@ export interface VaultSettings {
     /** DEV-073：拉取/同步策略，rebase（默认）或 merge。 */
     syncStrategy: 'rebase' | 'merge';
   };
+  /**
+   * DEV-074 二进制文档编辑器设置（ADR-0015 spike 4）：
+   * 编辑器运行在独立 WebContentsView 进程，每个文档一个，需限制并发。
+   */
+  binary: {
+    /**
+     * docx / xlsx / xmind tab 并发上限（默认 3）。超出时复用已有 tab 或按 LRU
+     * 关闭最早的 tab 来打开新 tab；可在设置内放宽（最多 8，防止内存失控）。
+     */
+    maxConcurrentTabs: number;
+  };
 }
 
 export type GlobalSettingsPatch = {
@@ -88,6 +99,7 @@ export type GlobalSettingsPatch = {
 export type VaultSettingsPatch = {
   editor?: Partial<VaultSettings['editor']>;
   git?: Partial<VaultSettings['git']>;
+  binary?: Partial<VaultSettings['binary']>;
 };
 
 export interface ShortcutExportBundle {
@@ -176,6 +188,10 @@ export function defaultVaultSettings(): VaultSettings {
       defaultBranch: 'main',
       autoSyncIntervalSec: 300,
       syncStrategy: 'rebase',
+    },
+    binary: {
+      // DEV-074 spike 4：WebContentsView 每文档一个进程，默认并发上限 3（可在设置放宽）。
+      maxConcurrentTabs: 3,
     },
   };
 }

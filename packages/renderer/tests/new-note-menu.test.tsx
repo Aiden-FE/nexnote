@@ -91,7 +91,7 @@ afterEach(async () => {
 });
 
 describe('页面树「新建」下拉菜单', () => {
-  it('展开菜单显示两种格式，带徽标与悬停说明', async () => {
+  it('展开菜单显示两种格式与三个导入项，带徽标与悬停说明', async () => {
     const view = await mountPageTree();
     const trigger = view.querySelector<HTMLElement>('[data-testid="tree-new-note-menu"]');
     expect(trigger).not.toBeNull();
@@ -106,10 +106,13 @@ describe('页面树「新建」下拉菜单', () => {
     expect(trigger?.getAttribute('aria-expanded')).toBe('true');
 
     const items = [...menu!.querySelectorAll<HTMLElement>('[role="menuitem"]')];
-    expect(items).toHaveLength(3);
+    expect(items).toHaveLength(5);
     expect(items[0].textContent).toContain('新建文档（块编辑）');
     expect(items[1].textContent).toContain('新建 Markdown（源码模式）');
     expect(items[2].textContent).toContain('导入 DOCX');
+    // DEV-074：xlsx / xmind 导入入口
+    expect(items[3].textContent).toContain('导入 XLSX');
+    expect(items[4].textContent).toContain('导入 XMIND');
     // 格式徽标（块 / MD）
     const badgeOf = (item: HTMLElement): string | null | undefined =>
       item.querySelector<HTMLElement>('[aria-hidden="true"]')?.textContent;

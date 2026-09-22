@@ -3,9 +3,11 @@ import {
   ChevronRight,
   Eye,
   EyeOff,
+  FileSpreadsheet,
   FileText,
   FileType2,
   FileCode2,
+  GitBranch,
   Folder,
   FolderPlus,
   FolderTree,
@@ -25,11 +27,17 @@ import {
   filterTree,
   isMarkdown,
   isDocx,
+  isXlsx,
+  isXmind,
   type TreeNode,
 } from '../../../page-tree/tree-utils';
 import * as ops from './ops';
 import { NewNoteMenu } from './NewNoteMenu';
 import { sidebarPanelRegistry } from '../../../registries';
+
+/** DEV-074：可在页面树显示 / 点击打开的文档（Markdown 与三类二进制）。 */
+const isOpenableDocument = (name: string): boolean =>
+  isMarkdown(name) || isDocx(name) || isXlsx(name) || isXmind(name);
 
 /**
  * 页面树面板（DEV-003）：vault 文件夹树 → .md 页面。
@@ -83,7 +91,7 @@ function PageTreePanel() {
   const visibleEntries = useMemo(
     () =>
       entries.filter(
-        (e) => showAllFiles || e.kind === 'directory' || isMarkdown(e.name) || isDocx(e.name),
+        (e) => showAllFiles || e.kind === 'directory' || isOpenableDocument(e.name),
       ),
     [entries, showAllFiles],
   );
@@ -122,6 +130,19 @@ function PageTreePanel() {
           },
           { kind: 'separator' },
           {
+            label: '导入 DOCX',
+            onSelect: () => run(() => ops.importDocxIn(parentDir)),
+          },
+          {
+            label: '导入 XLSX',
+            onSelect: () => run(() => ops.importBinaryIn('xlsx', parentDir)),
+          },
+          {
+            label: '导入 XMIND',
+            onSelect: () => run(() => ops.importBinaryIn('mindmap', parentDir)),
+          },
+          { kind: 'separator' },
+          {
             label: '重命名',
             hint: 'Enter',
             onSelect: () =>
@@ -152,6 +173,19 @@ function PageTreePanel() {
             label: '新建文件夹',
             onSelect: () => run(async () => void (await ops.createFolderIn('', entries))),
           },
+          { kind: 'separator' },
+          {
+            label: '导入 DOCX',
+            onSelect: () => run(() => ops.importDocxIn('')),
+          },
+          {
+            label: '导入 XLSX',
+            onSelect: () => run(() => ops.importBinaryIn('xlsx', '')),
+          },
+          {
+            label: '导入 XMIND',
+            onSelect: () => run(() => ops.importBinaryIn('mindmap', '')),
+          },
         ];
     setMenu({ x: e.clientX, y: e.clientY, items });
   };
@@ -175,8 +209,8 @@ function PageTreePanel() {
             useUiStore.getState().toggleTreeDir(node.path);
             return;
           }
-          // 所有文档经统一入口按 sidecar / 扩展名分流，避免 Markdown 误入 TipTap。
-          if (isMarkdown(node.name) || isDocx(node.name)) {
+          // 所有文档经统一入口按 sidecar / 扩展名分流，避免 Markdown 误入二进制编辑器。
+          if (isOpenableDocument(node.name)) {
             void run(() => ops.openDocument(node.path, node.format));
           }
         }}
@@ -253,6 +287,8 @@ function PageTreePanel() {
         <NewNoteMenu
           onCreate={(format) => run(() => ops.createNoteIn('', format))}
           onImportDocx={() => run(() => ops.importDocxIn(''))}
+          onImportXlsx={() => run(() => ops.importBinaryIn('xlsx', ''))}
+          onImportXmind={() => run(() => ops.importBinaryIn('mindmap', ''))}
         />
         <button
           type="button"
@@ -316,7 +352,13 @@ function PageTreePanel() {
           e.preventDefault();
           setDragOverDir(null);
           const from = e.dataTransfer.getData('application/nexnote-path');
-          if (from.length > 0) run(() => ops.moveEntry(from, ''));
+          if (from.length > 0) {
+            run(() => ops.moveEntry(from, ''));
+            return;
+          }
+          // DEV-074：外部文件拖入 → 按扩展名导入为仓库内副本（docx/xlsx/xmind）。
+          const file = e.dataTransfer.files?.[0];
+          if (file) run(() => ops.importDroppedFile(file, ''));
         }}
       >
         {status === 'loading' && <p className="p-2 text-xs text-muted-foreground">加载中…</p>}
@@ -453,7 +495,13 @@ function TreeRow(p: TreeRowProps) {
       {!isDir && isDocx(p.node.name) && (
         <FileType2 className="size-3.5 shrink-0 text-primary/80" aria-label="DOCX 文档" />
       )}
-      {!isDir && !isMarkdown(p.node.name) && !isDocx(p.node.name) && (
+      {!isDir && isXlsx(p.node.name) && (
+        <FileSpreadsheet className="size-3.5 shrink-0 text-primary/80" aria-label="XLSX 文档" />
+      )}
+      {!isDir && isXmind(p.node.name) && (
+        <GitBranch className="size-3.5 shrink-0 text-primary/80" aria-label="XMIND 文档" />
+      )}
+      {!isDir && !isOpenableDocument(p.node.name) && (
         <FileText className="size-3.5 shrink-0 text-muted-foreground/50" />
       )}
       {p.renaming ? (

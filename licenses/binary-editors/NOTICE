@@ -1,0 +1,22 @@
+Third-Party Software Notice: In-App Binary Editors (DEV-074, ADR-0015)
+
+NexNote bundles the following permissively-licensed open-source components to
+provide in-app editing of .docx / .xlsx / .xmind documents:
+
+  Package                      Version   License
+  ---------------------------  --------  -------------
+  @fortune-sheet/core          1.0.4     MIT
+  @fortune-sheet/react         1.0.4     MIT
+  @corbe30/fortune-excel       2.3.4     MIT
+  docx (dolanmiu/docx)         9.7.1     MIT
+  simple-mind-map              0.14.0    MIT
+  exceljs                      4.4.0     MIT
+  jszip                        3.10.2    MIT OR GPL-3.0-or-later
+  xml-js                       1.6.11    MIT
+  mammoth                      1.12.3    BSD-2-Clause
+
+jszip is dual-licensed; NexNote uses it under the MIT license.
+
+Mammoth is distributed under the BSD 2-Clause License (see BSD-2-CLAUSE.txt).
+All other listed components are distributed under the MIT License
+(see MIT.txt). Each copyright holder retains their respective copyright.

@@ -1,5 +1,15 @@
 import { useRef, useState } from 'react';
-import { FileText, FileType2, Home, Network, Plus, Settings, X } from 'lucide-react';
+import {
+  FileSpreadsheet,
+  FileText,
+  FileType2,
+  GitBranch,
+  Home,
+  Network,
+  Plus,
+  Settings,
+  X,
+} from 'lucide-react';
 import { useTabStore, type TabKind } from '../stores/tab-store';
 import { ContextMenu, type ContextMenuItem } from '../components/ContextMenu';
 import { invoke } from '../lib/ipc';
@@ -10,6 +20,8 @@ const kindIcon: Record<TabKind, typeof Home> = {
   welcome: Home,
   page: FileText,
   docx: FileType2,
+  xlsx: FileSpreadsheet,
+  mindmap: GitBranch,
   graph: Network,
   settings: Settings,
 };

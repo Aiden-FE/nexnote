@@ -24,6 +24,8 @@ import type { SettingsChannelMap } from './channels/settings';
 import { SETTINGS_CHANNELS } from './channels/settings';
 import type { DocxChannelMap } from './channels/docx';
 import { DOCX_CHANNELS } from './channels/docx';
+import type { BinaryChannelMap } from './channels/binary';
+import { BINARY_CHANNELS } from './channels/binary';
 
 /**
  * 全量 IPC 契约：主进程 handler 与渲染层 client 共用的单一事实来源。
@@ -45,7 +47,8 @@ export interface IpcContract
     SkillsChannelMap,
     IndexChannelMap,
     SettingsChannelMap,
-    DocxChannelMap {}
+    DocxChannelMap,
+    BinaryChannelMap {}
 
 /** 运行时已知的全部通道名（preload 侧做白名单校验用）。 */
 export const IPC_CHANNELS: readonly string[] = [
@@ -62,6 +65,7 @@ export const IPC_CHANNELS: readonly string[] = [
   ...INDEX_CHANNELS,
   ...SETTINGS_CHANNELS,
   ...DOCX_CHANNELS,
+  ...BINARY_CHANNELS,
 ];
 
 export type IpcChannel = keyof IpcContract & string;

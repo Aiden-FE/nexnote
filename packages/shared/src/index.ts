@@ -14,6 +14,8 @@ export * from './markdown/wikilink';
 export * from './markdown/links';
 export * from './markdown/code-languages';
 export * from './editor/editor-actions';
+export { htmlToBlocks } from './editor/docx-blocks';
+export type { DocxBlock, DocxRun, DocxAlignment } from './editor/docx-blocks';
 // Settings utils（纯函数，主/渲染共用）
 export { mergeGlobalPatch, mergeVaultPatch, normalizeShortcut } from './settings/settings-utils';
 // IPC
@@ -31,6 +33,7 @@ export type * from './ipc/channels/plugins';
 export type * from './ipc/channels/index';
 export type * from './ipc/channels/settings';
 export type * from './ipc/channels/docx';
+export type * from './ipc/channels/binary';
 // 运行时值
 export {
   ok,

@@ -1,0 +1,39 @@
+/* DEV-074 二进制编辑器宿主全局样式（独立 WebContentsView 页面）。 */
+html,
+body,
+#editor-root {
+  height: 100%;
+  margin: 0;
+  font-family:
+    system-ui,
+    -apple-system,
+    'Segoe UI',
+    sans-serif;
+}
+
+/* docx 编辑器 prose 基础排版（与块编辑器视觉一致，但独立作用域避免污染主窗口）。 */
+.docx-editor-prose .tiptap {
+  outline: none;
+  min-height: 100%;
+  font-size: 15px;
+  line-height: 1.7;
+  color: #1f2328;
+}
+
+.docx-editor-prose .tiptap h1 { font-size: 1.6em; font-weight: 700; margin: 0.6em 0 0.3em; }
+.docx-editor-prose .tiptap h2 { font-size: 1.4em; font-weight: 700; margin: 0.6em 0 0.3em; }
+.docx-editor-prose .tiptap h3 { font-size: 1.2em; font-weight: 600; margin: 0.5em 0 0.25em; }
+.docx-editor-prose .tiptap p { margin: 0.35em 0; }
+
+.docx-editor-prose .tiptap table {
+  border-collapse: collapse;
+  width: 100%;
+  margin: 0.6em 0;
+}
+.docx-editor-prose .tiptap td,
+.docx-editor-prose .tiptap th {
+  border: 1px solid #d0d7de;
+  padding: 4px 8px;
+  min-width: 48px;
+  vertical-align: top;
+}

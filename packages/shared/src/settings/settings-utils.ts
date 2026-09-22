@@ -95,7 +95,12 @@ function normalizeNetwork(
 export function mergeVaultPatch(base: VaultSettings, patch: VaultSettingsPatch): VaultSettings {
   const editor = patch.editor ? { ...base.editor, ...patch.editor } : base.editor;
   const git = patch.git ? { ...base.git, ...patch.git } : base.git;
-  const result: VaultSettings = { editor: pruneUndefined(editor), git: pruneUndefined(git) };
+  const binary = patch.binary ? { ...base.binary, ...patch.binary } : base.binary;
+  const result: VaultSettings = {
+    editor: pruneUndefined(editor),
+    git: pruneUndefined(git),
+    binary: pruneUndefined(binary),
+  };
   return {
     editor: {
       ...result.editor,
@@ -125,6 +130,10 @@ export function mergeVaultPatch(base: VaultSettings, patch: VaultSettingsPatch):
       defaultBranch: sanitizeBranchName(result.git.defaultBranch)
         ? result.git.defaultBranch
         : base.git.defaultBranch,
+    },
+    binary: {
+      ...result.binary,
+      maxConcurrentTabs: clampInt(result.binary.maxConcurrentTabs, 1, 8, base.binary.maxConcurrentTabs),
     },
   };
 }

@@ -336,6 +336,13 @@ export const SEARCH_ENTRIES: SettingSearchEntry[] = [
     keywords: ['git', 'sync', 'rebase', 'merge', '同步', '策略'],
     scope: 'vault',
   },
+  {
+    id: 'binary.maxConcurrentTabs',
+    sectionId: 'editor',
+    title: '二进制文档编辑器并发上限',
+    keywords: ['binary', 'docx', 'xlsx', 'xmind', 'tab', '并发', '编辑器', 'DEV-074'],
+    scope: 'vault',
+  },
 ];
 
 export function mergeVaultSettings(base: VaultSettings, patch: VaultSettingsPatch): VaultSettings {

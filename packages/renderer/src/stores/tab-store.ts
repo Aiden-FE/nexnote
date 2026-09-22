@@ -7,7 +7,7 @@ import {
   titleFromPath,
 } from '../editor/title-sync';
 
-export type TabKind = 'welcome' | 'page' | 'docx' | 'graph' | 'settings';
+export type TabKind = 'welcome' | 'page' | 'docx' | 'xlsx' | 'mindmap' | 'graph' | 'settings';
 export type EditorMode = 'block' | 'source';
 export type DocumentFormat = 'native-block' | 'markdown';
 export type MarkdownView = 'source' | 'split' | 'preview';
@@ -44,6 +44,13 @@ export interface WorkspaceState {
   openTab(tab: { kind: TabKind; title: string; pagePath?: string }): TabDescriptor;
   openPageTab(pagePath: string, title?: string): TabDescriptor;
   openDocxTab(pagePath: string, title?: string): TabDescriptor;
+  /** 二进制 tab（DEV-074）：并发上限 maxConcurrent（默认 3），超出按 LRU 关闭最早 tab。 */
+  openBinaryTab(
+    pagePath: string,
+    title: string | undefined,
+    kind: 'docx' | 'xlsx' | 'mindmap',
+    maxConcurrent?: number,
+  ): TabDescriptor;
   updateTab(
     tabId: string,
     patch: {
@@ -80,6 +87,12 @@ export interface WorkspaceState {
   togglePreview(tabId: string, visible?: boolean): void;
   retargetTabs(fromPath: string, toPath: string, title: string): void;
   closeTabsForPath(removedPath: string): void;
+}
+
+/** DEV-074：二进制文档 tab 类型（docx/xlsx/mindmap），共享 WebContentsView 进程与并发上限。 */
+export const BINARY_TAB_KINDS = ['docx', 'xlsx', 'mindmap'] as const;
+export function isBinaryKind(kind: TabKind): kind is (typeof BINARY_TAB_KINDS)[number] {
+  return (BINARY_TAB_KINDS as readonly string[]).includes(kind);
 }
 
 let tabSeq = 0;
@@ -136,6 +149,29 @@ export const useTabStore = create<WorkspaceState>()((set, get) => ({
     }
     const fallbackTitle = title ?? pagePath.slice(pagePath.lastIndexOf('/') + 1);
     return get().openTab({ kind: 'docx', title: fallbackTitle, pagePath });
+  },
+
+  /**
+   * 二进制文档 tab（DEV-074，ADR-0015 spike 4）：编辑器运行在独立 WebContentsView，
+   * 每文档一个进程，内存峰值显著。并发上限默认 3（可在设置内放宽），超出时按 LRU
+   * 关闭最早的 tab 来打开新的——即「最近使用的保留，最久未使用的先关」。
+   */
+  openBinaryTab(pagePath, title, kind, maxConcurrent = 3) {
+    const existing = get().tabs.find((tab) => tab.kind === kind && tab.pagePath === pagePath);
+    if (existing) {
+      get().setActiveTab(existing.id);
+      return existing;
+    }
+    const fallbackTitle = title ?? pagePath.slice(pagePath.lastIndexOf('/') + 1);
+    // 已打开的二进制 tab（docx/xlsx/mindmap 全部计入并发）。
+    const binaryTabs = get().tabs.filter((tab) => isBinaryKind(tab.kind));
+    if (binaryTabs.length >= Math.max(1, maxConcurrent)) {
+      // LRU：createdAt 最早的 tab 视为最久未使用（tab 无独立 lastUsed 字段；打开即激活，
+      // 因此按创建顺序近似 LRU）。关闭最早的来打开新的。
+      const oldest = binaryTabs.reduce((a, b) => (a.createdAt <= b.createdAt ? a : b));
+      get().closeTab(oldest.id);
+    }
+    return get().openTab({ kind, title: fallbackTitle, pagePath });
   },
 
   updateTab(tabId, patch) {
@@ -325,6 +361,15 @@ export function openPage(pagePath: string, title?: string): TabDescriptor {
 
 export function openDocx(pagePath: string, title?: string): TabDescriptor {
   return useTabStore.getState().openDocxTab(pagePath, title);
+}
+
+/** DEV-074：二进制 tab 打开入口（含 LRU 并发上限；maxConcurrent 来自 vault 设置）。 */
+export function openBinary(
+  pagePath: string,
+  kind: 'docx' | 'xlsx' | 'mindmap',
+  maxConcurrent?: number,
+): TabDescriptor {
+  return useTabStore.getState().openBinaryTab(pagePath, undefined, kind, maxConcurrent);
 }
 
 export function getTabStore() {
