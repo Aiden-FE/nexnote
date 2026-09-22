@@ -1,0 +1,39 @@
+{
+  "schema": "nexnote-release-qa/v1",
+  "repository": "Aiden-FE/nexnote",
+  "tag": "v0.0.23",
+  "commit": "2de276e1aea09875a609bac8a24521b597b383d7",
+  "channel": "stable",
+  "allRequiredChecksPassed": true,
+  "scope": "v0.0.23-candidate",
+  "machineChecks": {
+    "typecheck": "passed (pnpm -r typecheck on master: shared, plugin-api, website, kernel, renderer all Done at 2de276e)",
+    "lint": "passed (pnpm lint: 0 errors, 7 pre-existing import()-style warnings unchanged from earlier baselines)",
+    "tests": "1563 passed | 2 skipped (1565) on local macOS run at eef8dd6/2de276e; full test files 168 passed | 1 skipped (169)",
+    "build": "passed (electron-vite build; renderer asset bundle emitted successfully)",
+    "releaseConfig": "31/31 passed (node scripts/verify-release-config.mjs)",
+    "changedFormat": "covered by release config gate",
+    "diffCheck": "covered by release config gate",
+    "packagedSmoke": "deferred to candidate pipeline: tag push triggers matrix build + packaged macOS smoke bound to tag commit 2de276e with NEXNOTE_SMOKE_EXPECTED_VERSION=0.0.23"
+  },
+  "candidateContents": {
+    "tickets": "DEV-082 implemented, tested, merged to master (eef8dd6); version bump to 0.0.23 in 2de276e",
+    "highlights": [
+      "DEV-082: single-user vault auto-rebase self-deadlock fix - commitAuto/commitManual now refuse to run while a rebase or merge is paused, which previously stacked '保存知识库布局' commits on top of the .nexnote/config.json conflict and scrambled the todo order",
+      "DEV-082: new doctor repair action 'abort-rebase-or-merge' bound by the existing prepare/execute TOCTOU ticket pipeline; runs git rebase --abort (or merge --abort) without touching worktree files",
+      "DEV-082: GitStatus now exposes rebaseInProgress; status bar shows an amber sync-in-progress badge and the doctor dialog offers a one-click abort when a rebase is paused",
+      "DEV-082: layout auto-commits with no remaining file changes are skipped, reducing recurring empty config.json commits",
+      "Hardening: two pre-existing compile errors where 'STATUS_FAILED' was missing from the doctor error-code union are fixed; NO_OPERATION/STATUS_FAILED added"
+    ]
+  },
+  "notRun": [
+    "matrix signed builds for mac-arm64/mac-x64/windows-x64/linux-x64 (run by candidate pipeline after tag push)",
+    "packaged macOS smoke in CI (run by candidate pipeline smoke job)",
+    "Windows packaged smoke and Linux packaged smoke",
+    "Windows/Ubuntu physical installation verification",
+    "macOS notarization / Gatekeeper verification (Ad hoc signing only)",
+    "public N-1 to v0.0.23 network upgrade end-to-end verification",
+    "release-qa Environment required-reviewer approval (operational gate before publish)",
+    "post-publication 24-hour monitoring"
+  ]
+}
