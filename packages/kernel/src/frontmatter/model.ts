@@ -414,3 +414,29 @@ export function getString(data: FrontmatterData, key: string, fallback = ''): st
   if (Array.isArray(v)) return v.join(', ');
   return fallback;
 }
+
+/**
+ * DEV-078：把 Date / ISO 字符串格式化为本地时区的 `YYYY-MM-DD HH:mm:ss` 展示串。
+ * - null/undefined/空串 → ''（调用方决定回退文案）。
+ * - 解析失败 → 原样 String(value)，不抛错。
+ * - 存储格式不变：本函数只做展示格式化，禁止写盘路径使用。
+ */
+export function formatDisplayDateTime(value: Date | string | null | undefined): string {
+  if (value === null || value === undefined) return '';
+  let date: Date | null = null;
+  if (value instanceof Date) {
+    date = value;
+  } else if (typeof value === 'string') {
+    if (value.trim().length === 0) return '';
+    const parsed = new Date(value);
+    if (!Number.isNaN(parsed.getTime())) date = parsed;
+    else return value;
+  } else {
+    return String(value);
+  }
+  const pad = (n: number): string => String(n).padStart(2, '0');
+  return (
+    `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())} ` +
+    `${pad(date.getHours())}:${pad(date.getMinutes())}:${pad(date.getSeconds())}`
+  );
+}

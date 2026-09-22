@@ -24,6 +24,7 @@ export { Frontmatter, splitFrontmatter } from './extensions/frontmatter';
 export {
   assertSafeFrontmatterKey,
   fieldTypeOf,
+  formatDisplayDateTime,
   getList,
   getString,
   isStandardField,

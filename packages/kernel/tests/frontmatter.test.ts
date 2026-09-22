@@ -4,6 +4,7 @@ import {
   fieldTypeOf,
   getList,
   getString,
+  formatDisplayDateTime,
   isReadonlyStandardField,
   isStandardField,
   parseFrontmatterYaml,
@@ -225,5 +226,29 @@ describe('辅助函数', () => {
     expect(getString({ title: 'T' }, 'title')).toBe('T');
     expect(getString({ count: 3 }, 'count')).toBe('3');
     expect(getString({}, 'missing', 'fallback')).toBe('fallback');
+  });
+});
+
+describe('DEV-078 formatDisplayDateTime', () => {
+  it('Date → 本地时区 YYYY-MM-DD HH:mm:ss（带前导 0）', () => {
+    const d = new Date(2026, 0, 5, 3, 4, 9); // 本地 2026-01-05 03:04:09
+    expect(formatDisplayDateTime(d)).toBe('2026-01-05 03:04:09');
+  });
+
+  it('可解析 ISO 字符串 → 本地时区展示', () => {
+    // 用 UTC 0 点 → 本地（取决于测试时区）。只断言格式 YYYY-MM-DD HH:mm:ss。
+    const out = formatDisplayDateTime('2026-09-22T10:00:00.000Z');
+    expect(out).toMatch(/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/);
+  });
+
+  it('null / undefined / 空串 → 返回空串（调用方决定回退）', () => {
+    expect(formatDisplayDateTime(null)).toBe('');
+    expect(formatDisplayDateTime(undefined)).toBe('');
+    expect(formatDisplayDateTime('')).toBe('');
+    expect(formatDisplayDateTime('   ')).toBe('');
+  });
+
+  it('不可解析的字符串原样回退，不抛错', () => {
+    expect(formatDisplayDateTime('not-a-date')).toBe('not-a-date');
   });
 });

@@ -2,7 +2,13 @@ import { useMemo } from 'react';
 import { FileText, Gauge, Link2, ListOrdered, Calendar, FolderOpen, Braces } from 'lucide-react';
 import type { ConfidenceResult } from '@nexnote/shared';
 import type { FrontmatterData } from '@nexnote/kernel';
-import { getList, getString, isStandardField, type FrontmatterValue } from '@nexnote/kernel';
+import {
+  formatDisplayDateTime,
+  getList,
+  getString,
+  isStandardField,
+  type FrontmatterValue,
+} from '@nexnote/kernel';
 import { invoke } from '../../lib/ipc';
 import { pageStatistics } from './frontmatter-utils';
 
@@ -189,7 +195,8 @@ function InfoRow({ label, children }: { label: string; children: React.ReactNode
 function FrontmatterValueDisplay({ value }: { value: FrontmatterValue }) {
   if (value === null) return <span className="text-muted-foreground">null</span>;
   if (value instanceof Date) {
-    return <span className="font-mono text-[11px]">{value.toISOString()}</span>;
+    // DEV-078：展示本地时区可读时间，存储仍为 ISO
+    return <span className="font-mono text-[11px]">{formatDisplayDateTime(value)}</span>;
   }
   if (Array.isArray(value)) {
     return (
