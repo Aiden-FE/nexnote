@@ -128,7 +128,7 @@ describe('fs:createNote frontmatter 保护（DEV-077）', () => {
     expect(onDisk).not.toContain('created:');
   });
 
-  it('content 不含 frontmatter 时仍正常注入 created（无回归）', async () => {
+  it('content 不含 frontmatter 时正文仍保持纯 Markdown，创建时间由 sidecar 维护', async () => {
     const ipc = new FakeIpcMain();
     const { services, session } = makeServices();
     registerAllIpcHandlers(ipc, services);
@@ -143,6 +143,6 @@ describe('fs:createNote frontmatter 保护（DEV-077）', () => {
     expect(result.ok).toBe(true);
 
     const onDisk = await readFile(path.join(tmp, 'plain.md'), 'utf8');
-    expect(onDisk).toMatch(/^---\ncreated: .+\n---\n/);
+    expect(onDisk).toBe('# plain\n\n');
   });
 });

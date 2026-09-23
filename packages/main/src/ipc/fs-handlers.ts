@@ -7,15 +7,6 @@ import { MetadataStore } from '../document/metadata-store';
 import { isDocumentPath } from '../document/document-domain';
 import type { IpcServices } from './services';
 
-/**
- * 检测 Markdown 文本是否以 YAML frontmatter 头开始。
- * main 进程不应反向依赖 kernel（分层：kernel 属于渲染层），因此这里内联最小判定，
- * 与 kernel 的 splitFrontmatter 同一规则。
- */
-function hasFrontmatterHeader(content: string): boolean {
-  return /^---[ \t]*\n[\s\S]*?\n---(?=\n|$)/.test(content);
-}
-
 /** fs:* — vault 沙箱文件能力。 */
 export function registerFsHandlers(registrar: IpcRegistrar): void {
   const recordWrite = async (services: IpcServices, summary: string): Promise<void> => {
@@ -144,11 +135,8 @@ export function registerFsHandlers(registrar: IpcRegistrar): void {
     async ({ parentDir, name, content, format }, services): Promise<Result<FileInfo>> => {
       const root = services.vaultSession.getCurrent()?.root;
       const sidecar = root ? new MetadataStore(root) : undefined;
-      // DEV-077：新建笔记自动写入 created（当前时间）；不写 updated（首次实质编辑才刷新）。
-      // 但当 content 已包含 frontmatter（外部导入 / smoke fixture 传入的预格式内容），
-      // 不要叠加 created，避免落盘后出现 `---\ncreated:...\n---\n\n---\ntitle:...\n` 这种双 YAML 头，
-      // 那会让 frontmatter 解析器只识别第一个头、原始 title 被当成正文（v0.0.26 smoke 回归）。
-      const hasFrontmatter = hasFrontmatterHeader(content ?? '');
+      // 新建文档正文保持纯 Markdown；产品创建时间由 sidecar metadata 维护。
+      // 当用户在属性面板添加 created/updated 字段后，DEV-077 保存链路才负责维护它们。
       const result = await createNote(
         services.fs,
         parentDir,
@@ -156,7 +144,6 @@ export function registerFsHandlers(registrar: IpcRegistrar): void {
         content,
         sidecar,
         format ?? 'native-block',
-        hasFrontmatter ? undefined : { created: new Date() },
       );
       await recordWrite(services, `创建笔记 ${result.path}`);
       return ok(result);
