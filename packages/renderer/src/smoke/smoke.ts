@@ -1658,7 +1658,7 @@ export async function runSmokeIfEnabled(): Promise<void> {
     );
     await capture('04b-block-highlight');
 
-    // ── 5b. DEV-025 字段目录：7 标准字段可见、已添加禁用、面板写回 YAML 头 ──
+    // ── 5b. DEV-025 字段目录：6 标准字段可见（DEV-080 移除 type）、已添加禁用、面板写回 YAML 头 ──
     // 前一场景打开的是 native-block 代码高亮页；字段目录只属于 Markdown 源码页。
     await openDocumentTab('源码模式改名页.md');
     await waitFor(
@@ -1675,9 +1675,9 @@ export async function runSmokeIfEnabled(): Promise<void> {
     await waitFor(() => !!document.querySelector('[data-testid="frontmatter-panel"]'));
     document.querySelector<HTMLButtonElement>('[data-testid="add-field-trigger"]')?.click();
     check(
-      '字段目录打开：7 个标准字段全部可见',
+      '字段目录打开：6 个标准字段全部可见',
       (await waitFor(() => !!document.querySelector('[data-testid="field-catalog"]'))) &&
-        document.querySelectorAll('[data-testid="field-catalog-item"]').length === 7,
+        document.querySelectorAll('[data-testid="field-catalog-item"]').length === 6,
     );
     const titleReady = await waitFor(() => {
       const item = document.querySelector<HTMLButtonElement>(
