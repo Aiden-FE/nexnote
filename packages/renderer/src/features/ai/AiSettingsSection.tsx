@@ -22,7 +22,7 @@ import {
 } from 'lucide-react';
 
 /**
- * DEV-075：分功能指定模型的候选缓存（模块级 Map，同一 Profile 只拉一次；
+ * 分功能指定模型的候选缓存（模块级 Map，同一 Profile 只拉一次；
  * 「刷新」按钮可清除）。失败/空列表按 profileId 缓存为空数组并给出提示。
  */
 const MODEL_CANDIDATES_CACHE = new Map<string, string[]>();
@@ -428,7 +428,7 @@ function assignmentModelHint(
 }
 
 /**
- * DEV-075：分功能指定模型的 Combobox。
+ * 分功能指定模型的 Combobox。
  * - 聚焦时拉取 /models（同一 profile 模块级缓存）；候选以 <datalist> 展示，
  *   选中或自由输入都可以。
  * - 仅在 blur（值与初始值不同）/ Enter / 候选点选时 commit；逐字符 onChange 不触发 IPC。

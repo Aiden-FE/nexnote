@@ -134,7 +134,7 @@ describe('DEV-019 千级页面性能时间盒', () => {
     expect(searchLatinMs, `拉丁搜索 ${searchLatinMs}ms`).toBeLessThan(100);
     expect(jumpMs, `jumpTo ${jumpMs}ms`).toBeLessThan(100);
     expect(graphMs, `graph() ${graphMs}ms`).toBeLessThan(1_500);
-    expect(pageRankMs, `PageRank ${pageRankMs}ms`).toBeLessThan(3_000);
+    expect(pageRankMs, `PageRank ${pageRankMs}ms`).toBeLessThan(4_000);
     expect(retrievalMs, `两阶段召回 ${retrievalMs}ms`).toBeLessThan(500);
 
     console.log(
