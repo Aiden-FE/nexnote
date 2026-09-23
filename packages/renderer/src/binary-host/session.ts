@@ -56,12 +56,15 @@ function emit(): void {
   for (const listener of listeners) listener(session);
 }
 
+function settleFlushesIfIdle(): void {
+  if (saving || dirtyPayload !== null || saveTimer !== null || pendingSaves > 0) return;
+  const resolvers = flushResolvers.splice(0);
+  for (const resolve of resolvers) resolve();
+}
+
 function saveCompleted(): void {
   pendingSaves = Math.max(0, pendingSaves - 1);
-  if (pendingSaves === 0) {
-    const resolvers = flushResolvers.splice(0);
-    for (const resolve of resolvers) resolve();
-  }
+  settleFlushesIfIdle();
 }
 
 async function persistNow(): Promise<void> {
@@ -119,6 +122,17 @@ async function persistNow(): Promise<void> {
     saving = false;
     saveCompleted();
     emit();
+    // 新编辑可能在上一笔保存进行中抵达。若正在 flush（resolver 存在），立即排空队列，
+    // 不等 debounce，确保关闭 tab / 窗口的 round-trip 不会留下未写入的 dirtyPayload。
+    if (flushResolvers.length > 0 && dirtyPayload !== null) {
+      if (saveTimer) {
+        clearTimeout(saveTimer);
+        saveTimer = null;
+      }
+      void persistNow();
+    } else {
+      settleFlushesIfIdle();
+    }
   }
 }
 
@@ -184,18 +198,18 @@ async function loadDocument(kind: SessionState['kind'], path: string): Promise<S
 /** 等待所有 pending 写入完成（主进程 flush 指令对应）。 */
 export function flushPending(): Promise<void> {
   return new Promise((resolve) => {
-    // 先冲刷当前 debounce。
+    // 先冲刷当前 debounce，并把 resolver 挂入队列。persistNow 若正忙会立即返回；
+    // 当前保存 finally 会看到 resolver 并继续排空期间新增的 dirtyPayload。
     if (saveTimer) {
       clearTimeout(saveTimer);
       saveTimer = null;
     }
-    void persistNow().then(() => {
-      if (pendingSaves === 0) {
-        resolve();
-      } else {
-        flushResolvers.push(resolve);
-      }
-    });
+    flushResolvers.push(resolve);
+    if (!saving && dirtyPayload !== null) {
+      void persistNow();
+    } else {
+      settleFlushesIfIdle();
+    }
   });
 }
 
