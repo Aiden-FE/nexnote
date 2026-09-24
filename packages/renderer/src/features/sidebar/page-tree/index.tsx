@@ -243,7 +243,11 @@ function PageTreePanel() {
           const from = e.dataTransfer.getData('application/nexnote-path');
           if (from.length > 0 && from !== node.path) {
             run(() => ops.moveEntry(from, node.path));
+            return;
           }
+          // 外部文件拖入目录 → 导入到该目录（与树根拖放同规则）。
+          const file = e.dataTransfer.files?.[0];
+          if (file) run(() => ops.importDroppedFile(file, node.path));
         }}
       />,
     );

@@ -20,6 +20,7 @@ import {
 } from './page-source-io';
 import { createSourceEditor, type SourceEditorHandle } from './codemirror-host';
 import { usePluginStore } from '../../features/plugins/plugin-store';
+import { importDroppedFile } from '../../features/sidebar/page-tree/ops';
 import {
   buildDispatchableBlockCommands,
   buildPluginCommandDefs,
@@ -1032,6 +1033,20 @@ export function SourceModeView({ tab }: { tab: TabDescriptor }) {
       data-testid="source-mode-view"
       data-path={displayPath}
       className="relative flex h-full min-h-0 flex-col"
+      onDragOver={(event) => {
+        if (!event.dataTransfer.files?.length) return;
+        event.preventDefault();
+        event.dataTransfer.dropEffect = 'copy';
+      }}
+      onDrop={(event) => {
+        const file = event.dataTransfer.files?.[0];
+        if (!file) return;
+        event.preventDefault();
+        event.stopPropagation();
+        void importDroppedFile(file).catch((error: unknown) => {
+          setSwitchError(error instanceof Error ? error.message : String(error));
+        });
+      }}
     >
       <EditorToolbar
         label="编辑器工具栏"

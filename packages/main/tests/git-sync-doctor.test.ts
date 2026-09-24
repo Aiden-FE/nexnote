@@ -24,6 +24,7 @@ type FakeGit = GitService & {
   commitManual: ReturnType<typeof vi.fn>;
   pull: ReturnType<typeof vi.fn>;
   push: ReturnType<typeof vi.fn>;
+  doctorFingerprint: ReturnType<typeof vi.fn>;
 };
 function fakeGit(status: Partial<GitStatus> = {}): FakeGit {
   return {

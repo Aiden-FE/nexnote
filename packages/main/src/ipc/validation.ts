@@ -205,6 +205,20 @@ const binaryHostSetActive: PayloadValidator = (payload) => {
   if (payload === null) return null;
   return binaryHostRef(payload);
 };
+const binaryHostSetBounds: PayloadValidator = (payload) => {
+  const refCheck = binaryHostRef(payload);
+  if (refCheck) return refCheck;
+  const bounds = (payload as { bounds?: unknown }).bounds;
+  if (bounds === null) return null;
+  if (!isPlainObject(bounds)) return invalid('bounds 必须是矩形对象或 null');
+  for (const key of ['x', 'y', 'width', 'height'] as const) {
+    const value = (bounds as Record<string, unknown>)[key];
+    if (typeof value !== 'number' || !Number.isFinite(value) || value < 0) {
+      return invalid(`bounds.${key} 必须是非负有限数`);
+    }
+  }
+  return null;
+};
 const binaryEditorTheme = object(['theme'], [
   (p) => {
     const theme = (p as Record<string, unknown>).theme;
@@ -756,7 +770,9 @@ const VALIDATORS: Partial<Record<IpcChannel, PayloadValidator>> = {
   'binary:host:open': binaryHostRef,
   'binary:host:close': binaryHostRef,
   'binary:host:flush': binaryHostRef,
+  'binary:host:ready': () => null,
   'binary:host:setActive': binaryHostSetActive,
+  'binary:host:setBounds': binaryHostSetBounds,
   'binary:editorTheme': binaryEditorTheme,
   // 'binary:gitignore:get' 无 payload，走默认拒绝非空 payload
 };

@@ -20,6 +20,7 @@ import type { SecretVault } from '../src/ai/secret-store';
 import { SettingsService } from '../src/settings/settings-service';
 import { VaultOperationsController } from '../src/vault/vault-operations-controller';
 import { VaultCloneController } from '../src/vault/vault-clone-controller';
+import { BinaryEditorHostManager } from '../src/binary/binary-editor-host';
 
 /** DEV-077 smoke 回归：fs:createNote 在 content 已含 frontmatter 时不应叠加 created。 */
 
@@ -81,6 +82,7 @@ function makeServices(): { services: IpcServices; session: VaultSession } {
     ai,
     agent: {} as never,
     git,
+    binaryEditors: new BinaryEditorHostManager(),
     dialogs: { pickDirectory: async () => null, pickFile: async () => null },
     plugins: new PluginService({ hostVersion: '0.1.0' }),
     skills: new SkillService({

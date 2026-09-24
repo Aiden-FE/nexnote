@@ -1,6 +1,7 @@
 import { useEffect } from 'react';
+import { invoke } from '../lib/ipc';
 import { TabStrip } from '../tabs/TabStrip';
-import { useTabStore, type TabDescriptor } from '../stores/tab-store';
+import { useTabStore, isBinaryKind, type TabDescriptor } from '../stores/tab-store';
 import { WelcomePage } from '../pages/WelcomePage';
 import { PlaceholderPage } from '../pages/PlaceholderPage';
 import { SettingsPage } from '../pages/SettingsPage';
@@ -46,6 +47,19 @@ export function SplitView() {
   const tabs = useTabStore((state) => state.tabs);
   const activeTabId = useTabStore((state) => state.activeTabId);
   const activeTab = tabs.find((tab) => tab.id === activeTabId) ?? null;
+  // DEV-074：所有 binary tab 都保持稳定位置；只切换 wrapper 的可见性，避免 React 在 active/hidden
+  // 两个父树之间搬组件而导致 WebContentsView 反复 close/open。宿主激活只由当前 active tab 驱动。
+  const openBinaryTabs = tabs.filter((tab) => isBinaryKind(tab.kind));
+  useEffect(() => {
+    if (activeTab && isBinaryKind(activeTab.kind) && activeTab.pagePath) {
+      void invoke('binary:host:setActive', {
+        kind: activeTab.kind,
+        path: activeTab.pagePath,
+      }).catch(() => undefined);
+    } else {
+      void invoke('binary:host:setActive', null).catch(() => undefined);
+    }
+  }, [activeTab]);
 
   return (
     <section
@@ -54,13 +68,26 @@ export function SplitView() {
     >
       <TabStrip />
       <div className="min-h-0 flex-1 overflow-auto">
-        {activeTab ? (
+        {activeTab && !isBinaryKind(activeTab.kind) ? (
           <TabContent tab={activeTab} />
+        ) : activeTab ? (
+          <div className="flex h-full items-center justify-center text-sm text-muted-foreground">
+            {activeTab.title}
+          </div>
         ) : (
           <div className="flex h-full items-center justify-center text-sm text-muted-foreground">
             没有打开的页面
           </div>
         )}
+        {openBinaryTabs.map((tab) => (
+          <div
+            key={tab.id}
+            data-testid={`binary-host-container-${tab.kind}`}
+            className={tab.id === activeTab?.id ? 'h-full min-h-0' : 'hidden'}
+          >
+            <BinaryTabView tab={tab} />
+          </div>
+        ))}
       </div>
     </section>
   );

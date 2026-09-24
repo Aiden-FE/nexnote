@@ -5,6 +5,7 @@ import type { BinaryKind } from '@nexnote/shared';
 import type { IpcRegistrar } from './registrar';
 import type { IpcServices } from './services';
 import { BinaryService, MAX_BINARY_BYTES } from '../binary/binary-service';
+import { BINARY_IGNORE_MARKER, updateBinaryIgnoreBlock } from '../binary/binary-gitignore';
 
 /**
  * binary:* — 应用内二进制编辑器（DEV-074，ADR-0015）。
@@ -128,8 +129,6 @@ export function registerBinaryHandlers(registrar: IpcRegistrar): void {
     }
   });
 
-  const GITIGNORE_MARKER = '# NexNote binary documents (DEV-074)';
-
   registrar.register('binary:host:open', async ({ kind, path }, services) => {
     await services.binaryEditors.open(kind, path);
     return ok({ opened: true as const });
@@ -149,6 +148,11 @@ export function registerBinaryHandlers(registrar: IpcRegistrar): void {
     return ok({ active: true as const });
   });
 
+  registrar.register('binary:host:setBounds', async ({ kind, path, bounds }, services) => {
+    services.binaryEditors.setBounds(kind, path, bounds);
+    return ok({ applied: true as const });
+  });
+
   registrar.register('binary:editorTheme', async ({ theme }, services) => {
     services.binaryEditors.applyTheme(theme);
     return ok({ applied: true as const });
@@ -159,22 +163,24 @@ export function registerBinaryHandlers(registrar: IpcRegistrar): void {
     return ok({ flushed: true as const });
   });
 
+  registrar.register('binary:host:ready', async (_payload, _services, context) => {
+    // 主进程用 senderId（= webContents.id）识别哪个 entry 在 ack。
+    // 渲染层在 onEvent('binary:editorCommand') 安装完成后立刻发，避免 did-finish-load → JS 安装晚于队列 drain 的竞态。
+    _services.binaryEditors.acknowledgeReady(context.senderId);
+    return ok({ acknowledged: true as const });
+  });
+
   registrar.register('binary:gitignore:set', async ({ untrack }, services) => {
     const root = services.vaultSession.getCurrent()?.root;
     if (!root) return err('当前未打开知识库', 'NO_VAULT');
     const gitignorePath = path.join(root, '.gitignore');
     try {
-      const current = (await fsp.readFile(gitignorePath, 'utf8').catch(() => '')) as string;
-      // ADR-0003 护栏条目（.nexnote/ 等）不在本通道管辖范围，只处理 binary 段。
-      const lines = current.split('\n').filter(
-        (line) => line !== GITIGNORE_MARKER && line !== '*.docx' && line !== '*.xlsx' && line !== '*.xmind',
-      );
-      if (untrack) {
-        lines.push(GITIGNORE_MARKER, '*.docx', '*.xlsx', '*.xmind', '');
-      }
-      const content = lines.join('\n').replace(/^\n+/, '');
-      await fsp.writeFile(gitignorePath, content || '');
-      return ok({ untracked: untrack });
+      const current = await fsp.readFile(gitignorePath, 'utf8').catch(() => '');
+      const content = updateBinaryIgnoreBlock(current, untrack);
+      if (content !== current) await fsp.writeFile(gitignorePath, content);
+      const removedFromIndex = untrack ? await services.git.untrackBinaryDocuments(root) : 0;
+      if (removedFromIndex > 0) services.git.scheduleAutoCommit('停止跟踪二进制文档');
+      return ok({ untracked: untrack, removedFromIndex });
     } catch (e) {
       return toErrorResult(e);
     }
@@ -184,6 +190,6 @@ export function registerBinaryHandlers(registrar: IpcRegistrar): void {
     const root = services.vaultSession.getCurrent()?.root;
     if (!root) return err('当前未打开知识库', 'NO_VAULT');
     const current = await fsp.readFile(path.join(root, '.gitignore'), 'utf8').catch(() => '');
-    return ok({ untracked: current.includes(GITIGNORE_MARKER) });
+    return ok({ untracked: current.split(/\r?\n/).includes(BINARY_IGNORE_MARKER) });
   });
 }

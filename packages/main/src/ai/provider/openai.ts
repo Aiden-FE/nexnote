@@ -63,7 +63,8 @@ function logRedactedProviderError(res: Response, op: string): void {
 
 /** DEV-072：用 undici ProxyAgent 绑定的 fetch，让 AI 请求走指定代理（HTTP/HTTPS/SOCKS5）。undici 未安装时静默回退全局 fetch。 */
 function undiciFetchWithProxy(proxyUrl: string): typeof fetch {
-  return (input: RequestInfo | URL, init?: RequestInit) => {
+  // 主进程 tsconfig 不含 DOM lib，`RequestInfo` 不存在；用 typeof fetch 的参数元组推导。
+  return (input: Parameters<typeof fetch>[0], init?: RequestInit) => {
     // 用变量拼接模块名 + @vite-ignore，让 rollup 无法静态解析（undici 是可选依赖）；未安装时静默回退。
     const moduleId = 'un' + 'dici';
     return import(/* @vite-ignore */ moduleId)

@@ -78,6 +78,7 @@ import {
 } from './interactions/formatting';
 import { usePluginStore } from '../features/plugins/plugin-store';
 import { usePageTreeStore } from '../stores/page-tree-store';
+import { importDroppedFile } from '../features/sidebar/page-tree/ops';
 import { EditorToolbar } from './toolbar/EditorToolbar';
 import { OutlinePanel } from './OutlinePanel';
 import {
@@ -1049,6 +1050,20 @@ export function EditorView({ tab }: EditorViewProps) {
       data-testid="editor-view"
       data-path={displayPath}
       className="nexnote-editor-view relative flex h-full min-h-0 flex-col"
+      onDragOver={(event) => {
+        if (!event.dataTransfer.files?.length) return;
+        event.preventDefault();
+        event.dataTransfer.dropEffect = 'copy';
+      }}
+      onDrop={(event) => {
+        const file = event.dataTransfer.files?.[0];
+        if (!file) return;
+        event.preventDefault();
+        event.stopPropagation();
+        void importDroppedFile(file).catch((error: unknown) => {
+          setSaveError(error instanceof Error ? error.message : String(error));
+        });
+      }}
     >
       <EditorToolbar
         label="编辑器工具栏"

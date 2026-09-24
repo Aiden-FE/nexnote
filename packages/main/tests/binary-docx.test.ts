@@ -24,7 +24,7 @@ async function buildSampleDocx(): Promise<Buffer> {
           new Paragraph({
             children: [new TextRun({ text: '加粗', bold: true }), new TextRun(' 普通 '), new TextRun({ text: '斜体', italics: true })],
           }),
-          new Paragraph({ text: '红字', children: [new TextRun({ text: '红字', color: 'FF0000' })] }),
+          new Paragraph({ children: [new TextRun({ text: '红字', color: 'FF0000' })] }),
           new Paragraph({ text: '居中段落', alignment: AlignmentType.CENTER }),
           new Table({
             width: { size: 100, type: WidthType.PERCENTAGE },
@@ -62,12 +62,25 @@ describe('docx 语义级往返（DEV-074，ADR-0015 Decision 4）', () => {
     expect(boldPara).toBeTruthy();
     const table = blocks.find((b) => b.type === 'table');
     expect(table && table.type === 'table' && table.rows[0]?.[0]?.[0]?.text).toBe('甲');
+    // 从真实 .docx 读取（不是手写 HTML）后，直接字体色与对齐必须进入语义模型。
+    const red = blocks.find(
+      (b) => b.type === 'paragraph' && b.runs.some((r) => r.text === '红字'),
+    );
+    expect(red?.type).toBe('paragraph');
+    if (red?.type === 'paragraph') expect(red.runs.find((r) => r.text === '红字')?.color, html).toBe('FF0000');
+    const centered = blocks.find(
+      (b) => b.type === 'paragraph' && b.runs.some((r) => r.text === '居中段落'),
+    );
+    expect(centered?.type).toBe('paragraph');
+    if (centered?.type === 'paragraph') expect(centered.alignment).toBe('center');
 
     // 写回 → 再读：结构稳定。
     const { bytes: rebuilt } = await blocksToDocx(blocks, '样例');
     const reread = await readDocxToHtml(rebuilt);
     expect(reread.html).toContain('<h1>报告标题</h1>');
     expect(reread.html).toContain('<strong>');
+    expect(reread.html).toContain('<span style="color:#FF0000">红字</span>');
+    expect(reread.html).toContain('<p style="text-align:center">居中段落</p>');
     expect(reread.html).toContain('<table>');
     void meta;
   });

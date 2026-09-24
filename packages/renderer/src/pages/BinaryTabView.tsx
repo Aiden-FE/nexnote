@@ -1,4 +1,4 @@
-import { useEffect } from 'react';
+import { useEffect, useRef } from 'react';
 import { invoke } from '../lib/ipc';
 import { useTabStore, isBinaryKind, type TabDescriptor } from '../stores/tab-store';
 import { useThemeStore } from '../theme/theme-store';
@@ -27,8 +27,7 @@ function installThemeBridge(): void {
  * - 自身渲染一个占位（宿主 WebContentsView 悬浮在其上）。
  */
 export function BinaryTabView({ tab }: { tab: TabDescriptor }): React.JSX.Element {
-  const activeTabId = useTabStore((state) => state.activeTabId);
-  const isActive = activeTabId === tab.id;
+  const hostRef = useRef<HTMLDivElement | null>(null);
 
   const kind = isBinaryKind(tab.kind) ? tab.kind : null;
   const path = tab.pagePath ?? '';
@@ -36,18 +35,48 @@ export function BinaryTabView({ tab }: { tab: TabDescriptor }): React.JSX.Elemen
   useEffect(() => {
     if (!kind || !path) return;
     void invoke('binary:host:open', { kind, path }).catch(() => undefined);
-    return () => {
-      void invoke('binary:host:close', { kind, path }).catch(() => undefined);
-    };
   }, [kind, path]);
 
+  // 只有 tab 真正关闭（不只是切换到另一个 tab）时才 flush + 回收 WebContentsView。
   useEffect(() => {
     if (!kind || !path) return;
-    void invoke(
-      'binary:host:setActive',
-      isActive ? { kind, path } : null,
-    ).catch(() => undefined);
-  }, [isActive, kind, path]);
+    return () => {
+      const stillOpen = useTabStore
+        .getState()
+        .tabs.some((candidate) => candidate.id === tab.id && candidate.pagePath === path);
+      if (!stillOpen) void invoke('binary:host:close', { kind, path }).catch(() => undefined);
+    };
+  }, [kind, path, tab.id]);
+
+  // DEV-074 宿主边界：把本容器在窗口内容区内的矩形上报给主进程，
+  // 让 WebContentsView 只覆盖这块占位，不盖住侧栏/标签条/状态栏。
+  useEffect(() => {
+    if (!kind || !path) return;
+    const node = hostRef.current;
+    if (!node) return;
+    const report = (): void => {
+      const rect = node.getBoundingClientRect();
+      void invoke('binary:host:setBounds', {
+        kind,
+        path,
+        bounds: {
+          x: Math.round(rect.left),
+          y: Math.round(rect.top),
+          width: Math.round(rect.width),
+          height: Math.round(rect.height),
+        },
+      }).catch(() => undefined);
+    };
+    report();
+    const observer = new ResizeObserver(report);
+    observer.observe(node);
+    window.addEventListener('resize', report);
+    return () => {
+      observer.disconnect();
+      window.removeEventListener('resize', report);
+      void invoke('binary:host:setBounds', { kind, path, bounds: null }).catch(() => undefined);
+    };
+  }, [kind, path]);
 
   useEffect(() => {
     installThemeBridge();
@@ -57,6 +86,7 @@ export function BinaryTabView({ tab }: { tab: TabDescriptor }): React.JSX.Elemen
 
   return (
     <div
+      ref={hostRef}
       data-testid={`binary-host-${kind}`}
       className="flex h-full min-h-0 flex-col items-center justify-center bg-background text-sm text-muted-foreground"
     >

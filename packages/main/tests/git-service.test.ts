@@ -185,6 +185,26 @@ describe.runIf(runIfGit())('GitService（系统 Git，临时仓库）', () => {
     expect(isVaultSyncGuardedPath('page.md')).toBe(false);
   });
 
+  it('二进制文档关闭 Git 跟踪时从索引移除，保留磁盘文件且幂等', async () => {
+    const git = simpleGit({ baseDir: root, binary: gitBinary() });
+    await git.init();
+    await git.addConfig('user.name', 'NexNote');
+    await git.addConfig('user.email', 'noreply@nexnote.local');
+    await fsp.mkdir(path.join(root, 'nested'), { recursive: true });
+    for (const name of ['a.docx', 'nested/b.xlsx', 'nested/c.xmind', 'note.md']) {
+      await fsp.writeFile(path.join(root, name), name);
+    }
+    await git.add(['.']);
+    await git.commit('tracked');
+
+    expect(await service.untrackBinaryDocuments(root)).toBe(3);
+    expect((await git.raw(['ls-files', '-z'])).split('\0').filter(Boolean)).toEqual(['note.md']);
+    expect(await fsp.readFile(path.join(root, 'a.docx'), 'utf8')).toBe('a.docx');
+    expect(await fsp.readFile(path.join(root, 'nested/b.xlsx'), 'utf8')).toBe('nested/b.xlsx');
+    expect(await fsp.readFile(path.join(root, 'nested/c.xmind'), 'utf8')).toBe('nested/c.xmind');
+    expect(await service.untrackBinaryDocuments(root)).toBe(0);
+  });
+
   it('initialize 升级旧仓库时 untrack 本地产物和 OS 元数据（DEV-083：包含 config/layout）', async () => {
     const git = simpleGit({ baseDir: root, binary: gitBinary() });
     await git.init();
@@ -410,6 +430,7 @@ describe.runIf(runIfGit())('GitService（系统 Git，临时仓库）', () => {
     const indexLine = (await git.raw(['ls-files', '-s', '--', 'a.md'])).trim();
     const indexOidAfter = indexLine.split(/\s+/)[1];
     expect(indexOidAfter).toBe(indexOidBefore);
+    if (!indexOidAfter) throw new Error('index OID missing after commit');
     const blob = await git.raw(['cat-file', '-p', indexOidAfter]);
     expect(blob).toBe('v2');
   });

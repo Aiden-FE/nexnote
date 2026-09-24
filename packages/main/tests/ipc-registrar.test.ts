@@ -22,6 +22,7 @@ import type { SecretVault } from '../src/ai/secret-store';
 import { SettingsService } from '../src/settings/settings-service';
 import { VaultOperationsController } from '../src/vault/vault-operations-controller';
 import { VaultCloneController } from '../src/vault/vault-clone-controller';
+import { BinaryEditorHostManager } from '../src/binary/binary-editor-host';
 
 /** 测试用内存 credential vault（模拟系统凭据库）。 */
 function plainFakeVault(): SecretVault {
@@ -98,6 +99,7 @@ function makeServices(): {
     ai,
     agent: {} as never,
     git,
+    binaryEditors: new BinaryEditorHostManager(),
     dialogs: { pickDirectory: async () => null, pickFile: async () => null },
     plugins: new PluginService({ hostVersion: '0.1.0' }),
     skills: new SkillService({
@@ -903,6 +905,43 @@ describe('IPC 集成（vault + fs，单一注册表）', () => {
     const result = (await ipc.invoke('git:pull', {})) as { ok: boolean; code?: string };
     // No remote is expected, but the renderer's `{}` must pass validation and reach Git.
     expect(result.code).toBe('NO_REMOTE');
+  });
+
+  it('binary:gitignore:set 停止跟踪已提交原件并保留 CRLF 用户规则', async () => {
+    const ipc = new FakeIpcMain();
+    const { services } = makeServices();
+    registerAllIpcHandlers(ipc, services);
+    const created = (await ipc.invoke('vault:create', {
+      parentDir: tmp,
+      name: 'binary-ignore',
+      initGit: true,
+    })) as { ok: boolean; data: { root: string } };
+    expect(created.ok).toBe(true);
+    const root = created.data.root;
+    const git = simpleGit({ baseDir: root });
+    await writeFile(path.join(root, 'tracked.docx'), 'original');
+    await git.add(['tracked.docx']);
+    await git.commit('track docx');
+    await writeFile(path.join(root, '.gitignore'), '# user\r\nsecret.txt\r\n');
+
+    const enabled = (await ipc.invoke('binary:gitignore:set', { untrack: true })) as {
+      ok: boolean;
+      data: { untracked: boolean; removedFromIndex: number };
+    };
+    expect(enabled).toMatchObject({ ok: true, data: { untracked: true, removedFromIndex: 1 } });
+    expect((await git.raw(['ls-files', '-z'])).split('\0')).not.toContain('tracked.docx');
+    expect(await readFile(path.join(root, 'tracked.docx'), 'utf8')).toBe('original');
+    const ignore = await readFile(path.join(root, '.gitignore'), 'utf8');
+    expect(ignore).toContain('# user\r\nsecret.txt\r\n');
+    expect(ignore).toContain('*.docx\r\n*.xlsx\r\n*.xmind\r\n');
+
+    const disabled = (await ipc.invoke('binary:gitignore:set', { untrack: false })) as {
+      ok: boolean;
+      data: { untracked: boolean; removedFromIndex: number };
+    };
+    expect(disabled).toMatchObject({ ok: true, data: { untracked: false, removedFromIndex: 0 } });
+    expect(await readFile(path.join(root, '.gitignore'), 'utf8')).toBe('# user\r\nsecret.txt\r\n');
+    services.git.cancelAutoCommit();
   });
 
   it('git:pull 在工作区 dirty 时拒绝（除非显式 force）', async () => {

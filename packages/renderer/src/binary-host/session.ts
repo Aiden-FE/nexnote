@@ -254,7 +254,14 @@ export function bootstrapBinaryHost(): () => void {
   // 主进程在关闭 tab / 窗口前经 executeJavaScript 调用本钩子等待 pending 写入完成。
   (window as unknown as { __nexnoteHostFlush: () => Promise<void> }).__nexnoteHostFlush = () =>
     flushPending();
-  return onEvent('binary:editorCommand', (command) => {
+  const unsubscribe = onEvent('binary:editorCommand', (command) => {
     void handleCommand(command);
   });
+  // DEV-074 P0 修复：ack 必须在 onEvent 安装完成后立刻发；
+  // 主进程收到 ack 后才下发 'load' / 'theme' 命令，并允许 flush 经 executeJavaScript 等待。
+  // ack 重复也无害：主进程按 senderId 幂等。
+  void invoke('binary:host:ready')
+    .then(() => undefined)
+    .catch(() => undefined);
+  return unsubscribe;
 }

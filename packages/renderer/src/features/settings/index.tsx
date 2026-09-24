@@ -469,7 +469,13 @@ function GitSection() {
     try {
       const r = await invoke('binary:gitignore:set', { untrack });
       setBinaryUntracked(r.untracked);
-      setMessage(untrack ? '二进制文档不再随 Git 跟踪' : '二进制文档恢复 Git 跟踪');
+      setMessage(
+        untrack
+          ? r.removedFromIndex > 0
+            ? `已停止跟踪 ${r.removedFromIndex} 个二进制文档，文件仍保留在本地`
+            : '新建的二进制文档将不再随 Git 跟踪'
+          : '二进制文档恢复 Git 跟踪（仅对之后新增的文件生效）',
+      );
       setTimeout(() => setMessage(null), 3000);
     } catch (error) {
       setMessage(error instanceof Error ? error.message : String(error));

@@ -48,7 +48,9 @@ export const BINARY_CHANNELS = [
   'binary:host:flush',
   'binary:host:open',
   'binary:host:close',
+  'binary:host:ready',
   'binary:host:setActive',
+  'binary:host:setBounds',
   'binary:editorTheme',
   'binary:docx:read',
   'binary:docx:save',
@@ -110,7 +112,7 @@ export interface BinaryChannelMap {
   /** 切换「二进制文档不随 Git 跟踪」：写入 vault 根 .gitignore（默认跟踪，不设行）。 */
   'binary:gitignore:set': {
     request: { untrack: boolean };
-    response: Result<{ untracked: boolean }>;
+    response: Result<{ untracked: boolean; removedFromIndex: number }>;
   };
   'binary:gitignore:get': {
     request: void;
@@ -129,10 +131,31 @@ export interface BinaryChannelMap {
     request: { kind: BinaryKind | 'docx'; path: string } | null;
     response: Result<{ active: boolean }>;
   };
+  /**
+   * DEV-074 宿主边界：BinaryTabView 上报占位矩形（窗口内容区坐标），
+   * 宿主只覆盖这块区域、不盖住侧栏/标签条/状态栏；卸载时上报 null 收回宿主。
+   */
+  'binary:host:setBounds': {
+    request: {
+      kind: BinaryKind | 'docx';
+      path: string;
+      bounds: { x: number; y: number; width: number; height: number } | null;
+    };
+    response: Result<{ applied: true }>;
+  };
   /** 等待指定宿主 pending 写入完成（关闭 tab / 窗口前调用，ADR-0015 Decision 6）。 */
   'binary:host:flush': {
     request: { kind: BinaryKind | 'docx'; path: string };
     response: Result<{ flushed: true }>;
+  };
+  /**
+   * DEV-074：宿主页面 bootstrap 完成后由渲染层主动 ack（主进程据此 flush 队列、roundTrip 才能拿到 __nexnoteHostFlush）。
+   * payload 为空（per-host 不需要标识，主进程通过 senderId = webContents.id 识别）。
+   * 出现 race / 重复 ack 时后到 ack 被忽略。
+   */
+  'binary:host:ready': {
+    request: void;
+    response: Result<{ acknowledged: true }>;
   };
   /** 主题推送（ADR-0015 Decision 3「主题经 IPC 桥」）：广播给全部宿主。 */
   'binary:editorTheme': {

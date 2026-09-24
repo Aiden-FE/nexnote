@@ -917,7 +917,7 @@ export class GitService {
         const phase = options.strategy === 'rebase' ? 'rebasing' : 'merging';
         emit({ phase, message: options.strategy === 'rebase' ? '正在对齐远程提交…' : '正在合并远程变更…' });
         if (options.strategy === 'rebase') {
-          await git.rebase(remote + '/' + preStatus.current);
+          await git.raw(['rebase', `${remote}/${preStatus.current}`]);
         } else {
           await git.merge([remote + '/' + preStatus.current, '--no-edit']);
         }
@@ -1276,6 +1276,15 @@ export class GitService {
     } finally {
       await handle.close();
     }
+  }
+
+  /** 停止跟踪已入库的二进制文档，保留磁盘文件；只接受固定的三种扩展名。 */
+  async untrackBinaryDocuments(root: string): Promise<number> {
+    const git = this.git(root);
+    const tracked = (await git.raw(['ls-files', '-z'])).split('\0').filter(Boolean);
+    const binary = tracked.filter((file) => /\.(?:docx|xlsx|xmind)$/i.test(file));
+    await this.stageLiteralPaths(git, ['rm', '--cached', '-f', '--ignore-unmatch'], binary);
+    return binary.length;
   }
 
   async ensureSyncGuard(root: string): Promise<void> {

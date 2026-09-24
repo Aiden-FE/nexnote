@@ -8,6 +8,7 @@ import { formatForPath } from '../document/document-domain';
 import { MetadataStore } from '../document/metadata-store';
 import { parseXlsxToModel, writeModelToXlsx } from './xlsx-convert';
 import { parseXmindToModel, writeModelToXmind } from './xmind-convert';
+import { preserveXlsxReadonly, preserveXmindReadonly } from './zip-preserve';
 import { readDocxToHtml, blocksToDocx } from './docx-semantic';
 import { XlsxError } from './xlsx-convert';
 import { XmindError } from './xmind-convert';
@@ -182,11 +183,15 @@ export class BinaryService {
     let meta: BinarySaveMeta | undefined;
     if (kind === 'xlsx') {
       const model = (data as { sheets?: unknown[] }) ?? {};
-      bytes = await writeModelToXlsx({ sheets: Array.isArray(model.sheets) ? model.sheets : [] });
+      const rebuilt = await writeModelToXlsx({ sheets: Array.isArray(model.sheets) ? model.sheets : [] });
+      // ADR-0015 Decision 4：模型未涵盖的宏、图表、透视表及其关系/类型声明从原包回填。
+      bytes = await preserveXlsxReadonly(current, rebuilt);
     } else {
       const model = (data as { model?: Parameters<typeof writeModelToXmind>[0] })?.model;
       if (!model) throw new BinaryServiceError('xmind 数据缺失', 'BINARY_INVALID_DATA');
-      bytes = await writeModelToXmind(model, path.basename(relPath, EXT_BY_KIND[kind]));
+      const rebuilt = await writeModelToXmind(model, path.basename(relPath, EXT_BY_KIND[kind]));
+      // ADR-0015 Decision 4：恢复模型未涵盖的主题资源、外框/关联线等原始 archive entries。
+      bytes = await preserveXmindReadonly(current, rebuilt);
     }
     const { abs } = await this.fs.resolve(relPath);
     await atomicWrite(abs, bytes);

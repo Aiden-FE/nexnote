@@ -13,7 +13,7 @@ import {
 } from 'docx';
 import mammoth from 'mammoth';
 import type { DocxAlignment, DocxBlock } from '@nexnote/shared';
-import { readZipEntries, readZipEntry } from '../docx/zip';
+import { readZipEntries, readZipEntry, rebuildZip } from '../docx/zip';
 
 /**
  * docx 语义级往返的 Node 侧实现（DEV-074，ADR-0015 Decision 4）：
@@ -39,13 +39,82 @@ export interface DocxReadMeta {
   superSubscripts: number;
 }
 
+/** Mammoth 已解析的段落模型形状：alignment 是 body-reader 公开保留的 direct w:jc 值。 */
+interface MammothParagraphLike {
+  alignment?: string | null;
+  styleName?: string | null;
+  [key: string]: unknown;
+}
+
+const ALIGNMENT_SENTINELS: Record<string, string> = {
+  center: 'NexNoteAlignCenter',
+  right: 'NexNoteAlignRight',
+  both: 'NexNoteAlignJustify',
+};
+
+const ALIGNMENT_STYLE_MAP = [
+  "p[style-name='NexNoteAlignCenter'] => p[style='text-align:center']",
+  "p[style-name='NexNoteAlignRight'] => p[style='text-align:right']",
+  "p[style-name='NexNoteAlignJustify'] => p[style='text-align:justify']",
+];
+
+/** Mammoth 1.12 不读取 w:color；在模型构建前把直接颜色转成临时 run styleId。 */
+function injectDirectRunColors(bytes: Buffer): { bytes: Buffer; syntheticStyleIds: Set<string> } {
+  const xml = readZipEntry(bytes, 'word/document.xml').toString('utf8');
+  const syntheticStyleIds = new Set<string>();
+  const transformed = xml.replace(/<w:rPr>([\s\S]*?)<\/w:rPr>/g, (full, inner: string) => {
+    // 保留真实 rStyle 的继承语义；仅无字符样式且有直接 RGB 的 run 使用 synthetic style。
+    if (/<w:rStyle\b/.test(inner)) return full;
+    const color = /<w:color\b[^>]*\bw:val="([0-9a-fA-F]{6})"[^>]*\/?>/.exec(inner)?.[1];
+    if (!color) return full;
+    const normalized = color.toUpperCase();
+    const styleId = `NexNoteColor${normalized}`;
+    syntheticStyleIds.add(normalized);
+    return `<w:rPr><w:rStyle w:val="${styleId}"/>${inner}</w:rPr>`;
+  });
+  if (transformed === xml) return { bytes, syntheticStyleIds };
+  return {
+    bytes: rebuildZip(bytes, { name: 'word/document.xml', data: Buffer.from(transformed, 'utf8') }),
+    syntheticStyleIds,
+  };
+}
+
+function styleMapForDocument(colors: Set<string>): string[] {
+  return [
+    ...ALIGNMENT_STYLE_MAP,
+    ...[...colors].map((color) => `r.NexNoteColor${color} => span[style='color:#${color}']`),
+  ];
+}
+
+/** Mammoth transformDocument 标记直接段落对齐，供 styleMap 输出 htmlToBlocks 可消费的 text-align。 */
+function transformDocxParagraphs(document: unknown): unknown {
+  const transforms = (mammoth as unknown as {
+    transforms: {
+      paragraph: (
+        transform: (paragraph: MammothParagraphLike) => MammothParagraphLike,
+      ) => (document: unknown) => unknown;
+    };
+  }).transforms;
+  return transforms.paragraph((paragraph) => {
+    const sentinel = ALIGNMENT_SENTINELS[paragraph.alignment ?? ''];
+    return sentinel ? { ...paragraph, styleName: sentinel } : paragraph;
+  })(document);
+}
+
 /** 读取 .docx 为 HTML（mammoth），并统计语义级往返会丢弃的结构。 */
 export async function readDocxToHtml(
   bytes: Buffer,
 ): Promise<{ html: string; meta: DocxReadMeta }> {
   let html: string;
   try {
-    const result = await mammoth.convertToHtml({ buffer: bytes });
+    const { bytes: mammothBytes, syntheticStyleIds } = injectDirectRunColors(bytes);
+    const result = await mammoth.convertToHtml(
+      { buffer: mammothBytes },
+      {
+        transformDocument: transformDocxParagraphs,
+        styleMap: styleMapForDocument(syntheticStyleIds),
+      },
+    );
     html = result.value;
   } catch (e) {
     throw new DocxSemanticError(`docx 解析失败：${(e as Error).message}`, 'DOCX_PARSE_FAILED');
@@ -103,11 +172,18 @@ export async function blocksToDocx(
       continue;
     }
     paragraphs += 1;
-    const options: IParagraphOptions = {
-      children: block.runs.length ? block.runs.map(runToText) : [new TextRun('')],
-      alignment: alignmentToDocx(block.alignment),
-    };
-    if (block.type === 'heading') options.heading = headingFor(block.level);
+    // `IParagraphOptions.heading` 在 docx 类型中是 readonly；构造时一次性传入避免赋值。
+    const options: IParagraphOptions =
+      block.type === 'heading'
+        ? {
+            children: block.runs.length ? block.runs.map(runToText) : [new TextRun('')],
+            alignment: alignmentToDocx(block.alignment),
+            heading: headingFor(block.level),
+          }
+        : {
+            children: block.runs.length ? block.runs.map(runToText) : [new TextRun('')],
+            alignment: alignmentToDocx(block.alignment),
+          };
     children.push(new Paragraph(options));
   }
   const doc = new Document({

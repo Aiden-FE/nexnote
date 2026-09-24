@@ -88,9 +88,9 @@ async function detectMacOs(): Promise<SystemProxySnapshot | null> {
 export function parseWindowsRegistry(output: string): SystemProxySnapshot | null {
   const enable = /ProxyEnable\s+REG_DWORD\s+0x1/i.test(output);
   if (!enable) return null;
-  const match = output.match(/ProxyServer\s+REG_SZ\s+(\S+)/i);
-  if (!match) return null;
-  const raw = match[1].trim();
+const match = output.match(/ProxyServer\s+REG_SZ\s+(\S+)/i);
+  const raw = match?.[1]?.trim();
+  if (!raw) return null;
   if (raw.includes('=')) {
     // Per-protocol form: http=host:port;https=host:port;socks=host:port
     const parts = Object.fromEntries(
