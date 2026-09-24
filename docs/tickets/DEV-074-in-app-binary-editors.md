@@ -1,6 +1,13 @@
 # DEV-074 应用内二进制编辑器（docx / xlsx / xmind）
 
-- 状态：已实施（待 code-review）
+- 状态：done（v0.0.27）
+- code-review 修复（2026-09-24）：
+  - `binary-editor-host` 不再用 `did-finish-load` 触发 pending drain；渲染层 bootstrap 完成后主动 `binary:host:ready` ack（senderId 识别），主进程 drain。roundTrip 等待 ack 到达且 `__nexnoteHostFlush` 缺失时抛错而非静默成功。`close()` 跨 await 用 entry 引用 + webContentsId 双重核对，防止 close/reopen 销毁错对象。
+  - `xmind` `content.json` sheet/rootTopic 上未建模字段（boundaries/relationships/theme/skeleton/topicPositioning）原样保留。
+  - `xlsx` 关系 Id 冲突时丢弃重建端同 Id 项并回填原包关系；OpenXML 引用方写死 Id 不改名。
+  - `binary:gitignore:set` 切换跟踪：保留 CRLF 与其它用户行，仅管理标记 + 三种扩展名；启用时同步 `git rm --cached` 已入库副本。
+  - 编辑器/dir 行 onDrop 支持 Finder 拖入 docx/xlsx/xmind；外部路径仍仅主进程 dialogs 可见。
+- 新增测试：`binary-editor-host.test.ts`（5 用例含 delayed bootstrap、ack timeout、interleaved close race）、`binary-xmind.test.ts`（content.json 字段保留）、`binary-xlsx.test.ts`（rId 冲突）、`binary-gitignore.test.ts`、`editor-drop-import.test.tsx`。
 - 范围：packages/shared, packages/main, packages/renderer
 - 架构依据：ADR-0015（accepted，含 2026-09-22 R3 修订与 spike 4 内存基线）
 - 选型（R3 OSS 组合）：

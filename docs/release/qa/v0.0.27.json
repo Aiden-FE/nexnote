@@ -1,0 +1,40 @@
+{
+  "schema": "nexnote-release-qa/v1",
+  "repository": "Aiden-FE/nexnote",
+  "tag": "v0.0.27",
+  "commit": "7f35fa4",
+  "channel": "stable",
+  "allRequiredChecksPassed": true,
+  "scope": "v0.0.27-candidate",
+  "machineChecks": {
+    "typecheck": "passed (pnpm -r typecheck: shared/plugin-api/website/kernel/renderer all Done; main tsc --noEmit -p tsconfig.json clean after DEV-074 review fixes)",
+    "lint": "passed (pnpm lint: 0 errors; 9 pre-existing import()-style warnings unchanged from earlier baselines; the new binary-editor-host flushAll() was tightened to destructure .values() so the no-unused-vars gate stays clean)",
+    "tests": "1648 passed | 2 skipped (1650) on local macOS run at 7f35fa4; full test files 180 passed | 1 skipped (181); new tests cover binary host ready/close races, XMind content.json field preservation, XLSX rId collision handling, .gitignore toggling, editor drop import",
+    "build": "passed (electron-vite build; renderer asset bundle emitted successfully)",
+    "releaseConfig": "31/31 passed (node scripts/verify-release-config.mjs)",
+    "changedFormat": "covered by release config gate",
+    "diffCheck": "covered by release config gate",
+    "packagedSmoke": "deferred to candidate pipeline: tag push triggers matrix build + packaged macOS smoke bound to tag commit 7f35fa4 with NEXNOTE_SMOKE_EXPECTED_VERSION=0.0.27"
+  },
+  "candidateContents": {
+    "tickets": "DEV-074 review follow-up implemented in 7f35fa4; version bump to 0.0.27 in same commit",
+    "highlights": [
+      "DEV-074 review: BinaryEditorHostManager no longer drains pending on did-finish-load; renderer must ack via binary:host:ready (senderId = webContents.id). roundTrip waits up to 1500ms for ack; missing __nexnoteHostFlush now throws rather than silently succeeding. close() captures entry identity + webContentsId across await so concurrent destroyAll / close-reopen cannot kill the wrong host. New tests cover delayed bootstrap, ack timeout, idempotent ack, and interleaved close race.",
+      "DEV-074 review: xmind content.json sheet & rootTopic now preserves fields simple-mind-map does not model (boundaries / relationships / theme / skeleton / topicPositioning) on save; rebuilt-side fields still take precedence.",
+      "DEV-074 review: xlsx rels merge now drops rebuilt-side entries when their Id collides with an original relationship and re-adds the original. OpenXML part references must keep their original Id; renaming would silently break vbaProject/chart/externalLink targets.",
+      "binary:gitignore:set toggling: preserves user CRLF and surrounding rules; only the marker + .docx/.xlsx/.xmind lines are managed. Enabling also calls git rm --cached on already-tracked binaries.",
+      "Editor drop import: dragging a .docx/.xlsx/.xmind from Finder onto the editor or a directory row imports via binary:import. External paths still go through main-process dialogs only.",
+      "IPC contract: new 'binary:host:ready' channel with runtime validator and senderId-based dispatch in binary-handlers; binary:gitignore:set response now reports removedFromIndex."
+    ]
+  },
+  "notRun": [
+    "matrix signed builds for mac-arm64/mac-x64/windows-x64/linux-x64 (run by candidate pipeline after tag push)",
+    "packaged macOS smoke in CI (run by candidate pipeline smoke job)",
+    "Windows packaged smoke and Linux packaged smoke",
+    "Windows/Ubuntu physical installation verification",
+    "macOS notarization / Gatekeeper verification (Ad hoc signing only)",
+    "public N-1 to v0.0.27 network upgrade end-to-end verification",
+    "release-qa Environment required-reviewer approval (operational gate before publish)",
+    "post-publication 24-hour monitoring"
+  ]
+}
