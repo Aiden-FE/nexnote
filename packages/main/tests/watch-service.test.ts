@@ -75,9 +75,15 @@ describe('VaultWatchService（真实临时目录 + chokidar）', () => {
     await svc.sync();
     await svc.ready();
     await writeFile(path.join(rootA, 'w.md'), 'v1', 'utf8');
-    await untilEvent((e) => e.kind === 'add');
+    expect(
+      await untilEvent((e) => e.kind === 'add' && e.path === 'w.md'),
+      JSON.stringify(events),
+    ).toBe(true);
     await writeFile(path.join(rootA, 'w.md'), 'v2', 'utf8');
-    expect(await untilEvent((e) => e.kind === 'change' && e.path === 'w.md')).toBe(true);
+    expect(
+      await untilEvent((e) => e.kind === 'change' && e.path === 'w.md'),
+      JSON.stringify(events),
+    ).toBe(true);
     await svc.stop();
   });
 

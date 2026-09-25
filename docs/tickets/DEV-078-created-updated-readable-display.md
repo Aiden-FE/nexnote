@@ -1,6 +1,6 @@
 # DEV-078 created/updated 面板内可读时间展示（存储格式不变）
 
-- 状态：ready-for-agent
+- 状态：done（v0.0.26）
 - 分类：enhancement
 - 优先级：P2
 - 工作量：S
@@ -41,11 +41,11 @@ created/updated 在 frontmatter 中以 ISO-8601 存储（如 `2026-09-22T01:23:4
 
 ## 验收标准
 
-- [ ] 属性面板各展示位的 created/updated 显示为 `YYYY-MM-DD HH:mm:ss`（本地时区），不再出现裸 ISO 或 `font-mono` 的 UTC 串
-- [ ] 文件中存储的 created/updated 仍为 ISO 格式，序列化与往返字节语义不变（DEV-077 落地后，`updated` 自动维护路径同样不改格式）
-- [ ] 无法解析的字符串值原样展示，不报错；空值显示 `—` 或等价回退
-- [ ] 纯函数有单测：UTC→本地换算、日期与时间分量、非法输入回退、null/undefined
-- [ ] `pnpm typecheck` / `pnpm lint` / 相关 Vitest 全绿
+- [x] 属性面板各展示位的 created/updated 显示为 `YYYY-MM-DD HH:mm:ss`（本地时区），不再出现裸 ISO 或 `font-mono` 的 UTC 串
+- [x] 文件中存储的 created/updated 仍为 ISO 格式，序列化与往返字节语义不变（DEV-077 落地后，`updated` 自动维护路径同样不改格式）
+- [x] 无法解析的字符串值原样展示，不报错；空值显示 `—` 或等价回退
+- [x] 纯函数有单测：UTC→本地换算、日期与时间分量、非法输入回退、null/undefined
+- [x] `pnpm typecheck` / `pnpm lint` / 相关 Vitest 全绿
 
 ## Out of scope
 

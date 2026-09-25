@@ -819,11 +819,15 @@ describe.runIf(runIfGit())('GitService（系统 Git，临时仓库）', () => {
 
   it('remote text strips credentials before IPC-facing results', () => {
     const secret = 'https://alice:token-123@example.test/repo.git?access_token=abc&token=def';
-    const redacted = sanitizeRemoteText(secret);
+    const proxy = 'http://proxy-user:proxy-password@example.test:8080';
+    const redacted = sanitizeRemoteText(`${secret} via ${proxy}`);
     expect(redacted).not.toContain('token-123');
     expect(redacted).not.toContain('abc');
     expect(redacted).not.toContain('def');
+    expect(redacted).not.toContain('proxy-user');
+    expect(redacted).not.toContain('proxy-password');
     expect(redacted).toContain('https://***@');
+    expect(redacted).toContain('http://***@');
   });
 
   it('remote text strips modern credential variants', () => {

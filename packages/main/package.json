@@ -6,7 +6,8 @@
     "ai": "^7.0.99",
     "better-sqlite3": "^12.11.1",
     "chokidar": "^5.0.0",
-    "simple-git": "^3.36.0"
+    "simple-git": "^3.36.0",
+    "undici": "^8.11.0"
   },
   "optionalDependencies": {
     "dugite": "^3.2.3"

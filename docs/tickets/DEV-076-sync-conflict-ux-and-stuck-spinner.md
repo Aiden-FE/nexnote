@@ -37,13 +37,13 @@
 
 ## 验收标准
 
-- [ ] 手动同步失败（含冲突）后 spinner 停止，不再无限转圈；错误内容可见
-- [ ] 「⚠ 冲突」徽标可点击，点击后弹出诊断对话框，含冲突文件与一键修复 / Agent 帮助入口
-- [ ] hover 冲突徽标能看到具体冲突文件或类别信息
-- [ ] 启动时已存在冲突、或后台自动同步产生冲突时，徽标出现且点击路径可用；自动同步失败不再静默
-- [ ] 自动同步进行中有阶段反馈，done/error 均结束 spinner；dismiss 诊断后 UI 无残留 loading
-- [ ] 新增/更新单测覆盖：error 终态收尾、冲突徽标点击触发诊断、自动同步进度事件到达 UI
-- [ ] `pnpm typecheck` / `pnpm lint` / 全量 Vitest / `pnpm build` 全绿；Electron smoke 中冲突场景全绿
+- [x] 手动同步失败（含冲突）后 spinner 停止，不再无限转圈；错误内容可见
+- [x] 「⚠ 冲突」徽标可点击，点击后弹出诊断对话框，含冲突文件与一键修复 / Agent 帮助入口
+- [x] hover 冲突徽标能看到具体冲突文件或类别信息
+- [x] 启动时已存在冲突、或后台自动同步产生冲突时，徽标出现且点击路径可用；自动同步失败不再静默
+- [x] 自动同步进行中有阶段反馈，done/error 均结束 spinner；dismiss 诊断后 UI 无残留 loading
+- [x] 新增/更新单测覆盖：error 终态收尾、冲突徽标点击触发诊断、自动同步进度事件到达 UI
+- [x] `pnpm typecheck` / `pnpm lint` / 全量 Vitest / `pnpm build` 全绿；Electron smoke 中冲突场景全绿
 
 ## Out of scope
 

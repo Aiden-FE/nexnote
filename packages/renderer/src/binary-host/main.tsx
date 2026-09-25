@@ -1,6 +1,12 @@
 import { StrictMode, useEffect, useState } from 'react';
 import { createRoot } from 'react-dom/client';
-import { bootstrapBinaryHost, getSession, subscribeSession, markDirty } from './session';
+import {
+  bootstrapBinaryHost,
+  getSession,
+  subscribeSession,
+  markDirty,
+  reloadAfterConflict,
+} from './session';
 import type { SessionState } from './session';
 import { DocxEditor } from './docx-editor';
 import { XlsxEditor } from './xlsx-editor';
@@ -13,9 +19,24 @@ import './host.css';
  */
 function Host(): React.JSX.Element {
   const [session, setSession] = useState<SessionState | null>(() => getSession());
+  const [reloading, setReloading] = useState(false);
+  const [reloadError, setReloadError] = useState<string | null>(null);
 
   useEffect(() => subscribeSession(setSession), []);
   useEffect(() => bootstrapBinaryHost(), []);
+
+  const discardAndReload = async (): Promise<void> => {
+    if (!window.confirm('本地编辑尚未保存。重新加载将丢弃本地修改，是否继续？')) return;
+    setReloading(true);
+    setReloadError(null);
+    try {
+      await reloadAfterConflict();
+    } catch (error) {
+      setReloadError(error instanceof Error ? error.message : String(error));
+    } finally {
+      setReloading(false);
+    }
+  };
 
   if (!session) {
     return (
@@ -39,6 +60,21 @@ function Host(): React.JSX.Element {
           {session.status && (
             <span className={session.conflict ? 'text-amber-700' : 'text-neutral-500'}>
               {session.status}
+            </span>
+          )}
+          {session.conflict && (
+            <button
+              type="button"
+              disabled={reloading}
+              onClick={() => void discardAndReload()}
+              className="ml-3 rounded border border-amber-600 px-2 py-0.5 text-amber-800 disabled:opacity-50"
+            >
+              {reloading ? '重新加载中…' : '放弃本地修改并重新加载'}
+            </button>
+          )}
+          {reloadError && (
+            <span role="alert" className="ml-3 text-red-700">
+              {reloadError}
             </span>
           )}
         </div>

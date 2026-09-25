@@ -36,6 +36,7 @@ interface DropHint {
 export function TabStrip() {
   const tabs = useTabStore((s) => s.tabs);
   const activeTabId = useTabStore((s) => s.activeTabId);
+  const binaryTabCloseError = useTabStore((s) => s.binaryTabCloseError);
   const vault = useVault();
   const { setActiveTab, closeTab, openTab, reorderTab } = useTabStore.getState();
   const [menu, setMenu] = useState<{
@@ -216,6 +217,20 @@ export function TabStrip() {
           </div>
         );
       })}
+
+      {binaryTabCloseError && (
+        <div role="alert" className="flex shrink-0 items-center gap-1 px-2 text-xs text-destructive">
+          <span>{binaryTabCloseError}</span>
+          <button
+            type="button"
+            aria-label="关闭保存错误提示"
+            className="rounded px-1 hover:bg-accent"
+            onClick={() => useTabStore.getState().setBinaryTabCloseError(null)}
+          >
+            ×
+          </button>
+        </div>
+      )}
 
       <button
         type="button"

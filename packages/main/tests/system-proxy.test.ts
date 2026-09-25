@@ -1,5 +1,10 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { parseScutilProxy, parseWindowsRegistry, detectSystemProxy } from '../src/settings/system-proxy';
+import {
+  parseEnvironmentProxy,
+  parseScutilProxy,
+  parseWindowsRegistry,
+  detectSystemProxy,
+} from '../src/settings/system-proxy';
 
 describe('parseScutilProxy（macOS scutil --proxy 输出解析）', () => {
   it('解析启用状态的 HTTP/HTTPS 代理', () => {
@@ -63,6 +68,30 @@ describe('parseWindowsRegistry（Windows reg query 输出解析）', () => {
 
   it('ProxyEnable=0 时返回 null', () => {
     expect(parseWindowsRegistry('ProxyEnable REG_DWORD 0x0')).toBeNull();
+  });
+});
+
+describe('parseEnvironmentProxy（HTTP_PROXY 等环境变量）', () => {
+  it('识别 HTTP/HTTPS 与 SOCKS 代理环境变量', () => {
+    expect(
+      parseEnvironmentProxy({
+        http_proxy: 'http://127.0.0.1:7897',
+        https_proxy: 'http://127.0.0.1:7897',
+        all_proxy: 'socks5://127.0.0.1:7897',
+      }),
+    ).toEqual({
+      http: 'http://127.0.0.1:7897',
+      https: 'http://127.0.0.1:7897',
+      socks: 'socks5://127.0.0.1:7897',
+    });
+  });
+
+  it('只配置 HTTPS 时使用它作为 HTTPS 代理', () => {
+    expect(parseEnvironmentProxy({ HTTPS_PROXY: 'http://proxy.local:8080' })).toEqual({
+      http: null,
+      https: 'http://proxy.local:8080',
+      socks: null,
+    });
   });
 });
 

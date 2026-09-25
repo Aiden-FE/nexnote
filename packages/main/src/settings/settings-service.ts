@@ -7,6 +7,7 @@ import {
   normalizeShortcut,
   type GlobalSettings,
   type GlobalSettingsPatch,
+  type NetworkProxyConfig,
   type SettingSearchEntry,
   type ShortcutOverride,
   type VaultSettings,
@@ -443,12 +444,39 @@ export function normalizeStoredGlobal(raw: unknown): GlobalSettings {
       applyToGit: hasKey(network, 'applyToGit')
         ? network.applyToGit === true
         : base.network.applyToGit,
+      aiProxy: normalizeStoredProxyConfig(network.aiProxy),
+      gitProxy: normalizeStoredProxyConfig(network.gitProxy),
     },
     shortcuts: Array.isArray(value.shortcuts)
       ? // DEV-022：旧设置文件缺少新登记的默认命令时按默认键补齐（用户条目覆盖同名默认），
         // 保证快捷键设置分区始终展示完整绑定。
         normalizeShortcutOverrides([...base.shortcuts, ...value.shortcuts])
       : base.shortcuts,
+  };
+}
+
+function normalizeStoredProxyConfig(raw: unknown): NetworkProxyConfig | null {
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return null;
+  const config = raw as Record<string, unknown>;
+  return {
+    mode:
+      config.mode === 'http' ||
+      config.mode === 'https' ||
+      config.mode === 'socks5' ||
+      config.mode === 'off'
+        ? config.mode
+        : 'system',
+    host: typeof config.host === 'string' && config.host.trim() ? config.host.trim() : null,
+    port:
+      typeof config.port === 'number' && Number.isFinite(config.port) && config.port > 0 && config.port <= 65535
+        ? Math.round(config.port)
+        : null,
+    username:
+      typeof config.username === 'string' && config.username.trim() ? config.username.trim() : null,
+    password: typeof config.password === 'string' && config.password ? config.password : null,
+    bypass: Array.isArray(config.bypass)
+      ? config.bypass.filter((entry): entry is string => typeof entry === 'string' && entry.trim().length > 0)
+      : [],
   };
 }
 

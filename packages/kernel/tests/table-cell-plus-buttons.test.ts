@@ -7,7 +7,9 @@ import {
   parseMarkdown,
   serializeMarkdown,
 } from '../src';
-import { TableMap } from '@tiptap/pm/tables';
+import { TableMap, CellSelection } from '@tiptap/pm/tables';
+import { DecorationSet } from '@tiptap/pm/view';
+import type { Node } from '@tiptap/pm/model';
 
 /**
  * DEV-087：表格单元格加号装饰 + 命令链路集成测试。
@@ -19,8 +21,7 @@ import { TableMap } from '@tiptap/pm/tables';
  *  3. 自定义事件转发后行/列数 +1（renderer 侧的事件 listener 同样行为）。
  */
 
-const TABLE_MD =
-  '| A1 | B1 | C1 |\n| --- | --- | --- |\n| A2 | B2 | C2 |\n| A3 | B3 | C3 |\n';
+const TABLE_MD = '| A1 | B1 | C1 |\n| --- | --- | --- |\n| A2 | B2 | C2 |\n| A3 | B3 | C3 |\n';
 
 function buildKernel() {
   const host = document.createElement('div');
@@ -32,12 +33,8 @@ function buildKernel() {
   return { kernel: editor, host };
 }
 
-function findCellPos(
-  doc: import('@tiptap/pm/model').Node,
-  row: number,
-  col: number,
-): number | null {
-  let table: import('@tiptap/pm/model').Node | null = null;
+function findCellPos(doc: Node, row: number, col: number): number | null {
+  let table: Node | null = null;
   let tableStart = 0;
   doc.descendants((node, pos) => {
     if (node.type.name === 'table') {
@@ -51,9 +48,8 @@ function findCellPos(
   const map = TableMap.get(table);
   if (map.width <= col || map.height <= row) return null;
   const cellStart = map.positionAt(row, col, table);
-  // cellStart is offset within the table node; add the table node's start + 1 to
-  // enter the table's content, then +1 again to enter the cell's content.
-  return tableStart + 1 + cellStart + 1;
+  // cellStart is offset within the table node; enter the table, cell, and paragraph content.
+  return tableStart + 1 + cellStart + 2;
 }
 
 function moveCursorToCell(kernel: ReturnType<typeof createEditor>, row: number, col: number): void {
@@ -100,6 +96,32 @@ describe('DEV-087 表格单元格加号', () => {
     const out = serializeMarkdown(manager, doc);
     const doc2 = parseMarkdown(manager, out);
     expect(serializeMarkdown(manager, doc2)).toBe(out);
+  });
+
+  it('多个相邻 cell 选区下只显示一组行列加号', () => {
+    const { kernel } = buildKernel();
+    const state = kernel.editor.view.state;
+    const anchor = findCellPos(state.doc, 0, 0);
+    const head = findCellPos(state.doc, 1, 1);
+    expect(anchor).not.toBeNull();
+    expect(head).not.toBeNull();
+    kernel.editor.view.dispatch(
+      state.tr.setSelection(CellSelection.create(state.doc, anchor! - 2, head! - 2)),
+    );
+
+    const selectedState = kernel.editor.view.state;
+    const decorations = selectedState.plugins
+      .map((plugin) => plugin.getState(selectedState))
+      .filter((value): value is DecorationSet => value instanceof DecorationSet)
+      .flatMap((set) => set.find())
+      .filter((decoration) =>
+        ['table-row-plus', 'table-col-plus'].includes(String(decoration.spec.key)),
+      );
+    expect(decorations.map((decoration) => decoration.spec.key).sort()).toEqual([
+      'table-col-plus',
+      'table-row-plus',
+    ]);
+    kernel.editor.destroy();
   });
 
   it('选中第 2 行后 addRowAfter 行数 +1', () => {

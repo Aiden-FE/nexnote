@@ -1,6 +1,6 @@
 # DEV-084 支持直接新建 docx / xlsx / xmind 空白文档（而非只能导入）
 
-- 状态：ready-for-agent
+- 状态：done（v0.0.26）
 - 分类：enhancement
 - 优先级：P2
 - 工作量：M
@@ -37,12 +37,12 @@
 
 ## 验收标准
 
-- [ ] 新建菜单（或对应入口）能创建空白 docx / xlsx / xmind，并在仓库内形成对应扩展名的可打开文件
-- [ ] 创建后默认打开该文件，编辑器为对应格式的二进制编辑器（docx 块编辑、xlsx 表格、xmind 思维导图）
-- [ ] 不破坏现有导入路径（docx/xlsx/xmind 的导入入口仍可用，smoke 同步）
-- [ ] 命名冲突自动加 `name 2.ext` / `name 3.ext`（沿用 `nextUntitledName`）
-- [ ] `pnpm typecheck` / `pnpm lint` / 相关 Vitest / 端到端冒烟全绿
-- [ ] 新增单测：每种 kind 的空白模板字节可解析回 `parseXlsxToModel` / `parseXmindToModel` / `readDocxToHtml`（fail-closed 不破）
+- [x] 新建菜单（或对应入口）能创建空白 docx / xlsx / xmind，并在仓库内形成对应扩展名的可打开文件
+- [x] 创建后默认打开该文件，编辑器为对应格式的二进制编辑器（docx 块编辑、xlsx 表格、xmind 思维导图）
+- [x] 不破坏现有导入路径（docx/xlsx/xmind 的导入入口仍可用，smoke 同步）
+- [x] 命名冲突自动加 `name 2.ext` / `name 3.ext`（沿用 `nextUntitledName`）
+- [x] `pnpm typecheck` / `pnpm lint` / 相关 Vitest / 端到端冒烟全绿
+- [x] 新增单测：每种 kind 的空白模板字节可解析回 `parseXlsxToModel` / `parseXmindToModel` / `readDocxToHtml`（fail-closed 不破）
 
 ## Out of scope
 

@@ -106,4 +106,5 @@ export interface AdapterOptions {
   fetchImpl?: typeof fetch;
   /** DEV-072：自定义 HTTP(S)/SOCKS5 代理 URL；null 跟随系统/全局。 */
   proxyUrl?: string | null;
+  proxyBypass?: string[];
 }

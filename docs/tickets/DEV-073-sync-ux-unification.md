@@ -37,12 +37,12 @@
 - `useSystemGit` 现有 toggle 不动。
 
 ## 验收
-- [ ] 状态栏仅 1 个同步图标；其余按钮迁移至 timeline 或设置
-- [ ] 同步进行中显示 spinner 与阶段文案
-- [ ] 默认 5 分钟自动同步；可关闭；网络失败自动退避
-- [ ] sync 成功后不再弹任何"确认"对话框
-- [ ] sync 失败时出现「让 Agent 修复 / 帮助」按钮，点击可在 1 次交互内执行修复（无需额外诊断步骤）
-- [ ] 冲突时不再出现"请在仓库目录手动解决"文案
-- [ ] 默认 `syncStrategy=rebase`，并可在 vault 设置切换为 `merge`
-- [ ] 单元/E2E 测试覆盖：sync 主流程、加载态事件、自动同步退避、doctor CTA
-- [ ] `pnpm typecheck` 0 errors；`pnpm lint` 0 errors
+- [x] 状态栏仅 1 个同步图标；其余按钮迁移至 timeline 或设置
+- [x] 同步进行中显示 spinner 与阶段文案
+- [x] 默认 5 分钟自动同步；可关闭；网络失败自动退避
+- [x] sync 成功后不再弹任何"确认"对话框
+- [x] sync 失败时出现「让 Agent 修复 / 帮助」按钮，点击可在 1 次交互内执行修复（无需额外诊断步骤）
+- [x] 冲突时不再出现"请在仓库目录手动解决"文案
+- [x] 默认 `syncStrategy=rebase`，并可在 vault 设置切换为 `merge`
+- [x] 单元/E2E 测试覆盖：sync 主流程、加载态事件、自动同步退避、doctor CTA
+- [x] `pnpm typecheck` 0 errors；`pnpm lint` 0 errors

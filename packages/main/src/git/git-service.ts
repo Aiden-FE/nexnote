@@ -426,10 +426,7 @@ export class GitService {
     const isRebase = Boolean(rebaseMergeDir) || Boolean(rebaseApplyDir);
     const hasMerge = await this.hasGitDirEntry(root, 'MERGE_HEAD');
     if (!isRebase && !hasMerge) {
-      throw new GitServiceError(
-        '当前没有进行中的 rebase 或 merge，无需保留',
-        'NO_OPERATION',
-      );
+      throw new GitServiceError('当前没有进行中的 rebase 或 merge，无需保留', 'NO_OPERATION');
     }
 
     // orig-head 指向 rebase 开始前的 HEAD；merge 没有等价物，按 MERGE_HEAD
@@ -465,17 +462,11 @@ export class GitService {
     if (aheadShas.length === 0) {
       // 没有 ahead commit 也要把 rebase abort 掉（doctor 仍然需要恢复）。
       await git.raw(['rebase', '--abort']);
-      throw new GitServiceError(
-        '没有本地未推送的提交需要保留',
-        'NO_AHEAD_TO_PRESERVE',
-      );
+      throw new GitServiceError('没有本地未推送的提交需要保留', 'NO_AHEAD_TO_PRESERVE');
     }
 
     const safe = await safeVaultPath(root);
-    const timestamp = new Date()
-      .toISOString()
-      .replace(/[:.]/g, '-')
-      .replace(/Z$/, '');
+    const timestamp = new Date().toISOString().replace(/[:.]/g, '-').replace(/Z$/, '');
     const recoveryDir = path.join(safe, '.nexnote', '.rebase-recovery', timestamp);
     await fsp.mkdir(recoveryDir, { recursive: true });
 
@@ -497,10 +488,7 @@ export class GitService {
           recoveryDir,
           `${baseSha}..HEAD`,
         ]);
-        exported = patchOutput
-          .split('\n')
-          .filter((line) => line.startsWith(recoveryDir))
-          .length;
+        exported = patchOutput.split('\n').filter((line) => line.startsWith(recoveryDir)).length;
         if (exported === 0) {
           // simple-git 不带绝对路径前缀，靠统计文件数兜底
           const entries = await fsp.readdir(recoveryDir);
@@ -915,7 +903,10 @@ export class GitService {
       const afterFetch = await git.status();
       if (afterFetch.behind > 0) {
         const phase = options.strategy === 'rebase' ? 'rebasing' : 'merging';
-        emit({ phase, message: options.strategy === 'rebase' ? '正在对齐远程提交…' : '正在合并远程变更…' });
+        emit({
+          phase,
+          message: options.strategy === 'rebase' ? '正在对齐远程提交…' : '正在合并远程变更…',
+        });
         if (options.strategy === 'rebase') {
           await git.raw(['rebase', `${remote}/${preStatus.current}`]);
         } else {
@@ -1019,12 +1010,7 @@ export class GitService {
     const gitDir = gitDirRaw.trim();
     if (!gitDir) return false;
     const base = path.isAbsolute(gitDir) ? gitDir : path.join(root, gitDir);
-    const markers = [
-      'rebase-merge',
-      'rebase-apply',
-      'MERGE_HEAD',
-      'REBASE_HEAD',
-    ];
+    const markers = ['rebase-merge', 'rebase-apply', 'MERGE_HEAD', 'REBASE_HEAD'];
     const checks = await Promise.all(
       markers.map((name) =>
         fsp
@@ -1375,11 +1361,28 @@ export class GitService {
     // Do not inject dugite paths when its downloaded executable is unavailable.
     // In that development fallback, preserve the user's normal Git environment.
     const binary = runtime.binary;
-    const env = {
-      ...sanitizeGitProcessEnv(runtime.environment ?? process.env),
-      ...(this.networkProxyEnv ?? {}),
-      ...extraEnv,
-    };
+    const env = sanitizeGitProcessEnv(runtime.environment ?? process.env);
+    if (this.networkCliConfig !== null) {
+      for (const key of [
+        'HTTP_PROXY',
+        'HTTPS_PROXY',
+        'ALL_PROXY',
+        'http_proxy',
+        'https_proxy',
+        'all_proxy',
+      ]) {
+        delete env[key];
+      }
+    }
+    Object.assign(env, this.networkProxyEnv ?? {}, extraEnv);
+    if (this.networkCliConfig !== null) {
+      env.GIT_CONFIG_COUNT = String(this.networkCliConfig.length);
+      this.networkCliConfig.forEach((entry, index) => {
+        const separator = entry.indexOf('=');
+        env[`GIT_CONFIG_KEY_${index}`] = entry.slice(0, separator);
+        env[`GIT_CONFIG_VALUE_${index}`] = entry.slice(separator + 1);
+      });
+    }
     const instance = simpleGit({
       baseDir,
       binary,
@@ -1393,12 +1396,9 @@ export class GitService {
         allowUnsafeTemplateDir: true,
         allowUnsafeSshCommand: true,
         allowUnsafeAskPass: true,
+        allowUnsafeConfigEnvCount: true,
       },
     }).env(env);
-    // DEV-072：通过 `git -c http.proxy=...` 给单次调用注入代理，不污染用户 ~/.gitconfig。
-    if (this.networkCliConfig && this.networkCliConfig.length > 0) {
-      for (const flag of this.networkCliConfig) instance.raw(['-c', flag]);
-    }
     return instance;
   }
 

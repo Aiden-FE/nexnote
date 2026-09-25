@@ -415,9 +415,9 @@ export async function runSmokeIfEnabled(): Promise<void> {
           Math.round(slashCoords.left),
           Math.round(slashCoords.top),
         );
+        blockSlashKernel.editor.view.focus();
         await sleep(100);
-        const pastedSlash = clicked.ok ? await bridge.pasteText('/') : clicked;
-        const typed = pastedSlash.ok ? await bridge.typeText('h2') : pastedSlash;
+        const typed = clicked.ok ? await bridge.typeText('/h2') : clicked;
         await sleep(150);
         const blockSlashMenu = (): HTMLElement | null =>
           document.querySelector<HTMLElement>('[data-testid="block-slash-menu"]');
@@ -433,6 +433,7 @@ export async function runSmokeIfEnabled(): Promise<void> {
             !!blockSlashItem() &&
             blockSlashItem()?.getAttribute('aria-selected') === 'true',
         );
+        if (!blockSlashOpen) await capture('02b-block-slash-failure');
         // Keep every edit/navigation action on Electron's trusted WebContents path. The
         // renderer can inspect only the visible result; synthetic KeyboardEvents would not
         // exercise ProseMirror's packaged Chromium key handling.
@@ -450,7 +451,24 @@ export async function runSmokeIfEnabled(): Promise<void> {
             blockSlashKernel.editor.state.selection.$from.parent.attrs.level === 2 &&
             !blockSlashKernel.getMarkdown().includes('/h2') &&
             blockSlashMenu()?.style.display === 'none',
-          blockSlashKernel.getMarkdown().slice(-70),
+          JSON.stringify({
+            typed: typed.ok,
+            typedResult: typed,
+            clicked,
+            focused: blockSlashKernel.editor.view.hasFocus(),
+            selected: selected?.ok ?? false,
+            selectedResult: selected,
+            confirmed: confirmed?.ok ?? false,
+            confirmedResult: confirmed,
+            menuOpen: blockSlashOpen,
+            menuText: blockSlashMenu()?.textContent ?? null,
+            menuItems: blockSlashMenu()?.querySelectorAll('[role="option"]').length ?? 0,
+            headingSelected: blockSlashItem()?.getAttribute('aria-selected') ?? null,
+            parent: blockSlashKernel.editor.state.selection.$from.parent.type.name,
+            level: blockSlashKernel.editor.state.selection.$from.parent.attrs.level ?? null,
+            menuDisplay: blockSlashMenu()?.style.display ?? null,
+            markdown: blockSlashKernel.getMarkdown().slice(-70),
+          }),
         );
         // The slash conversion is asserted above, then restore the pre-scenario document
         // so the following selection/AI smoke scenarios retain their original fixture.
@@ -2840,6 +2858,7 @@ export async function runSmokeIfEnabled(): Promise<void> {
     const tooltip = tooltipId ? document.getElementById(tooltipId) : null;
     const activeToolbarAi =
       document.activeElement?.getAttribute('data-testid') === 'toolbar-entry-ai';
+    if (tooltip?.getAttribute('role') !== 'tooltip') await capture('DEV-047-tooltip-failure');
     check(
       'Icon-first 工具栏：AI 为 Sparkles + AI + chevron，Tooltip 与 accessible name 可达',
       !!currentSourceAi &&
@@ -2856,11 +2875,14 @@ export async function runSmokeIfEnabled(): Promise<void> {
         ? JSON.stringify({
             label: currentSourceAi.getAttribute('aria-label'),
             active: document.activeElement?.getAttribute('data-testid'),
-            tooltipId,
-            tooltipRole: tooltip?.getAttribute('role'),
+            tooltipId: tooltipId ?? null,
+            tooltipRole: tooltip?.getAttribute('role') ?? null,
             hasSvg: !!currentSourceAi.querySelector('svg'),
             hasChevron: !!currentSourceAi.querySelector('svg.lucide-chevron-down'),
             activeToolbarAi,
+            hasUndo: !!sourceToolbar?.querySelector('[data-testid="toolbar-entry-edit:undo"]'),
+            hasFormat: !!sourceToolbar?.querySelector('[data-testid="toolbar-entry-menu:format"]'),
+            hasInsert: !!sourceToolbar?.querySelector('[data-testid="toolbar-entry-menu:insert"]'),
           })
         : '(missing AI)',
     );

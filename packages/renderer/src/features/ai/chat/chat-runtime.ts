@@ -1,5 +1,6 @@
 import type {
   ChatMessage,
+  ChatPermissionMode,
   ChatSession,
   ChatSessionStatus,
   ChatTurn,
@@ -148,9 +149,7 @@ export function stopStream(): void {
 }
 
 /** 修改当前会话权限并立即追加 JSONL 快照；仅影响后续 Agent 操作。 */
-export async function setPermissionMode(
-  mode: import('@nexnote/shared').ChatPermissionMode,
-): Promise<void> {
+export async function setPermissionMode(mode: ChatPermissionMode): Promise<void> {
   if (!working) return;
   working.meta.permissionMode = mode;
   useChatStore.getState().setPermissionMode(mode);

@@ -80,19 +80,31 @@ function enabledProxy(
 }
 
 async function detectMacOs(): Promise<SystemProxySnapshot | null> {
-  const { stdout } = await execFileAsync('/usr/sbin/scutil', ['--proxy']);
-  return parseScutilProxy(stdout);
+  let output = '';
+  try {
+    output = (await execFileAsync('/usr/sbin/scutil', ['--proxy'])).stdout;
+  } catch {
+    // Fall back to inherited proxy environment variables when scutil is unavailable.
+  }
+  return parseScutilProxy(output) ?? parseEnvironmentProxy(process.env);
 }
 
-/** Windows: read ProxyEnable + ProxyServer from the user registry Internet Settings key. */
+export function parseEnvironmentProxy(env: NodeJS.ProcessEnv): SystemProxySnapshot | null {
+  const http = env.HTTP_PROXY ?? env.http_proxy ?? null;
+  const https = env.HTTPS_PROXY ?? env.https_proxy ?? http;
+  const all = env.ALL_PROXY ?? env.all_proxy ?? null;
+  const socks = all?.startsWith('socks') ? all : null;
+  if (!http && !https && !socks) return null;
+  return { http, https, socks };
+}
+
 export function parseWindowsRegistry(output: string): SystemProxySnapshot | null {
   const enable = /ProxyEnable\s+REG_DWORD\s+0x1/i.test(output);
   if (!enable) return null;
-const match = output.match(/ProxyServer\s+REG_SZ\s+(\S+)/i);
+  const match = output.match(/ProxyServer\s+REG_SZ\s+(\S+)/i);
   const raw = match?.[1]?.trim();
   if (!raw) return null;
   if (raw.includes('=')) {
-    // Per-protocol form: http=host:port;https=host:port;socks=host:port
     const parts = Object.fromEntries(
       raw.split(';').map((entry) => entry.split('=') as [string, string]),
     );
@@ -124,12 +136,8 @@ async function detectWindows(): Promise<SystemProxySnapshot | null> {
 
 /** Linux: environment variables first; GNOME gsettings as fallback. */
 async function detectLinux(): Promise<SystemProxySnapshot | null> {
-  const http = process.env.HTTP_PROXY ?? process.env.http_proxy ?? null;
-  const https = process.env.HTTPS_PROXY ?? process.env.https_proxy ?? http;
-  const socks = process.env.ALL_PROXY ?? process.env.all_proxy ?? null;
-  if (http || https || socks) {
-    return { http, https, socks: socks?.startsWith('socks') ? socks : null };
-  }
+  const environmentProxy = parseEnvironmentProxy(process.env);
+  if (environmentProxy) return environmentProxy;
   try {
     const mode = (await execFileAsync('gsettings', ['get', 'org.gnome.system.proxy', 'mode'])).stdout.trim();
     if (mode !== "'manual'") return null;

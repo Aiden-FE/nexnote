@@ -15,7 +15,7 @@ import type { BinaryEditorCommand, IpcEventChannel } from '@nexnote/shared';
  * - 渲染层 bootstrap 后才注册 `onEvent('binary:editorCommand', …)`，所以主进程必须等它发 ack 才下发命令。
  * - ack 经 `binary:host:ready` invoke 抵达，主进程用 senderId = webContents.id 识别 entry 并 drain 队列。
  * - did-finish-load 留作诊断监听，不参与业务。
- * - flush / roundTrip 在未就绪时挂载到一个 ready promise，等待 ack；超过 FLUSH_READY_TIMEOUT_MS 则按无 flush 兜底。
+ * - flush / roundTrip 在未就绪时挂载到一个 ready promise，等待 ack；超过 FLUSH_READY_TIMEOUT_MS 则拒绝关闭并保留宿主。
  * - close() 在 await flush 前后用 entry 引用 + webContentsId 双重核对，避免销毁到 close/reopen 之后的另一个 entry。
  */
 
@@ -29,6 +29,8 @@ interface HostEntry {
   webContentsId: number;
   /** 渲染层 ack（bootstrapBinaryHost 完成）后才为 true。 */
   ready: boolean;
+  /** 是否已向该宿主发送初次 load；重开 tab 时保留其未保存的内存状态。 */
+  loaded: boolean;
   pending: BinaryEditorCommand[];
   /** 渲染层上报的占位矩形（窗口内容区坐标）；未上报前宿主不显示，避免盖住主窗口 UI。 */
   bounds: { x: number; y: number; width: number; height: number } | null;
@@ -90,6 +92,9 @@ export class BinaryEditorHostManager {
   setActive(kind: BinaryKind, path: string): void {
     this.activeKey = hostKey(kind, path);
     this.layoutVisible();
+    const entry = this.hosts.get(this.activeKey);
+    if (!entry || entry.loaded) return;
+    entry.loaded = true;
     this.queue(this.activeKey, { command: 'load', kind, path });
   }
 
@@ -121,6 +126,7 @@ export class BinaryEditorHostManager {
         path,
         webContentsId: view.webContents.id,
         ready: false,
+        loaded: false,
         pending: [],
         bounds: null,
         readyWaiters: [],
@@ -137,11 +143,7 @@ export class BinaryEditorHostManager {
     if (!entry) return;
     const entryRef = entry;
     const idRef = entry.webContentsId;
-    try {
-      await this.flush(key);
-    } catch {
-      // 宿主可能已崩溃；销毁仍可继续。
-    }
+    await this.flush(key);
     const current = this.hosts.get(key);
     if (!current || current !== entryRef || current.webContentsId !== idRef) {
       // await 期间发生 close/reopen：不要销毁，可能正被新的视图使用。
@@ -152,11 +154,7 @@ export class BinaryEditorHostManager {
 
   /** 主窗口关闭前等待全部 pending 写入完成（ADR-0015 Decision 6）。 */
   async flushAll(): Promise<void> {
-    await Promise.all(
-      [...this.hosts.values()].map((entry) =>
-        this.flushByEntry(entry).catch(() => undefined),
-      ),
-    );
+    await Promise.all([...this.hosts.values()].map((entry) => this.flushByEntry(entry)));
   }
 
   /** 当前激活宿主的 pending 写入等待。 */
@@ -256,7 +254,7 @@ export class BinaryEditorHostManager {
       const entry = this.hosts.get(key);
       if (!entry || entry.view !== view || view.webContents.isDestroyed()) return;
       if (!entry.ready) {
-        // 等待 binary:host:ready ack；若 ack 一直不来（崩溃 / preload 失败）也不阻塞关闭路径。
+        // 超时后触发最后一次 flush 尝试；若渲染层未就绪，错误会阻止宿主销毁。
         const timer = setTimeout(() => {
           const current = this.hosts.get(key);
           if (!current || current.view !== view) return;

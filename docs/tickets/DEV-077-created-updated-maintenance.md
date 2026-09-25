@@ -1,6 +1,6 @@
 # DEV-077 created/updated 字段由应用维护：created 可改、updated 只读
 
-- 状态：ready-for-agent
+- 状态：done（v0.0.26）
 - 分类：enhancement
 - 优先级：P1
 - 工作量：M
@@ -48,14 +48,14 @@
 
 ## 验收标准
 
-- [ ] 编辑器（块 / 源码）正文改字、保存 → YAML 中 `updated` 刷新为保存时间；`created` 不被改动
-- [ ] 属性面板里改任意 frontmatter 字段（value / type / rename / add / remove），保存 → `updated` 同样刷新
-- [ ] 打开文档不做任何编辑 → 关闭/保存，文件字节不变（含 `updated`）；基于 `replaceFrontmatterYaml` + 当前 ISO 时间的来回序列化在无 frontmatter 变化时是 noop
-- [ ] 属性面板中 `updated` 行只读且有「由 NexNote 维护」类说明；`created` 可正常编辑；删除 `updated` 后，下次编辑保存不再尝试刷新该键
-- [ ] 新建文档三个入口都自动带 `created`（ISO 时间），不带 `updated`
-- [ ] `fs-service.writeTextFile` / `fs:writeTextFile` IPC 链路不被任何 `updated` 刷新逻辑污染（非编辑器写路径文件字节不变）
-- [ ] 单元测试覆盖：内容变化刷新、无变化不刷、`updated` 缺失不抛错、属性面板编辑同样刷新、新建只写 `created`、重命名链接重写不动 `updated`
-- [ ] `pnpm typecheck` / `pnpm lint` / 全量 Vitest / `pnpm build` 全绿
+- [x] 编辑器（块 / 源码）正文改字、保存 → YAML 中 `updated` 刷新为保存时间；`created` 不被改动
+- [x] 属性面板里改任意 frontmatter 字段（value / type / rename / add / remove），保存 → `updated` 同样刷新
+- [x] 打开文档不做任何编辑 → 关闭/保存，文件字节不变（含 `updated`）；基于 `replaceFrontmatterYaml` + 当前 ISO 时间的来回序列化在无 frontmatter 变化时是 noop
+- [x] 属性面板中 `updated` 行只读且有「由 NexNote 维护」类说明；`created` 可正常编辑；删除 `updated` 后，下次编辑保存不再尝试刷新该键
+- [x] 新建文档三个入口都自动带 `created`（ISO 时间），不带 `updated`
+- [x] `fs-service.writeTextFile` / `fs:writeTextFile` IPC 链路不被任何 `updated` 刷新逻辑污染（非编辑器写路径文件字节不变）
+- [x] 单元测试覆盖：内容变化刷新、无变化不刷、`updated` 缺失不抛错、属性面板编辑同样刷新、新建只写 `created`、重命名链接重写不动 `updated`
+- [x] `pnpm typecheck` / `pnpm lint` / 全量 Vitest / `pnpm build` 全绿
 
 ## Out of scope
 

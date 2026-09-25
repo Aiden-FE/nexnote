@@ -1,6 +1,6 @@
 # DEV-075 分功能指定模型：自由输入 + 已识别模型下拉双模式
 
-- 状态：ready-for-agent
+- 状态：done（v0.0.26）
 - 分类：enhancement
 - 优先级：P2
 - 工作量：S
@@ -31,13 +31,13 @@
 
 ## 验收标准
 
-- [ ] 选中 Profile 后聚焦模型输入框，出现该 Profile 的模型候选下拉；点击候选项即选中并保存
-- [ ] 下拉打开时仍可自由输入任意模型 id，失焦/回车保存后生效；逐字符输入期间不再每键触发 `ai:features:set`
-- [ ] `ai:listModels` 失败或返回空列表时无下拉、无错误弹窗，自由输入路径完全可用，且有可理解的提示文案
-- [ ] 同一 Profile 的候选列表有缓存，不随每次聚焦重复请求；可手动刷新
-- [ ] 四个功能（写作/翻译/对话/embedding）行为一致；清除指定（X 按钮）行为不回归
-- [ ] smoke 契约 `ai-feature-model-<key>` 不变；新增单测覆盖下拉渲染、选择写入、失败降级、缓存命中四条路径
-- [ ] `pnpm typecheck` / `pnpm lint` / 相关 Vitest 全绿
+- [x] 选中 Profile 后聚焦模型输入框，出现该 Profile 的模型候选下拉；点击候选项即选中并保存
+- [x] 下拉打开时仍可自由输入任意模型 id，失焦/回车保存后生效；逐字符输入期间不再每键触发 `ai:features:set`
+- [x] `ai:listModels` 失败或返回空列表时无下拉、无错误弹窗，自由输入路径完全可用，且有可理解的提示文案
+- [x] 同一 Profile 的候选列表有缓存，不随每次聚焦重复请求；可手动刷新
+- [x] 四个功能（写作/翻译/对话/embedding）行为一致；清除指定（X 按钮）行为不回归
+- [x] smoke 契约 `ai-feature-model-<key>` 不变；新增单测覆盖下拉渲染、选择写入、失败降级、缓存命中四条路径
+- [x] `pnpm typecheck` / `pnpm lint` / 相关 Vitest 全绿
 
 ## Out of scope
 

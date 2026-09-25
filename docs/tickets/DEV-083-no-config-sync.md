@@ -1,6 +1,6 @@
 # DEV-083 vault 配置与布局不再进 git + 中止 rebase 保留笔记
 
-- 状态：已实现（待发布 v0.0.25）
+- 状态：done（v0.0.25）
 - 范围：packages/shared, packages/main, packages/renderer
 - 架构依据：ADR-0016（取代 ADR-0003 中的 `.nexnote/config.json`/`.nexnote/layout.json` allowlist 条款）
 - 触发：用户反馈 2026-09-22（DEV-082 修复后用户仍报告「中止 rebase → 内容被还原 → 再次冲突」的死循环）
@@ -72,7 +72,7 @@ DEV-082 修复了「rebase 暂停期间自动提交叠加」和「doctor 无 abo
 - [x] 全部 vitest PASS：main **632 passed | 2 skipped (634)**；renderer 663 passed（1 个 master 预存在 selection-bubble 失败不变）
 - [x] `pnpm verify:release-config` 31/31 PASS
 - [x] `pnpm build` PASS
-- [ ] 发布 v0.0.25
+- [x] 发布 v0.0.25
 
 ## 测试与门禁证据
 

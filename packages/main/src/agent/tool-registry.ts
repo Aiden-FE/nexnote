@@ -1,4 +1,4 @@
-import type { AgentScenario, AgentToolDefinition } from '@nexnote/shared';
+import type { AgentScenario, AgentToolDefinition, ChatPermissionMode } from '@nexnote/shared';
 export class ToolRegistryError extends Error {
   constructor(
     message: string,
@@ -11,7 +11,7 @@ export class ToolRegistryError extends Error {
 export interface ToolContext {
   runId: string;
   scenario: AgentScenario;
-  permissionMode?: import('@nexnote/shared').ChatPermissionMode;
+  permissionMode?: ChatPermissionMode;
 }
 export interface AgentTool {
   definition: AgentToolDefinition;

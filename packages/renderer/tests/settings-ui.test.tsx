@@ -9,6 +9,8 @@ import { UpdateSettingsSection } from '../src/features/settings/update-section';
 import { useSettingsNav } from '../src/lib/open-settings';
 import { subscribeSettingsChanges, useSettingsStore } from '../src/stores/settings-store';
 
+(globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
+
 let container: HTMLDivElement;
 let root: ReturnType<typeof createRoot>;
 
@@ -114,13 +116,15 @@ describe('更新设置', () => {
     });
     expect(container.textContent).toContain('重试下载');
     expect(container.textContent).toContain('下载失败，可重试下载。');
-    emit('app:updateStatus', {
-      status: 'error',
-      message: '检查失败',
-      channel: 'stable',
-      retry: 'check',
+    await act(async () => {
+      emit('app:updateStatus', {
+        status: 'error',
+        message: '检查失败',
+        channel: 'stable',
+        retry: 'check',
+      });
+      await tick(0);
     });
-    await act(async () => tick(0));
     expect(container.textContent).toContain('重新检查');
     expect(container.textContent).toContain('检查失败，可重新检查更新。');
   });
@@ -134,6 +138,75 @@ describe('更新设置', () => {
     expect(container.querySelector('[data-testid="update-settings"]')).toBeTruthy();
     expect(invokeSpy).toHaveBeenCalledWith('app:getUpdateSettings', undefined);
     expect(container.textContent).toContain('所有更新设置保存在主进程');
+  });
+});
+
+describe('DEV-072 独立代理设置', () => {
+  it('保存网络代理绕过主机列表', async () => {
+    const { invokeSpy } = installBridge();
+    await mountAndLoad();
+    await act(async () => {
+      container.querySelector<HTMLButtonElement>('[data-testid="settings-nav-network"]')?.click();
+      await tick(10);
+    });
+
+    const bypass = container.querySelector<HTMLInputElement>(
+      'input[placeholder="localhost, .example.com"]',
+    );
+    expect(bypass).toBeTruthy();
+    await act(async () => {
+      typeInto(bypass!, 'localhost, .example.com');
+      await tick(10);
+    });
+    const patches = invokeSpy.mock.calls
+      .filter(([channel]) => channel === 'settings:setGlobal')
+      .map(
+        ([, payload]) =>
+          (
+            payload as {
+              patch: { network: Partial<ReturnType<typeof defaultGlobalSettings>['network']> };
+            }
+          ).patch.network,
+      );
+    expect(patches.at(-1)?.bypass).toEqual(['localhost', '.example.com']);
+  });
+
+  it('可以启用 AI 与 Git 的独立代理配置', async () => {
+    const base = defaultGlobalSettings();
+    const { invokeSpy } = installBridge({
+      'settings:setGlobal': (payload) => {
+        const patch = (payload as { patch: { network?: Partial<typeof base.network> } }).patch;
+        return {
+          ok: true,
+          data: { ...base, ...patch, network: { ...base.network, ...patch.network } },
+        };
+      },
+    });
+    await mountAndLoad();
+    await act(async () => {
+      container.querySelector<HTMLButtonElement>('[data-testid="settings-nav-network"]')?.click();
+      await tick(10);
+    });
+
+    await act(async () => {
+      container.querySelector<HTMLButtonElement>('[aria-label="AI 独立代理"]')?.click();
+      await tick(10);
+    });
+    expect(container.textContent).toContain('AI 代理模式');
+
+    await act(async () => {
+      container.querySelector<HTMLButtonElement>('[aria-label="Git 独立代理"]')?.click();
+      await tick(10);
+    });
+    expect(container.textContent).toContain('Git 代理模式');
+    const patches = invokeSpy.mock.calls
+      .filter(([channel]) => channel === 'settings:setGlobal')
+      .map(
+        ([, payload]) =>
+          (payload as { patch: { network: Partial<typeof base.network> } }).patch.network,
+      );
+    expect(patches[0]?.aiProxy?.mode).toBe('system');
+    expect(patches[1]?.gitProxy?.mode).toBe('system');
   });
 });
 

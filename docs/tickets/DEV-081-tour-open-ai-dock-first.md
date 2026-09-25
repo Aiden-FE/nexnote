@@ -1,6 +1,6 @@
 # DEV-081 引导「AI 对话与写作」步骤先展开右栏再定位
 
-- 状态：ready-for-agent
+- 状态：done（v0.0.26）
 - 分类：bug
 - 优先级：P2
 - 工作量：S
@@ -44,12 +44,12 @@
 
 ## 验收标准
 
-- [ ] Dock 收起状态下开始引导，走到「AI 对话与写作」步时右栏自动展开，spotlight 正确框住右栏而不是卡片居中
-- [ ] 从该步进入下一步或跳过/完成后，Dock 恢复引导前的状态（dockVisible=false、activeDockPanel 不变）
-- [ ] 引导前 Dock 已展开时，离开引导后仍保持展开（不重复修改）
-- [ ] 在该步期间用户手动改了 Dock 状态（点收起），引导离开后不强行复原
-- [ ] 其他步骤（页面树/编辑器/版本时间线/设置）定位行为不回归
-- [ ] 组件测试覆盖：prepare/cleanup 时机、已展开不重复动作、用户中途改动不被覆盖、跳过路径；`pnpm typecheck` / `pnpm lint` / 相关 Vitest 全绿
+- [x] Dock 收起状态下开始引导，走到「AI 对话与写作」步时右栏自动展开，spotlight 正确框住右栏而不是卡片居中
+- [x] 从该步进入下一步或跳过/完成后，Dock 恢复引导前的状态（dockVisible=false、activeDockPanel 不变）
+- [x] 引导前 Dock 已展开时，离开引导后仍保持展开（不重复修改）
+- [x] 在该步期间用户手动改了 Dock 状态（点收起），引导离开后不强行复原
+- [x] 其他步骤（页面树/编辑器/版本时间线/设置）定位行为不回归
+- [x] 组件测试覆盖：prepare/cleanup 时机、已展开不重复动作、用户中途改动不被覆盖、跳过路径；`pnpm typecheck` / `pnpm lint` / 相关 Vitest 全绿
 
 ## Out of scope
 

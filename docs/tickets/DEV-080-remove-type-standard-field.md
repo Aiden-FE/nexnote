@@ -1,6 +1,6 @@
 # DEV-080 移除文档属性 type 标准字段（类型由文档本身派生）
 
-- 状态：ready-for-agent
+- 状态：done（v0.0.26）
 - 分类：enhancement
 - 优先级：P1
 - 工作量：S
@@ -37,12 +37,12 @@
 
 ## 验收标准
 
-- [ ] 字段目录不再出现 type，无法添加为标准字段
-- [ ] 右侧属性面板「类型」展示由文档格式派生的只读值（如「块文档」「Markdown」「DOCX」等），而非用户编辑值
-- [ ] frontmatter 序列化输出不再主动包含 type；无编辑往返字节不变的保真语义不被破坏
-- [ ] 全仓无对 frontmatter.type 的逻辑读取残留（`getString(data, 'type')` 调用点清零）
-- [ ] `STANDARD_FIELD_CATALOG` 与序列化顺序数组单一来源（不再两处分别维护）
-- [ ] 更新后的单测全绿；`pnpm typecheck` / `pnpm lint` / 相关 Vitest 通过
+- [x] 字段目录不再出现 type，无法添加为标准字段
+- [x] 右侧属性面板「类型」展示由文档格式派生的只读值（如「块文档」「Markdown」「DOCX」等），而非用户编辑值
+- [x] frontmatter 序列化输出不再主动包含 type；无编辑往返字节不变的保真语义不被破坏
+- [x] 全仓无对 frontmatter.type 的逻辑读取残留（`getString(data, 'type')` 调用点清零）
+- [x] `STANDARD_FIELD_CATALOG` 与序列化顺序数组单一来源（不再两处分别维护）
+- [x] 更新后的单测全绿；`pnpm typecheck` / `pnpm lint` / 相关 Vitest 通过
 
 ## Out of scope
 

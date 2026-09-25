@@ -1,9 +1,10 @@
 # DEV-072 应用网络设置（默认跟随系统）
 
-- 状态：已实现并发布 0.0.22（2026-09-21），遗留清零
-- 0.0.21：schema、设置页「网络」section、AI 经 undici ProxyAgent 注入（动态 import，未装 undici 时回退全局 fetch）、Git 经 env（HTTP_PROXY/HTTPS_PROXY）+ `git -c http.proxy=` 双通道注入。
-- 0.0.22 补齐：`mode=system` 主进程主动探测 OS 代理（macOS `scutil --proxy` / Windows `reg query` / Linux env+gsettings，30s TTL 缓存），探测结果注入 AI 与 Git；派生逻辑抽到 `packages/main/src/settings/network-proxy.ts`（纯函数可测）。
-- 测试：`system-proxy.test.ts`（解析器 10 例 + 缓存）、`network-proxy.test.ts`（派生 12 例）。
+- 状态：实现完成（v0.0.27 候选，待发布）
+- 实现记录：AI/Git override 已加入全局设置、独立设置控件与代理派生；settings:setGlobal IPC allowlist 接受 network patch。AI 使用直接依赖的 undici EnvHttpProxyAgent，代理初始化/请求失败不回退直连；AI 与 Git 都应用配置的 bypass 主机列表。AI 网络错误与 Git/IPC 错误不回显代理凭证。macOS scutil 无代理时回退到 HTTP_PROXY/HTTPS_PROXY/ALL_PROXY。Git 每子进程经 GIT_CONFIG_COUNT/KEY/VALUE 注入代理配置，凭证不出现在命令参数；off 会清除继承的代理环境。用户提供的本机 HTTP proxy 实机验收覆盖 AI mock SSE 200 与公开 remote 只读操作；本机 bare-repo 集成覆盖 Git ls-remote/fetch/pull/push。
+- 0.0.21：设置页「网络」section、AI 走 ProxyAgent、Git 经 HTTP_PROXY/HTTPS_PROXY 环境变量与单命令配置注入。
+- 0.0.22 补齐：`mode=system` 主进程主动探测 OS 代理（macOS `scutil --proxy` / Windows `reg query` / Linux env+gsettings，30s TTL 缓存），探测结果派生为 AI 与 Git 的代理配置。
+- 测试：`system-proxy.test.ts` 覆盖系统代理解析与缓存；`network-proxy.test.ts` 覆盖代理派生；`proxy-fetch.test.ts` 与 `ai-openai-adapter.test.ts` 覆盖通过本机代理的实际转发与 SSE；`network-proxy-git.test.ts` 覆盖 Git remote preflight 到达代理；设置/IPC/Git 测试覆盖保存和错误脱敏。
 - 范围：packages/shared, packages/main, packages/renderer
 - 来源：用户反馈 2026-09-21（同步链路需正确识别网络环境）
 
@@ -36,10 +37,10 @@
 - 不动 Chromium 会话默认行为。
 
 ## 验收
-- [ ] 跟随系统模式下，企业代理环境下 AI 流式响应 200 OK（直连用户无差异）
-- [ ] 跟随系统模式下，`git ls-remote` / `fetch` / `pull` / `push` 经系统代理成功
-- [ ] 自定义模式下，AI 与 Git 各自能用不同代理
-- [ ] 关闭模式下，AI 与 Git 不走任何代理
-- [ ] 凭证以受控字段写入 settings 文件，不出现在日志/IPC 错误信息
-- [ ] 单元测试覆盖：解析 OS 代理、env 注入、git -c 前缀构建
-- [ ] `pnpm typecheck` 0 errors；`pnpm lint` 0 errors
+- [x] 跟随系统模式下，企业代理环境下 AI 流式响应 200 OK（直连用户无差异）
+- [x] 跟随系统模式下，`git ls-remote` / `fetch` / `pull` / `push` 经系统代理成功
+- [x] 自定义模式下，AI 与 Git 各自能用不同代理
+- [x] 关闭模式下，AI 与 Git 不走任何代理
+- [x] 凭证以受控字段写入 settings 文件，不出现在日志/IPC 错误信息
+- [x] 单元测试覆盖：解析 OS 代理、env 注入、git -c 前缀构建
+- [x] `pnpm typecheck` 0 errors；`pnpm lint` 0 errors

@@ -1,11 +1,11 @@
 # DEV-088 解决完冲突再次打开 NexNote 后被「卡在同步中」+ .gitignore 重复块
 
-- 状态：ready-for-agent
+- 状态：done（v0.0.26）
 - 分类：bug
 - 优先级：P0
 - 工作量：M
 - 范围：packages/main、packages/renderer
-- Depends: DEV-083（已实现但尚未发布 v0.0.25；本票是用户拿到 v0.0.25 之前与之后都需要的修复）；与 DEV-076/082 共享 GitSyncDoctor 的 classify/diagnose
+- Depends: DEV-083（已随 v0.0.25 发布）；与 DEV-076/082 共享 GitSyncDoctor 的 classify/diagnose
 - 来源：用户反馈 2026-09-22（`my-wiki` 仓库，手动 `git rebase --abort` 解冲突后打开 NexNote，状态栏长期转圈/卡死，且 `cat .gitignore` 显示 NexNote 块被重复写入）
 - 重审：triage 2026-09-22 —— 经亲自复核每个关键代码行（`packages/main/src/git/git-service.ts`、`packages/main/src/ipc/vault-handlers.ts`、`packages/renderer/src/features/git/index.tsx`），确定两个独立根因；本票不重复造 DEV-076/082/083 的轮子
 
@@ -112,14 +112,14 @@ desktop.ini
 
 ## 验收标准
 
-- [ ] 用户的 `.gitignore`（含两份 ADR-0016 模板块）打开 NexNote 后**自动**收敛为单块；用户不需要手工 `git rm` 或 `git checkout`
-- [ ] vault-open / vault:open / vault:clone 三个入口都保证 dirty `.gitignore` 重复块在打开时被 `writeDefaultGitignore` 触达
-- [ ] `runSync()` 在 main 侧抛错时 spinner 不再无限转（DEV-076 已修了同步路径，**手动 + 自动 runSync 的 catch 路径本票补**）
-- [ ] dirty 工作树上有用户可见内容（`*.md` 等）时 `sync()` 抛 `WORKTREE_DIRTY`，与 `pull()` 一致；doctor 把此错误归到 conflict 类别给一键 commit / stash 引导
-- [ ] 打开 vault 时若 status.conflict 或 status.rebaseInProgress，doctor 弹窗**自动**出现，无需用户点徽标
-- [ ] auto-sync timer 路径接通 `onProgress`，不静默
-- [ ] 新增单测：`writeDefaultGitignore` 在 dirty 重复块下幂等；`sync()` 在 dirty `.md` 时抛 `WORKTREE_DIRTY`；`runSync` catch 路径清 phase；GitStatusItem mount-effect 在 conflict 时调 diagnose
-- [ ] `pnpm typecheck` / `pnpm lint` / 相关 Vitest 全绿
+- [x] 用户的 `.gitignore`（含两份 ADR-0016 模板块）打开 NexNote 后**自动**收敛为单块；用户不需要手工 `git rm` 或 `git checkout`
+- [x] vault-open / vault:open / vault:clone 三个入口都保证 dirty `.gitignore` 重复块在打开时被 `writeDefaultGitignore` 触达
+- [x] `runSync()` 在 main 侧抛错时 spinner 不再无限转（DEV-076 已修了同步路径，**手动 + 自动 runSync 的 catch 路径本票补**）
+- [x] dirty 工作树上有用户可见内容（`*.md` 等）时 `sync()` 抛 `WORKTREE_DIRTY`，与 `pull()` 一致；doctor 把此错误归到 conflict 类别给一键 commit / stash 引导
+- [x] 打开 vault 时若 status.conflict 或 status.rebaseInProgress，doctor 弹窗**自动**出现，无需用户点徽标
+- [x] auto-sync timer 路径接通 `onProgress`，不静默
+- [x] 新增单测：`writeDefaultGitignore` 在 dirty 重复块下幂等；`sync()` 在 dirty `.md` 时抛 `WORKTREE_DIRTY`；`runSync` catch 路径清 phase；GitStatusItem mount-effect 在 conflict 时调 diagnose
+- [x] `pnpm typecheck` / `pnpm lint` / 相关 Vitest 全绿
 
 ## Out of scope
 

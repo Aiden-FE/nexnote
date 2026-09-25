@@ -270,6 +270,7 @@ describe('Markdown CodeMirror / 快捷输入（DEV-053）', () => {
   });
 
   it('媒体动作等待成功导入，取消或失效的异步结果保留 trigger', async () => {
+    const layoutError = vi.spyOn(console, 'error');
     let complete!: (path: string | null) => void;
     const parent = document.createElement('div');
     document.body.append(parent);
@@ -302,7 +303,11 @@ describe('Markdown CodeMirror / 快捷输入（DEV-053）', () => {
     await vi.waitFor(() => expect(complete).toBeTypeOf('function'));
     complete(null);
     await Promise.resolve();
+    await new Promise((resolve) => setTimeout(resolve, 0));
     expect(editor.getText()).toBe('/图片');
+    expect(layoutError.mock.calls.flat().join(' ')).not.toContain(
+      "Reading the editor layout isn't allowed during an update",
+    );
     fixture.cleanup();
   });
 

@@ -1,10 +1,11 @@
 # DEV-074 应用内二进制编辑器（docx / xlsx / xmind）
 
-- 状态：done（v0.0.27）
+- 状态：实现完成（v0.0.27 候选，待发布）
 - code-review 修复（2026-09-24）：
   - `binary-editor-host` 不再用 `did-finish-load` 触发 pending drain；渲染层 bootstrap 完成后主动 `binary:host:ready` ack（senderId 识别），主进程 drain。roundTrip 等待 ack 到达且 `__nexnoteHostFlush` 缺失时抛错而非静默成功。`close()` 跨 await 用 entry 引用 + webContentsId 双重核对，防止 close/reopen 销毁错对象。
   - `xmind` `content.json` sheet/rootTopic 上未建模字段（boundaries/relationships/theme/skeleton/topicPositioning）原样保留。
   - `xlsx` 关系 Id 冲突时丢弃重建端同 Id 项并回填原包关系；OpenXML 引用方写死 Id 不改名。
+  - 保存遇到 `BINARY_CONFLICT` 时保留本地 dirty payload、拒绝 close flush；宿主明确提供确认后丢弃本地编辑并重载外部版本的恢复动作。
   - `binary:gitignore:set` 切换跟踪：保留 CRLF 与其它用户行，仅管理标记 + 三种扩展名；启用时同步 `git rm --cached` 已入库副本。
   - 编辑器/dir 行 onDrop 支持 Finder 拖入 docx/xlsx/xmind；外部路径仍仅主进程 dialogs 可见。
 - 新增测试：`binary-editor-host.test.ts`（5 用例含 delayed bootstrap、ack timeout、interleaved close race）、`binary-xmind.test.ts`（content.json 字段保留）、`binary-xlsx.test.ts`（rId 冲突）、`binary-gitignore.test.ts`、`editor-drop-import.test.tsx`。
@@ -53,6 +54,7 @@
 - [x] xmind：文本/树结构/备注/超链接/标签/概要往返（`binary-xmind.test.ts`）；外框/关联线在解析端不实现，读取结果带只读标注
 - [x] 编辑器独立 WebContentsView 宿主（`packages/main/src/binary/binary-editor-host.ts`，崩溃隔离）；关闭 tab/窗口前 `flushAll`/`flushPending` 等待 pending 写入完成（ADR-0015 Decision 6）
 - [x] `pnpm typecheck` 0 errors；`pnpm lint` 0 errors（7 warnings 均为改动前既存）；`npx vitest run` 1549 passed / 2 skipped（0 failed）；`pnpm build` PASS（含 editor-host.html 多页产物）
+- [x] 关闭 tab / 窗口时 flush 失败会阻止销毁宿主；tab 会恢复并提示重试（`binary-editor-host.test.ts`、`binary-tab-close.test.tsx`）
 - [x] 测试与门禁证据按 DEV-ARCH-001 模式写入本 ticket（2026-09-22，worktree `.wt/DEV-074`，分支 `dev/DEV-074`）
 
 ## 实施记录（2026-09-22）

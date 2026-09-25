@@ -44,9 +44,17 @@ export function BinaryTabView({ tab }: { tab: TabDescriptor }): React.JSX.Elemen
       const stillOpen = useTabStore
         .getState()
         .tabs.some((candidate) => candidate.id === tab.id && candidate.pagePath === path);
-      if (!stillOpen) void invoke('binary:host:close', { kind, path }).catch(() => undefined);
+      if (stillOpen) return;
+      void invoke('binary:host:close', { kind, path }).catch((error: unknown) => {
+        const store = useTabStore.getState();
+        const restored = store.openBinaryTab(path, tab.title, kind);
+        store.setActiveTab(restored.id);
+        store.setBinaryTabCloseError(
+          `无法保存 ${tab.title}，标签页已保留。请重试关闭。${error instanceof Error ? ` ${error.message}` : ''}`,
+        );
+      });
     };
-  }, [kind, path, tab.id]);
+  }, [kind, path, tab.id, tab.title]);
 
   // DEV-074 宿主边界：把本容器在窗口内容区内的矩形上报给主进程，
   // 让 WebContentsView 只覆盖这块占位，不盖住侧栏/标签条/状态栏。

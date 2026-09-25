@@ -10,6 +10,7 @@ import {
   type EmbedResponse,
   type ProviderAdapter,
 } from './types';
+import { createProxyFetch } from './proxy-fetch';
 
 const REQUEST_TIMEOUT_MS = 120_000;
 const CONNECT_TIMEOUT_MS = 15_000;
@@ -61,20 +62,7 @@ function logRedactedProviderError(res: Response, op: string): void {
   console.warn(`[ai:${op}] HTTP ${res.status} (provider response body redacted)`);
 }
 
-/** DEV-072：用 undici ProxyAgent 绑定的 fetch，让 AI 请求走指定代理（HTTP/HTTPS/SOCKS5）。undici 未安装时静默回退全局 fetch。 */
-function undiciFetchWithProxy(proxyUrl: string): typeof fetch {
-  // 主进程 tsconfig 不含 DOM lib，`RequestInfo` 不存在；用 typeof fetch 的参数元组推导。
-  return (input: Parameters<typeof fetch>[0], init?: RequestInit) => {
-    // 用变量拼接模块名 + @vite-ignore，让 rollup 无法静态解析（undici 是可选依赖）；未安装时静默回退。
-    const moduleId = 'un' + 'dici';
-    return import(/* @vite-ignore */ moduleId)
-      .then(({ ProxyAgent, fetch: undiciFetch }) => {
-        const dispatcher = new ProxyAgent({ uri: proxyUrl });
-        return undiciFetch(input as never, { ...(init ?? {}), dispatcher } as never);
-      })
-      .catch(() => globalThis.fetch(input, init)) as unknown as Promise<Response>;
-  };
-}
+/** DEV-072：配置了代理时，失败不得静默绕过代理改为直连。 */
 
 /** 通用状态消息：仅状态 + 静态提示词（不含 body），安全进入 IPC。 */
 function safeMessageFromStatus(status: number): string {
@@ -109,10 +97,10 @@ export class OpenAIProtocolAdapter implements ProviderAdapter {
     this.base = normalizeBase(opts.baseUrl);
     this.apiKey = opts.apiKey.trim();
     this.apiVersion = opts.apiVersion ?? '2024-10-21';
-    // DEV-072：自定义代理时构造 undici.ProxyAgent 绑定的 fetch；system/off 沿用全局 fetch。
+    // DEV-072：自定义代理时构造 undici.EnvHttpProxyAgent；system/off 沿用全局 fetch。
     this.fetchImpl =
       opts.fetchImpl ??
-      (opts.proxyUrl ? undiciFetchWithProxy(opts.proxyUrl) : globalThis.fetch);
+      (opts.proxyUrl ? createProxyFetch(opts.proxyUrl, opts.proxyBypass) : globalThis.fetch);
   }
 
   private headers(json: boolean): Record<string, string> {
@@ -297,8 +285,8 @@ export class OpenAIProtocolAdapter implements ProviderAdapter {
         headers: this.headers(false),
         signal: AbortSignal.timeout(CONNECT_TIMEOUT_MS),
       });
-    } catch (e) {
-      throw this.networkError(e);
+    } catch {
+      throw this.networkError();
     }
     if (!res.ok) {
       logRedactedProviderError(res, 'provider');
@@ -330,8 +318,8 @@ export class OpenAIProtocolAdapter implements ProviderAdapter {
         }),
         signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
       });
-    } catch (e) {
-      throw this.networkError(e);
+    } catch {
+      throw this.networkError();
     }
     if (!res.ok) {
       logRedactedProviderError(res, 'provider');
@@ -403,7 +391,7 @@ export class OpenAIProtocolAdapter implements ProviderAdapter {
           ...(params?.temperature !== undefined && { temperature: params.temperature }),
           ...(params?.maxTokens !== undefined && { maxOutputTokens: params.maxTokens }),
           ...(params?.reasoningEffort && {
-            providerOptions: { 'nexnote-provider': { reasoningEffort: params.reasoningEffort } },
+            providerOptions: { nexnoteProvider: { reasoningEffort: params.reasoningEffort } },
           }),
           abortSignal: abort.signal,
           maxRetries: 0,
@@ -506,8 +494,8 @@ export class OpenAIProtocolAdapter implements ProviderAdapter {
         body: JSON.stringify({ model: req.model, input: req.inputs }),
         signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
       });
-    } catch (e) {
-      throw this.networkError(e);
+    } catch {
+      throw this.networkError();
     }
     if (!res.ok) {
       logRedactedProviderError(res, 'embeddings');
@@ -543,8 +531,7 @@ export class OpenAIProtocolAdapter implements ProviderAdapter {
     return { vectors, model: body.model ?? req.model, usage: extractUsage(body.usage) };
   }
 
-  private networkError(e: unknown): ProviderError {
-    const msg = e instanceof Error ? e.message : String(e);
-    return new ProviderError(`网络请求失败：${msg}`, 'NETWORK');
+  private networkError(): ProviderError {
+    return new ProviderError('网络请求失败，请检查代理设置与网络连接', 'NETWORK');
   }
 }

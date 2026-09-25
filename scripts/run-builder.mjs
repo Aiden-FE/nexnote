@@ -1,4 +1,7 @@
 /* eslint-disable no-console */
+import { copyFile } from 'node:fs/promises';
+import { join } from 'node:path';
+import { prepareNativeBindings } from './prepare-native-bindings.mjs';
 /**
  * Normalize argv for electron-builder CLI.
  * 本仓库经 pnpm shim 调用时 argv[1]（脚本路径）会被 yargs 当作未知位置参数；
@@ -30,4 +33,13 @@ if (channel !== 'stable') {
   args.push(`-c.publish=${publish}`);
 }
 process.argv = [process.argv[0], ...args];
+
+const root = process.cwd();
+const { cacheBinding } = await prepareNativeBindings({ root, mode: 'electron' });
+await copyFile(
+  cacheBinding,
+  join(root, 'node_modules', 'better-sqlite3', 'build', 'Release', 'better_sqlite3.node'),
+);
+console.log('staged validated Electron ABI for better-sqlite3');
+
 await import('electron-builder/out/cli/cli.js');

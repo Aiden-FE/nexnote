@@ -10,7 +10,12 @@ import {
   Settings2,
   Sparkles,
 } from 'lucide-react';
-import type { ChatSessionStatus, ChatTurn, RetrievalResponse } from '@nexnote/shared';
+import type {
+  ChatPermissionMode,
+  ChatSessionStatus,
+  ChatTurn,
+  RetrievalResponse,
+} from '@nexnote/shared';
 import { useChatStore } from './chat-store';
 import { ContextChips } from './ContextChips';
 import { RetrievalSources } from '../retrieval/RetrievalSources';
@@ -274,9 +279,7 @@ export function ChatDock() {
             aria-label="Chat Dock 权限模式"
             value={permissionMode}
             disabled={!active || streaming}
-            onChange={(e) =>
-              void setPermissionMode(e.target.value as import('@nexnote/shared').ChatPermissionMode)
-            }
+            onChange={(e) => void setPermissionMode(e.target.value as ChatPermissionMode)}
             className="h-7 rounded border bg-transparent px-1 text-[11px] text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/40"
           >
             <option value="conversation">对话（只读）</option>

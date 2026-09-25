@@ -41,6 +41,8 @@ export interface TabDescriptor {
 export interface WorkspaceState {
   tabs: TabDescriptor[];
   activeTabId: string | null;
+  binaryTabCloseError: string | null;
+  setBinaryTabCloseError(error: string | null): void;
   openTab(tab: { kind: TabKind; title: string; pagePath?: string }): TabDescriptor;
   openPageTab(pagePath: string, title?: string): TabDescriptor;
   openDocxTab(pagePath: string, title?: string): TabDescriptor;
@@ -123,6 +125,10 @@ const initial = initialTabs();
 
 export const useTabStore = create<WorkspaceState>()((set, get) => ({
   ...initial,
+  binaryTabCloseError: null,
+  setBinaryTabCloseError(error) {
+    set({ binaryTabCloseError: error });
+  },
 
   openTab({ kind, title, pagePath }) {
     const tab: TabDescriptor = { id: nextTabId(), kind, title, createdAt: Date.now(), pagePath };

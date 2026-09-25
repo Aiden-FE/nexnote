@@ -1,6 +1,6 @@
 # DEV-082 单人 vault auto-rebase 在 config.json 上的自死锁与 todo 搅乱
 
-- 状态：实施中
+- 状态：done（v0.0.23）
 - 范围：packages/shared, packages/main, packages/renderer
 - 来源：用户反馈 2026-09-22（单人本机 my-wiki 自动 rebase 冲突）
 
@@ -65,11 +65,11 @@
 15. 渲染层加 `status-git-rebase` badge 渲染用例。
 
 ## 验收
-- [ ] rebase 进行中不再产生新的 auto commit
-- [ ] doctor 可识别 rebase-in-progress 并提供一键中止
-- [ ] 状态栏显示 rebase 徽标
-- [ ] `pnpm typecheck` 0 errors；`pnpm lint` 0 errors
-- [ ] 新增 5 例全绿；既有 git 测试全绿；`pnpm build` PASS
+- [x] rebase 进行中不再产生新的 auto commit
+- [x] doctor 可识别 rebase-in-progress 并提供一键中止
+- [x] 状态栏显示 rebase 徽标
+- [x] `pnpm typecheck` 0 errors；`pnpm lint` 0 errors
+- [x] 新增 5 例全绿；既有 git 测试全绿；`pnpm build` PASS
 
 ## 不做的事
 - 不把 config.json 移出 VERSIONED_NEXNOTE_FILES（ADR 0003 契约，需新 ADR）

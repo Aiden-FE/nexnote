@@ -294,28 +294,29 @@ export function sourceSlashMenu(options: SourceSlashMenuOptions): Extension {
       menu.append(empty);
     }
     menu.style.display = 'block';
-    const place = () => {
-      const coords = view.coordsAtPos(view.state.selection.main.head);
-      const hostEl = view.dom.parentElement;
-      if (!coords || !hostEl) return false;
-      const viewportEl = findScrollViewport(view.dom);
-      const viewport = readMenuViewport(viewportEl);
-      // applyMenuViewportPlacement 已经写好 top/left/maxHeight/overflowY（含上下翻转），
-      // 这里不再覆盖原始 caret 坐标，否则视口约束失效。
-      applyMenuViewportPlacement({
-        menu: menu!,
-        host: hostEl,
-        anchor: { top: coords.top, bottom: coords.bottom, left: coords.left },
-        viewport,
-        desiredHeight: readMenuHeight(menu!),
-      });
-      return true;
-    };
     view.requestMeasure({
-      read: () => true,
-      write: place,
+      read: () => {
+        const host = view.dom.parentElement;
+        const viewportElement = findScrollViewport(view.dom);
+        return {
+          coords: view.coordsAtPos(view.state.selection.main.head),
+          hostRect: host?.getBoundingClientRect(),
+          viewport: readMenuViewport(viewportElement),
+          desiredHeight: readMenuHeight(menu!),
+        };
+      },
+      write: ({ coords, hostRect, viewport, desiredHeight }) => {
+        if (!coords || !hostRect) return;
+        applyMenuViewportPlacement({
+          menu: menu!,
+          host: hostRect,
+          anchor: { top: coords.top, bottom: coords.bottom, left: coords.left },
+          viewport,
+          desiredHeight,
+        });
+        scrollActiveMenuItemIntoView(menu!);
+      },
     });
-    scrollActiveMenuItemIntoView(menu);
   };
   const availableItems = (query: string, emptyBlock: boolean) => {
     try {

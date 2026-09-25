@@ -266,6 +266,24 @@ describe('IPC 注册表框架', () => {
     expect(result.code).toBe('READ_FAILED');
   });
 
+  it('IPC 错误信封会脱敏代理 URL 中的账号和密码', async () => {
+    const ipc = new FakeIpcMain();
+    const { services } = makeServices();
+    const registrar = createIpcRegistrar(ipc, services);
+    registrar.register('fs:readTextFile', async () => {
+      throw new Error('request via http://proxy-user:proxy-secret@proxy.local:8080 failed');
+    });
+
+    const result = (await ipc.invoke('fs:readTextFile', { path: 'x' })) as {
+      ok: boolean;
+      error: string;
+    };
+    expect(result.ok).toBe(false);
+    expect(result.error).not.toContain('proxy-user');
+    expect(result.error).not.toContain('proxy-secret');
+    expect(result.error).toContain('http://***@proxy.local:8080');
+  });
+
   it('index 查询通道接受契约声明的 payload', async () => {
     const ipc = new FakeIpcMain();
     const { services } = makeServices();

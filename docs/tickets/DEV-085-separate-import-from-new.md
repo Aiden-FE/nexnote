@@ -1,6 +1,6 @@
 # DEV-085 导入入口与新建入口分离：导入归到文件操作组
 
-- 状态：ready-for-agent
+- 状态：done（v0.0.26）
 - 分类：enhancement
 - 优先级：P2
 - 工作量：S
@@ -41,12 +41,12 @@
 
 ## 验收标准
 
-- [ ] 新建下拉菜单不含"导入"项，只含"新建"项（DEV-084 落地后含 5 项）
-- [ ] page-tree 工具栏有独立的"导入"入口；点击弹出三项选择
-- [ ] 右键菜单"新建"组与"导入 / 文件操作"组明确分组；空白区域右键菜单保持结构但导入移到文件操作组
-- [ ] 拖拽外部文件、命令面板、context menu 三条路径的导入功能全部正常
-- [ ] smoke 契约更新：`import-docx/xlsx/xmind` 通过；旧的 `new-note-docx/xlsx/xmind` 若语义改变则相应调整或删除
-- [ ] `pnpm typecheck` / `pnpm lint` / 相关 Vitest 全绿
+- [x] 新建下拉菜单不含"导入"项，只含"新建"项（DEV-084 落地后含 5 项）
+- [x] page-tree 工具栏有独立的"导入"入口；点击弹出三项选择
+- [x] 右键菜单"新建"组与"导入 / 文件操作"组明确分组；空白区域右键菜单保持结构但导入移到文件操作组
+- [x] 拖拽外部文件、命令面板、context menu 三条路径的导入功能全部正常
+- [x] smoke 契约更新：`import-docx/xlsx/xmind` 通过；旧的 `new-note-docx/xlsx/xmind` 若语义改变则相应调整或删除
+- [x] `pnpm typecheck` / `pnpm lint` / 相关 Vitest 全绿
 
 ## Out of scope
 

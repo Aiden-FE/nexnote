@@ -504,7 +504,7 @@ const settingsSetGlobal: PayloadValidator = (payload) => {
   if (typeof payload.patch !== 'object' || payload.patch === null || Array.isArray(payload.patch)) {
     return invalid('patch 必须是对象');
   }
-  const allowedTop = ['appearance', 'updates', 'startup', 'git'];
+  const allowedTop = ['appearance', 'updates', 'startup', 'git', 'network'];
   for (const key of Object.keys(payload.patch as Record<string, unknown>)) {
     if (!allowedTop.includes(key)) return invalid(`patch 未知字段 ${key}`);
   }

@@ -559,13 +559,16 @@ export function setUpdaterAdapterForTests(
   const previousAdapter = adapter;
   const previousApp = electronApp;
   const previousResourcesPath = getResourcesPath;
+  const previousChannel = activeChannel;
   adapter = next;
   electronApp = appLike;
+  activeChannel = resolveChannelFromEnv();
   if (resourcesPath !== undefined) getResourcesPath = () => resourcesPath;
   return () => {
     adapter = previousAdapter;
     electronApp = previousApp;
     getResourcesPath = previousResourcesPath;
+    activeChannel = previousChannel;
   };
 }
 export function setUpdaterPlatformForTests(next: UpdaterPlatformAdapter): () => void {

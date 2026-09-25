@@ -1,7 +1,11 @@
-import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { createServer, request as httpRequest } from 'node:http';
+import type { AddressInfo } from 'node:net';
+import { defaultGlobalSettings, type ChatStreamEvent } from '@nexnote/shared';
+import { deriveAiProxyUrl } from '../src/settings/network-proxy';
+import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import { startMockOpenAiServer, type MockOpenAiServer } from './helpers/mock-openai';
 import { OpenAIProtocolAdapter } from '../src/ai/provider/openai';
-import type { ChatStreamEvent } from '@nexnote/shared';
+import { detectSystemProxy } from '../src/settings/system-proxy';
 
 let mock: MockOpenAiServer;
 
@@ -32,6 +36,25 @@ function collectStream(
 }
 
 describe('OpenAI 协议适配器', () => {
+  it('网络错误不向外暴露代理 URL 凭证', async () => {
+    const proxySecret = 'proxy-password-secret';
+    const failing = new OpenAIProtocolAdapter({
+      baseUrl: `${mock.url}/v1`,
+      apiKey: 'sk-mock-key',
+      kind: 'openai-compatible',
+      fetchImpl: async () => {
+        throw new Error(`connect failed via http://proxy-user:${proxySecret}@proxy.local:8080`);
+      },
+    });
+
+    const error = await failing
+      .chatCompletion({ model: 'gpt-4o-mini', messages: [{ role: 'user', content: 'ping' }] })
+      .catch((reason: unknown) => reason);
+
+    expect(String(error)).not.toContain(proxySecret);
+    expect(String(error)).toContain('网络请求失败');
+  });
+
   it('构造时拒绝 Base URL userinfo 与非 HTTP URL', () => {
     expect(
       () =>
@@ -98,8 +121,79 @@ describe('OpenAI 协议适配器', () => {
     const deltas = events.filter((e) => e.type === 'delta');
     expect(deltas.map((e) => (e as { text: string }).text).join('')).toBe('你好，流式回复');
     expect(events.at(-1)).toEqual({ type: 'done' });
-    // 无 error 事件
     expect(events.some((e) => e.type === 'error')).toBe(false);
+  });
+
+  it('system proxy configuration routes an AI stream through the detected proxy', async () => {
+    const proxy = createServer((request, response) => {
+      const destination = new URL(request.url ?? '');
+      const upstream = httpRequest(
+        destination,
+        { method: request.method, headers: request.headers },
+        (upstreamResponse) => {
+          response.writeHead(upstreamResponse.statusCode ?? 502, upstreamResponse.headers);
+          upstreamResponse.pipe(response);
+        },
+      );
+      upstream.on('error', () => {
+        response.writeHead(502);
+        response.end();
+      });
+      request.pipe(upstream);
+    });
+    await new Promise<void>((resolve, reject) => {
+      proxy.once('error', reject);
+      proxy.listen(0, '127.0.0.1', resolve);
+    });
+    const address = proxy.address() as AddressInfo;
+    const proxyUrl = deriveAiProxyUrl(defaultGlobalSettings().network, {
+      https: `http://127.0.0.1:${address.port}`,
+      http: null,
+      socks: null,
+    });
+    expect(proxyUrl).toBe(`http://127.0.0.1:${address.port}`);
+    const proxiedAdapter = new OpenAIProtocolAdapter({
+      baseUrl: `${mock.url}/v1`,
+      apiKey: 'sk-mock-key',
+      kind: 'openai-compatible',
+      proxyUrl,
+    });
+    const events: ChatStreamEvent[] = [];
+
+    try {
+      await collectStream(proxiedAdapter, events).done;
+      expect(events.at(-1)).toEqual({ type: 'done' });
+      expect(events.filter((event) => event.type === 'delta')).not.toHaveLength(0);
+    } finally {
+      await new Promise<void>((resolve, reject) =>
+        proxy.close((error) => (error ? reject(error) : resolve())),
+      );
+    }
+  });
+
+  it.skipIf(!process.env.NEXNOTE_ACCEPTANCE_PROXY)('system mode uses the supplied proxy environment for an AI stream', async () => {
+    const proxyUrl = process.env.NEXNOTE_ACCEPTANCE_PROXY;
+    if (!proxyUrl) throw new Error('NEXNOTE_ACCEPTANCE_PROXY is required');
+    vi.stubEnv('HTTP_PROXY', proxyUrl);
+    vi.stubEnv('HTTPS_PROXY', proxyUrl);
+    const events: ChatStreamEvent[] = [];
+
+    try {
+      const system = await detectSystemProxy(true);
+      const derivedProxyUrl = deriveAiProxyUrl(defaultGlobalSettings().network, system);
+      expect(derivedProxyUrl).toBe(proxyUrl);
+      const proxiedAdapter = new OpenAIProtocolAdapter({
+        baseUrl: `${mock.url}/v1`,
+        apiKey: 'sk-local-acceptance-key',
+        kind: 'openai-compatible',
+        proxyUrl: derivedProxyUrl,
+      });
+      await collectStream(proxiedAdapter, events).done;
+      expect(events.at(-1)).toEqual({ type: 'done' });
+      expect(events.filter((event) => event.type === 'delta')).not.toHaveLength(0);
+    } finally {
+      vi.unstubAllEnvs();
+    }
   });
 
   it('SSE 缺少 [DONE] 而 EOF 时以 STREAM_TRUNCATED 失败，不接受部分完成', async () => {

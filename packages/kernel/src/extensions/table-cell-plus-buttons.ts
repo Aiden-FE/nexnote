@@ -2,24 +2,16 @@ import { Extension } from '@tiptap/core';
 import { Plugin, PluginKey, EditorState } from '@tiptap/pm/state';
 import { Decoration, DecorationSet } from '@tiptap/pm/view';
 import type { Node, ResolvedPos, Schema } from '@tiptap/pm/model';
-import {
-  CellSelection,
-  TableMap,
-  selectedRect,
-  type TableRect,
-} from '@tiptap/pm/tables';
+import { TableMap, selectedRect, type TableRect } from '@tiptap/pm/tables';
 
 /**
  * DEV-087：块编辑器表格的"行末加号"和"列首加号"。
  *
- * - 光标在表格内某行 → 该行最后 cell 之后出现加号（绝对定位视觉上叠加于该 cell 左下），
- *   点击触发 `nexnote:table-cell-plus:row-after` 自定义事件；renderer 监听后派发
- *   editor.commands.addRowAfter()。
- * - 光标在表格内某列 → 该列第一个 cell 之前出现加号（视觉上叠加于该 cell 右上），
- *   点击触发 `nexnote:table-cell-plus:col-after`；renderer 派发 addColumnAfter。
+ * - 选择区域下方出现加号；点击触发 `nexnote:table-cell-plus:row-after` 自定义事件，
+ *   renderer 监听后派发 editor.commands.addRowAfter()。
+ * - 选择区域右侧出现加号；点击触发 `nexnote:table-cell-plus:col-after`，renderer 派发 addColumnAfter。
  *
- * 仅在单一 anchor cell 焦点时显示。多 cell 选区（CellSelection）、跨行跨列 cell、
- * 非表格焦点时不显示。
+ * 多 cell 选区在所选区域的底行与最右列显示单组按钮。
  *
  * 装饰只挂 DOM（按钮），不修改文档。
  */
@@ -43,8 +35,6 @@ function getFocusedRectFromDoc(
   selection: { from: number; to: number; $from: ResolvedPos },
   schema: Schema,
 ): FocusedRect | null {
-  if (!schema.nodes.table || !schema.nodes.tableCell) return null;
-  if (selection instanceof CellSelection) return null;
   const { $from } = selection;
   if ($from.parent.type !== schema.nodes.tableCell) return null;
   // 构造最小 EditorState 仅用于 selectedRect 与 TableMap.get。
@@ -54,7 +44,6 @@ function getFocusedRectFromDoc(
     selection: selection as unknown as EditorState['selection'],
   };
   const rect = selectedRect(minimal as unknown as EditorState);
-  if (rect.right - rect.left > 1 || rect.bottom - rect.top > 1) return null;
   let tableStart = -1;
   for (let d = $from.depth; d >= 0; d -= 1) {
     const node = $from.node(d);
@@ -64,7 +53,12 @@ function getFocusedRectFromDoc(
     }
   }
   if (tableStart < 0) return null;
-  return { row: rect.top, col: rect.left, tableRect: rect, tableStart };
+  return {
+    row: rect.bottom - 1,
+    col: rect.right - 1,
+    tableRect: rect,
+    tableStart,
+  };
 }
 
 /** 行末位置：该行最右侧 cell 节点结束位置之后。 */

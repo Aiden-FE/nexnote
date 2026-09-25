@@ -1,6 +1,7 @@
 import type {
   GlobalSettings,
   GlobalSettingsPatch,
+  NetworkProxyConfig,
   VaultSettings,
   VaultSettingsPatch,
 } from '../types/settings';
@@ -17,7 +18,14 @@ export function mergeGlobalPatch(base: GlobalSettings, patch: GlobalSettingsPatc
   const updates = patch.updates ? { ...base.updates, ...patch.updates } : base.updates;
   const startup = patch.startup ? { ...base.startup, ...patch.startup } : base.startup;
   const git = patch.git ? { ...base.git, ...patch.git } : base.git;
-  const network = patch.network ? { ...base.network, ...patch.network } : base.network;
+  const network = patch.network
+    ? {
+        ...base.network,
+        ...patch.network,
+        aiProxy: mergeNetworkConfig(base.network.aiProxy, patch.network.aiProxy),
+        gitProxy: mergeNetworkConfig(base.network.gitProxy, patch.network.gitProxy),
+      }
+    : base.network;
   const result: GlobalSettings = {
     ...base,
     appearance: pruneUndefined(appearance),
@@ -89,6 +97,34 @@ function normalizeNetwork(
       : [],
     applyToAi: raw.applyToAi === true,
     applyToGit: raw.applyToGit === true,
+    aiProxy: normalizeNetworkConfig(raw.aiProxy),
+    gitProxy: normalizeNetworkConfig(raw.gitProxy),
+  };
+}
+
+function mergeNetworkConfig(
+  current: NetworkProxyConfig | null,
+  patch: NetworkProxyConfig | null | undefined,
+): NetworkProxyConfig | null {
+  if (patch === undefined) return current;
+  return patch;
+}
+
+function normalizeNetworkConfig(raw: unknown): NetworkProxyConfig | null {
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return null;
+  const config = raw as Partial<NetworkProxyConfig>;
+  return {
+    mode: isNetworkMode(config.mode) ? config.mode : 'system',
+    host: typeof config.host === 'string' && config.host.trim() ? config.host.trim() : null,
+    port:
+      typeof config.port === 'number' && Number.isFinite(config.port) && config.port > 0 && config.port <= 65535
+        ? Math.round(config.port)
+        : null,
+    username: typeof config.username === 'string' && config.username.trim() ? config.username.trim() : null,
+    password: typeof config.password === 'string' && config.password ? config.password : null,
+    bypass: Array.isArray(config.bypass)
+      ? config.bypass.filter((entry): entry is string => typeof entry === 'string' && entry.trim().length > 0)
+      : [],
   };
 }
 

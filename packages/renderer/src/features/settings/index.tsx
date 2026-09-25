@@ -12,6 +12,8 @@ import type {
   CodeTheme,
   ShortcutOverride,
   NetworkMode,
+  NetworkProxyConfig,
+  NetworkSettings,
 } from '@nexnote/shared';
 import { normalizeShortcut } from '@nexnote/shared';
 
@@ -132,11 +134,20 @@ function Select({
   );
 }
 
-function Toggle({ checked, onChange }: { checked: boolean; onChange: (v: boolean) => void }) {
+function Toggle({
+  checked,
+  onChange,
+  label,
+}: {
+  checked: boolean;
+  onChange: (v: boolean) => void;
+  label?: string;
+}) {
   return (
     <button
       type="button"
       role="switch"
+      aria-label={label}
       aria-checked={checked}
       onClick={() => onChange(!checked)}
       className={`relative inline-flex h-5 w-9 shrink-0 items-center overflow-hidden rounded-full transition-colors ${
@@ -371,11 +382,155 @@ function NetworkSection() {
           </Row>
         </>
       )}
+      <Row label="绕过主机" description="逗号分隔；匹配的目标将直连而不经代理">
+        <input
+          type="text"
+          value={net.bypass.join(', ')}
+          onChange={(event) =>
+            setNet({
+              bypass: event.target.value
+                .split(',')
+                .map((host) => host.trim())
+                .filter(Boolean),
+            })
+          }
+          placeholder="localhost, .example.com"
+          className="h-8 w-64 rounded-md border bg-background px-2 text-sm"
+        />
+      </Row>
       <Row label="代理 AI 请求" description="为 AI provider 调用注入代理">
         <Toggle checked={net.applyToAi} onChange={(v) => setNet({ applyToAi: v })} />
       </Row>
       <Row label="代理 Git 操作" description="为 Git 同步/推送注入代理">
         <Toggle checked={net.applyToGit} onChange={(v) => setNet({ applyToGit: v })} />
+      </Row>
+      <Row label="AI 独立代理" description="启用后 AI 使用单独的代理配置">
+        <Toggle
+          label="AI 独立代理"
+          checked={net.aiProxy !== null}
+          onChange={(enabled) => setNet({ aiProxy: enabled ? profileFromNetwork(net) : null })}
+        />
+      </Row>
+      {net.aiProxy && (
+        <NetworkProxyEditor
+          label="AI"
+          value={net.aiProxy}
+          onChange={(aiProxy) => setNet({ aiProxy })}
+        />
+      )}
+      <Row label="Git 独立代理" description="启用后 Git 使用单独的代理配置">
+        <Toggle
+          label="Git 独立代理"
+          checked={net.gitProxy !== null}
+          onChange={(enabled) => setNet({ gitProxy: enabled ? profileFromNetwork(net) : null })}
+        />
+      </Row>
+      {net.gitProxy && (
+        <NetworkProxyEditor
+          label="Git"
+          value={net.gitProxy}
+          onChange={(gitProxy) => setNet({ gitProxy })}
+        />
+      )}
+    </div>
+  );
+}
+
+function profileFromNetwork(network: NetworkSettings): NetworkProxyConfig {
+  return {
+    mode: network.mode,
+    host: network.host,
+    port: network.port,
+    username: network.username,
+    password: network.password,
+    bypass: network.bypass,
+  };
+}
+
+function NetworkProxyEditor({
+  label,
+  value,
+  onChange,
+}: {
+  label: string;
+  value: NetworkProxyConfig;
+  onChange: (next: NetworkProxyConfig) => void;
+}) {
+  const set = (patch: Partial<NetworkProxyConfig>) => onChange({ ...value, ...patch });
+  return (
+    <div className="space-y-3 border-l-2 pl-3">
+      <Row label={`${label} 代理模式`}>
+        <Select
+          value={value.mode}
+          onChange={(mode) => set({ mode: mode as NetworkMode })}
+          options={[
+            { value: 'system', label: '跟随系统' },
+            { value: 'http', label: 'HTTP' },
+            { value: 'https', label: 'HTTPS' },
+            { value: 'socks5', label: 'SOCKS5' },
+            { value: 'off', label: '关闭代理' },
+          ]}
+        />
+      </Row>
+      {value.mode !== 'system' && value.mode !== 'off' && (
+        <>
+          <Row label={`${label} 代理主机`}>
+            <input
+              type="text"
+              value={value.host ?? ''}
+              onChange={(event) => set({ host: event.target.value.trim() || null })}
+              className="h-8 w-48 rounded-md border bg-background px-2 text-sm"
+            />
+          </Row>
+          <Row label={`${label} 代理端口`}>
+            <input
+              type="number"
+              min={1}
+              max={65535}
+              value={value.port ?? ''}
+              onChange={(event) => {
+                const port = Number(event.target.value);
+                set({
+                  port:
+                    Number.isFinite(port) && port > 0 && port <= 65535 ? Math.round(port) : null,
+                });
+              }}
+              className="h-8 w-24 rounded-md border bg-background px-2 text-sm"
+            />
+          </Row>
+          <Row label={`${label} 代理账号`}>
+            <input
+              type="text"
+              value={value.username ?? ''}
+              onChange={(event) => set({ username: event.target.value.trim() || null })}
+              className="h-8 w-48 rounded-md border bg-background px-2 text-sm"
+            />
+          </Row>
+          <Row label={`${label} 代理密码`}>
+            <input
+              type="password"
+              value={value.password ?? ''}
+              onChange={(event) => set({ password: event.target.value || null })}
+              className="h-8 w-48 rounded-md border bg-background px-2 text-sm"
+            />
+          </Row>
+        </>
+      )}
+      <Row label={`${label} 绕过主机`}>
+        <input
+          type="text"
+          value={value.bypass.join(', ')}
+          onChange={(event) =>
+            set({
+              bypass: event.target.value
+                .split(',')
+                .map((host) => host.trim())
+                .filter(Boolean),
+            })
+          }
+          placeholder="localhost, .example.com"
+          className="h-8 w-64 rounded-md border bg-background px-2 text-sm"
+        />
       </Row>
     </div>
   );
@@ -541,10 +696,7 @@ function GitSection() {
           label="二进制文档不随 Git 跟踪"
           description="docx / xlsx / xmind 默认随知识库版本化；开启后写入 .gitignore 不再跟踪"
         >
-          <Toggle
-            checked={binaryUntracked}
-            onChange={(v) => void setBinaryUntrack(v)}
-          />
+          <Toggle checked={binaryUntracked} onChange={(v) => void setBinaryUntrack(v)} />
         </Row>
       )}
       {message && <p className="text-xs text-muted-foreground">{message}</p>}

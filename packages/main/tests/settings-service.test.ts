@@ -3,6 +3,7 @@ import { tmpdir } from 'node:os';
 import * as path from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { SettingsService, normalizeStoredGlobal } from '../src/settings/settings-service';
+import { validatePayload } from '../src/ipc/validation';
 import {
   defaultGlobalSettings,
   defaultVaultSettings,
@@ -98,6 +99,27 @@ describe('normalizeStoredGlobal', () => {
 });
 
 describe('SettingsService', () => {
+  it('settings:setGlobal accepts network proxy settings and still rejects unknown top-level fields', () => {
+    const validation = validatePayload('settings:setGlobal', {
+      patch: {
+        network: {
+          aiProxy: {
+            mode: 'https',
+            host: 'ai.proxy.local',
+            port: 8443,
+            username: null,
+            password: null,
+            bypass: [],
+          },
+        },
+      },
+    });
+    expect(validation).toBeNull();
+    expect(
+      validatePayload('settings:setGlobal', { patch: { unknown: true } })?.code,
+    ).toBe('IPC_PAYLOAD_INVALID');
+  });
+
   it('无文件时返回默认值', () => {
     const service = new SettingsService(filePath);
     expect(service.get()).toEqual(defaultGlobalSettings());
@@ -118,6 +140,31 @@ describe('SettingsService', () => {
       appearance: { theme: 'light', uiFontSize: undefined as unknown as number },
     });
     expect(updated.appearance.theme).toBe('light');
+  });
+
+  it('不同的 AI 与 Git 代理配置可写入并从设置文件恢复', () => {
+    const service = new SettingsService(filePath);
+    const aiProxy = {
+      mode: 'https' as const,
+      host: 'ai.proxy.local',
+      port: 8443,
+      username: 'ai-user',
+      password: 'ai-secret',
+      bypass: [],
+    };
+    const gitProxy = {
+      mode: 'socks5' as const,
+      host: 'git.proxy.local',
+      port: 1080,
+      username: null,
+      password: null,
+      bypass: [],
+    };
+    service.update({ network: { aiProxy, gitProxy } });
+
+    const reloaded = new SettingsService(filePath);
+    expect(reloaded.get().network.aiProxy).toEqual(aiProxy);
+    expect(reloaded.get().network.gitProxy).toEqual(gitProxy);
   });
 
   it('setShortcuts 规范化并持久化', () => {
@@ -201,6 +248,30 @@ describe('shared 设置工具函数', () => {
     const base = defaultGlobalSettings();
     const merged = mergeGlobalPatch(base, { startup: { behavior: 'welcome' } });
     expect(merged.startup.behavior).toBe('welcome');
+  });
+
+  it('mergeGlobalPatch 修改一个代理时保留另一个代理', () => {
+    const base = defaultGlobalSettings();
+    const aiProxy = {
+      mode: 'https' as const,
+      host: 'ai.proxy.local',
+      port: 8443,
+      username: null,
+      password: null,
+      bypass: [],
+    };
+    const gitProxy = {
+      mode: 'socks5' as const,
+      host: 'git.proxy.local',
+      port: 1080,
+      username: null,
+      password: null,
+      bypass: [],
+    };
+    const withAi = mergeGlobalPatch(base, { network: { aiProxy } });
+    const withBoth = mergeGlobalPatch(withAi, { network: { gitProxy } });
+    expect(withBoth.network.aiProxy).toEqual(aiProxy);
+    expect(withBoth.network.gitProxy).toEqual(gitProxy);
   });
 });
 

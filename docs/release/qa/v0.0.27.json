@@ -4,8 +4,8 @@
   "tag": "v0.0.27",
   "commit": "7f35fa4",
   "channel": "stable",
-  "allRequiredChecksPassed": true,
-  "scope": "v0.0.27-candidate",
+  "allRequiredChecksPassed": false,
+  "scope": "v0.0.27-superseded-draft",
   "machineChecks": {
     "typecheck": "passed (pnpm -r typecheck: shared/plugin-api/website/kernel/renderer all Done; main tsc --noEmit -p tsconfig.json clean after DEV-074 review fixes)",
     "lint": "passed (pnpm lint: 0 errors; 9 pre-existing import()-style warnings unchanged from earlier baselines; the new binary-editor-host flushAll() was tightened to destructure .values() so the no-unused-vars gate stays clean)",
@@ -17,7 +17,7 @@
     "packagedSmoke": "deferred to candidate pipeline: tag push triggers matrix build + packaged macOS smoke bound to tag commit 7f35fa4 with NEXNOTE_SMOKE_EXPECTED_VERSION=0.0.27"
   },
   "candidateContents": {
-    "tickets": "DEV-074 review follow-up implemented in 7f35fa4; version bump to 0.0.27 in same commit",
+    "tickets": "Superseded draft: DEV-074 review fixes are in 7f35fa4 (package v0.0.26); v0.0.27 version bump and this QA draft are in bc4e3f3. This is not publishable evidence; allRequiredChecksPassed=false pending a new immutable candidate and QA binding.",
     "highlights": [
       "DEV-074 review: BinaryEditorHostManager no longer drains pending on did-finish-load; renderer must ack via binary:host:ready (senderId = webContents.id). roundTrip waits up to 1500ms for ack; missing __nexnoteHostFlush now throws rather than silently succeeding. close() captures entry identity + webContentsId across await so concurrent destroyAll / close-reopen cannot kill the wrong host. New tests cover delayed bootstrap, ack timeout, idempotent ack, and interleaved close race.",
       "DEV-074 review: xmind content.json sheet & rootTopic now preserves fields simple-mind-map does not model (boundaries / relationships / theme / skeleton / topicPositioning) on save; rebuilt-side fields still take precedence.",

@@ -1,41 +1,34 @@
 // @vitest-environment happy-dom
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
-(globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
-
-function deferred<T>() {
-  let resolve!: (value: T) => void;
-  let reject!: (reason?: unknown) => void;
-  const promise = new Promise<T>((res, rej) => {
-    resolve = res;
-    reject = rej;
-  });
-  return { promise, resolve, reject };
-}
-
 describe('binary host flush save queue (DEV-074)', () => {
   afterEach(() => {
     vi.resetModules();
     delete (window as unknown as { nexnote?: unknown }).nexnote;
   });
 
-  it('flush waits for edits made while a previous save is in flight', async () => {
+  it('BINARY_CONFLICT retains dirty edits and rejects close flushes instead of resolving', async () => {
     const commands: Array<(payload: unknown) => void> = [];
-    const saves: Array<ReturnType<typeof deferred<{ sha256: string }>>> = [];
     const savePayloads: unknown[] = [];
     (window as unknown as { nexnote: unknown }).nexnote = {
       invoke: vi.fn((channel: string, payload?: unknown) => {
         if (channel === 'binary:read') {
           return Promise.resolve({
             ok: true,
-            data: { data: { kind: 'xlsx', sheets: [{ name: 'Sheet1' }] }, sha256: 'base', readonly: [] },
+            data: {
+              data: { kind: 'xlsx', sheets: [{ name: 'Sheet1' }] },
+              sha256: 'base',
+              readonly: [],
+            },
           });
         }
         if (channel === 'binary:save') {
           savePayloads.push(payload);
-          const next = deferred<{ sha256: string }>();
-          saves.push(next);
-          return next.promise.then((result) => ({ ok: true, data: result }));
+          return Promise.resolve({
+            ok: false,
+            error: 'external edit detected',
+            code: 'BINARY_CONFLICT',
+          });
         }
         throw new Error(`unexpected IPC: ${channel}`);
       }),
@@ -47,31 +40,21 @@ describe('binary host flush save queue (DEV-074)', () => {
 
     const sessionModule = await import('../src/binary-host/session');
     const stop = sessionModule.bootstrapBinaryHost();
-    commands[0]?.({ command: 'load', kind: 'xlsx', path: 'notes/a.xlsx' });
-    await vi.waitFor(() => expect(sessionModule.getSession()?.path).toBe('notes/a.xlsx'));
+    commands[0]?.({ command: 'load', kind: 'xlsx', path: 'notes/conflict.xlsx' });
+    await vi.waitFor(() => expect(sessionModule.getSession()?.path).toBe('notes/conflict.xlsx'));
 
-    sessionModule.markDirty({ sheets: [{ name: 'first edit' }] });
-    const flush = sessionModule.flushPending();
-    await vi.waitFor(() => expect(saves).toHaveLength(1));
+    sessionModule.markDirty({ sheets: [{ name: 'local edit' }] });
+    await expect(sessionModule.flushPending()).rejects.toMatchObject({ code: 'BINARY_CONFLICT' });
+    expect(sessionModule.getSession()?.conflict).toBe(true);
+    expect(savePayloads).toHaveLength(1);
 
-    // A newer edit arrives after flush started but while save #1 is pending.
-    sessionModule.markDirty({ sheets: [{ name: 'last edit' }] });
-    saves[0]!.resolve({ sha256: 'first-sha' });
-    await vi.waitFor(() => expect(saves).toHaveLength(2));
+    sessionModule.markDirty({ sheets: [{ name: 'newer local edit' }] });
+    await expect(sessionModule.flushPending()).rejects.toMatchObject({ code: 'BINARY_CONFLICT' });
+    expect(savePayloads).toHaveLength(1);
 
-    expect(
-      (savePayloads[1] as { data: { sheets: Array<{ name: string }> } }).data.sheets[0]?.name,
-    ).toBe('last edit');
-    let flushed = false;
-    void flush.then(() => {
-      flushed = true;
-    });
-    await Promise.resolve();
-    expect(flushed).toBe(false);
-
-    saves[1]!.resolve({ sha256: 'last-sha' });
-    await expect(flush).resolves.toBeUndefined();
-    expect(flushed).toBe(true);
+    await sessionModule.reloadAfterConflict();
+    expect(sessionModule.getSession()).toMatchObject({ conflict: false, sha256: 'base' });
+    await expect(sessionModule.flushPending()).resolves.toBeUndefined();
     stop();
   });
 });

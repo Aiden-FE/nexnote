@@ -1,9 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { defaultGlobalSettings, type NetworkSettings } from '@nexnote/shared';
-import {
-  deriveAiProxyUrl,
-  deriveNetworkProxy,
-} from '../src/settings/network-proxy';
+import { deriveAiProxyUrl, deriveNetworkProxy } from '../src/settings/network-proxy';
 import type { SystemProxySnapshot } from '../src/settings/system-proxy';
 
 const systemProxy: SystemProxySnapshot = {
@@ -20,11 +17,11 @@ describe('deriveNetworkProxy', () => {
   it('applyToGit=false 或 mode=off 时不注入', () => {
     expect(deriveNetworkProxy(net({ applyToGit: false }), systemProxy)).toEqual({
       env: null,
-      cliConfig: null,
+      cliConfig: ['http.proxy='],
     });
     expect(deriveNetworkProxy(net({ mode: 'off' }), systemProxy)).toEqual({
       env: null,
-      cliConfig: null,
+      cliConfig: ['http.proxy='],
     });
   });
 
@@ -45,10 +42,7 @@ describe('deriveNetworkProxy', () => {
   });
 
   it('自定义 http 模式生成完整 URL + 双通道', () => {
-    const result = deriveNetworkProxy(
-      net({ mode: 'http', host: 'proxy.local', port: 8080 }),
-      null,
-    );
+    const result = deriveNetworkProxy(net({ mode: 'http', host: 'proxy.local', port: 8080 }), null);
     expect(result.env!.HTTPS_PROXY).toBe('http://proxy.local:8080');
     expect(result.cliConfig).toEqual([
       'http.proxy=http://proxy.local:8080',
@@ -57,11 +51,17 @@ describe('deriveNetworkProxy', () => {
   });
 
   it('自定义 socks5 模式只注入 http.proxy（git 不认 https.proxy 的 socks 前缀）', () => {
+    const result = deriveNetworkProxy(net({ mode: 'socks5', host: '10.0.0.1', port: 1080 }), null);
+    expect(result.cliConfig).toEqual(['http.proxy=socks5://10.0.0.1:1080']);
+  });
+
+  it('passes bypass hosts to Git proxy environment', () => {
     const result = deriveNetworkProxy(
-      net({ mode: 'socks5', host: '10.0.0.1', port: 1080 }),
+      net({ mode: 'http', host: 'proxy.local', port: 3128, bypass: ['localhost', '.example.com'] }),
       null,
     );
-    expect(result.cliConfig).toEqual(['http.proxy=socks5://10.0.0.1:1080']);
+    expect(result.env?.NO_PROXY).toBe('localhost,.example.com');
+    expect(result.env?.no_proxy).toBe('localhost,.example.com');
   });
 
   it('自定义模式带认证时对 user/password 进行 URL 编码', () => {
@@ -70,6 +70,46 @@ describe('deriveNetworkProxy', () => {
       null,
     );
     expect(result.env!.HTTPS_PROXY).toBe('http://a%20b:p%40ss@p.local:80');
+  });
+
+  it('AI 与 Git 可分别派生不同的自定义代理', () => {
+    const result = net({
+      mode: 'off',
+      aiProxy: {
+        mode: 'https',
+        host: 'ai.proxy.local',
+        port: 8443,
+        username: null,
+        password: null,
+        bypass: [],
+      },
+      gitProxy: {
+        mode: 'socks5',
+        host: 'git.proxy.local',
+        port: 1080,
+        username: null,
+        password: null,
+        bypass: [],
+      },
+    });
+    expect(deriveAiProxyUrl(result, null)).toBe('https://ai.proxy.local:8443');
+    expect(deriveNetworkProxy(result, null).cliConfig).toEqual([
+      'http.proxy=socks5://git.proxy.local:1080',
+    ]);
+  });
+
+  it('preserves authentication in the Git proxy configuration value', () => {
+    const result = deriveNetworkProxy(
+      net({
+        mode: 'socks5',
+        host: 'proxy.local',
+        port: 1080,
+        username: 'git user',
+        password: 'p@ss',
+      }),
+      null,
+    );
+    expect(result.cliConfig).toEqual(['http.proxy=socks5://git%20user:p%40ss@proxy.local:1080']);
   });
 
   it('host/port 缺失的自定义模式不注入', () => {

@@ -1,4 +1,5 @@
 import { Extension, isNodeActive } from '@tiptap/core';
+import type { Editor } from '@tiptap/core';
 import { Plugin, PluginKey } from '@tiptap/pm/state';
 import { closeHistory } from '@tiptap/pm/history';
 import type { EditorView } from '@tiptap/pm/view';
@@ -20,11 +21,11 @@ import {
 } from './menu-view';
 
 /** view → editor 注册表：表格命令需经 editor.commands 在 slash 提交后执行。 */
-const editorByView = new WeakMap<EditorView, import('@tiptap/core').Editor>();
-export function registerEditorView(view: EditorView, editor: import('@tiptap/core').Editor): void {
+const editorByView = new WeakMap<EditorView, Editor>();
+export function registerEditorView(view: EditorView, editor: Editor): void {
   editorByView.set(view, editor);
 }
-export function getEditorForView(view: EditorView): import('@tiptap/core').Editor | undefined {
+export function getEditorForView(view: EditorView): Editor | undefined {
   return editorByView.get(view);
 }
 export interface QuickInsertItem {

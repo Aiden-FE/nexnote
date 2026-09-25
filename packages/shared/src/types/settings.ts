@@ -15,17 +15,21 @@ export interface ShortcutOverride {
 
 export type NetworkMode = 'system' | 'http' | 'https' | 'socks5' | 'off';
 
-export interface NetworkSettings {
-  /** 跟随系统（默认）、自定义 http/https/socks5 代理、或关闭代理。 */
+export interface NetworkProxyConfig {
   mode: NetworkMode;
   host: string | null;
   port: number | null;
   username: string | null;
-  /** 密码仅保存在本机 settings 文件，不参与 IPC 错误信息或日志。 */
   password: string | null;
   bypass: string[];
+}
+
+export interface NetworkSettings extends NetworkProxyConfig {
   applyToAi: boolean;
   applyToGit: boolean;
+  /** DEV-072：为空时继承全局共享代理；覆盖后 AI 与 Git 可分别使用不同代理。 */
+  aiProxy: NetworkProxyConfig | null;
+  gitProxy: NetworkProxyConfig | null;
 }
 
 export interface GlobalSettings {
@@ -167,6 +171,8 @@ export function defaultGlobalSettings(): GlobalSettings {
       bypass: [],
       applyToAi: true,
       applyToGit: true,
+      aiProxy: null,
+      gitProxy: null,
     },
     shortcuts: DEFAULT_SHORTCUTS.map((shortcut) => ({ ...shortcut })),
   };

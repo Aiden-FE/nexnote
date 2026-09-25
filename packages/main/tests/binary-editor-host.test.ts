@@ -177,6 +177,54 @@ describe('binary host lifecycle and bounds (DEV-074)', () => {
     manager.destroyAll();
   });
 
+  it('close() preserves the host when pending writes cannot be flushed', async () => {
+    const manager = new BinaryEditorHostManager();
+    const win = windowStub();
+    manager.attach(win as never);
+    await manager.open('xlsx', 'unflushed.xlsx');
+    const view = createdViews.at(-1)!;
+    manager.acknowledgeReady(view.webContents.id);
+    view.webContents.executeJavaScript.mockRejectedValueOnce(new Error('flush failed'));
+
+    await expect(manager.close('xlsx', 'unflushed.xlsx')).rejects.toThrow('flush failed');
+
+    expect(manager.size).toBe(1);
+    expect(view.webContents.close).not.toHaveBeenCalled();
+  });
+
+  it('flushAll() reports failures instead of allowing shutdown to discard pending writes', async () => {
+    const manager = new BinaryEditorHostManager();
+    const win = windowStub();
+    manager.attach(win as never);
+    await manager.open('xlsx', 'unflushed-window.xlsx');
+    const view = createdViews.at(-1)!;
+    manager.acknowledgeReady(view.webContents.id);
+    view.webContents.executeJavaScript.mockRejectedValueOnce(new Error('flush failed'));
+
+    await expect(manager.flushAll()).rejects.toThrow('flush failed');
+
+    expect(manager.size).toBe(1);
+    expect(view.webContents.close).not.toHaveBeenCalled();
+  });
+
+  it('reopening after failed close preserves the live host without reloading its document', async () => {
+    const manager = new BinaryEditorHostManager();
+    const win = windowStub();
+    manager.attach(win as never);
+    await manager.open('xlsx', 'retry-close.xlsx');
+    const view = createdViews.at(-1)!;
+    manager.setActive('xlsx', 'retry-close.xlsx');
+    manager.acknowledgeReady(view.webContents.id);
+    view.webContents.executeJavaScript.mockRejectedValueOnce(new Error('flush failed'));
+
+    await expect(manager.close('xlsx', 'retry-close.xlsx')).rejects.toThrow('flush failed');
+    manager.setActive('xlsx', 'retry-close.xlsx');
+
+    expect(manager.size).toBe(1);
+    expect(view.webContents.close).not.toHaveBeenCalled();
+    expect(view.webContents.send.mock.calls.filter(([channel]) => channel === 'binary:editorCommand')).toHaveLength(1);
+  });
+
   it('close() captures entry identity and survives concurrent destroy', async () => {
     const manager = new BinaryEditorHostManager();
     const win = windowStub();

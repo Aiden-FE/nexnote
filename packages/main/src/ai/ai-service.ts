@@ -50,6 +50,7 @@ export interface AiServiceDeps {
   fetchImpl?: typeof fetch;
   /** DEV-072：动态获取当前 AI 请求应使用的代理 URL。null = 跟随系统/全局。 */
   getProxyUrl?: () => string | null;
+  getProxyBypass?: () => string[];
   /** embedding token 估算器（按模型 token limit 分批；可注入真实 tokenizer）。 */
   embedTokenEstimator?: (text: string) => number;
 }
@@ -108,6 +109,7 @@ export class AiService {
       kind: profile.kind,
       fetchImpl: this.deps.fetchImpl,
       proxyUrl: this.deps.getProxyUrl ? this.deps.getProxyUrl() : null,
+      proxyBypass: this.deps.getProxyBypass?.() ?? [],
     });
   }
 
@@ -285,6 +287,7 @@ export class AiService {
                 kind: c.kind,
                 fetchImpl: this.deps.fetchImpl,
                 proxyUrl: this.deps.getProxyUrl ? this.deps.getProxyUrl() : null,
+                proxyBypass: this.deps.getProxyBypass?.() ?? [],
               }),
         defaultModel: c.defaultModel ?? saved?.defaultModel ?? '',
       };

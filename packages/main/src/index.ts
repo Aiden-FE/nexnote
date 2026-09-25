@@ -31,6 +31,7 @@ import { SettingsService } from './settings/settings-service';
 import { extractUpdateSettings, syncUpdaterSettings } from './settings/update-settings-sync';
 import { detectSystemProxy } from './settings/system-proxy';
 import {
+  deriveAiProxyBypass,
   deriveAiProxyUrlFromCache,
   deriveNetworkProxyFromCache,
 } from './settings/network-proxy';
@@ -153,6 +154,7 @@ async function bootstrap(): Promise<void> {
     store: aiStore,
     sendEvent: (channel, payload) => winRef.sendToMainWindow(channel, payload),
     getProxyUrl: () => deriveAiProxyUrlFromCache(settings.get().network),
+    getProxyBypass: () => deriveAiProxyBypass(settings.get().network),
   });
 
   const gitDoctor = new GitSyncDoctor({
@@ -392,10 +394,22 @@ async function bootstrap(): Promise<void> {
   mainWindow.on('close', (event) => {
     if (binaryEditors.size === 0) return;
     event.preventDefault();
-    void binaryEditors.flushAll().finally(() => {
-      binaryEditors.destroyAll();
-      mainWindow.destroy();
-    });
+    void binaryEditors
+      .flushAll()
+      .then(() => {
+        binaryEditors.destroyAll();
+        mainWindow.destroy();
+      })
+      .catch((error: unknown) => {
+        log('binary editor flush failed; keeping the window open', error);
+        void dialog.showMessageBox(mainWindow, {
+          type: 'error',
+          title: '无法关闭 NexNote',
+          message: '有二进制文档未能保存。编辑器仍保持打开，请重试保存后再关闭。',
+          detail: error instanceof Error ? error.message : String(error),
+          buttons: ['返回'],
+        });
+      });
   });
 
   app.on('activate', () => {

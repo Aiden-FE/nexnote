@@ -40,8 +40,9 @@ let dirtyPayload: DirtyPayload | null = null;
 let saveTimer: ReturnType<typeof setTimeout> | null = null;
 let saving = false;
 let pendingSaves = 0;
+let flushFailure: Error | null = null;
 const listeners = new Set<(state: SessionState | null) => void>();
-const flushResolvers: (() => void)[] = [];
+const flushResolvers: Array<{ resolve: () => void; reject: (error: unknown) => void }> = [];
 
 export function subscribeSession(listener: (state: SessionState | null) => void): () => void {
   listeners.add(listener);
@@ -59,7 +60,12 @@ function emit(): void {
 function settleFlushesIfIdle(): void {
   if (saving || dirtyPayload !== null || saveTimer !== null || pendingSaves > 0) return;
   const resolvers = flushResolvers.splice(0);
-  for (const resolve of resolvers) resolve();
+  for (const waiter of resolvers) waiter.resolve();
+}
+
+function rejectPendingFlushes(error: Error): void {
+  const resolvers = flushResolvers.splice(0);
+  for (const waiter of resolvers) waiter.reject(error);
 }
 
 function saveCompleted(): void {
@@ -105,11 +111,21 @@ async function persistNow(): Promise<void> {
       session.status = '已保存';
       session.conflict = false;
     }
+    flushFailure = null;
   } catch (e) {
     const code = (e as { code?: string }).code;
     if (code === 'BINARY_CONFLICT') {
+      const conflictError = Object.assign(
+        new Error('保存冲突：本地编辑尚未保存，请复制内容或重新加载外部版本。'),
+        { code: 'BINARY_CONFLICT' },
+      );
+      const retry: DirtyPayload = { ...payload };
+      if (dirtyPayload) Object.assign(retry, dirtyPayload);
+      dirtyPayload = retry;
+      flushFailure = conflictError;
       session.conflict = true;
-      session.status = '副本已被外部修改，未覆盖。请重新打开后再编辑。';
+      session.status = '副本已被外部修改；本地编辑仍保留在此窗口，未覆盖磁盘内容。';
+      rejectPendingFlushes(conflictError);
     } else {
       // 保存失败不丢编辑：把内容放回 dirtyPayload，下一次编辑/flush 重试。
       const retry: DirtyPayload = { ...payload };
@@ -145,13 +161,14 @@ function scheduleSave(): void {
 }
 
 /** 编辑即写入口：宿主各编辑器 onChange 调用。 */
-export function markDirty(patch: {
-  html?: string;
-  sheets?: unknown[];
-  model?: unknown;
-}): void {
+export function markDirty(patch: { html?: string; sheets?: unknown[]; model?: unknown }): void {
   if (!session) return; // load 完成前编辑器不可交互，防御性忽略。
   dirtyPayload = { ...dirtyPayload, ...patch };
+  if (session.conflict) {
+    session.status = '外部版本已变化；本地编辑仍保留在此窗口，未覆盖磁盘内容。';
+    emit();
+    return;
+  }
   session.status = '编辑中…';
   emit();
   scheduleSave();
@@ -197,20 +214,37 @@ async function loadDocument(kind: SessionState['kind'], path: string): Promise<S
 
 /** 等待所有 pending 写入完成（主进程 flush 指令对应）。 */
 export function flushPending(): Promise<void> {
-  return new Promise((resolve) => {
+  if (flushFailure) return Promise.reject(flushFailure);
+  return new Promise((resolve, reject) => {
     // 先冲刷当前 debounce，并把 resolver 挂入队列。persistNow 若正忙会立即返回；
     // 当前保存 finally 会看到 resolver 并继续排空期间新增的 dirtyPayload。
     if (saveTimer) {
       clearTimeout(saveTimer);
       saveTimer = null;
     }
-    flushResolvers.push(resolve);
+    flushResolvers.push({ resolve, reject });
     if (!saving && dirtyPayload !== null) {
       void persistNow();
     } else {
       settleFlushesIfIdle();
     }
   });
+}
+
+export async function reloadAfterConflict(): Promise<void> {
+  if (!session?.conflict) return;
+  const current = session;
+  const pending = dirtyPayload;
+  const reloaded = await loadDocument(current.kind, current.path);
+  if (session !== current || dirtyPayload !== pending) {
+    throw new Error('重新加载期间文档状态已变化；本地编辑仍保留。');
+  }
+  if (saveTimer) clearTimeout(saveTimer);
+  saveTimer = null;
+  dirtyPayload = null;
+  flushFailure = null;
+  session = reloaded;
+  emit();
 }
 
 /** 处理主进程经 binary:editorCommand 发来的控制指令。 */
