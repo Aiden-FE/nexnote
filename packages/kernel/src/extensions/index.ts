@@ -23,7 +23,12 @@ import type { SlashMenuItem } from './slash-menu';
 import { createKernelDragHandle } from './drag-handle';
 import { Fold } from './fold';
 import { SelectionBubble } from './selection-bubble';
-import type { BubbleAction, BubbleAiMenuOptions, BubbleExtraControl, BubbleIconRenderer } from './selection-bubble';
+import type {
+  BubbleAction,
+  BubbleAiMenuOptions,
+  BubbleExtraControl,
+  BubbleIconRenderer,
+} from './selection-bubble';
 import { ContextMenu } from './context-menu';
 import { ListDev069 } from './list-dev069';
 import type { ContextMenuItem } from './context-menu';
@@ -140,7 +145,16 @@ export function buildKernelExtensions(options: KernelExtensionsOptions = {}): Ex
     Markdown.configure({ marked: createObsidianMarked() }),
   ];
 
-  if (options.extraExtensions) extensions.push(...options.extraExtensions);
+  if (options.extraExtensions) {
+    const extrasByName = new Map<Extensions[number]['name'], Extensions[number]>();
+    for (const extension of options.extraExtensions) {
+      extrasByName.set(extension.name, extension);
+    }
+    for (let index = extensions.length - 1; index >= 0; index -= 1) {
+      if (extrasByName.has(extensions[index]!.name)) extensions.splice(index, 1);
+    }
+    extensions.push(...extrasByName.values());
+  }
 
   // DEV-017：wikilink（[[）/ 标签（#）补全菜单。候选由渲染层注入，节点插入由内核负责。
   const triggers: SuggestionTrigger[] = [];

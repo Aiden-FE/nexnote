@@ -1,7 +1,10 @@
 // @vitest-environment happy-dom
 import { afterEach, describe, expect, it } from 'vitest';
 import { createEditor } from '../src/editor';
+import { buildKernelExtensions } from '../src/extensions';
 import {
+  MermaidBlock,
+  MERMAID_BLOCK_NAME,
   MERMAID_DEFAULT_SOURCE,
   MERMAID_FLOWCHART_SOURCE,
   MERMAID_GANTT_SOURCE,
@@ -24,6 +27,19 @@ afterEach(() => {
 });
 
 describe('Mermaid 块（DEV-015）', () => {
+  it('渲染层 extra extension 覆盖同名内核节点而不重复注册 schema', () => {
+    const override = MermaidBlock.extend({});
+    const extensions = buildKernelExtensions({
+      slashMenu: false,
+      dragHandle: false,
+      extraExtensions: [override],
+    });
+    const mermaidExtensions = extensions.filter(
+      (extension) => extension.name === MERMAID_BLOCK_NAME,
+    );
+    expect(mermaidExtensions).toEqual([override]);
+  });
+
   it('```mermaid 围栏解析为 mermaidBlock 并原样往返（Obsidian 兼容）', () => {
     const md = '```mermaid\ngraph TD\n  A --> B\n```\n';
     const { kernel, container } = make(md);
