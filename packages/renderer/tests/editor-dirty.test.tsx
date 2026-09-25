@@ -166,7 +166,9 @@ describe('EditorView dirty 生命周期', () => {
     await act(async () => {
       expect(typeAtEnd('第一笔')).toBe(true);
     });
-    await started;
+    await act(async () => {
+      await started;
+    });
     await act(async () => {
       expect(typeAtEnd('第二笔')).toBe(true);
     });

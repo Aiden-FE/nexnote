@@ -183,8 +183,14 @@ describe('SourceModeView 收到 origin:"app" 的 fs:changed', () => {
 
       // 第一笔输入 → autosave 落盘
       act(() => sourceOnChange?.('# 源码页\n\n第一笔\n'));
-      await vi.advanceTimersByTimeAsync(900);
-      await vi.waitFor(() => expect(bridge.writes).toBe(1));
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(900);
+      });
+      await act(async () => {
+        await act(async () => {
+          await vi.waitFor(() => expect(bridge.writes).toBe(1));
+        });
+      });
 
       // 落盘后事件窗口内继续输入（dirty），随后应用写入回声事件到达
       act(() => sourceOnChange?.('# 源码页\n\n第一笔\n第二笔\n'));
@@ -198,8 +204,14 @@ describe('SourceModeView 收到 origin:"app" 的 fs:changed', () => {
       expect(sourceEditorText).toContain('第二笔'); // 本地 buffer 未被打断
 
       // 自动保存未被暂停：第二笔继续落盘且无冲突
-      await vi.advanceTimersByTimeAsync(900);
-      await vi.waitFor(() => expect(bridge.writes).toBe(2));
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(900);
+      });
+      await act(async () => {
+        await act(async () => {
+          await vi.waitFor(() => expect(bridge.writes).toBe(2));
+        });
+      });
       expect(container.querySelector('[data-testid="source-conflict-banner"]')).toBeNull();
 
       await act(async () => root.unmount());
@@ -222,8 +234,14 @@ describe('SourceModeView 收到 origin:"app" 的 fs:changed', () => {
       await vi.waitFor(() => expect(sourceOnChange).not.toBeNull());
 
       act(() => sourceOnChange?.('# 源码页\n\n第一笔\n'));
-      await vi.advanceTimersByTimeAsync(900);
-      await vi.waitFor(() => expect(bridge.writes).toBe(1));
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(900);
+      });
+      await act(async () => {
+        await act(async () => {
+          await vi.waitFor(() => expect(bridge.writes).toBe(1));
+        });
+      });
 
       // 继续输入保持 dirty；应用自身（如 renameWithLinks 联动）改写了磁盘与本页
       act(() => sourceOnChange?.('# 源码页\n\n第一笔\n第二笔\n'));
@@ -239,8 +257,14 @@ describe('SourceModeView 收到 origin:"app" 的 fs:changed', () => {
       expect(sourceEditorText).toContain('第二笔');
 
       // 基线已刷新到磁盘当前版本：autosave 顺滑落盘，不会误报 conflict
-      await vi.advanceTimersByTimeAsync(900);
-      await vi.waitFor(() => expect(bridge.writes).toBe(2));
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(900);
+      });
+      await act(async () => {
+        await act(async () => {
+          await vi.waitFor(() => expect(bridge.writes).toBe(2));
+        });
+      });
       expect(container.querySelector('[data-testid="source-conflict-banner"]')).toBeNull();
 
       await act(async () => root.unmount());
@@ -271,7 +295,9 @@ describe('SourceModeView 收到 origin:"app" 的 fs:changed', () => {
       });
       expect(container.querySelector('[data-testid="source-conflict-banner"]')).toBeNull();
       expect(sourceEditorText).toBe('# 源码页\n\n重写后的链接 [[a-renamed]]\n');
-      await vi.advanceTimersByTimeAsync(2000);
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(2000);
+      });
       expect(bridge.writes).toBe(0);
 
       await act(async () => root.unmount());
@@ -303,7 +329,9 @@ describe('SourceModeView 收到 origin:"app" 的 fs:changed', () => {
       });
       expect(container.querySelector('[data-testid="source-conflict-banner"]')).not.toBeNull();
       // 自动保存被暂停：不产生新写盘
-      await vi.advanceTimersByTimeAsync(2000);
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(2000);
+      });
       expect(bridge.writes).toBe(0);
 
       await act(async () => root.unmount());
@@ -344,7 +372,9 @@ describe('EditorView 收到 origin:"app" 的 fs:changed', () => {
     await act(async () => {
       expect(typeAtEnd('第一笔')).toBe(true);
     });
-    await vi.waitFor(() => expect(bridge.writes).toBe(1));
+    await act(async () => {
+      await vi.waitFor(() => expect(bridge.writes).toBe(1));
+    });
 
     // 保存落盘后事件窗口内继续输入（dirty），随后自身写入的 echo 到达
     await act(async () => {
@@ -356,7 +386,9 @@ describe('EditorView 收到 origin:"app" 的 fs:changed', () => {
     await act(async () => {
       expect(typeAtEnd('第三笔')).toBe(true);
     });
-    await vi.waitFor(() => expect(bridge.writes).toBe(2));
+    await act(async () => {
+      await vi.waitFor(() => expect(bridge.writes).toBe(2));
+    });
     expect(bridge.diskText).toContain('第二笔');
     expect(container.querySelector('[data-testid="editor-conflict-banner"]')).toBeNull();
 
@@ -370,7 +402,9 @@ describe('EditorView 收到 origin:"app" 的 fs:changed', () => {
     await act(async () => {
       expect(typeAtEnd('第一笔')).toBe(true);
     });
-    await vi.waitFor(() => expect(bridge.writes).toBe(1));
+    await act(async () => {
+      await vi.waitFor(() => expect(bridge.writes).toBe(1));
+    });
 
     // 继续输入保持 dirty；应用自身（如 renameWithLinks 联动）改写了磁盘与本页
     await act(async () => {
@@ -384,7 +418,9 @@ describe('EditorView 收到 origin:"app" 的 fs:changed', () => {
     await act(async () => {
       expect(typeAtEnd('第三笔')).toBe(true);
     });
-    await vi.waitFor(() => expect(bridge.writes).toBe(2));
+    await act(async () => {
+      await vi.waitFor(() => expect(bridge.writes).toBe(2));
+    });
     expect(bridge.diskText).toContain('第二笔');
     expect(container.querySelector('[data-testid="editor-conflict-banner"]')).toBeNull();
 

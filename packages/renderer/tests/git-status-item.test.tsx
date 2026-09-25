@@ -113,9 +113,9 @@ beforeEach(() => {
 });
 
 afterEach(() => {
-  document.body.innerHTML = '';
-  root?.unmount();
+  act(() => root?.unmount());
   root = null;
+  document.body.innerHTML = '';
   delete (window as unknown as { nexnote?: unknown }).nexnote;
 });
 
@@ -132,7 +132,9 @@ describe('DEV-076 GitStatusItem 真实组件行为', () => {
     // hover title 由 conflictHoverText 生成，至少包含"点击"提示（指示有实质内容而非空泛一句）
     expect(conflictBtn!.getAttribute('title') ?? '').toContain('点击');
     expect(conflictBtn!.getAttribute('title') ?? '').toContain('冲突');
-    bridge.emit('git:statusChanged', { ...baseStatus, conflict: true });
+    await act(async () => {
+      bridge.emit('git:statusChanged', { ...baseStatus, conflict: true });
+    });
     await flushAsync();
   });
 
@@ -204,7 +206,9 @@ describe('DEV-076 GitStatusItem 真实组件行为', () => {
     // 模拟手动同步失败 → doctor 弹窗 + spinner 仍在（manual flow 会 setPhase('error')）
     // 通过 conflict 徽标触发 doctor 也可得到相同结果
     const conflictStatus = { ...baseStatus, conflict: true };
-    bridge.emit('git:statusChanged', conflictStatus);
+    await act(async () => {
+      bridge.emit('git:statusChanged', conflictStatus);
+    });
     await flushAsync();
     const conflictBtn = document.querySelector<HTMLButtonElement>(
       '[data-testid="status-git-conflict"]',
@@ -216,16 +220,14 @@ describe('DEV-076 GitStatusItem 真实组件行为', () => {
     const dialog = document.querySelector('[role="dialog"][aria-label="Git 同步诊断"]');
     expect(dialog).not.toBeNull();
     // 找到「忽略」按钮并点击
-    const dismissBtn = [...dialog!.querySelectorAll('button')].find(
-      (b) => b.textContent?.includes('忽略'),
+    const dismissBtn = [...dialog!.querySelectorAll('button')].find((b) =>
+      b.textContent?.includes('忽略'),
     );
     expect(dismissBtn).toBeDefined();
     act(() => dismissBtn!.click());
     await flushAsync();
     // dismiss 后 doctor 已清，同时 spinner 不应残留（因为 dismissDoctor 同步重置 phase）
-    expect(
-      document.querySelector('[role="dialog"][aria-label="Git 同步诊断"]'),
-    ).toBeNull();
+    expect(document.querySelector('[role="dialog"][aria-label="Git 同步诊断"]')).toBeNull();
   });
 
   it('sync 收到 phase=done 事件后 spinner 在 600ms 后消失', async () => {

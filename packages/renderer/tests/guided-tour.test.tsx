@@ -259,11 +259,15 @@ describe('guideCompleted 持久化链路', () => {
 });
 
 describe('重播入口', () => {
-  it('欢迎页「快速上手」打开引导', () => {
+  it('欢迎页「快速上手」打开引导', async () => {
     installBridge({
       'app:getInfo': () => ({ version: '0.0.0-test', platform: 'test' }),
     });
     mount(<WelcomePage />);
+    await act(async () => {
+      await Promise.resolve();
+      await Promise.resolve();
+    });
     act(() => {
       document.querySelector<HTMLButtonElement>('[data-testid="welcome-start-tour"]')?.click();
     });

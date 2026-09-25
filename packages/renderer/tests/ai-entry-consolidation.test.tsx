@@ -221,8 +221,10 @@ describe('DEV-075 分功能指定模型：自由输入 + 下拉双模式', () =>
     mount(<AiSettingsSection />);
   }
 
-  const nativeInputSetter =
-    Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')?.set;
+  const nativeInputSetter = Object.getOwnPropertyDescriptor(
+    HTMLInputElement.prototype,
+    'value',
+  )?.set;
 
   it('逐字符输入不触发 ai:features:set；blur 才提交', async () => {
     mountWithAssignment();
@@ -238,7 +240,7 @@ describe('DEV-075 分功能指定模型：自由输入 + 下拉双模式', () =>
       }
     });
     await act(async () => tick());
-        expect(invokeSpy).not.toHaveBeenCalledWith('ai:features:set', expect.anything());
+    expect(invokeSpy).not.toHaveBeenCalledWith('ai:features:set', expect.anything());
     // 触发 commit：blur 在 happy-dom 下不触发 React onBlur；Enter 走同一 commit 函数
     act(() => {
       input.dispatchEvent(
@@ -280,6 +282,8 @@ describe('DEV-075 分功能指定模型：自由输入 + 下拉双模式', () =>
     expect(invokeSpy.mock.calls.filter(([c]) => c === 'ai:listModels')).toHaveLength(1);
 
     // 失败路径（换 profileId，缓存未命中；新组件实例）
+    act(() => root?.unmount());
+    root = null;
     document.body.replaceChildren();
     aiState = {
       ...aiState,

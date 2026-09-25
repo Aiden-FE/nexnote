@@ -292,7 +292,7 @@ describe('工具栏键盘可达性（DEV-035）', () => {
 
   it('←/→ 与 Home/End 在工具栏内移动焦点', () => {
     mount(makeEntries());
-    byTestId('toolbar-entry-bold')?.focus();
+    act(() => byTestId('toolbar-entry-bold')?.focus());
     press(row()!, 'ArrowRight');
     expect(document.activeElement).toBe(byTestId('toolbar-entry-italic'));
     press(row()!, 'End');
@@ -325,7 +325,7 @@ describe('工具栏键盘可达性（DEV-035）', () => {
     rowWidth = 100;
     mount(makeEntries());
     const more = byTestId('toolbar-more');
-    more?.focus();
+    act(() => more?.focus());
     press(more!, 'ArrowDown');
     // 溢出项顺序：被折叠的编辑动作 → AI 分组标题后的全部 AI 子动作
     expect(document.activeElement).toBe(byTestId('toolbar-menu-item-strike'));

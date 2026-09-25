@@ -118,9 +118,13 @@ describe('SourceModeView 自动保存配置', () => {
     await vi.waitFor(() => expect(sourceOnChange).not.toBeNull());
 
     act(() => sourceOnChange?.('# 源码页\n\n新输入\n'));
-    await vi.advanceTimersByTimeAsync(874);
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(874);
+    });
     expect(bridge.writes).toBe(0);
-    await vi.advanceTimersByTimeAsync(1);
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(1);
+    });
     await vi.waitFor(() => expect(bridge.writes).toBe(1));
 
     await act(async () => root.unmount());

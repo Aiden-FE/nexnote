@@ -226,7 +226,9 @@ describe('Markdown 文档属性面板（DEV-025）', () => {
         .querySelector<HTMLButtonElement>('[data-testid="document-properties-trigger"]')
         ?.click(),
     );
-    await vi.waitFor(() => expect(bridge.writes.length).toBe(1));
+    await act(async () => {
+      await vi.waitFor(() => expect(bridge.writes.length).toBe(1));
+    });
     expect(bridge.writes[0]).toContain('title: 立即保存');
     await unmount(root);
   });

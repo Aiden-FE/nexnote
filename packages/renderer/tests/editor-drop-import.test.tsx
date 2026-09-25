@@ -65,7 +65,8 @@ function installBridge(): void {
           data: { path: 'x', name: 'x', kind: 'file', size: 8, modifiedAt: 'v1' },
         };
       }
-      if (channel === 'binary:import') return { ok: true, data: { path: 'imported.xlsx', sha256: 'x' } };
+      if (channel === 'binary:import')
+        return { ok: true, data: { path: 'imported.xlsx', sha256: 'x' } };
       if (channel === 'index:backlinks' || channel === 'index:pageSummaries')
         return { ok: true, data: [] };
       return { ok: true, data: null };
@@ -97,10 +98,13 @@ function drop(root: HTMLElement, file: File): void {
   root.dispatchEvent(event);
 }
 
+const mountedRoots: ReturnType<typeof createRoot>[] = [];
+
 async function mount(node: React.ReactElement): Promise<HTMLDivElement> {
   const container = document.createElement('div');
   document.body.append(container);
   const root = createRoot(container);
+  mountedRoots.push(root);
   await act(async () => {
     root.render(node);
     await Promise.resolve();
@@ -118,6 +122,9 @@ beforeEach(() => {
 });
 
 afterEach(async () => {
+  await act(async () => {
+    for (const root of mountedRoots.splice(0)) root.unmount();
+  });
   document.body.replaceChildren();
   delete (window as unknown as { nexnote?: unknown }).nexnote;
 });
@@ -128,13 +135,17 @@ describe('DEV-074 编辑器外部文件拖放导入', () => {
     const container = await mount(<SourceModeView tab={markdownTab} />);
     const root = container.querySelector<HTMLElement>('[data-testid="source-mode-view"]');
     expect(root).not.toBeNull();
-    drop(root!, fakeFile('external.xlsx'));
+    act(() => drop(root!, fakeFile('external.xlsx')));
 
     await act(async () => Promise.resolve());
-    await vi.waitFor(() => expect(importCalls.some((c) => c.channel === 'binary:import')).toBe(true));
-    expect(
-      importCalls.find((c) => c.channel === 'binary:import')!.payload,
-    ).toMatchObject({ kind: 'xlsx', name: 'external.xlsx', targetDir: '' });
+    await vi.waitFor(() =>
+      expect(importCalls.some((c) => c.channel === 'binary:import')).toBe(true),
+    );
+    expect(importCalls.find((c) => c.channel === 'binary:import')!.payload).toMatchObject({
+      kind: 'xlsx',
+      name: 'external.xlsx',
+      targetDir: '',
+    });
     expect(openDocumentTab).toHaveBeenCalledWith('imported.xlsx');
     // 不能把二进制字节塞进 Markdown 编辑器。
     expect(sourceCommands.insertText).not.toHaveBeenCalled();
@@ -144,10 +155,14 @@ describe('DEV-074 编辑器外部文件拖放导入', () => {
     installBridge();
     const container = await mount(<SourceModeView tab={markdownTab} />);
     const root = container.querySelector<HTMLElement>('[data-testid="source-mode-view"]')!;
-    const dt = { files: [], getData: () => '', setData: () => undefined } as unknown as DataTransfer;
+    const dt = {
+      files: [],
+      getData: () => '',
+      setData: () => undefined,
+    } as unknown as DataTransfer;
     const event = new Event('drop', { bubbles: true, cancelable: true }) as DragEvent;
     Object.defineProperty(event, 'dataTransfer', { value: dt });
-    root.dispatchEvent(event);
+    act(() => root.dispatchEvent(event));
     await act(async () => Promise.resolve());
     expect(importCalls.some((c) => c.channel === 'binary:import')).toBe(false);
   });

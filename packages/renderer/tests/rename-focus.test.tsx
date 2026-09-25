@@ -198,6 +198,12 @@ async function mount(tab: TabDescriptor, source: boolean) {
   return { container, root };
 }
 
+async function waitForAct(assertion: () => unknown): Promise<void> {
+  await act(async () => {
+    await vi.waitFor(assertion);
+  });
+}
+
 beforeEach(() => {
   vi.useFakeTimers();
   document.body.innerHTML = '';
@@ -218,7 +224,7 @@ describe('rename keeps editor instances alive', () => {
     const tab = blockTab();
     const bridge = installBridge({ '测试页.md': '# 测试页\n\n' });
     const { container, root } = await mount(tab, false);
-    await vi.waitFor(() => expect(getActiveEditor()).not.toBeNull());
+    await waitForAct(() => expect(getActiveEditor()).not.toBeNull());
     const beforeNode = container.querySelector('[data-testid="editor-view"]');
     const beforeKernel = getActiveEditor();
 
@@ -226,7 +232,7 @@ describe('rename keeps editor instances alive', () => {
       replaceFirstHeading(beforeKernel!, '新标题');
       await vi.advanceTimersByTimeAsync(80);
     });
-    await vi.waitFor(() =>
+    await waitForAct(() =>
       expect(
         container.querySelector('[data-testid="editor-view"]')?.getAttribute('data-path'),
       ).toBe('新标题.md'),
@@ -259,7 +265,7 @@ describe('rename keeps editor instances alive', () => {
     const tab = blockTab();
     const bridge = installBridge({ '测试页.md': '测试页\n\n正文\n' });
     const { root } = await mount(tab, false);
-    await vi.waitFor(() => expect(getActiveEditor()).not.toBeNull());
+    await waitForAct(() => expect(getActiveEditor()).not.toBeNull());
     const kernel = getActiveEditor()!;
     act(() => {
       kernel.editor.commands.setTextSelection(1);
@@ -267,7 +273,7 @@ describe('rename keeps editor instances alive', () => {
     });
     act(() => clickToolbarHeading(1));
     await act(async () => vi.advanceTimersByTimeAsync(80));
-    await vi.waitFor(() => expect(useTabStore.getState().tabs[0]?.pagePath).toBe('测试页.md'));
+    await waitForAct(() => expect(useTabStore.getState().tabs[0]?.pagePath).toBe('测试页.md'));
     expect(bridge.files.get('测试页.md')).toContain('# 测试页');
     await act(async () => root.unmount());
   });
@@ -276,7 +282,7 @@ describe('rename keeps editor instances alive', () => {
     const tab = blockTab();
     const bridge = installBridge({ '测试页.md': '# 测试页\n\n后续标题\n' });
     const { root } = await mount(tab, false);
-    await vi.waitFor(() => expect(getActiveEditor()).not.toBeNull());
+    await waitForAct(() => expect(getActiveEditor()).not.toBeNull());
     const kernel = getActiveEditor()!;
     const second = kernel.editor.state.doc.child(1);
     const secondPos = kernel.editor.state.doc.child(0).nodeSize + 1;
@@ -297,7 +303,7 @@ describe('rename keeps editor instances alive', () => {
     const tab = blockTab();
     const bridge = installBridge({ '测试页.md': '# 测试页\n\n', '其他页.md': '# 其他页\n\n' });
     const { container, root } = await mount(tab, false);
-    await vi.waitFor(() => expect(getActiveEditor()).not.toBeNull());
+    await waitForAct(() => expect(getActiveEditor()).not.toBeNull());
     const beforeKernel = getActiveEditor();
 
     await act(async () => {
@@ -305,7 +311,7 @@ describe('rename keeps editor instances alive', () => {
       await Promise.resolve();
       await Promise.resolve();
     });
-    await vi.waitFor(() => expect(getActiveEditor()).not.toBe(beforeKernel));
+    await waitForAct(() => expect(getActiveEditor()).not.toBe(beforeKernel));
     expect(
       bridge.calls.some((call) => call.channel === 'fs:readTextFile' && call.path === '其他页.md'),
     ).toBe(true);
@@ -317,7 +323,7 @@ describe('rename keeps editor instances alive', () => {
     const tab = sourceTab();
     const bridge = installBridge({ '源码页.md': '# 源码页\n\n' });
     const { container, root } = await mount(tab, true);
-    await vi.waitFor(() => expect(sourceOnChange).not.toBeNull());
+    await waitForAct(() => expect(sourceOnChange).not.toBeNull());
     const beforeNode = container.querySelector('[data-testid="source-mode-view"]');
     const beforeHandle = sourceHandle;
 
@@ -325,7 +331,7 @@ describe('rename keeps editor instances alive', () => {
       sourceOnChange?.('# 新源码名\n\n');
       await vi.advanceTimersByTimeAsync(80);
     });
-    await vi.waitFor(() =>
+    await waitForAct(() =>
       expect(
         container.querySelector('[data-testid="source-mode-view"]')?.getAttribute('data-path'),
       ).toBe('新源码名.md'),
@@ -357,13 +363,13 @@ describe('rename keeps editor instances alive', () => {
     const tab = sourceTab();
     const bridge = installBridge({ '源码页.md': '# 源码页\n\n', '另一页.md': '# 另一页\n\n' });
     const { container, root } = await mount(tab, true);
-    await vi.waitFor(() => expect(sourceOnChange).not.toBeNull());
+    await waitForAct(() => expect(sourceOnChange).not.toBeNull());
 
     await act(async () => {
       useTabStore.getState().updateTab(tab.id, { title: '另一页', pagePath: '另一页.md' });
       await Promise.resolve();
     });
-    await vi.waitFor(() =>
+    await waitForAct(() =>
       expect(
         container.querySelector('[data-testid="source-mode-view"]')?.getAttribute('data-path'),
       ).toBe('另一页.md'),
