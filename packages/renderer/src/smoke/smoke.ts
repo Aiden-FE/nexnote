@@ -2854,6 +2854,16 @@ export async function runSmokeIfEnabled(): Promise<void> {
         sourceToolbar?.querySelector<HTMLButtonElement>('[data-testid="toolbar-entry-ai"]') ??
         currentSourceAi;
     }
+    await waitFor(() => {
+      const button = sourceToolbarRoot()?.querySelector<HTMLButtonElement>(
+        '[data-testid="toolbar-entry-ai"]',
+      );
+      const id = button?.getAttribute('aria-describedby');
+      return !!id && document.getElementById(id)?.getAttribute('role') === 'tooltip';
+    });
+    currentSourceAi =
+      sourceToolbar?.querySelector<HTMLButtonElement>('[data-testid="toolbar-entry-ai"]') ??
+      currentSourceAi;
     const tooltipId = currentSourceAi?.getAttribute('aria-describedby');
     const tooltip = tooltipId ? document.getElementById(tooltipId) : null;
     const activeToolbarAi =

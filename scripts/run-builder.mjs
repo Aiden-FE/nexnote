@@ -1,6 +1,8 @@
 /* eslint-disable no-console */
+import { readFileSync, unlinkSync, writeFileSync } from 'node:fs';
 import { copyFile } from 'node:fs/promises';
 import { join } from 'node:path';
+import { dump, load } from 'js-yaml';
 import { prepareNativeBindings } from './prepare-native-bindings.mjs';
 /**
  * Normalize argv for electron-builder CLI.
@@ -25,16 +27,32 @@ const REPO_OWNER = 'Aiden-FE';
 const REPO_NAME = 'nexnote';
 // Keep caller arguments intact. electron-builder accepts boolean config overrides as
 // `--config.npmRebuild false`; the old `-c.npmRebuild=false` form was parsed as a string.
-const args = process.argv.slice(2);
+const args = process.argv.slice(2).filter((arg) => arg !== '--');
+const root = process.cwd();
 if (channel !== 'stable') {
-  const publish = JSON.stringify([
-    { provider: 'github', owner: REPO_OWNER, repo: REPO_NAME, channel },
-  ]);
-  args.push(`-c.publish=${publish}`);
+  const config = load(readFileSync(join(root, 'electron-builder.yml'), 'utf8'));
+  const publisher = config?.publish?.[0];
+  if (
+    publisher?.provider !== 'github' ||
+    publisher.owner !== REPO_OWNER ||
+    publisher.repo !== REPO_NAME
+  ) {
+    throw new Error('electron-builder GitHub publisher does not match the release repository');
+  }
+  publisher.channel = channel;
+  const configPath = join(root, `.electron-builder-${channel}-${process.pid}.yml`);
+  writeFileSync(configPath, dump(config), { flag: 'wx' });
+  process.once('exit', () => {
+    try {
+      unlinkSync(configPath);
+    } catch (error) {
+      if (error.code !== 'ENOENT') console.error(error);
+    }
+  });
+  args.push('--config', configPath);
 }
 process.argv = [process.argv[0], ...args];
 
-const root = process.cwd();
 const { cacheBinding } = await prepareNativeBindings({ root, mode: 'electron' });
 await copyFile(
   cacheBinding,

@@ -1,7 +1,7 @@
 // @vitest-environment happy-dom
 import { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { Backlink } from '@nexnote/shared';
 import { BacklinksBadge } from '../src/features/sidebar/backlinks';
 import { sidebarPanelRegistry } from '../src/registries';
@@ -39,6 +39,7 @@ const pageTab = (path: string, title = path): TabDescriptor => ({
 });
 
 let root: Root | null = null;
+let consoleError: ReturnType<typeof vi.spyOn> | null = null;
 function render(ui: React.ReactElement): void {
   const host = document.createElement('div');
   document.body.append(host);
@@ -62,6 +63,16 @@ beforeEach(() => {
   root = null;
   useIndexStore.getState().reset();
   useTabStore.setState({ tabs: [], activeTabId: null });
+  consoleError = vi.spyOn(console, 'error');
+});
+
+afterEach(() => {
+  act(() => root?.unmount());
+  root = null;
+  expect(consoleError?.mock.calls.flat().join(' ')).not.toContain('not wrapped in act');
+  consoleError?.mockRestore();
+  consoleError = null;
+  document.body.innerHTML = '';
 });
 
 describe('反向链接面板计数角标（DEV-024）', () => {

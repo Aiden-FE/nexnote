@@ -183,6 +183,12 @@ check('channel 接线：build env → 打包发布 → updater 烘焙通道', ()
     throw new Error('js-yaml must be a production dependency for packaged channel parsing');
   }
   if (!/VALID_CHANNELS/.test(updater)) throw new Error('updater has no channel validation');
+  if (!runBuilder.includes("filter((arg) => arg !== '--')"))
+    throw new Error('run-builder must remove the pnpm argument separator before electron-builder');
+  if (!runBuilder.includes('publisher.channel = channel'))
+    throw new Error('run-builder must bake non-stable channels into a validated publisher config');
+  if (!runBuilder.includes("args.push('--config', configPath)"))
+    throw new Error('run-builder must pass the structured channel config file to electron-builder');
   if (!/updateChannel/.test(appStore) || !/setUpdateChannel\(channel/.test(appStore))
     throw new Error('selected update channel is not persisted in AppStore');
   const indexTs = readFileSync(resolve(root, 'packages/main/src/index.ts'), 'utf8');
