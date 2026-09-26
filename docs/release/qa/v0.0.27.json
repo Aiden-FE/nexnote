@@ -32,7 +32,7 @@
     "matrix signed builds for mac-arm64/mac-x64/windows-x64/linux-x64 (run by candidate pipeline after tag push)",
     "packaged macOS smoke in CI (run by candidate pipeline smoke job)",
     "Windows packaged smoke and Linux packaged smoke",
-    "Windows/Ubuntu physical installation verification",
+    "Windows/Ubuntu physical installation verification (waived by repository owner Aiden-FE on 2026-09-26: no Windows/Linux hardware available; packaged smoke evidence remains macOS-local only)",
     "macOS notarization / Gatekeeper verification (Ad hoc signing only)",
     "public N-1 to v0.0.27 network upgrade end-to-end verification",
     "release-qa Environment required-reviewer approval (operational gate before publish)",
