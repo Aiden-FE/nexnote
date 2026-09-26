@@ -395,6 +395,8 @@ export class OpenAIProtocolAdapter implements ProviderAdapter {
           }),
           abortSignal: abort.signal,
           maxRetries: 0,
+          // SDK's default callback logs raw error objects; failures are mapped to safe events below.
+          onError: () => undefined,
         });
         let streamFailed = false;
         for await (const part of result.fullStream) {

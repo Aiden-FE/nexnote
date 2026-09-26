@@ -171,32 +171,36 @@ describe('OpenAI 协议适配器', () => {
     }
   });
 
-  it.skipIf(!process.env.NEXNOTE_ACCEPTANCE_PROXY)('system mode uses the supplied proxy environment for an AI stream', async () => {
-    const proxyUrl = process.env.NEXNOTE_ACCEPTANCE_PROXY;
-    if (!proxyUrl) throw new Error('NEXNOTE_ACCEPTANCE_PROXY is required');
-    vi.stubEnv('HTTP_PROXY', proxyUrl);
-    vi.stubEnv('HTTPS_PROXY', proxyUrl);
-    const events: ChatStreamEvent[] = [];
+  it.skipIf(!process.env.NEXNOTE_ACCEPTANCE_PROXY)(
+    'system mode uses the supplied proxy environment for an AI stream',
+    async () => {
+      const proxyUrl = process.env.NEXNOTE_ACCEPTANCE_PROXY;
+      if (!proxyUrl) throw new Error('NEXNOTE_ACCEPTANCE_PROXY is required');
+      vi.stubEnv('HTTP_PROXY', proxyUrl);
+      vi.stubEnv('HTTPS_PROXY', proxyUrl);
+      const events: ChatStreamEvent[] = [];
 
-    try {
-      const system = await detectSystemProxy(true);
-      const derivedProxyUrl = deriveAiProxyUrl(defaultGlobalSettings().network, system);
-      expect(derivedProxyUrl).toBe(proxyUrl);
-      const proxiedAdapter = new OpenAIProtocolAdapter({
-        baseUrl: `${mock.url}/v1`,
-        apiKey: 'sk-local-acceptance-key',
-        kind: 'openai-compatible',
-        proxyUrl: derivedProxyUrl,
-      });
-      await collectStream(proxiedAdapter, events).done;
-      expect(events.at(-1)).toEqual({ type: 'done' });
-      expect(events.filter((event) => event.type === 'delta')).not.toHaveLength(0);
-    } finally {
-      vi.unstubAllEnvs();
-    }
-  });
+      try {
+        const system = await detectSystemProxy(true);
+        const derivedProxyUrl = deriveAiProxyUrl(defaultGlobalSettings().network, system);
+        expect(derivedProxyUrl).toBe(proxyUrl);
+        const proxiedAdapter = new OpenAIProtocolAdapter({
+          baseUrl: `${mock.url}/v1`,
+          apiKey: 'sk-local-acceptance-key',
+          kind: 'openai-compatible',
+          proxyUrl: derivedProxyUrl,
+        });
+        await collectStream(proxiedAdapter, events).done;
+        expect(events.at(-1)).toEqual({ type: 'done' });
+        expect(events.filter((event) => event.type === 'delta')).not.toHaveLength(0);
+      } finally {
+        vi.unstubAllEnvs();
+      }
+    },
+  );
 
   it('SSE 缺少 [DONE] 而 EOF 时以 STREAM_TRUNCATED 失败，不接受部分完成', async () => {
+    const sdkErrorLog = vi.spyOn(console, 'error');
     mock.streamingTruncated = true;
     try {
       const events: ChatStreamEvent[] = [];
@@ -210,7 +214,9 @@ describe('OpenAI 协议适配器', () => {
         message: '流式响应在收到完成标记前结束，请重试',
         code: 'STREAM_TRUNCATED',
       });
+      expect(sdkErrorLog).not.toHaveBeenCalled();
     } finally {
+      sdkErrorLog.mockRestore();
       mock.streamingTruncated = false;
     }
   });
