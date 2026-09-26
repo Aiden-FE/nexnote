@@ -2,22 +2,22 @@
   "schema": "nexnote-release-qa/v1",
   "repository": "Aiden-FE/nexnote",
   "tag": "v0.0.27",
-  "commit": "7f35fa4",
+  "commit": "9c538bbf7bccc8148570b01517941c54e8ee9e4e",
   "channel": "stable",
   "allRequiredChecksPassed": false,
-  "scope": "v0.0.27-superseded-draft",
+  "scope": "v0.0.27-candidate-incomplete",
   "machineChecks": {
-    "typecheck": "passed (pnpm -r typecheck: shared/plugin-api/website/kernel/renderer all Done; main tsc --noEmit -p tsconfig.json clean after DEV-074 review fixes)",
-    "lint": "passed (pnpm lint: 0 errors; 9 pre-existing import()-style warnings unchanged from earlier baselines; the new binary-editor-host flushAll() was tightened to destructure .values() so the no-unused-vars gate stays clean)",
-    "tests": "1648 passed | 2 skipped (1650) on local macOS run at 7f35fa4; full test files 180 passed | 1 skipped (181); new tests cover binary host ready/close races, XMind content.json field preservation, XLSX rId collision handling, .gitignore toggling, editor drop import",
-    "build": "passed (electron-vite build; renderer asset bundle emitted successfully)",
+    "typecheck": "passed (PR Checks run 36153313978 on 9c538bb; workspace typecheck clean)",
+    "lint": "passed (PR Checks run 36153313978 on 9c538bb; zero errors and warnings)",
+    "tests": "1675 passed | 3 skipped (1678); 183 test files passed | 1 skipped on PR Checks run 36153313978 at 9c538bb",
+    "build": "passed (PR Checks run 36153313978 on 9c538bb; electron-vite and static website built with nonfatal Rollup dependency/chunk warnings)",
     "releaseConfig": "31/31 passed (node scripts/verify-release-config.mjs)",
-    "changedFormat": "covered by release config gate",
-    "diffCheck": "covered by release config gate",
-    "packagedSmoke": "deferred to candidate pipeline: tag push triggers matrix build + packaged macOS smoke bound to tag commit 7f35fa4 with NEXNOTE_SMOKE_EXPECTED_VERSION=0.0.27"
+    "changedFormat": "passed (PR Checks run 36153313978: changed-file formatting gate)",
+    "diffCheck": "passed locally (git diff HEAD --check before candidate commit)",
+    "packagedSmoke": "passed locally from a read-only mounted DMG using full candidate SHA 9c538bbf7bccc8148570b01517941c54e8ee9e4e, 261/261 checks; GitHub release-tag-bound smoke remains not run"
   },
   "candidateContents": {
-    "tickets": "Superseded draft: DEV-074 review fixes are in 7f35fa4 (package v0.0.26); v0.0.27 version bump and this QA draft are in bc4e3f3. This is not publishable evidence; allRequiredChecksPassed=false pending a new immutable candidate and QA binding.",
+    "tickets": "Candidate: master commit 9c538bbf7bccc8148570b01517941c54e8ee9e4e, version 0.0.27; includes DEV-072/074 follow-ups, DEV-087 CellSelection fix, updater isolation, CodeMirror measure-phase fix, and Node24 CI pins. Manual platform QA and protected approval remain incomplete; this record is not publishable evidence.",
     "highlights": [
       "DEV-074 review: BinaryEditorHostManager no longer drains pending on did-finish-load; renderer must ack via binary:host:ready (senderId = webContents.id). roundTrip waits up to 1500ms for ack; missing __nexnoteHostFlush now throws rather than silently succeeding. close() captures entry identity + webContentsId across await so concurrent destroyAll / close-reopen cannot kill the wrong host. New tests cover delayed bootstrap, ack timeout, idempotent ack, and interleaved close race.",
       "DEV-074 review: xmind content.json sheet & rootTopic now preserves fields simple-mind-map does not model (boundaries / relationships / theme / skeleton / topicPositioning) on save; rebuilt-side fields still take precedence.",
