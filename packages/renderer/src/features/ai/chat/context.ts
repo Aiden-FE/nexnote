@@ -6,7 +6,7 @@
  * 与 DEV-010 写作辅助共用同一套 head-tail 截断思路。
  */
 
-export type ChatContextKind = 'selection' | 'document' | 'page' | 'backlink';
+export type ChatContextKind = 'selection' | 'document' | 'page' | 'backlink' | 'sync-doctor';
 
 export interface ChatContextChip {
   id: string;
@@ -39,6 +39,7 @@ const KIND_RANK: Record<ChatContextKind, number> = {
   document: 1,
   page: 2,
   backlink: 3,
+  'sync-doctor': 4,
 };
 
 const KIND_HEADING: Record<ChatContextKind, string> = {
@@ -46,6 +47,7 @@ const KIND_HEADING: Record<ChatContextKind, string> = {
   document: '当前文档',
   page: '参考页面',
   backlink: '相关笔记（反向链接）',
+  'sync-doctor': '同步医生诊断',
 };
 
 /** 粗略 token 估算：CJK 字符约 1 token，其余约 4 字符/token。 */

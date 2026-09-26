@@ -1,6 +1,6 @@
 import { useMemo, useRef, useState } from 'react';
 import { DockPopover } from './DockPopover';
-import { FileText, Link2, Plus, SquareMousePointer, X } from 'lucide-react';
+import { FileText, GitMerge, Link2, Plus, SquareMousePointer, X } from 'lucide-react';
 import { useChatStore } from './chat-store';
 import { assembleChatContext, estimateTokens, type ChatContextChip } from './context';
 import {
@@ -19,6 +19,7 @@ const KIND_ICON = {
   selection: SquareMousePointer,
   page: FileText,
   backlink: Link2,
+  'sync-doctor': GitMerge,
 } as const;
 
 function Chip({ chip, onRemove }: { chip: ChatContextChip; onRemove: (id: string) => void }) {

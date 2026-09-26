@@ -58,6 +58,8 @@ async function persist(
 function finalizeStream(nextStatus: ChatSessionStatus, error?: string): void {
   runId = null;
   useChatStore.getState().setStreaming(false);
+  // 流结束/取消/失败时清掉残留的待审批：主进程会一并撤销（revokeRun）。
+  useChatStore.getState().setPendingApproval(null);
   if (working) {
     const assistant = working.turns[working.turns.length - 1];
     if (assistant?.role === 'assistant' && pendingMeta) assistant.meta = pendingMeta;
@@ -86,6 +88,16 @@ export function initChatRuntime(): void {
     } else if (event.type === 'delta') {
       assistant.content += event.text;
       sync();
+    } else if (event.type === 'tool') {
+      // 工具审批被拒/完成事件：审批拒绝由 approvalRequired 处理；这里只同步状态。
+      sync();
+    } else if (event.type === 'approvalRequired') {
+      // 主进程 gateway 在执行写工具前发审批请求：渲染层显示 banner。
+      useChatStore.getState().setPendingApproval({
+        approvalId: event.approvalId,
+        tool: event.tool,
+        expiresAt: event.expiresAt,
+      });
     } else if (event.type === 'done') {
       finalizeStream('complete');
     } else if (event.type === 'error') {

@@ -22,8 +22,8 @@ import { invoke, onEvent } from '../../lib/ipc';
 import { requestAppSave } from '../../editor/app-save';
 import { useVault } from '../../shell/vault-context';
 import { useUiStore } from '../../stores/ui-store';
-import { useChatStore } from '../ai/chat/chat-store';
-import { startNewSession } from '../ai/chat/chat-runtime';
+import { useChatStore, nextChipId } from '../ai/chat/chat-store';
+import { startNewSession, sendMessage, setPermissionMode } from '../ai/chat/chat-runtime';
 import {
   reduceSyncProgress,
   conflictHoverText,
@@ -186,27 +186,58 @@ function GitStatusItem() {
       void refresh();
     }
   };
-  // DEV-073：不可自动修复时把脱敏诊断带入 AI 对话，让 Agent 引导解决。
+  // DEV-073 + 新增 sync-doctor 入口：把脱敏诊断作为结构化上下文带入 AI 对话，
+  // 并直接告诉 Agent 优先调 git_doctor_repair（医生已认可的 action）。
   const openAgentHelp = async () => {
     const ui = useUiStore.getState();
     ui.setActiveDockPanel('ai-chat');
     const store = useChatStore.getState();
     const ensure = store.active ? Promise.resolve() : startNewSession();
     await ensure;
-    useChatStore.getState().addChip({
-      id: `sync-help-${Date.now()}`,
-      kind: 'selection',
-      label: '同步问题诊断',
-      text: [
-        `Git 同步出现问题：${doctor?.issue.message ?? '未知错误'}`,
-        doctor ? `类别：${doctor.issue.category}（${doctor.issue.code}）` : '',
-        doctor?.explanation ?? '',
-        error ? `错误信息：${error}` : '',
-        '请用简体中文一步一步指导我解决这个问题。不要假设我了解 git。',
-      ]
+    // 切到编辑态：git_doctor_repair 是 write 工具 + requiresApproval，
+    // 编辑态才会走 approvalRequired 流程让用户逐项确认。
+    await setPermissionMode('edit');
+
+    const diag = doctor;
+    // 结构化 chip：Agent 看到的是字段而非 prose 摘要，能更稳地选择 action。
+    const chipText = [
+      'Git 同步诊断结果：',
+      diag ? `类别：${diag.issue.category}（${diag.issue.code}）` : '',
+      diag?.explanation ? `说明：${diag.explanation}` : '',
+      diag?.conflictFiles.length ? `冲突文件：${diag.conflictFiles.join('、')}` : '',
+      diag?.plan.action ? `推荐操作：${diag.plan.action}` : '推荐操作：（无自动修复）',
+      diag?.plan.commandPreview ? `命令预览：${diag.plan.commandPreview}` : '',
+      diag?.plan.manualGuidance ? `用户指引：${diag.plan.manualGuidance}` : '',
+      error ? `最近错误：${error}` : '',
+    ]
       .filter(Boolean)
-      .join('\n'),
+      .join('\n');
+    useChatStore.getState().addChip({
+      id: nextChipId('sync-doctor'),
+      kind: 'sync-doctor',
+      label: '同步医生诊断',
+      text: chipText,
     });
+
+    // 把医生的 action 写成强结构化指令，避免模型走"先问要不要执行"路径。
+    // 注意：系统 prompt 已经硬约束「必须调 git_doctor_repair」，这里再把
+    // action 名以 JSON-like 形式重复一遍降低误读概率。
+    const actionHint = diag?.plan.action
+      ? `[INSTRUCTION] 必须立即调用 git_doctor_repair 工具，` +
+        `参数 {"action": "${diag.plan.action}"}。` +
+        `不要先问"是否执行"、不要输出步骤说明、不要让用户手动跑命令。` +
+        `调用前一句话告诉用户你要做什么，调用后报告 doctor 返回的 message 或错误码。`
+      : '医生没有给出可自动执行的动作；请基于诊断信息给用户清晰的步骤指引。';
+    const prompt = [
+      '同步医生已诊断此问题（点击触发）。',
+      diag?.plan.action ? `推荐动作：${diag.plan.action}` : '',
+      diag?.issue.message ? `错误摘要：${diag.issue.message}` : '',
+      actionHint,
+    ]
+      .filter(Boolean)
+      .join('\n');
+
+    await sendMessage(prompt);
   };
   const dismissDoctor = async () => {
     setDoctor(null);
@@ -224,7 +255,7 @@ function GitStatusItem() {
   const busy = phase !== null && phase !== 'done' && phase !== 'error';
   const titleText =
     error ??
-    (busy ? phaseMessage ?? '正在同步…' : undefined) ??
+    (busy ? (phaseMessage ?? '正在同步…') : undefined) ??
     `${status.usingSystemGit ? '系统' : '捆绑'} Git · ${status.remote ?? '未配置远程'} · 点击同步`;
   return (
     <div
@@ -268,7 +299,7 @@ function GitStatusItem() {
       )}
       <button
         type="button"
-        title={busy ? phaseMessage ?? '正在同步…' : '一键同步：拉取 + 合并 + 推送'}
+        title={busy ? (phaseMessage ?? '正在同步…') : '一键同步：拉取 + 合并 + 推送'}
         disabled={busy}
         onClick={() => void runSync()}
         className="rounded p-0.5 hover:bg-accent disabled:opacity-60"
@@ -628,6 +659,13 @@ function DoctorDialog({
               title="会丢弃你未推送的笔记提交——仅在你想完全放弃本地修改时使用"
             >
               {busy ? '正在中止…' : '放弃本地改动'}
+            </button>
+            <button
+              type="button"
+              onClick={onOpenAgentHelp}
+              className="rounded border px-2 py-1 text-xs"
+            >
+              让 Agent 帮助解决
             </button>
           </>
         ) : canRepair ? (

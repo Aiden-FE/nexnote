@@ -310,6 +310,8 @@ export function ChatDock() {
         </Button>
       </div>
 
+      <PendingApprovalBanner />
+
       {!active ? (
         <div
           data-testid="chat-empty"
@@ -412,3 +414,73 @@ export function ChatDock() {
     </div>
   );
 }
+
+/**
+ * Agent 工具请求审批时的底部固定 banner。
+ * - git_doctor_repair：明示将执行的 action；批准后由主进程 doctor.prepare+execute 安全执行。
+ * - edit_current_selection / append_to_document：通用「文档编辑」说明。
+ * 5 分钟 TTL 由主进程 ApprovalStore 维护；超时未点 → APPROVAL_EXPIRED。
+ */
+function PendingApprovalBanner() {
+  const pending = useChatStore((s) => s.pendingApproval);
+  const respond = useChatStore((s) => s.respondApproval);
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    if (!pending) return;
+    // 倒计时副作用：进入审批时立即对齐一次，之后每秒刷新剩余时间。
+    // 这是显式的副作用（time tick），不是派生状态——直接 setState 即可。
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setNow(Date.now());
+    const id = setInterval(() => setNow(Date.now()), 1000);
+    return () => clearInterval(id);
+  }, [pending]);
+  if (!pending) return null;
+  const remainMs = Math.max(0, pending.expiresAt - now);
+  const remainSec = Math.ceil(remainMs / 1000);
+  const toolLabel = TOOL_LABEL[pending.tool] ?? `Agent 工具 ${pending.tool}`;
+  return (
+    <div
+      data-testid="chat-approval-banner"
+      role="alertdialog"
+      aria-label="Agent 工具审批"
+      className="shrink-0 rounded-md border border-amber-500/40 bg-amber-500/10 p-2 text-[12px] text-amber-700"
+    >
+      <div className="flex items-start gap-2">
+        <AlertTriangle className="mt-0.5 size-3.5 shrink-0" />
+        <div className="min-w-0 flex-1">
+          <p className="font-medium">Agent 请求执行：{toolLabel}</p>
+          <p className="text-[10px] opacity-80">
+            {remainSec > 0
+              ? `本审批在 ${remainSec} 秒后过期，过期需重新诊断`
+              : '已过期——等待主进程撤销'}
+          </p>
+        </div>
+        <div className="flex shrink-0 gap-1">
+          <Button
+            size="sm"
+            variant="outline"
+            className="h-7 px-2 text-[11px]"
+            data-testid="chat-approval-deny"
+            onClick={() => void respond(pending.approvalId, 'denied')}
+          >
+            拒绝
+          </Button>
+          <Button
+            size="sm"
+            className="h-7 px-2 text-[11px]"
+            data-testid="chat-approval-approve"
+            onClick={() => void respond(pending.approvalId, 'approved')}
+          >
+            批准
+          </Button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+const TOOL_LABEL: Record<string, string> = {
+  git_doctor_repair: '执行 git 修复',
+  edit_current_selection: '替换当前选区',
+  append_to_document: '向当前文档追加内容',
+};

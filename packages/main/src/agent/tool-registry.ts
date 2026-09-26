@@ -12,6 +12,8 @@ export interface ToolContext {
   runId: string;
   scenario: AgentScenario;
   permissionMode?: ChatPermissionMode;
+  /** 审批上下文：仅当 tool.requiresApproval 通过审批后，由 gateway 注入。 */
+  approval?: { approvalId: string };
 }
 export interface AgentTool {
   definition: AgentToolDefinition;

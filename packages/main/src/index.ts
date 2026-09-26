@@ -211,6 +211,11 @@ async function bootstrap(): Promise<void> {
           for (const write of writes) await fs.writeTextFile(write.path, write.content, true);
         },
       },
+      // 让 Agent 在审批后调 doctor.prepare/execute 真正执行 git 修复。
+      doctor: {
+        prepare: (action) => gitDoctor.prepare(action),
+        execute: (ticket) => gitDoctor.execute(ticket),
+      },
     }),
   );
   const agent = new AgentGateway({

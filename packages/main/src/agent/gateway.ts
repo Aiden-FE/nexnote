@@ -25,8 +25,20 @@ import {
 const TTL_MS = 10 * 60_000;
 export const AGENT_SCENARIO_PROFILES: Record<AgentScenario, { system: string; tools: string[] }> = {
   chat: {
-    system: '你是 NexNote 内置知识库对话助手。基于提供的上下文回答，不要编造来源。',
-    tools: ['search_notes', 'list_pages', 'edit_current_selection', 'append_to_document'],
+    system:
+      '你是 NexNote 内置知识库对话助手。基于提供的上下文回答，不要编造来源。\n' +
+      '【硬约束】当用户消息携带「同步医生诊断」chip（chip.kind=sync-doctor）时，' +
+      '你必须立即调用 git_doctor_repair 工具，参数 action=医生推荐的 action（chip 文本里"推荐操作："那一行的值）。' +
+      '不允许先问"是否执行"、不允许输出步骤说明、不要让用户手动操作终端。' +
+      '回复流程固定为：（1）一句话告诉用户你打算做什么；（2）调用 git_doctor_repair 工具；' +
+      '（3）等待主进程弹出审批 banner 让用户批准；（4）拿到结果后用一两句话报告成功或具体错误码。',
+    tools: [
+      'search_notes',
+      'list_pages',
+      'edit_current_selection',
+      'append_to_document',
+      'git_doctor_repair',
+    ],
   },
   writing: {
     system: '你是 NexNote Markdown 写作助手。只输出处理后的正文，不要解释。',
@@ -392,6 +404,8 @@ export class AgentGateway {
     const emit = (event: AgentRunEvent) =>
       this.deps.sendEvent('agent:runEvent', { runId, scenario, event });
     const allowed = AGENT_SCENARIO_PROFILES[scenario].tools;
+    /** 审批通过后填充，向 ToolContext 注入；full 模式下不审批，留空。 */
+    let approvedApprovalId: string | undefined;
     const tool = this.deps.tools?.get(name)?.definition;
     if (!tool || !allowed.includes(name)) {
       this.audit.append({
@@ -516,6 +530,7 @@ export class AgentGateway {
           emit({ type: 'tool', tool: name, status: 'denied' });
           throw Object.assign(new Error('工具审批被拒绝'), { code: 'APPROVAL_DENIED' });
         }
+        approvedApprovalId = approvalId;
       }
     }
     this.audit.append({
@@ -531,6 +546,7 @@ export class AgentGateway {
         runId,
         scenario,
         permissionMode: state.permissionMode,
+        ...(approvedApprovalId ? { approval: { approvalId: approvedApprovalId } } : {}),
       });
       const summary = summarizeToolResult(result);
       this.audit.append({

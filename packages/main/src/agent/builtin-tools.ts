@@ -1,3 +1,9 @@
+import type {
+  GitDoctorRepairExecuteResult,
+  GitDoctorRepairPrepareResult,
+  GitRepairAction,
+} from '@nexnote/shared';
+import { GIT_REPAIR_ACTIONS } from '../git/git-sync-doctor';
 import type { AgentTool } from './tool-registry';
 
 /**
@@ -21,6 +27,20 @@ export interface BuiltinToolDeps {
   }>;
   /** 当前库内页面列表（path + 标题）。 */
   listPages: () => Array<{ path: string; title: string }>;
+  /**
+   * 注入 Git Sync Doctor：让 Agent 在审批后调 prepare+execute 真正执行 git 修复。
+   * 不传则不注册 git_doctor_repair 工具（向后兼容旧 bootstrap）。
+   */
+  doctor?: DoctorAdapter;
+}
+
+/**
+ * 把 GitSyncDoctor 的 prepare/execute 包装成 Agent Tool 调用的最小接口，
+ * 避免 Agent 工具直接依赖 doctor 类（DI + 易测）。
+ */
+export interface DoctorAdapter {
+  prepare(action: GitRepairAction): Promise<GitDoctorRepairPrepareResult>;
+  execute(ticket: string): Promise<GitDoctorRepairExecuteResult>;
 }
 
 function isRecord(v: unknown): v is Record<string, unknown> {
@@ -93,7 +113,12 @@ export function createBuiltinTools(deps: BuiltinToolDeps): AgentTool[] {
     },
     async execute(input) {
       if (!deps.document) throw new Error('文档写入服务不可用');
-      if (!isRecord(input) || typeof input.path !== 'string' || typeof input.expectedText !== 'string' || typeof input.content !== 'string') {
+      if (
+        !isRecord(input) ||
+        typeof input.path !== 'string' ||
+        typeof input.expectedText !== 'string' ||
+        typeof input.content !== 'string'
+      ) {
         throw new Error('edit_current_selection 输入无效');
       }
       const current = await deps.document.read(input.path);
@@ -101,7 +126,8 @@ export function createBuiltinTools(deps: BuiltinToolDeps): AgentTool[] {
       if (index < 0 || current.indexOf(input.expectedText, index + 1) >= 0) {
         throw Object.assign(new Error('选区已变化或不唯一'), { code: 'STALE_SELECTION' });
       }
-      const next = current.slice(0, index) + input.content + current.slice(index + input.expectedText.length);
+      const next =
+        current.slice(0, index) + input.content + current.slice(index + input.expectedText.length);
       if (deps.document.writeTransaction) {
         await deps.document.writeTransaction([{ path: input.path, content: next }]);
       } else {
@@ -126,7 +152,8 @@ export function createBuiltinTools(deps: BuiltinToolDeps): AgentTool[] {
     },
     async execute(input) {
       if (!deps.document) throw new Error('文档写入服务不可用');
-      if (!isRecord(input) || typeof input.path !== 'string' || typeof input.content !== 'string') throw new Error('append_to_document 输入无效');
+      if (!isRecord(input) || typeof input.path !== 'string' || typeof input.content !== 'string')
+        throw new Error('append_to_document 输入无效');
       const current = await deps.document.read(input.path);
       const next = current + (current.endsWith('\n') ? '' : '\n') + input.content;
       if (deps.document.writeTransaction) {
@@ -137,5 +164,67 @@ export function createBuiltinTools(deps: BuiltinToolDeps): AgentTool[] {
       return { path: input.path, operation: 'append', chars: input.content.length };
     },
   };
-  return [searchTool, listPagesTool, editSelectionTool, appendDocumentTool];
+  return [
+    searchTool,
+    listPagesTool,
+    editSelectionTool,
+    appendDocumentTool,
+    ...createDoctorTools(deps),
+  ];
+}
+
+/**
+ * git_doctor_repair：根据医生诊断推荐的 GitRepairAction 执行修复。
+ * access='write' + requiresApproval=true：审批未通过时 gateway 会在 executeTool 拒绝；
+ * 审批通过后 ctx.approval.approvalId 会被注入，工具执行 prepare+execute 的安全路径。
+ *
+ * 即使 action 不在白名单或仓库状态变化，doctor 自身也会抛 INVALID_ACTION / STATE_DRIFT 等
+ * 错误；这里只做最小化的输入校验，复杂判断交给 doctor。
+ */
+function createDoctorTools(deps: BuiltinToolDeps): AgentTool[] {
+  if (!deps.doctor) return [];
+  const doctor = deps.doctor;
+  return [
+    {
+      source: 'agent',
+      definition: {
+        name: 'git_doctor_repair',
+        description:
+          '执行医生已批准的 git 修复动作（commit / pull / push / abort-rebase-or-merge / preserve-local-and-abort / force-abort-rebase-or-merge）。' +
+          '内部走 git:doctor:repairPrepare 签发票据、git:doctor:repairExecute 在审批后真正执行（含 TOCTOU + TTL 安全校验）。' +
+          '调用前必须先有医生的诊断结果（医生推荐的 action），不要自行决定 action。',
+        access: 'write',
+        requiresApproval: true,
+        inputSchema: {
+          type: 'object',
+          properties: {
+            action: {
+              type: 'string',
+              enum: [...GIT_REPAIR_ACTIONS],
+              description: '医生已批准的 GitRepairAction（来自医生诊断的 plan.action 字段）。',
+            },
+          },
+          required: ['action'],
+        },
+      },
+      async execute(input, ctx) {
+        if (!isRecord(input) || typeof input.action !== 'string') {
+          throw new Error('git_doctor_repair 输入必须是 { action: GitRepairAction }');
+        }
+        if (!ctx.approval?.approvalId) {
+          // gateway 在审批通过后才注入 approvalId；这里是双保险
+          throw new Error('git_doctor_repair 必须在审批通过后调用');
+        }
+        const action = input.action;
+        const prepared = await doctor.prepare(action as GitRepairAction);
+        const result = await doctor.execute(prepared.ticket);
+        return {
+          ticket: prepared.ticket,
+          action,
+          message: result.message,
+          preserve: result.preserve,
+        };
+      },
+    },
+  ];
 }
