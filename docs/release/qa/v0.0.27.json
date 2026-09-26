@@ -16,7 +16,8 @@
     "diffCheck": "passed locally (git diff HEAD --check before candidate commit)",
     "packagedSmoke": "passed locally from a read-only mounted DMG using candidate SHA 9c538bbf7bccc8148570b01517941c54e8ee9e4e, 261/261 checks; 4eb9c15 adds only an AI error-logging suppression verified by unit regression; GitHub release-tag-bound smoke remains not run",
     "ciLogHygiene": "zero matches for AI_APICallError / InvalidResponseDataError / DeprecationWarning / EPIPE / Duplicate extension names in PR Checks 36230392557 and Nightly 36230415813 logs",
-    "gatekeeper": "manual allow verified by repository owner Aiden-FE on 2026-09-26 via System Settings Open Anyway for the Ad hoc signed app; spctl remains rejected as expected without Developer ID notarization"
+    "gatekeeper": "manual allow verified by repository owner Aiden-FE on 2026-09-26 via System Settings Open Anyway for the Ad hoc signed app; spctl remains rejected as expected without Developer ID notarization",
+    "n1Preverification": "public update feeds latest-mac.yml and latest.yml for v0.0.26 fetched successfully (version 0.0.26, sha512 and asset URLs intact); v0.0.26 DMG verified via hdiutil, bundled app-update.yml = provider github / Aiden-FE / nexnote, Info.plist 0.0.26; live 0.0.22 install on the QA Mac uses the same github provider config. Client-to-feed plumbing works; the full N-1/N-4 to v0.0.27 end-to-end upgrade runs post-publication"
   },
   "candidateContents": {
     "tickets": "Candidate: master commit 4eb9c1523000c7573b6d244604f9882fcc0b6dbd, version 0.0.27; includes DEV-072/074 follow-ups, DEV-087 CellSelection fix, updater isolation, CodeMirror measure-phase fix, AI SDK raw-error logging suppression, and Node24 CI pins. Manual platform QA and protected approval remain incomplete; this record is not publishable evidence.",
@@ -35,7 +36,7 @@
     "Windows packaged smoke and Linux packaged smoke",
     "Windows/Ubuntu physical installation verification (waived by repository owner Aiden-FE on 2026-09-26: no Windows/Linux hardware available; packaged smoke evidence remains macOS-local only)",
     "macOS notarization / Developer ID code signing (Gatekeeper manual allow completed 2026-09-26; Ad hoc signing only)",
-    "public N-1 to v0.0.27 network upgrade end-to-end verification",
+    "public v0.0.22/0.0.26 to v0.0.27 end-to-end network upgrade (feeds and client provider config pre-verified 2026-09-26; full verification runs post-publication)",
     "release-qa Environment required-reviewer approval (operational gate before publish)",
     "post-publication 24-hour monitoring"
   ]
