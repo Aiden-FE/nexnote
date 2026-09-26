@@ -96,6 +96,7 @@ export function initChatRuntime(): void {
       useChatStore.getState().setPendingApproval({
         approvalId: event.approvalId,
         tool: event.tool,
+        summary: event.summary,
         expiresAt: event.expiresAt,
       });
     } else if (event.type === 'done') {

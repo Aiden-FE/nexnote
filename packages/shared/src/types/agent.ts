@@ -55,6 +55,7 @@ export type AgentRunEvent =
       approvalId: string;
       tool: string;
       expiresAt: number;
+      summary?: string;
       proposalIds?: string[];
     }
   | { type: 'editProposals'; batchId: string; proposals: AgentEditProposal[] }

@@ -449,6 +449,7 @@ function PendingApprovalBanner() {
         <AlertTriangle className="mt-0.5 size-3.5 shrink-0" />
         <div className="min-w-0 flex-1">
           <p className="font-medium">Agent 请求执行：{toolLabel}</p>
+          {pending.summary && <p>{pending.summary}</p>}
           <p className="text-[10px] opacity-80">
             {remainSec > 0
               ? `本审批在 ${remainSec} 秒后过期，过期需重新诊断`

@@ -419,8 +419,9 @@ export class AgentGateway {
       });
       throw Object.assign(new Error('工具未获准执行'), { code: 'TOOL_NOT_ALLOWED' });
     }
+    const doctorRepair = name === 'git_doctor_repair';
     if (tool.access === 'write' || tool.requiresApproval) {
-      if (tool.access === 'write') {
+      if (tool.access === 'write' && !doctorRepair) {
         const target =
           typeof input === 'object' && input !== null
             ? (input as Record<string, unknown>).path
@@ -469,7 +470,7 @@ export class AgentGateway {
           code: 'WRITE_REQUIRES_EDIT_MODE',
         });
       }
-      if (state.permissionMode === 'full') {
+      if (state.permissionMode === 'full' && !doctorRepair) {
         // Five hard guardrails: no shell, delete, rename, vault/settings config, or path escape.
         const forbidden = /shell|command|delete|remove|rename|config|setting|vault/i.test(
           `${name} ${JSON.stringify(input)}`,
@@ -504,10 +505,18 @@ export class AgentGateway {
           });
         }
       }
-      if (state.permissionMode !== 'full') {
+      if (state.permissionMode !== 'full' || doctorRepair) {
         const approvalId = randomUUID();
         const expiresAt = this.approvals.request(approvalId, name, runId);
-        emit({ type: 'approvalRequired', approvalId, tool: name, expiresAt });
+        emit({
+          type: 'approvalRequired',
+          approvalId,
+          tool: name,
+          expiresAt,
+          ...(doctorRepair && typeof input === 'object' && input !== null && 'action' in input
+            ? { summary: `Git Doctor 修复操作：${String(input.action)}` }
+            : {}),
+        });
         this.audit.append({
           runId,
           scenario,

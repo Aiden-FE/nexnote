@@ -39,6 +39,7 @@ export interface BuiltinToolDeps {
  * 避免 Agent 工具直接依赖 doctor 类（DI + 易测）。
  */
 export interface DoctorAdapter {
+  diagnose(): Promise<{ plan: { action: GitRepairAction | null } }>;
   prepare(action: GitRepairAction): Promise<GitDoctorRepairPrepareResult>;
   execute(ticket: string): Promise<GitDoctorRepairExecuteResult>;
 }
@@ -216,7 +217,20 @@ function createDoctorTools(deps: BuiltinToolDeps): AgentTool[] {
           throw new Error('git_doctor_repair 必须在审批通过后调用');
         }
         const action = input.action;
-        const prepared = await doctor.prepare(action as GitRepairAction);
+        if (!GIT_REPAIR_ACTIONS.includes(action as GitRepairAction)) {
+          throw new Error(`git_doctor_repair action 无效: ${action}`);
+        }
+        const repairAction = action as GitRepairAction;
+        const diagnosis = await doctor.diagnose();
+        if (diagnosis.plan.action !== repairAction) {
+          throw Object.assign(
+            new Error(
+              `Git Doctor 当前推荐的操作是 ${diagnosis.plan.action ?? '无自动修复'}，拒绝执行 ${repairAction}`,
+            ),
+            { code: 'DOCTOR_ACTION_MISMATCH' },
+          );
+        }
+        const prepared = await doctor.prepare(repairAction);
         const result = await doctor.execute(prepared.ticket);
         return {
           ticket: prepared.ticket,

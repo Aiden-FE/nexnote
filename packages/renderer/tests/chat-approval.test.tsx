@@ -231,7 +231,12 @@ describe('审批 banner', () => {
 
     // 模拟主进程发出审批请求
     const expiresAt = Date.now() + 60_000;
-    const pending: PendingApproval = { approvalId: 'a-1', tool: 'git_doctor_repair', expiresAt };
+    const pending: PendingApproval = {
+      approvalId: 'a-1',
+      tool: 'git_doctor_repair',
+      summary: 'Git Doctor 修复操作：preserve-local-and-abort',
+      expiresAt,
+    };
     act(() => {
       useChatStore.getState().setPendingApproval(pending);
     });
@@ -240,6 +245,7 @@ describe('审批 banner', () => {
     const banner = document.querySelector('[data-testid="chat-approval-banner"]');
     expect(banner).not.toBeNull();
     expect(banner!.textContent).toContain('执行 git 修复');
+    expect(banner!.textContent).toContain('preserve-local-and-abort');
     expect(banner!.textContent).toMatch(/60\s*秒/);
   });
 

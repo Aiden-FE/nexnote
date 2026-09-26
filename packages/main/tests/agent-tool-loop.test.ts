@@ -214,6 +214,118 @@ describe('DEV-032 SDK 原生工具循环', () => {
     expect(spy.paths().filter((p) => p !== CHAT_PATH)).toEqual([]);
   });
 
+  it.each(['edit', 'full'] as const)(
+    'Git Doctor repair requests approval in %s mode despite lacking a document path',
+    async (permissionMode) => {
+      const { ai } = await configuredAi();
+      mock.nextToolCall = {
+        name: 'git_doctor_repair',
+        arguments: { action: 'preserve-local-and-abort' },
+      };
+      const prepare = vi.fn(async () => ({
+        diagnosis: {} as never,
+        ticket: 'ticket-1',
+        ticketExpiresAt: Date.now() + 60_000,
+      }));
+      const execute = vi.fn(async () => ({ message: '已保留笔记并中止 rebase' }) as never);
+      const tools = new ToolRegistry(
+        createBuiltinTools({
+          retrieve: async () => sourcesResult,
+          listPages: () => [],
+          doctor: {
+            diagnose: async () => ({ plan: { action: 'preserve-local-and-abort' } }),
+            prepare,
+            execute,
+          },
+        }),
+      );
+      const { gateway, of, events } = harness(ai, tools);
+      const { runId } = await gateway.run('chat', {
+        messages: [{ role: 'user', content: '请修复同步冲突' }],
+        permissionMode,
+        contextPaths: [],
+      });
+      const approval = await vi.waitFor(() => {
+        const [event] = of('approvalRequired');
+        if (!event) throw new Error('approval not requested yet');
+        return event;
+      });
+      expect(approval.event.tool).toBe('git_doctor_repair');
+      expect(approval.event.summary).toBe('Git Doctor 修复操作：preserve-local-and-abort');
+      expect(prepare).not.toHaveBeenCalled();
+      expect(execute).not.toHaveBeenCalled();
+      expect(gateway.respondApproval(approval.event.approvalId, 'approved')).toBe(true);
+      await waitForRun(events, runId);
+      expect(prepare).toHaveBeenCalledWith('preserve-local-and-abort');
+      expect(execute).toHaveBeenCalledWith('ticket-1');
+      expect(of('tool').some((e) => e.event.status === 'completed')).toBe(true);
+    },
+  );
+
+  it('Git Doctor repair remains blocked in conversation mode', async () => {
+    const { ai } = await configuredAi();
+    mock.nextToolCall = {
+      name: 'git_doctor_repair',
+      arguments: { action: 'preserve-local-and-abort' },
+    };
+    const prepare = vi.fn(async () => ({
+      diagnosis: {} as never,
+      ticket: 'ticket-1',
+      ticketExpiresAt: Date.now() + 60_000,
+    }));
+    const execute = vi.fn(async () => ({ message: 'unexpected' }) as never);
+    const { gateway, of, events } = harness(
+      ai,
+      new ToolRegistry(
+        createBuiltinTools({
+          retrieve: async () => sourcesResult,
+          listPages: () => [],
+          doctor: {
+            diagnose: async () => ({ plan: { action: 'preserve-local-and-abort' } }),
+            prepare,
+            execute,
+          },
+        }),
+      ),
+    );
+    const { runId } = await gateway.run('chat', {
+      messages: [{ role: 'user', content: '同步失败' }],
+      permissionMode: 'conversation',
+      contextPaths: [],
+    });
+    await waitForRun(events, runId);
+    expect(of('approvalRequired')).toHaveLength(0);
+    expect(prepare).not.toHaveBeenCalled();
+    expect(execute).not.toHaveBeenCalled();
+  });
+
+  it('Document writes still require an active document path', async () => {
+    const { ai } = await configuredAi();
+    mock.nextToolCall = {
+      name: 'append_to_document',
+      arguments: { path: 'outside.md', content: 'not allowed' },
+    };
+    const write = vi.fn(async () => undefined);
+    const { gateway, of, events } = harness(
+      ai,
+      new ToolRegistry(
+        createBuiltinTools({
+          retrieve: async () => sourcesResult,
+          listPages: () => [],
+          document: { read: async () => '', write },
+        }),
+      ),
+    );
+    const { runId } = await gateway.run('chat', {
+      messages: [{ role: 'user', content: 'append' }],
+      permissionMode: 'edit',
+      contextPaths: [],
+    });
+    await waitForRun(events, runId);
+    expect(of('approvalRequired')).toHaveLength(0);
+    expect(write).not.toHaveBeenCalled();
+  });
+
   it('写工具经 SDK 循环触发审批，批准后执行且审计可见', async () => {
     const { ai } = await configuredAi();
     mock.nextToolCall = { name: 'search_notes', arguments: { query: 'alpha' } };

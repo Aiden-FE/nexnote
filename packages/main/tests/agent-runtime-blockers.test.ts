@@ -200,6 +200,7 @@ describe('agent runtime blocker contracts', () => {
 // git_doctor_repair 工具：验证 doctor.prepare+execute 被正确调用，且 ctx.approval 必传。
 describe('git_doctor_repair agent tool', () => {
   function buildRegistry(doctor: {
+    diagnose?: () => Promise<{ plan: { action: GitRepairAction | null } }>;
     prepare: (action: GitRepairAction) => Promise<{ ticket: string; ticketExpiresAt: number }>;
     execute: (ticket: string) => Promise<{ message: string }>;
   }) {
@@ -207,7 +208,18 @@ describe('git_doctor_repair agent tool', () => {
       createBuiltinTools({
         retrieve: async () => ({ degraded: false, sources: [] }),
         listPages: () => [],
-        doctor: doctor as never,
+        doctor: {
+          diagnose:
+            doctor.diagnose ?? (async () => ({ plan: { action: 'preserve-local-and-abort' } })),
+          prepare: async (action) => ({
+            ...(await doctor.prepare(action)),
+            diagnosis: {} as never,
+          }),
+          execute: async (ticket) => ({
+            ...(await doctor.execute(ticket)),
+            status: {} as never,
+          }),
+        },
       }),
     );
   }
@@ -267,6 +279,24 @@ describe('git_doctor_repair agent tool', () => {
       action: 'preserve-local-and-abort',
       message: '已中止未完成的 rebase/merge',
     });
+  });
+
+  it('Agent 不能把医生推荐的保留笔记改成放弃本地改动', async () => {
+    const prepare = vi.fn(async (_action: GitRepairAction) => ({
+      ticket: 'ticket-1',
+      ticketExpiresAt: Date.now() + 60_000,
+    }));
+    const execute = vi.fn(async (_ticket: string) => ({ message: 'unexpected' }));
+    const reg = buildRegistry({ prepare, execute });
+    await expect(
+      reg.execute(
+        'git_doctor_repair',
+        { action: 'force-abort-rebase-or-merge' },
+        { runId: 'r', scenario: 'chat', permissionMode: 'edit', approval: { approvalId: 'a' } },
+      ),
+    ).rejects.toMatchObject({ code: 'DOCTOR_ACTION_MISMATCH' });
+    expect(prepare).not.toHaveBeenCalled();
+    expect(execute).not.toHaveBeenCalled();
   });
 
   it('input 缺 action 字段被拒', async () => {

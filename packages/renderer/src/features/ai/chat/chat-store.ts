@@ -20,6 +20,8 @@ export interface AskPayload {
 export interface PendingApproval {
   approvalId: string;
   tool: string;
+  /** 可读操作说明；git doctor 审批时明确展示医生推荐动作。 */
+  summary?: string;
   /** 过期时间戳（ms）。 */
   expiresAt: number;
 }

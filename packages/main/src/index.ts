@@ -213,6 +213,7 @@ async function bootstrap(): Promise<void> {
       },
       // 让 Agent 在审批后调 doctor.prepare/execute 真正执行 git 修复。
       doctor: {
+        diagnose: () => gitDoctor.diagnose(),
         prepare: (action) => gitDoctor.prepare(action),
         execute: (ticket) => gitDoctor.execute(ticket),
       },
