@@ -2,22 +2,23 @@
   "schema": "nexnote-release-qa/v1",
   "repository": "Aiden-FE/nexnote",
   "tag": "v0.0.27",
-  "commit": "9c538bbf7bccc8148570b01517941c54e8ee9e4e",
+  "commit": "4eb9c1523000c7573b6d244604f9882fcc0b6dbd",
   "channel": "stable",
   "allRequiredChecksPassed": false,
   "scope": "v0.0.27-candidate-incomplete",
   "machineChecks": {
-    "typecheck": "passed (PR Checks run 36153313978 on 9c538bb; workspace typecheck clean)",
-    "lint": "passed (PR Checks run 36153313978 on 9c538bb; zero errors and warnings)",
-    "tests": "1675 passed | 3 skipped (1678); 183 test files passed | 1 skipped on PR Checks run 36153313978 at 9c538bb",
-    "build": "passed (PR Checks run 36153313978 on 9c538bb; electron-vite and static website built with nonfatal Rollup dependency/chunk warnings)",
+    "typecheck": "passed (PR Checks run 36230392557 on 4eb9c15; workspace typecheck clean)",
+    "lint": "passed (PR Checks run 36230392557 on 4eb9c15; zero errors and warnings)",
+    "tests": "1675 passed | 3 skipped (1678); 183 test files passed | 1 skipped on PR Checks run 36230392557 at 4eb9c15",
+    "build": "passed (PR Checks run 36230392557 on 4eb9c15; electron-vite and static website built with nonfatal Rollup dependency/chunk warnings)",
     "releaseConfig": "31/31 passed (node scripts/verify-release-config.mjs)",
-    "changedFormat": "passed (PR Checks run 36153313978: changed-file formatting gate)",
+    "changedFormat": "passed (PR Checks run 36230392557: changed-file formatting gate)",
     "diffCheck": "passed locally (git diff HEAD --check before candidate commit)",
-    "packagedSmoke": "passed locally from a read-only mounted DMG using full candidate SHA 9c538bbf7bccc8148570b01517941c54e8ee9e4e, 261/261 checks; GitHub release-tag-bound smoke remains not run"
+    "packagedSmoke": "passed locally from a read-only mounted DMG using candidate SHA 9c538bbf7bccc8148570b01517941c54e8ee9e4e, 261/261 checks; 4eb9c15 adds only an AI error-logging suppression verified by unit regression; GitHub release-tag-bound smoke remains not run",
+    "ciLogHygiene": "zero matches for AI_APICallError / InvalidResponseDataError / DeprecationWarning / EPIPE / Duplicate extension names in PR Checks 36230392557 and Nightly 36230415813 logs"
   },
   "candidateContents": {
-    "tickets": "Candidate: master commit 9c538bbf7bccc8148570b01517941c54e8ee9e4e, version 0.0.27; includes DEV-072/074 follow-ups, DEV-087 CellSelection fix, updater isolation, CodeMirror measure-phase fix, and Node24 CI pins. Manual platform QA and protected approval remain incomplete; this record is not publishable evidence.",
+    "tickets": "Candidate: master commit 4eb9c1523000c7573b6d244604f9882fcc0b6dbd, version 0.0.27; includes DEV-072/074 follow-ups, DEV-087 CellSelection fix, updater isolation, CodeMirror measure-phase fix, AI SDK raw-error logging suppression, and Node24 CI pins. Manual platform QA and protected approval remain incomplete; this record is not publishable evidence.",
     "highlights": [
       "DEV-074 review: BinaryEditorHostManager no longer drains pending on did-finish-load; renderer must ack via binary:host:ready (senderId = webContents.id). roundTrip waits up to 1500ms for ack; missing __nexnoteHostFlush now throws rather than silently succeeding. close() captures entry identity + webContentsId across await so concurrent destroyAll / close-reopen cannot kill the wrong host. New tests cover delayed bootstrap, ack timeout, idempotent ack, and interleaved close race.",
       "DEV-074 review: xmind content.json sheet & rootTopic now preserves fields simple-mind-map does not model (boundaries / relationships / theme / skeleton / topicPositioning) on save; rebuilt-side fields still take precedence.",
