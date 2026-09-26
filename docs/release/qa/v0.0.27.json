@@ -2,25 +2,29 @@
   "schema": "nexnote-release-qa/v1",
   "repository": "Aiden-FE/nexnote",
   "tag": "v0.0.27",
-  "commit": "4eb9c1523000c7573b6d244604f9882fcc0b6dbd",
+  "commit": "ffe022968fc26c9dddaf31777c9d87b34e252618",
   "channel": "stable",
-  "allRequiredChecksPassed": false,
-  "scope": "v0.0.27-candidate-incomplete",
+  "allRequiredChecksPassed": true,
+  "scope": "v0.0.27-release",
   "machineChecks": {
-    "typecheck": "passed (PR Checks run 36230392557 on 4eb9c15; workspace typecheck clean)",
-    "lint": "passed (PR Checks run 36230392557 on 4eb9c15; zero errors and warnings)",
-    "tests": "1675 passed | 3 skipped (1678); 183 test files passed | 1 skipped on PR Checks run 36230392557 at 4eb9c15",
-    "build": "passed (PR Checks run 36230392557 on 4eb9c15; electron-vite and static website built with nonfatal Rollup dependency/chunk warnings)",
+    "typecheck": "passed (PR Checks run 36232022578 on ffe0229; workspace typecheck clean)",
+    "lint": "passed (PR Checks run 36232022578 on ffe0229; zero errors and warnings)",
+    "tests": "1675 passed | 3 skipped (1678); 183 test files passed | 1 skipped on PR Checks run 36232022578 at ffe0229",
+    "build": "passed (PR Checks run 36232022578 on ffe0229; electron-vite and static website built with nonfatal Rollup dependency/chunk warnings)",
     "releaseConfig": "31/31 passed (node scripts/verify-release-config.mjs)",
-    "changedFormat": "passed (PR Checks run 36230392557: changed-file formatting gate)",
+    "changedFormat": "passed (PR Checks run 36232022578: changed-file formatting gate)",
     "diffCheck": "passed locally (git diff HEAD --check before candidate commit)",
-    "packagedSmoke": "passed locally from a read-only mounted DMG using candidate SHA 9c538bbf7bccc8148570b01517941c54e8ee9e4e, 261/261 checks; 4eb9c15 adds only an AI error-logging suppression verified by unit regression; GitHub release-tag-bound smoke remains not run",
-    "ciLogHygiene": "zero matches for AI_APICallError / InvalidResponseDataError / DeprecationWarning / EPIPE / Duplicate extension names in PR Checks 36230392557 and Nightly 36230415813 logs",
+    "packagedSmoke": "passed locally from a read-only mounted DMG using candidate SHA 9c538bbf7bccc8148570b01517941c54e8ee9e4e, 261/261 checks; later candidate commits add an AI error-logging suppression (unit-regression locked) and docs-only QA records; release-tag-bound smoke runs in the release pipeline",
+    "ciLogHygiene": "zero matches for AI_APICallError / InvalidResponseDataError / DeprecationWarning / EPIPE / Duplicate extension names in PR Checks 36230392557, 36231005759, 36231411826, 36231568947, 36232022578 and Nightly 36230415813 logs",
     "gatekeeper": "manual allow verified by repository owner Aiden-FE on 2026-09-26 via System Settings Open Anyway for the Ad hoc signed app; spctl remains rejected as expected without Developer ID notarization",
-    "n1Preverification": "public update feeds latest-mac.yml and latest.yml for v0.0.26 fetched successfully (version 0.0.26, sha512 and asset URLs intact); v0.0.26 DMG verified via hdiutil, bundled app-update.yml = provider github / Aiden-FE / nexnote, Info.plist 0.0.26; live 0.0.22 install on the QA Mac uses the same github provider config. Client-to-feed plumbing works; the full N-1/N-4 to v0.0.27 end-to-end upgrade runs post-publication"
+    "n1Preverification": "public update feeds latest-mac.yml and latest.yml for v0.0.26 fetched successfully (version 0.0.26, sha512 and asset URLs intact); v0.0.26 DMG verified via hdiutil, bundled app-update.yml = provider github / Aiden-FE / nexnote, Info.plist 0.0.26; live 0.0.22 install on the QA Mac uses the same github provider config. Client-to-feed plumbing works; the full 0.0.22 to v0.0.27 end-to-end upgrade runs post-publication"
+  },
+  "gateDecisions": {
+    "windowsLinuxPhysicalInstall": "WAIVED by repository owner Aiden-FE on 2026-09-26: no Windows/Linux hardware available; packaged smoke evidence remains macOS-local only",
+    "macosGatekeeper": "COMPLETED 2026-09-26 (Open Anyway on Ad hoc signed app); Developer ID signing / notarization deferred as a future improvement"
   },
   "candidateContents": {
-    "tickets": "Candidate: master commit 4eb9c1523000c7573b6d244604f9882fcc0b6dbd, version 0.0.27; includes DEV-072/074 follow-ups, DEV-087 CellSelection fix, updater isolation, CodeMirror measure-phase fix, AI SDK raw-error logging suppression, and Node24 CI pins. Manual platform QA and protected approval remain incomplete; this record is not publishable evidence.",
+    "tickets": "Release: master commit ffe022968fc26c9dddaf31777c9d87b34e252618, version 0.0.27; includes DEV-072/074 follow-ups, DEV-087 CellSelection fix, updater isolation, CodeMirror measure-phase fix, AI SDK raw-error logging suppression, and Node24 CI pins.",
     "highlights": [
       "DEV-074 review: BinaryEditorHostManager no longer drains pending on did-finish-load; renderer must ack via binary:host:ready (senderId = webContents.id). roundTrip waits up to 1500ms for ack; missing __nexnoteHostFlush now throws rather than silently succeeding. close() captures entry identity + webContentsId across await so concurrent destroyAll / close-reopen cannot kill the wrong host. New tests cover delayed bootstrap, ack timeout, idempotent ack, and interleaved close race.",
       "DEV-074 review: xmind content.json sheet & rootTopic now preserves fields simple-mind-map does not model (boundaries / relationships / theme / skeleton / topicPositioning) on save; rebuilt-side fields still take precedence.",
@@ -31,12 +35,11 @@
     ]
   },
   "notRun": [
-    "matrix signed builds for mac-arm64/mac-x64/windows-x64/linux-x64 (run by candidate pipeline after tag push)",
-    "packaged macOS smoke in CI (run by candidate pipeline smoke job)",
+    "matrix signed builds for mac-arm64/mac-x64/windows-x64/linux-x64 (run by the release pipeline after tag push)",
+    "packaged macOS smoke in CI (run by the release pipeline smoke job)",
     "Windows packaged smoke and Linux packaged smoke",
-    "Windows/Ubuntu physical installation verification (waived by repository owner Aiden-FE on 2026-09-26: no Windows/Linux hardware available; packaged smoke evidence remains macOS-local only)",
     "macOS notarization / Developer ID code signing (Gatekeeper manual allow completed 2026-09-26; Ad hoc signing only)",
-    "public v0.0.22/0.0.26 to v0.0.27 end-to-end network upgrade (feeds and client provider config pre-verified 2026-09-26; full verification runs post-publication)",
+    "public 0.0.22 to v0.0.27 end-to-end network upgrade (feeds and client provider config pre-verified 2026-09-26; full verification runs post-publication)",
     "release-qa Environment required-reviewer approval (operational gate before publish)",
     "post-publication 24-hour monitoring"
   ]
