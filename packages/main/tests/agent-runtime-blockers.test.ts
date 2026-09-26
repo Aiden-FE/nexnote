@@ -1,8 +1,10 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { ApprovalStore } from '../src/agent/approval-store';
 import { AuditStore } from '../src/agent/audit-store';
 import { ToolRegistry, type AgentTool } from '../src/agent/tool-registry';
 import { validatePayload } from '../src/ipc/validation';
+import { createBuiltinTools } from '../src/agent/builtin-tools';
+import type { GitRepairAction } from '@nexnote/shared';
 
 const readTool = (name = 'search_notes'): AgentTool => ({
   definition: { name, description: name, access: 'read', requiresApproval: false, inputSchema: {} },
@@ -160,9 +162,121 @@ describe('agent runtime blocker contracts', () => {
       validatePayload('agent:run:chat', { messages: [{ role: 'user', content: 'x' }] }),
     ).toBeNull();
   });
+  // Chat Dock 的真实载荷：缺少这两个字段的白名单会让每次发送都被判为「未知字段」。
+  it('agent payload accepts the full Chat Dock payload', () => {
+    expect(
+      validatePayload('agent:run:chat', {
+        messages: [{ role: 'user', content: 'x' }],
+        skillIds: [],
+        contextText: '',
+        permissionMode: 'edit',
+        contextPaths: ['notes/page.md'],
+      }),
+    ).toBeNull();
+  });
+  it('agent payload rejects an invalid permissionMode', () => {
+    expect(
+      validatePayload('agent:run:chat', {
+        messages: [{ role: 'user', content: 'x' }],
+        permissionMode: 'admin',
+      }),
+    ).toMatchObject({ code: 'IPC_PAYLOAD_INVALID' });
+  });
+  it('agent payload rejects non-string contextPaths', () => {
+    expect(
+      validatePayload('agent:run:chat', {
+        messages: [{ role: 'user', content: 'x' }],
+        contextPaths: [1],
+      }),
+    ).toMatchObject({ code: 'IPC_PAYLOAD_INVALID' });
+  });
   it('approval payload rejects invalid decision', () => {
     expect(
       validatePayload('agent:approval:respond', { approvalId: 'a', decision: 'later' }),
     ).toMatchObject({ code: 'IPC_PAYLOAD_INVALID' });
+  });
+});
+
+// git_doctor_repair 工具：验证 doctor.prepare+execute 被正确调用，且 ctx.approval 必传。
+describe('git_doctor_repair agent tool', () => {
+  function buildRegistry(doctor: {
+    prepare: (action: GitRepairAction) => Promise<{ ticket: string; ticketExpiresAt: number }>;
+    execute: (ticket: string) => Promise<{ message: string }>;
+  }) {
+    return new ToolRegistry(
+      createBuiltinTools({
+        retrieve: async () => ({ degraded: false, sources: [] }),
+        listPages: () => [],
+        doctor: doctor as never,
+      }),
+    );
+  }
+
+  it('未注入 doctor 时不注册 git_doctor_repair（向后兼容）', () => {
+    const reg = new ToolRegistry(
+      createBuiltinTools({
+        retrieve: async () => ({ degraded: false, sources: [] }),
+        listPages: () => [],
+      }),
+    );
+    expect(reg.get('git_doctor_repair')).toBeUndefined();
+  });
+
+  it('approval 缺失时拒绝执行', async () => {
+    const prepare = vi.fn();
+    const execute = vi.fn();
+    const reg = buildRegistry({
+      prepare: async (_a) => ({ ticket: 't', ticketExpiresAt: Date.now() }),
+      execute: async (_t) => ({ message: 'm' }),
+    });
+    await expect(
+      reg.execute(
+        'git_doctor_repair',
+        { action: 'preserve-local-and-abort' },
+        { runId: 'r', scenario: 'chat', permissionMode: 'edit' },
+      ),
+    ).rejects.toThrow(/审批通过后/);
+    expect(prepare).not.toHaveBeenCalled();
+    expect(execute).not.toHaveBeenCalled();
+  });
+
+  it('approval 通过后串行调用 prepare+execute 并返回 doctor 结果', async () => {
+    const prepare = vi.fn(async (_action: GitRepairAction) => ({
+      diagnosis: {} as never,
+      ticket: 'ticket-1',
+      ticketExpiresAt: Date.now() + 60_000,
+    }));
+    const execute = vi.fn(async (_ticket: string) => ({
+      message: '已中止未完成的 rebase/merge',
+    }));
+    const reg = buildRegistry({ prepare, execute });
+    const result = await reg.execute(
+      'git_doctor_repair',
+      { action: 'preserve-local-and-abort' },
+      {
+        runId: 'r',
+        scenario: 'chat',
+        permissionMode: 'edit',
+        approval: { approvalId: 'a-1' },
+      },
+    );
+    expect(prepare).toHaveBeenCalledWith('preserve-local-and-abort');
+    expect(execute).toHaveBeenCalledWith('ticket-1');
+    expect(result).toMatchObject({
+      ticket: 'ticket-1',
+      action: 'preserve-local-and-abort',
+      message: '已中止未完成的 rebase/merge',
+    });
+  });
+
+  it('input 缺 action 字段被拒', async () => {
+    const reg = buildRegistry({ prepare: vi.fn(), execute: vi.fn() });
+    await expect(
+      reg.execute(
+        'git_doctor_repair',
+        {},
+        { runId: 'r', scenario: 'chat', permissionMode: 'edit', approval: { approvalId: 'a' } },
+      ),
+    ).rejects.toThrow(/输入必须是/);
   });
 });

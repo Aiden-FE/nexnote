@@ -219,12 +219,15 @@ const binaryHostSetBounds: PayloadValidator = (payload) => {
   }
   return null;
 };
-const binaryEditorTheme = object(['theme'], [
-  (p) => {
-    const theme = (p as Record<string, unknown>).theme;
-    return theme === 'light' || theme === 'dark' ? null : invalid('theme 必须是 light 或 dark');
-  },
-]);
+const binaryEditorTheme = object(
+  ['theme'],
+  [
+    (p) => {
+      const theme = (p as Record<string, unknown>).theme;
+      return theme === 'light' || theme === 'dark' ? null : invalid('theme 必须是 light 或 dark');
+    },
+  ],
+);
 const binaryDocxSave = object(
   ['path', 'html', 'expectedSha256'],
   [stringField('path'), stringField('html'), stringField('expectedSha256')],
@@ -329,7 +332,14 @@ const aiConnectionTarget: PayloadValidator = (payload) => {
 };
 const agentRun: PayloadValidator = (payload) => {
   if (!isPlainObject(payload)) return invalid('payload 必须是普通对象');
-  const allowed = ['messages', 'skillIds', 'contextText', 'params'];
+  const allowed = [
+    'messages',
+    'skillIds',
+    'contextText',
+    'params',
+    'permissionMode',
+    'contextPaths',
+  ];
   if (Object.keys(payload).some((key) => !allowed.includes(key)))
     return invalid('agent payload 包含未知字段');
   const messages = payload.messages;
@@ -352,6 +362,17 @@ const agentRun: PayloadValidator = (payload) => {
     return invalid('contextText 必须是字符串');
   if (payload.params !== undefined && !isPlainObject(payload.params))
     return invalid('params 必须是对象');
+  if (
+    payload.permissionMode !== undefined &&
+    !['conversation', 'edit', 'full'].includes(String(payload.permissionMode))
+  )
+    return invalid('permissionMode 必须是 conversation/edit/full');
+  if (
+    payload.contextPaths !== undefined &&
+    (!Array.isArray(payload.contextPaths) ||
+      payload.contextPaths.some((p) => typeof p !== 'string'))
+  )
+    return invalid('contextPaths 必须是字符串数组');
   return null;
 };
 
