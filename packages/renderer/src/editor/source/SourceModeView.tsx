@@ -434,7 +434,39 @@ export function SourceModeView({ tab }: { tab: TabDescriptor }) {
       baseTextRef.current = text;
       // 磁盘文本与基线（上一次真正落盘的文本）一致，说明是我们自己写入的回声
       // （frontmatter.updated 被刷新），只刷新版本即可，绝不重载编辑器。
-      if (knownWrite || dirtyRef.current) return;
+      if (knownWrite) {
+        // 但 frontmatter 不在 CodeMirror 里（由 partsRef/fm 状态持有），需单独同步，
+        // 否则属性面板会一直显示过期时间；正文 buffer 与选区都保持不动。
+        if (isMarkdown) {
+          const parts = splitFrontmatterParts(text);
+          if (parts.yaml !== fmYamlRef.current) {
+            partsRef.current = {
+              ...partsRef.current,
+              header: parts.header,
+              yaml: parts.yaml,
+              separator: parts.separator,
+            };
+            fmYamlRef.current = parts.yaml;
+            fmEditedRef.current = false;
+            try {
+              if (parts.yaml === null) {
+                setFm(EMPTY_FRONTMATTER);
+              } else {
+                setFm({
+                  data: parseFrontmatterYaml(parts.yaml),
+                  source: parts.yaml,
+                  locked: false,
+                  parseError: null,
+                });
+              }
+            } catch {
+              // 磁盘 YAML 不可解析：保持面板现状
+            }
+          }
+        }
+        return;
+      }
+      if (dirtyRef.current) return;
       // 竞态防护：读取期间用户又开始输入（dirty）则只刷新基线，不动编辑器。
       // 确需重载时保留光标位置——整篇替换默认会把光标映射到位置 0。
       if (text !== composeDocument()) {
@@ -451,7 +483,7 @@ export function SourceModeView({ tab }: { tab: TabDescriptor }) {
     } catch {
       // 文件竞态消失（如被改名/删除）：交给页面树 unlink 流程
     }
-  }, [absorbText, composeDocument, refreshOutline]);
+  }, [absorbText, composeDocument, refreshOutline, isMarkdown]);
 
   // ── 加载：原始字节，不做 H1 绑定（无 H1 时不补写，保持原文） ──
   useEffect(() => {
@@ -506,8 +538,7 @@ export function SourceModeView({ tab }: { tab: TabDescriptor }) {
         title: titleFromPath(pathRef.current),
       }),
       // DEV-068：界面显示语言作为翻译默认目标语言的第二优先级
-      getInterfaceLanguage: () =>
-        useSettingsStore.getState().global?.appearance.language,
+      getInterfaceLanguage: () => useSettingsStore.getState().global?.appearance.language,
     });
     return () => {
       translationControllerRef.current?.closeSelection();

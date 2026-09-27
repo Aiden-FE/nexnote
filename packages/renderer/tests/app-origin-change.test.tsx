@@ -511,6 +511,18 @@ describe('EditorView 收到 origin:"app" 的 fs:changed', () => {
     expect(kernel!.editor.state.selection.from).toBeLessThan(docEnd - 1);
     expect(kernel!.getMarkdown()).toContain('插入');
 
+    // 但 frontmatter.updated 必须同步为磁盘版本（否则属性面板显示过期时间）
+    const bufferUpdated = /updated:\s*(\S+)/.exec(kernel!.getMarkdown())?.[1];
+    const diskUpdated = /updated:\s*(\S+)/.exec(bridge.diskText)?.[1];
+    expect(bufferUpdated).toBe(diskUpdated);
+    expect(bufferUpdated).not.toBe('2026-01-01T00:00:00.000Z');
+
+    // 这次同步属于应用内部行为，不得触发额外写盘
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 300));
+    });
+    expect(bridge.writes).toBe(1);
+
     await act(async () => root.unmount());
   });
 });

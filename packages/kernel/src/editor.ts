@@ -62,6 +62,12 @@ export interface EditorKernelInstance {
   getFirstHeading(): string | null;
   /** frontmatter 原文（无则 null） */
   getFrontmatter(): string | null;
+  /**
+   * 静默同步 frontmatter 原文：仅替换文档首部 frontmatter 节点，保留正文选区，
+   * 且不触发 onUpdate（不排盘）。用于应用自身写入后，把磁盘上被刷新过的
+   * frontmatter（如 updated）回灌编辑器，避免属性面板显示过期值。DEV-092。
+   */
+  syncFrontmatter(yaml: string): void;
   /** revision 计数（每次文档变更 +1；协作预留） */
   getRevision(): number;
   /** 立即触发待保存内容的保存回调 */
@@ -162,6 +168,8 @@ export function createEditor(
     onUpdate() {
       // 打开文件时 UniqueID 补块 ID 不是用户编辑：不得据此写盘（原文必须逐字节保持）。
       if (isBlockIdInitTransaction(editor)) return;
+      // 注：静默同步 frontmatter（syncFrontmatter）用 TipTap 内置的
+      // `preventUpdate` 元标记，不会进到这里，故无需额外判断。
       revision += 1;
       options.onDocChange?.(editor.getJSON());
       scheduler.schedule(kernel.getMarkdown());
@@ -210,6 +218,29 @@ export function createEditor(
       const first = editor.state.doc.content.firstChild;
       if (!first || first.type.name !== Frontmatter.name) return null;
       return first.textContent;
+    },
+    syncFrontmatter(yaml: string) {
+      const first = editor.state.doc.content.firstChild;
+      const type = editor.state.schema.nodes[Frontmatter.name];
+      if (!type) return;
+      let tr;
+      if (first && first.type.name === Frontmatter.name) {
+        if (first.textContent === yaml) return;
+        tr =
+          yaml.length > 0
+            ? editor.state.tr.replaceWith(
+                0,
+                first.nodeSize,
+                type.create(null, editor.state.schema.text(yaml)),
+              )
+            : editor.state.tr.delete(0, first.nodeSize);
+      } else {
+        if (yaml.length === 0) return;
+        tr = editor.state.tr.insert(0, type.create(null, editor.state.schema.text(yaml)));
+      }
+      // preventUpdate：应用内部同步而非用户编辑（TipTap 内置标记，抑制 update 事件，
+      // 因此不会排盘、也不会把这次同步当成用户输入）。
+      editor.view.dispatch(tr.setMeta('preventUpdate', true));
     },
     getRevision() {
       return revision;
