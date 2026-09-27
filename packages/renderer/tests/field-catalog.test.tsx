@@ -55,7 +55,9 @@ describe('字段删除行为（DEV-079）', () => {
     act(() => {
       removeBtn!.dispatchEvent(new MouseEvent('click', { bubbles: true }));
     });
-    expect(onChange).toHaveBeenCalledWith(expect.not.objectContaining({ category: expect.anything() }));
+    expect(onChange).toHaveBeenCalledWith(
+      expect.not.objectContaining({ category: expect.anything() }),
+    );
     expect(onChange).toHaveBeenCalledWith(expect.objectContaining({ title: 'T' }));
   });
 
@@ -80,7 +82,9 @@ describe('字段删除行为（DEV-079）', () => {
     act(() => {
       confirmDelete!.dispatchEvent(new MouseEvent('click', { bubbles: true }));
     });
-    expect(onChange).toHaveBeenCalledWith(expect.not.objectContaining({ updated: expect.anything() }));
+    expect(onChange).toHaveBeenCalledWith(
+      expect.not.objectContaining({ updated: expect.anything() }),
+    );
   });
 
   it('标准字段删除确认态点「取消」不调用 onChange', () => {
@@ -198,5 +202,32 @@ describe('字段目录选择器（DEV-025）', () => {
       );
     });
     expect(onChange).toHaveBeenCalledWith(expect.objectContaining({ category: '' }));
+  });
+});
+
+describe('派生字段只读展示（DEV-077 / DEV-093）', () => {
+  it('DEV-093：confidence 走只读分支，无可编辑输入框', () => {
+    const { container } = renderFieldEditor({ title: 'T', confidence: 42 });
+    const row = container.querySelector('[data-testid="frontmatter-field-confidence"]');
+    expect(row).not.toBeNull();
+    const readonlyBox = row?.querySelector('[data-testid="frontmatter-readonly-confidence"]');
+    expect(readonlyBox).not.toBeNull();
+    expect(readonlyBox?.textContent).toContain('42');
+    expect(readonlyBox?.textContent).toContain('由 NexNote 自动维护');
+    // 只读路径不再渲染数字输入框
+    expect(row?.querySelector('input')).toBeNull();
+  });
+
+  it('DEV-093：confidence 空值回退 —，updated 只读行为不回归', () => {
+    const { container } = renderFieldEditor({ confidence: null, updated: new Date() });
+    const confidenceBox = container.querySelector(
+      '[data-testid="frontmatter-readonly-confidence"]',
+    );
+    expect(confidenceBox?.textContent).toContain('—');
+    const updatedRow = container.querySelector('[data-testid="frontmatter-field-updated"]');
+    expect(
+      updatedRow?.querySelector('[data-testid="frontmatter-readonly-updated"]'),
+    ).not.toBeNull();
+    expect(updatedRow?.querySelector('input')).toBeNull();
   });
 });

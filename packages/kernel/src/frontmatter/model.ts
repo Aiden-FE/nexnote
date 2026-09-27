@@ -79,6 +79,8 @@ export const STANDARD_FIELD_CATALOG: readonly StandardFieldDef[] = [
     key: 'confidence',
     type: 'number',
     description: '由 Git 提交历史计算的可信分数（0-100）',
+    // DEV-093：由 confidence 引擎在保存链路写回，用户不可手动编辑。
+    readonly: true,
   },
 ];
 
@@ -100,7 +102,7 @@ export function isStandardField(key: string): boolean {
   return Object.prototype.hasOwnProperty.call(STANDARD_FIELDS, key);
 }
 
-/** DEV-077：标准字段是否为应用维护（只读）字段，如 updated。 */
+/** DEV-077：标准字段是否为应用维护（只读）字段，如 updated、confidence。 */
 export function isReadonlyStandardField(key: string): boolean {
   const def = STANDARD_FIELD_CATALOG.find((f) => f.key === key);
   return def?.readonly === true;
