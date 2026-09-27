@@ -1,12 +1,14 @@
 import { create } from 'zustand';
 import type { AiConfigState } from '@nexnote/shared';
 import { invoke, onEvent } from '../../lib/ipc';
+import { pruneModelCandidatesCache } from './model-candidates';
 
 /**
  * 渲染层 AI 配置状态：
  * - state 为主进程推送的脱敏视图（无密钥）
  * - 所有写操作走 ai:* IPC，响应携带新 state 就地更新
  * - 主进程 ai:configChanged 事件兜底刷新（多窗口一致性）
+ * - 每次配置落地都淘汰签名失效的模型候选缓存（DEV-091）
  */
 interface AiConfigStateStore {
   state: AiConfigState | null;
@@ -23,6 +25,7 @@ export const useAiConfig = create<AiConfigStateStore>((set) => ({
     set({ loading: true });
     try {
       const state = await invoke('ai:getState');
+      pruneModelCandidatesCache(state);
       set({ state, loading: false });
     } catch (e) {
       console.error('[ai] 读取配置失败', e);
@@ -31,6 +34,8 @@ export const useAiConfig = create<AiConfigStateStore>((set) => ({
   },
 
   apply(state) {
+    // 配置变更（保存/删除/导入/主进程事件）后，旧连接签名的候选不再有效。
+    pruneModelCandidatesCache(state);
     set({ state });
   },
 }));
