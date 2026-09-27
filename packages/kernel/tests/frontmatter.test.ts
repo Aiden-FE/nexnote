@@ -204,6 +204,19 @@ describe('标准字段目录（DEV-025）', () => {
     expect(isReadonlyStandardField('updated')).toBe(true);
     expect(isReadonlyStandardField('not_a_field')).toBe(false);
   });
+
+  it('DEV-093：confidence 标 readonly=true（由 Git 历史计算，用户不可编辑）', () => {
+    const confidence = STANDARD_FIELD_CATALOG.find((f) => f.key === 'confidence');
+    expect(confidence?.readonly).toBe(true);
+    // 描述继续说明来源，便于用户理解为何只读
+    expect(confidence?.description).toContain('Git');
+    expect(isReadonlyStandardField('confidence')).toBe(true);
+    // 只读集合不应误伤其他标准字段
+    expect(isReadonlyStandardField('tags')).toBe(false);
+    expect(isReadonlyStandardField('created')).toBe(false);
+    // updated 既有只读行为不回归
+    expect(isReadonlyStandardField('updated')).toBe(true);
+  });
 });
 
 describe('辅助函数', () => {
