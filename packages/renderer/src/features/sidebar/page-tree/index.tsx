@@ -33,7 +33,6 @@ import {
 } from '../../../page-tree/tree-utils';
 import * as ops from './ops';
 import { NewNoteMenu } from './NewNoteMenu';
-import { ImportMenu } from './ImportMenu';
 import { sidebarPanelRegistry } from '../../../registries';
 
 /** DEV-074：可在页面树显示 / 点击打开的文档（Markdown 与三类二进制）。 */
@@ -91,9 +90,7 @@ function PageTreePanel() {
 
   const visibleEntries = useMemo(
     () =>
-      entries.filter(
-        (e) => showAllFiles || e.kind === 'directory' || isOpenableDocument(e.name),
-      ),
+      entries.filter((e) => showAllFiles || e.kind === 'directory' || isOpenableDocument(e.name)),
     [entries, showAllFiles],
   );
   const tree = useMemo(() => buildTree(visibleEntries), [visibleEntries]);
@@ -289,12 +286,18 @@ function PageTreePanel() {
             className="h-7 w-full rounded-md border bg-background/60 pl-7 pr-2 text-xs outline-none placeholder:text-muted-foreground/60 focus-visible:ring-1 focus-visible:ring-ring"
           />
         </div>
-        <NewNoteMenu onCreate={(format) => run(() => ops.createNoteIn('', format))} />
-        <ImportMenu
-          onImport={(kind) => {
-            if (kind === 'docx') void run(() => ops.importDocxIn(''));
-            else if (kind === 'xlsx') void run(() => ops.importBinaryIn('xlsx', ''));
-            else void run(() => ops.importBinaryIn('mindmap', ''));
+        <NewNoteMenu
+          onPick={(item) => {
+            if (item.kind === 'note') {
+              run(() => ops.createNoteIn('', item.format));
+            } else {
+              // DEV-084：把空白 docx/xlsx/xmind 的创建也接入侧栏新建菜单
+              // （顶栏「文件」菜单里同时提供一份，避免双入口歧义）。
+              // ops.createBinaryIn 内部约定的类型是 'mindmap' 而非 'xmind'，
+              // 在调用边界做一次映射，保持 NewNoteMenu 的展示语义。
+              const binaryKind = item.binary === 'xmind' ? 'mindmap' : item.binary;
+              run(() => ops.createBinaryIn(binaryKind, ''));
+            }
           }}
         />
         <button

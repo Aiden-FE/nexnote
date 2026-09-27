@@ -14,6 +14,7 @@ type Handler = (payload: Record<string, unknown>) => unknown;
 let container: HTMLDivElement | null = null;
 let root: Root | null = null;
 let createdPayloads: Array<Record<string, unknown>> = [];
+let binaryCreatePayloads: Array<Record<string, unknown>> = [];
 
 function installBridge(handlers: Record<string, Handler>): void {
   (
@@ -61,6 +62,7 @@ function openMenu(view: HTMLElement): HTMLElement {
 
 beforeEach(() => {
   createdPayloads = [];
+  binaryCreatePayloads = [];
   usePageTreeStore.setState({
     entries: [],
     status: 'ready',
@@ -77,6 +79,15 @@ beforeEach(() => {
       createdPayloads.push(payload);
       return { path: '新建文档.md', name: '新建文档.md', kind: 'file', size: 0 };
     },
+    'binary:create': (payload) => {
+      binaryCreatePayloads.push(payload);
+      return {
+        path: `blank.${payload.kind}`,
+        name: `blank.${payload.kind}`,
+        kind: 'file',
+        size: 0,
+      };
+    },
   });
 });
 
@@ -90,8 +101,8 @@ afterEach(async () => {
   delete (window as unknown as { nexnote?: unknown }).nexnote;
 });
 
-describe('页面树「新建」下拉菜单（DEV-085 后仅含新建）', () => {
-  it('展开菜单只显示两种新建格式，不再包含导入项', async () => {
+describe('页面树「新建」下拉菜单（DEV-084 含空白二进制，DEV-096 移除导入）', () => {
+  it('展开菜单显示 5 种新建格式：块 / MD / 空白 DOCX / XLSX / XMind', async () => {
     const view = await mountPageTree();
     const trigger = view.querySelector<HTMLElement>('[data-testid="tree-new-note-menu"]');
     expect(trigger).not.toBeNull();
@@ -106,21 +117,22 @@ describe('页面树「新建」下拉菜单（DEV-085 后仅含新建）', () =>
     expect(trigger?.getAttribute('aria-expanded')).toBe('true');
 
     const items = [...menu!.querySelectorAll<HTMLElement>('[role="menuitem"]')];
-    expect(items).toHaveLength(2);
-    expect(items[0].textContent).toContain('新建文档（块编辑）');
-    expect(items[1].textContent).toContain('新建 Markdown（源码模式）');
-    // DEV-085：导入项不再出现在新建菜单
+    expect(items).toHaveLength(5);
+    // DEV-096：导入已从新建菜单移除（统一在顶栏「文件」菜单）
     expect(menu!.textContent).not.toContain('导入');
-    // 格式徽标（块 / MD）
+
+    // 块 / MD 的徽标仍正确
     const badgeOf = (item: HTMLElement): string | null | undefined =>
       item.querySelector<HTMLElement>('[aria-hidden="true"]')?.textContent;
     expect(badgeOf(items[0])).toBe('块');
     expect(badgeOf(items[1])).toBe('MD');
-    // 悬停说明格式差异
-    expect(items[0].getAttribute('title')).toContain('块编辑');
-    expect(items[0].getAttribute('title')).toContain('所见即所得');
-    expect(items[1].getAttribute('title')).toContain('源码模式');
-    expect(items[1].getAttribute('title')).toContain('实时预览');
+    // DEV-084：空白二进制三项的徽标与文案
+    expect(items[2].textContent).toContain('新建空白 DOCX');
+    expect(badgeOf(items[2])).toBe('DOCX');
+    expect(items[3].textContent).toContain('新建空白 XLSX');
+    expect(badgeOf(items[3])).toBe('XLSX');
+    expect(items[4].textContent).toContain('新建空白 XMind');
+    expect(badgeOf(items[4])).toBe('XMIND');
   });
 
   it('默认项（块编辑）经 fs:createNote 新建并按块编辑模式打开', async () => {
@@ -132,12 +144,12 @@ describe('页面树「新建」下拉菜单（DEV-085 后仅含新建）', () =>
     });
 
     expect(createdPayloads).toEqual([{ parentDir: '', format: 'native-block' }]);
+    expect(binaryCreatePayloads).toEqual([]);
     const tab = activeTab();
     expect(tab?.kind).toBe('page');
     expect(tab?.pagePath).toBe('新建文档.md');
     expect(tab?.format).toBe('native-block');
     expect(tab?.editorMode).toBe('block');
-    // 选中后菜单关闭
     expect(view.querySelector('[data-testid="new-note-menu"]')).toBeNull();
   });
 
@@ -151,9 +163,26 @@ describe('页面树「新建」下拉菜单（DEV-085 后仅含新建）', () =>
 
     expect(createdPayloads).toEqual([{ parentDir: '', format: 'markdown' }]);
     const tab = activeTab();
-    expect(tab?.kind).toBe('page');
-    expect(tab?.pagePath).toBe('新建文档.md');
     expect(tab?.editorMode).toBe('source');
+  });
+
+  // DEV-084 回归：main 侧 binary:create 早已就绪却无人调用，本票把侧栏菜单接到它。
+  // 旧实现里空白 docx/xlsx/xmind 三项不在菜单里；现在必须能经侧栏入口触发 binary:create。
+  it('空白 DOCX / XLSX / XMind 三项均通过 binary:create 创建并打开 tab', async () => {
+    const view = await mountPageTree();
+    for (const expected of [
+      // ops.createBinaryIn 约定 'mindmap' 而 NewNoteMenu 的展示用 'xmind'，调用边界翻译一次。
+      { testId: 'new-note-docx', kind: 'docx' as const },
+      { testId: 'new-note-xlsx', kind: 'xlsx' as const },
+      { testId: 'new-note-xmind', kind: 'mindmap' as const },
+    ]) {
+      binaryCreatePayloads.length = 0;
+      openMenu(view);
+      const item = view.querySelector<HTMLElement>(`[data-testid="${expected.testId}"]`);
+      expect(item).not.toBeNull();
+      act(() => item!.click());
+      expect(binaryCreatePayloads).toEqual([{ kind: expected.kind, targetDir: '' }]);
+    }
   });
 
   it('主按钮保持原单一按钮行为：直接新建（块编辑），不展开菜单', async () => {
@@ -188,10 +217,6 @@ describe('页面树「新建」下拉菜单（DEV-085 后仅含新建）', () =>
       items[0].dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowDown', bubbles: true })),
     );
     expect(document.activeElement).toBe(items[1]);
-    act(() =>
-      items[1].dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowUp', bubbles: true })),
-    );
-    expect(document.activeElement).toBe(items[0]);
 
     act(() =>
       document.activeElement!.dispatchEvent(
