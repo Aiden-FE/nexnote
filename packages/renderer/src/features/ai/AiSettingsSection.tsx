@@ -3,6 +3,11 @@ import type { AiFeatureKey, AiProfileView, ConnectionTestResult } from '@nexnote
 import { TRANSLATION_LANGUAGES } from './translation/languages';
 import { invoke } from '../../lib/ipc';
 import { useAiConfig, useAiWizard } from './ai-config';
+import {
+  fetchModelCandidates,
+  modelCandidateCacheKey,
+  peekModelCandidates,
+} from './model-candidates';
 import { Button } from '../../components/ui/button';
 import { cn } from '../../lib/utils';
 import {
@@ -20,28 +25,6 @@ import {
   Upload,
   X,
 } from 'lucide-react';
-
-/**
- * 分功能指定模型的候选缓存（模块级 Map，同一 Profile 只拉一次；
- * 「刷新」按钮可清除）。失败/空列表按 profileId 缓存为空数组并给出提示。
- */
-const MODEL_CANDIDATES_CACHE = new Map<string, string[]>();
-
-async function fetchModelCandidates(profileId: string, force = false): Promise<string[]> {
-  if (!force && MODEL_CANDIDATES_CACHE.has(profileId)) {
-    return MODEL_CANDIDATES_CACHE.get(profileId)!;
-  }
-  try {
-    const result = await invoke('ai:listModels', { profileId });
-    const models = Array.isArray(result.models) ? result.models : [];
-    MODEL_CANDIDATES_CACHE.set(profileId, models);
-    return models;
-  } catch {
-    // 失败不缓存错误态：下次聚焦可重试；当前返回空列表走「自由输入」降级。
-    MODEL_CANDIDATES_CACHE.delete(profileId);
-    return [];
-  }
-}
 
 const FEATURE_LABELS: Array<{ key: AiFeatureKey; label: string; hint: string; icon: typeof Bot }> =
   [
@@ -429,10 +412,10 @@ function assignmentModelHint(
 
 /**
  * 分功能指定模型的 Combobox。
- * - 聚焦时拉取 /models（同一 profile 模块级缓存）；候选以 <datalist> 展示，
- *   选中或自由输入都可以。
+ * - 聚焦时拉取 /models（与「编辑 AI Profile」同一 `ai:listModels`，按连接签名缓存）；
+ *   候选以 <datalist> 展示，选中或自由输入都可以。
  * - 仅在 blur（值与初始值不同）/ Enter / 候选点选时 commit；逐字符 onChange 不触发 IPC。
- * - 候选拉取失败时静默降级为纯文本输入。
+ * - 候选拉取失败时静默降级为纯文本输入；profile 连接信息变化时缓存自动失效重拉。
  */
 function ModelPicker({
   feature,
@@ -446,10 +429,13 @@ function ModelPicker({
   initialValue: string;
   onCommit(model: string): void;
 } & Omit<React.InputHTMLAttributes<HTMLInputElement>, 'onChange' | 'value'>) {
+  const profile = useAiConfig((s) => s.state?.profiles.find((p) => p.id === profileId));
+  const cacheKey = modelCandidateCacheKey(profileId, profile);
+
   const [value, setValue] = useState(initialValue);
-  const [candidates, setCandidates] = useState<string[]>(
-    () => MODEL_CANDIDATES_CACHE.get(profileId) ?? [],
-  );
+  // 已拉取结果按连接签名归档：签名变了就自然退回缓存/空（不展示旧 profile 的候选）。
+  const [fetched, setFetched] = useState<{ cacheKey: string; list: string[] } | null>(null);
+  const candidates = fetched?.cacheKey === cacheKey ? fetched.list : peekModelCandidates(cacheKey);
   const [fetching, setFetching] = useState(false);
   const inputRef = useRef<HTMLInputElement | null>(null);
   const listId = `ai-model-list-${feature}-${profileId}`.replace(/[^a-zA-Z0-9_-]/g, '_');
@@ -457,8 +443,8 @@ function ModelPicker({
   const loadCandidates = async (force = false): Promise<void> => {
     setFetching(true);
     try {
-      const list = await fetchModelCandidates(profileId, force);
-      setCandidates(list);
+      const list = await fetchModelCandidates(profileId, profile, cacheKey, force);
+      setFetched({ cacheKey, list });
     } finally {
       setFetching(false);
     }
@@ -476,7 +462,10 @@ function ModelPicker({
   };
 
   return (
-    <span className="relative inline-flex items-center gap-1" data-testid={`ai-model-picker-${feature}-${profileId}`}>
+    <span
+      className="relative inline-flex items-center gap-1"
+      data-testid={`ai-model-picker-${feature}-${profileId}`}
+    >
       <input
         {...rest}
         ref={(el) => {
@@ -486,7 +475,8 @@ function ModelPicker({
         value={value}
         onChange={(e) => setValue(e.target.value)}
         onFocus={() => {
-          if (!MODEL_CANDIDATES_CACHE.has(profileId)) void loadCandidates();
+          // 只有成功且非空的候选才算命中；空/失败状态下次聚焦自动重试。
+          if (peekModelCandidates(cacheKey).length === 0) void loadCandidates();
         }}
         onBlur={() => commit(value)}
         onKeyDown={(e) => {
