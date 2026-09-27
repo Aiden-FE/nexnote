@@ -1,45 +1,27 @@
 import { useEffect, useRef, useState } from 'react';
 import { ChevronDown, FilePlus2 } from 'lucide-react';
 import { cn } from '../../../lib/utils';
-import type { NewNoteFormat } from './ops';
 
-interface NewNoteMenuItem {
-  format: NewNoteFormat;
-  /** 格式徽标短字：块 / MD */
-  badge: string;
-  badgeClass: string;
-  label: string;
-  /** 悬停说明：解释与另一格式的差异 */
-  description: string;
-}
-
-const ITEMS: NewNoteMenuItem[] = [
-  {
-    format: 'native-block',
-    badge: '块',
-    badgeClass: 'bg-primary/15 text-primary',
-    label: '新建文档（块编辑）',
-    description: '所见即所得的块编辑体验（默认）',
-  },
-  {
-    format: 'markdown',
-    badge: 'MD',
-    badgeClass: 'bg-muted text-muted-foreground',
-    label: '新建 Markdown（源码模式）',
-    description: '编辑 Markdown 源码，右侧实时预览',
-  },
-];
+/** DEV-084：新建菜单支持的格式（连同 DEV-074 的二进制创建）。 */
+type NewNoteKind =
+  | { kind: 'note'; format: 'native-block' }
+  | { kind: 'note'; format: 'markdown' }
+  | { kind: 'binary'; binary: 'docx' }
+  | { kind: 'binary'; binary: 'xlsx' }
+  | { kind: 'binary'; binary: 'xmind' };
 
 interface NewNoteMenuProps {
-  /** 按所选格式新建（两种格式都写纯标准 Markdown，format 持久化到 sidecar）。 */
-  onCreate(format: NewNoteFormat): void;
+  /** 按所选格式新建（Markdown / native-block / 空白 docx/xlsx/xmind）。 */
+  onPick(item: NewNoteKind): void;
 }
 
 /**
- * 「新建」下拉按钮：主按钮保持原单一按钮行为（默认格式直接新建），箭头展开格式菜单。
- * 键盘：↑/↓ 打开并在项间移动，Enter 选中，Esc/Tab 关闭（Esc 后焦点回到触发按钮）。
+ * 「新建」下拉按钮（DEV-084 + DEV-096）：
+ * - 与「导入」并列的「导入」下拉已撤掉，导入入口统一在顶栏「文件」菜单；
+ * - 主按钮直接创建块编辑笔记（默认格式），箭头展开格式菜单（含空白 docx/xlsx/xmind）；
+ * - 键盘：↑/↓ 打开并在项间移动，Enter 选中，Esc/Tab 关闭。
  */
-export function NewNoteMenu({ onCreate }: NewNoteMenuProps) {
+export function NewNoteMenu({ onPick }: NewNoteMenuProps) {
   const [open, setOpen] = useState(false);
   const [anchor, setAnchor] = useState({ x: 0, y: 0 });
   const wrapRef = useRef<HTMLDivElement>(null);
@@ -114,7 +96,7 @@ export function NewNoteMenu({ onCreate }: NewNoteMenuProps) {
         data-testid="tree-new-note"
         title="新建文档（块编辑）"
         aria-label="新建文档（块编辑）"
-        onClick={() => onCreate('native-block')}
+        onClick={() => onPick({ kind: 'note', format: 'native-block' })}
         className="rounded p-1 text-muted-foreground hover:bg-accent hover:text-foreground"
       >
         <FilePlus2 className="size-3.5" />
@@ -149,16 +131,16 @@ export function NewNoteMenu({ onCreate }: NewNoteMenuProps) {
         >
           {ITEMS.map((item, i) => (
             <button
-              key={item.format}
+              key={item.label}
               ref={(el) => {
                 itemRefs.current[i] = el;
               }}
               type="button"
               role="menuitem"
-              data-testid={`new-note-${item.format}`}
+              data-testid={item.testId}
               title={`${item.label}——${item.description}`}
               onClick={() => {
-                onCreate(item.format);
+                onPick(item.value);
                 close(true);
               }}
               className="flex w-full items-start gap-2 rounded-sm px-2 py-1.5 text-left hover:bg-accent"
@@ -185,3 +167,55 @@ export function NewNoteMenu({ onCreate }: NewNoteMenuProps) {
     </div>
   );
 }
+
+interface MenuItem {
+  badge: string;
+  badgeClass: string;
+  label: string;
+  description: string;
+  testId: string;
+  value: NewNoteKind;
+}
+
+const ITEMS: MenuItem[] = [
+  {
+    badge: '块',
+    badgeClass: 'bg-primary/15 text-primary',
+    label: '新建文档（块编辑）',
+    description: '所见即所得的块编辑体验（默认）',
+    testId: 'new-note-native-block',
+    value: { kind: 'note', format: 'native-block' },
+  },
+  {
+    badge: 'MD',
+    badgeClass: 'bg-muted text-muted-foreground',
+    label: '新建 Markdown（源码模式）',
+    description: '编辑 Markdown 源码，右侧实时预览',
+    testId: 'new-note-markdown',
+    value: { kind: 'note', format: 'markdown' },
+  },
+  {
+    badge: 'DOCX',
+    badgeClass: 'bg-muted text-muted-foreground',
+    label: '新建空白 DOCX',
+    description: '在 vault 内创建空白 .docx 并打开编辑器',
+    testId: 'new-note-docx',
+    value: { kind: 'binary', binary: 'docx' },
+  },
+  {
+    badge: 'XLSX',
+    badgeClass: 'bg-muted text-muted-foreground',
+    label: '新建空白 XLSX',
+    description: '在 vault 内创建空白 .xlsx 并打开表格编辑器',
+    testId: 'new-note-xlsx',
+    value: { kind: 'binary', binary: 'xlsx' },
+  },
+  {
+    badge: 'XMIND',
+    badgeClass: 'bg-muted text-muted-foreground',
+    label: '新建空白 XMind',
+    description: '在 vault 内创建空白 .xmind 并打开思维导图',
+    testId: 'new-note-xmind',
+    value: { kind: 'binary', binary: 'xmind' },
+  },
+];
