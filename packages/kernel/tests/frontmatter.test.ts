@@ -1,3 +1,4 @@
+// @vitest-environment happy-dom
 import { describe, expect, it } from 'vitest';
 import {
   assertSafeFrontmatterKey,
@@ -263,5 +264,82 @@ describe('DEV-078 formatDisplayDateTime', () => {
 
   it('不可解析的字符串原样回退，不抛错', () => {
     expect(formatDisplayDateTime('not-a-date')).toBe('not-a-date');
+  });
+});
+
+describe('DEV-095 文档头 frontmatter 时间可读（NodeView）', () => {
+  const markdown = `---\ncreated: 2026-01-15T10:00:00.000Z\nupdated: 2026-09-22T01:23:45.110Z\ntitle: 笔记\ntags:\n  - work\n---\n\n# 正文段落\n\n正文段落内容。\n`;
+
+  it('显示 created/updated 为本地可读时间；节点 text 保持原 YAML 不变', async () => {
+    const container = document.createElement('div');
+    document.body.appendChild(container);
+    const kernel = await import('../src').then((m) =>
+      m.createEditor(container, { initialMarkdown: markdown, saveDelayMs: 0 }),
+    );
+    try {
+      const dom = kernel.editor.view.dom as HTMLElement;
+      // 文档头：第一个 block 就是 frontmatter 节点
+      const pre = dom.querySelector('pre[data-frontmatter]');
+      expect(pre).not.toBeNull();
+      // 内联显示时不能被内联编辑
+      expect(pre!.getAttribute('contenteditable')).toBe('false');
+
+      const timeSpans = pre!.querySelectorAll('.nexnote-frontmatter-time');
+      const texts = Array.from(timeSpans).map((s) => s.textContent ?? '');
+      // created 与 updated 都应被替换为 YYYY-MM-DD HH:mm:ss（本地时区），不再出现 ISO 串
+      expect(texts).toHaveLength(2);
+      for (const t of texts) {
+        expect(t).toMatch(/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/);
+      }
+      expect(texts.some((t) => t.includes('T') || t.includes('Z'))).toBe(false);
+
+      // 节点 text（原始 YAML）必须保持字节级不变，序列化与往返也必须一致
+      const doc = kernel.editor.state.doc;
+      const fmNode = doc.content.firstChild;
+      expect(fmNode?.type.name).toBe('frontmatter');
+      expect(fmNode?.textContent).toContain('created: 2026-01-15T10:00:00.000Z');
+      expect(fmNode?.textContent).toContain('updated: 2026-09-22T01:23:45.110Z');
+
+      const out = kernel.getMarkdown();
+      expect(out).toContain('created: 2026-01-15T10:00:00.000Z');
+      expect(out).toContain('updated: 2026-09-22T01:23:45.110Z');
+
+      // 往返序列化必须字节级一致（ADR-0004 byte fidelity）。
+      // 允许序列化把输入末尾的单个换行吃掉——内容本身未变。
+      expect(out.replace(/\n+$/, '')).toBe(markdown.replace(/\n+$/, ''));
+    } finally {
+      kernel.destroy();
+      container.remove();
+    }
+  });
+
+  it('NodeView 在节点 text 变化后重新渲染为新格式', async () => {
+    const container = document.createElement('div');
+    document.body.appendChild(container);
+    const kernel = await import('../src').then((m) =>
+      m.createEditor(container, {
+        initialMarkdown: `---\ncreated: 2026-01-01T00:00:00.000Z\n---\n\n# 标题\n\n正文。\n`,
+        saveDelayMs: 0,
+      }),
+    );
+    try {
+      // 通过命令同步替换 frontmatter 文本（模拟保存后 updated 回灌的场景）
+      const ok = kernel.editor.commands.setFrontmatter(
+        'created: 2026-06-15T12:34:56.000Z\ntitle: 更新\n',
+      );
+      expect(ok).toBe(true);
+
+      const dom = kernel.editor.view.dom as HTMLElement;
+      const timeSpan = dom.querySelector('pre[data-frontmatter] .nexnote-frontmatter-time');
+      expect(timeSpan).not.toBeNull();
+      const text = timeSpan!.textContent ?? '';
+      expect(text).toMatch(/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/);
+      // 节点 text 应保留新的原始 ISO
+      const fmNode = kernel.editor.state.doc.content.firstChild;
+      expect(fmNode?.textContent).toContain('created: 2026-06-15T12:34:56.000Z');
+    } finally {
+      kernel.destroy();
+      container.remove();
+    }
   });
 });
