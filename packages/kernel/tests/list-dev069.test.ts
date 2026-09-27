@@ -3,10 +3,7 @@ import { describe, expect, it } from 'vitest';
 import { TextSelection } from '@tiptap/pm/state';
 import type { Node } from '@tiptap/pm/model';
 import { buildKernelExtensions, createEditor } from '../src';
-import {
-  isSandwichedEmptyListItem,
-  ListDev069,
-} from '../src/extensions/list-dev069';
+import { isSandwichedEmptyListItem, ListDev069 } from '../src/extensions/list-dev069';
 
 function makeEditor(markdown: string) {
   return createEditor(document.createElement('div'), {
@@ -47,7 +44,9 @@ function emptyListItemWithText(kernel: ReturnType<typeof makeEditor>, target: st
   });
   if (emptyParaPos >= 0) {
     view.dispatch(
-      kernel.editor.state.tr.setSelection(TextSelection.create(kernel.editor.state.doc, emptyParaPos)),
+      kernel.editor.state.tr.setSelection(
+        TextSelection.create(kernel.editor.state.doc, emptyParaPos),
+      ),
     );
   }
 }
@@ -131,5 +130,75 @@ describe('DEV-069 · 与 buildKernelExtensions 集成', () => {
     const exts = buildKernelExtensions({ slashMenu: false, dragHandle: false });
     const names = exts.map((e: { name: string }) => e.name);
     expect(names).toContain('nexnoteListDev069');
+  });
+});
+
+describe('DEV-094 · 待办列表（taskList/taskItem）', () => {
+  it('空 taskItem 夹在甲/丙之间时探测返回 true', () => {
+    const kernel = makeEditor('- [ ] 甲\n- [ ] 乙\n- [ ] 丙\n');
+    emptyListItemWithText(kernel, '乙');
+    expect(isSandwichedEmptyListItem(kernel.editor.state)).toBe(true);
+  });
+
+  it('空 taskItem 位于首/尾时探测返回 false（让默认 lift 退出列表）', () => {
+    const first = makeEditor('- [ ] 甲\n- [ ] 乙\n- [ ] 丙\n');
+    emptyListItemWithText(first, '甲');
+    expect(isSandwichedEmptyListItem(first.editor.state)).toBe(false);
+
+    const last = makeEditor('- [ ] 甲\n- [ ] 乙\n- [ ] 丙\n');
+    emptyListItemWithText(last, '丙');
+    expect(isSandwichedEmptyListItem(last.editor.state)).toBe(false);
+  });
+
+  it('非空 taskItem 探测返回 false', () => {
+    const kernel = makeEditor('- [ ] 甲\n- [ ] 乙\n- [ ] 丙\n');
+    const pos = findTextPos(kernel.editor.state.doc, '乙');
+    const { state, view } = kernel.editor;
+    view.dispatch(state.tr.setSelection(TextSelection.create(state.doc, pos)));
+    expect(isSandwichedEmptyListItem(kernel.editor.state)).toBe(false);
+  });
+
+  it('3 项待办列表删中间项：整体删除，不留空白行，剩 2 项', () => {
+    const kernel = makeEditor('- [ ] 甲\n- [ ] 乙\n- [ ] 丙\n');
+    emptyListItemWithText(kernel, '乙');
+    pressBackspace(kernel);
+
+    const markdown = kernel.getMarkdown();
+    const nonEmpty = markdown.split('\n').filter((l) => l.trim().length > 0);
+    expect(nonEmpty).toEqual(['- [ ] 甲', '- [ ] 丙']);
+    expect(markdown).not.toMatch(/\n{2,}/);
+    expect(markdown).not.toContain('乙');
+
+    const doc = kernel.editor.state.doc;
+    let taskList: { childCount: number } | null = null;
+    doc.descendants((node: Node) => {
+      if (!taskList && node.type.name === 'taskList') taskList = node;
+      return true;
+    });
+    expect(taskList).not.toBeNull();
+    expect(taskList!.childCount).toBe(2);
+  });
+
+  it('已勾选（checked）的中间空 taskItem 同样被整体删除且不改变其他项勾选态', () => {
+    const kernel = makeEditor('- [x] 甲\n- [ ] 乙\n- [x] 丙\n');
+    emptyListItemWithText(kernel, '乙');
+    pressBackspace(kernel);
+
+    const markdown = kernel.getMarkdown();
+    const nonEmpty = markdown.split('\n').filter((l) => l.trim().length > 0);
+    expect(nonEmpty).toEqual(['- [x] 甲', '- [x] 丙']);
+    expect(markdown).not.toMatch(/\n{2,}/);
+  });
+
+  it('Markdown 往返：删中间项后不重新冒出空行，勾选态保持', () => {
+    const kernel = makeEditor('- [x] 甲\n- [ ] 乙\n- [x] 丙\n');
+    emptyListItemWithText(kernel, '乙');
+    pressBackspace(kernel);
+
+    const roundTrip = makeEditor(kernel.getMarkdown());
+    const markdown = roundTrip.getMarkdown();
+    const nonEmpty = markdown.split('\n').filter((l) => l.trim().length > 0);
+    expect(nonEmpty).toEqual(['- [x] 甲', '- [x] 丙']);
+    expect(markdown).not.toMatch(/\n{2,}/);
   });
 });
