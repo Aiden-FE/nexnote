@@ -73,7 +73,7 @@ export interface SourceEditorHandle {
   readonly view: EditorView;
   readonly scrollDOM: HTMLElement;
   getText(): string;
-  setText(text: string): void;
+  setText(text: string, options?: { preserveSelection?: boolean }): void;
   /** 在当前选区处插入文本：单个事务写回，可一次 undo。 */
   insertText(text: string): void;
   /** 插入独立成块的 Markdown 片段（表格/mermaid 围栏/目录标记）：前后自动补空行，单事务可撤销。 */
@@ -217,16 +217,28 @@ export function createSourceEditor(
     view,
     scrollDOM: view.scrollDOM,
     getText: () => view.state.sliceDoc(),
-    setText(text) {
+    setText(text, options) {
       if (text === view.state.sliceDoc()) return;
       programmatic = true;
       try {
+        const normalized = normalizeLineSeparators(text, lineSeparator);
+        // DEV-092：整篇替换默认把光标映射到位置 0（CodeMirror 对范围取 assoc=-1）。
+        // 应用联动改写触发重载时按原位置恢复，避免光标乱跳。
+        const previous = options?.preserveSelection ? view.state.selection.main : null;
         view.dispatch({
           changes: {
             from: 0,
             to: view.state.doc.length,
-            insert: normalizeLineSeparators(text, lineSeparator),
+            insert: normalized,
           },
+          ...(previous
+            ? {
+                selection: {
+                  anchor: Math.min(previous.anchor, normalized.length),
+                  head: Math.min(previous.head, normalized.length),
+                },
+              }
+            : {}),
         });
       } finally {
         programmatic = false;

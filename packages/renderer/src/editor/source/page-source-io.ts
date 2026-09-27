@@ -30,6 +30,12 @@ export type SaveSourceResult =
       version: FileVersion | null;
       title: string | null;
       renamedFrom: string | null;
+      /**
+       * 真正写入磁盘的最终文本（可能已由 stampUpdated 刷新 frontmatter.updated，
+       * 故与入参 text 不同）。调用方必须用它更新基线：否则应用自身的写入会被
+       * 误判为「外部修改」而触发重载，把光标顶到文档末尾（DEV-092）。
+       */
+      text: string;
     }
   | { kind: 'conflict'; path: string; diskVersion: FileVersion | null };
 
@@ -92,7 +98,14 @@ export async function saveSourceText(params: {
   }
 
   const written = await io.write(targetPath, finalText);
-  return { kind: 'saved', path: targetPath, version: fileVersionOf(written), title, renamedFrom };
+  return {
+    kind: 'saved',
+    path: targetPath,
+    version: fileVersionOf(written),
+    title,
+    renamedFrom,
+    text: finalText,
+  };
 }
 
 export type ExternalChange =

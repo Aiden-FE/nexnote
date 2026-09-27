@@ -379,8 +379,7 @@ export function EditorView({ tab }: EditorViewProps) {
         title: titleFromPath(pathRef.current),
       }),
       // DEV-068：界面显示语言作为翻译默认目标语言的第二优先级
-      getInterfaceLanguage: () =>
-        useSettingsStore.getState().global?.appearance.language,
+      getInterfaceLanguage: () => useSettingsStore.getState().global?.appearance.language,
     });
     return () => {
       translationControllerRef.current?.closeSelection();
@@ -481,7 +480,10 @@ export function EditorView({ tab }: EditorViewProps) {
           setSaveError('磁盘文件已被外部修改，已暂停自动保存');
           throw new Error('外部修改冲突，等待用户选择');
         }
-        baseTextRef.current = markdown;
+        // DEV-092：基线必须是**真正落盘**的文本。saveSourceText 会刷新
+        // frontmatter.updated，故落盘文本与编辑器 buffer 不同；若基线仍记 buffer，
+        // 应用自身的写入回声会被判成「外部修改」而重载，把光标顶到文档末尾。
+        baseTextRef.current = result.text;
         baseVersionRef.current = result.version;
         if (result.renamedFrom) {
           const tree = usePageTreeStore.getState();
@@ -759,11 +761,36 @@ export function EditorView({ tab }: EditorViewProps) {
               invoke('fs:readTextFile', { path: pathRef.current }),
               invoke('fs:stat', { path: pathRef.current }),
             ]);
+            // DEV-092：磁盘内容与基线（= 我们上一次真正落盘的文本）一致，说明这条
+            // 变化就是我们自己的写入回声，只是 buffer 里 frontmatter.updated 还是旧值。
+            // 此时绝不能重载：整篇替换会把光标顶到文档末尾。只刷新版本即可。
+            // 已知写入：磁盘内容就是我们的落盘结果，绝不能整篇重载（会把光标顶到末尾）。
+            // 但落盘时 stampUpdated 刷新了 frontmatter.updated，而 buffer 里还是旧值；
+            // 若完全不管，属性面板会一直显示过期时间。故只把 frontmatter 节点同步为
+            // 磁盘版本——复用 applyFrontmatter 的「仅替换首部节点、保留正文选区」路径。
+            const knownWrite = text === baseTextRef.current;
             baseVersionRef.current = fileVersionOf(info);
             baseTextRef.current = text;
-            // 竞态防护：读取期间用户又开始输入（dirty）则只刷新基线，不动编辑器
+            if (knownWrite) {
+              // 只把 frontmatter 同步为磁盘版本，让属性面板看到刷新后的 updated；
+              // kernel 的 syncFrontmatter 走 preventUpdate，不会因此再排一次盘。
+              const disk = splitFrontmatter(text);
+              const kernel = kernelRef.current;
+              if (kernel && disk.yaml !== null && disk.yaml !== kernel.getFrontmatter()) {
+                kernel.syncFrontmatter(disk.yaml);
+                try {
+                  setFmData(parseFrontmatterYaml(disk.yaml));
+                } catch {
+                  // 磁盘 YAML 不可解析：保持面板现有数据，不覆盖用户可见内容
+                }
+                setFmSource(disk.yaml);
+              }
+              return;
+            }
+            // 竞态防护：读取期间用户又开始输入（dirty）则只刷新基线，不动编辑器。
+            // 真正的应用内联动改写（如 renameWithLinks 重写本页链接）走这里，保留选区。
             if (!dirtyRef.current && kernelRef.current?.getMarkdown() !== text) {
-              kernelRef.current?.setMarkdown(text);
+              kernelRef.current?.setMarkdown(text, { preserveSelection: true });
             }
           } catch {
             // 文件竞态消失（如被改名/删除）：交给页面树 unlink 流程
