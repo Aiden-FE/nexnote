@@ -338,7 +338,9 @@ export function SourceModeView({ tab }: { tab: TabDescriptor }) {
       throw new Error('外部修改冲突，等待用户选择');
     }
     baseVersionRef.current = result.version;
-    baseTextRef.current = text;
+    // DEV-092：基线记**真正落盘**的文本（含被刷新后的 frontmatter.updated），
+    // 否则应用自身的写入回声会被判成外部修改而重载。
+    baseTextRef.current = result.text;
     if (textRef.current === bodySnapshot) dirtyRef.current = false;
     if (result.renamedFrom) {
       const tree = usePageTreeStore.getState();
@@ -426,16 +428,21 @@ export function SourceModeView({ tab }: { tab: TabDescriptor }) {
         invoke('fs:readTextFile', { path: pathRef.current }),
         invoke('fs:stat', { path: pathRef.current }),
       ]);
+      // 先判定是不是我们自己写入的回声，再覆盖基线（DEV-092）。
+      const knownWrite = text === baseTextRef.current;
       baseVersionRef.current = fileVersionOf(info);
       baseTextRef.current = text;
-      if (dirtyRef.current) return;
-      // 竞态防护：读取期间用户又开始输入（dirty）则只刷新基线，不动编辑器
+      // 磁盘文本与基线（上一次真正落盘的文本）一致，说明是我们自己写入的回声
+      // （frontmatter.updated 被刷新），只刷新版本即可，绝不重载编辑器。
+      if (knownWrite || dirtyRef.current) return;
+      // 竞态防护：读取期间用户又开始输入（dirty）则只刷新基线，不动编辑器。
+      // 确需重载时保留光标位置——整篇替换默认会把光标映射到位置 0。
       if (text !== composeDocument()) {
         const parts = absorbText(text);
         const editor = editorRef.current;
         if (editor) {
           if (editor.view) clearSourceHeadingFolds(editor.view);
-          editor.setText(parts.body);
+          editor.setText(parts.body, { preserveSelection: true });
         }
         textRef.current = parts.body;
         refreshOutline(parts.body);

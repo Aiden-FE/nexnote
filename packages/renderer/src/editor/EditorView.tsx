@@ -481,7 +481,10 @@ export function EditorView({ tab }: EditorViewProps) {
           setSaveError('磁盘文件已被外部修改，已暂停自动保存');
           throw new Error('外部修改冲突，等待用户选择');
         }
-        baseTextRef.current = markdown;
+        // DEV-092：基线必须是**真正落盘**的文本。saveSourceText 会刷新
+        // frontmatter.updated，故落盘文本与编辑器 buffer 不同；若基线仍记 buffer，
+        // 应用自身的写入回声会被判成「外部修改」而重载，把光标顶到文档末尾。
+        baseTextRef.current = result.text;
         baseVersionRef.current = result.version;
         if (result.renamedFrom) {
           const tree = usePageTreeStore.getState();
@@ -759,11 +762,17 @@ export function EditorView({ tab }: EditorViewProps) {
               invoke('fs:readTextFile', { path: pathRef.current }),
               invoke('fs:stat', { path: pathRef.current }),
             ]);
+            // DEV-092：磁盘内容与基线（= 我们上一次真正落盘的文本）一致，说明这条
+            // 变化就是我们自己的写入回声，只是 buffer 里 frontmatter.updated 还是旧值。
+            // 此时绝不能重载：整篇替换会把光标顶到文档末尾。只刷新版本即可。
+            const knownWrite = text === baseTextRef.current;
             baseVersionRef.current = fileVersionOf(info);
             baseTextRef.current = text;
-            // 竞态防护：读取期间用户又开始输入（dirty）则只刷新基线，不动编辑器
+            if (knownWrite) return;
+            // 竞态防护：读取期间用户又开始输入（dirty）则只刷新基线，不动编辑器。
+            // 真正的应用内联动改写（如 renameWithLinks 重写本页链接）走这里，保留选区。
             if (!dirtyRef.current && kernelRef.current?.getMarkdown() !== text) {
-              kernelRef.current?.setMarkdown(text);
+              kernelRef.current?.setMarkdown(text, { preserveSelection: true });
             }
           } catch {
             // 文件竞态消失（如被改名/删除）：交给页面树 unlink 流程

@@ -351,6 +351,45 @@ describe('EditorView 收到 origin:"app" 的 fs:changed', () => {
     return kernel.editor.chain().insertContentAt(end, `\n\n${text}`).run();
   }
 
+  /** 在正文某段落中部插入文本（DEV-092 用例：模拟在文档中部编辑）。 */
+  function typeInMiddleParagraph(text: string): number | null {
+    const kernel = getActiveEditor();
+    if (!kernel) return null;
+    const target = middleParagraphPos();
+    if (target === null) return null;
+    const inserted = kernel.editor.chain().insertContentAt(target, text).run();
+    return inserted ? target + text.length : null;
+  }
+
+  /** 把光标停在正文段落中部，返回落点位置。 */
+  function placeCaretInMiddleParagraph(): number | null {
+    const kernel = getActiveEditor();
+    if (!kernel) return null;
+    const target = middleParagraphPos();
+    if (target === null) return null;
+    kernel.editor.commands.setTextSelection(target);
+    return kernel.editor.state.selection.from;
+  }
+
+  /**
+   * 正文段落的中间位置。匹配串取「正文」而非整句：插入后整句会被拆开，
+   * 用完整句子做标记会让第二次查找落空（实测踩过）。
+   */
+  function middleParagraphPos(): number | null {
+    const kernel = getActiveEditor();
+    if (!kernel) return null;
+    let target: number | null = null;
+    kernel.editor.state.doc.descendants((node, pos) => {
+      if (target !== null) return false;
+      if (node.type.name === 'paragraph' && node.textContent.includes('正文')) {
+        target = pos + 1 + Math.floor(node.textContent.length / 2);
+        return false;
+      }
+      return true;
+    });
+    return target;
+  }
+
   async function mountBlock(): Promise<{
     container: HTMLElement;
     root: ReturnType<typeof createRoot>;
@@ -423,6 +462,54 @@ describe('EditorView 收到 origin:"app" 的 fs:changed', () => {
     });
     expect(bridge.diskText).toContain('第二笔');
     expect(container.querySelector('[data-testid="editor-conflict-banner"]')).toBeNull();
+
+    await act(async () => root.unmount());
+  });
+
+  /**
+   * DEV-092 回归：带 frontmatter 的文档保存后，应用自身写入的回声曾被误判为
+   * 「外部修改」而整篇重载，把光标顶到文档末尾（文档几乎无法编辑）。
+   * 触发条件是 saveSourceText 刷新了 frontmatter.updated → 磁盘文本 ≠ buffer。
+   */
+  it('保存刷新 updated 后的自身回声不得重载编辑器，光标位置保持不变', async () => {
+    const bridge = installBridge('block', 100);
+    // 带 frontmatter.updated 的文档：保存时该字段会被刷新，磁盘与 buffer 必然不同
+    bridge.setDisk('---\nupdated: 2026-01-01T00:00:00.000Z\n---\n\n# 测试页\n\n正文段落\n');
+    const { root } = await mountBlock();
+
+    const kernel = getActiveEditor();
+    expect(kernel).not.toBeNull();
+    const setMarkdown = vi.spyOn(kernel!, 'setMarkdown');
+
+    // 在正文段落中部输入，触发一次自动保存
+    const typed = typeInMiddleParagraph('插入');
+    expect(typed).not.toBeNull();
+
+    await act(async () => {
+      await vi.waitFor(() => expect(bridge.writes).toBe(1));
+    });
+    // 保存确实刷新了 updated：磁盘文本与编辑器 buffer 不同（否则本用例不成立）
+    expect(bridge.diskText).not.toContain('2026-01-01T00:00:00.000Z');
+    expect(kernel!.getMarkdown()).not.toBe(bridge.diskText);
+
+    // 把光标停在正文中部（非末尾），随后自身写入回声到达
+    const caretBefore = placeCaretInMiddleParagraph();
+    expect(caretBefore).not.toBeNull();
+    const docEnd = kernel!.editor.state.doc.content.size;
+    expect(caretBefore!).toBeLessThan(docEnd - 1);
+
+    await act(async () => {
+      bridge.emitChange('app');
+      await Promise.resolve();
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    // 核心断言：不得整篇重载，光标不得被顶到文档末尾
+    expect(setMarkdown).not.toHaveBeenCalled();
+    expect(kernel!.editor.state.selection.from).toBe(caretBefore);
+    expect(kernel!.editor.state.selection.from).toBeLessThan(docEnd - 1);
+    expect(kernel!.getMarkdown()).toContain('插入');
 
     await act(async () => root.unmount());
   });

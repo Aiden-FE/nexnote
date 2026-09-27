@@ -55,7 +55,7 @@ export interface EditorKernelInstance {
   /** 当前内容序列化为 Markdown（Obsidian 方言） */
   getMarkdown(): string;
   /** 用 Markdown 替换内容（走 parse 管道；不触发保存回调） */
-  setMarkdown(markdown: string): void;
+  setMarkdown(markdown: string, options?: { preserveSelection?: boolean }): void;
   /** 当前文档 JSON */
   getJSON(): JSONContent;
   /** 文档首个 H1 文本（无则 null）——文件名联动用 */
@@ -173,11 +173,29 @@ export function createEditor(
     getMarkdown() {
       return serializeMarkdown(manager, editor.getJSON());
     },
-    setMarkdown(markdown: string) {
+    setMarkdown(markdown: string, options?: { preserveSelection?: boolean }) {
       // 页面重载/切换开启新的编辑视图会话；临时折叠状态不得跨页面沿用。
       clearBlockFolds(editor.view);
+      // DEV-092：整篇替换会把光标映射到文档末尾（ProseMirror 对被整体替换的范围
+      // 取 assoc=+1）。应用自身联动改写触发重载时，用户可能正在文档中部阅读/编辑，
+      // 需要按原位置恢复选区，而不是把光标顶到末尾。
+      const previous = options?.preserveSelection
+        ? { from: editor.state.selection.from, to: editor.state.selection.to }
+        : null;
       const json = parseMarkdown(manager, markdown);
       editor.commands.setContent(json, { emitUpdate: false });
+      if (!previous) return;
+      const size = editor.state.doc.content.size;
+      const clamp = (pos: number): number => Math.max(0, Math.min(pos, size));
+      // TextSelection.between 会把位置夹到最近的合法文本位置，避免 resolve 到非法点。
+      editor.view.dispatch(
+        editor.state.tr.setSelection(
+          TextSelection.between(
+            editor.state.doc.resolve(clamp(previous.from)),
+            editor.state.doc.resolve(clamp(previous.to)),
+          ),
+        ),
+      );
     },
     getJSON() {
       return editor.getJSON();
