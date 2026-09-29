@@ -1,0 +1,43 @@
+{
+  "schema": "nexnote-release-qa/v1",
+  "repository": "Aiden-FE/nexnote",
+  "tag": "v0.0.29",
+  "commit": "7116ad8867639795e17714afca73844491d99c9e",
+  "channel": "stable",
+  "allRequiredChecksPassed": true,
+  "scope": "v0.0.29-release",
+  "machineChecks": {
+    "typecheck": "passed (local pnpm -r --if-present typecheck at 7116ad8; all 5 workspace projects clean; packages/main direct tsc carries only the known pre-existing git-service.ts:56 finding, unchanged by this release)",
+    "lint": "passed (local pnpm lint at 7116ad8; eslint zero errors and warnings)",
+    "tests": "1741 passed | 3 skipped (1744); 183 test files passed | 1 skipped (local pnpm test at 7116ad8)",
+    "build": "passed (local electron-vite build at the same tree as 7116ad8, clean with nonfatal Rollup chunk warnings)",
+    "releaseConfig": "31/31 passed (local node scripts/verify-release-config.mjs at 7116ad8)",
+    "changedFormat": "passed (local prettier --check on all changed files vs origin/master clean at 7116ad8)",
+    "diffCheck": "passed locally (git diff HEAD --check before candidate commit)",
+    "packagedSmoke": "not run locally for v0.0.29; release-tag-bound packaged smoke runs in the release pipeline smoke job after tag push",
+    "ciLogHygiene": "local full-suite output inspected at 7116ad8; zero AI_APICallError / InvalidResponseDataError / EPIPE failures in test run",
+    "gatekeeper": "Ad hoc signed app; macOS Gatekeeper manual Open Anyway expected on owner first launch (same recipe as v0.0.27/v0.0.28); spctl remains rejected without Developer ID notarization"
+  },
+  "gateDecisions": {
+    "windowsLinuxPhysicalInstall": "WAIVED by repository owner Aiden-FE: no Windows/Linux hardware available; packaged smoke remains macOS-local / CI only",
+    "macosGatekeeper": "DEFERRED to first-launch Open Anyway on the owner's Mac (Ad hoc signing only; same recipe as v0.0.27/v0.0.28); Developer ID signing / notarization deferred as a future improvement"
+  },
+  "candidateContents": {
+    "tickets": "Release: master commit 7116ad8867639795e17714afca73844491d99c9e, version 0.0.29; includes settings ownership reorganization and binary editor host readiness protocol pull-model fix.",
+    "highlights": [
+      "Settings ownership reorganization: translation default target language moved out of the AI provider section into General (new 翻译 group; data stays in the AI domain via ai:translation:setTargetLanguage, component features/ai/translation/TranslationDefaultSettings.tsx). Update settings now have a single entry point in the dedicated 更新 section (the duplicate block in 常规 is removed; SettingsService.updates remains the single source of truth). Global useSystemGit moved to the top of the Git section, and the global group stays visible and operable when no vault is open.",
+      "Settings search index aligned with actual UI placement: appearance.editorFontFamily/editorFontSize corrected to general/global, updates.* entries re-pointed to the new 'updates' sectionId (union type extended), two entries without any UI (git.syncStrategy / git.autoSyncIntervalSec) removed from the index, and 8 missing entries added (network host/port/bypass/AI & Git independent proxies, translation target language, binary-docs Git tracking).",
+      "Binary editor host readiness protocol switched to a pull model, fixing the intermittent stuck 等待加载文档… screen: the did-finish-load 1500ms forced-ack fallback used to push the queued initial 'load' via webContents.send into a host page whose event listener was not yet installed, permanently losing the command (cold start / slow disk / dev first compile could trigger it; xlsx and xmind equally affected). acknowledgeReady now returns the pending queue as the binary:host:ready invoke response (Result<{ commands }>); the host page applies it after subscribing, so the initial load can no longer be lost by construction. The fallback now only releases flush waiters and never marks the entry ready or dispatches pending commands.",
+      "Docs: user-guide settings table refreshed (adds the missing 网络 section, corrects section count and per-section contents).",
+      "Release hygiene: full gate suite re-run green at the candidate commit — lint (0 findings), prettier changed-file gate, typecheck (5/5 workspace projects), tests (1741 passed | 3 skipped across 183 files), verify-release-config 31/31, electron-vite build clean."
+    ]
+  },
+  "notRun": [
+    "matrix signed builds for mac-arm64/mac-x64/windows-x64/linux-x64 (run by the release pipeline after tag push)",
+    "packaged macOS smoke in CI (run by the release pipeline smoke job)",
+    "Windows packaged smoke and Linux packaged smoke",
+    "macOS notarization / Developer ID code signing (Ad hoc signing only; Gatekeeper Open Anyway on first launch)",
+    "release-qa Environment required-reviewer approval (operational gate before publish)",
+    "post-publication 24-hour monitoring"
+  ]
+}
