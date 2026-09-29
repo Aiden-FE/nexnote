@@ -125,6 +125,7 @@ export interface SettingSearchEntry {
     | 'plugins'
     | 'skills'
     | 'shortcuts'
+    | 'updates'
     | 'about';
   title: string;
   keywords: string[];

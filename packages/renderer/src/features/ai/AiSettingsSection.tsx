@@ -1,10 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
 import type { AiFeatureKey, AiProfileView, ConnectionTestResult } from '@nexnote/shared';
-import {
-  TRANSLATION_LANGUAGES,
-  mapInterfaceLanguageToTranslationTarget,
-} from './translation/languages';
-import { useSettingsStore } from '../../stores/settings-store';
 import { invoke } from '../../lib/ipc';
 import { useAiConfig, useAiWizard } from './ai-config';
 import {
@@ -89,11 +84,6 @@ export function AiSettingsSection() {
       feature,
       assignment: profileId && model ? { profileId, model } : null,
     });
-    apply(next);
-  };
-
-  const setTranslationTargetLanguage = async (targetLanguage: string) => {
-    const { state: next } = await invoke('ai:translation:setTargetLanguage', { targetLanguage });
     apply(next);
   };
 
@@ -312,14 +302,6 @@ export function AiSettingsSection() {
             }}
           />
         </div>
-      </section>
-
-      <section className="space-y-2.5" data-testid="ai-translation-defaults">
-        <h4 className="text-[13px] font-medium">翻译默认设置</h4>
-        <TranslationTargetPicker
-          value={state?.translationTargetLanguage ?? ''}
-          onChange={(v) => void setTranslationTargetLanguage(v)}
-        />
       </section>
 
       {/* 分功能指定 */}
@@ -597,43 +579,5 @@ function ModelPicker({
         {fetching ? <Loader2 className="size-3 animate-spin" /> : <RefreshCw className="size-3" />}
       </button>
     </span>
-  );
-}
-
-/**
- * 翻译目标语言选择器：首项「跟随界面语言」表示未显式指定时跟随设置内的语言选项。
- */
-function TranslationTargetPicker({
-  value,
-  onChange,
-}: {
-  value: string;
-  onChange(value: string): void;
-}) {
-  const appLanguage = useSettingsStore((s) => s.global?.appearance.language);
-  const effectiveFromAppLang = mapInterfaceLanguageToTranslationTarget(appLanguage);
-
-  return (
-    <label className="flex items-center gap-3 rounded-lg border p-2.5 text-[13px]">
-      <span className="w-28 shrink-0 font-medium">默认目标语言</span>
-      <select
-        data-testid="ai-translation-target-language"
-        value={value}
-        onChange={(e) => onChange(e.target.value)}
-        className="h-8 rounded-md border bg-transparent px-2 text-xs"
-      >
-        <option value="">
-          跟随界面语言{effectiveFromAppLang ? `（${effectiveFromAppLang}）` : ''}
-        </option>
-        {TRANSLATION_LANGUAGES.map((language) => (
-          <option key={language.id} value={language.id}>
-            {language.label}
-          </option>
-        ))}
-      </select>
-      <span className="ml-auto text-[11px] text-muted-foreground">
-        触发点临时切换仅影响当次翻译
-      </span>
-    </label>
   );
 }

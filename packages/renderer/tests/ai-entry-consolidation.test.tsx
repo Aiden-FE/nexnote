@@ -134,7 +134,7 @@ describe('DEV-026 AI 配置入口收口', () => {
     expect(document.querySelector('[data-testid="ai-wizard"]')).toBeNull();
   });
 
-  it('AI 设置提供独立翻译 Profile 与持久化默认目标语言', async () => {
+  it('AI 设置提供独立翻译 Profile；翻译目标语言已移至常规分区', async () => {
     aiState = state({
       profiles: [
         {
@@ -155,15 +155,8 @@ describe('DEV-026 AI 配置入口收口', () => {
     useAiConfig.setState({ state: aiState, loading: false });
     mount(<AiSettingsSection />);
     expect(document.querySelector('[data-testid="ai-feature-profile-translation"]')).not.toBeNull();
-    const target = document.querySelector<HTMLSelectElement>(
-      '[data-testid="ai-translation-target-language"]',
-    )!;
-    target.value = '日本語';
-    target.dispatchEvent(new Event('change', { bubbles: true }));
-    await act(async () => tick());
-    expect(invokeSpy).toHaveBeenCalledWith('ai:translation:setTargetLanguage', {
-      targetLanguage: '日本語',
-    });
+    // 翻译默认目标语言不属于供应商配置：AI 分区不再渲染该选择器（见 settings-ui.test.tsx 常规分区用例）
+    expect(document.querySelector('[data-testid="ai-translation-target-language"]')).toBeNull();
   });
 
   it('vault 首次就绪且未跳过时自动弹一次；关闭后持久化且切换 vault 不重弹', async () => {

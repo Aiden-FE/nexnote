@@ -477,3 +477,80 @@ describe('DEV-066 设置页 Toggle 视觉修复', () => {
     );
   });
 });
+
+describe('设置归属整理', () => {
+  function aiStateMock(translationTargetLanguage: string) {
+    return {
+      profiles: [],
+      defaultProfileId: null,
+      features: { writing: null, translation: null, chat: null, embedding: null },
+      translationTargetLanguage,
+      needsOnboarding: false,
+      setupPromptDismissed: true,
+      embeddingFingerprint: null,
+      embeddingGeneration: 0,
+    };
+  }
+
+  it('翻译默认目标语言渲染在常规分区并通过 ai:translation:setTargetLanguage 持久化', async () => {
+    const { invokeSpy } = installBridge({
+      'ai:getState': aiStateMock('English'),
+      'ai:translation:setTargetLanguage': () => ({
+        ok: true,
+        data: aiStateMock('日本語'),
+      }),
+    });
+    await mountAndLoad();
+    const target = container.querySelector<HTMLSelectElement>(
+      '[data-testid="ai-translation-target-language"]',
+    );
+    expect(target).not.toBeNull();
+    expect(target?.value).toBe('English');
+    await act(async () => {
+      target!.value = '日本語';
+      target!.dispatchEvent(new Event('change', { bubbles: true }));
+      await tick(20);
+    });
+    expect(invokeSpy).toHaveBeenCalledWith('ai:translation:setTargetLanguage', {
+      targetLanguage: '日本語',
+    });
+  });
+
+  it('常规分区不再包含更新设置，唯一入口在更新分区', async () => {
+    installBridge();
+    await mountAndLoad();
+    expect(container.textContent).not.toContain('更新通道');
+    expect(container.textContent).not.toContain('自动下载更新');
+    await act(async () => {
+      container.querySelector<HTMLButtonElement>('[data-testid="settings-nav-updates"]')?.click();
+      await tick(10);
+    });
+    expect(container.textContent).toContain('更新通道');
+  });
+
+  it('Git 分区未打开知识库时仍显示全局「使用系统 Git」开关', async () => {
+    const base = defaultGlobalSettings();
+    const { invokeSpy } = installBridge({
+      'settings:setGlobal': (payload) => {
+        const patch = (payload as { patch: Partial<typeof base> }).patch;
+        return { ok: true, data: { ...base, ...patch, git: { ...base.git, ...patch.git } } };
+      },
+    });
+    await mountAndLoad();
+    await act(async () => {
+      container.querySelector<HTMLButtonElement>('[data-testid="settings-nav-git"]')?.click();
+      await tick(10);
+    });
+    expect(container.textContent).toContain('使用系统 Git');
+    expect(container.textContent).toContain('尚未打开知识库');
+    const toggle = container.querySelector<HTMLButtonElement>('[aria-label="使用系统 Git"]')!;
+    expect(toggle).not.toBeNull();
+    await act(async () => {
+      toggle.click();
+      await tick(10);
+    });
+    expect(invokeSpy).toHaveBeenCalledWith('settings:setGlobal', {
+      patch: { git: { useSystemGit: true } },
+    });
+  });
+});

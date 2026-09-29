@@ -143,35 +143,35 @@ export const SEARCH_ENTRIES: SettingSearchEntry[] = [
   },
   {
     id: 'appearance.editorFontFamily',
-    sectionId: 'editor',
+    sectionId: 'general',
     title: '编辑器字体',
     keywords: ['font', 'editor', '字体', '编辑器'],
-    scope: 'vault',
+    scope: 'global',
   },
   {
     id: 'appearance.editorFontSize',
-    sectionId: 'editor',
+    sectionId: 'general',
     title: '编辑器字号',
     keywords: ['font', 'size', 'editor', '字号'],
-    scope: 'vault',
+    scope: 'global',
   },
   {
     id: 'updates.checkOnLaunch',
-    sectionId: 'general',
+    sectionId: 'updates',
     title: '启动时检查更新',
     keywords: ['update', 'auto', '更新', '自动'],
     scope: 'global',
   },
   {
     id: 'updates.autoDownload',
-    sectionId: 'general',
+    sectionId: 'updates',
     title: '自动下载更新',
     keywords: ['update', 'download', '自动下载'],
     scope: 'global',
   },
   {
     id: 'updates.channel',
-    sectionId: 'general',
+    sectionId: 'updates',
     title: '更新通道',
     keywords: ['update', 'channel', 'stable', 'beta', 'alpha', '通道'],
     scope: 'global',
@@ -310,13 +310,6 @@ export const SEARCH_ENTRIES: SettingSearchEntry[] = [
     scope: 'global',
   },
   {
-    id: 'network.applyToAi',
-    sectionId: 'network',
-    title: '代理 AI 请求',
-    keywords: ['network', 'ai', 'proxy', '代理'],
-    scope: 'global',
-  },
-  {
     id: 'network.applyToGit',
     sectionId: 'network',
     title: '代理 Git 操作',
@@ -324,17 +317,45 @@ export const SEARCH_ENTRIES: SettingSearchEntry[] = [
     scope: 'global',
   },
   {
-    id: 'git.autoSyncIntervalSec',
-    sectionId: 'git',
-    title: '自动同步间隔',
-    keywords: ['git', 'sync', 'interval', '同步', '自动'],
-    scope: 'vault',
+    id: 'network.aiProxy',
+    sectionId: 'network',
+    title: 'AI 独立代理',
+    keywords: ['network', 'ai', 'proxy', '独立', '代理'],
+    scope: 'global',
   },
   {
-    id: 'git.syncStrategy',
+    id: 'network.gitProxy',
+    sectionId: 'network',
+    title: 'Git 独立代理',
+    keywords: ['network', 'git', 'proxy', '独立', '代理'],
+    scope: 'global',
+  },
+  {
+    id: 'network.host',
+    sectionId: 'network',
+    title: '代理主机与端口',
+    keywords: ['network', 'host', 'port', 'proxy', '主机', '端口'],
+    scope: 'global',
+  },
+  {
+    id: 'network.bypass',
+    sectionId: 'network',
+    title: '绕过主机',
+    keywords: ['network', 'bypass', 'proxy', '绕过', '直连'],
+    scope: 'global',
+  },
+  {
+    id: 'ai.translationTargetLanguage',
+    sectionId: 'general',
+    title: '翻译默认目标语言',
+    keywords: ['ai', 'translation', '翻译', '目标语言', '语言'],
+    scope: 'domain',
+  },
+  {
+    id: 'git.binaryUntrack',
     sectionId: 'git',
-    title: '同步策略',
-    keywords: ['git', 'sync', 'rebase', 'merge', '同步', '策略'],
+    title: '二进制文档不随 Git 跟踪',
+    keywords: ['git', 'binary', 'docx', 'xlsx', 'xmind', 'gitignore', '跟踪'],
     scope: 'vault',
   },
   {
@@ -468,14 +489,19 @@ function normalizeStoredProxyConfig(raw: unknown): NetworkProxyConfig | null {
         : 'system',
     host: typeof config.host === 'string' && config.host.trim() ? config.host.trim() : null,
     port:
-      typeof config.port === 'number' && Number.isFinite(config.port) && config.port > 0 && config.port <= 65535
+      typeof config.port === 'number' &&
+      Number.isFinite(config.port) &&
+      config.port > 0 &&
+      config.port <= 65535
         ? Math.round(config.port)
         : null,
     username:
       typeof config.username === 'string' && config.username.trim() ? config.username.trim() : null,
     password: typeof config.password === 'string' && config.password ? config.password : null,
     bypass: Array.isArray(config.bypass)
-      ? config.bypass.filter((entry): entry is string => typeof entry === 'string' && entry.trim().length > 0)
+      ? config.bypass.filter(
+          (entry): entry is string => typeof entry === 'string' && entry.trim().length > 0,
+        )
       : [],
   };
 }

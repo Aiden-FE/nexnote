@@ -5,10 +5,10 @@ import { useSettingsStore } from '../../stores/settings-store';
 import { useUiStore } from '../../stores/ui-store';
 import { invoke } from '../../lib/ipc';
 import { useVaultSettingsEffects } from '../../hooks/use-settings-effects';
+import { TranslationDefaultSettings } from '../ai/translation/TranslationDefaultSettings';
 import type {
   StartupBehavior,
   ThemePreference,
-  UpdateChannel,
   CodeTheme,
   ShortcutOverride,
   NetworkMode,
@@ -240,6 +240,11 @@ function GeneralSection() {
       </Row>
 
       <div className="border-t pt-6">
+        <SectionHeader title="翻译" description="划词 / 全文翻译与翻译工作台的默认目标语言" />
+        <TranslationDefaultSettings />
+      </div>
+
+      <div className="border-t pt-6">
         <SectionHeader title="启动" description="应用打开时的行为" />
         <Row label="启动时" description="打开上次知识库、走向导或打开特定知识库">
           <Select
@@ -249,33 +254,6 @@ function GeneralSection() {
               { value: 'restore', label: '恢复上次知识库' },
               { value: 'welcome', label: '显示欢迎页' },
               { value: 'specific-vault', label: '打开特定知识库' },
-            ]}
-          />
-        </Row>
-      </div>
-
-      <div className="border-t pt-6">
-        <SectionHeader title="更新" description="自动检查与下载更新" />
-        <Row label="启动时检查更新">
-          <Toggle
-            checked={global.updates.checkOnLaunch}
-            onChange={(v) => void setGlobal({ updates: { checkOnLaunch: v } })}
-          />
-        </Row>
-        <Row label="自动下载更新">
-          <Toggle
-            checked={global.updates.autoDownload}
-            onChange={(v) => void setGlobal({ updates: { autoDownload: v } })}
-          />
-        </Row>
-        <Row label="更新通道">
-          <Select
-            value={global.updates.channel}
-            onChange={(v) => void setGlobal({ updates: { channel: v as UpdateChannel } })}
-            options={[
-              { value: 'stable', label: '稳定版' },
-              { value: 'beta', label: 'Beta' },
-              { value: 'alpha', label: 'Alpha' },
             ]}
           />
         </Row>
@@ -292,16 +270,6 @@ function GeneralSection() {
           >
             重新播放
           </button>
-        </Row>
-      </div>
-
-      <div className="border-t pt-6">
-        <SectionHeader title="Git" description="全局 Git 行为（每个知识库可单独设置）" />
-        <Row label="使用系统 Git" description="默认使用 NexNote 内置 Git">
-          <Toggle
-            checked={global.git.useSystemGit}
-            onChange={(v) => void setGlobal({ git: { useSystemGit: v } })}
-          />
         </Row>
       </div>
 
@@ -602,6 +570,7 @@ function EditorSection() {
 }
 
 function GitSection() {
+  const { global, setGlobal } = useGlobalSettings();
   const { vault } = useVaultSettingsEffects();
   const setVault = useSettingsStore((s) => s.setVault);
   const [message, setMessage] = useState<string | null>(null);
@@ -637,12 +606,6 @@ function GitSection() {
     }
   };
 
-  if (!vault) {
-    return (
-      <div className="text-sm text-muted-foreground">尚未打开知识库，打开后可配置 Git 行为。</div>
-    );
-  }
-
   const saveInterval = async (ms: number): Promise<void> => {
     try {
       await setVault({ git: { autoCommitIntervalMs: ms } });
@@ -655,51 +618,72 @@ function GitSection() {
 
   return (
     <div className="space-y-6">
-      <SectionHeader title="Git（当前知识库）" description="版本控制行为" />
-      <Row label="自动提交">
+      <SectionHeader title="Git" description="全局 Git 行为与当前知识库的版本控制行为" />
+      <Row label="使用系统 Git" description="全局设置；关闭时使用 NexNote 内置 Git">
         <Toggle
-          checked={vault.git.autoCommit}
-          onChange={(v) => void setVault({ git: { autoCommit: v } })}
+          label="使用系统 Git"
+          checked={global?.git.useSystemGit ?? false}
+          onChange={(v) => void setGlobal({ git: { useSystemGit: v } })}
         />
       </Row>
-      <Row label="自动提交间隔" description={`${vault.git.autoCommitIntervalMs}ms（2s–10min）`}>
-        <input
-          type="range"
-          min={2000}
-          max={600000}
-          step={1000}
-          value={vault.git.autoCommitIntervalMs}
-          onChange={(e) => {
-            void saveInterval(Number(e.target.value));
-          }}
-          className="w-32"
-        />
-      </Row>
-      <Row label="提交消息模板" description="{summary} 会被替换为变更摘要">
-        <input
-          type="text"
-          value={vault.git.commitMessageTemplate}
-          onChange={(e) => void setVault({ git: { commitMessageTemplate: e.target.value } })}
-          className="h-8 w-56 rounded-md border bg-background px-2 text-sm"
-        />
-      </Row>
-      <Row label="默认分支名" description="新建知识库时使用">
-        <input
-          type="text"
-          value={vault.git.defaultBranch}
-          onChange={(e) => void setVault({ git: { defaultBranch: e.target.value } })}
-          className="h-8 w-40 rounded-md border bg-background px-2 text-sm"
-        />
-      </Row>
-      {binaryUntracked !== null && (
-        <Row
-          label="二进制文档不随 Git 跟踪"
-          description="xlsx / xmind 默认随知识库版本化；开启后写入 .gitignore 不再跟踪"
-        >
-          <Toggle checked={binaryUntracked} onChange={(v) => void setBinaryUntrack(v)} />
-        </Row>
-      )}
-      {message && <p className="text-xs text-muted-foreground">{message}</p>}
+      <div className="border-t pt-6">
+        <SectionHeader title="当前知识库" description="以下设置仅对已打开的知识库生效" />
+        {!vault ? (
+          <div className="text-sm text-muted-foreground">
+            尚未打开知识库，打开后可配置 Git 行为。
+          </div>
+        ) : (
+          <>
+            <Row label="自动提交">
+              <Toggle
+                checked={vault.git.autoCommit}
+                onChange={(v) => void setVault({ git: { autoCommit: v } })}
+              />
+            </Row>
+            <Row
+              label="自动提交间隔"
+              description={`${vault.git.autoCommitIntervalMs}ms（2s–10min）`}
+            >
+              <input
+                type="range"
+                min={2000}
+                max={600000}
+                step={1000}
+                value={vault.git.autoCommitIntervalMs}
+                onChange={(e) => {
+                  void saveInterval(Number(e.target.value));
+                }}
+                className="w-32"
+              />
+            </Row>
+            <Row label="提交消息模板" description="{summary} 会被替换为变更摘要">
+              <input
+                type="text"
+                value={vault.git.commitMessageTemplate}
+                onChange={(e) => void setVault({ git: { commitMessageTemplate: e.target.value } })}
+                className="h-8 w-56 rounded-md border bg-background px-2 text-sm"
+              />
+            </Row>
+            <Row label="默认分支名" description="新建知识库时使用">
+              <input
+                type="text"
+                value={vault.git.defaultBranch}
+                onChange={(e) => void setVault({ git: { defaultBranch: e.target.value } })}
+                className="h-8 w-40 rounded-md border bg-background px-2 text-sm"
+              />
+            </Row>
+            {binaryUntracked !== null && (
+              <Row
+                label="二进制文档不随 Git 跟踪"
+                description="xlsx / xmind 默认随知识库版本化；开启后写入 .gitignore 不再跟踪"
+              >
+                <Toggle checked={binaryUntracked} onChange={(v) => void setBinaryUntrack(v)} />
+              </Row>
+            )}
+          </>
+        )}
+        {message && <p className="text-xs text-muted-foreground">{message}</p>}
+      </div>
     </div>
   );
 }

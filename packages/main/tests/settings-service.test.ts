@@ -115,9 +115,9 @@ describe('SettingsService', () => {
       },
     });
     expect(validation).toBeNull();
-    expect(
-      validatePayload('settings:setGlobal', { patch: { unknown: true } })?.code,
-    ).toBe('IPC_PAYLOAD_INVALID');
+    expect(validatePayload('settings:setGlobal', { patch: { unknown: true } })?.code).toBe(
+      'IPC_PAYLOAD_INVALID',
+    );
   });
 
   it('无文件时返回默认值', () => {
@@ -206,6 +206,19 @@ describe('SettingsService', () => {
     expect(service.search('主题').length).toBeGreaterThan(0);
     expect(service.search('autosave').some((e) => e.id === 'editor.autoSaveMs')).toBe(true);
     expect(service.search('').length).toBe(0);
+  });
+
+  it('search 条目 sectionId 与设置页实际位置一致（归属整理）', () => {
+    const service = new SettingsService(filePath);
+    // 全局外观的编辑器字体/字号在常规分区，而非编辑器分区
+    for (const id of ['appearance.editorFontFamily', 'appearance.editorFontSize']) {
+      expect(service.search(id).find((e) => e.id === id)?.sectionId).toBe('general');
+    }
+    // 更新设置唯一入口是更新分区
+    expect(service.search('更新通道').every((e) => e.sectionId === 'updates')).toBe(true);
+    // 翻译默认目标语言入口在常规分区；无 UI 的配置不得进入搜索索引
+    expect(service.search('翻译').some((e) => e.id === 'ai.translationTargetLanguage')).toBe(true);
+    expect(service.search('同步策略').some((e) => e.id === 'git.syncStrategy')).toBe(false);
   });
 
   it('onChange 通知订阅者', () => {
