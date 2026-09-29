@@ -1,0 +1,43 @@
+{
+  "schema": "nexnote-release-qa/v1",
+  "repository": "Aiden-FE/nexnote",
+  "tag": "v0.0.28",
+  "commit": "d05895aea383ea34d1c324532f6b06616a25e012",
+  "channel": "stable",
+  "allRequiredChecksPassed": true,
+  "scope": "v0.0.28-release",
+  "machineChecks": {
+    "typecheck": "passed (PR Checks run 36539539904 on d05895a; pnpm -r typecheck workspace clean)",
+    "lint": "passed (PR Checks run 36539539904 on d05895a; eslint zero errors and warnings)",
+    "tests": "1423 passed | 3 skipped (1426); 156 test files passed | 1 skipped on PR Checks run 36539539904 at d05895a",
+    "build": "passed (PR Checks run 36539539904 'Build unpacked Linux application' on d05895a; local electron-vite build clean with nonfatal Rollup chunk warnings)",
+    "releaseConfig": "31/31 passed (PR Checks 'Validate release configuration' and node scripts/verify-release-config.mjs)",
+    "changedFormat": "passed (PR Checks changed-file formatting gate on d05895a; local prettier --check on changed files clean)",
+    "diffCheck": "passed locally (git diff HEAD --check before candidate commit)",
+    "packagedSmoke": "not run locally for v0.0.28; release-tag-bound packaged smoke runs in the release pipeline smoke job after tag push",
+    "ciLogHygiene": "zero matches for AI_APICallError / InvalidResponseDataError / DeprecationWarning / EPIPE / Duplicate extension names in PR Checks run 36539539904 logs",
+    "gatekeeper": "Ad hoc signed app; macOS Gatekeeper manual Open Anyway expected on owner first launch (same recipe as v0.0.27); spctl remains rejected without Developer ID notarization"
+  },
+  "gateDecisions": {
+    "windowsLinuxPhysicalInstall": "WAIVED by repository owner Aiden-FE: no Windows/Linux hardware available; packaged smoke remains macOS-local / CI only",
+    "macosGatekeeper": "DEFERRED to first-launch Open Anyway on the owner's Mac (Ad hoc signing only; same recipe as v0.0.27); Developer ID signing / notarization deferred as a future improvement"
+  },
+  "candidateContents": {
+    "tickets": "Release: master commit d05895aea383ea34d1c324532f6b06616a25e012, version 0.0.28; includes DEV-098 (revoke in-repo docx editing; import converts to block document), DEV-099 (xmind editor conventional UI), DEV-100 (sidecar metadata tracked in git), DEV-101 (new Markdown note tree icon).",
+    "highlights": [
+      "DEV-098: in-repo docx editing removed. '新建 DOCX' gone from all create menus; importing a .docx converts it into a native-block .md via the existing docx-markdown conversion, vault stores no .docx bytes; sidecar records sourceDocx/sourceSha256. docx:export (md → docx download) kept. Clicking a stale in-vault .docx shows an unsupported/re-import notice, never auto-converts/deletes. Legacy channels and docx-editor removed.",
+      "DEV-099: xmind editor gets conventional editing UI. Floating non-fixed corner groups (left: undo/redo/save-status/save-now; right: zoom-out/percent/zoom-in/fit/reset/theme menu), right drawer on node selection (node ops / shapes / colors / markers / note / hyperlink). Drag plugin enabled; shortcuts Delete, Ctrl/Cmd+Z, Ctrl/Cmd+Shift+Z/Y, Ctrl/Cmd+S; 5 theme presets persisted to sidecar mindmapTheme; marker icons rendered via encoded lucide-style SVGs; node collapse/expand/add-child buttons halved with non-delete-looking chevrons.",
+      "DEV-100: .nexnote/metadata sidecars are tracked in git (.nexnote/* + !.nexnote/metadata/ + .nexnote/metadata/*.tmp-*). Fixes cross-device format misclassification where a missing sidecar fell back to native-block and a block-save rewrote the Markdown, hardening the conversion through sync.",
+      "DEV-101: a newly created Markdown note shows the Markdown source icon immediately. createNoteIn now optimistically inserts the tree entry with the known format; applyFsChangeEvent merges format instead of dropping a later format-carrying add on the dedup guard.",
+      "Release hygiene: all 103 candidate files committed; pre-release typecheck/lint/tests/build/verify-release-config and prettier changed-file gate all green."
+    ]
+  },
+  "notRun": [
+    "matrix signed builds for mac-arm64/mac-x64/windows-x64/linux-x64 (run by the release pipeline after tag push)",
+    "packaged macOS smoke in CI (run by the release pipeline smoke job)",
+    "Windows packaged smoke and Linux packaged smoke",
+    "macOS notarization / Developer ID code signing (Ad hoc signing only; Gatekeeper Open Anyway on first launch)",
+    "release-qa Environment required-reviewer approval (operational gate before publish)",
+    "post-publication 24-hour monitoring"
+  ]
+}
