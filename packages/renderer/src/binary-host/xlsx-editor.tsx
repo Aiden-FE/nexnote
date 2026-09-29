@@ -31,4 +31,3 @@ export function XlsxEditor({ path, sheets, onChange }: XlsxEditorProps): React.J
     </div>
   );
 }
-

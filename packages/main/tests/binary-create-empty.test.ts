@@ -62,7 +62,9 @@ describe('BinaryService.createEmpty (DEV-084 ticket spec)', () => {
     expect(meta.format).toBe('xlsx');
     expect(meta.sourceSha256).toBe(sha256);
     // sha256 与磁盘字节一致
-    const actual = createHash('sha256').update(readFileSync(path.join(root, created))).digest('hex');
+    const actual = createHash('sha256')
+      .update(readFileSync(path.join(root, created)))
+      .digest('hex');
     expect(actual).toBe(sha256);
   });
 

@@ -1,5 +1,9 @@
 import { describe, expect, it } from 'vitest';
-import { applySidecarMetadata, parsePageMarkdown, projectBinaryPage } from '../src/indexer/markdown-indexer';
+import {
+  applySidecarMetadata,
+  parsePageMarkdown,
+  projectBinaryPage,
+} from '../src/indexer/markdown-indexer';
 
 describe('parsePageMarkdown', () => {
   it('共享 wikilink 语法：alias/heading/block anchor，跳过代码中的假链接', () => {
@@ -12,17 +16,36 @@ describe('parsePageMarkdown', () => {
     expect(parsed.aliases).toEqual(['Src']);
     expect(parsed.tags).toEqual(['inline', 'work/project']);
     expect(parsed.links).toEqual([
-      expect.objectContaining({ targetName: 'Target', alias: '显示', anchor: null, linkType: 'wiki' }),
-      expect.objectContaining({ targetName: 'Target', alias: null, anchor: '#Heading', linkType: 'wiki' }),
-      expect.objectContaining({ targetName: 'Target', alias: null, anchor: '#^block-1', linkType: 'wiki' }),
+      expect.objectContaining({
+        targetName: 'Target',
+        alias: '显示',
+        anchor: null,
+        linkType: 'wiki',
+      }),
+      expect.objectContaining({
+        targetName: 'Target',
+        alias: null,
+        anchor: '#Heading',
+        linkType: 'wiki',
+      }),
+      expect.objectContaining({
+        targetName: 'Target',
+        alias: null,
+        anchor: '#^block-1',
+        linkType: 'wiki',
+      }),
     ]);
     expect(parsed.links.some((link) => link.targetName.includes('Code'))).toBe(false);
     expect(parsed.blocks.some((block) => block.blockId === 'src-block')).toBe(true);
   });
 
   it('ignores user-provided confidence fields (system-computed only)', () => {
-    expect(parsePageMarkdown('boost.md', '---\nconfidence_boost: 72\n---\n# Boost\n').confidenceBoost).toBeNull();
-    expect(parsePageMarkdown('conf.md', '---\nconfidence: 80\n---\n# Conf\n').confidenceBoost).toBeNull();
+    expect(
+      parsePageMarkdown('boost.md', '---\nconfidence_boost: 72\n---\n# Boost\n').confidenceBoost,
+    ).toBeNull();
+    expect(
+      parsePageMarkdown('conf.md', '---\nconfidence: 80\n---\n# Conf\n').confidenceBoost,
+    ).toBeNull();
     expect(parsePageMarkdown('plain.md', '# Plain\n').confidenceBoost).toBeNull();
   });
 
@@ -31,7 +54,10 @@ describe('parsePageMarkdown', () => {
       'source.md',
       '首段\r\n\r\n[real](target.md) 与 [[target]]\r\n\r\n`[inline](hidden.md)`\r\n\r\n```md\r\n[fenced](hidden.md)\r\n```',
     );
-    expect(parsed.links.map((link) => [link.targetName, link.sourceBlockIndex])).toEqual([['target', 1], ['target', 1]]);
+    expect(parsed.links.map((link) => [link.targetName, link.sourceBlockIndex])).toEqual([
+      ['target', 1],
+      ['target', 1],
+    ]);
   });
 
   it('解析指向 vault markdown 页面的普通链接，跳过外链与页内 anchor', () => {
@@ -46,7 +72,10 @@ describe('parsePageMarkdown', () => {
   });
 
   it('frontmatter id 作为 stableId 的 fallback（旧笔记兼容）', () => {
-    const parsed = parsePageMarkdown('legacy.md', '---\nid: legacy-uuid\ncreated: 2020-01-01T00:00:00.000Z\n---\n# Legacy\n');
+    const parsed = parsePageMarkdown(
+      'legacy.md',
+      '---\nid: legacy-uuid\ncreated: 2020-01-01T00:00:00.000Z\n---\n# Legacy\n',
+    );
     expect(parsed.stableId).toBe('legacy-uuid');
     expect(parsePageMarkdown('plain.md', '# Plain\n').stableId).toBeNull();
   });
@@ -92,6 +121,8 @@ describe('projectBinaryPage', () => {
     expect(projected.tags).toEqual([]);
     expect(projected.stableId).toBeNull();
     expect(projected.hash).toHaveLength(64);
-    expect(projectBinaryPage('Files/report.docx', Buffer.from('other')).hash).not.toBe(projected.hash);
+    expect(projectBinaryPage('Files/report.docx', Buffer.from('other')).hash).not.toBe(
+      projected.hash,
+    );
   });
 });

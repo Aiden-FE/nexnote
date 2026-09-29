@@ -93,7 +93,10 @@ export function deepMergeTheme(
       typeof current === 'object' &&
       !Array.isArray(current)
     ) {
-      out[key] = deepMergeTheme(current as Record<string, unknown>, value as Record<string, unknown>);
+      out[key] = deepMergeTheme(
+        current as Record<string, unknown>,
+        value as Record<string, unknown>,
+      );
     } else {
       out[key] = value;
     }

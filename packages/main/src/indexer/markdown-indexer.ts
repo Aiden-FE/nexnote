@@ -15,18 +15,44 @@ export interface ParsedLink {
   /** 该链接所在的 0-based 段落块序号。 */
   sourceBlockIndex: number;
 }
-export interface ParsedBlock { blockId: string | null; blockType: string; content: string; position: number; }
-export interface ParsedPage { path: string; title: string; aliases: string[]; createdAt: string | null; updatedAt: string | null; stableId: string | null; hash: string; body: string; tags: string[]; links: ParsedLink[]; blocks: ParsedBlock[]; confidenceBoost: number | null; }
+export interface ParsedBlock {
+  blockId: string | null;
+  blockType: string;
+  content: string;
+  position: number;
+}
+export interface ParsedPage {
+  path: string;
+  title: string;
+  aliases: string[];
+  createdAt: string | null;
+  updatedAt: string | null;
+  stableId: string | null;
+  hash: string;
+  body: string;
+  tags: string[];
+  links: ParsedLink[];
+  blocks: ParsedBlock[];
+  confidenceBoost: number | null;
+}
 
 function yamlValue(frontmatter: string | null, key: string): string | null {
   if (!frontmatter) return null;
-  return new RegExp(`^${key}:\\s*(.+)$`, 'm').exec(frontmatter)?.[1]?.trim().replace(/^['"]|['"]$/g, '') ?? null;
+  return (
+    new RegExp(`^${key}:\\s*(.+)$`, 'm')
+      .exec(frontmatter)?.[1]
+      ?.trim()
+      .replace(/^['"]|['"]$/g, '') ?? null
+  );
 }
 function yamlList(frontmatter: string | null, key: string): string[] {
   if (!frontmatter) return [];
   const raw = yamlValue(frontmatter, key);
   if (!raw) return [];
-  return (raw.startsWith('[') && raw.endsWith(']') ? raw.slice(1, -1) : raw).split(',').map((s) => s.trim().replace(/^['"]|['"]$/g, '')).filter(Boolean);
+  return (raw.startsWith('[') && raw.endsWith(']') ? raw.slice(1, -1) : raw)
+    .split(',')
+    .map((s) => s.trim().replace(/^['"]|['"]$/g, ''))
+    .filter(Boolean);
 }
 
 function classifyBlock(raw: string): string {
@@ -39,7 +65,10 @@ function classifyBlock(raw: string): string {
   return 'paragraph';
 }
 
-function parseBlocks(body: string): { blocks: ParsedBlock[]; rawBlocks: Array<{ text: string; start: number; position: number }> } {
+function parseBlocks(body: string): {
+  blocks: ParsedBlock[];
+  rawBlocks: Array<{ text: string; start: number; position: number }>;
+} {
   // 共享块切分：与 extractMarkdownLinks.blockIndex 严格对齐（CRLF/LF、fence 内空行均已处理）。
   const rawBlocks = splitMarkdownBlocks(body);
   const blocks: ParsedBlock[] = [];
@@ -48,7 +77,12 @@ function parseBlocks(body: string): { blocks: ParsedBlock[]; rawBlocks: Array<{ 
     if (raw.trim().length === 0) continue;
     const anchor = /(?:^|\s)\^([A-Za-z0-9_-]+)\s*$/.exec(raw);
     const content = raw.replace(/\^([A-Za-z0-9_-]+)\s*$/, '').trim();
-    blocks.push({ blockId: anchor?.[1] ?? null, blockType: classifyBlock(raw), content, position: blockPosition });
+    blocks.push({
+      blockId: anchor?.[1] ?? null,
+      blockType: classifyBlock(raw),
+      content,
+      position: blockPosition,
+    });
   }
   return { blocks, rawBlocks };
 }
@@ -88,15 +122,36 @@ export function parsePageMarkdown(pagePath: string, text: string): ParsedPage {
       sourceBlockIndex: ref.blockIndex,
     });
   }
-  const tags = [...new Set([...(frontmatter ? parseFrontmatterTags(frontmatter) : []), ...extractInlineTags(body)])].sort();
-  return { path: pagePath, title, aliases, createdAt: yamlValue(frontmatter, 'created'), updatedAt: yamlValue(frontmatter, 'updated'), stableId: yamlValue(frontmatter, 'id'), hash: createHash('sha256').update(text).digest('hex'), body, tags, links, blocks, confidenceBoost: null };
+  const tags = [
+    ...new Set([
+      ...(frontmatter ? parseFrontmatterTags(frontmatter) : []),
+      ...extractInlineTags(body),
+    ]),
+  ].sort();
+  return {
+    path: pagePath,
+    title,
+    aliases,
+    createdAt: yamlValue(frontmatter, 'created'),
+    updatedAt: yamlValue(frontmatter, 'updated'),
+    stableId: yamlValue(frontmatter, 'id'),
+    hash: createHash('sha256').update(text).digest('hex'),
+    body,
+    tags,
+    links,
+    blocks,
+    confidenceBoost: null,
+  };
 }
 
 /**
  * sidecar 元数据 canonical 合并（document-domain）：sidecar 的 id/createdAt/updatedAt
  * 覆盖正文 frontmatter 推断值，缺失字段回落到 frontmatter；其余索引投影不动。
  */
-export function applySidecarMetadata(page: ParsedPage, sidecar: DocumentMetadata | null): ParsedPage {
+export function applySidecarMetadata(
+  page: ParsedPage,
+  sidecar: DocumentMetadata | null,
+): ParsedPage {
   if (!sidecar) return page;
   return {
     ...page,

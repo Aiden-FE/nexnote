@@ -27,9 +27,11 @@ export async function openDocumentTab(
   options?: { knownFormat?: DocumentFormat; initialMarkdownView?: MarkdownView },
 ): Promise<{ kind: 'page' | 'docx' | 'xlsx' | 'mindmap'; format?: DocumentFormat }> {
   if (/\.(docx)$/i.test(pagePath)) {
-    getTabStore().getState().setDocxNotice(
-      'DOCX 不再支持在知识库内打开。请用「文件 → 导入 Word 文档（转为块文档）」重新导入。',
-    );
+    getTabStore()
+      .getState()
+      .setDocxNotice(
+        'DOCX 不再支持在知识库内打开。请用「文件 → 导入 Word 文档（转为块文档）」重新导入。',
+      );
     return { kind: 'docx' };
   }
   if (/\.(xlsx)$/i.test(pagePath)) {

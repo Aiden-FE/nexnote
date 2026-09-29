@@ -210,7 +210,12 @@ export function MindmapDrawer({
                   disabled={!mindMap || !hasSelection}
                   onClick={() =>
                     each((node) =>
-                      exec('SET_NODE_STYLE', node, prop, prop === 'color' ? '#1f2328' : 'transparent'),
+                      exec(
+                        'SET_NODE_STYLE',
+                        node,
+                        prop,
+                        prop === 'color' ? '#1f2328' : 'transparent',
+                      ),
                     )
                   }
                   className="size-4 rounded border border-neutral-300 bg-white dark:border-neutral-600 dark:bg-neutral-800"

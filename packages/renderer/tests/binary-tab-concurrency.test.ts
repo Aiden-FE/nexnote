@@ -16,9 +16,7 @@ describe('binary tab 并发上限（LRU）', () => {
     store.openBinaryTab('a.xlsx', 'a', 'xlsx', 3);
     store.openBinaryTab('b.xlsx', 'b', 'xlsx', 3);
     store.openBinaryTab('c.xmind', 'c', 'mindmap', 3);
-    let tabs = useTabStore
-      .getState()
-      .tabs.filter((t) => t.kind !== 'welcome');
+    let tabs = useTabStore.getState().tabs.filter((t) => t.kind !== 'welcome');
     expect(tabs.map((t) => t.pagePath)).toEqual(['a.xlsx', 'b.xlsx', 'c.xmind']);
 
     store.openBinaryTab('d.xmind', 'd', 'mindmap', 3);

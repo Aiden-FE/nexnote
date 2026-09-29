@@ -6,7 +6,11 @@ import { act } from 'react-dom/test-utils';
 import { MindmapDrawer } from '../src/binary-host/mindmap-drawer';
 import { MindmapToolbar } from '../src/binary-host/mindmap-toolbar';
 import { MINDMAP_MARKERS } from '../src/binary-host/mindmap-icons';
-import { MINDMAP_THEME_PRESETS, deepMergeTheme, themePresetById } from '../src/binary-host/mindmap-themes';
+import {
+  MINDMAP_THEME_PRESETS,
+  deepMergeTheme,
+  themePresetById,
+} from '../src/binary-host/mindmap-themes';
 
 /** DEV-099：xmind 操作界面组件结构（无 mindMap 实例时的禁用态与分组）。 */
 
@@ -50,7 +54,9 @@ describe('MindmapToolbar（DEV-099）', () => {
     expect(view.querySelector('[data-testid="mindmap-save-status"]')?.textContent).toBe('已保存');
     expect(view.querySelector('[data-testid="mindmap-zoom-percent"]')?.textContent).toBe('100%');
     // 无实例时画布操作禁用
-    const zoomIn = [...view.querySelectorAll('button')].find((b) => b.getAttribute('title') === '放大');
+    const zoomIn = [...view.querySelectorAll('button')].find(
+      (b) => b.getAttribute('title') === '放大',
+    );
     expect(zoomIn?.disabled).toBe(true);
   });
 
@@ -68,7 +74,9 @@ describe('MindmapToolbar（DEV-099）', () => {
         onSaveNow: () => undefined,
       }),
     );
-    const palette = [...view.querySelectorAll('button')].find((b) => b.getAttribute('title') === '主题');
+    const palette = [...view.querySelectorAll('button')].find(
+      (b) => b.getAttribute('title') === '主题',
+    );
     act(() => palette?.dispatchEvent(new MouseEvent('click', { bubbles: true })));
     const menu = view.querySelector('[data-testid="mindmap-theme-menu"]');
     expect(menu).not.toBeNull();

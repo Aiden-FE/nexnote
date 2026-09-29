@@ -69,10 +69,7 @@ export async function importBinaryIn(
 }
 
 /** DEV-084（DEV-098 撤销 docx 后仅 xlsx / xmind）：在 vault 内创建空白文档并打开编辑器 tab。 */
-export async function createBinaryIn(
-  kind: 'xlsx' | 'mindmap',
-  targetDir = '',
-): Promise<string> {
+export async function createBinaryIn(kind: 'xlsx' | 'mindmap', targetDir = ''): Promise<string> {
   const result = await invoke('binary:create', { kind, targetDir });
   await openDocumentTab(result.path);
   return result.path;
@@ -98,13 +95,23 @@ export async function importDroppedFile(
     return result.path;
   }
   if (name.endsWith('.xlsx')) {
-    const result = await invoke('binary:import', { kind: 'xlsx', data: base64, name: file.name, targetDir });
+    const result = await invoke('binary:import', {
+      kind: 'xlsx',
+      data: base64,
+      name: file.name,
+      targetDir,
+    });
     if (!result) return null;
     await openDocumentTab(result.path);
     return result.path;
   }
   if (name.endsWith('.xmind')) {
-    const result = await invoke('binary:import', { kind: 'mindmap', data: base64, name: file.name, targetDir });
+    const result = await invoke('binary:import', {
+      kind: 'mindmap',
+      data: base64,
+      name: file.name,
+      targetDir,
+    });
     if (!result) return null;
     await openDocumentTab(result.path);
     return result.path;

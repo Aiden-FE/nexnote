@@ -218,7 +218,10 @@ export function TabStrip() {
       })}
 
       {binaryTabCloseError && (
-        <div role="alert" className="flex shrink-0 items-center gap-1 px-2 text-xs text-destructive">
+        <div
+          role="alert"
+          className="flex shrink-0 items-center gap-1 px-2 text-xs text-destructive"
+        >
           <span>{binaryTabCloseError}</span>
           <button
             type="button"

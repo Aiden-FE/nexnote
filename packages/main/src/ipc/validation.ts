@@ -219,7 +219,10 @@ const binaryEditorTheme = object(
     },
   ],
 );
-const binaryMindmapThemeSet = object(['path', 'theme'], [stringField('path'), stringField('theme')]);
+const binaryMindmapThemeSet = object(
+  ['path', 'theme'],
+  [stringField('path'), stringField('theme')],
+);
 
 const stringArrayField =
   (key: string): PayloadValidator =>

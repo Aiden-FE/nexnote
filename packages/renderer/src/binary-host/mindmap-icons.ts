@@ -24,7 +24,10 @@ export const MINDMAP_MARKERS: MindmapMarker[] = [
   {
     id: 'priority-high',
     label: '优先级 高',
-    svg: svg('#ef4444', '<path d="M2 20h.01"/><path d="M7 20v-4"/><path d="M12 20v-8"/><path d="M17 20V8"/>'),
+    svg: svg(
+      '#ef4444',
+      '<path d="M2 20h.01"/><path d="M7 20v-4"/><path d="M12 20v-8"/><path d="M17 20V8"/>',
+    ),
   },
   {
     id: 'priority-medium',
@@ -44,7 +47,10 @@ export const MINDMAP_MARKERS: MindmapMarker[] = [
   {
     id: 'progress-50',
     label: '进度 50%',
-    svg: svg('#3b82f6', '<circle cx="12" cy="12" r="10"/><path d="M12 18a6 6 0 0 0 0-12v12z" fill="#3b82f6" stroke="none"/>'),
+    svg: svg(
+      '#3b82f6',
+      '<circle cx="12" cy="12" r="10"/><path d="M12 18a6 6 0 0 0 0-12v12z" fill="#3b82f6" stroke="none"/>',
+    ),
   },
   {
     id: 'progress-100',
@@ -59,30 +65,42 @@ export const MINDMAP_MARKERS: MindmapMarker[] = [
   {
     id: 'undone',
     label: '未完成',
-    svg: svg('#ef4444', '<circle cx="12" cy="12" r="10"/><path d="m15 9-6 6"/><path d="m9 9 6 6"/>'),
+    svg: svg(
+      '#ef4444',
+      '<circle cx="12" cy="12" r="10"/><path d="m15 9-6 6"/><path d="m9 9 6 6"/>',
+    ),
   },
   {
     id: 'star',
     label: '星标',
-    svg:
-      svg('#f59e0b', '<path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01z" fill="#f59e0b" stroke="none"/>'),
+    svg: svg(
+      '#f59e0b',
+      '<path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01z" fill="#f59e0b" stroke="none"/>',
+    ),
   },
   {
     id: 'flag',
     label: '旗标',
-    svg: svg('#6366f1', '<path d="M4 15s1-1 4-1 5 2 8 2 4-1 4-1V3s-1 1-4 1-5-2-8-2-4 1-4 1z"/><line x1="4" x2="4" y1="22" y2="15"/>'),
+    svg: svg(
+      '#6366f1',
+      '<path d="M4 15s1-1 4-1 5 2 8 2 4-1 4-1V3s-1 1-4 1-5-2-8-2-4 1-4 1z"/><line x1="4" x2="4" y1="22" y2="15"/>',
+    ),
   },
   {
     id: 'heart',
     label: '关注',
-    svg:
-      svg('#ec4899', '<path d="M19 14c1.49-1.46 3-3.21 3-5.5A5.5 5.5 0 0 0 16.5 3c-1.76 0-3 .5-4.5 2-1.5-1.5-2.74-2-4.5-2A5.5 5.5 0 0 0 2 8.5c0 2.3 1.5 4.05 3 5.5l7 7Z" fill="#ec4899" stroke="none"/>'),
+    svg: svg(
+      '#ec4899',
+      '<path d="M19 14c1.49-1.46 3-3.21 3-5.5A5.5 5.5 0 0 0 16.5 3c-1.76 0-3 .5-4.5 2-1.5-1.5-2.74-2-4.5-2A5.5 5.5 0 0 0 2 8.5c0 2.3 1.5 4.05 3 5.5l7 7Z" fill="#ec4899" stroke="none"/>',
+    ),
   },
   {
     id: 'warning',
     label: '警告',
-    svg:
-      svg('#f97316', '<path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z"/><path d="M12 9v4"/><path d="M12 17h.01"/>'),
+    svg: svg(
+      '#f97316',
+      '<path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z"/><path d="M12 9v4"/><path d="M12 17h.01"/>',
+    ),
   },
 ];
 

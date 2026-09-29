@@ -54,30 +54,31 @@ export function registerBinaryHandlers(registrar: IpcRegistrar): void {
   const service = (services: IpcServices): BinaryService =>
     new BinaryService(services.fs, () => services.vaultSession.getCurrent()?.root ?? null);
 
-  registrar.register(
-    'binary:import',
-    async ({ kind, data, name, targetDir }, services) => {
-      try {
-        if (!data) {
-          const picked = await services.dialogs.pickFile([KIND_FILTERS[kind]]);
-          if (!picked) return ok(null);
-          const bytes = await readPickedFile(picked);
-          const result = await service(services).importBinary(
-            kind,
-            { base64: bytes.toString('base64'), name: path.basename(picked) },
-            targetDir ?? '',
-          );
-          await recordWrite(services, `导入 ${kind.toUpperCase()} ${result.path}`);
-          return ok(result);
-        }
-        const result = await service(services).importBinary(kind, { base64: data, name }, targetDir ?? '');
+  registrar.register('binary:import', async ({ kind, data, name, targetDir }, services) => {
+    try {
+      if (!data) {
+        const picked = await services.dialogs.pickFile([KIND_FILTERS[kind]]);
+        if (!picked) return ok(null);
+        const bytes = await readPickedFile(picked);
+        const result = await service(services).importBinary(
+          kind,
+          { base64: bytes.toString('base64'), name: path.basename(picked) },
+          targetDir ?? '',
+        );
         await recordWrite(services, `导入 ${kind.toUpperCase()} ${result.path}`);
         return ok(result);
-      } catch (e) {
-        return toErrorResult(e);
       }
-    },
-  );
+      const result = await service(services).importBinary(
+        kind,
+        { base64: data, name },
+        targetDir ?? '',
+      );
+      await recordWrite(services, `导入 ${kind.toUpperCase()} ${result.path}`);
+      return ok(result);
+    } catch (e) {
+      return toErrorResult(e);
+    }
+  });
 
   registrar.register('binary:read', async ({ kind, path }, services) => {
     try {
@@ -88,18 +89,15 @@ export function registerBinaryHandlers(registrar: IpcRegistrar): void {
   });
 
   // DEV-084：在 vault 内创建空白二进制文档（xlsx/xmind），与导入分离。
-  registrar.register(
-    'binary:create',
-    async ({ kind, title, targetDir }, services) => {
-      try {
-        const result = await service(services).createBinary(kind, { title, targetDir });
-        await recordWrite(services, `新建空白 ${kind.toUpperCase()} ${result.path}`);
-        return ok(result);
-      } catch (e) {
-        return toErrorResult(e);
-      }
-    },
-  );
+  registrar.register('binary:create', async ({ kind, title, targetDir }, services) => {
+    try {
+      const result = await service(services).createBinary(kind, { title, targetDir });
+      await recordWrite(services, `新建空白 ${kind.toUpperCase()} ${result.path}`);
+      return ok(result);
+    } catch (e) {
+      return toErrorResult(e);
+    }
+  });
 
   registrar.register('binary:save', async ({ kind, path, data, expectedSha256 }, services) => {
     try {

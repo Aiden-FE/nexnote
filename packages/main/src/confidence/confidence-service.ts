@@ -155,11 +155,7 @@ export function computeConfidenceResults({
       factor('author_count', authorScore, `${authorCount} 位作者，单人保留基础分`),
       factor('age', ageScore, `文档存活 ${Math.floor(ageDays)} 天，按对数增长`),
       factor('link_authority', linkScore, '由去重入链图的简化 PageRank 归一化'),
-      factor(
-        'manual_boost',
-        manualScore,
-        '系统中性分，不受用户输入影响',
-      ),
+      factor('manual_boost', manualScore, '系统中性分，不受用户输入影响'),
     ];
     const raw = factors.reduce((total, item) => total + item.contribution, 0);
     const score = Math.max(1, Math.round(raw));

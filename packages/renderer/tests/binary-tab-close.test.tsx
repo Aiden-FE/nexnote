@@ -12,7 +12,13 @@ globalThis.IS_REACT_ACT_ENVIRONMENT = true;
 
 function TabHarness() {
   const tabs = useTabStore((state) => state.tabs);
-  return <>{tabs.map((tab) => <BinaryTabView key={tab.id} tab={tab} />)}</>;
+  return (
+    <>
+      {tabs.map((tab) => (
+        <BinaryTabView key={tab.id} tab={tab} />
+      ))}
+    </>
+  );
 }
 
 beforeEach(() => {

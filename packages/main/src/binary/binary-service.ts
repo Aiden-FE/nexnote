@@ -178,7 +178,9 @@ export class BinaryService {
     let bytes: Buffer;
     if (kind === 'xlsx') {
       const model = (data as { sheets?: unknown[] }) ?? {};
-      const rebuilt = await writeModelToXlsx({ sheets: Array.isArray(model.sheets) ? model.sheets : [] });
+      const rebuilt = await writeModelToXlsx({
+        sheets: Array.isArray(model.sheets) ? model.sheets : [],
+      });
       // ADR-0015 Decision 4：模型未涵盖的宏、图表、透视表及其关系/类型声明从原包回填。
       bytes = await preserveXlsxReadonly(current, rebuilt);
     } else {

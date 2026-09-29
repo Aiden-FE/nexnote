@@ -30,7 +30,13 @@ export interface MindmapEditorProps {
 }
 
 type MindMapWithInternals = MindMap & {
-  view: { enlarge: () => void; narrow: () => void; fit: () => void; reset: () => void; scale: number };
+  view: {
+    enlarge: () => void;
+    narrow: () => void;
+    fit: () => void;
+    reset: () => void;
+    scale: number;
+  };
   themeConfig: Record<string, unknown>;
   execCommand: (command: string, ...args: unknown[]) => void;
   on: (event: string, cb: (...args: never[]) => void) => void;
@@ -94,7 +100,10 @@ export function MindmapEditor({ path, model, onChange }: MindmapEditorProps): Re
     } as unknown as MindMapOptions) as unknown as MindMapWithInternals;
     mapRef.current = mindMap;
     setMapInstance(mindMap);
-    baseThemeRef.current = JSON.parse(JSON.stringify(mindMap.themeConfig)) as Record<string, unknown>;
+    baseThemeRef.current = JSON.parse(JSON.stringify(mindMap.themeConfig)) as Record<
+      string,
+      unknown
+    >;
 
     const onDataChange = (data: unknown): void => onChangeRef.current(data);
     const onScale = (value: number): void => setScale(value);

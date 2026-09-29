@@ -1,6 +1,9 @@
 import { useEffect, useRef, useState } from 'react';
 import type { AiFeatureKey, AiProfileView, ConnectionTestResult } from '@nexnote/shared';
-import { TRANSLATION_LANGUAGES, mapInterfaceLanguageToTranslationTarget } from './translation/languages';
+import {
+  TRANSLATION_LANGUAGES,
+  mapInterfaceLanguageToTranslationTarget,
+} from './translation/languages';
 import { useSettingsStore } from '../../stores/settings-store';
 import { invoke } from '../../lib/ipc';
 import { useAiConfig, useAiWizard } from './ai-config';
@@ -426,7 +429,8 @@ function ModelPicker({
     list: string[];
     error: string | null;
   } | null>(null);
-  const allCandidates = fetched?.cacheKey === cacheKey ? fetched.list : peekModelCandidates(cacheKey);
+  const allCandidates =
+    fetched?.cacheKey === cacheKey ? fetched.list : peekModelCandidates(cacheKey);
   const [fetching, setFetching] = useState(false);
   const [open, setOpen] = useState(false);
   // 只有用户主动输入时才过滤候选；初始值（当前已保存的模型名）不作为过滤条件。
@@ -434,9 +438,10 @@ function ModelPicker({
   const containerRef = useRef<HTMLSpanElement | null>(null);
   const inputRef = useRef<HTMLInputElement | null>(null);
 
-  const filtered = userTyped && value
-    ? allCandidates.filter((c) => c.toLowerCase().includes(value.toLowerCase()))
-    : allCandidates;
+  const filtered =
+    userTyped && value
+      ? allCandidates.filter((c) => c.toLowerCase().includes(value.toLowerCase()))
+      : allCandidates;
 
   const loadCandidates = async (force = false): Promise<void> => {
     setFetching(true);

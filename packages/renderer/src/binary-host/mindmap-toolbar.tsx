@@ -1,14 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import {
-  Undo2,
-  Redo2,
-  Save,
-  ZoomIn,
-  ZoomOut,
-  Maximize,
-  RotateCcw,
-  Palette,
-} from 'lucide-react';
+import { Undo2, Redo2, Save, ZoomIn, ZoomOut, Maximize, RotateCcw, Palette } from 'lucide-react';
 import type MindMap from 'simple-mind-map';
 import { MINDMAP_THEME_PRESETS } from './mindmap-themes';
 
@@ -86,7 +77,11 @@ export function MindmapToolbar({
     <>
       <div className="pointer-events-none absolute left-3 top-3 z-20">
         <div className={GROUP_CLASS}>
-          <FloatButton title="撤销 (Ctrl+Z)" disabled={!mindMap} onClick={() => mindMap?.execCommand('BACK')}>
+          <FloatButton
+            title="撤销 (Ctrl+Z)"
+            disabled={!mindMap}
+            onClick={() => mindMap?.execCommand('BACK')}
+          >
             <Undo2 className="size-4" />
           </FloatButton>
           <FloatButton
@@ -150,14 +145,17 @@ export function MindmapToolbar({
                       setThemeMenuOpen(false);
                     }}
                     className={`flex w-full items-center gap-2 px-3 py-1.5 text-left text-xs hover:bg-neutral-100 dark:hover:bg-neutral-700 ${
-                      preset.id === themeId ? 'font-semibold text-neutral-900 dark:text-white' : 'text-neutral-600 dark:text-neutral-300'
+                      preset.id === themeId
+                        ? 'font-semibold text-neutral-900 dark:text-white'
+                        : 'text-neutral-600 dark:text-neutral-300'
                     }`}
                   >
                     <span
                       aria-hidden="true"
                       className="size-3 rounded-full border border-neutral-300"
                       style={{
-                        backgroundColor: (preset.config.root as { fillColor?: string })?.fillColor ?? '#888',
+                        backgroundColor:
+                          (preset.config.root as { fillColor?: string })?.fillColor ?? '#888',
                       }}
                     />
                     {preset.label}

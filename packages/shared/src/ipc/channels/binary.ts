@@ -46,7 +46,10 @@ export const BINARY_CHANNELS = [
 export type BinaryChannel = (typeof BINARY_CHANNELS)[number];
 
 export interface BinaryChannelMap {
-  'binary:ping': { request: void; response: Result<{ pong: true; namespace: 'binary'; implementedBy: 'DEV-074' }> };
+  'binary:ping': {
+    request: void;
+    response: Result<{ pong: true; namespace: 'binary'; implementedBy: 'DEV-074' }>;
+  };
   /**
    * 导入 vault 外 .xlsx / .xmind 为仓库内副本：不携带 data 时经主进程 dialogs.pickFile
    * （外部路径不接受 renderer 提供）；data 为 renderer 显式提供的 base64。

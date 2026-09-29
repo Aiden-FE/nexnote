@@ -8,7 +8,8 @@ import {
 } from '../editor/title-sync';
 import { invoke } from '../lib/ipc';
 
-export type TabKind = 'welcome' | 'page' | 'xlsx' | 'mindmap' | 'graph' | 'settings';export type EditorMode = 'block' | 'source';
+export type TabKind = 'welcome' | 'page' | 'xlsx' | 'mindmap' | 'graph' | 'settings';
+export type EditorMode = 'block' | 'source';
 export type DocumentFormat = 'native-block' | 'markdown';
 export type MarkdownView = 'source' | 'split' | 'preview';
 export type MarkdownEditView = Exclude<MarkdownView, 'preview'>;
@@ -138,7 +139,8 @@ function cleanupUntouchedTabs(removed: TabDescriptor[], remaining: TabDescriptor
     if (tab.kind !== 'page' || !!tab.pagePath || tab.dirty) continue;
     const synthesizedPath = `${sanitizePageTitle(tab.title)}.md`;
     const stillReferenced = remaining.some(
-      (t) => t.kind === 'page' && (t.pagePath ?? `${sanitizePageTitle(t.title)}.md`) === synthesizedPath,
+      (t) =>
+        t.kind === 'page' && (t.pagePath ?? `${sanitizePageTitle(t.title)}.md`) === synthesizedPath,
     );
     if (!stillReferenced) {
       void invoke('fs:delete', { path: synthesizedPath, toTrash: false }).catch(() => {});
@@ -205,7 +207,9 @@ export const useTabStore = create<WorkspaceState>()((set, get) => ({
 
   setTabDirty(tabId, dirty) {
     set((state) => ({
-      tabs: state.tabs.map((tab) => (tab.id === tabId && tab.dirty !== dirty ? { ...tab, dirty } : tab)),
+      tabs: state.tabs.map((tab) =>
+        tab.id === tabId && tab.dirty !== dirty ? { ...tab, dirty } : tab,
+      ),
     }));
   },
 
@@ -214,16 +218,17 @@ export const useTabStore = create<WorkspaceState>()((set, get) => ({
     const tab = state.tabs.find((t) => t.id === tabId);
     if (!tab) return;
 
-    cleanupUntouchedTabs([tab], state.tabs.filter((t) => t.id !== tabId));
+    cleanupUntouchedTabs(
+      [tab],
+      state.tabs.filter((t) => t.id !== tabId),
+    );
 
     set((s) => {
       const index = s.tabs.findIndex((t) => t.id === tabId);
       if (index < 0) return s;
       const tabs = s.tabs.filter((t) => t.id !== tabId);
       const activeTabId =
-        s.activeTabId === tabId
-          ? (tabs[index]?.id ?? tabs[index - 1]?.id ?? null)
-          : s.activeTabId;
+        s.activeTabId === tabId ? (tabs[index]?.id ?? tabs[index - 1]?.id ?? null) : s.activeTabId;
       return { tabs, activeTabId };
     });
   },

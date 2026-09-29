@@ -31,7 +31,11 @@ function commit(root: string, message: string): void {
   git(root, ['commit', '-m', message, '--allow-empty']);
 }
 
-async function freshVaultWithHistory(): Promise<{ root: string; index: LinkIndexService; git: GitService }> {
+async function freshVaultWithHistory(): Promise<{
+  root: string;
+  index: LinkIndexService;
+  git: GitService;
+}> {
   const root = await makeVault();
   git(root, ['init']);
   git(root, ['config', 'user.name', 'Author One']);
@@ -57,7 +61,14 @@ describe('DEV-008 confidence engine', () => {
 
   it('caches six factors, authority, and getConfidence(pageId)', async () => {
     const { index, git } = await freshVaultWithHistory();
-    const service = new ConfidenceService(index, git, () => undefined, (error) => { throw error; });
+    const service = new ConfidenceService(
+      index,
+      git,
+      () => undefined,
+      (error) => {
+        throw error;
+      },
+    );
     await service.refresh();
     const pageId = index.pageSummary('target.md')!.pageId;
     const result = index.confidence(pageId);
@@ -87,7 +98,11 @@ describe('DEV-008 confidence engine', () => {
     const pageId = index.pageSummary('target.md')!.pageId;
     const before = index.confidence(pageId)!;
 
-    await page(root, 'target.md', `---\nconfidence_boost: 80\n---\n# Target\n\n${'changed\n'.repeat(400)}`);
+    await page(
+      root,
+      'target.md',
+      `---\nconfidence_boost: 80\n---\n# Target\n\n${'changed\n'.repeat(400)}`,
+    );
     commit(root, 'nexnote:manual: major rewrite');
     index.updateFile('target.md');
     await service.refresh(['target.md']);
@@ -111,10 +126,9 @@ describe('DEV-008 confidence engine', () => {
     git.setRoot(root);
     const service = new ConfidenceService(index, git);
     await service.refresh();
-    const values = [
-      index.pageSummary('a.md')!.pageId,
-      index.pageSummary('b.md')!.pageId,
-    ].map((pageId) => index.confidence(pageId));
+    const values = [index.pageSummary('a.md')!.pageId, index.pageSummary('b.md')!.pageId].map(
+      (pageId) => index.confidence(pageId),
+    );
     expect(values).toHaveLength(2);
     for (const result of values) {
       expect(result!.score).toBeGreaterThan(0);
@@ -126,7 +140,14 @@ describe('DEV-008 confidence engine', () => {
 
   it('does not write frontmatter by default, but writes score when explicitly enabled', async () => {
     const defaultVault = await freshVaultWithHistory();
-    const defaultService = new ConfidenceService(defaultVault.index, defaultVault.git, () => undefined, (error) => { throw error; });
+    const defaultService = new ConfidenceService(
+      defaultVault.index,
+      defaultVault.git,
+      () => undefined,
+      (error) => {
+        throw error;
+      },
+    );
     await defaultService.refresh();
     const defaultTarget = await readFile(path.join(defaultVault.root, 'target.md'), 'utf8');
     expect(defaultTarget).not.toContain('confidence:');
@@ -141,7 +162,14 @@ describe('DEV-008 confidence engine', () => {
       ...config,
       features: { confidenceFrontmatter: true },
     });
-    const enabledService = new ConfidenceService(enabled.index, enabled.git, () => undefined, (error) => { throw error; });
+    const enabledService = new ConfidenceService(
+      enabled.index,
+      enabled.git,
+      () => undefined,
+      (error) => {
+        throw error;
+      },
+    );
     await enabledService.refresh();
     const syncedTarget = await readFile(path.join(enabled.root, 'target.md'), 'utf8');
     expect(syncedTarget).toMatch(/^---\nconfidence_boost: 20\nconfidence: \d+\n---/);
@@ -160,7 +188,14 @@ describe('DEV-008 confidence engine', () => {
     const git = new GitService({ useSystemGit: true });
     index.setRoot(root);
     git.setRoot(root);
-    const service = new ConfidenceService(index, git, () => undefined, (error) => { throw error; });
+    const service = new ConfidenceService(
+      index,
+      git,
+      () => undefined,
+      (error) => {
+        throw error;
+      },
+    );
     const started = performance.now();
     await service.refresh();
     const elapsed = performance.now() - started;
@@ -180,18 +215,31 @@ describe('DEV-008 confidence engine', () => {
       confidenceBoost: null,
     }));
     const histories = new Map(
-      pages.map((page) => [page.path, {
-        commits: 2,
-        authors: 1,
-        firstCommitAt: '2025-01-01T00:00:00.000Z',
-        lastCommitAt: '2025-02-01T00:00:00.000Z',
-        events: [{ date: '2025-02-01T00:00:00.000Z', additions: 5, deletions: 2 }],
-      }]),
+      pages.map((page) => [
+        page.path,
+        {
+          commits: 2,
+          authors: 1,
+          firstCommitAt: '2025-01-01T00:00:00.000Z',
+          lastCommitAt: '2025-02-01T00:00:00.000Z',
+          events: [{ date: '2025-02-01T00:00:00.000Z', additions: 5, deletions: 2 }],
+        },
+      ]),
     );
     const started = performance.now();
     const results = computeConfidenceResults({
       pages,
-      graph: { pages: pages.map((page) => ({ path: page.path, title: page.path, folder: '', tags: [], inboundLinks: 0, outboundLinks: 0 })), links: [] },
+      graph: {
+        pages: pages.map((page) => ({
+          path: page.path,
+          title: page.path,
+          folder: '',
+          tags: [],
+          inboundLinks: 0,
+          outboundLinks: 0,
+        })),
+        links: [],
+      },
       histories,
       now: new Date('2026-01-01T00:00:00.000Z'),
     });

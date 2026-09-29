@@ -22,10 +22,7 @@ export function registerDocxHandlers(registrar: IpcRegistrar): void {
 
   registrar.register(
     'docx:import',
-    async (
-      { data, name, targetDir },
-      services,
-    ): Promise<Result<{ path: string } | null>> => {
+    async ({ data, name, targetDir }, services): Promise<Result<{ path: string } | null>> => {
       // 外部文件来源只经主进程 dialogs.pickFile；renderer 提供的字节走 base64。
       // 不接受 renderer 直接传外部路径，防止任意本地文件被读入 vault。
       if (!data) {

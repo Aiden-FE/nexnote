@@ -56,9 +56,7 @@ describe('openDocumentTab 统一打开入口', () => {
     expect(result.kind).toBe('docx');
     expect(openBinaryMock).not.toHaveBeenCalled();
     expect(openPageMock).not.toHaveBeenCalled();
-    expect(tabState.setDocxNotice).toHaveBeenCalledWith(
-      expect.stringContaining('导入 Word 文档'),
-    );
+    expect(tabState.setDocxNotice).toHaveBeenCalledWith(expect.stringContaining('导入 Word 文档'));
   });
 
   it('.xlsx → xlsx tab；.xmind → mindmap tab（DEV-074）', async () => {
