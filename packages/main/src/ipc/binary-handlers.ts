@@ -155,9 +155,11 @@ export function registerBinaryHandlers(registrar: IpcRegistrar): void {
 
   registrar.register('binary:host:ready', async (_payload, _services, context) => {
     // 主进程用 senderId（= webContents.id）识别哪个 entry 在 ack。
-    // 渲染层在 onEvent('binary:editorCommand') 安装完成后立刻发，避免 did-finish-load → JS 安装晚于队列 drain 的竞态。
-    _services.binaryEditors.acknowledgeReady(context.senderId);
-    return ok({ acknowledged: true as const });
+    // 渲染层在 onEvent('binary:editorCommand') 安装完成后立刻发。
+    // Pull 模型：排队的初始命令随响应返回给页面（订阅之后应用），主进程不主动 push——
+    // push 早于订阅会永久丢消息，宿主将卡在「等待加载文档…」。
+    const commands = _services.binaryEditors.acknowledgeReady(context.senderId);
+    return ok({ commands });
   });
 
   registrar.register('binary:gitignore:set', async ({ untrack }, services) => {

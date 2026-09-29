@@ -11,11 +11,14 @@ import type { BinaryEditorCommand, IpcEventChannel } from '@nexnote/shared';
  * 生命周期：tab 激活 → ensureVisible + send load；tab 关闭/换非二进制 → send destroy + 延迟回收。
  * 并发上限由渲染层 tab-store 控制（≤3，LRU 关闭最早）。
  *
- * 就绪协议（P0 修复）：
+ * 就绪协议（P0 修复 + pull 模型）：
  * - 渲染层 bootstrap 后才注册 `onEvent('binary:editorCommand', …)`，所以主进程必须等它发 ack 才下发命令。
- * - ack 经 `binary:host:ready` invoke 抵达，主进程用 senderId = webContents.id 识别 entry 并 drain 队列。
- * - did-finish-load 留作诊断监听，不参与业务。
- * - flush / roundTrip 在未就绪时挂载到一个 ready promise，等待 ack；超过 FLUSH_READY_TIMEOUT_MS 则拒绝关闭并保留宿主。
+ * - ack 经 `binary:host:ready` invoke 抵达，主进程用 senderId = webContents.id 识别 entry，
+ *   并把 pending 队列**作为 invoke 响应返回**（pull 模型）：页面在订阅之后自行应用，初始 load 永不丢失。
+ *   （历史教训：曾经 ack 后用 webContents.send 推送 pending——did-finish-load 兜底在渲染层订阅前
+ *   强制置 ready 时，load 被发进未订阅页面永久丢失，宿主卡在「等待加载文档…」。）
+ * - did-finish-load 留作诊断监听；其超时兜底只放行 flush 等待器（慢而存活的渲染层可尝试 executeJavaScript），
+ *   绝不置 ready、绝不下发 pending。
  * - close() 在 await flush 前后用 entry 引用 + webContentsId 双重核对，避免销毁到 close/reopen 之后的另一个 entry。
  */
 
@@ -184,24 +187,25 @@ export class BinaryEditorHostManager {
   }
 
   /**
-   * 渲染层 ack：把对应 entry 标 ready 并 drain 队列。
-   * 主进程通过 webContentsId 识别（renderer → main 端）。重复 ack 幂等。
+   * 渲染层 ack：把对应 entry 标 ready，pending 队列**作为返回值交还**给调用方
+   * （binary:host:ready 的 invoke 响应），由宿主页在订阅之后自行应用。
+   * 主进程通过 webContentsId 识别（renderer → main 端）。重复 ack 幂等（返回空数组）。
    * senderId 为 0（单测里的假 ipcMain 不带 sender）按 no-op 处理：等价的真实路径下不会发生。
    */
-  acknowledgeReady(senderId: number): void {
-    if (!senderId) return;
+  acknowledgeReady(senderId: number): BinaryEditorCommand[] {
+    if (!senderId) return [];
     const key = this.idIndex.get(senderId);
-    if (!key) return;
+    if (!key) return [];
     const entry = this.hosts.get(key);
-    if (!entry || entry.webContentsId !== senderId) return;
-    if (entry.view.webContents.isDestroyed()) return;
-    if (entry.ready) return; // 重复 ack 幂等
-    entry.ready = true;
-    const waiters = entry.readyWaiters.splice(0);
-    for (const w of waiters) w();
-    for (const command of entry.pending.splice(0)) {
-      entry.view.webContents.send('binary:editorCommand' satisfies IpcEventChannel, command);
+    if (!entry || entry.webContentsId !== senderId) return [];
+    if (entry.view.webContents.isDestroyed()) return [];
+    const drained = entry.pending.splice(0);
+    if (!entry.ready) {
+      entry.ready = true;
+      const waiters = entry.readyWaiters.splice(0);
+      for (const w of waiters) w();
     }
+    return drained;
   }
 
   private destroy(key: string): void {
@@ -249,16 +253,20 @@ export class BinaryEditorHostManager {
     // 与主窗口同一套导航/权限安全基线。
     view.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
     view.webContents.session.setPermissionRequestHandler((_wc, _p, callback) => callback(false));
-    // did-finish-load 仅作诊断；不再用 did-finish-load 触发 pending drain（避免 JS 注册晚于 did-finish-load 时丢首条 load）。
+    // did-finish-load 仅作诊断 + flush 兜底；不再用 did-finish-load 触发 pending drain（避免 JS 注册晚于 did-finish-load 时丢首条 load）。
     view.webContents.on('did-finish-load', () => {
       const entry = this.hosts.get(key);
       if (!entry || entry.view !== view || view.webContents.isDestroyed()) return;
       if (!entry.ready) {
-        // 超时后触发最后一次 flush 尝试；若渲染层未就绪，错误会阻止宿主销毁。
+        // 超时兜底：只放行 flush 等待器（roundTrip 直接尝试 executeJavaScript，慢而存活的
+        // 渲染层仍可完成关闭前落盘）。绝不置 ready、绝不下发 pending——初始 load 由渲染层
+        // ack 响应拉取，push 给未订阅页面会永久丢失。
         const timer = setTimeout(() => {
           const current = this.hosts.get(key);
           if (!current || current.view !== view) return;
-          if (!current.ready) this.acknowledgeReady(view.webContents.id);
+          if (!current.ready) {
+            for (const w of current.readyWaiters.splice(0)) w();
+          }
         }, FLUSH_READY_TIMEOUT_MS);
         view.webContents.once('destroyed', () => clearTimeout(timer));
       }

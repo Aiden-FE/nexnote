@@ -262,11 +262,17 @@ export function bootstrapBinaryHost(): () => void {
   const unsubscribe = onEvent('binary:editorCommand', (command) => {
     void handleCommand(command);
   });
-  // DEV-074 P0 修复：ack 必须在 onEvent 安装完成后立刻发；
-  // 主进程收到 ack 后才下发 'load' / 'theme' 命令，并允许 flush 经 executeJavaScript 等待。
-  // ack 重复也无害：主进程按 senderId 幂等。
+  // DEV-074 P0 修复 + pull 模型：ack 必须在 onEvent 安装完成后立刻发。
+  // ack 响应携带 ack 前排队的初始命令（load/theme），页面在已订阅状态下顺序应用——
+  // 初始 load 因此永不丢失（主进程不向未订阅页面 push 命令）。
   void invoke('binary:host:ready')
-    .then(() => undefined)
+    .then((result) => {
+      void (async () => {
+        for (const command of result.commands) {
+          await handleCommand(command);
+        }
+      })();
+    })
     .catch(() => undefined);
   return unsubscribe;
 }

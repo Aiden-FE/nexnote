@@ -1,4 +1,5 @@
 import type { Result } from '../result';
+import type { BinaryEditorCommand } from '../events';
 
 /**
  * binary:* 命名空间（DEV-074，ADR-0015；DEV-098 撤销 docx 后仅 xlsx / xmind）。
@@ -122,11 +123,13 @@ export interface BinaryChannelMap {
   /**
    * DEV-074：宿主页面 bootstrap 完成后由渲染层主动 ack（主进程据此 flush 队列、roundTrip 才能拿到 __nexnoteHostFlush）。
    * payload 为空（per-host 不需要标识，主进程通过 senderId = webContents.id 识别）。
-   * 出现 race / 重复 ack 时后到 ack 被忽略。
+   * **Pull 模型**：响应携带 ack 前排队的初始命令（load/theme），宿主页在订阅之后自行应用——
+   * 初始 load 永不丢失（push 给未订阅页面会被 ipcRenderer.on 永久丢掉，宿主卡在「等待加载文档…」）。
+   * 重复 ack 幂等（返回空数组）。
    */
   'binary:host:ready': {
     request: void;
-    response: Result<{ acknowledged: true }>;
+    response: Result<{ commands: BinaryEditorCommand[] }>;
   };
   /** 主题推送（ADR-0015 Decision 3「主题经 IPC 桥」）：广播给全部宿主。 */
   'binary:editorTheme': {
