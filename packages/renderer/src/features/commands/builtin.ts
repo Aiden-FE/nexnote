@@ -221,7 +221,7 @@ commandRegistry.register({
 // 二进制文档导入命令入口（另两个入口为页面树「新建」菜单与拖拽导入）。
 commandRegistry.register({
   id: 'binary.importDocx',
-  title: '导入 DOCX（应用内编辑）',
+  title: '导入 Word 文档（转为块文档）',
   category: '文档',
   keywords: ['import', 'docx', 'word', '导入', '文档'],
   run: () => void importDocxIn('').catch(() => undefined),

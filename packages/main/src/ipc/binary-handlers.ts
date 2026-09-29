@@ -6,14 +6,14 @@ import type { IpcRegistrar } from './registrar';
 import type { IpcServices } from './services';
 import { BinaryService, MAX_BINARY_BYTES } from '../binary/binary-service';
 import { BINARY_IGNORE_MARKER, updateBinaryIgnoreBlock } from '../binary/binary-gitignore';
+import { MetadataStore } from '../document/metadata-store';
 
 /**
- * binary:* — 应用内二进制编辑器（DEV-074，ADR-0015）。
+ * binary:* — 应用内二进制编辑器（DEV-074，ADR-0015；DEV-098 撤销 docx 后仅 xlsx / xmind）。
  * 导入 fail-closed；副本可原地覆写（仓库内副本语义）；Git 跟踪可配置。
  */
 
 const KIND_FILTERS: Record<BinaryKind, { name: string; extensions: string[] }> = {
-  docx: { name: 'Word 文档', extensions: ['docx'] },
   xlsx: { name: 'Excel 工作簿', extensions: ['xlsx'] },
   mindmap: { name: 'XMind 思维导图', extensions: ['xmind'] },
 };
@@ -87,7 +87,7 @@ export function registerBinaryHandlers(registrar: IpcRegistrar): void {
     }
   });
 
-  // DEV-084：在 vault 内创建空白二进制文档（docx/xlsx/xmind），与导入分离。
+  // DEV-084：在 vault 内创建空白二进制文档（xlsx/xmind），与导入分离。
   registrar.register(
     'binary:create',
     async ({ kind, title, targetDir }, services) => {
@@ -105,24 +105,6 @@ export function registerBinaryHandlers(registrar: IpcRegistrar): void {
     try {
       const result = await service(services).save(kind, path, data, expectedSha256);
       await recordWrite(services, `保存 ${kind.toUpperCase()} ${path}`);
-      return ok(result);
-    } catch (e) {
-      return toErrorResult(e);
-    }
-  });
-
-  registrar.register('binary:docx:read', async ({ path }, services) => {
-    try {
-      return ok(await service(services).readDocxHtml(path));
-    } catch (e) {
-      return toErrorResult(e);
-    }
-  });
-
-  registrar.register('binary:docx:save', async ({ path, html, expectedSha256 }, services) => {
-    try {
-      const result = await service(services).saveDocxHtml(path, html, expectedSha256);
-      await recordWrite(services, `保存 DOCX ${path}`);
       return ok(result);
     } catch (e) {
       return toErrorResult(e);
@@ -156,6 +138,16 @@ export function registerBinaryHandlers(registrar: IpcRegistrar): void {
   registrar.register('binary:editorTheme', async ({ theme }, services) => {
     services.binaryEditors.applyTheme(theme);
     return ok({ applied: true as const });
+  });
+
+  // DEV-099：xmind 主题预设持久化到 sidecar（read-merge-write，不碰 xmind 字节）。
+  registrar.register('binary:mindmapTheme:set', async ({ path, theme }, services) => {
+    const root = services.vaultSession.getCurrent()?.root;
+    if (!root) return err('当前未打开知识库', 'NO_VAULT');
+    const store = new MetadataStore(root);
+    const current = (await store.read(path)) ?? {};
+    await store.write(path, { ...current, mindmapTheme: theme });
+    return ok({ saved: true as const });
   });
 
   registrar.register('binary:host:flush', async ({ kind, path }, services) => {

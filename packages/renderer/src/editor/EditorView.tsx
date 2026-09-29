@@ -539,6 +539,8 @@ export function EditorView({ tab }: EditorViewProps) {
       onDocChange: () => {
         // 用户文档变更立即置 dirty：不得等防抖保存回调（间隔内退出/外部改盘需保护未落盘内容）。
         dirtyRef.current = true;
+        // DEV-097：同步 dirty 到 tab store，供关闭时判断是否清理自动创建的空文件。
+        useTabStore.getState().setTabDirty(tab.id, true);
       },
       onContentChange: (markdown) => save(markdown),
       onSaveError: (e) => {
@@ -731,7 +733,12 @@ export function EditorView({ tab }: EditorViewProps) {
       for (const abort of pendingFilePicksRef.current) abort();
       pendingFilePicksRef.current.clear();
       // 先 flush 再 destroy：destroy 会 cancel，不能颠倒。
-      void kernel.flushPendingSave().finally(() => kernel.destroy());
+      // DEV-097：未编辑的 tab 关闭时不 flush——避免与 cleanupUntouchedTabs 的 delete 竞态。
+      if (dirtyRef.current) {
+        void kernel.flushPendingSave().finally(() => kernel.destroy());
+      } else {
+        kernel.destroy();
+      }
       kernelRef.current = null;
       unmountedRef.current = true;
     };

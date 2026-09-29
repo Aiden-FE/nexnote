@@ -394,6 +394,8 @@ async function bootstrap(): Promise<void> {
   }
 
   const mainWindow = windows.createMainWindow();
+  // DEV-096：原生应用菜单（macOS 系统菜单栏），取代渲染层 FileMenuBar。
+  windows.buildApplicationMenu();
   // DEV-074：二进制编辑器宿主挂到主窗口（WebContentsView 子视图满铺内容区）。
   binaryEditors.attach(mainWindow);
   // 关闭主窗口前等待全部二进制编辑器的 pending 写入完成（ADR-0015 Decision 6）。

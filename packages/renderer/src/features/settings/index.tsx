@@ -585,7 +585,7 @@ function EditorSection() {
       </Row>
       <Row
         label="二进制文档编辑器并发上限"
-        description={`docx / xlsx / xmind tab 最多同时打开 ${vault.binary.maxConcurrentTabs} 个，超出自动关闭最早打开的（1–8）`}
+        description={`xlsx / xmind tab 最多同时打开 ${vault.binary.maxConcurrentTabs} 个，超出自动关闭最早打开的（1–8）`}
       >
         <input
           type="range"
@@ -694,7 +694,7 @@ function GitSection() {
       {binaryUntracked !== null && (
         <Row
           label="二进制文档不随 Git 跟踪"
-          description="docx / xlsx / xmind 默认随知识库版本化；开启后写入 .gitignore 不再跟踪"
+          description="xlsx / xmind 默认随知识库版本化；开启后写入 .gitignore 不再跟踪"
         >
           <Toggle checked={binaryUntracked} onChange={(v) => void setBinaryUntrack(v)} />
         </Row>

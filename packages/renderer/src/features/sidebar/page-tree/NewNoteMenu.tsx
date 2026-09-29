@@ -2,23 +2,22 @@ import { useEffect, useRef, useState } from 'react';
 import { ChevronDown, FilePlus2 } from 'lucide-react';
 import { cn } from '../../../lib/utils';
 
-/** DEV-084：新建菜单支持的格式（连同 DEV-074 的二进制创建）。 */
+/** DEV-084（DEV-098 撤销 docx 新建后仅 xlsx / xmind）。 */
 type NewNoteKind =
   | { kind: 'note'; format: 'native-block' }
   | { kind: 'note'; format: 'markdown' }
-  | { kind: 'binary'; binary: 'docx' }
   | { kind: 'binary'; binary: 'xlsx' }
   | { kind: 'binary'; binary: 'xmind' };
 
 interface NewNoteMenuProps {
-  /** 按所选格式新建（Markdown / native-block / 空白 docx/xlsx/xmind）。 */
+  /** 按所选格式新建（Markdown / native-block / 空白 xlsx/xmind）。 */
   onPick(item: NewNoteKind): void;
 }
 
 /**
  * 「新建」下拉按钮（DEV-084 + DEV-096）：
  * - 与「导入」并列的「导入」下拉已撤掉，导入入口统一在顶栏「文件」菜单；
- * - 主按钮直接创建块编辑笔记（默认格式），箭头展开格式菜单（含空白 docx/xlsx/xmind）；
+ * - 主按钮直接创建块编辑笔记（默认格式），箭头展开格式菜单（含空白 xlsx/xmind）；
  * - 键盘：↑/↓ 打开并在项间移动，Enter 选中，Esc/Tab 关闭。
  */
 export function NewNoteMenu({ onPick }: NewNoteMenuProps) {
@@ -193,14 +192,6 @@ const ITEMS: MenuItem[] = [
     description: '编辑 Markdown 源码，右侧实时预览',
     testId: 'new-note-markdown',
     value: { kind: 'note', format: 'markdown' },
-  },
-  {
-    badge: 'DOCX',
-    badgeClass: 'bg-muted text-muted-foreground',
-    label: '新建空白 DOCX',
-    description: '在 vault 内创建空白 .docx 并打开编辑器',
-    testId: 'new-note-docx',
-    value: { kind: 'binary', binary: 'docx' },
   },
   {
     badge: 'XLSX',

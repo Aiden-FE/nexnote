@@ -8,6 +8,7 @@ const tabState = {
   tabs: [] as Array<{ id: string; kind: string; pagePath?: string; editorMode?: string }>,
   activeTabId: null as string | null,
   toggleSourceMode: vi.fn(),
+  setDocxNotice: vi.fn(),
   updateTab: vi.fn((id: string, patch: Record<string, unknown>) => {
     const tab = tabState.tabs.find((candidate) => candidate.id === id);
     if (tab) Object.assign(tab, patch);
@@ -49,12 +50,15 @@ describe('openDocumentTab 统一打开入口', () => {
     tabState.updateTab.mockClear();
   });
 
-  it('.docx 打开可编辑 tab（并发上限来自 vault 设置），不查询 markdown 元数据', async () => {
+  it('.docx 不打开 tab，设置提示引导重新导入（DEV-098）', async () => {
     const { openDocumentTab } = await import('../src/lib/open-document');
     const result = await openDocumentTab('reports/a.docx');
     expect(result.kind).toBe('docx');
-    expect(openBinaryMock).toHaveBeenCalledWith('reports/a.docx', 'docx', 3);
+    expect(openBinaryMock).not.toHaveBeenCalled();
     expect(openPageMock).not.toHaveBeenCalled();
+    expect(tabState.setDocxNotice).toHaveBeenCalledWith(
+      expect.stringContaining('导入 Word 文档'),
+    );
   });
 
   it('.xlsx → xlsx tab；.xmind → mindmap tab（DEV-074）', async () => {

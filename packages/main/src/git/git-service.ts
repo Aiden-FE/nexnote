@@ -32,6 +32,13 @@ export function normalizeDebounceMs(raw: unknown): number {
 
 const VERSIONED_NEXNOTE_FILES: readonly string[] = [];
 const OS_METADATA_FILES = ['.DS_Store', 'Thumbs.db', 'desktop.ini'] as const;
+
+/**
+ * DEV-090：允许自动解决冲突的应用自有文件白名单。这些文件内容由应用生成，
+ * 冲突只可能是模板代数差异（见 `writeDefaultGitignore`），规范化即可无损收敛。
+ * 用户笔记、二进制文档等任何其它文件都不在此列——它们必须人工处理。
+ */
+export const SELF_RESOLVABLE_CONFLICT_FILES: readonly string[] = ['.gitignore'];
 const VERSIONED_NEXNOTE_PATHS = VERSIONED_NEXNOTE_FILES.map((file) => `.nexnote/${file}`);
 const OS_METADATA_FILES_LOWER = OS_METADATA_FILES.map((file) => file.toLowerCase());
 
@@ -39,11 +46,16 @@ export function isVaultSyncGuardedPath(file: string): boolean {
   // Git emits '/' separators on every platform; a backslash can be a literal
   // filename character on Unix, so do not reinterpret it as a directory here.
   // DEV-083/ADR-0016: `.nexnote/` 整目录默认 ignore，UI/config 状态不再跨设备同步。
-  // 同步护栏只阻断 OS 临时文件与 `.nexnote/` 下所有运行时产物。
+  // DEV-100 例外：`.nexnote/metadata/` 下的文档 sidecar（format/来源溯源）随仓库同步，
+  // 否则跨设备缺失 sidecar 会把 markdown 文档误判为块文档；其 tmp 写盘产物仍护栏。
   const normalized = file.replace(/^\.\//, '');
   const segments = normalized.toLowerCase().split('/');
   if (segments.some((segment) => OS_METADATA_FILES_LOWER.includes(segment))) return true;
-  return segments[0] === '.nexnote' && !VERSIONED_NEXNOTE_PATHS.includes(normalized);
+  if (segments[0] !== '.nexnote') return false;
+  if (normalized.toLowerCase().startsWith('.nexnote/metadata/')) {
+    return segments[segments.length - 1].includes('.tmp-');
+  }
+  return !VERSIONED_NEXNOTE_PATHS.includes(normalized);
 }
 
 export class GitServiceError extends Error {
@@ -89,15 +101,15 @@ export interface SyncResult {
 export interface PreserveLocalAbortResult {
   message: string;
   root: string;
-  /** 探测到的 ahead commit 数（rebase orig-head 到 HEAD 之间）。 */
+  /** 原始分支上不属于 rebase 目标的提交数。 */
   aheadCount: number;
   /** 实际写入恢复目录的 patch 文件数。 */
   exported: number;
-  /** 成功 `git am` 回放的 patch 数。 */
+  /** 成功回放的补丁数；中止 rebase 不需要回放。 */
   replayed: number;
-  /** 回放失败的 patch 文件名（已移到 `<recoveryDir>/FAILED/`）。 */
+  /** 无法回放的补丁文件名；中止 rebase 不会产生。 */
   failed: string[];
-  /** vault 相对路径，便于 UI 提示用户前往 reconcile。 */
+  /** 完整的备份目录，相对知识库根目录。 */
   recoveryDir: string;
 }
 
@@ -408,15 +420,138 @@ export class GitService {
   }
 
   /**
-   * DEV-083：保留本地 ahead commits 并中止 rebase/merge。流程：
-   *  1. 从 rebase-merge/orig-head 读出 rebase 起点 `baseSha`；
-   *  2. 用 `git format-patch baseSha..HEAD` 把 ahead commits 导出到
-   *     `.nexnote/.rebase-recovery/<timestamp>/`（该目录受 `.nexnote/` ignore
-   *     保护，不会再次被纳入版本化）；
-   *  3. `git rebase --abort` 回退 HEAD 与索引；
-   *  4. `git am --3way` 按序回放 patches；任何 3-way 应用失败的 patch 写入
-   *     `<timestamp>/FAILED/` 目录供用户后续 reconcile，绝不中断整体流程。
-   *  返回导出与回放的统计信息，便于 UI 显式告知「已保留 N 个笔记提交」。
+   * DEV-090：真正完成同步——当暂停的 rebase 只冲突在应用自有文件上时，用规范内容
+   * 重建该文件（保留用户自写规则，逐字节安全），`git rebase --continue` 后推送。
+   *
+   * 与 abort 系动作的区别：abort 把本地提交撤回，同步并未完成；本方法让 rebase 走完，
+   * 因此用户不需要再手动同步。安全边界：只要冲突文件里出现任何非应用自有文件
+   * （用户笔记 / 二进制文档等），立即拒绝并保留现场交给人工，绝不覆盖用户内容。
+   */
+  async resolveConflictAndContinue(): Promise<GitOperationResult> {
+    const root = this.requireRoot();
+    const git = this.git(root);
+    const isRebase =
+      Boolean(await this.resolveGitDirEntry(root, 'rebase-merge')) ||
+      Boolean(await this.resolveGitDirEntry(root, 'rebase-apply'));
+    const hasMerge = await this.hasGitDirEntry(root, 'MERGE_HEAD');
+    if (!isRebase && !hasMerge)
+      throw new GitServiceError('当前没有进行中的 rebase/merge，无需解决', 'NO_OPERATION');
+    if (!isRebase)
+      throw new GitServiceError(
+        '合并（merge）产生的冲突无法自动解决，请人工处理后重试',
+        'CONFLICT_NOT_SELF_RESOLVABLE',
+      );
+    // 逐个 commit 解决：一个 rebase 可能停多次（每个 commit 一次）。
+    // `rebase --continue` 必须有一个编辑器来沿用原提交信息；这里固定为 no-op(`true`)，
+    // 不接受任何用户/模型输入，因此不会引入可注入的编辑器。
+    const continueGit = this.git(
+      root,
+      this.resolveRuntime(),
+      { GIT_EDITOR: 'true', GIT_SEQUENCE_EDITOR: 'true' },
+      { unsafeEditor: true },
+    );
+    for (let step = 0; step < 50; step += 1) {
+      const conflicted = await this.rawStatusPorcelain(root);
+      if (conflicted.length === 0) {
+        throw new GitServiceError('当前没有未解决的冲突文件', 'NO_OPERATION');
+      }
+      const foreign = conflicted.filter(
+        (file) => !GitService.SELF_RESOLVABLE_CONFLICT_FILES.includes(file),
+      );
+      if (foreign.length > 0) {
+        throw new GitServiceError(
+          `冲突涉及非应用自有文件（${foreign.join('、')}），需要人工解决；已保留现场`,
+          'CONFLICT_NOT_SELF_RESOLVABLE',
+        );
+      }
+      for (const file of conflicted) await this.resolveSelfOwnedConflictFile(root, file);
+      await this.stageLiteralPaths(git, ['add'], conflicted);
+      try {
+        await continueGit.raw(['rebase', '--continue']);
+      } catch (error) {
+        throw new GitServiceError(
+          `继续 rebase 失败：${errorMessage(error)}`,
+          'CONFLICT_CONTINUE_FAILED',
+        );
+      }
+      if (
+        !(await this.resolveGitDirEntry(root, 'rebase-merge')) &&
+        !(await this.resolveGitDirEntry(root, 'rebase-apply'))
+      ) {
+        await this.pushAfterResolve(root);
+        return this.notified({ message: '已自动解决同步冲突并完成 rebase', root });
+      }
+    }
+    throw new GitServiceError(
+      'rebase 步骤超出预期，请人工检查仓库状态',
+      'CONFLICT_CONTINUE_FAILED',
+    );
+  }
+
+  /**
+   * DEV-090：把一个「应用自有文件」的冲突重建为规范内容。应用模板块由应用生成，
+   * 因此直接从冲突的两侧（`:2:` 我们的、`:3:` 重放的）剥离，剩余的用户自写规则取
+   * 并集保留；绝不把冲突标记写进文件，也不覆盖两侧都不存在的用户内容。
+   *
+   * 「用户规则」的判定：行精确（trim 后）匹配应用模板里的任何一行，都视为模板残留
+   * 而非用户自写内容；只有非模板行才进并集。这样你的 `.gitignore`（两侧只有空行差
+   * 异、模板本身完全一致）能收敛成一份规范模板，不被错误地双写。
+   */
+  private async resolveSelfOwnedConflictFile(root: string, file: string): Promise<void> {
+    const safe = await safeVaultPath(root);
+    const target = path.join(safe, file);
+    const stat = await fsp.lstat(target).catch(() => null);
+    if (stat?.isSymbolicLink()) {
+      throw new GitServiceError('冲突文件不能是符号链接', 'INVALID_PATH');
+    }
+    const git = this.git(root);
+    const [ours, theirs] = await Promise.all([
+      git.raw(['show', `:2:${file}`]).catch(() => ''),
+      git.raw(['show', `:3:${file}`]).catch(() => ''),
+    ]);
+    const variants = [
+      Buffer.from(`${GitService.GITIGNORE_LINES.join('\n')}\n`, 'utf8'),
+      Buffer.from(`${GitService.GITIGNORE_LINES.join('\r\n')}\r\n`, 'utf8'),
+      Buffer.from(`${GitService.LEGACY_GITIGNORE_ALLOWLIST_LINES.join('\n')}\n`, 'utf8'),
+      Buffer.from(`${GitService.LEGACY_GITIGNORE_ALLOWLIST_LINES.join('\r\n')}\r\n`, 'utf8'),
+    ];
+    const templateLineSet = new Set<string>([
+      ...GitService.GITIGNORE_LINES,
+      ...GitService.LEGACY_GITIGNORE_ALLOWLIST_LINES,
+    ]);
+    const userLines: string[] = [];
+    const seen = new Set<string>();
+    for (const side of [ours, theirs]) {
+      const bytes = Buffer.from(side, 'utf8');
+      const stripped = removeTemplateBlocks(bytes, findTemplateBlocks(bytes, variants));
+      for (const raw of stripped.toString('utf8').split('\n')) {
+        const bare = raw.replace(/\r$/, '');
+        const trimmed = bare.trim();
+        if (!trimmed) continue;
+        if (/^(<<<<<<<|=======|>>>>>>>)/.test(trimmed)) continue;
+        if (templateLineSet.has(trimmed)) continue;
+        if (seen.has(trimmed)) continue;
+        seen.add(trimmed);
+        userLines.push(bare);
+      }
+    }
+    const content = `${[...GitService.GITIGNORE_LINES, ...userLines].join('\n')}\n`;
+    await fsp.writeFile(target, content, 'utf8');
+  }
+
+  /** rebase 完成后把本地提交推送到远程（无远程/无 ahead 时跳过）。 */
+  private async pushAfterResolve(root: string): Promise<void> {
+    const git = this.git(root);
+    const status = await git.status();
+    if (status.ahead <= 0 || !status.current) return;
+    const remote = await this.branchRemote(git, status.current);
+    if (!remote) return;
+    await this.git(root).push(['-u', remote, status.current]);
+  }
+
+  /**
+   * 备份原始分支上相对 rebase 目标的本地提交，再中止 rebase。
+   * `orig-head` 是 rebase 前的分支 HEAD；`git rebase --abort` 本身会恢复它。
    */
   async preserveLocalAndAbortRebaseOrMerge(): Promise<PreserveLocalAbortResult> {
     const root = this.requireRoot();
@@ -429,12 +564,12 @@ export class GitService {
       throw new GitServiceError('当前没有进行中的 rebase 或 merge，无需保留', 'NO_OPERATION');
     }
 
-    // orig-head 指向 rebase 开始前的 HEAD；merge 没有等价物，按 MERGE_HEAD
-    // 退一步取 HEAD~0 直接放弃本地未提交变更。
-    let baseSha: string;
+    let originalHead: string;
+    let onto: string;
     if (isRebase) {
-      const baseFile = path.join(rebaseMergeDir ?? rebaseApplyDir!, 'orig-head');
-      baseSha = (await fsp.readFile(baseFile, 'utf8')).trim();
+      const rebaseDir = rebaseMergeDir ?? rebaseApplyDir!;
+      originalHead = (await fsp.readFile(path.join(rebaseDir, 'orig-head'), 'utf8')).trim();
+      onto = (await fsp.readFile(path.join(rebaseDir, 'onto'), 'utf8')).trim();
     } else {
       // merge state 下保留本地 ahead commits 语义不清晰，直接中止并把 ahead
       // 留给 doctor 用户在 doctor 之外通过 commit/push 自行处理。
@@ -454,13 +589,13 @@ export class GitService {
       };
     }
 
-    const aheadShas = (await git.raw(['rev-list', `${baseSha}..HEAD`, '--reverse']))
+    const baseSha = (await git.raw(['merge-base', originalHead, onto])).trim();
+    const aheadShas = (await git.raw(['rev-list', `${baseSha}..${originalHead}`, '--reverse']))
       .split('\n')
       .map((s) => s.trim())
       .filter(Boolean);
 
     if (aheadShas.length === 0) {
-      // 没有 ahead commit 也要把 rebase abort 掉（doctor 仍然需要恢复）。
       await git.raw(['rebase', '--abort']);
       throw new GitServiceError('没有本地未推送的提交需要保留', 'NO_AHEAD_TO_PRESERVE');
     }
@@ -471,57 +606,29 @@ export class GitService {
     await fsp.mkdir(recoveryDir, { recursive: true });
 
     let exported = 0;
-    let replayed = 0;
-    const failed: string[] = [];
 
     try {
-      // 1. 导出 patches 到隔离 index（避免污染当前索引）
       const tempIndex = await fsp.mkdtemp(path.join(tmpdir(), 'nexnote-format-patch-'));
       try {
         const isolated = this.git(root, this.resolveRuntime(), {
           GIT_INDEX_FILE: path.join(tempIndex, 'index'),
         });
-        await isolated.raw(['read-tree', 'HEAD']);
-        const patchOutput = await isolated.raw([
-          'format-patch',
-          '-o',
-          recoveryDir,
-          `${baseSha}..HEAD`,
-        ]);
-        exported = patchOutput.split('\n').filter((line) => line.startsWith(recoveryDir)).length;
-        if (exported === 0) {
-          // simple-git 不带绝对路径前缀，靠统计文件数兜底
-          const entries = await fsp.readdir(recoveryDir);
-          exported = entries.filter((name) => name.endsWith('.patch')).length;
+        await isolated.raw(['read-tree', originalHead]);
+        await isolated.raw(['format-patch', '-o', recoveryDir, `${baseSha}..${originalHead}`]);
+        exported = (await fsp.readdir(recoveryDir)).filter((name) =>
+          name.endsWith('.patch'),
+        ).length;
+        if (exported !== aheadShas.length) {
+          throw new Error('本地提交备份不完整，已取消中止 rebase');
         }
       } finally {
         await fsp.rm(tempIndex, { recursive: true, force: true });
       }
 
-      // 2. 中止 rebase（恢复 HEAD 与索引到 baseSha）
       await git.raw(['rebase', '--abort']);
-
-      // 3. 按序回放 patches；失败的移到 FAILED/ 子目录并跳过
-      const patches = (await fsp.readdir(recoveryDir))
-        .filter((name) => name.endsWith('.patch'))
-        .sort();
-      const failedDir = path.join(recoveryDir, 'FAILED');
-      for (const patchFile of patches) {
-        const patchPath = path.join(recoveryDir, patchFile);
-        try {
-          await git.raw(['am', '--3way', patchPath]);
-          replayed += 1;
-        } catch {
-          failed.push(patchFile);
-          // 回滚 am 的部分状态：把已被应用的回退到 working tree
-          try {
-            await git.raw(['am', '--abort']);
-          } catch {
-            /* 没有 am 状态时忽略 */
-          }
-          await fsp.mkdir(failedDir, { recursive: true });
-          await fsp.rename(patchPath, path.join(failedDir, patchFile)).catch(() => undefined);
-        }
+      const restoredHead = (await git.raw(['rev-parse', 'HEAD'])).trim();
+      if (restoredHead !== originalHead) {
+        throw new Error('rebase 已中止，但 HEAD 未恢复到原始本地提交');
       }
     } catch (error) {
       throw new GitServiceError(
@@ -530,31 +637,28 @@ export class GitService {
       );
     }
 
-    const message =
-      failed.length > 0
-        ? `已保留 ${exported} 个提交（${replayed} 已回放，${failed.length} 待 reconcile）`
-        : `已保留 ${exported} 个提交（全部回放成功）`;
     return {
-      message,
+      message: `已中止 rebase，保留 ${aheadShas.length} 个本地提交（已备份）`,
       root,
       aheadCount: aheadShas.length,
       exported,
-      replayed,
-      failed,
+      replayed: 0,
+      failed: [],
       recoveryDir: path.relative(safe, recoveryDir),
     };
   }
 
-  /** `git rev-parse --git-dir` 的绝对路径或 `null`（不存在）。 */
+  /** 返回存在的 `{git-dir}/{name}` 的完整路径。 */
   private async resolveGitDirEntry(root: string, name: string): Promise<string | null> {
     const git = this.git(root);
     const gitDirRaw = await git.raw(['rev-parse', '--git-dir']).catch(() => '');
     const gitDir = gitDirRaw.trim();
     if (!gitDir) return null;
     const base = path.isAbsolute(gitDir) ? gitDir : path.join(root, gitDir);
+    const entry = path.join(base, name);
     try {
-      await fsp.access(path.join(base, name));
-      return base;
+      await fsp.access(entry);
+      return entry;
     } catch {
       return null;
     }
@@ -1172,17 +1276,54 @@ export class GitService {
   }
 
   /**
-   * Vault-local `.gitignore` 模板（ADR-0016，取代 ADR-0003 的 allowlist 条款）：
-   *  - 默认忽略 `.nexnote/` 整目录（运行时索引、缓存、锁、数据库以及 UI/会话配置）；
-   *  - 跨设备同步只覆盖 vault 内用户笔记与二进制文档。
+   * Vault-local `.gitignore` 模板（ADR-0016 + DEV-100 修订）：
+   *  - `.nexnote/` 下的运行时产物（索引、缓存、锁、数据库、UI/会话配置）忽略；
+   *  - 例外：`.nexnote/metadata/` 文档 sidecar（format / 来源溯源）随仓库同步——
+   *    否则跨设备缺失 sidecar 会把 markdown 文档误判为块文档（DEV-100）；
+   *    sidecar 的 tmp 写盘产物仍忽略。
    *  - 绑定时幂等修复：完整模板前置，用户规则逐字保留且拥有后置优先级。
    */
   static readonly GITIGNORE_LINES: readonly string[] = [
+    '# NexNote: ignore .nexnote/ runtime state (index, cache, locks, database,',
+    '# per-device UI/session state) but track document metadata sidecars so the',
+    '# block/markdown format survives cross-device sync. See ADR-0016, DEV-100.',
+    '.nexnote/*',
+    '!.nexnote/metadata/',
+    '.nexnote/metadata/*.tmp-*',
+    '# NexNote: operating-system metadata never belongs in the knowledge base.',
+    ...OS_METADATA_FILES,
+  ];
+
+  /**
+   * DEV-100 迁移：ADR-0016 旧模板（`.nexnote/` 整目录 ignore）的完整块。
+   * 旧 vault 绑定时该块会被识别并替换为新模板，避免旧规则作为「用户规则」
+   * 后置覆盖新模板的 `!.nexnote/metadata/` 例外。
+   */
+  static readonly LEGACY_ADR0016_FULL_IGNORE_LINES: readonly string[] = [
     '# NexNote: ignore the entire .nexnote/ runtime directory (index, cache, locks,',
     '# database, and per-device UI/session state). See ADR-0016.',
     '.nexnote/',
     '# NexNote: operating-system metadata never belongs in the knowledge base.',
     ...OS_METADATA_FILES,
+  ];
+
+  /**
+   * DEV-100 迁移：ADR-0003 全忽略变体（allowlist 行已被 DEV-083 迁移剥掉后残留的形态）：
+   * ADR-0003 注释 + `.nexnote/`（± OS 元数据块）。不剥掉它会作为「用户规则」后置
+   * 覆盖新模板的 `!.nexnote/metadata/` 例外。
+   */
+  static readonly LEGACY_ADR0003_FULL_IGNORE_LINES: readonly string[] = [
+    '# NexNote: ignore the entire .nexnote/ runtime directory by default, then re-allow',
+    '# versioned, reconstructible configuration files. See ADR 0003.',
+    '.nexnote/',
+    '# NexNote: operating-system metadata never belongs in the knowledge base.',
+    ...OS_METADATA_FILES,
+  ];
+
+  static readonly LEGACY_ADR0003_IGNORE_LINES: readonly string[] = [
+    '# NexNote: ignore the entire .nexnote/ runtime directory by default, then re-allow',
+    '# versioned, reconstructible configuration files. See ADR 0003.',
+    '.nexnote/',
   ];
 
   /**
@@ -1197,6 +1338,9 @@ export class GitService {
     '!/.nexnote/config.json',
     '!/.nexnote/layout.json',
   ];
+
+  static readonly SELF_RESOLVABLE_CONFLICT_FILES: readonly string[] =
+    SELF_RESOLVABLE_CONFLICT_FILES;
 
   async writeDefaultGitignore(root: string): Promise<void> {
     const safe = await safeVaultPath(root);
@@ -1235,11 +1379,44 @@ export class GitService {
         `${GitService.LEGACY_GITIGNORE_ALLOWLIST_LINES.join('\r\n')}\r\n`,
         'utf8',
       );
+      // DEV-100 migration: strip the ADR-0016 full-`.nexnote/` ignore block so the
+      // metadata-sidecar exception template replaces it instead of being overridden
+      // by a leftover user-position `.nexnote/` rule.
+      const legacyFullIgnoreLf = Buffer.from(
+        `${GitService.LEGACY_ADR0016_FULL_IGNORE_LINES.join('\n')}\n`,
+        'utf8',
+      );
+      const legacyFullIgnoreCrlf = Buffer.from(
+        `${GitService.LEGACY_ADR0016_FULL_IGNORE_LINES.join('\r\n')}\r\n`,
+        'utf8',
+      );
+      const legacyAdr0003FullLf = Buffer.from(
+        `${GitService.LEGACY_ADR0003_FULL_IGNORE_LINES.join('\n')}\n`,
+        'utf8',
+      );
+      const legacyAdr0003FullCrlf = Buffer.from(
+        `${GitService.LEGACY_ADR0003_FULL_IGNORE_LINES.join('\r\n')}\r\n`,
+        'utf8',
+      );
+      const legacyAdr0003Lf = Buffer.from(
+        `${GitService.LEGACY_ADR0003_IGNORE_LINES.join('\n')}\n`,
+        'utf8',
+      );
+      const legacyAdr0003Crlf = Buffer.from(
+        `${GitService.LEGACY_ADR0003_IGNORE_LINES.join('\r\n')}\r\n`,
+        'utf8',
+      );
       const templateBlocks = findTemplateBlocks(originalUserBytes, [
         templateBytes,
         crlfTemplateBytes,
         legacyAllowlistLf,
         legacyAllowlistCrlf,
+        legacyFullIgnoreLf,
+        legacyFullIgnoreCrlf,
+        legacyAdr0003FullLf,
+        legacyAdr0003FullCrlf,
+        legacyAdr0003Lf,
+        legacyAdr0003Crlf,
       ]);
       if (
         templateBlocks.length === 1 &&
@@ -1268,7 +1445,7 @@ export class GitService {
   async untrackBinaryDocuments(root: string): Promise<number> {
     const git = this.git(root);
     const tracked = (await git.raw(['ls-files', '-z'])).split('\0').filter(Boolean);
-    const binary = tracked.filter((file) => /\.(?:docx|xlsx|xmind)$/i.test(file));
+    const binary = tracked.filter((file) => /\.(?:xlsx|xmind)$/i.test(file));
     await this.stageLiteralPaths(git, ['rm', '--cached', '-f', '--ignore-unmatch'], binary);
     return binary.length;
   }
@@ -1344,6 +1521,8 @@ export class GitService {
     baseDir: string,
     runtime: GitRuntimeResolution = this.resolveRuntime(),
     extraEnv: NodeJS.ProcessEnv = {},
+    /** DEV-090：仅 `rebase --continue` 需要；编辑器固定为 no-op，不接受用户输入。 */
+    options: { unsafeEditor?: boolean } = {},
   ): SimpleGit {
     if (runtime.source === 'missing') {
       throw new GitServiceError(
@@ -1397,6 +1576,7 @@ export class GitService {
         allowUnsafeSshCommand: true,
         allowUnsafeAskPass: true,
         allowUnsafeConfigEnvCount: true,
+        ...(options.unsafeEditor ? { allowUnsafeEditor: true } : {}),
       },
     }).env(env);
     return instance;

@@ -1,4 +1,3 @@
-import { promises as fsp } from 'node:fs';
 import * as path from 'node:path';
 import { createHash } from 'node:crypto';
 import type { VaultFsService } from '../fs/fs-service';
@@ -6,13 +5,6 @@ import { formatForPath } from '../document/document-domain';
 import { MetadataStore } from '../document/metadata-store';
 import { projectDocxToMarkdown } from './docx-markdown';
 import { markdownToDocx } from './docx-writer';
-import { rebuildZip } from './zip';
-import {
-  serializeEditDocument,
-  openEditDocument,
-  editDocumentFromXml,
-  type EditDocument,
-} from './docx-edit';
 
 export interface DocxImportInput {
   /** renderer 已持有字节时走 base64（外部路径一律经主进程 dialogs.pickFile 后转 base64）。 */
@@ -24,26 +16,11 @@ export interface DocxImportInput {
 /** 单个导入 DOCX 的字节上限（防 renderer 借导入通道搬运超大任意文件）。 */
 export const MAX_DOCX_BYTES = 200 * 1024 * 1024;
 
-export interface DocxPreview {
-  markdown: string;
-  sha256: string;
-}
-
-export interface DocxEditCopy {
-  path: string;
-  created: boolean;
-}
-
-export interface OpenEditDocument {
-  document: EditDocument;
-  sha256: string;
-}
-
 /**
- * DOCX 领域服务（DEV-074，ADR-0015）：仓库内副本语义的导入校验与 Markdown 降级路径。
- * - 主编辑形态已迁至 binary:docx:read / binary:docx:save（语义级往返，副本可原地覆写）；
- * - 本服务保留：导入 fail-closed 校验、Markdown 投影（readPreview / createEditCopy 降级）、
- *   Markdown → 新 .docx 导出（导出目标已存在时拒绝，不覆写既有文件）。
+ * DOCX 领域服务（DEV-098 撤销仓库内编辑后收窄）：
+ * - 导入即转换：外部 .docx → `.md` 块文档（Markdown 投影），vault 内不落 .docx 字节；
+ * - 导出：Markdown → 新 .docx（导出目标已存在时拒绝，不覆写既有文件）。
+ * 仓库内 docx 编辑（readPreview / createEditCopy / openEdit / save）已删除。
  */
 export class DocxService {
   constructor(
@@ -57,27 +34,12 @@ export class DocxService {
     return root;
   }
 
-  /** 读 vault 内 .docx 字节（沙箱校验由 fs.resolve 保证）。 */
-  private async readDocxBytes(relPath: string): Promise<Buffer> {
-    if (formatForPath(relPath) !== 'docx') {
-      throw new DocxServiceError(`不是 DOCX 文档: ${relPath}`, 'DOCX_NOT_DOCX');
-    }
-    const { abs } = await this.fs.resolve(relPath);
-    try {
-      return await fsp.readFile(abs);
-    } catch (e) {
-      throw new DocxServiceError(
-        `读取 DOCX 失败: ${relPath}（${(e as Error).message}）`,
-        'READ_FAILED',
-      );
-    }
-  }
-
-  /** 导入 .docx（base64）：先验证可解析，再经 fs 导入策略落盘 + 写 sidecar。 */
-  async importDocx(
-    input: DocxImportInput,
-    targetDir: string,
-  ): Promise<{ path: string; sha256: string }> {
+  /**
+   * 导入 .docx（base64）并转换为块文档：fail-closed 校验后经 projectDocxToMarkdown 投影，
+   * 产物为 `<stem>.md`（同名去重：`论文.md`、`论文 2.md`…），sidecar 记录
+   * {format:'native-block', sourceDocx, sourceSha256} 以便溯源。Word 专属排版不保留。
+   */
+  async importDocx(input: DocxImportInput, targetDir: string): Promise<{ path: string }> {
     const root = this.requireRoot();
     if (!input.base64) {
       throw new DocxServiceError('必须提供 DOCX base64 数据', 'DOCX_IMPORT_SOURCE');
@@ -101,98 +63,28 @@ export class DocxService {
       throw new DocxServiceError('DOCX 文件过大', 'DOCX_TOO_LARGE');
     }
     const raw = (input.name ?? '导入文档.docx').trim();
-    let name = path.basename(raw).length > 0 ? path.basename(raw) : '导入文档.docx';
-    if (!name.toLowerCase().endsWith('.docx')) name = `${name}.docx`;
-    /*
-     * base64 由 IPC validator 做语法校验；这里再次校验是为了保证直接调用领域服务时
-     * 也不会静默接受 Node Buffer.from 会忽略的非法字符。
-     */
-    projectDocxToMarkdown(bytes);
-    const relPath = targetDir ? `${targetDir}/${name}` : name;
-    const written = await this.fs.importBinaryFile(relPath, bytes, { createParentDirs: true });
+    const base =
+      path.basename(raw).length > 0 ? path.basename(raw).replace(/\.docx$/i, '') : '导入文档';
+    // fail-closed 预检：损坏 / 加密文件在此即被拒绝，不产生半截 .md。
+    const markdown = projectDocxToMarkdown(bytes);
     const sha256 = createHash('sha256').update(bytes).digest('hex');
-    await new MetadataStore(root).write(written, { format: 'docx', sourceSha256: sha256 });
-    return { path: written, sha256 };
-  }
-
-  /** 只读预览：返回 Markdown 投影与原件字节 sha256。 */
-  async readPreview(relPath: string): Promise<DocxPreview> {
-    const bytes = await this.readDocxBytes(relPath);
-    return {
-      markdown: projectDocxToMarkdown(bytes),
-      sha256: createHash('sha256').update(bytes).digest('hex'),
-    };
-  }
-
-  /** 打开原生可编辑模型，并携带打开时的字节哈希作为乐观锁版本。 */
-  async openEditDocument(relPath: string): Promise<OpenEditDocument> {
-    const bytes = await this.readDocxBytes(relPath);
-    return {
-      document: openEditDocument(bytes),
-      sha256: createHash('sha256').update(bytes).digest('hex'),
-    };
-  }
-
-  /**
-   * 降级路径的段落级保存（仅替换 word/document.xml）：expectedSha256 不匹配时
-   * 拒绝保存并返回 DOCX_CONFLICT，避免覆盖外部修改。
-   */
-  async saveDocx(
-    relPath: string,
-    document: EditDocument,
-    expectedSha256: string,
-  ): Promise<{ sha256: string; document: EditDocument }> {
-    const current = await this.readDocxBytes(relPath);
-    const actual = createHash('sha256').update(current).digest('hex');
-    if (actual !== expectedSha256)
-      throw new DocxServiceError('DOCX 已被外部修改', 'DOCX_CONFLICT');
-    const xml = serializeEditDocument(document);
-    let bytes = current;
-    if (xml !== document.originalXml) {
-      bytes = rebuildZip(current, {
-        name: 'word/document.xml',
-        data: Buffer.from(xml, 'utf8'),
-      });
-      const { abs } = await this.fs.resolve(relPath);
-      const tmp = `${abs}.tmp-${process.pid}-${Date.now()}`;
-      try {
-        await fsp.writeFile(tmp, bytes);
-        await fsp.rename(tmp, abs);
-      } finally {
-        await fsp.rm(tmp, { force: true }).catch(() => undefined);
-      }
+    let relPath = targetDir ? `${targetDir}/${base}.md` : `${base}.md`;
+    let n = 1;
+    while (await this.fs.exists(relPath)) {
+      n += 1;
+      const candidate = `${base} ${n}.md`;
+      relPath = targetDir ? `${targetDir}/${candidate}` : candidate;
     }
-    const sha256 = createHash('sha256').update(bytes).digest('hex');
-    // Refresh both direct callers and the IPC response to the exact post-save XML.
-    // IPC structured cloning means mutating only this process's input is insufficient.
-    const refreshed = editDocumentFromXml(xml);
-    Object.assign(document, refreshed);
-    return { sha256, document: refreshed };
-  }
-
-  /**
-   * 在原文档同目录创建 `<stem> (副本).md`（幂等：副本已存在时返回既有路径）。
-   * 副本 sidecar 记录 {format:'native-block', sourceDocx, sourceSha256}；原 .docx 不动。
-   */
-  async createEditCopy(relPath: string): Promise<DocxEditCopy> {
-    const root = this.requireRoot();
-    const preview = await this.readPreview(relPath);
-    const dir = path.posix.dirname(relPath);
-    const stem = path.posix.basename(relPath, path.posix.extname(relPath));
-    const copyRel = dir === '.' ? `${stem} (副本).md` : `${dir}/${stem} (副本).md`;
-    const existing = await this.fs.exists(copyRel);
-    if (!existing) {
-      const result = await this.fs.createTextFile(copyRel, `${preview.markdown}\n`, true);
-      if (result.created) {
-        await new MetadataStore(root).write(copyRel, {
-          format: 'native-block',
-          sourceDocx: relPath,
-          sourceSha256: preview.sha256,
-        });
-        return { path: copyRel, created: true };
-      }
+    const result = await this.fs.createTextFile(relPath, `${markdown}\n`, true);
+    if (!result.created) {
+      throw new DocxServiceError(`写入块文档失败: ${relPath}`, 'DOCX_IMPORT_WRITE');
     }
-    return { path: copyRel, created: false };
+    await new MetadataStore(root).write(relPath, {
+      format: 'native-block',
+      sourceDocx: path.basename(raw).length > 0 ? path.basename(raw) : '导入文档.docx',
+      sourceSha256: sha256,
+    });
+    return { path: relPath };
   }
 
   /**

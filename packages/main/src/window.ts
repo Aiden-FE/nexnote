@@ -1,6 +1,6 @@
-import { BrowserWindow, nativeTheme, screen, shell } from 'electron';
+import { BrowserWindow, Menu, nativeTheme, screen, shell } from 'electron';
 import { join } from 'node:path';
-import type { IpcEventChannel, IpcEventMap } from '@nexnote/shared';
+import type { IpcEventChannel, IpcEventMap, MenuAction } from '@nexnote/shared';
 import type { AppStore, WindowBounds } from './vault/app-store';
 
 export interface WindowManagerDeps {
@@ -141,5 +141,80 @@ export class WindowManager {
     if (!win) return;
     if (win.isMinimized()) win.restore();
     win.focus();
+  }
+
+  /** DEV-096：构建并设置原生应用菜单（macOS 系统菜单栏）。 */
+  buildApplicationMenu(): void {
+    const send = (action: MenuAction): void => this.sendToMainWindow('menu:action', action);
+
+    const template: Electron.MenuItemConstructorOptions[] = [
+      {
+        label: '文件',
+        submenu: [
+          {
+            label: '新建文档（块编辑）',
+            accelerator: 'CmdOrCtrl+N',
+            click: () => send({ type: 'createNote', format: 'native-block' }),
+          },
+          {
+            label: '新建 Markdown（源码模式）',
+            accelerator: 'CmdOrCtrl+Shift+N',
+            click: () => send({ type: 'createNote', format: 'markdown' }),
+          },
+          { type: 'separator' },
+          {
+            label: '新建空白 XLSX',
+            click: () => send({ type: 'createBlankBinary', kind: 'xlsx' }),
+          },
+          {
+            label: '新建空白 XMind',
+            click: () => send({ type: 'createBlankBinary', kind: 'xmind' }),
+          },
+          { type: 'separator' },
+          {
+            label: '导入 Word 文档（转为块文档）…',
+            click: () => send({ type: 'importDocx' }),
+          },
+          {
+            label: '导入 XLSX…',
+            click: () => send({ type: 'importXlsx' }),
+          },
+          {
+            label: '导入 XMind…',
+            click: () => send({ type: 'importXmind' }),
+          },
+        ],
+      },
+      {
+        label: '编辑',
+        submenu: [
+          { role: 'undo' },
+          { role: 'redo' },
+          { type: 'separator' },
+          { role: 'cut' },
+          { role: 'copy' },
+          { role: 'paste' },
+          { role: 'selectAll' },
+        ],
+      },
+      {
+        label: '视图',
+        submenu: [
+          { role: 'reload' },
+          { role: 'forceReload' },
+          { role: 'toggleDevTools' },
+          { type: 'separator' },
+          { role: 'resetZoom' },
+          { role: 'zoomIn' },
+          { role: 'zoomOut' },
+          { type: 'separator' },
+          { role: 'togglefullscreen' },
+        ],
+      },
+      { role: 'windowMenu' },
+    ];
+
+    const menu = Menu.buildFromTemplate(template);
+    Menu.setApplicationMenu(menu);
   }
 }

@@ -177,7 +177,15 @@ describe('IPC 注册表框架', () => {
     });
     expect(services.ai.getState().translationTargetLanguage).toBe('日本語');
 
-    for (const targetLanguage of ['', '<script>', 'x'.repeat(41)]) {
+    const cleared = (await ipc.invoke('ai:translation:setTargetLanguage', {
+      targetLanguage: '',
+    })) as { ok: boolean; data: { state: { translationTargetLanguage?: string } } };
+    expect(cleared).toMatchObject({
+      ok: true,
+      data: { state: { translationTargetLanguage: '' } },
+    });
+
+    for (const targetLanguage of ['<script>', 'x'.repeat(41)]) {
       const rejected = (await ipc.invoke('ai:translation:setTargetLanguage', {
         targetLanguage,
       })) as { ok: boolean; code?: string };
@@ -937,9 +945,9 @@ describe('IPC 集成（vault + fs，单一注册表）', () => {
     expect(created.ok).toBe(true);
     const root = created.data.root;
     const git = simpleGit({ baseDir: root });
-    await writeFile(path.join(root, 'tracked.docx'), 'original');
-    await git.add(['tracked.docx']);
-    await git.commit('track docx');
+    await writeFile(path.join(root, 'tracked.xlsx'), 'original');
+    await git.add(['tracked.xlsx']);
+    await git.commit('track xlsx');
     await writeFile(path.join(root, '.gitignore'), '# user\r\nsecret.txt\r\n');
 
     const enabled = (await ipc.invoke('binary:gitignore:set', { untrack: true })) as {
@@ -947,11 +955,11 @@ describe('IPC 集成（vault + fs，单一注册表）', () => {
       data: { untracked: boolean; removedFromIndex: number };
     };
     expect(enabled).toMatchObject({ ok: true, data: { untracked: true, removedFromIndex: 1 } });
-    expect((await git.raw(['ls-files', '-z'])).split('\0')).not.toContain('tracked.docx');
-    expect(await readFile(path.join(root, 'tracked.docx'), 'utf8')).toBe('original');
+    expect((await git.raw(['ls-files', '-z'])).split('\0')).not.toContain('tracked.xlsx');
+    expect(await readFile(path.join(root, 'tracked.xlsx'), 'utf8')).toBe('original');
     const ignore = await readFile(path.join(root, '.gitignore'), 'utf8');
     expect(ignore).toContain('# user\r\nsecret.txt\r\n');
-    expect(ignore).toContain('*.docx\r\n*.xlsx\r\n*.xmind\r\n');
+    expect(ignore).toContain('*.xlsx\r\n*.xmind\r\n');
 
     const disabled = (await ipc.invoke('binary:gitignore:set', { untrack: false })) as {
       ok: boolean;

@@ -556,6 +556,7 @@ export function SourceModeView({ tab }: { tab: TabDescriptor }) {
       headingFolding: isMarkdown,
       onChange: (text) => {
         dirtyRef.current = true;
+        useTabStore.getState().setTabDirty(tab.id, true);
         textRef.current = text;
         setPreviewText(composeDocument());
         refreshOutline(text);
@@ -885,10 +886,11 @@ export function SourceModeView({ tab }: { tab: TabDescriptor }) {
       fmYamlRef.current = yaml;
       setFm({ data, source: yaml ?? '', locked: false, parseError: null });
       dirtyRef.current = true;
+      useTabStore.getState().setTabDirty(tab.id, true);
       setPreviewText(composeDocument());
       scheduleSave();
     },
-    [composeDocument, scheduleSave],
+    [composeDocument, scheduleSave, tab.id],
   );
 
   // 标签自动补全：markdown 属性面板做全库扫描（与块编辑 EditorView 的回退扫描同一来源），

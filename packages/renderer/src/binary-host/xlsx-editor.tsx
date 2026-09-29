@@ -27,7 +27,6 @@ export function XlsxEditor({ path, sheets, onChange }: XlsxEditorProps): React.J
         key={path}
         data={Array.isArray(sheets) ? (sheets as never[]) : []}
         onChange={(data) => onChangeRef.current(data)}
-        toolbarItems={[]}
       />
     </div>
   );

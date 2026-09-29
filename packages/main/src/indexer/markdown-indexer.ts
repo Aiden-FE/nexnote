@@ -29,13 +29,6 @@ function yamlList(frontmatter: string | null, key: string): string[] {
   return (raw.startsWith('[') && raw.endsWith(']') ? raw.slice(1, -1) : raw).split(',').map((s) => s.trim().replace(/^['"]|['"]$/g, '')).filter(Boolean);
 }
 
-function yamlNumber(frontmatter: string | null, key: string): number | null {
-  const raw = yamlValue(frontmatter, key);
-  if (raw === null) return null;
-  const value = Number(raw);
-  return Number.isFinite(value) ? value : null;
-}
-
 function classifyBlock(raw: string): string {
   const first = raw.trimStart();
   if (first.startsWith('#')) return 'heading';
@@ -96,7 +89,7 @@ export function parsePageMarkdown(pagePath: string, text: string): ParsedPage {
     });
   }
   const tags = [...new Set([...(frontmatter ? parseFrontmatterTags(frontmatter) : []), ...extractInlineTags(body)])].sort();
-  return { path: pagePath, title, aliases, createdAt: yamlValue(frontmatter, 'created'), updatedAt: yamlValue(frontmatter, 'updated'), stableId: yamlValue(frontmatter, 'id'), hash: createHash('sha256').update(text).digest('hex'), body, tags, links, blocks, confidenceBoost: yamlNumber(frontmatter, 'confidence_boost') };
+  return { path: pagePath, title, aliases, createdAt: yamlValue(frontmatter, 'created'), updatedAt: yamlValue(frontmatter, 'updated'), stableId: yamlValue(frontmatter, 'id'), hash: createHash('sha256').update(text).digest('hex'), body, tags, links, blocks, confidenceBoost: null };
 }
 
 /**

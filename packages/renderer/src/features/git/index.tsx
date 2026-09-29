@@ -628,6 +628,8 @@ function DoctorDialog({
   const isRebaseRepair =
     diagnosis.plan.action === 'preserve-local-and-abort' ||
     diagnosis.plan.action === 'abort-rebase-or-merge';
+  // DEV-090：应用自有文件冲突可自动收敛并继续同步——这是「真正解决」，作为首选。
+  const isContinueRepair = diagnosis.plan.action === 'resolve-conflict-and-continue';
   return (
     <div
       role="dialog"
@@ -641,7 +643,34 @@ function DoctorDialog({
       )}
       <p className="mt-1 text-[10px] text-muted-foreground">{diagnosis.plan.manualGuidance}</p>
       <div className="mt-2 flex flex-wrap gap-2">
-        {canRepair && isRebaseRepair ? (
+        {isContinueRepair ? (
+          <>
+            <button
+              type="button"
+              disabled={busy}
+              onClick={onOneClickRepair}
+              className="rounded bg-primary px-2 py-1 text-xs text-primary-foreground disabled:opacity-60"
+            >
+              {busy ? '正在解决…' : '让 Agent 修复'}
+            </button>
+            <button
+              type="button"
+              disabled={busy}
+              onClick={() => onRepairAction('preserve-local-and-abort')}
+              className="rounded border px-2 py-1 text-xs disabled:opacity-60"
+              title="改为备份本地提交并中止 rebase（同步不会完成）"
+            >
+              保留笔记并中止
+            </button>
+            <button
+              type="button"
+              onClick={onOpenAgentHelp}
+              className="rounded border px-2 py-1 text-xs"
+            >
+              让 Agent 帮助解决
+            </button>
+          </>
+        ) : canRepair && isRebaseRepair ? (
           <>
             <button
               type="button"

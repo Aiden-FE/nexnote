@@ -52,7 +52,7 @@ export function defaultAiStoreData(): AiStoreData {
     profiles: [],
     defaultProfileId: null,
     features: { writing: null, translation: null, chat: null, embedding: null },
-    translationTargetLanguage: 'English',
+    translationTargetLanguage: '',
     setupPromptDismissed: false,
     embeddingFingerprint: null,
     embeddingGeneration: 0,
@@ -119,7 +119,7 @@ function coerce(raw: unknown): AiStoreData {
       embedding: coerceAssignment(features.embedding),
     },
     translationTargetLanguage:
-      typeof d.translationTargetLanguage === 'string' && d.translationTargetLanguage.trim()
+      typeof d.translationTargetLanguage === 'string'
         ? d.translationTargetLanguage
         : base.translationTargetLanguage,
     setupPromptDismissed:
@@ -453,9 +453,7 @@ export class AiStore {
   }
 
   setTranslationTargetLanguage(targetLanguage: string): void {
-    const next = targetLanguage.trim();
-    if (!next) throw new Error('目标语言不能为空');
-    this.data = { ...this.data, translationTargetLanguage: next };
+    this.data = { ...this.data, translationTargetLanguage: targetLanguage.trim() };
     this.persist();
   }
 
@@ -630,8 +628,7 @@ export class AiStore {
       features,
       defaultProfileId,
       translationTargetLanguage:
-        typeof bundle.translationTargetLanguage === 'string' &&
-        bundle.translationTargetLanguage.trim()
+        typeof bundle.translationTargetLanguage === 'string'
           ? bundle.translationTargetLanguage
           : this.data.translationTargetLanguage,
     };

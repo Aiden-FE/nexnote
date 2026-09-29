@@ -34,9 +34,6 @@ function TabContent({ tab }: { tab: TabDescriptor }) {
     case 'xlsx':
     case 'mindmap':
       return <BinaryTabView key={tab.id} tab={tab} />;
-    case 'docx':
-      // DEV-074：docx 改为独立 WebContentsView 宿主（语义级往返），不再用旧只读段落视图。
-      return <BinaryTabView key={tab.id} tab={tab} />;
     default:
       return <PlaceholderPage title={tab.title} />;
   }
@@ -70,15 +67,11 @@ export function SplitView() {
       <div className="min-h-0 flex-1 overflow-auto">
         {activeTab && !isBinaryKind(activeTab.kind) ? (
           <TabContent tab={activeTab} />
-        ) : activeTab ? (
-          <div className="flex h-full items-center justify-center text-sm text-muted-foreground">
-            {activeTab.title}
-          </div>
-        ) : (
+        ) : !activeTab ? (
           <div className="flex h-full items-center justify-center text-sm text-muted-foreground">
             没有打开的页面
           </div>
-        )}
+        ) : null}
         {openBinaryTabs.map((tab) => (
           <div
             key={tab.id}

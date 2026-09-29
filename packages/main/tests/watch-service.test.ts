@@ -5,8 +5,9 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import type { FsChangeEvent } from '@nexnote/shared';
 import { AppWriteTracker } from '../src/fs/app-write-tracker';
 import { VaultFsService } from '../src/fs/fs-service';
-import { renameWithLinks } from '../src/fs/page-ops';
+import { createNote, renameWithLinks } from '../src/fs/page-ops';
 import { VaultWatchService } from '../src/fs/watch-service';
+import { MetadataStore } from '../src/document/metadata-store';
 
 let tmp: string;
 let rootA: string;
@@ -188,6 +189,60 @@ describe('VaultWatchService（真实临时目录 + chokidar）', () => {
     await svc.sync();
     await svc.ready();
     expect(svc.watched).toBe(rootB);
+    await svc.stop();
+  });
+});
+
+describe('VaultWatchService add 事件携带 sidecar format（新建 MD 文档图标回归）', () => {
+  function makeFormatService(getRoot: () => string | null): VaultWatchService {
+    return new VaultWatchService({
+      getRoot,
+      emit: (e) => events.push(e),
+      // 与 index.ts 完全一致的 getFormat 接线：读 sidecar 的 format 字段
+      getFormat: async (relPath) => {
+        const root = getRoot();
+        if (!root) return undefined;
+        const value = await new MetadataStore(root).read(relPath).catch(() => null);
+        return value?.format === 'markdown' || value?.format === 'native-block'
+          ? value.format
+          : undefined;
+      },
+    });
+  }
+
+  it('createNote(format=markdown) 后 add 事件带 format:"markdown"', async () => {
+    const tracker = new AppWriteTracker();
+    const fs = new VaultFsService(() => rootA, tracker);
+    const svc = makeFormatService(() => rootA);
+    await svc.sync();
+    await svc.ready();
+
+    await createNote(fs, '', 'md-note', '', new MetadataStore(rootA), 'markdown');
+
+    expect(
+      await untilEvent((e) => e.kind === 'add' && e.path === 'md-note.md'),
+      JSON.stringify(events),
+    ).toBe(true);
+    const addEvent = events.find((e) => e.kind === 'add' && e.path === 'md-note.md');
+    expect(addEvent?.format, JSON.stringify(events)).toBe('markdown');
+    await svc.stop();
+  });
+
+  it('createNote(format=native-block) 后 add 事件带 format:"native-block"', async () => {
+    const tracker = new AppWriteTracker();
+    const fs = new VaultFsService(() => rootA, tracker);
+    const svc = makeFormatService(() => rootA);
+    await svc.sync();
+    await svc.ready();
+
+    await createNote(fs, '', 'block-note', '', new MetadataStore(rootA), 'native-block');
+
+    expect(
+      await untilEvent((e) => e.kind === 'add' && e.path === 'block-note.md'),
+      JSON.stringify(events),
+    ).toBe(true);
+    const addEvent = events.find((e) => e.kind === 'add' && e.path === 'block-note.md');
+    expect(addEvent?.format, JSON.stringify(events)).toBe('native-block');
     await svc.stop();
   });
 });

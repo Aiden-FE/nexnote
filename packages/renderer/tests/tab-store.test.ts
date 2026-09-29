@@ -138,12 +138,12 @@ describe('tab-store 拖拽排序与循环切换（DEV-022）', () => {
     expect(useTabStore.getState().tabs.map((t) => t.id)).toEqual([a.id]);
   });
 
-  it('tabIdentity：page/docx 用 pagePath，其余用 kind 前缀', () => {
+  it('tabIdentity：page/binary 用 pagePath，其余用 kind 前缀', () => {
     const page = useTabStore.getState().openPageTab('notes/a.md');
-    const docx = useTabStore.getState().openDocxTab('docs/b.docx');
+    const binary = useTabStore.getState().openBinaryTab('docs/b.xlsx', 'b', 'xlsx');
     const graph = useTabStore.getState().openTab({ kind: 'graph', title: '知识图谱' });
     expect(tabIdentity(page)).toBe('notes/a.md');
-    expect(tabIdentity(docx)).toBe('docs/b.docx');
+    expect(tabIdentity(binary)).toBe('docs/b.xlsx');
     expect(tabIdentity(graph)).toBe('kind:graph');
   });
 

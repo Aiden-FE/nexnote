@@ -383,6 +383,7 @@ describe('常量', () => {
       'pull',
       'push',
       'abort-rebase-or-merge',
+      'resolve-conflict-and-continue',
       'preserve-local-and-abort',
       'force-abort-rebase-or-merge',
     ]);
@@ -457,5 +458,52 @@ describe('DEV-082 rebase-in-progress 路径', () => {
     });
     await expect(doctor.execute(ticket)).rejects.toMatchObject({ code: 'NO_OPERATION' });
     expect(git.abortInProgressRebaseOrMerge).not.toHaveBeenCalled();
+  });
+});
+
+describe('DEV-090 应用自有文件冲突自动解决并继续', () => {
+  it('冲突文件只有 .gitignore 时默认推荐 resolve-conflict-and-continue', async () => {
+    const git = fakeGit({ rebaseInProgress: true, conflict: true });
+    git.rawStatusPorcelain = vi.fn(async () => ['.gitignore']);
+    const { doctor } = doctorWith(git);
+    const diagnosis = await doctor.diagnose();
+    expect(diagnosis.issue.code).toBe('REBASE_IN_PROGRESS');
+    expect(diagnosis.conflictFiles).toEqual(['.gitignore']);
+    expect(diagnosis.plan.action).toBe('resolve-conflict-and-continue');
+  });
+
+  it('冲突涉及用户笔记时退回 preserve-local-and-abort', async () => {
+    const git = fakeGit({ rebaseInProgress: true, conflict: true });
+    git.rawStatusPorcelain = vi.fn(async () => ['.gitignore', 'notes/a.md']);
+    const { doctor } = doctorWith(git);
+    const diagnosis = await doctor.diagnose();
+    expect(diagnosis.plan.action).toBe('preserve-local-and-abort');
+  });
+
+  it('execute(resolve-conflict-and-continue) 经 TOCTOU 校验后调用 service 并返回 message', async () => {
+    const git = fakeGit({ rebaseInProgress: true, conflict: true });
+    git.rawStatusPorcelain = vi.fn(async () => ['.gitignore']);
+    git.resolveConflictAndContinue = vi.fn(async () => ({
+      message: '已自动解决同步冲突并完成 rebase',
+      status: {} as GitStatus,
+    }));
+    const { doctor } = doctorWith(git);
+    const { ticket } = await doctor.prepare('resolve-conflict-and-continue');
+    const result = await doctor.execute(ticket);
+    expect(git.resolveConflictAndContinue).toHaveBeenCalledOnce();
+    expect(result.message).toContain('完成 rebase');
+  });
+
+  it('service 拒绝非应用自有文件冲突时映射为 CONFLICT_NOT_SELF_RESOLVABLE', async () => {
+    const git = fakeGit({ rebaseInProgress: true, conflict: true });
+    git.rawStatusPorcelain = vi.fn(async () => ['.gitignore']);
+    git.resolveConflictAndContinue = vi.fn(async () => {
+      throw new GitServiceError('冲突涉及非应用自有文件', 'CONFLICT_NOT_SELF_RESOLVABLE');
+    });
+    const { doctor } = doctorWith(git);
+    const { ticket } = await doctor.prepare('resolve-conflict-and-continue');
+    await expect(doctor.execute(ticket)).rejects.toMatchObject({
+      code: 'CONFLICT_NOT_SELF_RESOLVABLE',
+    });
   });
 });

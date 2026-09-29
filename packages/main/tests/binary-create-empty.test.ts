@@ -7,10 +7,9 @@ import { BinaryService } from '../src/binary/binary-service';
 import { VaultFsService } from '../src/fs/fs-service';
 import { parseXlsxToModel } from '../src/binary/xlsx-convert';
 import { parseXmindToModel } from '../src/binary/xmind-convert';
-import { readDocxToHtml } from '../src/binary/docx-semantic';
 import { createHash } from 'node:crypto';
 
-/** DEV-084：binary:create 在 vault 内创建空白 docx / xlsx / xmind。 */
+/** DEV-084（DEV-098 撤销 docx 后仅 xlsx / xmind）：binary:create 在 vault 内创建空白文档。 */
 describe('BinaryService.createEmpty (DEV-084 ticket spec)', () => {
   let root: string;
   let fs: VaultFsService;
@@ -24,18 +23,6 @@ describe('BinaryService.createEmpty (DEV-084 ticket spec)', () => {
 
   afterEach(() => {
     rmSync(root, { recursive: true, force: true });
-  });
-
-  it('空白 docx 可被 readDocxToHtml 解析', async () => {
-    const { path: created } = await service.createBinary('docx', { title: '空白文档' });
-    expect(created.endsWith('.docx')).toBe(true);
-    expect(existsSync(path.join(root, created))).toBe(true);
-    // 落盘字节应当至少包含若干字节（最小 docx 包含 [Content_Types].xml 等）
-    const buf = readFileSync(path.join(root, created));
-    expect(buf.length).toBeGreaterThan(100);
-    // 解析往返
-    const { html } = await readDocxToHtml(buf);
-    expect(typeof html).toBe('string');
   });
 
   it('空白 xlsx 含 1 个空 sheet，模型可读回', async () => {

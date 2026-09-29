@@ -6,7 +6,7 @@ describe('binary gitignore stanza (ADR-0015)', () => {
     const original = '# user rule\r\nsecret.txt\r\n';
     const enabled = updateBinaryIgnoreBlock(original, true);
     expect(enabled).toContain('# user rule\r\nsecret.txt\r\n');
-    expect(enabled).toContain(`${BINARY_IGNORE_MARKER}\r\n*.docx\r\n*.xlsx\r\n*.xmind\r\n`);
+    expect(enabled).toContain(`${BINARY_IGNORE_MARKER}\r\n*.xlsx\r\n*.xmind\r\n`);
     expect(updateBinaryIgnoreBlock(enabled, true)).toBe(enabled);
     expect(updateBinaryIgnoreBlock(enabled, false)).toBe(original);
   });
@@ -16,16 +16,17 @@ describe('binary gitignore stanza (ADR-0015)', () => {
       '# user',
       '*.docx',
       BINARY_IGNORE_MARKER,
-      '*.docx',
+      '*.xlsx',
       '*.xlsx',
       '*.xmind',
       'notes.txt',
       '',
     ].join('\n');
     const enabled = updateBinaryIgnoreBlock(dirty, true);
-    expect(enabled.split(/\r?\n/).filter((line) => line === '*.docx')).toHaveLength(1);
+    // DEV-098：*.docx 不再是 NexNote 管理的规则，作为用户行原样保留。
+    expect(enabled.split(/\r?\n/).filter((line) => line === '*.xlsx')).toHaveLength(1);
     expect(enabled).toContain('# user');
     expect(enabled).toContain('notes.txt');
-    expect(updateBinaryIgnoreBlock(enabled, false)).toBe('# user\nnotes.txt\n');
+    expect(updateBinaryIgnoreBlock(enabled, false)).toBe('# user\n*.docx\nnotes.txt\n');
   });
 });

@@ -45,6 +45,11 @@ interface ChatState {
   pendingAsk: AskPayload | null;
   /** Agent 工具待审批（renderer 显示 banner；用户点批准/拒绝后清除）。 */
   pendingApproval: PendingApproval | null;
+  /**
+   * 正在执行中的 Agent 工具名（审批通过后写入，工具 completed/failed 或流结束时清除）。
+   * 批准到模型出字之间可能数秒到数十秒；没有它用户只看到空白气泡，像卡死。
+   */
+  runningTool: string | null;
   permissionMode: ChatPermissionMode;
   setPermissionMode(mode: ChatPermissionMode): void;
   setSummaries(summaries: ChatSummary[]): void;
@@ -58,6 +63,7 @@ interface ChatState {
   queueAsk(payload: AskPayload): void;
   consumeAsk(): AskPayload | null;
   setPendingApproval(p: PendingApproval | null): void;
+  setRunningTool(tool: string | null): void;
   /** 调 agent:approval:respond；同一 approvalId 第二次响应被主进程拒绝（store 先清）。 */
   respondApproval(approvalId: string, decision: AgentApprovalDecision): Promise<void>;
   reset(): void;
@@ -74,6 +80,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
   chips: [],
   pendingAsk: null,
   pendingApproval: null,
+  runningTool: null,
   permissionMode: 'conversation',
 
   setPermissionMode: (permissionMode) => set({ permissionMode }),
@@ -103,13 +110,17 @@ export const useChatStore = create<ChatState>((set, get) => ({
       if (s.pendingApproval) return s;
       return { pendingApproval };
     }),
+  setRunningTool: (runningTool) => set({ runningTool }),
   respondApproval: async (approvalId, decision) => {
     const current = get().pendingApproval;
     if (current?.approvalId === approvalId) set({ pendingApproval: null });
+    // 批准后主进程会执行工具（可能数十秒）；先亮出「执行中」，避免空白气泡像卡死。
+    if (decision === 'approved') set({ runningTool: current?.tool ?? 'agent' });
     try {
       await invoke('agent:approval:respond', { approvalId, decision });
     } catch (e) {
       // 主进程拒绝（已过期/不存在）：让 dock 把错误显示出来。
+      set({ runningTool: null });
       get().setError(e instanceof Error ? e.message : String(e));
     }
   },
@@ -124,6 +135,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
       modelLabel: null,
       chips: [],
       pendingApproval: null,
+      runningTool: null,
     }),
 }));
 

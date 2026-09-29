@@ -90,21 +90,33 @@ describe.runIf(runIfGit())('GitService（系统 Git，临时仓库）', () => {
     await fsp.writeFile(path.join(root, '.nexnote', 'config.json'), '{"version":1}');
     await fsp.writeFile(path.join(root, '.nexnote', 'index', 'blob.bin'), 'idx');
     await fsp.writeFile(path.join(root, 'README.md'), '# 临时测试');
+    await fsp.mkdir(path.join(root, '.nexnote', 'metadata'), { recursive: true });
+    await fsp.writeFile(
+      path.join(root, '.nexnote', 'metadata', 'cGFnZS5tZA.json'),
+      '{"format":"markdown"}',
+    );
 
     const result = await service.initialize(root);
     expect(result.status.repository).toBe(true);
     const ignore = await fsp.readFile(path.join(root, '.gitignore'), 'utf8');
-    expect(ignore).toMatch(/^\.nexnote\/$/m);
+    // DEV-100：运行时产物忽略，但文档 sidecar 元数据目录随仓库同步。
+    expect(ignore).toMatch(/^\.nexnote\/\*$/m);
+    expect(ignore).toMatch(/^!\.nexnote\/metadata\/$/m);
+    expect(ignore).toMatch(/^\.nexnote\/metadata\/\*\.tmp-\*$/m);
     expect(ignore).not.toMatch(/!\/\.nexnote\/config\.json/);
     expect(ignore).not.toMatch(/!\/\.nexnote\/layout\.json/);
     expect(ignore).toMatch(/^\.DS_Store$/m);
     expect(ignore).toMatch(/^Thumbs\.db$/m);
     expect(ignore).toMatch(/^desktop\.ini$/m);
+    expect(isVaultSyncGuardedPath('.nexnote/metadata/cGFnZS5tZA.json')).toBe(false);
+    expect(isVaultSyncGuardedPath('.nexnote/metadata/cGFnZS5tZA.json.tmp-1-a')).toBe(true);
 
     // config/layout MUST NOT be tracked; the index MUST NOT be tracked.
     const tracked = await simpleGit({ baseDir: root, binary: gitBinary() }).raw(['ls-files']);
     expect(tracked).not.toContain('.nexnote/config.json');
     expect(tracked).not.toContain('.nexnote/index/');
+    // DEV-100：文档 sidecar 随仓库跟踪（format 跨设备不丢）。
+    expect(tracked).toContain('.nexnote/metadata/cGFnZS5tZA.json');
 
     const log = await service.timeline();
     expect(log.length).toBe(1);
@@ -197,8 +209,12 @@ describe.runIf(runIfGit())('GitService（系统 Git，临时仓库）', () => {
     await git.add(['.']);
     await git.commit('tracked');
 
-    expect(await service.untrackBinaryDocuments(root)).toBe(3);
-    expect((await git.raw(['ls-files', '-z'])).split('\0').filter(Boolean)).toEqual(['note.md']);
+    // DEV-098：*.docx 不再由 untrackBinaryDocuments 管理（只有 xlsx / xmind）。
+    expect(await service.untrackBinaryDocuments(root)).toBe(2);
+    expect((await git.raw(['ls-files', '-z'])).split('\0').filter(Boolean)).toEqual([
+      'a.docx',
+      'note.md',
+    ]);
     expect(await fsp.readFile(path.join(root, 'a.docx'), 'utf8')).toBe('a.docx');
     expect(await fsp.readFile(path.join(root, 'nested/b.xlsx'), 'utf8')).toBe('nested/b.xlsx');
     expect(await fsp.readFile(path.join(root, 'nested/c.xmind'), 'utf8')).toBe('nested/c.xmind');
@@ -532,6 +548,56 @@ describe.runIf(runIfGit())('GitService（系统 Git，临时仓库）', () => {
     expect(twice).toBe(once);
     expect(once).not.toMatch(/^\.nexnote\/.*\.db/m);
     expect(once).not.toMatch(/^\*\.sqlite/m);
+  });
+
+  it('ensureSyncGuard 迁移 ADR-0016 旧整目录 ignore 块（DEV-100 sidecar 例外生效）', async () => {
+    const legacy = [
+      '# NexNote: ignore the entire .nexnote/ runtime directory (index, cache, locks,',
+      '# database, and per-device UI/session state). See ADR-0016.',
+      '.nexnote/',
+      '# NexNote: operating-system metadata never belongs in the knowledge base.',
+      '.DS_Store',
+      'Thumbs.db',
+      'desktop.ini',
+      '# my rule',
+      '*.bak',
+    ].join('\n');
+    await fsp.writeFile(path.join(root, '.gitignore'), `${legacy}\n`);
+    await simpleGit({ baseDir: root, binary: gitBinary() }).init();
+
+    await service.ensureSyncGuard(root);
+    const once = await fsp.readFile(path.join(root, '.gitignore'), 'utf8');
+
+    // 旧整目录规则被替换：sidecar 例外生效，且旧 `.nexnote/` 不再作为用户规则后置覆盖。
+    expect(once).toMatch(/^\.nexnote\/\*$/m);
+    expect(once).toMatch(/^!\.nexnote\/metadata\/$/m);
+    expect(once.match(/^\.nexnote\/$/gm)).toBeNull();
+    // 用户规则逐字保留在后置位。
+    expect(once).toContain('# my rule');
+    expect(once).toContain('*.bak');
+    // 幂等。
+    await service.ensureSyncGuard(root);
+    expect(await fsp.readFile(path.join(root, '.gitignore'), 'utf8')).toBe(once);
+  });
+
+  it('ensureSyncGuard 迁移 ADR-0003 全忽略残留块（DEV-083 剥 allowlist 后遗留形态）', async () => {
+    const legacy = [
+      '# NexNote: ignore the entire .nexnote/ runtime directory by default, then re-allow',
+      '# versioned, reconstructible configuration files. See ADR 0003.',
+      '.nexnote/',
+      '# NexNote: operating-system metadata never belongs in the knowledge base.',
+      '.DS_Store',
+      'Thumbs.db',
+      'desktop.ini',
+    ].join('\n');
+    await fsp.writeFile(path.join(root, '.gitignore'), `${legacy}\n`);
+    await simpleGit({ baseDir: root, binary: gitBinary() }).init();
+
+    await service.ensureSyncGuard(root);
+    const once = await fsp.readFile(path.join(root, '.gitignore'), 'utf8');
+    expect(once).toMatch(/^!\.nexnote\/metadata\/$/m);
+    expect(once).not.toContain('ADR 0003');
+    expect(once.match(/^\.nexnote\/$/gm)).toBeNull();
   });
 
   it('非 UTF-8 用户字节经模板前置后逐字节保留', async () => {
@@ -1275,8 +1341,9 @@ describe.runIf(runIfGit())('DEV-082 rebase/merge in-progress 时的自动提交�
       const before = execFileSync(gitBinary(), ['rev-parse', 'HEAD'], { cwd: root }).toString();
       const result = await service.abortInProgressRebaseOrMerge();
       expect(result.message).toMatch(/rebase/);
-      const gitDirRaw = execFileSync(gitBinary(), ['rev-parse', '--git-dir'], { cwd: root })
-        .toString();
+      const gitDirRaw = execFileSync(gitBinary(), ['rev-parse', '--git-dir'], {
+        cwd: root,
+      }).toString();
       const gitDir = path.join(root, gitDirRaw.trim());
       const rebaseMergeExists = await fsp
         .access(path.join(gitDir, 'rebase-merge'))
@@ -1305,5 +1372,219 @@ describe.runIf(runIfGit())('DEV-082 rebase/merge in-progress 时的自动提交�
       code: 'NO_OPERATION',
     });
   });
-});
 
+  it('preserveLocalAndAbortRebaseOrMerge 读取真实 rebase 的 orig-head 并保留本地提交', async () => {
+    await service.initialize(root);
+    configureTestIdentity(root);
+    const branch = execFileSync(gitBinary(), ['branch', '--show-current'], { cwd: root })
+      .toString()
+      .trim();
+    const git = (...args: string[]) =>
+      execFileSync(gitBinary(), args, { cwd: root, stdio: 'pipe' });
+    await fsp.writeFile(path.join(root, 'note.md'), 'base\n');
+    git('add', 'note.md');
+    git('commit', '-m', 'base note');
+    git('branch', 'upstream');
+    await fsp.writeFile(path.join(root, 'note.md'), 'local\n');
+    git('add', 'note.md');
+    git('commit', '-m', 'local note');
+    const localHead = git('rev-parse', 'HEAD').toString().trim();
+    git('checkout', 'upstream');
+    await fsp.writeFile(path.join(root, 'note.md'), 'remote\n');
+    git('add', 'note.md');
+    git('commit', '-m', 'remote note');
+    git('checkout', branch);
+
+    expect(() => git('rebase', 'upstream')).toThrow();
+    expect(await fsp.readFile(path.join(root, '.git', 'rebase-merge', 'orig-head'), 'utf8')).toBe(
+      `${localHead}\n`,
+    );
+    const result = await service.preserveLocalAndAbortRebaseOrMerge();
+    expect(result.aheadCount).toBe(1);
+    expect(result.exported).toBe(1);
+    expect(result.replayed).toBe(0);
+    expect(result.failed).toEqual([]);
+    const patches = (await fsp.readdir(path.join(root, result.recoveryDir))).filter((name) =>
+      name.endsWith('.patch'),
+    );
+    expect(patches).toHaveLength(1);
+    expect(await fsp.readFile(path.join(root, result.recoveryDir, patches[0]!), 'utf8')).toContain(
+      'Subject: [PATCH] local note',
+    );
+    expect(git('rev-parse', 'HEAD').toString().trim()).toBe(localHead);
+    expect(await fsp.readFile(path.join(root, 'note.md'), 'utf8')).toBe('local\n');
+    expect((await service.status()).rebaseInProgress).toBe(false);
+  });
+
+  // DEV-090：应用自有文件（.gitignore）冲突应被自动收敛并让 rebase 走完，而不是中止。
+  it('resolveConflictAndContinue 规范化 .gitignore 冲突并完成 rebase', async () => {
+    await service.initialize(root);
+    configureTestIdentity(root);
+    const branch = execFileSync(gitBinary(), ['branch', '--show-current'], { cwd: root })
+      .toString()
+      .trim();
+    const git = (...args: string[]) =>
+      execFileSync(gitBinary(), args, { cwd: root, stdio: 'pipe' });
+    const legacy = [
+      '# NexNote: ignore the entire .nexnote/ runtime directory by default, then re-allow',
+      '# versioned, reconstructible configuration files. See ADR 0003.',
+      '.nexnote/',
+      '!/.nexnote/',
+      '.nexnote/*',
+      '!/.nexnote/config.json',
+      '!/.nexnote/layout.json',
+      ...GitService.GITIGNORE_LINES.slice(3),
+    ].join('\n');
+    await fsp.writeFile(path.join(root, '.gitignore'), `${legacy}\n`);
+    git('add', '.gitignore');
+    git('commit', '-m', 'legacy gitignore');
+    git('branch', 'upstream');
+
+    // 上游把 .gitignore 重写为 ADR-0016 模板 + 自己的用户规则
+    git('checkout', 'upstream');
+    await fsp.writeFile(
+      path.join(root, '.gitignore'),
+      `${GitService.GITIGNORE_LINES.join('\n')}` + `\n\n# upstream user rule\nmy-build-output/\n`,
+    );
+    git('add', '.gitignore');
+    git('commit', '-m', 'upstream gitignore');
+    git('checkout', branch);
+
+    // 本地：旧模板 + 自己的用户规则，并有一条本地笔记提交
+    await fsp.writeFile(
+      path.join(root, '.gitignore'),
+      `${GitService.GITIGNORE_LINES.join('\n')}` + `\n\n# local user rule\nmy-notes-cache/\n`,
+    );
+    git('add', '.gitignore');
+    git('commit', '-m', 'dev-083 migration');
+    await fsp.writeFile(path.join(root, 'note.md'), 'local note\n');
+    git('add', 'note.md');
+    git('commit', '-m', 'local note');
+
+    expect(() => git('rebase', 'upstream')).toThrow();
+    const gitignore = await fsp.readFile(path.join(root, '.gitignore'), 'utf8');
+    expect(gitignore).toContain('<<<<<<<');
+
+    const result = await service.resolveConflictAndContinue();
+    expect(result.message).toContain('完成 rebase');
+    expect((await service.status()).rebaseInProgress).toBe(false);
+    const resolved = await fsp.readFile(path.join(root, '.gitignore'), 'utf8');
+    // 冲突标记被清除，模板只出现一次，两侧用户规则都被保留
+    expect(resolved).not.toContain('<<<<<<<');
+    expect(resolved.match(/^\.nexnote\/\*$/gm)?.length).toBe(1);
+    expect(resolved.match(/^!\.nexnote\/metadata\/$/gm)?.length).toBe(1);
+    expect(resolved).toContain('my-notes-cache/');
+    expect(resolved).toContain('my-build-output/');
+    // 本地笔记提交仍然存在（没有被 abort 撤回）
+    expect(git('log', '--oneline').toString()).toContain('local note');
+    expect(await fsp.readFile(path.join(root, 'note.md'), 'utf8')).toBe('local note\n');
+  });
+
+  it('resolveConflictAndContinue 遇到用户笔记冲突时拒绝并保留现场', async () => {
+    await service.initialize(root);
+    configureTestIdentity(root);
+    const branch = execFileSync(gitBinary(), ['branch', '--show-current'], { cwd: root })
+      .toString()
+      .trim();
+    const git = (...args: string[]) =>
+      execFileSync(gitBinary(), args, { cwd: root, stdio: 'pipe' });
+    await fsp.writeFile(path.join(root, 'note.md'), 'base\n');
+    git('add', 'note.md');
+    git('commit', '-m', 'base');
+    git('branch', 'upstream');
+    await fsp.writeFile(path.join(root, 'note.md'), 'local\n');
+    git('add', 'note.md');
+    git('commit', '-m', 'local note');
+    git('checkout', 'upstream');
+    await fsp.writeFile(path.join(root, 'note.md'), 'remote\n');
+    git('add', 'note.md');
+    git('commit', '-m', 'remote note');
+    git('checkout', branch);
+
+    expect(() => git('rebase', 'upstream')).toThrow();
+    await expect(service.resolveConflictAndContinue()).rejects.toMatchObject({
+      code: 'CONFLICT_NOT_SELF_RESOLVABLE',
+    });
+    // 现场保留：rebase 仍在进行，笔记内容未被覆盖
+    expect((await service.status()).rebaseInProgress).toBe(true);
+    expect(await fsp.readFile(path.join(root, 'note.md'), 'utf8')).toContain('<<<<<<<');
+  });
+
+  // DEV-090：用户的真实仓库两侧只有空行差异时，模板本身不能被双写。
+  // 用 my-wiki 真实 snapshot 的 `:2:` 与 `:3:` 内容做 fixture；这里不需要真实 rebase，
+  // 直接把两侧内容注入到 index stage 2/3（rebase 未合并状态下的标准索引结构）。
+  it('resolveSelfOwnedConflictFile 把两侧仅差空行的 .gitignore 收敛到单一模板', async () => {
+    await service.initialize(root);
+    // 自包含 fixture：两侧仅差空行（原 /tmp/gi-*.txt 外部 fixture 已不可复现）。
+    const ours = `${GitService.GITIGNORE_LINES.join('\n')}\n\n`;
+    const theirs = `${GitService.GITIGNORE_LINES.join('\n')}\n`;
+    const oursBlob = execFileSync(gitBinary(), ['hash-object', '-w', '--stdin'], {
+      cwd: root,
+      input: ours,
+    })
+      .toString()
+      .trim();
+    const theirsBlob = execFileSync(gitBinary(), ['hash-object', '-w', '--stdin'], {
+      cwd: root,
+      input: theirs,
+    })
+      .toString()
+      .trim();
+    // 把双方 blob 注入到 stage 2 / stage 3，模拟真实 rebase 未合并状态
+    execFileSync(
+      gitBinary(),
+      ['update-index', '--add', '--cacheinfo', `100644,${oursBlob},.gitignore`],
+      { cwd: root },
+    );
+    execFileSync(
+      gitBinary(),
+      ['update-index', '--add', '--cacheinfo', `100644,${theirsBlob},.gitignore`],
+      { cwd: root },
+    );
+    const svc = service as unknown as {
+      resolveSelfOwnedConflictFile: (root: string, file: string) => Promise<void>;
+    };
+    await svc.resolveSelfOwnedConflictFile(root, '.gitignore');
+    const resolved = await fsp.readFile(path.join(root, '.gitignore'), 'utf8');
+    expect(resolved).toBe(`${GitService.GITIGNORE_LINES.join('\n')}\n`);
+  });
+
+  // DEV-090：构造真实 rebase 冲突，验证 resolver 保留两侧真实用户规则。
+  it('resolveSelfOwnedConflictFile 保留两侧都不在模板里的真实用户规则', async () => {
+    await service.initialize(root);
+    configureTestIdentity(root);
+    const branch = execFileSync(gitBinary(), ['branch', '--show-current'], { cwd: root })
+      .toString()
+      .trim();
+    const git = (...args: string[]) =>
+      execFileSync(gitBinary(), args, { cwd: root, stdio: 'pipe' });
+    // shared base so the only delta is on the line that ends up conflicting
+    const baseGi = `${GitService.GITIGNORE_LINES.join('\n')}\n`;
+    // initialize already wrote the canonical gitignore, so put the canonical one back
+    // and add a real diff via a separate note file
+    await fsp.writeFile(path.join(root, '.gitignore'), baseGi);
+    await fsp.writeFile(path.join(root, 'note.md'), 'note\n');
+    git('add', '.gitignore', 'note.md');
+    git('commit', '-m', 'base gi');
+    git('checkout', '-q', '-b', 'upstream');
+    await fsp.writeFile(path.join(root, '.gitignore'), `${baseGi}\n# remote rule\nmy-remote/\n`);
+    git('add', '.gitignore');
+    git('commit', '-m', 'remote rule');
+    git('checkout', '-q', branch);
+    await fsp.writeFile(path.join(root, '.gitignore'), `${baseGi}\n# local rule\nmy-local/\n`);
+    git('add', '.gitignore');
+    git('commit', '-m', 'local rule');
+    expect(() => git('rebase', 'upstream')).toThrow();
+    expect((await service.status()).rebaseInProgress).toBe(true);
+    const svc = service as unknown as {
+      resolveSelfOwnedConflictFile: (root: string, file: string) => Promise<void>;
+    };
+    await svc.resolveSelfOwnedConflictFile(root, '.gitignore');
+    const resolved = await fsp.readFile(path.join(root, '.gitignore'), 'utf8');
+    expect(resolved).toContain('my-local/');
+    expect(resolved).toContain('my-remote/');
+    // 模板只出现一次
+    expect(resolved.match(/^\.nexnote\/\*$/gm)?.length).toBe(1);
+    expect(resolved.match(/^!\.nexnote\/metadata\/$/gm)?.length).toBe(1);
+  });
+});

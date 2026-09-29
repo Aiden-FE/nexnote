@@ -20,24 +20,29 @@ export function registerAiHandlers(registrar: IpcRegistrar, ai: AiService): void
     'ai:profile:save',
     async (payload): Promise<Result<{ id: string; state: ReturnType<AiService['getState']> }>> => {
       const { id, profile } = payload;
-      return ok(ai.saveProfile(id, profile));
+      const saved = ai.saveProfile(id, profile);
+      return ok({ id: saved.id, state: ai.getState() });
     },
   );
 
   registrar.register('ai:profile:delete', async (payload) => {
-    return ok(ai.deleteProfile(payload.id));
+    ai.deleteProfile(payload.id);
+    return ok({ state: ai.getState() });
   });
 
   registrar.register('ai:profile:setDefault', async (payload) => {
-    return ok(ai.setDefaultProfile(payload.id));
+    ai.setDefaultProfile(payload.id);
+    return ok({ state: ai.getState() });
   });
 
   registrar.register('ai:features:set', async (payload) => {
-    return ok(ai.setFeatureAssignment(payload.feature, payload.assignment));
+    ai.setFeatureAssignment(payload.feature, payload.assignment);
+    return ok({ state: ai.getState() });
   });
 
   registrar.register('ai:translation:setTargetLanguage', async (payload) => {
-    return ok(ai.setTranslationTargetLanguage(payload.targetLanguage));
+    ai.setTranslationTargetLanguage(payload.targetLanguage);
+    return ok({ state: ai.getState() });
   });
 
   registrar.register('ai:setupPrompt:dismiss', async () => {

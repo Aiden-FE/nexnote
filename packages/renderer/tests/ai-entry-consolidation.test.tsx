@@ -254,7 +254,7 @@ describe('DEV-075 分功能指定模型：自由输入 + 下拉双模式', () =>
     });
   });
 
-  it('聚焦拉取候选（datalist 挂载），失败静默降级为自由输入', async () => {
+  it('聚焦拉取候选（下拉面板挂载），失败静默降级为自由输入', async () => {
     // 成功路径
     invokeSpy.mockImplementation((channel: string) => {
       if (channel === 'ai:listModels') {
@@ -269,15 +269,15 @@ describe('DEV-075 分功能指定模型：自由输入 + 下拉双模式', () =>
     const input = document.querySelector<HTMLInputElement>(
       '[data-testid="ai-feature-model-writing"]',
     )!;
-    // React 监听 focusin；调用 .focus() 让 React onFocus 触发
-    act(() => input.focus());
+    // 点击下拉箭头打开面板
+    const picker = input.closest('[data-testid^="ai-model-picker-"]');
+    const chevron = picker?.querySelector<HTMLButtonElement>('[aria-label="展开模型列表"]');
+    act(() => chevron?.click());
     await act(async () => tick(20));
-    const listId = input.getAttribute('list');
-    expect(listId).toBeTruthy();
-    const datalist = listId ? document.getElementById(listId) : null;
-    expect(datalist).not.toBeNull();
-    const options = datalist!.getElementsByTagName('option');
-    expect(options.length).toBe(2);
+    const panel = picker?.querySelector('[data-testid^="ai-model-dropdown-"]');
+    expect(panel).not.toBeNull();
+    const buttons = panel!.getElementsByTagName('button');
+    expect(buttons.length).toBe(2);
     // ai:listModels 被调用过一次（缓存 + 同一 profile 不重复拉取）
     expect(invokeSpy.mock.calls.filter(([c]) => c === 'ai:listModels')).toHaveLength(1);
 
@@ -302,7 +302,10 @@ describe('DEV-075 分功能指定模型：自由输入 + 下拉双模式', () =>
     const input2 = document.querySelector<HTMLInputElement>(
       '[data-testid="ai-feature-model-writing"]',
     )!;
-    act(() => input2.focus());
+    // 点击下拉箭头打开面板
+    const picker2 = input2.closest('[data-testid^="ai-model-picker-"]');
+    const chevron2 = picker2?.querySelector<HTMLButtonElement>('[aria-label="展开模型列表"]');
+    act(() => chevron2?.click());
     await act(async () => tick(20));
     // 失败时不弹错误提示，自由输入仍然可用
     expect(document.querySelector('[data-testid="ai-settings-notice"]')).toBeNull();

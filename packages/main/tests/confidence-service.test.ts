@@ -74,13 +74,13 @@ describe('DEV-008 confidence engine', () => {
       'link_authority',
       'manual_boost',
     ]);
-    expect(factor(result!, 'manual_boost').score).toBeCloseTo(0.2, 3);
+    expect(factor(result!, 'manual_boost').score).toBeCloseTo(0.5, 3);
     expect(factor(result!, 'link_authority').score).toBeGreaterThan(0);
     index.close();
     git.setRoot(null);
   });
 
-  it('recalculates stability and manual boost incrementally after modified history', async () => {
+  it('recalculates stability incrementally after modified history (manual_boost is system constant)', async () => {
     const { root, index, git } = await freshVaultWithHistory();
     const service = new ConfidenceService(index, git);
     await service.refresh();
@@ -94,7 +94,7 @@ describe('DEV-008 confidence engine', () => {
     const after = index.confidence(pageId)!;
 
     expect(after.computedAt >= before.computedAt).toBe(true);
-    expect(factor(after, 'manual_boost').score).toBeCloseTo(0.8, 3);
+    expect(factor(after, 'manual_boost').score).toBeCloseTo(0.5, 3);
     expect(factor(after, 'stability').score).toBeLessThan(factor(before, 'stability').score);
     expect(factor(after, 'stability').detail).toContain('2 次历史改动');
     index.close();

@@ -58,8 +58,9 @@ async function persist(
 function finalizeStream(nextStatus: ChatSessionStatus, error?: string): void {
   runId = null;
   useChatStore.getState().setStreaming(false);
-  // 流结束/取消/失败时清掉残留的待审批：主进程会一并撤销（revokeRun）。
+  // 流结束/取消/失败时清掉残留的待审批与执行中工具：主进程会一并撤销（revokeRun）。
   useChatStore.getState().setPendingApproval(null);
+  useChatStore.getState().setRunningTool(null);
   if (working) {
     const assistant = working.turns[working.turns.length - 1];
     if (assistant?.role === 'assistant' && pendingMeta) assistant.meta = pendingMeta;
@@ -86,10 +87,17 @@ export function initChatRuntime(): void {
       useChatStore.getState().setModelLabel(event.model);
       working.meta.model = event.model;
     } else if (event.type === 'delta') {
+      // 模型开始出字说明执行阶段已结束：收起「执行中」指示。
+      useChatStore.getState().setRunningTool(null);
       assistant.content += event.text;
       sync();
     } else if (event.type === 'tool') {
-      // 工具审批被拒/完成事件：审批拒绝由 approvalRequired 处理；这里只同步状态。
+      // 注意：`started` 在模型发起调用时就会到达（早于审批），此时文案还不能说
+      // 「已批准」。执行中标记由审批回调置位；`completed` 也不清除——工具返回后
+      // 模型还要再写一段回复，那段时间同样需要可见反馈（由 delta/finalize 收尾）。
+      if (event.status === 'denied' || event.status === 'failed') {
+        useChatStore.getState().setRunningTool(null);
+      }
       sync();
     } else if (event.type === 'approvalRequired') {
       // 主进程 gateway 在执行写工具前发审批请求：渲染层显示 banner。
@@ -114,6 +122,7 @@ async function cancelActiveStream(): Promise<void> {
   runId = null;
   if (id) await invoke('agent:cancel', { runId: id }).catch(() => undefined);
   useChatStore.getState().setStreaming(false);
+  useChatStore.getState().setRunningTool(null);
 }
 
 /** 刷新历史列表；传入 query 时由主进程按标题过滤。 */

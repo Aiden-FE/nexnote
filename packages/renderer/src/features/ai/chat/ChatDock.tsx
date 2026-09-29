@@ -311,6 +311,7 @@ export function ChatDock() {
       </div>
 
       <PendingApprovalBanner />
+      <RunningToolBanner />
 
       {!active ? (
         <div
@@ -485,3 +486,23 @@ const TOOL_LABEL: Record<string, string> = {
   edit_current_selection: '替换当前选区',
   append_to_document: '向当前文档追加内容',
 };
+
+/**
+ * 审批通过后、模型再次出字之前的执行中指示。git_doctor_repair 可能要跑数十秒
+ * （rebase 多个 commit + push），没有它用户只看到一个空气泡，像卡死。
+ */
+function RunningToolBanner() {
+  const runningTool = useChatStore((s) => s.runningTool);
+  if (!runningTool) return null;
+  const label = TOOL_LABEL[runningTool] ?? `执行 ${runningTool}`;
+  return (
+    <div
+      data-testid="chat-running-tool"
+      role="status"
+      className="flex shrink-0 items-center gap-1.5 rounded-md border bg-muted/40 p-2 text-[11px] text-muted-foreground"
+    >
+      <Loader2 className="size-3.5 animate-spin" />
+      已批准，正在{label}…完成后会在这里给出结果。
+    </div>
+  );
+}

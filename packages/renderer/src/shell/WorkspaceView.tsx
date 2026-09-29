@@ -1,5 +1,5 @@
-import type { VaultInfo } from '@nexnote/shared';
-import { useCallback, useEffect, useMemo } from 'react';
+import type { MenuAction, VaultInfo } from '@nexnote/shared';
+import { useEffect } from 'react';
 import { Sidebar } from './Sidebar';
 import { DockHost } from './DockHost';
 import { StatusBar } from './StatusBar';
@@ -11,13 +11,34 @@ import { bindIndexEvents, useIndexStore } from '../stores/index-store';
 import { WritingAssistantLayer } from '../features/ai/writing';
 import { PluginHost } from '../features/plugins';
 import { GuidedTour } from '../tour/GuidedTour';
-import { FileMenuBar, type FileMenuHandlers } from './FileMenuBar';
+import { onEvent } from '../lib/ipc';
 import {
   createNoteIn,
   createBinaryIn,
   importDocxIn,
   importBinaryIn,
 } from '../features/sidebar/page-tree/ops';
+
+/** DEV-096：原生菜单动作分发到渲染层 ops。 */
+function handleMenuAction(action: MenuAction): void {
+  switch (action.type) {
+    case 'createNote':
+      void createNoteIn('', action.format);
+      break;
+    case 'createBlankBinary':
+      void createBinaryIn(action.kind === 'xmind' ? 'mindmap' : action.kind, '');
+      break;
+    case 'importDocx':
+      void importDocxIn('');
+      break;
+    case 'importXlsx':
+      void importBinaryIn('xlsx', '');
+      break;
+    case 'importXmind':
+      void importBinaryIn('mindmap', '');
+      break;
+  }
+}
 
 /** 工作区：三面板（侧栏 + 主内容 + 右侧 dock）+ 底部状态栏。 */
 export function WorkspaceView({ vault }: { vault: VaultInfo }) {
@@ -27,29 +48,8 @@ export function WorkspaceView({ vault }: { vault: VaultInfo }) {
     return tab?.format === 'markdown' && (tab.markdownView ?? 'split') === 'preview';
   });
 
-  // DEV-084 + DEV-096：顶栏「文件」菜单——把原本散在侧栏的「新建 / 导入」并入此处。
-  const fileMenuHandlers = useMemo<FileMenuHandlers>(
-    () => ({
-      createNote: (format: 'native-block' | 'markdown') => {
-        void createNoteIn('', format);
-      },
-      createBlankBinary: (kind: 'docx' | 'xlsx' | 'xmind') => {
-        // ops.createBinaryIn 的入参约定 'mindmap' 而 NewNoteMenu 的展示用 'xmind'，
-        // 调用边界翻译一次。
-        void createBinaryIn(kind === 'xmind' ? 'mindmap' : kind, '');
-      },
-      importDocx: () => {
-        void importDocxIn('');
-      },
-      importXlsx: () => {
-        void importBinaryIn('xlsx', '');
-      },
-      importXmind: () => {
-        void importBinaryIn('mindmap', '');
-      },
-    }),
-    [],
-  );
+  // DEV-096：监听原生应用菜单动作（macOS 系统菜单栏 → main → renderer）。
+  useEffect(() => onEvent('menu:action', handleMenuAction), []);
 
   // vault 就绪：拉取页面树 + 绑定 fs:changed / index:statusChanged（幂等，进程内一次）
   useEffect(() => {
@@ -64,9 +64,6 @@ export function WorkspaceView({ vault }: { vault: VaultInfo }) {
 
   return (
     <div data-smoke-ready="workspace" className="flex h-full w-full flex-col overflow-hidden">
-      {/* DEV-084 + DEV-096：顶栏「文件」菜单——把原本散在侧栏的「新建 / 导入」并入此处，
-          消除两个并列的下拉箭头。 */}
-      <FileMenuBar handlers={fileMenuHandlers} />
       <div className="flex min-h-0 min-w-0 flex-1">
         <Sidebar />
         <main

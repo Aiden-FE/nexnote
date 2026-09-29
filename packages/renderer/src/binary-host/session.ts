@@ -9,17 +9,10 @@ import type { BinaryEditorCommand } from '@nexnote/shared';
  * 乐观锁 expectedSha256：保存成功后更新基线，外部修改冲突时回填提示并刷新。
  */
 
-export interface SessionMeta {
-  headersFooters: number;
-  numberingStyles: number;
-  superSubscripts: number;
-}
-
 export interface SessionState {
-  kind: 'docx' | 'xlsx' | 'mindmap';
+  kind: 'xlsx' | 'mindmap';
   path: string;
   sha256: string;
-  docx?: { html: string; meta: SessionMeta };
   xlsx?: { sheets: unknown[] };
   mindmap?: { model: unknown };
   readonly: string[];
@@ -32,7 +25,6 @@ const DEBOUNCE_MS = 1200;
 
 let session: SessionState | null = null;
 interface DirtyPayload {
-  html?: string;
   sheets?: unknown[];
   model?: unknown;
 }
@@ -81,16 +73,7 @@ async function persistNow(): Promise<void> {
   saving = true;
   pendingSaves += 1;
   try {
-    if (session.kind === 'docx' && payload.html !== undefined) {
-      const result = await invoke('binary:docx:save', {
-        path: session.path,
-        html: payload.html,
-        expectedSha256: session.sha256,
-      });
-      session.sha256 = result.sha256;
-      session.status = '已保存';
-      session.conflict = false;
-    } else if (session.kind === 'xlsx' && payload.sheets !== undefined) {
+    if (session.kind === 'xlsx' && payload.sheets !== undefined) {
       const result = await invoke('binary:save', {
         kind: 'xlsx',
         path: session.path,
@@ -161,7 +144,7 @@ function scheduleSave(): void {
 }
 
 /** 编辑即写入口：宿主各编辑器 onChange 调用。 */
-export function markDirty(patch: { html?: string; sheets?: unknown[]; model?: unknown }): void {
+export function markDirty(patch: { sheets?: unknown[]; model?: unknown }): void {
   if (!session) return; // load 完成前编辑器不可交互，防御性忽略。
   dirtyPayload = { ...dirtyPayload, ...patch };
   if (session.conflict) {
@@ -175,18 +158,6 @@ export function markDirty(patch: { html?: string; sheets?: unknown[]; model?: un
 }
 
 async function loadDocument(kind: SessionState['kind'], path: string): Promise<SessionState> {
-  if (kind === 'docx') {
-    const result = await invoke('binary:docx:read', { path });
-    return {
-      kind,
-      path,
-      sha256: result.sha256,
-      docx: { html: result.html, meta: result.meta },
-      readonly: [],
-      status: null,
-      conflict: false,
-    };
-  }
   const result = await invoke('binary:read', { kind, path });
   if (kind === 'xlsx') {
     const data = result.data as { sheets?: unknown[] };

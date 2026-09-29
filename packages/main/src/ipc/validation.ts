@@ -116,15 +116,6 @@ const importBinaryFile = object(
 );
 const listTree = object(['showAllFiles'], [optionalField('showAllFiles', 'boolean')]);
 const docxPath = object(['path'], [stringField('path')]);
-const docxOpenEdit = docxPath;
-const docxSave = object(
-  ['path', 'document', 'expectedSha256'],
-  [
-    stringField('path'),
-    (value) => (value && typeof value === 'object' ? null : invalid('document 必须是对象')),
-    stringField('expectedSha256'),
-  ],
-);
 const docxExport = object(
   ['path', 'targetPath'],
   [stringField('path'), optionalField('targetPath', 'string')],
@@ -195,10 +186,10 @@ const binarySave: PayloadValidator = (payload) => {
   return payload.data !== undefined && payload.data !== null ? null : invalid('data 缺失');
 };
 const binaryGitignoreSet = object(['untrack'], [booleanField('untrack')]);
-const binaryHostKind = (v: unknown): boolean => v === 'docx' || v === 'xlsx' || v === 'mindmap';
+const binaryHostKind = (v: unknown): boolean => v === 'xlsx' || v === 'mindmap';
 const binaryHostRef: PayloadValidator = (payload) => {
   if (!isPlainObject(payload)) return invalid('payload 必须是普通对象');
-  if (!binaryHostKind(payload.kind)) return invalid('kind 必须是 docx / xlsx / mindmap');
+  if (!binaryHostKind(payload.kind)) return invalid('kind 必须是 xlsx / mindmap');
   return stringField('path')(payload);
 };
 const binaryHostSetActive: PayloadValidator = (payload) => {
@@ -228,10 +219,7 @@ const binaryEditorTheme = object(
     },
   ],
 );
-const binaryDocxSave = object(
-  ['path', 'html', 'expectedSha256'],
-  [stringField('path'), stringField('html'), stringField('expectedSha256')],
-);
+const binaryMindmapThemeSet = object(['path', 'theme'], [stringField('path'), stringField('theme')]);
 
 const stringArrayField =
   (key: string): PayloadValidator =>
@@ -278,11 +266,12 @@ const aiFeaturesSet: PayloadValidator = (payload) => {
 const aiTranslationLanguage = object(
   ['targetLanguage'],
   [
-    (payload) =>
-      typeof (payload as Record<string, unknown>).targetLanguage === 'string' &&
-      TARGET_LANGUAGE_PATTERN.test(String((payload as Record<string, unknown>).targetLanguage))
-        ? null
-        : invalid('targetLanguage 无效'),
+    (payload) => {
+      const value = (payload as Record<string, unknown>).targetLanguage;
+      if (typeof value !== 'string') return invalid('targetLanguage 无效');
+      if (value === '' || TARGET_LANGUAGE_PATTERN.test(value)) return null;
+      return invalid('targetLanguage 无效');
+    },
   ],
 );
 const _aiChatRequest = object(
@@ -774,19 +763,26 @@ const VALIDATORS: Partial<Record<IpcChannel, PayloadValidator>> = {
   'settings:saveExportFile': settingsSaveExportFile,
   'app:setUpdateChannel': updateChannel,
   'app:setUpdateSettings': updateSettingsPatch,
-  // DOCX（阶段6）
+  // DOCX（DEV-098 撤销仓库内编辑后仅导入转块文档 / 导出）
   'docx:import': docxImport,
-  'docx:readPreview': docxPath,
-  'docx:createEditCopy': docxPath,
   'docx:export': docxExport,
-  'docx:openEdit': docxOpenEdit,
-  'docx:save': docxSave,
-  // binary（DEV-074，ADR-0015）
+  // binary（DEV-074，ADR-0015；DEV-098 撤销 docx 后仅 xlsx / xmind）
   'binary:import': binaryImport,
+  'binary:create': ((payload) => {
+    return object(
+      ['kind', 'title', 'targetDir'],
+      [
+        (p) => {
+          const k = (p as Record<string, unknown>).kind;
+          return k === 'xlsx' || k === 'mindmap' ? null : invalid('kind 必须是 xlsx 或 mindmap');
+        },
+        optionalField('title', 'string'),
+        optionalField('targetDir', 'string'),
+      ],
+    )(payload);
+  }) satisfies PayloadValidator,
   'binary:read': binaryRead,
   'binary:save': binarySave,
-  'binary:docx:read': docxPath,
-  'binary:docx:save': binaryDocxSave,
   'binary:gitignore:set': binaryGitignoreSet,
   'binary:host:open': binaryHostRef,
   'binary:host:close': binaryHostRef,
@@ -794,6 +790,7 @@ const VALIDATORS: Partial<Record<IpcChannel, PayloadValidator>> = {
   'binary:host:ready': () => null,
   'binary:host:setActive': binaryHostSetActive,
   'binary:host:setBounds': binaryHostSetBounds,
+  'binary:mindmapTheme:set': binaryMindmapThemeSet,
   'binary:editorTheme': binaryEditorTheme,
   // 'binary:gitignore:get' 无 payload，走默认拒绝非空 payload
 };

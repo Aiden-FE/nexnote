@@ -88,7 +88,15 @@ export function applyFsChangeEvent(
 ): DirEntry[] {
   const name = event.path.slice(event.path.lastIndexOf('/') + 1);
   if (event.kind === 'add' || event.kind === 'addDir') {
-    if (entries.some((e) => e.path === event.path)) return entries;
+    const existing = entries.find((e) => e.path === event.path);
+    if (existing) {
+      // 条目已存在（如创建路径的乐观插入）：若后到的事件带 format 而本地缺失/不同，
+      // 合并 format 而非直接丢弃，避免「先无 format 落条目、后带 format 的事件被去重」导致图标错。
+      if (event.kind === 'add' && event.format && existing.format !== event.format) {
+        return entries.map((e) => (e.path === event.path ? { ...e, format: event.format } : e));
+      }
+      return entries;
+    }
     const next = [
       ...entries,
       {

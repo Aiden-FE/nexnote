@@ -1,21 +1,19 @@
 import { promises as fsp } from 'node:fs';
 import path from 'node:path';
 import { createHash } from 'node:crypto';
-import type { BinaryKind, BinaryReadResult, BinarySaveMeta } from '@nexnote/shared';
-import { htmlToBlocks } from '@nexnote/shared';
+import type { BinaryKind, BinaryReadResult } from '@nexnote/shared';
 import type { VaultFsService } from '../fs/fs-service';
 import { formatForPath } from '../document/document-domain';
 import { MetadataStore } from '../document/metadata-store';
 import { parseXlsxToModel, writeModelToXlsx } from './xlsx-convert';
 import { parseXmindToModel, writeModelToXmind } from './xmind-convert';
 import { preserveXlsxReadonly, preserveXmindReadonly } from './zip-preserve';
-import { readDocxToHtml, blocksToDocx } from './docx-semantic';
 import { XlsxError } from './xlsx-convert';
 import { XmindError } from './xmind-convert';
 
 /**
- * 二进制文档领域服务（DEV-074，ADR-0015）：
- * docx / xlsx / xmind 的仓库内副本导入（fail-closed）、读取为语义模型、保存回写。
+ * 二进制文档领域服务（DEV-074，ADR-0015；DEV-098 撤销 docx 后仅 xlsx / xmind）：
+ * xlsx / xmind 的仓库内副本导入（fail-closed）、读取为语义模型、保存回写。
  * - 外部路径不接受 renderer 提供；字节一律经 base64 进入。
  * - 副本可原地覆写（撤销阶段6「原件只读」硬约束），随 Git 版本化。
  */
@@ -23,7 +21,6 @@ import { XmindError } from './xmind-convert';
 export const MAX_BINARY_BYTES = 200 * 1024 * 1024;
 
 const EXT_BY_KIND: Record<BinaryKind, string> = {
-  docx: '.docx',
   xlsx: '.xlsx',
   mindmap: '.xmind',
 };
@@ -107,8 +104,7 @@ export class BinaryService {
   }
 
   /**
-   * DEV-084：在 vault 内创建空白二进制文档。
-   * - docx：调用 blocksToDocx([], title) 生成含 1 个空段落的最小 docx。
+   * DEV-084（DEV-098 撤销 docx 后仅 xlsx / xmind）：
    * - xlsx：生成单 sheet 空工作簿（与 cel 表完全对应）。
    * - xmind：生成单根节点思维导图。
    * - 命名沿用 nextUntitledName 模式（page-ops 内部生成 "未命名 N"），目标目录可空。
@@ -173,14 +169,13 @@ export class BinaryService {
     relPath: string,
     data: unknown,
     expectedSha256: string,
-  ): Promise<{ sha256: string; meta?: BinarySaveMeta }> {
+  ): Promise<{ sha256: string }> {
     const current = await this.readBytes(relPath, kind);
     const actual = createHash('sha256').update(current).digest('hex');
     if (actual !== expectedSha256) {
       throw new BinaryServiceError('副本已被外部修改', 'BINARY_CONFLICT');
     }
     let bytes: Buffer;
-    let meta: BinarySaveMeta | undefined;
     if (kind === 'xlsx') {
       const model = (data as { sheets?: unknown[] }) ?? {};
       const rebuilt = await writeModelToXlsx({ sheets: Array.isArray(model.sheets) ? model.sheets : [] });
@@ -196,52 +191,13 @@ export class BinaryService {
     const { abs } = await this.fs.resolve(relPath);
     await atomicWrite(abs, bytes);
     const sha256 = createHash('sha256').update(bytes).digest('hex');
-    return { sha256, meta };
-  }
-
-  /** docx 语义级往返：读为 HTML + 不保留结构计数。 */
-  async readDocxHtml(relPath: string): Promise<{
-    html: string;
-    sha256: string;
-    meta: { headersFooters: number; numberingStyles: number; superSubscripts: number };
-  }> {
-    if (formatForPath(relPath) !== 'docx') {
-      throw new BinaryServiceError(`不是 docx 文档: ${relPath}`, 'BINARY_NOT_MATCH');
-    }
-    const { abs } = await this.fs.resolve(relPath);
-    const bytes = await fsp.readFile(abs).catch(() => null);
-    if (!bytes) throw new BinaryServiceError(`读取失败: ${relPath}`, 'READ_FAILED');
-    const { html, meta } = await readDocxToHtml(bytes);
-    return { html, sha256: createHash('sha256').update(bytes).digest('hex'), meta };
-  }
-
-  /** 保存 docx：TipTap HTML → 语义块 → dolanmiu/docx 重建，原地覆写。 */
-  async saveDocxHtml(
-    relPath: string,
-    html: string,
-    expectedSha256: string,
-  ): Promise<{ sha256: string; meta?: BinarySaveMeta }> {
-    if (formatForPath(relPath) !== 'docx') {
-      throw new BinaryServiceError(`不是 docx 文档: ${relPath}`, 'BINARY_NOT_MATCH');
-    }
-    const { abs } = await this.fs.resolve(relPath);
-    const current = await fsp.readFile(abs).catch(() => null);
-    if (!current) throw new BinaryServiceError(`读取失败: ${relPath}`, 'READ_FAILED');
-    const actual = createHash('sha256').update(current).digest('hex');
-    if (actual !== expectedSha256) {
-      throw new BinaryServiceError('副本已被外部修改', 'BINARY_CONFLICT');
-    }
-    const blocks = htmlToBlocks(html);
-    const { bytes, meta } = await blocksToDocx(blocks, path.basename(relPath, path.extname(relPath)));
-    await atomicWrite(abs, bytes);
-    const sha256 = createHash('sha256').update(bytes).digest('hex');
-    return { sha256, meta };
+    return { sha256 };
   }
 }
 
 /** tmp + rename 的原子写盘（两个 save 路径共用，避免半成品文件被读到）。 */
 async function atomicWrite(abs: string, bytes: Buffer): Promise<void> {
-  const tmp = `${abs}.tmp-${process.pid}-${Date.now()}`;
+  const tmp = `${abs}.tmp-${process.pid}-${Date.now()}-${Math.random().toString(36).slice(2)}`;
   try {
     await fsp.writeFile(tmp, bytes);
     await fsp.rename(tmp, abs);
@@ -258,12 +214,8 @@ function sanitizeBaseName(raw: string): string {
   return trimmed.replace(/[\\/:*?"<>|\x00-\x1f]/g, '_').slice(0, 80);
 }
 
-/** DEV-084：生成空白 docx / xlsx / xmind 字节。 */
+/** DEV-084：生成空白 xlsx / xmind 字节。 */
 async function renderEmptyBinary(kind: BinaryKind, title: string): Promise<Buffer> {
-  if (kind === 'docx') {
-    const { bytes } = await blocksToDocx([], title);
-    return bytes;
-  }
   if (kind === 'xlsx') {
     return writeModelToXlsx({
       sheets: [{ name: 'Sheet1', celldata: [], config: {} }],

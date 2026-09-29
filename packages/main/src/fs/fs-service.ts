@@ -116,7 +116,7 @@ export class VaultFsService {
     const { abs } = await this.resolve(relPath);
     const dir = path.dirname(abs);
     if (createParentDirs) await fsp.mkdir(dir, { recursive: true });
-    const tmp = `${abs}.tmp-${process.pid}-${Date.now()}`;
+    const tmp = `${abs}.tmp-${process.pid}-${Date.now()}-${Math.random().toString(36).slice(2)}`;
     await fsp.writeFile(tmp, content, 'utf8');
     await fsp.rename(tmp, abs);
     this.appWrites.record(abs);
@@ -209,7 +209,7 @@ export class VaultFsService {
     if (opts.overwrite) {
       const { abs } = await this.resolve(relPath);
       await fsp.mkdir(path.dirname(abs), { recursive: opts.createParentDirs !== false });
-      const tmp = `${abs}.tmp-${process.pid}-${Date.now()}`;
+      const tmp = `${abs}.tmp-${process.pid}-${Date.now()}-${Math.random().toString(36).slice(2)}`;
       await fsp.writeFile(tmp, data);
       try {
         await fsp.rename(tmp, abs);

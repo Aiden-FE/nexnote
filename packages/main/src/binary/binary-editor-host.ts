@@ -263,8 +263,9 @@ export class BinaryEditorHostManager {
         view.webContents.once('destroyed', () => clearTimeout(timer));
       }
     });
+    const webContentsId = view.webContents.id;
     view.webContents.on('destroyed', () => {
-      this.idIndex.delete(view.webContents.id);
+      this.idIndex.delete(webContentsId);
       const entry = this.hosts.get(key);
       if (entry) {
         for (const w of entry.readyWaiters.splice(0)) w();

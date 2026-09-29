@@ -191,7 +191,10 @@ function createDoctorTools(deps: BuiltinToolDeps): AgentTool[] {
       definition: {
         name: 'git_doctor_repair',
         description:
-          '执行医生已批准的 git 修复动作（commit / pull / push / abort-rebase-or-merge / preserve-local-and-abort / force-abort-rebase-or-merge）。' +
+          '执行医生已批准的 git 修复动作（commit / pull / push / abort-rebase-or-merge / ' +
+          'resolve-conflict-and-continue / preserve-local-and-abort / force-abort-rebase-or-merge）。' +
+          'resolve-conflict-and-continue 会真正完成同步（规范化应用自有文件后继续 rebase 并推送），' +
+          '其余 abort 系动作只会中止 rebase、同步并未完成——因此在医生推荐该动作时优先使用它。' +
           '内部走 git:doctor:repairPrepare 签发票据、git:doctor:repairExecute 在审批后真正执行（含 TOCTOU + TTL 安全校验）。' +
           '调用前必须先有医生的诊断结果（医生推荐的 action），不要自行决定 action。',
         access: 'write',

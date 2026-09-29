@@ -1,6 +1,6 @@
-/** NexNote-owned binary-document .gitignore stanza (ADR-0015 Decision 7). */
+/** NexNote-owned binary-document .gitignore stanza (ADR-0015 Decision 7; DEV-098 后仅 xlsx / xmind)。 */
 export const BINARY_IGNORE_MARKER = '# NexNote binary documents (DEV-074)';
-const BINARY_IGNORE_RULES = ['*.docx', '*.xlsx', '*.xmind'] as const;
+const BINARY_IGNORE_RULES = ['*.xlsx', '*.xmind'] as const;
 
 /**
  * Keep unrelated user rules and their line-ending convention untouched while toggling

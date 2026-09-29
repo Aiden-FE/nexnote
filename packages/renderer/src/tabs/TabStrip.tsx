@@ -2,7 +2,6 @@ import { useRef, useState } from 'react';
 import {
   FileSpreadsheet,
   FileText,
-  FileType2,
   GitBranch,
   Home,
   Network,
@@ -19,7 +18,6 @@ import { cn } from '../lib/utils';
 const kindIcon: Record<TabKind, typeof Home> = {
   welcome: Home,
   page: FileText,
-  docx: FileType2,
   xlsx: FileSpreadsheet,
   mindmap: GitBranch,
   graph: Network,
@@ -37,6 +35,7 @@ export function TabStrip() {
   const tabs = useTabStore((s) => s.tabs);
   const activeTabId = useTabStore((s) => s.activeTabId);
   const binaryTabCloseError = useTabStore((s) => s.binaryTabCloseError);
+  const docxNotice = useTabStore((s) => s.docxNotice);
   const vault = useVault();
   const { setActiveTab, closeTab, openTab, reorderTab } = useTabStore.getState();
   const [menu, setMenu] = useState<{
@@ -226,6 +225,20 @@ export function TabStrip() {
             aria-label="关闭保存错误提示"
             className="rounded px-1 hover:bg-accent"
             onClick={() => useTabStore.getState().setBinaryTabCloseError(null)}
+          >
+            ×
+          </button>
+        </div>
+      )}
+
+      {docxNotice && (
+        <div role="status" className="flex shrink-0 items-center gap-1 px-2 text-xs text-amber-700">
+          <span>{docxNotice}</span>
+          <button
+            type="button"
+            aria-label="关闭提示"
+            className="rounded px-1 hover:bg-accent"
+            onClick={() => useTabStore.getState().setDocxNotice(null)}
           >
             ×
           </button>

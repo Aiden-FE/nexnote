@@ -34,7 +34,30 @@ export function BinaryTabView({ tab }: { tab: TabDescriptor }): React.JSX.Elemen
 
   useEffect(() => {
     if (!kind || !path) return;
-    void invoke('binary:host:open', { kind, path }).catch(() => undefined);
+    let cancelled = false;
+    void invoke('binary:host:open', { kind, path })
+      .catch(() => undefined)
+      .then(() => {
+        // DEV-074：open 是异步 IPC，SplitView 的 setActive 效果可能在 host 创建前就跑了
+        //（setActive 对不存在的 key 静默返回，load 命令永远不会被排队）。
+        // host 就绪后补报 bounds + setActive，确保 WebContentsView 挂上且 load 被下发。
+        if (cancelled || !hostRef.current) return;
+        const rect = hostRef.current.getBoundingClientRect();
+        void invoke('binary:host:setBounds', {
+          kind,
+          path,
+          bounds: {
+            x: Math.round(rect.left),
+            y: Math.round(rect.top),
+            width: Math.round(rect.width),
+            height: Math.round(rect.height),
+          },
+        }).catch(() => undefined);
+        void invoke('binary:host:setActive', { kind, path }).catch(() => undefined);
+      });
+    return () => {
+      cancelled = true;
+    };
   }, [kind, path]);
 
   // 只有 tab 真正关闭（不只是切换到另一个 tab）时才 flush + 回收 WebContentsView。

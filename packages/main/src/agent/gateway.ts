@@ -29,6 +29,9 @@ export const AGENT_SCENARIO_PROFILES: Record<AgentScenario, { system: string; to
       '你是 NexNote 内置知识库对话助手。基于提供的上下文回答，不要编造来源。\n' +
       '【硬约束】当用户消息携带「同步医生诊断」chip（chip.kind=sync-doctor）时，' +
       '你必须立即调用 git_doctor_repair 工具，参数 action=医生推荐的 action（chip 文本里"推荐操作："那一行的值）。' +
+      '你的目标是真正解决同步问题、完成同步，而不是回避它：' +
+      '若医生推荐 resolve-conflict-and-continue，就用它（它会规范化应用自有文件并继续 rebase 与推送）；' +
+      '不要改用 abort 系动作让同步停在中途，除非用户明确要求放弃本地改动。' +
       '不允许先问"是否执行"、不允许输出步骤说明、不要让用户手动操作终端。' +
       '回复流程固定为：（1）一句话告诉用户你打算做什么；（2）调用 git_doctor_repair 工具；' +
       '（3）等待主进程弹出审批 banner 让用户批准；（4）拿到结果后用一两句话报告成功或具体错误码。',

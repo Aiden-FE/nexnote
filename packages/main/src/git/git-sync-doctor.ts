@@ -10,7 +10,7 @@ import type {
   GitSyncIssueCategory,
 } from '@nexnote/shared';
 import type { GitService } from './git-service';
-import { GitServiceError, sanitizeRemoteText } from './git-service';
+import { GitServiceError, SELF_RESOLVABLE_CONFLICT_FILES, sanitizeRemoteText } from './git-service';
 import type { AiService } from '../ai/ai-service';
 
 /** 修复票据 TTL：预览到显式确认执行之间的最大窗口。 */
@@ -20,6 +20,7 @@ export const GIT_REPAIR_ACTIONS: readonly GitRepairAction[] = [
   'pull',
   'push',
   'abort-rebase-or-merge',
+  'resolve-conflict-and-continue',
   'preserve-local-and-abort',
   'force-abort-rebase-or-merge',
 ];
@@ -37,12 +38,13 @@ const COMMAND_PREVIEW: Record<GitRepairAction, string> = {
   // DEV-082: rebase/merge --abort is read-mostly: it restores HEAD and the
   // pre-operation index without touching worktree files. Safe to expose.
   'abort-rebase-or-merge': 'git rebase --abort（或 git merge --abort，按当前状态选择）',
-  // DEV-083: preserve-local-and-abort does NOT touch worktree files. It uses
-  // git format-patch to export ahead commits to .nexnote/.rebase-recovery/,
-  // aborts the rebase, then replays patches via git am --3way. Failures are
-  // quarantined into FAILED/ inside the recovery directory, never silently lost.
+  // DEV-090: completes the rebase instead of rewinding it. Conflicts are resolved
+  // by regenerating app-owned files (see GitService.SELF_RESOLVABLE_CONFLICT_FILES);
+  // any other conflicted file aborts the action without touching the worktree.
+  'resolve-conflict-and-continue':
+    '规范化应用自有文件（.gitignore）→ git rebase --continue → git push',
   'preserve-local-and-abort':
-    'git format-patch（ahead→.nexnote/.rebase-recovery/）→ git rebase --abort → git am --3way',
+    '备份原始本地提交到 .nexnote/.rebase-recovery/ → git rebase --abort（恢复原分支）',
   // DEV-083: explicit user-confirmed destructive variant of abort-rebase-or-merge.
   // Drops ahead commits without backup. Surfaced only when the user opts in.
   'force-abort-rebase-or-merge': 'git rebase --abort（丢弃 ahead commits，不备份）',
@@ -50,7 +52,7 @@ const COMMAND_PREVIEW: Record<GitRepairAction, string> = {
 
 const MANUAL_GUIDANCE: Record<GitSyncIssueCategory, string> = {
   conflict:
-    '存在未完成的 rebase 或合并冲突：AI 不会覆盖冲突文件。默认推荐「保留笔记并中止 rebase」——它会把本地未推送的笔记提交导出为补丁、应用完中止后自动回放，不会丢笔记内容；也可以点击「让 Agent 帮助解决」获取步骤指引；如需手动干预，请前往仓库目录操作。',
+    '存在未完成的 rebase 或合并冲突：AI 不会覆盖冲突文件。若冲突只涉及应用自有文件（如 .gitignore），默认推荐「让 Agent 修复」——它会规范化该文件并继续完成 rebase 与推送；若涉及你的笔记，则改推荐「保留笔记并中止 rebase」；也可以点击「让 Agent 帮助解决」获取步骤指引；如需手动干预，请前往仓库目录操作。',
   dirty: '工作区有未提交变更：可以让 Agent 帮你提交保存，或一键暂存后继续同步。',
   auth: '远程认证失败：请在设置中更新 HTTPS 凭证或 SSH key（应用不会代填密钥）。',
   network: '网络不可达：请检查网络连接或远程地址后重试，或在设置中配置代理。',
@@ -75,6 +77,8 @@ export class GitSyncDoctorError extends Error {
       | 'NO_OPERATION'
       | 'NO_AHEAD_TO_PRESERVE'
       | 'PRESERVE_LOCAL_FAILED'
+      | 'CONFLICT_NOT_SELF_RESOLVABLE'
+      | 'CONFLICT_CONTINUE_FAILED'
       | 'STATUS_FAILED',
   ) {
     super(message);
@@ -247,6 +251,7 @@ function planFor(
     remote: string | null;
     rebaseInProgress?: boolean;
   },
+  conflictFiles: string[] = [],
 ): {
   action: GitRepairAction | null;
   allowedAction: GitRepairAction | null;
@@ -259,6 +264,25 @@ function planFor(
   };
   switch (category) {
     case 'conflict':
+      // DEV-090: 暂停的 rebase 若只冲突在应用自有文件（.gitignore 等）上，默认动作改为
+      // 「解决冲突并继续」——同步真正完成，用户不需要再手动操作。只有冲突文件全部可
+      // 自动收敛时才推荐它；一旦涉及用户笔记，退回 DEV-083 的「保留笔记并中止」。
+      if (
+        status.rebaseInProgress &&
+        conflictFiles.length > 0 &&
+        conflictFiles.every((file) => SELF_RESOLVABLE_CONFLICT_FILES.includes(file))
+      ) {
+        return {
+          action: 'resolve-conflict-and-continue',
+          allowedAction: 'resolve-conflict-and-continue',
+          plan: {
+            ...manual,
+            requiresConfirmation: true,
+            safe: true,
+            commandPreview: COMMAND_PREVIEW['resolve-conflict-and-continue'],
+          },
+        };
+      }
       // DEV-083: rebase/merge 暂停时的默认推荐动作改为「保留本地 ahead 提交并中止」。
       // 这避免了 `git rebase --abort` 把用户未推送的笔记提交也撤回的副作用——
       // 用户感知到的「内容被还原」正是这个根源。
@@ -401,7 +425,7 @@ export class GitSyncDoctor {
         message: classifiedError.message,
       };
     }
-    const { action, plan } = planFor(classified.category, snapshot);
+    const { action, plan } = planFor(classified.category, snapshot, conflictFiles);
     const base = ruleExplanation(classified, snapshot);
     const ai = await this.explain(base, classified);
     return {
@@ -431,19 +455,20 @@ export class GitSyncDoctor {
         '存在未解决的冲突：自动修复不会覆盖冲突文件，请人工解决后重新诊断',
         'CONFLICT_PRESENT',
       );
-    const { allowedAction } = planFor(category, diagnosis.status);
+    const { allowedAction } = planFor(category, diagnosis.status, diagnosis.conflictFiles);
     // DEV-083: REBASE_IN_PROGRESS 的 plan 默认推荐 preserve-local-and-abort，
     // 但弹窗同时提供 force-abort（用户显式放弃本地）与旧 abort 入口；
     // 三个 abort 系 action 都被允许签发票据，安全边界由 execute 的
     // TOCTOU + GitService 层保持。
+    // DEV-090: 冲突可自动收敛时额外允许 resolve-conflict-and-continue。
     const abortFamily: readonly GitRepairAction[] = [
       'abort-rebase-or-merge',
+      'resolve-conflict-and-continue',
       'preserve-local-and-abort',
       'force-abort-rebase-or-merge',
     ];
     const actionAllowed =
-      allowedAction === action ||
-      (code === 'REBASE_IN_PROGRESS' && abortFamily.includes(action));
+      allowedAction === action || (code === 'REBASE_IN_PROGRESS' && abortFamily.includes(action));
     if (!actionAllowed)
       throw new GitSyncDoctorError(
         `当前问题（${category}）不允许执行 ${action}；${diagnosis.plan.manualGuidance}`,
@@ -506,26 +531,26 @@ export class GitSyncDoctor {
     if (
       (entry.action === 'abort-rebase-or-merge' ||
         entry.action === 'preserve-local-and-abort' ||
-        entry.action === 'force-abort-rebase-or-merge') &&
+        entry.action === 'force-abort-rebase-or-merge' ||
+        entry.action === 'resolve-conflict-and-continue') &&
       !(snapshot.rebaseInProgress ?? false)
     )
-      throw new GitSyncDoctorError(
-        '当前已经没有进行中的 rebase/merge，无需中止',
-        'NO_OPERATION',
-      );
+      throw new GitSyncDoctorError('当前已经没有进行中的 rebase/merge，无需中止', 'NO_OPERATION');
     if (!sameRootState || !sameContent)
       throw new GitSyncDoctorError('仓库状态在确认后发生了变化，请重新诊断', 'STATE_DRIFT');
     // DEV-082: a true unmerged-index conflict still aborts even for the abort
     // action — `git rebase --abort` may refuse to run when the user has staged
     // partial resolutions that diverge from the original HEAD, so refuse early.
-    // DEV-083: preserve-local-and-abort still allows unmerged conflicts because
-    // format-patch + git am --3way replays patches one at a time and quarantines
-    // any failure into FAILED/ — the user can reconcile later.
+    // A paused rebase can have an unmerged index; the service backs up the
+    // original branch before aborting, without trying to replay the conflict.
+    // DEV-090: resolve-conflict-and-continue exists precisely to consume that
+    // unmerged index, so it is allowed through this guard too.
     if (
       snapshot.conflict &&
       entry.action !== 'abort-rebase-or-merge' &&
       entry.action !== 'preserve-local-and-abort' &&
-      entry.action !== 'force-abort-rebase-or-merge'
+      entry.action !== 'force-abort-rebase-or-merge' &&
+      entry.action !== 'resolve-conflict-and-continue'
     )
       throw new GitSyncDoctorError('检测到未解决冲突，拒绝执行', 'CONFLICT_PRESENT');
 
@@ -540,6 +565,20 @@ export class GitSyncDoctor {
     } else if (entry.action === 'abort-rebase-or-merge') {
       await this.deps.git.abortInProgressRebaseOrMerge();
       message = '已中止未完成的 rebase/merge';
+    } else if (entry.action === 'resolve-conflict-and-continue') {
+      try {
+        message = (await this.deps.git.resolveConflictAndContinue()).message;
+      } catch (error) {
+        if (error instanceof GitServiceError) {
+          if (error.code === 'NO_OPERATION')
+            throw new GitSyncDoctorError(error.message, 'NO_OPERATION');
+          if (error.code === 'CONFLICT_NOT_SELF_RESOLVABLE')
+            throw new GitSyncDoctorError(error.message, 'CONFLICT_NOT_SELF_RESOLVABLE');
+          if (error.code === 'CONFLICT_CONTINUE_FAILED')
+            throw new GitSyncDoctorError(error.message, 'CONFLICT_CONTINUE_FAILED');
+        }
+        throw error;
+      }
     } else if (entry.action === 'preserve-local-and-abort') {
       let result;
       try {

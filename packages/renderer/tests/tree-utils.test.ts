@@ -196,4 +196,20 @@ describe('applyFsChangeEvent sidecar format 携带', () => {
     const entries = applyFsChangeEvent([], { kind: 'addDir', path: '目录' });
     expect(entries).toEqual([{ name: '目录', path: '目录', kind: 'directory' }]);
   });
+
+  it('DEV-101：条目已存在但缺 format 时，后到的带 format add 事件合并 format（自愈）', () => {
+    // 创建路径乐观插入 / 或先到的无 format 事件落条目后，watcher 的带 format add 不应被去重丢弃
+    let entries = applyFsChangeEvent([], { kind: 'add', path: '新页.md' });
+    expect(entries[0]?.format).toBeUndefined();
+    entries = applyFsChangeEvent(entries, { kind: 'add', path: '新页.md', format: 'markdown' });
+    expect(entries).toEqual([
+      { name: '新页.md', path: '新页.md', kind: 'file', format: 'markdown' },
+    ]);
+  });
+
+  it('DEV-101：已存在且 format 相同的 add 事件保持引用不变（去重不产生新数组）', () => {
+    const entries = applyFsChangeEvent([], { kind: 'add', path: '新页.md', format: 'markdown' });
+    const same = applyFsChangeEvent(entries, { kind: 'add', path: '新页.md', format: 'markdown' });
+    expect(same).toBe(entries);
+  });
 });

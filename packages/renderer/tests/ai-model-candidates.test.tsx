@@ -87,15 +87,24 @@ function mount(ui: React.ReactNode = <AiSettingsSection />): void {
 const modelInput = (): HTMLInputElement =>
   document.querySelector<HTMLInputElement>('[data-testid="ai-feature-model-writing"]')!;
 
-/** React 监听 focusin；已聚焦的输入再次「点击」时只有 focusin 会到 React。 */
-function focusIn(input: HTMLInputElement): void {
-  act(() => input.dispatchEvent(new FocusEvent('focusin', { bubbles: true })));
+/** 点击下拉箭头打开面板（测试中比 focus 事件更可靠）。 */
+function openDropdown(input: HTMLInputElement): void {
+  const picker = input.closest('[data-testid^="ai-model-picker-"]');
+  const btn = picker?.querySelector<HTMLButtonElement>('[aria-label="展开模型列表"]');
+  const panel = picker?.querySelector('[data-testid^="ai-model-dropdown-"]');
+  if (panel) {
+    // 已经打开，先关闭再重新打开（模拟用户重新聚焦）
+    act(() => btn?.click());
+  }
+  act(() => btn?.click());
 }
 
-function datalistOptions(input: HTMLInputElement): number {
-  const listId = input.getAttribute('list');
-  const datalist = listId ? document.getElementById(listId) : null;
-  return datalist ? datalist.getElementsByTagName('option').length : 0;
+function dropdownOptionCount(input: HTMLInputElement): number {
+  const picker = input.closest('[data-testid^="ai-model-picker-"]');
+  if (!picker) return 0;
+  const panel = picker.querySelector('[data-testid^="ai-model-dropdown-"]');
+  if (!panel) return 0;
+  return panel.querySelectorAll('button').length;
 }
 
 const listModelsCalls = () => invokeSpy.mock.calls.filter(([c]) => c === 'ai:listModels');
@@ -121,13 +130,16 @@ describe('DEV-091 分功能模型候选缓存语义', () => {
     const p = profile();
     const key = modelCandidateCacheKey(p.id, p);
     mockModels([]);
-    await expect(fetchModelCandidates(p.id, p, key)).resolves.toEqual([]);
+    await expect(fetchModelCandidates(p.id, p, key)).resolves.toEqual({ models: [], error: null });
     expect(peekModelCandidates(key)).toEqual([]);
     expect(listModelsCalls()).toHaveLength(1);
 
     // 第二次（重新聚焦 / 刷新）不得命中空缓存
     mockModels(['m-a', 'm-b']);
-    await expect(fetchModelCandidates(p.id, p, key)).resolves.toEqual(['m-a', 'm-b']);
+    await expect(fetchModelCandidates(p.id, p, key)).resolves.toEqual({
+      models: ['m-a', 'm-b'],
+      error: null,
+    });
     expect(listModelsCalls()).toHaveLength(2);
     expect(peekModelCandidates(key)).toEqual(['m-a', 'm-b']);
   });
@@ -199,26 +211,26 @@ describe('DEV-091 设置页分功能下拉与向导候选对齐', () => {
     mockModels([]);
     mount();
     const input = modelInput();
-    act(() => input.focus());
+    openDropdown(input);
     await act(async () => tick(20));
     expect(listModelsCalls()).toHaveLength(1);
-    expect(datalistOptions(input)).toBe(0);
+    expect(dropdownOptionCount(input)).toBe(0);
 
     // 供应商此刻已可列出模型；用户再次聚焦（或点击刷新）必须重新拉取
     mockModels(['m-a', 'm-b']);
-    focusIn(input);
+    openDropdown(input);
     await act(async () => tick(20));
     expect(listModelsCalls()).toHaveLength(2);
-    expect(datalistOptions(input)).toBe(2);
+    expect(dropdownOptionCount(input)).toBe(2);
   });
 
   it('profile 保存（baseUrl/updatedAt 变化）后候选失效并按新目标重拉', async () => {
     mockModels(['a-model']);
     mount();
     const input = modelInput();
-    act(() => input.focus());
+    openDropdown(input);
     await act(async () => tick(20));
-    expect(datalistOptions(input)).toBe(1);
+    expect(dropdownOptionCount(input)).toBe(1);
     expect(listModelsCalls()[0]![1]).toEqual({
       profileId: 'p1',
       candidate: {
@@ -235,7 +247,7 @@ describe('DEV-091 设置页分功能下拉与向导候选对齐', () => {
     await act(async () => tick());
 
     mockModels(['b-model-1', 'b-model-2']);
-    focusIn(input);
+    openDropdown(input);
     await act(async () => tick(20));
     expect(listModelsCalls()).toHaveLength(2);
     expect(listModelsCalls()[1]![1]).toEqual({
@@ -246,7 +258,7 @@ describe('DEV-091 设置页分功能下拉与向导候选对齐', () => {
         defaultModel: 'gpt-x',
       },
     });
-    expect(datalistOptions(input)).toBe(2);
+    expect(dropdownOptionCount(input)).toBe(2);
   });
 
   it('请求失败时降级为自由输入：不弹错误、输入可用，且失败不入缓存', async () => {
@@ -256,17 +268,17 @@ describe('DEV-091 设置页分功能下拉与向导候选对齐', () => {
     });
     mount();
     const input = modelInput();
-    act(() => input.focus());
+    openDropdown(input);
     await act(async () => tick(20));
     expect(document.querySelector('[data-testid="ai-settings-notice"]')).toBeNull();
-    expect(datalistOptions(input)).toBe(0);
+    expect(dropdownOptionCount(input)).toBe(0);
 
     // 失败不入缓存：下次聚焦再试一次并成功
     mockModels(['m-a']);
-    focusIn(input);
+    openDropdown(input);
     await act(async () => tick(20));
     expect(listModelsCalls()).toHaveLength(2);
-    expect(datalistOptions(input)).toBe(1);
+    expect(dropdownOptionCount(input)).toBe(1);
   });
 
   it('同一 profile：设置页下拉候选 === 「编辑 AI Profile」读到的候选', async () => {
@@ -295,9 +307,9 @@ describe('DEV-091 设置页分功能下拉与向导候选对齐', () => {
     // 1) 设置页分功能下拉
     mount();
     const input = modelInput();
-    act(() => input.focus());
+    openDropdown(input);
     await act(async () => tick(20));
-    expect(datalistOptions(input)).toBe(upstream.length);
+    expect(dropdownOptionCount(input)).toBe(upstream.length);
 
     // 2) 「编辑 AI Profile」向导读取的候选
     act(() => root?.unmount());

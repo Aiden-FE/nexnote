@@ -8,13 +8,16 @@ import {
   reloadAfterConflict,
 } from './session';
 import type { SessionState } from './session';
-import { DocxEditor } from './docx-editor';
 import { XlsxEditor } from './xlsx-editor';
 import { MindmapEditor } from './mindmap-editor';
+// Tailwind 与主题令牌：宿主是独立 HTML 入口，不导入 globals.css 时
+// 所有布局工具类（h-full/flex/flex-1/min-h-0）都不生效，编辑器容器会高度塌陷。
+import '../globals.css';
 import './host.css';
 
 /**
- * DEV-074 二进制编辑器宿主入口（独立 WebContentsView 页面 editor-host.html）。
+ * DEV-074 二进制编辑器宿主入口（独立 WebContentsView 页面 editor-host.html；
+ * DEV-098 撤销 docx 后仅 xlsx / mindmap）。
  * 与主窗口共用 window.nexnote preload 桥；主进程经 binary:editorCommand 驱动 load/flush/destroy。
  */
 function Host(): React.JSX.Element {
@@ -80,15 +83,6 @@ function Host(): React.JSX.Element {
         </div>
       )}
       <div className="min-h-0 flex-1">
-        {session.kind === 'docx' && session.docx && (
-          <DocxEditor
-            path={session.path}
-            html={session.docx.html}
-            sha256={session.sha256}
-            meta={session.docx.meta}
-            onChange={(html) => markDirty({ html })}
-          />
-        )}
         {session.kind === 'xlsx' && session.xlsx && (
           <XlsxEditor
             path={session.path}

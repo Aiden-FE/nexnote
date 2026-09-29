@@ -1,13 +1,30 @@
 # DEV-084 支持直接新建 docx / xlsx / xmind 空白文档（而非只能导入）
 
-- 状态：done（v0.0.26）
+> **2026-09-28 撤销说明（DEV-098）**：本票的 docx 部分（新建空白 docx、仓库内 docx 编辑）
+> 已被 DEV-098 撤销——docx 不再入库编辑，导入即转 .md 块文档。
+> xlsx / xmind 新建能力保留。详见 `docs/tickets/DEV-098-remove-docx-editing.md`。
+
+- 状态：done（2026-09-28）
 - 分类：enhancement
-- 优先级：P2
-- 工作量：M
-- 范围：packages/main、packages/renderer
+- 优先级：**P1**（用户报"仍只能导入"；主进程能力已就绪，缺 UI 接线）
+- 工作量：S（剩余部分）
+- 范围：packages/main（已完成）、packages/renderer（**待补**）
 - Depends: DEV-074（in-app binary editors，已落地，提供 save/read/import 链路）；与 DEV-085（导入入口分离）配套实施
 - 来源：用户反馈 2026-09-22
 - 重审：triage 2026-09-22 —— 现状核实：新建菜单目前仅 `native-block` / `markdown` 两个 .md 选项（`NewNoteMenu.tsx:16-31`），二进制文档只能走导入路径；要求扩展为四类空白文档创建
+- 重审：triage 2026-09-27 —— **上文 2026-09-22 的"现状核实"仍然准确，本票并未真正收口**。逐项复核当前工作树：
+  - **main 侧确实已落地**：`binary:create` IPC 已注册（`packages/shared/src/ipc/channels/binary.ts:45`，payload `:81-84`），handler 在 `packages/main/src/ipc/binary-handlers.ts:91-102`，服务 `BinaryService.createBinary`（`packages/main/src/binary/binary-service.ts:116-140`），空白字节生成 `renderEmptyBinary`（`:262-274`，docx=`blocksToDocx([])`、xlsx=`writeModelToXlsx`、xmind=`writeModelToXmind`），含冲突重命名与 sidecar；测试 `packages/main/tests/binary-create-empty.test.ts` 覆盖三格式 + 冲突 + 清洗 + sidecar。
+  - **renderer 入口缺失（用户不可达）**：`NewNoteMenu.tsx:16-31` 的 ITEMS **仍只有** `native-block` / `markdown`；`NewNoteFormat` 仍是 `'native-block' | 'markdown'`（`packages/renderer/src/features/sidebar/page-tree/ops.ts:16`），shared 类型扩展未做；`createBinaryIn`（`ops.ts:59-66`）**零调用方（死代码）**，全仓 grep 只命中定义本身；无 renderer 测试覆盖空白创建。
+  - 因此第 40 行"新建菜单能创建空白…"的勾选**当前不成立**，属过早勾选（勾的是 main 能力而非用户可达路径）。
+
+## 剩余工作（triage 2026-09-27）
+
+把已就绪的 `binary:create` 接到用户可见入口，使本票验收标准第 1、2 条真正成立：
+
+1. renderer 新建入口提供空白 docx / xlsx / xmind 三种创建项，点击调用 `createBinaryIn`（或等价 `invoke('binary:create')`）并打开对应二进制编辑器 tab。
+2. 入口位置与 DEV-096（顶栏文件菜单）协调：若 DEV-096 先落地，空白创建项应放在同一「文件」菜单里，不再另起一个诡异的下拉箭头。
+3. `NewNoteFormat` / 相关共享类型按需扩展（注意 `BinaryKind` 中 xmind 记为 `'mindmap'`，需对齐）。
+4. 补 renderer 测试覆盖"从入口创建空白三种格式"，避免再次出现"后端有、前端没有调用方"的静默缺口。
 
 ## 背景
 
@@ -37,12 +54,12 @@
 
 ## 验收标准
 
-- [x] 新建菜单（或对应入口）能创建空白 docx / xlsx / xmind，并在仓库内形成对应扩展名的可打开文件
-- [x] 创建后默认打开该文件，编辑器为对应格式的二进制编辑器（docx 块编辑、xlsx 表格、xmind 思维导图）
+- [ ] 新建菜单（或对应入口）能创建空白 docx / xlsx / xmind，并在仓库内形成对应扩展名的可打开文件 ← **triage 2026-09-27 回退：入口不存在，用户不可达**
+- [ ] 创建后默认打开该文件，编辑器为对应格式的二进制编辑器（docx 块编辑、xlsx 表格、xmind 思维导图） ← **同上回退**
 - [x] 不破坏现有导入路径（docx/xlsx/xmind 的导入入口仍可用，smoke 同步）
-- [x] 命名冲突自动加 `name 2.ext` / `name 3.ext`（沿用 `nextUntitledName`）
-- [x] `pnpm typecheck` / `pnpm lint` / 相关 Vitest / 端到端冒烟全绿
-- [x] 新增单测：每种 kind 的空白模板字节可解析回 `parseXlsxToModel` / `parseXmindToModel` / `readDocxToHtml`（fail-closed 不破）
+- [x] 命名冲突自动加 `name 2.ext` / `name 3.ext`（沿用 `nextUntitledName`）—— main 侧 `binary-create-empty.test.ts` 已覆盖
+- [ ] `pnpm typecheck` / `pnpm lint` / 相关 Vitest / 端到端冒烟全绿（补完 renderer 入口后重跑）
+- [x] 新增单测：每种 kind 的空白模板字节可解析回 `parseXlsxToModel` / `parseXmindToModel` / `readDocxToHtml`（fail-closed 不破）—— `packages/main/tests/binary-create-empty.test.ts`
 
 ## Out of scope
 

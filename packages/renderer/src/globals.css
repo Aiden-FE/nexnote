@@ -286,12 +286,27 @@
 
 .nexnote-editor-host .ProseMirror .tableWrapper {
   overflow-x: auto;
+  /* DEV-087：为表格外侧的加号让出空白带——行加号在左（贴行分割线）、
+     列加号在上（贴列分割线）。
+     overflow-x: auto 按规范会把 overflow-y 也计算为 auto，**两个方向都会裁剪**，
+     所以左右各留一条：padding 开路 + 等量负 margin 抵消（宽度 auto 时两者相抵），
+     表格的位置与宽度均保持不变（已用浏览器实测校核）。
+     注意：只在**水平**方向做负 margin——纵向若用负 margin 会把包装盒拉进上一段的
+     区域，使上一段底部约 0.8rem 无法点击。列加号的上方空间改由表格自身
+     margin-top 提供（见下方 table 规则），完全落在包装盒内，无此副作用。 */
+  padding-left: 1.6rem;
+  margin-left: -1.6rem;
+  /* 右侧：末列的列加号会越过表格右边框 0.575rem，需要这点余量，否则出现横向滚动条。 */
+  padding-right: 0.8rem;
+  margin-right: -0.8rem;
 }
 .nexnote-editor-host .ProseMirror table {
   width: 100%;
   border-collapse: collapse;
   table-layout: fixed;
-  margin: 1rem 0;
+  /* DEV-087：上边距 1.6rem 作为**列加号**的空白带（按钮贴表格上边框外侧，
+     不占任何单元格空间）；下边距维持 1rem 不变。 */
+  margin: 1.6rem 0 1rem;
 }
 .nexnote-editor-host .ProseMirror th,
 .nexnote-editor-host .ProseMirror td {
@@ -299,6 +314,8 @@
   border: 1px solid var(--border);
   padding: 0.45rem 0.65rem;
   vertical-align: top;
+  /* DEV-087：单元格作为定位包含块，供 .selectedCell::after 与表格加号按钮贴边。 */
+  position: relative;
 }
 .nexnote-editor-host .ProseMirror th {
   background: var(--muted);
@@ -310,6 +327,93 @@
   inset: 0;
   pointer-events: none;
   background: var(--editor-selection);
+}
+
+/* DEV-087：表格单元格焦点加号。
+   按钮 DOM 由 kernel 包产出（Tailwind 扫描根在 renderer，utility 类名在这里不可靠），
+   故样式手写在本文件。装饰挂在单元格内的文本位置，td/th 已设为定位包含块：
+   - 行加号挂在行内最左单元格 → 横向推到**表格外侧**，避免遮挡内容；
+   - 列加号挂在列头单元格 → 贴其右上角内部（仅聚焦列头时出现）。
+   溢出约束见 .tableWrapper 与 --row/--col 各自的注释。 */
+.nexnote-table-cell-plus {
+  position: absolute;
+  z-index: 20;
+  box-sizing: border-box;
+  display: flex;
+  width: 1.15rem;
+  height: 1.15rem;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid var(--border);
+  border-radius: 0.3rem;
+  background: var(--background);
+  color: var(--editor-muted-foreground);
+  box-shadow: 0 1px 3px rgb(0 0 0 / 0.18);
+  font-family: var(--editor-font-family);
+  font-size: 0.8rem;
+  font-weight: 600;
+  line-height: 1;
+  padding: 0;
+  cursor: pointer;
+  transition: opacity 0.12s ease;
+}
+/* 行加号：垂直**居中于该行底边（与下一行的分割线）**——偏移取半个按钮高
+   （1.15rem / 2 = 0.575rem），故几何中心正好压在分割线上；水平仍在表格
+   左外侧，不侵占单元格内容。 */
+.nexnote-table-cell-plus--row {
+  bottom: -0.575rem;
+  left: -1.25rem;
+}
+/* 列加号：水平**居中于该列右边线（与右侧列的分割线）**——偏移取半个按钮宽，
+   中心压在分割线上；纵向越过表格上边框（-1.3rem 使按钮整体落在 table
+   margin-top 让出的空白带里），不侵占任何单元格空间。仅聚焦列头时出现。
+   末列的列加号会越出表格右边框约 0.575rem，由 .tableWrapper 的右侧余量容纳。 */
+.nexnote-table-cell-plus--col {
+  top: -1.3rem;
+  right: -0.575rem;
+}
+/* hover 提示：文案来自按钮的 data-tooltip（kernel 侧写入）。
+   用 CSS 伪元素而非 JS，无延迟、无额外组件；方位见下方 --row/--col 规则。 */
+.nexnote-table-cell-plus::after {
+  content: attr(data-tooltip);
+  position: absolute;
+  z-index: 30;
+  padding: 0.15rem 0.4rem;
+  border: 1px solid var(--border);
+  border-radius: 0.25rem;
+  background: var(--background);
+  color: var(--foreground);
+  font-family: var(--editor-font-family);
+  font-size: 0.68rem;
+  font-weight: 500;
+  line-height: 1.3;
+  white-space: nowrap;
+  box-shadow: 0 2px 6px rgb(0 0 0 / 0.18);
+  opacity: 0;
+  visibility: hidden;
+  pointer-events: none;
+  transition: opacity 0.1s ease;
+}
+.nexnote-table-cell-plus:hover::after {
+  opacity: 1;
+  visibility: visible;
+}
+/* 行加号提示放**按钮右侧**（按钮已在表格左外侧，向右展开正好落在容器内）；
+   垂直居中于按钮，故自动对齐行分割线。 */
+.nexnote-table-cell-plus--row::after {
+  left: calc(100% + 0.35rem);
+  top: 50%;
+  transform: translateY(-50%);
+}
+/* 列加号提示放**按钮下方**：按钮紧贴表格上边框，上方只剩约 0.3rem，
+   放上方会被 .tableWrapper 的 overflow 裁掉。 */
+.nexnote-table-cell-plus--col::after {
+  top: calc(100% + 0.3rem);
+  right: 0;
+}
+.nexnote-table-cell-plus:hover {
+  background: var(--accent);
+  color: var(--accent-foreground);
 }
 
 .nexnote-editor-host .ProseMirror img {

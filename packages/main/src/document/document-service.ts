@@ -49,7 +49,7 @@ export class DocumentService {
     }
     const absolute = this.absolute(ref.path);
     await fsp.mkdir(path.dirname(absolute), { recursive: true });
-    const temp = `${absolute}.tmp-${process.pid}-${Date.now()}`;
+    const temp = `${absolute}.tmp-${process.pid}-${Date.now()}-${Math.random().toString(36).slice(2)}`;
     try {
       await fsp.writeFile(temp, text, 'utf8');
       await fsp.rename(temp, absolute);

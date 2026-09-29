@@ -7,6 +7,7 @@ import {
   useTranslationStore,
   type InputTranslationSession,
 } from './translation-store';
+import { useSettingsStore } from '../../../stores/settings-store';
 
 export interface TranslationWorkbenchHandle {
   setDraft(draft: string): void;
@@ -36,6 +37,7 @@ export function openTranslationWorkbench(initialText = ''): TranslationWorkbench
   const defaultLanguage = resolveInitialTargetLanguage(
     initialText,
     useAiConfig.getState().state?.translationTargetLanguage,
+    useSettingsStore.getState().global?.appearance.language,
   );
 
   const setDraft = (draft: string): void => {
@@ -123,9 +125,13 @@ export function openTranslationWorkbench(initialText = ''): TranslationWorkbench
   // The deferred result is only honoured when the user has not picked a target language since opening.
   void fetchAiStateOnce().then((state) => {
     const currentSession = current();
-    if (currentSession && state?.translationTargetLanguage && !languageTouched) {
-      useTranslationStore.getState().patchInput({ language: state.translationTargetLanguage });
-    }
+    if (!currentSession || languageTouched) return;
+    const resolved = resolveInitialTargetLanguage(
+      currentSession.draft,
+      state?.translationTargetLanguage,
+      useSettingsStore.getState().global?.appearance.language,
+    );
+    useTranslationStore.getState().patchInput({ language: resolved });
   });
 
   return { setDraft, submit, stop, close };

@@ -20,43 +20,63 @@ async function setup() {
   return { root, fs, service: new DocxService(fs, () => root) };
 }
 
-describe('DocxService', () => {
-  it('导入→编辑副本→导出，原件字节 sha256 保持不变', async () => {
+/** DEV-098：docx 仅作为外部交换格式——导入即转 .md 块文档，导出产新 .docx。 */
+describe('DocxService（DEV-098 撤销仓库内编辑）', () => {
+  it('导入即转换为同名 .md 块文档，sidecar 记 sourceDocx；vault 内不落 .docx 字节', async () => {
     const { root, fs, service } = await setup();
     const externalRoot = await mkdtemp(path.join(tmpdir(), 'nexnote-docx-external-'));
     roots.push(externalRoot);
     const source = path.join(externalRoot, 'outside.docx');
     const original = markdownToDocx('# 原件\n\n正文');
     await writeFile(source, original);
+    const sourceHash = createHash('sha256').update(original).digest('hex');
+
     const imported = await service.importDocx(
-      { base64: (await readFile(source)).toString('base64'), name: 'source.docx' },
+      { base64: (await readFile(source)).toString('base64'), name: '论文.docx' },
       '',
     );
-    const originalHash = createHash('sha256')
-      .update(await readFile(path.join(root, imported.path)))
-      .digest('hex');
-    expect(imported.sha256).toBe(originalHash);
+    expect(imported.path).toBe('论文.md');
+    const markdown = await fs.readTextFile(imported.path);
+    expect(markdown).toContain('# 原件');
+    expect(await fs.exists('论文.docx')).toBe(false);
     expect(await new MetadataStore(root).read(imported.path)).toEqual({
-      format: 'docx',
-      sourceSha256: originalHash,
-    });
-
-    const copy = await service.createEditCopy(imported.path);
-    expect(copy).toMatchObject({ path: 'source (副本).md', created: true });
-    await fs.writeTextFile(copy.path, '# 修改后\n\n- 新项目');
-    const exported = await service.exportDocx(copy.path);
-    expect(exported.path).toMatch(/\.docx$/);
-    expect(exported.path).not.toBe(imported.path);
-    expect(
-      createHash('sha256')
-        .update(await readFile(path.join(root, imported.path)))
-        .digest('hex'),
-    ).toBe(originalHash);
-    expect((await service.readPreview(exported.path)).markdown).toContain('# 修改后');
-    expect(await new MetadataStore(root).read(copy.path)).toMatchObject({
       format: 'native-block',
-      sourceDocx: imported.path,
-      sourceSha256: originalHash,
+      sourceDocx: '论文.docx',
+      sourceSha256: sourceHash,
+    });
+  });
+
+  it('同名 .md 已存在时自动去重（论文 2.md），不覆盖既有文件', async () => {
+    const { fs, service } = await setup();
+    await fs.createTextFile('论文.md', '已有内容', true);
+    const original = markdownToDocx('# 新导入');
+    const second = await service.importDocx(
+      { base64: original.toString('base64'), name: '论文.docx' },
+      '',
+    );
+    expect(second.path).toBe('论文 2.md');
+    expect(await fs.readTextFile('论文.md')).toBe('已有内容');
+  });
+
+  it('targetDir 下的导入落在指定目录', async () => {
+    const { service } = await setup();
+    const original = markdownToDocx('# 目录内');
+    const imported = await service.importDocx(
+      { base64: original.toString('base64'), name: '论文.docx' },
+      'Personal',
+    );
+    expect(imported.path).toBe('Personal/论文.md');
+  });
+
+  it('导出 .md 为新 .docx（默认同目录去抖，不覆盖既有文件）', async () => {
+    const { root, fs, service } = await setup();
+    await fs.createTextFile('笔记.md', '# 修改后\n\n- 新项目', true);
+    const exported = await service.exportDocx('笔记.md');
+    expect(exported.path).toMatch(/笔记\.docx$/);
+    expect(await fs.exists(exported.path)).toBe(true);
+    expect(await new MetadataStore(root).read(exported.path)).toMatchObject({
+      format: 'docx',
+      exportedFrom: '笔记.md',
     });
   });
 
@@ -84,9 +104,6 @@ describe('DocxService', () => {
       code: 'DOCX_IMPORT_SOURCE',
     });
     await expect(service.importDocx({}, '')).rejects.toMatchObject({ code: 'DOCX_IMPORT_SOURCE' });
-    await expect(service.readPreview('../outside.docx')).rejects.toMatchObject({
-      code: 'OUTSIDE_VAULT',
-    });
     await expect(service.exportDocx('../outside.md')).rejects.toMatchObject({
       code: 'OUTSIDE_VAULT',
     });

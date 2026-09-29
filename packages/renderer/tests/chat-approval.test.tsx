@@ -57,6 +57,8 @@ function installBridge(options: {
       return { ok: true, data: options.gitDiagnose ?? null };
     }
     if (channel === 'git:configureAutoSync') return { ok: true, data: undefined };
+    if (channel === 'git:doctor:repairPrepare') return { ok: true, data: { ticket: 't-1' } };
+    if (channel === 'git:doctor:repairExecute') return { ok: true, data: { message: 'ok' } };
     return { ok: true, data: null };
   });
   const onFn = vi.fn((channel: string, cb: (payload: unknown) => void) => {
@@ -221,6 +223,41 @@ describe('DoctorDialog → Chat Dock 同步助手入口', () => {
     expect(syncChip!.text).toContain('类别：conflict（REBASE_IN_PROGRESS）');
     expect(syncChip!.text).toContain('冲突文件：.gitignore');
   });
+
+  it('冲突可自动收敛时以「让 Agent 修复」为首选按钮，直接触发一键修复', async () => {
+    const bridge = installBridge({
+      gitStatus: baseStatus,
+      gitDiagnose: {
+        ...diagnosis,
+        plan: {
+          ...diagnosis.plan,
+          action: 'resolve-conflict-and-continue',
+          commandPreview: '规范化 .gitignore → git rebase --continue → git push',
+        },
+      },
+    });
+    renderGitStatusItem();
+    await flushAsync();
+
+    const conflictBtn = document.querySelector<HTMLButtonElement>(
+      '[data-testid="status-git-conflict"]',
+    );
+    act(() => conflictBtn!.click());
+    await flushAsync();
+
+    const dialog = document.querySelector('[role="dialog"][aria-label="Git 同步诊断"]');
+    expect(dialog).not.toBeNull();
+    const primary = dialog!.querySelector<HTMLButtonElement>('button.bg-primary');
+    expect(primary?.textContent).toContain('让 Agent 修复');
+
+    act(() => primary!.click());
+    await flushAsync();
+    // 一键修复走 repairPrepare + repairExecute，而不是只打开对话
+    const prepared = bridge.calls.find((c) => c.channel === 'git:doctor:repairPrepare');
+    expect(prepared).toBeDefined();
+    expect(prepared!.payload).toEqual({ action: 'resolve-conflict-and-continue' });
+    expect(bridge.calls.some((c) => c.channel === 'git:doctor:repairExecute')).toBe(true);
+  });
 });
 
 describe('审批 banner', () => {
@@ -274,6 +311,38 @@ describe('审批 banner', () => {
     expect(respondCall).toBeDefined();
     expect(respondCall!.payload).toEqual({ approvalId: 'a-2', decision: 'approved' });
     expect(useChatStore.getState().pendingApproval).toBeNull();
+    // 批准后立即显示「执行中」，避免批准到出字之间看起来像卡死
+    expect(useChatStore.getState().runningTool).toBe('edit_current_selection');
+  });
+
+  it('批准后显示执行中 banner，工具完成事件到达后消失', async () => {
+    installBridge({ gitStatus: baseStatus, gitDiagnose: diagnosis });
+    renderChatDock();
+    await flushAsync();
+
+    act(() => {
+      useChatStore.getState().setPendingApproval({
+        approvalId: 'a-run',
+        tool: 'git_doctor_repair',
+        expiresAt: Date.now() + 60_000,
+      });
+    });
+    await flushAsync();
+    act(() =>
+      document.querySelector<HTMLButtonElement>('[data-testid="chat-approval-approve"]')!.click(),
+    );
+    await flushAsync();
+
+    const banner = document.querySelector('[data-testid="chat-running-tool"]');
+    expect(banner).not.toBeNull();
+    expect(banner!.textContent).toContain('正在执行 git 修复');
+
+    // 工具执行完成事件到达 → banner 消失
+    act(() => {
+      useChatStore.getState().setRunningTool(null);
+    });
+    await flushAsync();
+    expect(document.querySelector('[data-testid="chat-running-tool"]')).toBeNull();
   });
 
   it('点击拒绝 → decision=denied', async () => {

@@ -72,27 +72,28 @@ export function clearModelCandidatesCache(): void {
 
 /**
  * 拉取模型候选。force=true 越过缓存（「刷新」按钮）。
- * 成功但为空 → 不写缓存；失败 → 不写缓存并返回空数组（自由输入降级）。
+ * 成功但为空 → 不写缓存；失败 → 不写缓存并返回空数组 + 错误信息（自由输入降级）。
  */
 export async function fetchModelCandidates(
   profileId: string,
   profile: AiProfileView | undefined,
   cacheKey: string,
   force = false,
-): Promise<string[]> {
+): Promise<{ models: string[]; error: string | null }> {
   if (!force) {
     const cached = MODEL_CANDIDATES_CACHE.get(cacheKey);
-    if (cached) return cached;
+    if (cached) return { models: cached, error: null };
   }
   try {
     const result = await invoke('ai:listModels', modelCandidateTarget(profileId, profile));
     const models = Array.isArray(result.models) ? result.models : [];
     if (models.length > 0) MODEL_CANDIDATES_CACHE.set(cacheKey, models);
     else MODEL_CANDIDATES_CACHE.delete(cacheKey);
-    return models;
-  } catch {
+    return { models, error: null };
+  } catch (e) {
     // 失败不缓存错误态：下次聚焦可重试；当前返回空列表走「自由输入」降级。
     MODEL_CANDIDATES_CACHE.delete(cacheKey);
-    return [];
+    const message = e instanceof Error ? e.message : String(e);
+    return { models: [], error: message };
   }
 }

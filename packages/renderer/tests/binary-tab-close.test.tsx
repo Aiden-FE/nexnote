@@ -36,7 +36,7 @@ afterEach(() => {
 
 describe('binary tab close failure (DEV-074)', () => {
   it('restores the tab and surfaces the save failure when host close fails', async () => {
-    const tab = useTabStore.getState().openBinaryTab('docs/report.docx', '报告', 'docx');
+    const tab = useTabStore.getState().openBinaryTab('docs/report.xlsx', '报告', 'xlsx');
     const container = document.createElement('div');
     document.body.append(container);
     const root = createRoot(container);
@@ -52,7 +52,7 @@ describe('binary tab close failure (DEV-074)', () => {
     });
 
     expect(useTabStore.getState().tabs).toHaveLength(1);
-    expect(useTabStore.getState().tabs[0]?.pagePath).toBe('docs/report.docx');
+    expect(useTabStore.getState().tabs[0]?.pagePath).toBe('docs/report.xlsx');
     expect(useTabStore.getState().binaryTabCloseError).toContain('标签页已保留');
     expect(container.textContent).toContain('编辑器加载中');
 

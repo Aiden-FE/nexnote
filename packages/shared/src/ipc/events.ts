@@ -49,13 +49,22 @@ export interface IpcEventMap {
    * 宿主只处理 kind 与自身匹配的指令（kind 为宿主打开时的文档格式）。
    */
   'binary:editorCommand': BinaryEditorCommand;
+  /** DEV-096：原生应用菜单动作下发到渲染层执行。 */
+  'menu:action': MenuAction;
 }
+
+export type MenuAction =
+  | { type: 'createNote'; format: 'native-block' | 'markdown' }
+  | { type: 'createBlankBinary'; kind: 'xlsx' | 'xmind' }
+  | { type: 'importDocx' }
+  | { type: 'importXlsx' }
+  | { type: 'importXmind' };
 
 export interface BinaryEditorCommand {
   /** 'load'：加载文档；'flush'：等待 pending 写入落盘；'theme'：切换主题；'destroy'：销毁。 */
   command: 'load' | 'flush' | 'theme' | 'destroy';
-  /** kind 与 TabKind 对齐；宿主用它过滤自身不关心的指令。 */
-  kind: 'docx' | 'xlsx' | 'mindmap';
+  /** kind 与 TabKind 对齐；宿主用它过滤自身不关心的指令（DEV-098 后仅 xlsx / mindmap）。 */
+  kind: 'xlsx' | 'mindmap';
   /** 文档 vault 相对路径（load / flush / destroy 用）。 */
   path?: string;
   theme?: 'light' | 'dark';
@@ -89,6 +98,7 @@ export const IPC_EVENT_CHANNELS: readonly string[] = [
   'index:confidenceChanged',
   'settings:changed',
   'binary:editorCommand',
+  'menu:action',
 ];
 
 export type IpcEventChannel = keyof IpcEventMap & string;

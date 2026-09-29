@@ -102,7 +102,7 @@ afterEach(async () => {
 });
 
 describe('页面树「新建」下拉菜单（DEV-084 含空白二进制，DEV-096 移除导入）', () => {
-  it('展开菜单显示 5 种新建格式：块 / MD / 空白 DOCX / XLSX / XMind', async () => {
+  it('展开菜单显示 4 种新建格式：块 / MD / 空白 XLSX / XMind（DEV-098 撤销 DOCX）', async () => {
     const view = await mountPageTree();
     const trigger = view.querySelector<HTMLElement>('[data-testid="tree-new-note-menu"]');
     expect(trigger).not.toBeNull();
@@ -117,7 +117,7 @@ describe('页面树「新建」下拉菜单（DEV-084 含空白二进制，DEV-0
     expect(trigger?.getAttribute('aria-expanded')).toBe('true');
 
     const items = [...menu!.querySelectorAll<HTMLElement>('[role="menuitem"]')];
-    expect(items).toHaveLength(5);
+    expect(items).toHaveLength(4);
     // DEV-096：导入已从新建菜单移除（统一在顶栏「文件」菜单）
     expect(menu!.textContent).not.toContain('导入');
 
@@ -126,13 +126,11 @@ describe('页面树「新建」下拉菜单（DEV-084 含空白二进制，DEV-0
       item.querySelector<HTMLElement>('[aria-hidden="true"]')?.textContent;
     expect(badgeOf(items[0])).toBe('块');
     expect(badgeOf(items[1])).toBe('MD');
-    // DEV-084：空白二进制三项的徽标与文案
-    expect(items[2].textContent).toContain('新建空白 DOCX');
-    expect(badgeOf(items[2])).toBe('DOCX');
-    expect(items[3].textContent).toContain('新建空白 XLSX');
-    expect(badgeOf(items[3])).toBe('XLSX');
-    expect(items[4].textContent).toContain('新建空白 XMind');
-    expect(badgeOf(items[4])).toBe('XMIND');
+    // DEV-084（DEV-098 撤销 docx 后两项）：空白二进制的徽标与文案
+    expect(items[2].textContent).toContain('新建空白 XLSX');
+    expect(badgeOf(items[2])).toBe('XLSX');
+    expect(items[3].textContent).toContain('新建空白 XMind');
+    expect(badgeOf(items[3])).toBe('XMIND');
   });
 
   it('默认项（块编辑）经 fs:createNote 新建并按块编辑模式打开', async () => {
@@ -167,12 +165,11 @@ describe('页面树「新建」下拉菜单（DEV-084 含空白二进制，DEV-0
   });
 
   // DEV-084 回归：main 侧 binary:create 早已就绪却无人调用，本票把侧栏菜单接到它。
-  // 旧实现里空白 docx/xlsx/xmind 三项不在菜单里；现在必须能经侧栏入口触发 binary:create。
-  it('空白 DOCX / XLSX / XMind 三项均通过 binary:create 创建并打开 tab', async () => {
+  // DEV-098 撤销 docx 后仅 xlsx / xmind 两项经侧栏入口触发 binary:create。
+  it('空白 XLSX / XMind 两项均通过 binary:create 创建并打开 tab', async () => {
     const view = await mountPageTree();
     for (const expected of [
       // ops.createBinaryIn 约定 'mindmap' 而 NewNoteMenu 的展示用 'xmind'，调用边界翻译一次。
-      { testId: 'new-note-docx', kind: 'docx' as const },
       { testId: 'new-note-xlsx', kind: 'xlsx' as const },
       { testId: 'new-note-xmind', kind: 'mindmap' as const },
     ]) {

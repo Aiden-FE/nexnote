@@ -13,7 +13,8 @@ export type GitRepairAction =
   | 'push'
   | 'abort-rebase-or-merge'
   | 'preserve-local-and-abort'
-  | 'force-abort-rebase-or-merge';
+  | 'force-abort-rebase-or-merge'
+  | 'resolve-conflict-and-continue';
 export interface GitSyncIssue {
   category: GitSyncIssueCategory;
   message: string;
@@ -59,8 +60,8 @@ export interface GitDoctorRepairExecuteResult {
   message: string;
   status: GitDoctorStatusSnapshot;
   /**
-   * DEV-083：仅当 `preserve-local-and-abort` 成功执行时填充，告诉 UI
-   * 保留与回放的统计信息，以及未能自动 replay 的 patches 路径（供 reconcile）。
+   * DEV-083：仅当 `preserve-local-and-abort` 成功执行时填充，记录备份的
+   * 原始本地提交及恢复目录。中止 rebase 会恢复原分支，不回放补丁。
    */
   preserve?: {
     aheadCount: number;

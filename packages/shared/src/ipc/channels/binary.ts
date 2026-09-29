@@ -1,12 +1,11 @@
 import type { Result } from '../result';
 
 /**
- * binary:* 命名空间（DEV-074，ADR-0015）：应用内二进制编辑器（docx / xlsx / xmind）。
+ * binary:* 命名空间（DEV-074，ADR-0015；DEV-098 撤销 docx 后仅 xlsx / xmind）。
  *
  * 核心语义（仓库内副本 Vault Copy）：
  * - 导入即在知识库内生成合规副本，内容与外部原件一致，此后与原件脱钩；副本可原地覆写、
- *   随 Git 版本化、可直接交外部软件使用。docx 为语义级往返而非字节级保真
- *   （段落/标题/加粗斜体/表格/字体色/对齐保留；页眉页脚、编号样式、上下标不保留）。
+ *   随 Git 版本化、可直接交外部软件使用。
  * - 外部文件来源只经主进程 dialogs.pickFile；renderer 提供的字节走 base64；
  *   外部路径不接受 renderer 提供。任何 zip/XML 结构校验失败即 fail-closed。
  * - 只读保留区（xlsx 宏/图表/透视表、xmind 外框/关联线）在编辑器内只读标注，
@@ -15,21 +14,8 @@ import type { Result } from '../result';
 
 export const BINARY_MAX_IMPORT_BYTES = 200 * 1024 * 1024;
 
-/** vault 副本的二进制文档格式（与 TabKind 的 'xlsx'/'mindmap'/'docx' 对应）。 */
-export type BinaryKind = 'docx' | 'xlsx' | 'mindmap';
-
-/** 保存结果信封：docx 语义级往返丢弃的结构计数（用于编辑器内/用户可见的只读标注）。 */
-export interface BinarySaveMeta {
-  /** docx：页眉页脚数量（未保留，编辑保存后丢失）。 */
-  headersFooters?: number;
-  /** docx：编号列表样式数量（未保留）。 */
-  numberingStyles?: number;
-  /** docx：上下标 run 数量（未保留）。 */
-  superSubscripts?: number;
-  /** docx：普通段落/标题/表格等已保留的结构计数（信息性）。 */
-  paragraphs?: number;
-  tables?: number;
-}
+/** vault 副本的二进制文档格式（与 TabKind 的 'xlsx'/'mindmap' 对应；docx 已撤销，见 DEV-098）。 */
+export type BinaryKind = 'xlsx' | 'mindmap';
 
 export interface BinaryReadResult {
   /** 语义模型（JSON 可序列化）：xlsx 为 fortune 工作簿数据，xmind 为 simple-mind-map 数据。 */
@@ -52,8 +38,7 @@ export const BINARY_CHANNELS = [
   'binary:host:setActive',
   'binary:host:setBounds',
   'binary:editorTheme',
-  'binary:docx:read',
-  'binary:docx:save',
+  'binary:mindmapTheme:set',
   'binary:gitignore:set',
   'binary:gitignore:get',
 ] as const;
@@ -77,7 +62,7 @@ export interface BinaryChannelMap {
     };
     response: Result<{ path: string; sha256: string } | null>;
   };
-  /** DEV-084：在 vault 内创建空白 docx / xlsx / xmind 文档（命名自动去重）。 */
+  /** DEV-084：在 vault 内创建空白 xlsx / xmind 文档（命名自动去重；docx 已撤销，见 DEV-098）。 */
   'binary:create': {
     request: { kind: BinaryKind; title?: string; targetDir?: string };
     response: Result<{ path: string; sha256: string }>;
@@ -90,24 +75,7 @@ export interface BinaryChannelMap {
   /** 保存语义模型回 vault 副本（原地覆写，expectedSha256 乐观锁；等待 pending 写入完成）。 */
   'binary:save': {
     request: { kind: BinaryKind; path: string; data: unknown; expectedSha256: string };
-    response: Result<{ sha256: string; meta?: BinarySaveMeta }>;
-  };
-  /**
-   * docx 语义级往返：读为 HTML（mammoth），并返回不保留结构计数
-   * （页眉页脚 / 编号样式 / 上下标）供编辑器与 user guide 告知。
-   */
-  'binary:docx:read': {
-    request: { path: string };
-    response: Result<{
-      html: string;
-      sha256: string;
-      meta: { headersFooters: number; numberingStyles: number; superSubscripts: number };
-    }>;
-  };
-  /** docx 保存：TipTap HTML → 语义块 → dolanmiu/docx 重建，原地覆写。 */
-  'binary:docx:save': {
-    request: { path: string; html: string; expectedSha256: string };
-    response: Result<{ sha256: string; meta?: BinarySaveMeta }>;
+    response: Result<{ sha256: string }>;
   };
   /** 切换「二进制文档不随 Git 跟踪」：写入 vault 根 .gitignore（默认跟踪，不设行）。 */
   'binary:gitignore:set': {
@@ -120,15 +88,15 @@ export interface BinaryChannelMap {
   };
   /** DEV-074 宿主生命周期：由渲染层 tab 切换驱动，管理 WebContentsView 的创建/显示/销毁。 */
   'binary:host:open': {
-    request: { kind: BinaryKind | 'docx'; path: string };
+    request: { kind: BinaryKind; path: string };
     response: Result<{ opened: true }>;
   };
   'binary:host:close': {
-    request: { kind: BinaryKind | 'docx'; path: string };
+    request: { kind: BinaryKind; path: string };
     response: Result<{ closed: true }>;
   };
   'binary:host:setActive': {
-    request: { kind: BinaryKind | 'docx'; path: string } | null;
+    request: { kind: BinaryKind; path: string } | null;
     response: Result<{ active: boolean }>;
   };
   /**
@@ -137,7 +105,7 @@ export interface BinaryChannelMap {
    */
   'binary:host:setBounds': {
     request: {
-      kind: BinaryKind | 'docx';
+      kind: BinaryKind;
       path: string;
       bounds: { x: number; y: number; width: number; height: number } | null;
     };
@@ -145,7 +113,7 @@ export interface BinaryChannelMap {
   };
   /** 等待指定宿主 pending 写入完成（关闭 tab / 窗口前调用，ADR-0015 Decision 6）。 */
   'binary:host:flush': {
-    request: { kind: BinaryKind | 'docx'; path: string };
+    request: { kind: BinaryKind; path: string };
     response: Result<{ flushed: true }>;
   };
   /**
@@ -161,5 +129,13 @@ export interface BinaryChannelMap {
   'binary:editorTheme': {
     request: { theme: 'light' | 'dark' };
     response: Result<{ applied: true }>;
+  };
+  /**
+   * DEV-099：xmind 主题预设选择持久化到 sidecar（`mindmapTheme` 字段，read-merge-write）。
+   * xmind 字节保持 XMind 规范纯净；读取复用 document:getMetadata。
+   */
+  'binary:mindmapTheme:set': {
+    request: { path: string; theme: string };
+    response: Result<{ saved: true }>;
   };
 }

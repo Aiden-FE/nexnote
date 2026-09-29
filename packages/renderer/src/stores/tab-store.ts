@@ -6,9 +6,9 @@ import {
   sanitizePageTitle,
   titleFromPath,
 } from '../editor/title-sync';
+import { invoke } from '../lib/ipc';
 
-export type TabKind = 'welcome' | 'page' | 'docx' | 'xlsx' | 'mindmap' | 'graph' | 'settings';
-export type EditorMode = 'block' | 'source';
+export type TabKind = 'welcome' | 'page' | 'xlsx' | 'mindmap' | 'graph' | 'settings';export type EditorMode = 'block' | 'source';
 export type DocumentFormat = 'native-block' | 'markdown';
 export type MarkdownView = 'source' | 'split' | 'preview';
 export type MarkdownEditView = Exclude<MarkdownView, 'preview'>;
@@ -35,6 +35,8 @@ export interface TabDescriptor {
   splitRatio?: number;
   /** 进入预览前最近一次编辑视图，用于 Mod+Shift+E 返回。 */
   lastMarkdownEditView?: MarkdownEditView;
+  /** DEV-097：编辑器内容是否被用户修改过；用于关闭时判断是否清理自动创建的空文件。 */
+  dirty?: boolean;
   createdAt: number;
 }
 
@@ -43,14 +45,16 @@ export interface WorkspaceState {
   activeTabId: string | null;
   binaryTabCloseError: string | null;
   setBinaryTabCloseError(error: string | null): void;
+  /** DEV-098：docx 相关的用户提示（点击 vault 内 .docx / 导入转换完成）。 */
+  docxNotice: string | null;
+  setDocxNotice(notice: string | null): void;
   openTab(tab: { kind: TabKind; title: string; pagePath?: string }): TabDescriptor;
   openPageTab(pagePath: string, title?: string): TabDescriptor;
-  openDocxTab(pagePath: string, title?: string): TabDescriptor;
-  /** 二进制 tab（DEV-074）：并发上限 maxConcurrent（默认 3），超出按 LRU 关闭最早 tab。 */
+  /** 二进制 tab（DEV-074；DEV-098 撤销 docx 后仅 xlsx / mindmap）：并发上限 maxConcurrent（默认 3），超出按 LRU 关闭最早 tab。 */
   openBinaryTab(
     pagePath: string,
     title: string | undefined,
-    kind: 'docx' | 'xlsx' | 'mindmap',
+    kind: 'xlsx' | 'mindmap',
     maxConcurrent?: number,
   ): TabDescriptor;
   updateTab(
@@ -63,8 +67,11 @@ export interface WorkspaceState {
       markdownView?: MarkdownView;
       splitRatio?: number;
       lastMarkdownEditView?: MarkdownEditView;
+      dirty?: boolean;
     },
   ): void;
+  /** DEV-097：标记 tab 是否已被用户编辑（供关闭时清理判断）。 */
+  setTabDirty(tabId: string, dirty: boolean): void;
   closeTab(tabId: string): void;
   closeOtherTabs(tabId: string): void;
   closeTabsToRight(tabId: string): void;
@@ -91,8 +98,8 @@ export interface WorkspaceState {
   closeTabsForPath(removedPath: string): void;
 }
 
-/** DEV-074：二进制文档 tab 类型（docx/xlsx/mindmap），共享 WebContentsView 进程与并发上限。 */
-export const BINARY_TAB_KINDS = ['docx', 'xlsx', 'mindmap'] as const;
+/** DEV-074：二进制文档 tab 类型（xlsx/mindmap），共享 WebContentsView 进程与并发上限；docx 已撤销（DEV-098）。 */
+export const BINARY_TAB_KINDS = ['xlsx', 'mindmap'] as const;
 export function isBinaryKind(kind: TabKind): kind is (typeof BINARY_TAB_KINDS)[number] {
   return (BINARY_TAB_KINDS as readonly string[]).includes(kind);
 }
@@ -123,11 +130,31 @@ function initialTabs(): { tabs: TabDescriptor[]; activeTabId: string } {
 
 const initial = initialTabs();
 
+/**
+ * DEV-097：对即将被移除的 tab，若其从未被编辑且无其他 tab 引用同一路径，删除自动创建的文件。
+ */
+function cleanupUntouchedTabs(removed: TabDescriptor[], remaining: TabDescriptor[]): void {
+  for (const tab of removed) {
+    if (tab.kind !== 'page' || !!tab.pagePath || tab.dirty) continue;
+    const synthesizedPath = `${sanitizePageTitle(tab.title)}.md`;
+    const stillReferenced = remaining.some(
+      (t) => t.kind === 'page' && (t.pagePath ?? `${sanitizePageTitle(t.title)}.md`) === synthesizedPath,
+    );
+    if (!stillReferenced) {
+      void invoke('fs:delete', { path: synthesizedPath, toTrash: false }).catch(() => {});
+    }
+  }
+}
+
 export const useTabStore = create<WorkspaceState>()((set, get) => ({
   ...initial,
   binaryTabCloseError: null,
   setBinaryTabCloseError(error) {
     set({ binaryTabCloseError: error });
+  },
+  docxNotice: null,
+  setDocxNotice(notice) {
+    set({ docxNotice: notice });
   },
 
   openTab({ kind, title, pagePath }) {
@@ -145,16 +172,6 @@ export const useTabStore = create<WorkspaceState>()((set, get) => ({
     const fallbackTitle =
       title ?? pagePath.slice(pagePath.lastIndexOf('/') + 1).replace(/\.md$/i, '');
     return get().openTab({ kind: 'page', title: fallbackTitle, pagePath });
-  },
-
-  openDocxTab(pagePath, title) {
-    const existing = get().tabs.find((tab) => tab.kind === 'docx' && tab.pagePath === pagePath);
-    if (existing) {
-      get().setActiveTab(existing.id);
-      return existing;
-    }
-    const fallbackTitle = title ?? pagePath.slice(pagePath.lastIndexOf('/') + 1);
-    return get().openTab({ kind: 'docx', title: fallbackTitle, pagePath });
   },
 
   /**
@@ -186,36 +203,51 @@ export const useTabStore = create<WorkspaceState>()((set, get) => ({
     }));
   },
 
+  setTabDirty(tabId, dirty) {
+    set((state) => ({
+      tabs: state.tabs.map((tab) => (tab.id === tabId && tab.dirty !== dirty ? { ...tab, dirty } : tab)),
+    }));
+  },
+
   closeTab(tabId) {
-    set((state) => {
-      const index = state.tabs.findIndex((tab) => tab.id === tabId);
-      if (index < 0) return state;
-      const tabs = state.tabs.filter((tab) => tab.id !== tabId);
+    const state = get();
+    const tab = state.tabs.find((t) => t.id === tabId);
+    if (!tab) return;
+
+    cleanupUntouchedTabs([tab], state.tabs.filter((t) => t.id !== tabId));
+
+    set((s) => {
+      const index = s.tabs.findIndex((t) => t.id === tabId);
+      if (index < 0) return s;
+      const tabs = s.tabs.filter((t) => t.id !== tabId);
       const activeTabId =
-        state.activeTabId === tabId
+        s.activeTabId === tabId
           ? (tabs[index]?.id ?? tabs[index - 1]?.id ?? null)
-          : state.activeTabId;
+          : s.activeTabId;
       return { tabs, activeTabId };
     });
   },
 
   closeOtherTabs(tabId) {
-    set((state) => {
-      const tab = state.tabs.find((candidate) => candidate.id === tabId);
-      return tab ? { tabs: [tab], activeTabId: tabId } : state;
-    });
+    const state = get();
+    const kept = state.tabs.find((candidate) => candidate.id === tabId);
+    if (!kept) return;
+    const removed = state.tabs.filter((t) => t.id !== tabId);
+    cleanupUntouchedTabs(removed, [kept]);
+    set({ tabs: [kept], activeTabId: tabId });
   },
 
   closeTabsToRight(tabId) {
-    set((state) => {
-      const index = state.tabs.findIndex((tab) => tab.id === tabId);
-      if (index < 0) return state;
-      const tabs = state.tabs.slice(0, index + 1);
-      const activeTabId = tabs.some((tab) => tab.id === state.activeTabId)
-        ? state.activeTabId
-        : tabId;
-      return { tabs, activeTabId };
-    });
+    const state = get();
+    const index = state.tabs.findIndex((tab) => tab.id === tabId);
+    if (index < 0) return;
+    const kept = state.tabs.slice(0, index + 1);
+    const removed = state.tabs.slice(index + 1);
+    cleanupUntouchedTabs(removed, kept);
+    const activeTabId = kept.some((tab) => tab.id === state.activeTabId)
+      ? state.activeTabId
+      : tabId;
+    set({ tabs: kept, activeTabId });
   },
 
   setActiveTab(tabId) {
@@ -365,14 +397,10 @@ export function openPage(pagePath: string, title?: string): TabDescriptor {
   return useTabStore.getState().openPageTab(pagePath, title);
 }
 
-export function openDocx(pagePath: string, title?: string): TabDescriptor {
-  return useTabStore.getState().openDocxTab(pagePath, title);
-}
-
 /** DEV-074：二进制 tab 打开入口（含 LRU 并发上限；maxConcurrent 来自 vault 设置）。 */
 export function openBinary(
   pagePath: string,
-  kind: 'docx' | 'xlsx' | 'mindmap',
+  kind: 'xlsx' | 'mindmap',
   maxConcurrent?: number,
 ): TabDescriptor {
   return useTabStore.getState().openBinaryTab(pagePath, undefined, kind, maxConcurrent);

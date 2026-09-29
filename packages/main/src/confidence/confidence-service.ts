@@ -158,12 +158,11 @@ export function computeConfidenceResults({
       factor(
         'manual_boost',
         manualScore,
-        page.confidenceBoost === null
-          ? '未设置 confidence_boost，使用中性分'
-          : `confidence_boost=${page.confidenceBoost}`,
+        '系统中性分，不受用户输入影响',
       ),
     ];
-    const score = Math.round(factors.reduce((total, item) => total + item.contribution, 0));
+    const raw = factors.reduce((total, item) => total + item.contribution, 0);
+    const score = Math.max(1, Math.round(raw));
     return { pageId: page.id, path: page.path, score, factors, computedAt };
   });
 }

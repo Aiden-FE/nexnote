@@ -14,6 +14,9 @@ describe('DEV-068 · 翻译初始目标语言三档优先级', () => {
   it('第二档：无全局默认时按界面语言映射（en-US → English，zh-CN → 简体中文）', () => {
     expect(resolveInitialTargetLanguage('你好世界', undefined, 'en-US')).toBe('English');
     expect(resolveInitialTargetLanguage('hello world', undefined, 'zh-CN')).toBe('简体中文');
+    // 空字符串视为未设置，同样回落界面语言
+    expect(resolveInitialTargetLanguage('你好世界', '', 'en-US')).toBe('English');
+    expect(resolveInitialTargetLanguage('hello world', '', 'zh-CN')).toBe('简体中文');
   });
 
   it('第二档：其他界面语言映射（ja/ko/fr/de/es/ru）', () => {

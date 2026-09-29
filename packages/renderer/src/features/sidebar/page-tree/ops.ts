@@ -24,6 +24,9 @@ export async function createNoteIn(
   format: NewNoteFormat = 'native-block',
 ): Promise<string> {
   const info = await invoke('fs:createNote', { parentDir, format });
+  // 乐观插入：创建路径已知 format，立即落条目保证图标即时正确；
+  // 稍后 watcher 的 add 事件经 applyFsChangeEvent 去重/合并，不会重复或覆盖。
+  usePageTreeStore.getState().applyEvent({ kind: 'add', path: info.path, format });
   await openDocumentTab(info.path, displayName({ name: info.name, kind: 'file' }), {
     knownFormat: format,
   });
@@ -36,11 +39,21 @@ export async function openDocument(path: string, knownFormat?: NewNoteFormat): P
   return path;
 }
 
-/** 经主进程文件选择器导入 DOCX，成功后打开可编辑 tab；取消选择返回 null。 */
+/** DEV-098：导入转换完成的一次性提示（Word 专属排版不保留；原件仍在外部原位置）。 */
+function notifyDocxConverted(path: string): void {
+  getTabStore()
+    .getState()
+    .setDocxNotice(
+      `已导入并转换为块文档 ${path}。Word 专属排版（页眉页脚、编号样式、上下标等）不保留；原件仍在外部原位置。`,
+    );
+}
+
+/** 经主进程文件选择器导入 DOCX，转换为块文档后打开可编辑 tab；取消选择返回 null。 */
 export async function importDocxIn(targetDir = ''): Promise<string | null> {
   const result = await invoke('docx:import', { targetDir });
   if (!result) return null;
   await openDocumentTab(result.path);
+  notifyDocxConverted(result.path);
   return result.path;
 }
 
@@ -55,9 +68,9 @@ export async function importBinaryIn(
   return result.path;
 }
 
-/** DEV-084：在 vault 内创建空白 docx / xlsx / xmind 文档并打开编辑器 tab。 */
+/** DEV-084（DEV-098 撤销 docx 后仅 xlsx / xmind）：在 vault 内创建空白文档并打开编辑器 tab。 */
 export async function createBinaryIn(
-  kind: 'docx' | 'xlsx' | 'mindmap',
+  kind: 'xlsx' | 'mindmap',
   targetDir = '',
 ): Promise<string> {
   const result = await invoke('binary:create', { kind, targetDir });
@@ -66,8 +79,8 @@ export async function createBinaryIn(
 }
 
 /**
- * DEV-074：外部文件拖入页面树 / 编辑器 → 读取字节按扩展名导入（不接收文件系统路径，
- * 防 renderer 借拖拽通道传路径）；非 docx/xlsx/xmind 返回 null。
+ * DEV-074 / DEV-098：外部文件拖入页面树 / 编辑器 → 读取字节按扩展名导入（不接收文件系统路径，
+ * 防 renderer 借拖拽通道传路径）；docx 导入即转块文档；非 docx/xlsx/xmind 返回 null。
  */
 export async function importDroppedFile(
   file: { name: string; arrayBuffer(): Promise<ArrayBuffer> },
@@ -81,6 +94,7 @@ export async function importDroppedFile(
     const result = await invoke('docx:import', { data: base64, name: file.name, targetDir });
     if (!result) return null;
     await openDocumentTab(result.path);
+    notifyDocxConverted(result.path);
     return result.path;
   }
   if (name.endsWith('.xlsx')) {

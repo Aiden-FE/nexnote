@@ -1,6 +1,7 @@
-import { useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import type { AiFeatureKey, AiProfileView, ConnectionTestResult } from '@nexnote/shared';
-import { TRANSLATION_LANGUAGES } from './translation/languages';
+import { TRANSLATION_LANGUAGES, mapInterfaceLanguageToTranslationTarget } from './translation/languages';
+import { useSettingsStore } from '../../stores/settings-store';
 import { invoke } from '../../lib/ipc';
 import { useAiConfig, useAiWizard } from './ai-config';
 import {
@@ -13,6 +14,7 @@ import { cn } from '../../lib/utils';
 import {
   Bot,
   Check,
+  ChevronDown,
   Download,
   KeyRound,
   Loader2,
@@ -311,24 +313,10 @@ export function AiSettingsSection() {
 
       <section className="space-y-2.5" data-testid="ai-translation-defaults">
         <h4 className="text-[13px] font-medium">翻译默认设置</h4>
-        <label className="flex items-center gap-3 rounded-lg border p-2.5 text-[13px]">
-          <span className="w-28 shrink-0 font-medium">默认目标语言</span>
-          <select
-            data-testid="ai-translation-target-language"
-            value={state?.translationTargetLanguage ?? 'English'}
-            onChange={(event) => void setTranslationTargetLanguage(event.target.value)}
-            className="h-8 rounded-md border bg-transparent px-2 text-xs"
-          >
-            {TRANSLATION_LANGUAGES.map((language) => (
-              <option key={language.id} value={language.id}>
-                {language.label}
-              </option>
-            ))}
-          </select>
-          <span className="ml-auto text-[11px] text-muted-foreground">
-            触发点临时切换仅影响当次翻译
-          </span>
-        </label>
+        <TranslationTargetPicker
+          value={state?.translationTargetLanguage ?? ''}
+          onChange={(v) => void setTranslationTargetLanguage(v)}
+        />
       </section>
 
       {/* 分功能指定 */}
@@ -412,10 +400,10 @@ function assignmentModelHint(
 
 /**
  * 分功能指定模型的 Combobox。
- * - 聚焦时拉取 /models（与「编辑 AI Profile」同一 `ai:listModels`，按连接签名缓存）；
- *   候选以 <datalist> 展示，选中或自由输入都可以。
- * - 仅在 blur（值与初始值不同）/ Enter / 候选点选时 commit；逐字符 onChange 不触发 IPC。
- * - 候选拉取失败时静默降级为纯文本输入；profile 连接信息变化时缓存自动失效重拉。
+ * - 输入框 + 自定义下拉面板（替代 <datalist>，确保所有模型可见可浏览）。
+ * - 聚焦或点击下拉箭头时拉取 /models；候选在下拉面板中完整展示，支持输入过滤。
+ * - 仅在 blur（值与初始值不同）/ Enter / 候选点选时 commit。
+ * - 候选拉取失败时刷新按钮变红并 tooltip 显示错误；仍可自由输入。
  */
 function ModelPicker({
   feature,
@@ -433,80 +421,214 @@ function ModelPicker({
   const cacheKey = modelCandidateCacheKey(profileId, profile);
 
   const [value, setValue] = useState(initialValue);
-  // 已拉取结果按连接签名归档：签名变了就自然退回缓存/空（不展示旧 profile 的候选）。
-  const [fetched, setFetched] = useState<{ cacheKey: string; list: string[] } | null>(null);
-  const candidates = fetched?.cacheKey === cacheKey ? fetched.list : peekModelCandidates(cacheKey);
+  const [fetched, setFetched] = useState<{
+    cacheKey: string;
+    list: string[];
+    error: string | null;
+  } | null>(null);
+  const allCandidates = fetched?.cacheKey === cacheKey ? fetched.list : peekModelCandidates(cacheKey);
   const [fetching, setFetching] = useState(false);
+  const [open, setOpen] = useState(false);
+  // 只有用户主动输入时才过滤候选；初始值（当前已保存的模型名）不作为过滤条件。
+  const [userTyped, setUserTyped] = useState(false);
+  const containerRef = useRef<HTMLSpanElement | null>(null);
   const inputRef = useRef<HTMLInputElement | null>(null);
-  const listId = `ai-model-list-${feature}-${profileId}`.replace(/[^a-zA-Z0-9_-]/g, '_');
+
+  const filtered = userTyped && value
+    ? allCandidates.filter((c) => c.toLowerCase().includes(value.toLowerCase()))
+    : allCandidates;
 
   const loadCandidates = async (force = false): Promise<void> => {
     setFetching(true);
     try {
-      const list = await fetchModelCandidates(profileId, profile, cacheKey, force);
-      setFetched({ cacheKey, list });
+      const { models, error } = await fetchModelCandidates(profileId, profile, cacheKey, force);
+      setFetched({ cacheKey, list: models, error });
     } finally {
       setFetching(false);
     }
   };
 
+  // 点击外部关闭下拉
+  useEffect(() => {
+    if (!open) return;
+    const onPointer = (e: MouseEvent): void => {
+      if (containerRef.current && !containerRef.current.contains(e.target as Node)) {
+        setOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', onPointer, { capture: true });
+    return () => document.removeEventListener('mousedown', onPointer, true);
+  }, [open]);
+
   const [committedBaseline, setCommittedBaseline] = useState(initialValue);
   const commit = (next: string): void => {
-    const trimmed = next;
-    if (trimmed === committedBaseline) {
+    if (next === committedBaseline) {
       setValue(committedBaseline);
       return;
     }
-    setCommittedBaseline(trimmed);
-    onCommit(trimmed);
+    setCommittedBaseline(next);
+    onCommit(next);
+  };
+
+  const pick = (model: string): void => {
+    setValue(model);
+    setUserTyped(false);
+    setOpen(false);
+    commit(model);
+    inputRef.current?.blur();
   };
 
   return (
     <span
+      ref={containerRef}
       className="relative inline-flex items-center gap-1"
       data-testid={`ai-model-picker-${feature}-${profileId}`}
     >
-      <input
-        {...rest}
-        ref={(el) => {
-          inputRef.current = el;
-        }}
-        list={listId}
-        value={value}
-        onChange={(e) => setValue(e.target.value)}
-        onFocus={() => {
-          // 只有成功且非空的候选才算命中；空/失败状态下次聚焦自动重试。
-          if (peekModelCandidates(cacheKey).length === 0) void loadCandidates();
-        }}
-        onBlur={() => commit(value)}
-        onKeyDown={(e) => {
-          if (e.key === 'Enter') {
-            e.preventDefault();
-            commit(value);
-            e.currentTarget.blur();
-          }
-          if (e.key === 'Escape') {
-            setValue(initialValue);
-          }
-        }}
-        placeholder="模型名（可自由输入）"
-        className="h-8 w-52 rounded-md border bg-transparent px-2 font-mono text-xs"
-        spellCheck={false}
-      />
-      <datalist id={listId}>
-        {candidates.map((c) => (
-          <option key={c} value={c} />
-        ))}
-      </datalist>
+      <span className="relative">
+        <input
+          {...rest}
+          ref={(el) => {
+            inputRef.current = el;
+          }}
+          value={value}
+          onChange={(e) => {
+            setValue(e.target.value);
+            setUserTyped(true);
+          }}
+          onFocus={() => {
+            setOpen(true);
+            setUserTyped(false);
+            if (allCandidates.length === 0) void loadCandidates();
+          }}
+          onBlur={() => {
+            // 延迟关闭，让下拉点击先触发
+            setTimeout(() => {
+              setOpen(false);
+              commit(value);
+            }, 150);
+          }}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter') {
+              e.preventDefault();
+              commit(value);
+              setOpen(false);
+              e.currentTarget.blur();
+            }
+            if (e.key === 'Escape') {
+              setValue(initialValue);
+              setOpen(false);
+            }
+            if (e.key === 'ArrowDown' && !open) {
+              e.preventDefault();
+              setOpen(true);
+              if (allCandidates.length === 0) void loadCandidates();
+            }
+          }}
+          placeholder="模型名（可自由输入）"
+          className="h-8 w-52 rounded-md border bg-transparent px-2 pr-7 font-mono text-xs"
+          spellCheck={false}
+        />
+        <button
+          type="button"
+          tabIndex={-1}
+          aria-label="展开模型列表"
+          onClick={() => {
+            setOpen((prev) => !prev);
+            setUserTyped(false);
+            if (!open && allCandidates.length === 0) void loadCandidates();
+          }}
+          className="absolute right-1 top-1/2 -translate-y-1/2 rounded p-0.5 text-muted-foreground hover:text-foreground"
+        >
+          <ChevronDown className={`size-3 transition-transform ${open ? 'rotate-180' : ''}`} />
+        </button>
+      </span>
+      {open && (
+        <div
+          data-testid={`ai-model-dropdown-${feature}-${profileId}`}
+          className="absolute left-0 top-full z-50 mt-1 max-h-60 w-72 overflow-y-auto rounded-md border bg-popover p-1 text-popover-foreground shadow-lg"
+        >
+          {fetching && allCandidates.length === 0 ? (
+            <div className="flex items-center gap-1.5 px-2 py-1.5 text-xs text-muted-foreground">
+              <Loader2 className="size-3 animate-spin" /> 加载模型列表…
+            </div>
+          ) : filtered.length === 0 ? (
+            <div className="px-2 py-1.5 text-xs text-muted-foreground">
+              {allCandidates.length === 0 ? '暂无候选，可自由输入模型名' : '无匹配模型'}
+            </div>
+          ) : (
+            filtered.map((c) => (
+              <button
+                key={c}
+                type="button"
+                onMouseDown={(e) => {
+                  e.preventDefault();
+                  pick(c);
+                }}
+                className={`flex w-full items-center rounded-sm px-2 py-1 text-left text-xs hover:bg-accent ${
+                  c === value ? 'bg-accent font-medium' : ''
+                }`}
+              >
+                {c}
+              </button>
+            ))
+          )}
+        </div>
+      )}
       <button
         type="button"
         aria-label="刷新模型候选"
-        title="刷新模型候选"
+        title={
+          fetched?.cacheKey === cacheKey && fetched.error
+            ? `拉取失败：${fetched.error}`
+            : '刷新模型候选'
+        }
         onClick={() => void loadCandidates(true)}
-        className="rounded p-1 text-muted-foreground hover:bg-accent hover:text-foreground"
+        className={`rounded p-1 hover:bg-accent ${
+          fetched?.cacheKey === cacheKey && fetched.error
+            ? 'text-destructive'
+            : 'text-muted-foreground hover:text-foreground'
+        }`}
       >
         {fetching ? <Loader2 className="size-3 animate-spin" /> : <RefreshCw className="size-3" />}
       </button>
     </span>
+  );
+}
+
+/**
+ * 翻译目标语言选择器：首项「跟随界面语言」表示未显式指定时跟随设置内的语言选项。
+ */
+function TranslationTargetPicker({
+  value,
+  onChange,
+}: {
+  value: string;
+  onChange(value: string): void;
+}) {
+  const appLanguage = useSettingsStore((s) => s.global?.appearance.language);
+  const effectiveFromAppLang = mapInterfaceLanguageToTranslationTarget(appLanguage);
+
+  return (
+    <label className="flex items-center gap-3 rounded-lg border p-2.5 text-[13px]">
+      <span className="w-28 shrink-0 font-medium">默认目标语言</span>
+      <select
+        data-testid="ai-translation-target-language"
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        className="h-8 rounded-md border bg-transparent px-2 text-xs"
+      >
+        <option value="">
+          跟随界面语言{effectiveFromAppLang ? `（${effectiveFromAppLang}）` : ''}
+        </option>
+        {TRANSLATION_LANGUAGES.map((language) => (
+          <option key={language.id} value={language.id}>
+            {language.label}
+          </option>
+        ))}
+      </select>
+      <span className="ml-auto text-[11px] text-muted-foreground">
+        触发点临时切换仅影响当次翻译
+      </span>
+    </label>
   );
 }

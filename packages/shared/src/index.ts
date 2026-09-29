@@ -14,8 +14,6 @@ export * from './markdown/wikilink';
 export * from './markdown/links';
 export * from './markdown/code-languages';
 export * from './editor/editor-actions';
-export { htmlToBlocks } from './editor/docx-blocks';
-export type { DocxBlock, DocxRun, DocxAlignment } from './editor/docx-blocks';
 // Settings utils（纯函数，主/渲染共用）
 export { mergeGlobalPatch, mergeVaultPatch, normalizeShortcut } from './settings/settings-utils';
 // IPC

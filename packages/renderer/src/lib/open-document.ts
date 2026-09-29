@@ -16,8 +16,8 @@ function binaryMaxConcurrent(): number {
 /**
  * 统一文档打开入口：所有导航（搜索/面板/图谱/反链/AI 来源/编辑器内链接/页面树）
  * 都经此函数，保证：
- * - `.docx` 打开可编辑 tab（DEV-074 语义级往返编辑器；旧只读预览已替换）；
  * - `.xlsx` → xlsx tab、`.xmind` → mindmap tab（独立 WebContentsView，并发上限 ≤3，LRU）；
+ * - `.docx`（DEV-098）：docx 已不支持仓库内打开，设置提示条引导改用「导入 Word 文档」；
  * - sidecar 持久格式为 markdown 的文档使用源码编辑器（预览由该视图管理）；
  * - legacy 无 sidecar 文档默认按 native-block 兼容打开。
  */
@@ -27,8 +27,9 @@ export async function openDocumentTab(
   options?: { knownFormat?: DocumentFormat; initialMarkdownView?: MarkdownView },
 ): Promise<{ kind: 'page' | 'docx' | 'xlsx' | 'mindmap'; format?: DocumentFormat }> {
   if (/\.(docx)$/i.test(pagePath)) {
-    // DEV-074：docx 现为语义级往返可编辑 tab，纳入二进制并发上限（与 xlsx/mindmap 共享）。
-    openBinary(pagePath, 'docx', binaryMaxConcurrent());
+    getTabStore().getState().setDocxNotice(
+      'DOCX 不再支持在知识库内打开。请用「文件 → 导入 Word 文档（转为块文档）」重新导入。',
+    );
     return { kind: 'docx' };
   }
   if (/\.(xlsx)$/i.test(pagePath)) {
