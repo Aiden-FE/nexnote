@@ -26,3 +26,21 @@ Status: implemented —— 复刻桌面分词语义（CJK unigram+bigram + 拉�
 - 一致性验收：在同一个脱敏 vault 副本上，用一组固定中文查询（含 2 字子串、含拉丁前缀、含标签）对比手机端与桌面端命中集合，逐条记录差异并收敛到一致。
 - 索引全量重建幂等（多次重建结果一致，抽查命中数与顺序）。
 - 索引不可用时（删除/损坏）应用不崩溃，能重建。
+
+## 跨端一致性证据（2026-09-30）
+
+`flutter test integration_test/cross_device_test.dart` 在 iOS 模拟器上克隆评测库、写入捕获页并推送，
+导出固定查询集的手机端命中集合；随后用**桌面端真实 `LinkIndexService`（FTS5）**对同一份内容跑同一组查询，
+逐条比对（脚本 `.scratch/nexnote-mobile/verify/search-parity.test.ts`，`npx vitest run --config ...`）：
+
+```
+跨端命中集核对（共 6 条查询，差异 0 条）
+OK   "基准"       手机端/桌面端: ["index.md"]
+OK   "防抖"       手机端/桌面端: ["Inbox/跨端核对笔记.md","notes/设备端同步.md"]
+OK   "双链"       手机端/桌面端: []
+OK   "设备端同步"  手机端/桌面端: ["Inbox/跨端核对笔记.md","index.md","notes/设备端同步.md","refs/移动端计划.md"]
+OK   "索引"       手机端/桌面端: ["Inbox/跨端核对笔记.md","index.md"]
+OK   "不存在词"    手机端/桌面端: []
+```
+
+含中文子串（`基准` 命中 `搜索基准`）、标签、别名与双链目标词；未命中词两端同为 0 结果。

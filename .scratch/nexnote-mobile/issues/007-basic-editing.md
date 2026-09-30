@@ -26,3 +26,18 @@ Status: implemented —— 源码模式（frontmatter 只读）+ 简化块编辑
 - 字节保真：仅打开不编辑，文件字节不变（哈希对比）；编辑一处段落，其余字节不变（diff 仅一处）。
 - 含表格、公式、图表、内嵌 HTML 的页面在块模式打开后保存，桌面端打开零漂移。
 - 保存触发的自动提交消息符合 `nexnote:auto:` 约定，且被桌面端识别为自动提交。
+
+## 设备提交被桌面端识别（2026-09-30）
+
+手机端捕获/编辑后由自动提交落库并推送，宿主机用**真实 git** 检查远端：
+
+```
+$ git -C .scratch/nexnote-mobile/fixture-clean/remote.git log --oneline
+093b4c0 nexnote:auto: 快速捕获 跨端核对笔记
+ca57662 nexnote:init: 移动端验收知识库（干净基线）
+
+$ git -C .../remote.git ls-tree -r --name-only HEAD
+Inbox/跨端核对笔记.md  index.md  notes/基础编辑.md  notes/设备端同步.md  refs/移动端计划.md
+```
+
+提交前缀符合桌面端 `nexnote:init/auto/manual` 约定，且捕获页原文（含元数据头）与设备端逐字节一致。
