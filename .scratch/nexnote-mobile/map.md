@@ -91,6 +91,7 @@ Label: wayfinder:map
 | 手机端集成（iOS 模拟器 iPhone 17 Pro / iOS 26.5） | `flutter test integration_test/<file>` | 5/5 文件通过：git_diag、git_spike（连跑 3 次）、search_spike、keychain_spike、app_journey（73s，11 检查点） |
 | Xcode 构建系统 | `xcodebuild -workspace ios/Runner.xcworkspace -scheme Runner -sdk iphonesimulator build` | **BUILD SUCCEEDED** |
 | 应用启动 | `xcrun simctl install/launch` | 启动成功，截图 `screenshots/shot-01` |
+| **Xcode 交互式验收** | 电脑控制：`open ios/Runner.xcworkspace` → ⌘R | 首次 Build Failed（`flutter test` 污染 `FLUTTER_TARGET`，已确认根因并修复）；修复后 ⌘R 构建成功并运行于 iPhone 18 Pro，Dart VM 挂载调试器，截图 `screenshots/shot-12` |
 | 桌面端 typecheck | `CI=true pnpm -r typecheck` | PASS（未改动桌面端代码） |
 | 桌面端 lint | `pnpm lint` | PASS（0 errors） |
 | 桌面端 test | `env -u GIT_EDITOR -u GIT_SEQUENCE_EDITOR -u EDITOR CI=true pnpm test` | **1741 passed / 3 skipped**（184 文件） |

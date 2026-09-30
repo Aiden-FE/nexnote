@@ -27,3 +27,24 @@ Status: done —— Flutter 3.47.3 工程（apps/mobile）+ xcodebuild 模拟器
 - `flutter analyze` 与 `flutter test` 全绿。
 - 桌面端四门禁在加入 Flutter 目录后仍全绿（记录命令与退出码）。
 - README 中的重签步骤经一次真实操作验证（撤销描述文件后按步骤恢复）。
+
+## Xcode 交互式验收（2026-09-30，电脑控制实操）
+
+1. `open ios/Runner.xcworkspace` → Xcode 已加载，Project Navigator 正常展开
+   （Runner / Pods / Package Dependencies: FlutterFramework、integration_test）
+2. Active Scheme = `Runner`，Active Run Destination = `iPhone 18 Pro`
+3. 首次 ⌘R：**Build Failed** —— `Command PhaseScriptExecution failed with a nonzero exit code`。
+   根因已确认：先跑了 `flutter test integration_test/...`，该命令把
+   `ios/Flutter/flutter_export_environment.sh` 的 `FLUTTER_TARGET` 改写成
+   `/var/folders/.../flutter_test_listener.xxx/listener.dart`（临时文件，测试结束即删）。
+4. 修复：先跑一次 `flutter build ios --simulator`（刷新该文件，`FLUTTER_TARGET` 回到 `lib/main.dart`），
+   再按 ⌘R
+5. 二次 ⌘R：**构建成功并运行**。Xcode 状态栏 `Runner Running Runner on iPhone 18 Pro`，
+   Debug 区出现 stack frames 与 `flutter: The Dart VM service is listening on http://127.0.0.1:61605/...`
+   （调试器已挂载），Stop 按钮启用
+6. 模拟器截图：应用首屏与底部五标签（库/搜索/捕获/AI/设置）正常
+   → `.scratch/nexnote-mobile/screenshots/shot-12-Xcode运行-iPhone18Pro.png`
+
+注意：命令行 `xcodebuild` 在第 3 步之前是成功的——因为它不读被污染的
+`flutter_export_environment.sh`（用 `flutter build` 生成的环境）。这是本次
+交互式验收额外暴露的差异，已写入 `apps/mobile/README.md` 的注意事项。
