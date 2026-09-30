@@ -1,6 +1,8 @@
 // 服务容器：进程内单例，按依赖顺序初始化
 library;
 
+import 'dart:io';
+
 import '../git/credentials.dart';
 import '../git/device_git_service.dart';
 import '../index/search_index.dart';
@@ -30,9 +32,13 @@ class AppServices {
   /// 备份排除标记是否已生效（false = 平台未确认，需在设置页提示）
   bool backupExcluded = false;
 
-  Future<void> bootstrap() async {
+  /// 初始化服务；[appSupportOverride] 供测试注入临时目录
+  Future<void> bootstrap({Directory? appSupportOverride}) async {
     if (_ready) return;
-    final store = await VaultStore.open(name: 'default');
+    final store = await VaultStore.open(
+      name: 'default',
+      appSupportOverride: appSupportOverride,
+    );
     final repo = VaultRepository(store);
     final git = await DeviceGitService.open(store, NoCredentialProvider());
     final searchIndex = SearchIndex.open(
@@ -57,6 +63,16 @@ class AppServices {
     final idx = _searchIndex;
     if (idx == null) return;
     idx.rebuild(_vaultRepository!.readAllPages());
+  }
+
+  /// 释放资源（测试与热重启用）
+  void dispose() {
+    _searchIndex?.close();
+    _searchIndex = null;
+    _gitService?.dispose();
+    _gitService = null;
+    _pageWriter = null;
+    _ready = false;
   }
 }
 

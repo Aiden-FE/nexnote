@@ -174,7 +174,12 @@ class DeviceGitService {
   bool get inSpecialState => repo.state != GitRepositoryState.none;
 
   /// 冲突禁写是否生效
-  bool get blockedByConflict => _blockedByConflict || inSpecialState;
+  ///
+  /// 未初始化 Git 的知识库不进入禁写（此时不存在冲突语义）。
+  bool get blockedByConflict {
+    if (!isRepoInitialized) return false;
+    return _blockedByConflict || inSpecialState;
+  }
 
   /// 全量状态
   VaultStatus status({String? lastSyncMessage}) {

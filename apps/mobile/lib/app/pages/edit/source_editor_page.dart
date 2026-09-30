@@ -7,6 +7,7 @@ import 'package:flutter/material.dart';
 import '../../../git/device_git_service.dart';
 import '../../../vault/frontmatter.dart';
 import '../../app_services.dart';
+import 'block_editor_page.dart';
 
 class SourceEditorPage extends StatefulWidget {
   final String path;
@@ -66,6 +67,17 @@ class _SourceEditorPageState extends State<SourceEditorPage> {
       appBar: AppBar(
         title: const Text('源码编辑'),
         actions: [
+          IconButton(
+            icon: const Icon(Icons.view_agenda_outlined),
+            tooltip: '切换到块编辑模式',
+            onPressed: _blocked
+                ? null
+                : () => Navigator.of(context).pushReplacement(
+                      MaterialPageRoute<void>(
+                        builder: (_) => BlockEditorPage(path: widget.path),
+                      ),
+                    ),
+          ),
           TextButton(
             onPressed: _blocked || !_dirty ? null : _save,
             child: const Text('保存'),
