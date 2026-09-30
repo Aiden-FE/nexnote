@@ -27,6 +27,10 @@ void main() {
   late Directory appSupport;
   final created = <Directory>[];
 
+  // fixture 远端是有状态的（上一轮已 push 过提交），文件名必须按运行唯一，
+  // 否则二次运行 clone 回来会与既有文件冲突。
+  final runId = DateTime.now().toIso8601String().replaceAll(':', '-');
+
   setUpAll(() async {
     appSupport = await getTemporaryDirectory();
   });
@@ -74,12 +78,12 @@ void main() {
     // 正常页面 + 护栏文件同时写入
     storeA.directory('notes').createSync(recursive: true);
     storeA.directory('.nexnote').createSync(recursive: true);
-    repoA.createPage('notes/设备提交.md', '# 设备提交\n\n来自设备 A。\n');
+    repoA.createPage('notes/设备提交-$runId.md', '# 设备提交\n\n来自设备 A。\n');
     storeA.file('.DS_Store').writeAsStringSync('junk');
     storeA.file('.nexnote/index.db').writeAsStringSync('runtime');
 
     final changed = gitA.status().changed;
-    expect(changed, contains('notes/设备提交.md'), reason: '应发现未跟踪新页面');
+    expect(changed, contains('notes/设备提交-$runId.md'), reason: '应发现未跟踪新页面');
     expect(changed, isNot(contains('.DS_Store')), reason: '护栏文件不应出现');
     expect(
       changed.any((e) => e.startsWith('.nexnote/')),
@@ -87,7 +91,7 @@ void main() {
       reason: '运行时产物不应出现',
     );
 
-    final shaA = gitA.commitAll(message: '${CommitPrefix.manual} 设备 A 首次提交');
+    final shaA = gitA.commitAll(message: '${CommitPrefix.manual} 设备 A 首次提交 $runId');
     expect(shaA, isNotNull, reason: '应产生提交');
 
     final timeline = gitA.timeline();
@@ -109,8 +113,8 @@ void main() {
       name: 'Device B',
       email: 'b@nexnote.local',
     );
-    repoB.createPage('notes/设备B提交.md', '# 设备 B 提交\n\n来自设备 B。\n');
-    gitB.commitAll(message: '${CommitPrefix.manual} 设备 B 提交');
+    repoB.createPage('notes/设备B提交-$runId.md', '# 设备 B 提交\n\n来自设备 B。\n');
+    gitB.commitAll(message: '${CommitPrefix.manual} 设备 B 提交 $runId');
     final pushB = await gitB.sync();
     expect(pushB.ok, isTrue, reason: '设备 B 推送应成功：${pushB.message}');
     expect(_remoteHeadSha(remote, 'main'), isNot(shaA));
@@ -119,8 +123,8 @@ void main() {
     remoteA.fetch();
     expect(gitA.status().behind, 1, reason: 'fetch 后应显示落后 1');
 
-    repoA.createPage('notes/设备A分叉.md', '# 设备 A 分叉\n\n本地独有提交。\n');
-    gitA.commitAll(message: '${CommitPrefix.manual} 设备 A 分叉提交');
+    repoA.createPage('notes/设备A分叉-$runId.md', '# 设备 A 分叉\n\n本地独有提交。\n');
+    gitA.commitAll(message: '${CommitPrefix.manual} 设备 A 分叉提交 $runId');
     expect(gitA.status().ahead, 1);
     expect(gitA.status().behind, 1);
 
@@ -133,13 +137,13 @@ void main() {
     expect(finalStatus.changed, isEmpty, reason: '同步后工作区应干净');
 
     final messages = gitA.timeline(limit: 10).map((e) => e.message).toList();
-    expect(messages.any((m) => m.contains('设备 B 提交')), isTrue,
+    expect(messages.any((m) => m.contains('设备 B 提交 $runId')), isTrue,
         reason: 'rebase 后历史应包含设备 B 的提交：$messages');
-    expect(messages.any((m) => m.contains('设备 A 分叉提交')), isTrue,
+    expect(messages.any((m) => m.contains('设备 A 分叉提交 $runId')), isTrue,
         reason: 'rebase 后历史应保留设备 A 的分叉提交：$messages');
 
     final remotePaths = _allPathsInCommitTree(remote);
-    expect(remotePaths, contains('notes/设备B提交.md'));
+    expect(remotePaths, contains('notes/设备B提交-$runId.md'));
     expect(remotePaths.any((e) => e.contains('.DS_Store')), isFalse,
         reason: 'OS 垃圾文件不得入库：$remotePaths');
     expect(remotePaths.any((e) => e.startsWith('.nexnote/')), isFalse,

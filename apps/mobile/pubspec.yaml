@@ -21,6 +21,9 @@ dependencies:
   crypto: ^3.0.6
   # 路径拼接与规范化
   path: ^1.9.0
+  sqlite3: ^3.6.0
+  sqlite3_flutter_libs: ^0.6.0+eol
+  markdown: ^7.3.1
 
 dev_dependencies:
   flutter_test:

@@ -5,6 +5,7 @@ import '../../core/constants.dart';
 import '../../core/models.dart';
 import '../../git/device_git_service.dart';
 import '../../git/git_types.dart';
+import '../../vault/backup_exclusion.dart';
 import '../app_services.dart';
 
 /// 设置与诊断：设备知识库信息、Git 状态、同步与 M1 验收动作
@@ -38,6 +39,7 @@ class _SettingsPageState extends State<SettingsPage> {
   void initState() {
     super.initState();
     _refresh();
+    _ensureBackupExcluded();
   }
 
   @override
@@ -59,6 +61,13 @@ class _SettingsPageState extends State<SettingsPage> {
       _status = git.status();
       _timeline = git.isRepoInitialized ? git.timeline(limit: 10) : const [];
     });
+  }
+
+  Future<void> _ensureBackupExcluded() async {
+    final ok = await appServices.vaultStore.ensureExcludedFromBackup();
+    if (!ok && mounted) {
+      _append('备份排除标记写入失败，请检查系统设置');
+    }
   }
 
   Future<void> _run(String label, Future<void> Function() action) async {
@@ -101,10 +110,24 @@ class _SettingsPageState extends State<SettingsPage> {
                   const SizedBox(height: 8),
                   Text('路径：${appServices.vaultStore.rootPath}'),
                   Text('页面数：${appServices.vaultRepository.listPagePaths().length}'),
+                  Text('iCloud 备份排除：'
+                      '${appServices.backupExcluded ? '已生效' : '未确认'}'),
                 ],
               ),
             ),
           ),
+          const SizedBox(height: 12),
+          if ((status?.unpushed ?? 0) > 0)
+            Card(
+              color: Theme.of(context).colorScheme.tertiaryContainer,
+              child: Padding(
+                padding: const EdgeInsets.all(16),
+                child: Text(
+                  '有 ${status!.unpushed} 个未推送提交。'
+                  '设备端是这些提交的唯一副本，请尽快同步。',
+                ),
+              ),
+            ),
           const SizedBox(height: 12),
           Card(
             child: Padding(
