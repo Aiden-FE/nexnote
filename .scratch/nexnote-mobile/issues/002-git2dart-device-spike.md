@@ -2,7 +2,7 @@
 
 Ticket: MOB-002 · Milestone: M1 · Branch: dev/MOB-002 · Depends: MOB-001
 ADR: docs/adr/0018-mobile-device-side-git-sync.md
-Status: open
+Status: go —— 已于 iOS 模拟器（iPhone 17 Pro / iOS 26.5）验证通过 2026-09-30
 
 ## 目标
 
@@ -27,3 +27,28 @@ Status: open
 - `PlatformSpecific.initialize()` 的位置与被 iOS 生命周期调用的证据（日志）。
 - 记录「不可用项清单」：SSH 与 HTTPS 各自的实测结果，以及任何 libgit2 语义差异。
 - 若指出 0.5.6 存在阻塞缺陷，必须给出可复现步骤与原始日志。
+
+## 结论（go）
+
+`flutter test integration_test/git_spike_test.dart -d <sim>` 全绿（2/2），在 iOS 运行时真实执行：
+
+- `PlatformSpecific.initialize()` 正常，iOS 侧 libgit2 符号可用
+- `clone` 本机 bare 远端成功；clone 后工作区干净、分支为 `main`
+- 本地 `commit` 成功，时间线 `kind` 正确解析为 `manual`，`nexnote:manual:` 前缀与桌面端一致
+- `push` 后本地 `ahead` 归零，且**远端 `refs/heads/main` 的 sha 与本地 HEAD 一致**
+- 第二客户端写入并推送后，本客户端 `fetch` 后 `behind=1`；再制造本地分叉（`ahead=1, behind=1`），
+  `sync()` 的 rebase 编排成功收敛到 `ahead=0, behind=0`，工作区干净，历史同时含双方提交
+- 同步护栏生效：`.DS_Store` 与 `.nexnote/index.db` 未进入远端树
+
+### 过程中发现并修复的真实缺陷
+
+1. **libgit2 聚合 `status` 不含未跟踪文件**：iOS 上新建页面后 `repo.status` 返回空，
+   导致 `commitAll` 无变更可提交。修复见 `DeviceGitService.changedPaths`——改为遍历
+   `VaultStore.listTrackableFiles()` 并用 `repo.statusFile()` 逐文件判定（该接口可正确报 `wtNew`）。
+2. `VaultStore` 新增 `listTrackableFiles()`：提交面覆盖非 Markdown 文件（图片等），仅排除 `.git/`、`.nexnote/` 与 OS 垃圾。
+
+### 已知约束（非缺陷）
+
+- `git2dart_binaries` 尚不支持 Swift Package Manager，Flutter 会提示"未来版本将报错"并自动回退 CocoaPods。
+  迁移到纯 SPM 需上游发布 SPM 支持；当前每版 Flutter 都在提示中确认过回退路径可用。
+- 验收在模拟器完成（`file://` 远端）。真机需 https/ssh 远端 + 签名，属 MOB-003/MOB-010 范围。

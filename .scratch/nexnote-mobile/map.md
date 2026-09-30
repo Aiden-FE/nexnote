@@ -9,7 +9,7 @@ Label: wayfinder:map
 ## Notes
 
 - 语言：与用户交流用简体中文，技术术语保留英文。
-- Tracker：本地 markdown（本目录）。票据在 `.scratch/nexnote-mobile/issues/`（MOB-001 ～ MOB-010，全部 open）；frontier = open、依赖已 resolved、未 claimed 的票据，当前为 **MOB-001**。
+- Tracker：本地 markdown（本目录）。票据在 `.scratch/nexnote-mobile/issues/`（MOB-002 已验证 go；其余 open）；frontier = open、依赖已 resolved、未 claimed 的票据，当前为 **MOB-001 / MOB-003**。
 - 承接：`.scratch/nexnote-mvp/map.md` 把「Web 版与移动端」列为 out of scope 并注明「届时另立新图」，本地图即该新图。
 - 硬约束：**桌面端零改动**——不新增 HTTP/WS API、不改 152 条 IPC 契约。跨端只共享行为语义（分词规则、元数据头约定、提交消息前缀 `nexnote:*`），不共享代码。
 - 基线约束（对齐固化，作为全部票据的硬输入）：
@@ -62,6 +62,7 @@ Label: wayfinder:map
 ## 降级闸门
 
 - 若 M1 遇到不可绕过的 git2dart blocker（如 rebase 编排或凭证链路在真机不可用），降级为「半独立」：手机端保留设备知识库可读可编辑可本地提交，push/pull 交由桌面端结算，并重开该分支的对齐。
+- **状态：go（2026-09-30）**。证据见 `issues/002-git2dart-device-spike.md` 结论段；降级闸门未触发。
 
 ## 票据清单
 

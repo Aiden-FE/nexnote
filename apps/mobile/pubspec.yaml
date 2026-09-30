@@ -1,0 +1,33 @@
+name: nexnote_mobile
+description: "NexNote 手机端：本地优先知识库的 iOS 客户端（阅读 + 基础编辑 + 设备端 Git 同步）。"
+publish_to: 'none'
+version: 0.1.0+1
+
+environment:
+  sdk: ^3.13.3
+
+dependencies:
+  flutter:
+    sdk: flutter
+  # 设备端 Git（libgit2 FFI 绑定）——ADR-0018
+  git2dart: ^0.5.6
+  # git2dart 的原生运行时（LibGit2Error / git_error_t / 平台初始化）
+  git2dart_binaries: ^1.14.0
+  # 路径与设备知识库存储——MOB-003
+  path_provider: ^2.1.5
+  # 元数据头（YAML frontmatter）解析
+  yaml: ^3.1.3
+  # 字节保真校验与内容指纹
+  crypto: ^3.0.6
+  # 路径拼接与规范化
+  path: ^1.9.0
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  integration_test:
+    sdk: flutter
+  flutter_lints: ^6.0.0
+
+flutter:
+  uses-material-design: true
