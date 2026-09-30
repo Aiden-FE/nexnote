@@ -7,6 +7,8 @@ library;
 import 'dart:async';
 import 'dart:io';
 
+import 'package:flutter/foundation.dart' show visibleForTesting;
+
 import 'package:git2dart/git2dart.dart';
 import 'package:git2dart_binaries/git2dart_binaries.dart'
     show LibGit2Error, git_error_t;
@@ -172,6 +174,10 @@ class DeviceGitService {
 
   /// 仓库是否处于未完成操作（rebase/merge 等）
   bool get inSpecialState => repo.state != GitRepositoryState.none;
+
+  /// 仅测试使用：强制进入/退出冲突禁写态
+  @visibleForTesting
+  void forceConflictBlock({bool value = true}) => _blockedByConflict = value;
 
   /// 冲突禁写是否生效
   ///

@@ -5,8 +5,10 @@ import '../../core/constants.dart';
 import '../../core/models.dart';
 import '../../git/device_git_service.dart';
 import '../../git/git_types.dart';
+import '../../ai/secret_vault.dart';
 import '../../vault/backup_exclusion.dart';
 import '../app_services.dart';
+import 'settings/ai_profile_editor.dart';
 
 /// 设置与诊断：设备知识库信息、Git 状态、同步与 M1 验收动作
 class SettingsPage extends StatefulWidget {
@@ -35,6 +37,12 @@ class _SettingsPageState extends State<SettingsPage> {
   final _remoteController =
       TextEditingController(text: _spikeRemoteDefault);
 
+  final _captureDirController =
+      TextEditingController(text: appServices.settings.captureDirectory);
+
+  /// 密钥存取：真机走 Keychain
+  final SecretVault _secrets = KeychainSecretVault();
+
   @override
   void initState() {
     super.initState();
@@ -45,6 +53,7 @@ class _SettingsPageState extends State<SettingsPage> {
   @override
   void dispose() {
     _remoteController.dispose();
+    _captureDirController.dispose();
     super.dispose();
   }
 
@@ -231,6 +240,81 @@ class _SettingsPageState extends State<SettingsPage> {
                 subtitle: Text(
                     '${record.hash.substring(0, 7)} · ${record.author} · ${record.kind.name}'),
               ),
+          const SizedBox(height: 16),
+          Text('快速捕获目录',
+              style: Theme.of(context).textTheme.titleMedium),
+          const SizedBox(height: 8),
+          Row(
+            children: [
+              Expanded(
+                child: TextField(
+                  controller: _captureDirController,
+                  decoration: const InputDecoration(
+                    labelText: '知识库内相对路径',
+                    border: OutlineInputBorder(),
+                  ),
+                ),
+              ),
+              const SizedBox(width: 8),
+              FilledButton(
+                onPressed: () {
+                  final settings = appServices.settings;
+                  settings.captureDirectory = _captureDirController.text.trim();
+                  appServices.settingsStore.save(settings);
+                  _append('捕获目录已更新为 ${settings.captureDirectory}');
+                  setState(() {});
+                },
+                child: const Text('保存'),
+              ),
+            ],
+          ),
+          const SizedBox(height: 16),
+          Text('AI 供应商 Profile',
+              style: Theme.of(context).textTheme.titleMedium),
+          const SizedBox(height: 8),
+          for (final profile in appServices.profileStore.list())
+            ListTile(
+              contentPadding: EdgeInsets.zero,
+              leading: const Icon(Icons.cloud_outlined),
+              title: Text(profile.name),
+              subtitle: Text(
+                '${profile.baseUrl} · ${profile.defaultModel} · '
+                '${profile.hasKey ? '已配置密钥' : '未配置密钥'}',
+              ),
+              trailing: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  IconButton(
+                    icon: const Icon(Icons.edit_outlined),
+                    onPressed: () => showAiProfileEditor(
+                      context,
+                      store: appServices.profileStore,
+                      secrets: _secrets,
+                      existing: profile,
+                    ),
+                  ),
+                  IconButton(
+                    icon: const Icon(Icons.delete_outline),
+                    onPressed: () async {
+                      await appServices.profileStore.remove(profile.id);
+                      setState(() {});
+                    },
+                  ),
+                ],
+              ),
+            ),
+          Align(
+            alignment: Alignment.centerLeft,
+            child: TextButton.icon(
+              onPressed: () => showAiProfileEditor(
+                context,
+                store: appServices.profileStore,
+                secrets: _secrets,
+              ),
+              icon: const Icon(Icons.add),
+              label: const Text('新增 Profile'),
+            ),
+          ),
           const SizedBox(height: 16),
           Text('诊断日志', style: Theme.of(context).textTheme.titleMedium),
           const SizedBox(height: 8),

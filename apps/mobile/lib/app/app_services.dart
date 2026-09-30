@@ -3,14 +3,22 @@ library;
 
 import 'dart:io';
 
+import 'package:path/path.dart' as p;
+
+import '../ai/chat_controller.dart';
+import '../ai/provider_profile.dart';
+import '../ai/retrieval.dart';
+import '../ai/secret_vault.dart';
+import '../capture/quick_capture.dart';
 import '../git/credentials.dart';
 import '../git/device_git_service.dart';
 import '../index/search_index.dart';
-import '../vault/page_writer.dart';
+import '../reader/link_graph.dart';
+import '../settings/app_settings.dart';
 import '../vault/backup_exclusion.dart';
+import '../vault/page_writer.dart';
 import '../vault/vault_repository.dart';
 import '../vault/vault_store.dart';
-import 'package:path/path.dart' as p;
 
 /// 应用级服务
 class AppServices {
@@ -19,12 +27,34 @@ class AppServices {
   DeviceGitService? _gitService;
   SearchIndex? _searchIndex;
   PageWriter? _pageWriter;
+  SettingsStore? _settingsStore;
+  ProviderProfileStore? _profileStore;
+  QuickCapture? _capture;
+  ChatController? _chat;
 
   VaultStore get vaultStore => _vaultStore!;
   VaultRepository get vaultRepository => _vaultRepository!;
   DeviceGitService get gitService => _gitService!;
   SearchIndex get searchIndex => _searchIndex!;
   PageWriter get pageWriter => _pageWriter!;
+  SettingsStore get settingsStore => _settingsStore!;
+  AppSettings get settings => _settingsStore!.load();
+  ProviderProfileStore get profileStore => _profileStore!;
+  QuickCapture get capture => _capture!;
+
+  /// 对话控制器（按需创建，依赖最新索引与页面关系）
+  ChatController get chat {
+    final existing = _chat;
+    if (existing != null) return existing;
+    final controller = ChatController(
+      retrieval: Retrieval(
+        index: searchIndex,
+        graph: LinkGraph.build(vaultRepository),
+      ),
+      profiles: profileStore,
+    );
+    return _chat = controller;
+  }
 
   bool _ready = false;
   bool get ready => _ready;
@@ -39,6 +69,7 @@ class AppServices {
       name: 'default',
       appSupportOverride: appSupportOverride,
     );
+    final appSupport = Directory(p.dirname(store.rootPath));
     final repo = VaultRepository(store);
     final git = await DeviceGitService.open(store, NoCredentialProvider());
     final searchIndex = SearchIndex.open(
@@ -53,6 +84,12 @@ class AppServices {
       index: searchIndex,
       git: git,
     );
+    _settingsStore = SettingsStore(appSupport: appSupport);
+    _profileStore = ProviderProfileStore(
+      appSupport: appSupport,
+      secrets: KeychainSecretVault(),
+    );
+    _capture = QuickCapture(writer: _pageWriter!);
     rebuildSearchIndex();
     backupExcluded = await store.ensureExcludedFromBackup();
     _ready = true;
@@ -67,6 +104,8 @@ class AppServices {
 
   /// 释放资源（测试与热重启用）
   void dispose() {
+    _chat?.dispose();
+    _chat = null;
     _searchIndex?.close();
     _searchIndex = null;
     _gitService?.dispose();

@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../app_services.dart';
 import 'page_reader_page.dart';
+import 'tags_page.dart';
 
 /// 库：页面树（相对路径分组展示）
 class VaultTreePage extends StatefulWidget {
@@ -32,6 +33,13 @@ class _VaultTreePageState extends State<VaultTreePage> {
       appBar: AppBar(
         title: const Text('库'),
         actions: [
+          IconButton(
+            icon: const Icon(Icons.label_outline),
+            tooltip: '标签筛选',
+            onPressed: () => Navigator.of(context).push(
+              MaterialPageRoute<void>(builder: (_) => const TagsPage()),
+            ),
+          ),
           IconButton(icon: const Icon(Icons.refresh), onPressed: _refresh),
         ],
       ),
