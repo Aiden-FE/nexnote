@@ -9,7 +9,7 @@ Label: wayfinder:map
 ## Notes
 
 - 语言：与用户交流用简体中文，技术术语保留英文。
-- Tracker：本地 markdown（本目录）。票据在 `.scratch/nexnote-mobile/issues/`（MOB-002 已验证 go；其余 open）；frontier = open、依赖已 resolved、未 claimed 的票据，当前为 **MOB-001 / MOB-003**。
+- Tracker：本地 markdown（本目录）。票据在 `.scratch/nexnote-mobile/issues/`（MOB-001～010 全部 implemented/go，2026-09-30）。frontier 为空；端到端验收截图见 `.scratch/nexnote-mobile/screenshots/`。
 - 承接：`.scratch/nexnote-mvp/map.md` 把「Web 版与移动端」列为 out of scope 并注明「届时另立新图」，本地图即该新图。
 - 硬约束：**桌面端零改动**——不新增 HTTP/WS API、不改 152 条 IPC 契约。跨端只共享行为语义（分词规则、元数据头约定、提交消息前缀 `nexnote:*`），不共享代码。
 - 基线约束（对齐固化，作为全部票据的硬输入）：
@@ -63,6 +63,7 @@ Label: wayfinder:map
 
 - 若 M1 遇到不可绕过的 git2dart blocker（如 rebase 编排或凭证链路在真机不可用），降级为「半独立」：手机端保留设备知识库可读可编辑可本地提交，push/pull 交由桌面端结算，并重开该分支的对齐。
 - **状态：go（2026-09-30）**。证据见 `issues/002-git2dart-device-spike.md` 结论段；降级闸门未触发。
+- **实现完成（2026-09-30）**：M1–M4 十张票据全部落地；真实应用端到端旅程（克隆 → 浏览 → 渲染 → 双链 → 中文搜索 → 捕获 → 编辑 → 块编辑）11 检查点全绿，截图证据见 `screenshots/`。桌面端门禁不受影响（typecheck/lint/test/build 在独立验证中）。
 
 ## 票据清单
 
@@ -80,6 +81,37 @@ Label: wayfinder:map
 | MOB-008 | 编辑模式切换与零漂移验收 | M3 | MOB-007 |
 | MOB-009 | 快速捕获与捕获目录 | M4 | MOB-004 |
 | MOB-010 | 只读 AI 对话与 iOS Keychain 密钥 | M4 | MOB-004, MOB-006 |
+
+## 门禁证据（2026-09-30）
+
+| 门禁 | 命令 | 结果 |
+|---|---|---|
+| 手机端静态检查 | `flutter analyze`（apps/mobile） | No issues found |
+| 手机端单元/widget | `flutter test` | **108 passed** |
+| 手机端集成（iOS 模拟器 iPhone 17 Pro / iOS 26.5） | `flutter test integration_test/<file>` | 5/5 文件通过：git_diag、git_spike（连跑 3 次）、search_spike、keychain_spike、app_journey（73s，11 检查点） |
+| Xcode 构建系统 | `xcodebuild -workspace ios/Runner.xcworkspace -scheme Runner -sdk iphonesimulator build` | **BUILD SUCCEEDED** |
+| 应用启动 | `xcrun simctl install/launch` | 启动成功，截图 `screenshots/shot-01` |
+| 桌面端 typecheck | `CI=true pnpm -r typecheck` | PASS（未改动桌面端代码） |
+| 桌面端 lint | `pnpm lint` | PASS（0 errors） |
+| 桌面端 test | `env -u GIT_EDITOR -u GIT_SEQUENCE_EDITOR -u EDITOR CI=true pnpm test` | **1741 passed / 3 skipped**（184 文件） |
+| 桌面端 build | `pnpm build` | PASS |
+
+端到端旅程检查点：启动 → 设置页 → 克隆完成 → 库列表 → 页面渲染 → 双链跳转 → 中文搜索 →
+快速捕获 → 源码编辑 → 保存后 → 块编辑模式（截图见 `screenshots/`）。
+
+### 实现期间发现并修复的真实缺陷
+
+1. **clone 被自身运行时产物阻塞**：首启时应用已在知识库目录内创建 `.nexnote/`（搜索索引），
+   而 libgit2 要求 clone 目标为空 → 「克隆远端」必然失败。修复：`AppServices.cloneVault`
+   先关闭并移除运行时产物，clone 后重建索引与写入器。
+2. **克隆后依赖陈旧引用**：重建 `PageWriter` 后 `QuickCapture` 仍持有旧写入器（索引已关闭），
+   捕获必然失败。修复：一并重建捕获服务。
+3. **克隆后「库」标签不刷新**：`IndexedStack` 保持子页状态，克隆完成回到「库」仍是空列表。
+   修复：新增 `vaultRevision` 修订号，写入/克隆后自增，库页监听自动刷新。
+4. **备份排除与 Keychain 平台通道注册方式**：Flutter 隐式引擎需用
+   `applicationRegistrar.messenger()`（`applicationBinaryMessenger` 不存在）。
+5. **Xcode 直接构建失败**：`flutter test` 会把 `flutter_export_environment.sh` 的
+   `FLUTTER_TARGET` 指向测试临时文件；先跑一次 `flutter build ios --simulator` 即可刷新（已写入 README）。
 
 ## Not yet specified
 

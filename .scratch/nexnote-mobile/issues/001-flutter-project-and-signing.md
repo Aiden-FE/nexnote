@@ -2,7 +2,7 @@
 
 Ticket: MOB-001 · Milestone: M1 · Branch: dev/MOB-001 · Depends: —
 ADR: docs/adr/0017-mobile-flutter-client.md
-Status: open
+Status: done —— Flutter 3.47.3 工程（apps/mobile）+ xcodebuild 模拟器构建通过 + 桌面端门禁未受影响；真机重签步骤见 README（免费个人团队签名，7 天）
 
 ## 目标
 

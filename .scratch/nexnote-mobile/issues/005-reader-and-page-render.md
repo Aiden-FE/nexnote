@@ -1,7 +1,7 @@
 # MOB-005 阅读侧与页面渲染
 
 Ticket: MOB-005 · Milestone: M2 · Branch: dev/MOB-005 · Depends: MOB-003
-Status: open
+Status: implemented —— MarkdownView 渲染 + 标题目录 + 回链 + 时间线 + 只读图谱 + 标签筛选；真机截图 04/05/06
 
 ## 目标
 

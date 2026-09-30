@@ -1,7 +1,7 @@
 # MOB-008 编辑模式切换与零漂移验收
 
 Ticket: MOB-008 · Milestone: M3 · Branch: dev/MOB-008 · Depends: MOB-007
-Status: open
+Status: implemented —— 模式切换不写盘；14 项往返零漂移语料测试 + 6 项编辑流测试；截图 09/10/11
 
 ## 目标
 

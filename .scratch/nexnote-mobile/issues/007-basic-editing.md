@@ -2,7 +2,7 @@
 
 Ticket: MOB-007 · Milestone: M3 · Branch: dev/MOB-007 · Depends: MOB-004, MOB-005
 ADR: docs/adr/0017-mobile-flutter-client.md
-Status: open
+Status: implemented —— 源码模式（frontmatter 只读）+ 简化块编辑（段落/标题/列表/任务/引用/代码/图片）；只读结构原样保留
 
 ## 目标
 

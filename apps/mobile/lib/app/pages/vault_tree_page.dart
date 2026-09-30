@@ -19,9 +19,18 @@ class _VaultTreePageState extends State<VaultTreePage> {
   void initState() {
     super.initState();
     _refresh();
+    // 克隆/初始化/写入后自动刷新，避免回到本页仍显示旧列表
+    appServices.vaultRevision.addListener(_refresh);
+  }
+
+  @override
+  void dispose() {
+    appServices.vaultRevision.removeListener(_refresh);
+    super.dispose();
   }
 
   void _refresh() {
+    if (!mounted) return;
     setState(() {
       _paths = appServices.vaultRepository.listPagePaths();
     });

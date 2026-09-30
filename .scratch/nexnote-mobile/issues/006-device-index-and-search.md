@@ -2,7 +2,7 @@
 
 Ticket: MOB-006 · Milestone: M2 · Branch: dev/MOB-006 · Depends: MOB-003
 ADR: docs/adr/0019-mobile-data-and-capability-locality.md
-Status: open
+Status: implemented —— 复刻桌面分词语义（CJK unigram+bigram + 拉丁前缀）；一致性单测 + 模拟器中文子串验证；截图 07
 
 ## 目标
 

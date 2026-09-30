@@ -2,7 +2,7 @@
 
 Ticket: MOB-003 · Milestone: M1/M2 · Branch: dev/MOB-003 · Depends: MOB-002
 ADR: docs/adr/0019-mobile-data-and-capability-locality.md
-Status: open
+Status: implemented —— App Support 路径、路径逃逸/符号链接拒绝、备份排除平台通道（isExcludedFromBackup 验证）、未推送提交提示；模拟器截图 02/03
 
 ## 目标
 

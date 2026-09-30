@@ -14,10 +14,14 @@ class PageWriter {
   final SearchIndex index;
   final DeviceGitService git;
 
+  /// 内容变更回调（供 UI 刷新）
+  final void Function()? onChanged;
+
   const PageWriter({
     required this.repository,
     required this.index,
     required this.git,
+    this.onChanged,
   });
 
   /// 更新页面内容；返回是否发生写入
@@ -26,6 +30,7 @@ class PageWriter {
     final changed = repository.writeText(path, content);
     if (!changed) return false;
     index.upsert(repository.readPage(path)!);
+    onChanged?.call();
     git.scheduleAutoCommit(summary);
     return true;
   }
@@ -35,6 +40,7 @@ class PageWriter {
     _ensureWritable();
     repository.createPage(path, content);
     index.upsert(repository.readPage(path)!);
+    onChanged?.call();
     git.scheduleAutoCommit(summary);
   }
 
@@ -43,6 +49,7 @@ class PageWriter {
     _ensureWritable();
     repository.deletePage(path);
     index.remove(path);
+    onChanged?.call();
     git.scheduleAutoCommit(summary);
   }
 

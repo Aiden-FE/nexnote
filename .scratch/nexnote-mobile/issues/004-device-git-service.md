@@ -2,7 +2,7 @@
 
 Ticket: MOB-004 · Milestone: M1 · Branch: dev/MOB-004 · Depends: MOB-002, MOB-003
 ADR: docs/adr/0018-mobile-device-side-git-sync.md
-Status: open
+Status: implemented —— 消息前缀/防抖/护栏/冲突禁写/时间线/rebase 编排；双客户端分叉收敛集成测试通过（3 连跑）
 
 ## 目标
 

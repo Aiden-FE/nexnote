@@ -1,7 +1,7 @@
 # MOB-009 快速捕获与捕获目录
 
 Ticket: MOB-009 · Milestone: M4 · Branch: dev/MOB-009 · Depends: MOB-004
-Status: open
+Status: implemented —— 捕获目录可配、首行标题、默认元数据头、同名不覆盖、冲突禁写拒绝；7 项单测 + 旅程验证；截图 08
 
 ## 目标
 

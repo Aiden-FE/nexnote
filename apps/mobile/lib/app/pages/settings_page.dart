@@ -181,12 +181,11 @@ class _SettingsPageState extends State<SettingsPage> {
                 onPressed: _busy
                     ? null
                     : () => _run('克隆', () async {
-                          await git.clone(
+                          await appServices.cloneVault(
                             url: _remoteController.text.trim(),
                             name: 'NexNote Mobile',
                             email: 'mobile@nexnote.local',
                           );
-                          git.setRemoteOrigin(_remoteController.text.trim());
                         }),
                 icon: const Icon(Icons.download),
                 label: const Text('克隆远端'),

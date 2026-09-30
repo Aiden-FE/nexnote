@@ -2,7 +2,7 @@
 
 Ticket: MOB-010 · Milestone: M4 · Branch: dev/MOB-010 · Depends: MOB-004, MOB-006
 ADR: docs/adr/0019-mobile-data-and-capability-locality.md
-Status: open
+Status: implemented —— Keychain 密钥（模拟器往返验证）、Profile 落盘不含密钥、reasoning_effort=none + 残留清洗、两阶段召回、未配置不发请求；流式链路 MockClient 验证
 
 ## 目标
 

@@ -3,6 +3,7 @@ library;
 
 import 'dart:io';
 
+import 'package:flutter/foundation.dart';
 import 'package:path/path.dart' as p;
 
 import '../ai/chat_controller.dart';
@@ -59,6 +60,13 @@ class AppServices {
   bool _ready = false;
   bool get ready => _ready;
 
+  /// 知识库内容/结构修订号——克隆、初始化、写入后自增，UI 据此刷新。
+  /// dispose 后由下一次 bootstrap 重建。
+  ValueNotifier<int>? _vaultRevision;
+  ValueNotifier<int> get vaultRevision => _vaultRevision ??= ValueNotifier<int>(0);
+
+  void bumpVaultRevision() => vaultRevision.value++;
+
   /// 备份排除标记是否已生效（false = 平台未确认，需在设置页提示）
   bool backupExcluded = false;
 
@@ -83,6 +91,7 @@ class AppServices {
       repository: repo,
       index: searchIndex,
       git: git,
+      onChanged: bumpVaultRevision,
     );
     _settingsStore = SettingsStore(appSupport: appSupport);
     _profileStore = ProviderProfileStore(
@@ -95,6 +104,44 @@ class AppServices {
     _ready = true;
   }
 
+  /// 克隆远端知识库。
+  ///
+  /// 首次启动时应用已在知识库目录内创建运行时产物（`.nexnote/` 搜索索引），
+  /// 而 libgit2 要求 clone 目标目录为空，因此这里先关闭并移除运行时产物，
+  /// clone 完成后重建索引。
+  Future<void> cloneVault({
+    required String url,
+    required String name,
+    required String email,
+  }) async {
+    final store = _vaultStore!;
+    _chat?.dispose();
+    _chat = null;
+    _searchIndex?.close();
+    _searchIndex = null;
+
+    final runtime = Directory(p.join(store.rootPath, '.nexnote'));
+    if (runtime.existsSync()) runtime.deleteSync(recursive: true);
+
+    await _gitService!.clone(url: url, name: name, email: email);
+    _gitService!.setRemoteOrigin(url);
+
+    final reopened = SearchIndex.open(
+      p.join(store.rootPath, '.nexnote', 'search.db'),
+    );
+    _searchIndex = reopened;
+    _pageWriter = PageWriter(
+      repository: _vaultRepository!,
+      index: reopened,
+      git: _gitService!,
+      onChanged: bumpVaultRevision,
+    );
+    // 写入器换了，依赖它的捕获服务必须一起重建，避免持有已关闭的索引
+    _capture = QuickCapture(writer: _pageWriter!);
+    rebuildSearchIndex();
+    bumpVaultRevision();
+  }
+
   /// 全量重建搜索索引（首次打开 / schema 变更 / 手动触发）
   void rebuildSearchIndex() {
     final idx = _searchIndex;
@@ -104,6 +151,8 @@ class AppServices {
 
   /// 释放资源（测试与热重启用）
   void dispose() {
+    _vaultRevision?.dispose();
+    _vaultRevision = null;
     _chat?.dispose();
     _chat = null;
     _searchIndex?.close();

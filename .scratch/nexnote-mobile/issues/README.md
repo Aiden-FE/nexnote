@@ -6,7 +6,7 @@
 
 ## 当前状态
 
-- 票据总数 **10**；MOB-002 已验证（go），其余 `open`。
+- 票据总数 **10**，全部实现完毕（2026-09-30）：102 单元/widget 测试 + 4 个 iOS 集成测试文件 + 真实应用端到端旅程（11 检查点，截图见 ../screenshots/）。
 - frontier = 本目录中 `open`、依赖已 resolved、未 claimed 的票据；当前 frontier = **MOB-001**。
 - 分支约定：`dev/MOB-xxx`；单票据单分支，合并前不并行改同一文件。
 - 硬约束：**桌面端零改动**（不新增 HTTP/WS API、不改 IPC 契约）；跨端只共享行为语义。
@@ -17,7 +17,7 @@
 | # | 标题 | 里程碑 | 依赖 | 工作量 |
 |---|---|---|---|---|
 | **MOB-001** | [Flutter 工程与 iOS 签名基线](001-flutter-project-and-signing.md) | M1 | — | M |
-| **MOB-002** | [git2dart 真机可行性验证（降级闸门）](002-git2dart-device-spike.md) | M1 | MOB-001 | M | ✅ go |
+| **MOB-002** | [git2dart 真机可行性验证（降级闸门）](002-git2dart-device-spike.md) | M1 | MOB-001 | M  | ✅ |
 | **MOB-003** | [设备知识库与存储层](003-device-vault-storage.md) | M1/M2 | MOB-002 | M |
 | **MOB-004** | [设备端 Git 服务层与同步编排](004-device-git-service.md) | M1 | MOB-002, MOB-003 | XL |
 | **MOB-005** | [阅读侧与页面渲染](005-reader-and-page-render.md) | M2 | MOB-003 | L |
