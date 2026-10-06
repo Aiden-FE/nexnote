@@ -5,6 +5,8 @@
 //       同步护栏（.nexnote/ 与 OS 垃圾不入库）。
 import 'dart:io';
 
+import 'support/fixture.dart';
+
 import 'package:flutter_test/flutter_test.dart';
 import 'package:git2dart/git2dart.dart';
 import 'package:integration_test/integration_test.dart';
@@ -19,13 +21,12 @@ import 'package:path_provider/path_provider.dart';
 void main() {
   IntegrationTestWidgetsFlutterBinding.ensureInitialized();
 
-  const remoteEnv = String.fromEnvironment('NEXNOTE_SPIKE_REMOTE');
-  final remote = remoteEnv.isNotEmpty
-      ? remoteEnv
-      : 'file:///Users/aiden/dev/aiden/nexnote/.scratch/nexnote-mobile/fixture/remote.git';
 
   late Directory appSupport;
   final created = <Directory>[];
+
+  // fixture 远端（由 tool/make_test_fixture.sh 生成，地址经 dart-define 注入）
+  final remote = requireFixtureRemote();
 
   // fixture 远端是有状态的（上一轮已 push 过提交），文件名必须按运行唯一，
   // 否则二次运行 clone 回来会与既有文件冲突。

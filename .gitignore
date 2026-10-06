@@ -22,7 +22,3 @@ dist/
 # 冒烟测试生成物（最终精选证据需要入库时使用 git add -f）
 .scratch/nexnote-build/smoke/
 packages/*/.scratch-smoke-*/
-
-# 手机端验收 fixture（本地测试仓库，不入库）
-.scratch/nexnote-mobile/fixture/
-.scratch/nexnote-mobile/fixture-clean/

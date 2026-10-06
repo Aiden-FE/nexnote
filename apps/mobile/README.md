@@ -24,11 +24,10 @@ flutter build ios --device      # 真机构建（需签名配置）
 
 ### 集成测试（iOS 运行时真实执行）
 
+见下方「集成测试的本地 Git fixture」——推荐用一键脚本：
+
 ```sh
-flutter test integration_test/git_spike_test.dart      -d <simulator-udid>   # MOB-002/004 Git 全链路
-flutter test integration_test/search_spike_test.dart    -d <simulator-udid>   # MOB-006 中文分词
-flutter test integration_test/keychain_spike_test.dart  -d <simulator-udid>   # MOB-010 Keychain
-flutter test integration_test/app_journey_test.dart    -d <simulator-udid>   # 真实应用端到端旅程
+./tool/run_integration_test.sh     # 跑全部：git_diag / git_spike / search_spike / keychain_spike / app_journey / cross_device
 ```
 
 端到端旅程会在每个阶段向应用 Documents 写入 `shot-*.ready` 标记并留出等待窗口，
@@ -54,3 +53,24 @@ open ios/Runner.xcworkspace
 2. 勾选 `Automatically manage signing`，`Team` 选择个人 Apple ID
 3. 填入 `Bundle Identifier`（默认 `com.nexnote.nexnoteMobile`）
 4. 换机或满 7 天后重复第 1～3 步，然后在真机「设置 → 通用 → VPN 与设备管理」信任该开发者
+
+## 集成测试的本地 Git fixture
+
+集成测试需要一个本地 bare 远端（clone / push / rebase 的对端）。它由脚本在**测试前生成**，
+纯本地产物、**不入版本库**（`.test-fixture/` 已在 `.gitignore` 中；它是含 `.git` 的嵌套仓库）。
+
+```sh
+./tool/make_test_fixture.sh            # 幂等重建 fixture，打印 file:// 地址
+./tool/run_integration_test.sh         # 一键：生成 fixture + 注入地址 + 跑全部集成测试
+./tool/run_integration_test.sh git_spike_test   # 只跑指定文件
+SIM=<udid> ./tool/run_integration_test.sh        # 指定模拟器（默认取已启动的第一个）
+```
+
+手工跑单个测试时，需要把地址注入进去：
+
+```sh
+flutter test integration_test/git_spike_test.dart -d <sim> \
+  --dart-define=NEXNOTE_SPIKE_REMOTE="file://$(cd apps/mobile && pwd)/.test-fixture/remote.git"
+```
+
+未注入时测试会直接报出上述提示，而不是以「远端地址为空」的模糊错误失败。

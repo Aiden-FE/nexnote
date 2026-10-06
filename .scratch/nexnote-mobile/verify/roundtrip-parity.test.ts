@@ -14,9 +14,10 @@ const EVIDENCE = join(
   process.cwd(),
   '.scratch/nexnote-mobile/evidence/cross-device-evidence.json',
 );
+// fixture 由 apps/mobile/tool/make_test_fixture.sh 生成（不入库）
 const REMOTE = join(
   process.cwd(),
-  '.scratch/nexnote-mobile/fixture-clean/remote.git',
+  'apps/mobile/.test-fixture/remote.git',
 );
 
 type Evidence = { pagePaths: string[]; pageText: Record<string, string> };

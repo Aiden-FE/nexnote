@@ -32,7 +32,7 @@ Status: implemented —— 源码模式（frontmatter 只读）+ 简化块编辑
 手机端捕获/编辑后由自动提交落库并推送，宿主机用**真实 git** 检查远端：
 
 ```
-$ git -C .scratch/nexnote-mobile/fixture-clean/remote.git log --oneline
+$ git -C apps/mobile/.test-fixture/remote.git log --oneline
 093b4c0 nexnote:auto: 快速捕获 跨端核对笔记
 ca57662 nexnote:init: 移动端验收知识库（干净基线）
 

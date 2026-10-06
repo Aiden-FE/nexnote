@@ -98,7 +98,7 @@ Label: wayfinder:map
 | 桌面端 build | `pnpm build` | PASS |
 | **跨端命中集一致性**（MOB-006） | `npx vitest run --config .scratch/nexnote-mobile/verify/vitest.config.ts` | 6 条中文查询命中集两端一致，**0 差异**（桌面端真实 FTS5 ↔ 手机端倒排索引） |
 | **跨端往返一致性**（MOB-007/008） | 同上 | 未编辑 4 个文件逐字节未动；设备端写入 1 个文件经桌面端内核往返**零漂移**、双链保留 |
-| **设备提交可见性**（MOB-007/009） | `git -C fixture-clean/remote.git log/ls-tree` | 远端含 `nexnote:auto: 快速捕获 …` 提交，捕获页原文一致 |
+| **设备提交可见性**（MOB-007/009） | `git -C apps/mobile/.test-fixture/remote.git log/ls-tree` | 远端含 `nexnote:auto: 快速捕获 …` 提交，捕获页原文一致 |
 
 端到端旅程检查点：启动 → 设置页 → 克隆完成 → 库列表 → 页面渲染 → 双链跳转 → 中文搜索 →
 快速捕获 → 源码编辑 → 保存后 → 块编辑模式（截图见 `screenshots/`）。

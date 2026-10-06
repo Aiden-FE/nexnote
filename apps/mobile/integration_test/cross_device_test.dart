@@ -14,6 +14,8 @@ import 'package:nexnote_mobile/main.dart' as app;
 import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
 
+import 'support/fixture.dart';
+
 /// 跨端核对用的固定中文查询集
 const queries = ['基准', '防抖', '双链', '设备端同步', '索引', '不存在词'];
 
@@ -27,12 +29,17 @@ void main() {
     final vaultDir = Directory(p.join(support.path, 'vaults', 'default'));
     if (vaultDir.existsSync()) vaultDir.deleteSync(recursive: true);
 
+    // fixture 远端由 tool/make_test_fixture.sh 生成，地址经 dart-define 注入，
+    // 启动后应已预填在「设置」页的远端字段里。
+    final remote = requireFixtureRemote();
     await app.main();
     await tester.pumpAndSettle(const Duration(seconds: 2));
 
     // 克隆测试远端
     await tester.tap(find.text('设置'));
     await tester.pumpAndSettle();
+    expect(find.text(remote), findsOneWidget,
+        reason: '远端字段应预填注入的 fixture 地址');
     await tester.tap(find.text('克隆远端'));
     await tester.pumpAndSettle(const Duration(seconds: 8));
     expect(find.text('iCloud 备份排除：已生效'), findsOneWidget);

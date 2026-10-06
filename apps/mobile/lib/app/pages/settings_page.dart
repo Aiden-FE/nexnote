@@ -1,4 +1,3 @@
-import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 
 import '../../core/constants.dart';
@@ -24,15 +23,12 @@ class _SettingsPageState extends State<SettingsPage> {
   final _log = <String>[];
   bool _busy = false;
 
-  /// 验收用测试远端：优先 dart-define，其次 debug 预填本机 fixture
+  /// 测试远端地址：由集成测试用 --dart-define=NEXNOTE_SPIKE_REMOTE 注入。
+  /// 留空则该字段为空（手动粘贴 https:// 或 file:// 地址即可）。
   static const _spikeRemoteOverride =
       String.fromEnvironment('NEXNOTE_SPIKE_REMOTE');
 
-  static String get _spikeRemoteDefault => _spikeRemoteOverride.isNotEmpty
-      ? _spikeRemoteOverride
-      : (kDebugMode
-          ? 'file:///Users/aiden/dev/aiden/nexnote/.scratch/nexnote-mobile/fixture/remote.git'
-          : '');
+  static String get _spikeRemoteDefault => _spikeRemoteOverride;
 
   final _remoteController =
       TextEditingController(text: _spikeRemoteDefault);

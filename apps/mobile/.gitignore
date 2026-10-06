@@ -46,3 +46,6 @@ app.*.map.json
 
 # Widget Preview related
 .widget_preview/
+
+# 集成测试本地 Git fixture（由 tool/make_test_fixture.sh 生成，含嵌套 .git）
+.test-fixture/

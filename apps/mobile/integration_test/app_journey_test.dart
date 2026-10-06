@@ -11,6 +11,8 @@ import 'package:nexnote_mobile/main.dart' as app;
 import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
 
+import 'support/fixture.dart';
+
 void main() {
   IntegrationTestWidgetsFlutterBinding.ensureInitialized();
 
@@ -36,6 +38,9 @@ void main() {
       }
     }
 
+    // fixture 远端由 tool/make_test_fixture.sh 生成，地址经 dart-define 注入，
+    // 启动后应已预填在「设置」页的远端字段里。
+    final remote = requireFixtureRemote();
     await app.main();
     await tester.pumpAndSettle(const Duration(seconds: 2));
     await checkpoint('01-启动-空知识库');
@@ -43,6 +48,8 @@ void main() {
     // —— 克隆测试远端 ——
     await tester.tap(find.text('设置'));
     await tester.pumpAndSettle();
+    expect(find.text(remote), findsOneWidget,
+        reason: '远端字段应预填注入的 fixture 地址');
     expect(find.text('Git 状态'), findsOneWidget);
     await checkpoint('02-设置页');
 
