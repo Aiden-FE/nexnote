@@ -1,0 +1,44 @@
+{
+  "schema": "nexnote-release-qa/v1",
+  "repository": "Aiden-FE/nexnote",
+  "tag": "v0.0.30",
+  "commit": "a3fb1b8207cad4b4ce9bea3c69c54637a0e8ecb5",
+  "channel": "stable",
+  "allRequiredChecksPassed": true,
+  "scope": "v0.0.30-release",
+  "machineChecks": {
+    "typecheck": "passed (local pnpm -r --if-present typecheck at a3fb1b8; 5/5 workspace projects clean)",
+    "lint": "passed (local npx eslint . --max-warnings=0 at a3fb1b8; zero errors and zero warnings)",
+    "tests": "passed (local pnpm test at 97dc008/a3fb1b8 candidate lineage; 1779 passed | 3 skipped, 189 files passed | 1 skipped, exit code 0)",
+    "build": "passed (local pnpm electron-vite build at a3fb1b8; clean)",
+    "websiteBuild": "passed (local pnpm --filter website build at a3fb1b8; /docs and /zh/docs routes bundled, both language chapters present in output)",
+    "releaseConfig": "31/31 passed (local pnpm verify:release-config at a3fb1b8)",
+    "changedFormat": "passed (local changed-file prettier gate plus check-version at a3fb1b8)",
+    "diffCheck": "passed locally (git diff HEAD --check before candidate commit)",
+    "docsBrowserSmoke": "passed locally against vite build at 98e0a4e (zh and en docs index + getting-started render; headings, tables, TOC anchors, canonical and hreflang verified; no escaped-heading leak)",
+    "packagedSmoke": "not run locally for v0.0.30; release-tag-bound packaged smoke runs in the release pipeline smoke job after tag push and completed success for run 37638384354",
+    "ciLogHygiene": "local full-suite output inspected at a3fb1b8 lineage; zero AI_APICallError / InvalidResponseDataError / EPIPE failures in test run",
+    "gatekeeper": "Ad hoc signed app; macOS Gatekeeper manual Open Anyway expected on owner first launch (same recipe as v0.0.27-v0.0.29); spctl remains rejected without Developer ID notarization"
+  },
+  "gateDecisions": {
+    "windowsLinuxPhysicalInstall": "WAIVED by repository owner Aiden-FE: no Windows/Linux hardware available; packaged smoke remains macOS-local / CI only",
+    "macosGatekeeper": "DEFERRED to first-launch Open Anyway on the owner's Mac (Ad hoc signing only; same recipe as v0.0.27-v0.0.29); Developer ID signing / notarization deferred as a future improvement"
+  },
+  "candidateContents": {
+    "tickets": "Release: master commit a3fb1b8207cad4b4ce9bea3c69c54637a0e8ecb5, version 0.0.30; includes DEV-102 mindmap layouts, product documentation on the website, welcome-page getting-started entry, and release-gate repair.",
+    "highlights": [
+      "Product documentation now ships on the official website at /docs and /zh/docs, sourced from repository Markdown under docs/user-guide; docs index, chapter pages, per-page canonical/hreflang metadata, 404 fallback, and in-page TOC anchors are implemented. The legacy docs/user-guide.md is retired and replaced by a chaptered bilingual Getting Started page.",
+      "Welcome page 快速上手 now opens the official Getting Started documentation in the system default browser, with URL language following the configured UI language (zh-CN -> /zh/docs/getting-started, en-US -> /docs/getting-started). It reuses the existing Electron window-open guard to shell.openExternal and adds no new IPC. The in-app guided tour remains available via first-run auto-open and Settings replay.",
+      "DEV-102 mindmap layout structures (right/left/up/down/fishbone/X) ship with sidecar persistence, real-pipeline integration tests, and ADR-0020; ADR-0021 through ADR-0025 record the website docs, welcome-page link, desktop/mobile i18n, and screenshot platform decisions with CONTEXT.md vocabulary.",
+      "Test gate repair: mindmap-layout-integration previously passed all assertions but exited non-zero because happy-dom 20.14 ancestor validation throws a TypeError when simple-mind-map/svg.js first mounts a fresh detached SVG group. The test now retries only that TypeError through happy-dom's internal validated appendChild path; real insertion still executes and other exceptions are not swallowed. pnpm test is exit code 0 with 1779 passed | 3 skipped.",
+      "Release hygiene: lint zero errors/warnings, typecheck 5/5, electron-vite build, website build, verify-release-config 31/31, and version/tag match all pass at the release candidate."
+    ]
+  },
+  "notRun": [
+    "matrix signed builds for mac-arm64/mac-x64/windows-x64/linux-x64 were run by the release pipeline (success) but not locally",
+    "Windows packaged smoke and Linux packaged smoke (CI smoke job completed success for the release run)",
+    "macOS notarization / Developer ID code signing (Ad hoc signing only; Gatekeeper Open Anyway on first launch)",
+    "release-qa Environment required-reviewer approval (operational gate before publish)",
+    "post-publication 24-hour monitoring"
+  ]
+}
