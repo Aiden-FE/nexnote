@@ -1,4 +1,5 @@
 import type { IpcChannel, ChannelRequest } from '@nexnote/shared';
+import { isMindmapStructureId } from '@nexnote/shared';
 import { TARGET_LANGUAGE_PATTERN, TRANSLATION_MAX_TEXT_CHARS } from '../agent/translation';
 
 /** Stable error returned when renderer-controlled IPC input does not match its contract. */
@@ -222,6 +223,17 @@ const binaryEditorTheme = object(
 const binaryMindmapThemeSet = object(
   ['path', 'theme'],
   [stringField('path'), stringField('theme')],
+);
+// DEV-102：结构 id 走枚举白名单（不接受任意字符串，防止 path/structure 混淆注入）。
+const isMindmapStructureIdField =
+  (key: string): PayloadValidator =>
+  (payload) => {
+    const value = (payload as Record<string, unknown>)[key];
+    return isMindmapStructureId(value) ? null : invalid(`${key} 必须是已登记的布局结构 id`);
+  };
+const binaryMindmapStructureSet = object(
+  ['path', 'structure'],
+  [stringField('path'), isMindmapStructureIdField('structure')],
 );
 
 const stringArrayField =
@@ -794,6 +806,7 @@ const VALIDATORS: Partial<Record<IpcChannel, PayloadValidator>> = {
   'binary:host:setActive': binaryHostSetActive,
   'binary:host:setBounds': binaryHostSetBounds,
   'binary:mindmapTheme:set': binaryMindmapThemeSet,
+  'binary:mindmapStructure:set': binaryMindmapStructureSet,
   'binary:editorTheme': binaryEditorTheme,
   // 'binary:gitignore:get' 无 payload，走默认拒绝非空 payload
 };

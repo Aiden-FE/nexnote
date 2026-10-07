@@ -47,6 +47,9 @@ export {
   defaultVaultSettings,
   DEFAULT_SHORTCUTS,
   sanitizeEntryName,
+  MINDMAP_STRUCTURE_IDS,
+  MIN_ROOT_CHILDREN_FOR_X_STRUCTURE,
+  isMindmapStructureId,
 } from './ipc/reexports';
 
 export { TRANSLATION_MAX_TEXT_CHARS } from './types/agent';

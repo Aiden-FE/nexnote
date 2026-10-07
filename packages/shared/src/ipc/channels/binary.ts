@@ -15,6 +15,22 @@ import type { BinaryEditorCommand } from '../events';
 
 export const BINARY_MAX_IMPORT_BYTES = 200 * 1024 * 1024;
 
+/**
+ * xmind 布局结构（DEV-102，ADR-0020）：node 的生长方向排布，与节点内容/层级无关。
+ * 存 sidecar（`mindmapStructure`）而非 xmind 字节——xmind 的 structureClass 在本应用
+ * 解析端不读、写回端恒为 logic.right，布局无法经字节往返。
+ */
+export const MINDMAP_STRUCTURE_IDS = ['right', 'left', 'up', 'down', 'fishbone', 'x'] as const;
+
+export type MindmapStructureId = (typeof MINDMAP_STRUCTURE_IDS)[number];
+
+/** X 结构仅在根节点子节点数 ≥ 2 时可用（DEV-102 决策 4）。 */
+export const MIN_ROOT_CHILDREN_FOR_X_STRUCTURE = 2;
+
+export function isMindmapStructureId(value: unknown): value is MindmapStructureId {
+  return typeof value === 'string' && (MINDMAP_STRUCTURE_IDS as readonly string[]).includes(value);
+}
+
 /** vault 副本的二进制文档格式（与 TabKind 的 'xlsx'/'mindmap' 对应；docx 已撤销，见 DEV-098）。 */
 export type BinaryKind = 'xlsx' | 'mindmap';
 
@@ -40,6 +56,7 @@ export const BINARY_CHANNELS = [
   'binary:host:setBounds',
   'binary:editorTheme',
   'binary:mindmapTheme:set',
+  'binary:mindmapStructure:set',
   'binary:gitignore:set',
   'binary:gitignore:get',
 ] as const;
@@ -142,6 +159,15 @@ export interface BinaryChannelMap {
    */
   'binary:mindmapTheme:set': {
     request: { path: string; theme: string };
+    response: Result<{ saved: true }>;
+  };
+  /**
+   * DEV-102：xmind 布局结构选择持久化到 sidecar（`mindmapStructure` 字段，read-merge-write），
+   * 与 mindmapTheme 同构；structure 必须是 MINDMAP_STRUCTURE_IDS 中的枚举值。
+   * xmind 字节保持 XMind 规范纯净；读取复用 document:getMetadata。
+   */
+  'binary:mindmapStructure:set': {
+    request: { path: string; structure: MindmapStructureId };
     response: Result<{ saved: true }>;
   };
 }
