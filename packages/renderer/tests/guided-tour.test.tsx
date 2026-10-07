@@ -6,6 +6,7 @@ import { defaultGlobalSettings, type VaultInfo } from '@nexnote/shared';
 import { GuidedTour } from '../src/tour/GuidedTour';
 import { TOUR_STEPS } from '../src/tour/tour-steps';
 import { useUiStore } from '../src/stores/ui-store';
+import { useSettingsStore } from '../src/stores/settings-store';
 import { useVaultLayoutPersistence } from '../src/shell/layout-persistence';
 import { WelcomePage } from '../src/pages/WelcomePage';
 import '../src/features/settings';
@@ -259,10 +260,11 @@ describe('guideCompleted 持久化链路', () => {
 });
 
 describe('重播入口', () => {
-  it('欢迎页「快速上手」打开引导', async () => {
+  it('欢迎页「快速上手」打开官网文档快速上手页（ADR-0022）', async () => {
     installBridge({
       'app:getInfo': () => ({ version: '0.0.0-test', platform: 'test' }),
     });
+    const open = vi.spyOn(window, 'open').mockReturnValue(null);
     mount(<WelcomePage />);
     await act(async () => {
       await Promise.resolve();
@@ -271,7 +273,14 @@ describe('重播入口', () => {
     act(() => {
       document.querySelector<HTMLButtonElement>('[data-testid="welcome-start-tour"]')?.click();
     });
-    expect(useUiStore.getState().tourOpen).toBe(true);
+    // 应用内引导不再由该按钮触发，而是打开系统默认浏览器中的文档页。
+    expect(useUiStore.getState().tourOpen).toBe(false);
+    expect(open).toHaveBeenCalledWith(
+      'https://nexnote-app.vercel.app/zh/docs/getting-started',
+      '_blank',
+      'noopener',
+    );
+    open.mockRestore();
   });
 
   it('设置页「新手引导 → 重新播放」打开引导', async () => {
@@ -292,6 +301,35 @@ describe('重播入口', () => {
     expect(replay).toBeTruthy();
     act(() => replay.click());
     expect(useUiStore.getState().tourOpen).toBe(true);
+  });
+
+  it('欢迎页文档链接跟随界面语言切到英文文档', async () => {
+    installBridge({
+      'app:getInfo': () => ({ version: '0.0.0-test', platform: 'test' }),
+    });
+    const defaults = defaultGlobalSettings();
+    useSettingsStore.setState({
+      global: {
+        ...defaults,
+        appearance: { ...defaults.appearance, language: 'en-US' },
+      },
+    });
+    const open = vi.spyOn(window, 'open').mockReturnValue(null);
+    mount(<WelcomePage />);
+    await act(async () => {
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+    act(() => {
+      document.querySelector<HTMLButtonElement>('[data-testid="welcome-start-tour"]')?.click();
+    });
+    expect(open).toHaveBeenCalledWith(
+      'https://nexnote-app.vercel.app/docs/getting-started',
+      '_blank',
+      'noopener',
+    );
+    open.mockRestore();
+    useSettingsStore.setState({ global: null });
   });
 });
 
