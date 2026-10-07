@@ -1,7 +1,39 @@
 import { useEffect, useRef, useState } from 'react';
-import { Undo2, Redo2, Save, ZoomIn, ZoomOut, Maximize, RotateCcw, Palette } from 'lucide-react';
+import {
+  Undo2,
+  Redo2,
+  Save,
+  ZoomIn,
+  ZoomOut,
+  Maximize,
+  RotateCcw,
+  Palette,
+  MoveRight,
+  MoveLeft,
+  MoveUp,
+  MoveDown,
+  GitBranch,
+  Asterisk,
+} from 'lucide-react';
 import type MindMap from 'simple-mind-map';
 import { MINDMAP_THEME_PRESETS } from './mindmap-themes';
+import {
+  MINDMAP_STRUCTURE_OPTIONS,
+  isStructureSelectable,
+  MIN_ROOT_CHILDREN_FOR_X,
+  type MindmapStructureIcon,
+} from './mindmap-structures';
+import type { MindmapStructureId } from '@nexnote/shared';
+
+/** DEV-102：结构菜单的图标映射（icon 字段与 lucide 组件的连接点，收在此处）。 */
+const STRUCTURE_ICONS: Record<MindmapStructureIcon, typeof MoveRight> = {
+  'arrow-right': MoveRight,
+  'arrow-left': MoveLeft,
+  'arrow-up': MoveUp,
+  'arrow-down': MoveDown,
+  'git-branch': GitBranch,
+  asterisk: Asterisk,
+};
 
 /**
  * DEV-099：xmind 画布四角悬浮工具组（grill Q1/Q13）：
@@ -17,6 +49,12 @@ export interface MindmapToolbarProps {
   saveStatus: string | null;
   onThemeChange: (themeId: string) => void;
   onSaveNow: () => void;
+  /** DEV-102：当前布局结构 id（sidecar 回读 + 菜单高亮）。 */
+  structure: MindmapStructureId;
+  /** DEV-102：根节点一级子节点数（X 结构门控）。 */
+  rootChildCount: number;
+  /** DEV-102：选择结构回调（编辑器负责应用 setLayout + sidecar 写回）。 */
+  onStructureChange: (structure: MindmapStructureId) => void;
 }
 
 function FloatButton({
@@ -54,18 +92,32 @@ export function MindmapToolbar({
   saveStatus,
   onThemeChange,
   onSaveNow,
+  structure,
+  rootChildCount,
+  onStructureChange,
 }: MindmapToolbarProps): React.JSX.Element {
   const [themeMenuOpen, setThemeMenuOpen] = useState(false);
+  const [structureMenuOpen, setStructureMenuOpen] = useState(false);
   const menuRef = useRef<HTMLDivElement | null>(null);
+  const structureMenuRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
-    if (!themeMenuOpen) return;
+    if (!themeMenuOpen && !structureMenuOpen) return;
     const onDown = (e: MouseEvent): void => {
-      if (menuRef.current && !menuRef.current.contains(e.target as Node)) setThemeMenuOpen(false);
+      if (themeMenuOpen && menuRef.current && !menuRef.current.contains(e.target as Node)) {
+        setThemeMenuOpen(false);
+      }
+      if (
+        structureMenuOpen &&
+        structureMenuRef.current &&
+        !structureMenuRef.current.contains(e.target as Node)
+      ) {
+        setStructureMenuOpen(false);
+      }
     };
     window.addEventListener('mousedown', onDown, true);
     return () => window.removeEventListener('mousedown', onDown, true);
-  }, [themeMenuOpen]);
+  }, [themeMenuOpen, structureMenuOpen]);
 
   const call = (method: 'enlarge' | 'narrow' | 'fit' | 'reset'): void => {
     if (!mindMap) return;
@@ -124,6 +176,52 @@ export function MindmapToolbar({
           <FloatButton title="复位 100%" disabled={!mindMap} onClick={() => call('reset')}>
             <RotateCcw className="size-4" />
           </FloatButton>
+          <div ref={structureMenuRef} className="relative">
+            <FloatButton title="结构" onClick={() => setStructureMenuOpen((open) => !open)}>
+              <GitBranch className="size-4" />
+            </FloatButton>
+            {structureMenuOpen && (
+              <div
+                role="menu"
+                data-testid="mindmap-structure-menu"
+                className="absolute right-0 top-9 z-30 w-40 rounded-md border border-neutral-200 bg-white py-1 shadow-md dark:border-neutral-700 dark:bg-neutral-800"
+              >
+                {MINDMAP_STRUCTURE_OPTIONS.map((option) => {
+                  const selectable = isStructureSelectable(option.id, rootChildCount);
+                  const Icon = STRUCTURE_ICONS[option.icon];
+                  const isCurrent = option.id === structure;
+                  return (
+                    <button
+                      key={option.id}
+                      type="button"
+                      role="menuitem"
+                      data-testid={`mindmap-structure-${option.id}`}
+                      aria-current={isCurrent ? 'true' : undefined}
+                      disabled={!selectable}
+                      title={
+                        selectable
+                          ? option.label
+                          : `${option.label}（需 ${MIN_ROOT_CHILDREN_FOR_X} 个以上子节点）`
+                      }
+                      onClick={() => {
+                        onStructureChange(option.id);
+                        setStructureMenuOpen(false);
+                      }}
+                      className={`flex w-full items-center gap-2 px-3 py-1.5 text-left text-xs hover:bg-neutral-100 dark:hover:bg-neutral-700 ${
+                        isCurrent
+                          ? 'font-semibold text-neutral-900 dark:text-white'
+                          : 'text-neutral-600 dark:text-neutral-300'
+                      } ${selectable ? '' : 'cursor-not-allowed opacity-40'}`}
+                    >
+                      {Icon && <Icon className="size-3.5" aria-hidden="true" />}
+                      <span className="flex-1">{option.label}</span>
+                      {!selectable && <span className="text-[10px]">需 2 个以上子节点</span>}
+                    </button>
+                  );
+                })}
+              </div>
+            )}
+          </div>
           <div ref={menuRef} className="relative">
             <FloatButton title="主题" onClick={() => setThemeMenuOpen((open) => !open)}>
               <Palette className="size-4" />

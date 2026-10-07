@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import MindMap from 'simple-mind-map';
 import Drag from 'simple-mind-map/src/plugins/Drag.js';
+import type { MindmapStructureId } from '@nexnote/shared';
 import { invoke } from '../lib/ipc';
 import { subscribeSession, flushPending } from './session';
 import type { SessionState } from './session';
@@ -8,6 +9,8 @@ import { MindmapToolbar } from './mindmap-toolbar';
 import { MindmapDrawer } from './mindmap-drawer';
 import { MINDMAP_NODE_BTN_ICONS } from './mindmap-icons';
 import { DEFAULT_MINDMAP_THEME, deepMergeTheme, themePresetById } from './mindmap-themes';
+import { DEFAULT_MINDMAP_STRUCTURE, countRootChildren, structureById } from './mindmap-structures';
+import { registerCustomMindmapLayouts } from './mindmap-layouts';
 
 /**
  * xmind 编辑器（DEV-074，ADR-0015 R3；DEV-099 操作界面）。
@@ -17,10 +20,10 @@ import { DEFAULT_MINDMAP_THEME, deepMergeTheme, themePresetById } from './mindma
  * sidecar mindmapTheme 持久化。
  */
 
-// simple-mind-map 的静态插件注册（类方法，非 React hook）；经 bind 取别名后调用，
-// 避免 react-hooks/rules-of-hooks 把 usePlugin 误判为组件内 hook 调用。
-const installMindMapPlugin = MindMap.usePlugin.bind(MindMap);
-installMindMapPlugin(Drag);
+type MindMapLike = MindMap & {
+  addPlugin: (plugin: unknown) => void;
+  removePlugin: (plugin: unknown) => void;
+};
 
 export interface MindmapEditorProps {
   path: string;
@@ -57,10 +60,14 @@ export function MindmapEditor({ path, model, onChange }: MindmapEditorProps): Re
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [drawerPinnedOpen, setDrawerPinnedOpen] = useState(false);
   const [themeId, setThemeId] = useState(DEFAULT_MINDMAP_THEME);
+  const [structure, setStructure] = useState<MindmapStructureId>(DEFAULT_MINDMAP_STRUCTURE);
   const [saveStatus, setSaveStatus] = useState<string | null>(null);
   const baseThemeRef = useRef<Record<string, unknown> | null>(null);
   // 渲染期不得读 ref（react-hooks/refs）：把实例镜像进 state 供工具栏/抽屉消费。
   const [mapInstance, setMapInstance] = useState<MindMapWithInternals | null>(null);
+  // X 结构可用性的依据：根节点一级子节点数。model prop 只在加载时变化，编辑中的增删
+  // 需从 data_change 的实时树刷新，否则删除子节点后菜单不会按 ADR-0020 决策 4 置灰。
+  const [rootChildCount, setRootChildCount] = useState(() => countRootChildren(model));
 
   // 主题应用 = base 主题 × 预设深合并；声明前置于挂载 effect（react-hooks/immutability）。
   const applyThemeConfig = (mindMap: MindMapWithInternals, id: string): void => {
@@ -70,6 +77,19 @@ export function MindmapEditor({ path, model, onChange }: MindmapEditorProps): Re
     mindMap.setThemeConfig(
       deepMergeTheme(JSON.parse(JSON.stringify(base)) as Record<string, unknown>, preset.config),
     );
+  };
+
+  // 结构切换 = setLayout（库内已支持）+ 自研布局挂载 + 拖拽插件按结构装载。
+  // setLayout 不写节点数据、不触发 data_change，因此 .xmind 字节不受切结构影响（ADR-0020 决策 5）。
+  const applyStructure = (mindMap: MindMapWithInternals, id: MindmapStructureId): void => {
+    const option = structureById(id);
+    // 自研布局（向上 / X）未在库内 Drag 的布局分发里登记，拖拽会让占位符静默错位，
+    // 因此这两种结构下不装载 Drag 插件（ADR-0020 Consequences）。
+    const withDrag = mindMap as unknown as MindMapLike;
+    if (option.custom) withDrag.removePlugin(Drag);
+    else withDrag.addPlugin(Drag);
+    registerCustomMindmapLayouts(mindMap);
+    mindMap.setLayout(option.layout);
   };
 
   // 落盘状态（编辑中…/已保存/失败）来自宿主 session。
@@ -105,7 +125,10 @@ export function MindmapEditor({ path, model, onChange }: MindmapEditorProps): Re
       unknown
     >;
 
-    const onDataChange = (data: unknown): void => onChangeRef.current(data);
+    const onDataChange = (data: unknown): void => {
+      setRootChildCount(countRootChildren(data));
+      onChangeRef.current(data);
+    };
     const onScale = (value: number): void => setScale(value);
     const onNodeActive = (_node: unknown, list: unknown[]): void => {
       setActiveNodes(list ?? []);
@@ -149,13 +172,19 @@ export function MindmapEditor({ path, model, onChange }: MindmapEditorProps): Re
     };
     window.addEventListener('keydown', onKeyDown);
 
-    // 主题：sidecar 持久化优先（grill Q3/Q8）。
+    // 主题与结构：sidecar 持久化优先（主题 DEV-099；结构 DEV-102 / ADR-0020）。
     void invoke('document:getMetadata', { path })
       .then((meta) => {
         const stored = (meta as { mindmapTheme?: unknown } | null)?.mindmapTheme;
-        const id = typeof stored === 'string' ? stored : DEFAULT_MINDMAP_THEME;
-        setThemeId(id);
-        applyThemeConfig(mindMap, id);
+        const themeKey = typeof stored === 'string' ? stored : DEFAULT_MINDMAP_THEME;
+        setThemeId(themeKey);
+        applyThemeConfig(mindMap, themeKey);
+        const storedStructure = (meta as { mindmapStructure?: unknown } | null)?.mindmapStructure;
+        // 即便存的结构在当前树上不可用（X 结构但子节点不足）也原样回填——不改写用户的
+        // 选择，只在菜单里置灰（ADR-0020 决策 4）。
+        setStructure(structureById(storedStructure).id);
+        // 重新加载的文档按其当前一级子节点数决定 X 结构是否可用
+        setRootChildCount(countRootChildren(model));
       })
       .catch(() => undefined);
 
@@ -170,6 +199,18 @@ export function MindmapEditor({ path, model, onChange }: MindmapEditorProps): Re
     };
     // model 变化（重新加载）时重建实例。
   }, [path, model]);
+
+  // 结构在实例就绪后套用（含实例重建、sidecar 回读后的重放）。
+  useEffect(() => {
+    if (!mapInstance) return;
+    applyStructure(mapInstance, structure);
+  }, [mapInstance, structure]);
+
+  const handleStructureChange = (id: MindmapStructureId): void => {
+    // 只改状态：套用由 [mapInstance, structure] effect 统一执行，避免 setLayout 跑两遍。
+    setStructure(id);
+    void invoke('binary:mindmapStructure:set', { path, structure: id }).catch(() => undefined);
+  };
 
   const handleThemeChange = (id: string): void => {
     setThemeId(id);
@@ -188,6 +229,9 @@ export function MindmapEditor({ path, model, onChange }: MindmapEditorProps): Re
         scale={scale}
         themeId={themeId}
         saveStatus={saveStatus}
+        structure={structure}
+        rootChildCount={rootChildCount}
+        onStructureChange={handleStructureChange}
         onThemeChange={handleThemeChange}
         onSaveNow={() => void flushPending()}
       />

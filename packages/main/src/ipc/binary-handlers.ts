@@ -148,6 +148,16 @@ export function registerBinaryHandlers(registrar: IpcRegistrar): void {
     return ok({ saved: true as const });
   });
 
+  // DEV-102：xmind 布局结构持久化到 sidecar（read-merge-write，不碰 xmind 字节；ADR-0020）。
+  registrar.register('binary:mindmapStructure:set', async ({ path, structure }, services) => {
+    const root = services.vaultSession.getCurrent()?.root;
+    if (!root) return err('当前未打开知识库', 'NO_VAULT');
+    const store = new MetadataStore(root);
+    const current = (await store.read(path)) ?? {};
+    await store.write(path, { ...current, mindmapStructure: structure });
+    return ok({ saved: true as const });
+  });
+
   registrar.register('binary:host:flush', async ({ kind, path }, services) => {
     await services.binaryEditors.flush(`${kind}:${path}`);
     return ok({ flushed: true as const });

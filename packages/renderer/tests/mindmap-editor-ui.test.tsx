@@ -87,6 +87,76 @@ describe('MindmapToolbar（DEV-099）', () => {
   });
 });
 
+describe('MindmapToolbar 结构菜单（DEV-102）', () => {
+  const props = {
+    mindMap: null,
+    scale: 1,
+    themeId: 'classic',
+    saveStatus: '已保存',
+    onThemeChange: () => undefined,
+    onSaveNow: () => undefined,
+    structure: 'right',
+    rootChildCount: 2,
+    onStructureChange: () => undefined,
+  } as const;
+
+  it('右上工具组有「结构」入口', () => {
+    const view = mount(createElement(MindmapToolbar, props));
+    const labels = [...view.querySelectorAll('button')].map((b) => b.getAttribute('title'));
+    expect(labels).toEqual(expect.arrayContaining(['结构']));
+  });
+
+  it('结构下拉列出六个选项并标出当前结构', () => {
+    const view = mount(createElement(MindmapToolbar, props));
+    act(() => {
+      [...view.querySelectorAll('button')].find((b) => b.getAttribute('title') === '结构')?.click();
+    });
+    const menu = view.querySelector('[data-testid="mindmap-structure-menu"]');
+    expect(menu).not.toBeNull();
+    const items = [...(menu?.querySelectorAll('[role="menuitem"]') ?? [])];
+    expect(items.map((el) => el.textContent)).toEqual([
+      '向右分支',
+      '向左分支',
+      '向上分支',
+      '向下分支',
+      '鱼骨结构',
+      'X 结构',
+    ]);
+    const current = items.find((el) => el.getAttribute('aria-current') === 'true');
+    expect(current?.textContent).toBe('向右分支');
+  });
+
+  it('根节点子节点 < 2 时 X 结构置灰且不可选（ADR-0020 决策 4）', () => {
+    const view = mount(createElement(MindmapToolbar, { ...props, rootChildCount: 1 }));
+    act(() => {
+      [...view.querySelectorAll('button')].find((b) => b.getAttribute('title') === '结构')?.click();
+    });
+    const x = view.querySelector('[data-testid="mindmap-structure-x"]');
+    expect(x?.hasAttribute('disabled')).toBe(true);
+    expect(x?.textContent).toContain('需 2 个以上子节点');
+  });
+
+  it('选择结构回调出结构 id 并收起菜单', () => {
+    let picked: string | null = null;
+    const view = mount(
+      createElement(MindmapToolbar, {
+        ...props,
+        onStructureChange: (id: string) => {
+          picked = id;
+        },
+      }),
+    );
+    act(() => {
+      [...view.querySelectorAll('button')].find((b) => b.getAttribute('title') === '结构')?.click();
+    });
+    act(() => {
+      view.querySelector('[data-testid="mindmap-structure-left"]')?.click();
+    });
+    expect(picked).toBe('left');
+    expect(view.querySelector('[data-testid="mindmap-structure-menu"]')).toBeNull();
+  });
+});
+
 describe('MindmapDrawer（DEV-099）', () => {
   it('未选中节点时三节齐全且操作禁用；选中后启用', () => {
     const view = mount(
