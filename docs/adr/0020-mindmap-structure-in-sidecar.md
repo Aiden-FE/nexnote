@@ -19,7 +19,8 @@
 ## Decision
 
 1. **布局结构存 sidecar，不写 xmind 字节**。字段名 `mindmapStructure`，与既有 `mindmapTheme` 同构（`document:getMetadata` 读、`binary:mindmapStructure:set` 写）。v1 明确不承诺"外部 XMind 打开时布局一致"。
-2. **"向上"与"X"自研**，实现为新的布局类挂在 renderer，遵循 `Base` 契约（`doLayout` / `renderLine` / `renderExpandBtn`）。注册途径不动 `node_modules`：`Render.setLayout` 的查找链 `layouts[name] || mindMap[name]` 允许把类挂到实例上注入；`opt.layout` 与 `setLayout` 的 `layoutValueList` 白名单需要拦截补丁（narrow 范围的 monkey-patch，集中在 `mindmap-layouts/` 内）。
+2. **"向上"与"X"自研**，实现为新的布局类挂在 renderer，遵循 `Base` 契约（`doLayout` / `renderLine` / `renderExpandBtn` / `renderGeneralization`）。注册不动 `node_modules`，只用库已有的两个入口：`Render.setLayout` 的查找链 `layouts[name] || mindMap[name]` 允许把类挂到实例上；而白名单校验（`handleOpt` 与 `setLayout` 都检查模块级 `layoutValueList`，该数组无公开写入口）在**实例层绕行**——`applyMindmapLayout()` 对自研布局复刻 setLayout 的动作（`view.reset` → `renderer.setLayout` → `render` → `emit('layout_change')`）而跳过白名单校验。
+   之所以不在实例外注入白名单：渲染进程里 `simple-mind-map`（`package.json` 的 `main` 指向 dist UMD）与 `simple-mind-map/src/constants/constant.js` 很可能是**两份独立模块实例**，改其中一份对另一份无效（单测里实测复现：`layoutValueList.push` 后 `setLayout` 仍把自研名降级为 `logicalStructure`）。实例层绕行与模块解析结果无关。
 3. **"四向鱼骨"采用库内 `fishbone`**（主轴向右、一级分支在主轴上下交替），不做超出该算法的四象限同向鱼骨。UI 命名不做"向右"前缀，参照语雀画板面板惯例。
 4. **X 结构仅在根节点子节点 ≥ 2 时可选**；< 2 时菜单项置灰。选中 X 后子节点掉回 < 2 的，画布保持最后一次有效分布，菜单项相应置灰——不自动回退并改写用户的结构选择；恰为 2 个时退化为左右形式。
 5. **切换结构不写节点 data、不进撤销历史**：`setLayout` 本身不触发 `data_change`（`Command.js:127` 与 `Render.js:745` 只在 addHistory / undo/redo 触发），`.xmind` 字节因此保持纯净。导入的 xmind 一律按默认"向右分支结构"打开，忽略其自带 `structureClass`。
@@ -35,7 +36,8 @@
 - 换机器、导出到其他机器打开：布局选择随 sidecar（Git 同步）到达，不依赖 xmind 字节本身；不使用 NexNote 的用户打开同一 .xmind 会看到"向右逻辑结构"。
 - xmind 往返不变——保存仍经 `writeModelToXmind` + `preserveXmindReadonly`，`structureClass` 硬编码行为不动。
 - 自研布局下的**节点拖拽在 v1 不可用**：Drag 插件内 `switch (opt.layout)` 有 6 处分发点，只有 `checkOverlapNode` 有可用 default，其余 5 处是空 default——占位符不会定位，drop 落点会静默错误。更劣的选项（映射 opt.layout 到库内名字）只能修一处而把其他错位，已否决。DEV-099 R5 启用的拖拽能力对"向上/X"两种结构暂退回"不响应"。
-- `layoutValueList` 拦截补丁是第三方库升级的主要兼容风险点；升级 simple-mind-map 时须重新验证。
+- `applyMindmapLayout` 复刻了 `MindMap.setLayout` 的内部动作（`view.reset` / `renderer.setLayout` / `render(null, CHANGE_LAYOUT)` / `emit('layout_change')`），这是第三方库升级的主要兼容风险点；升级 simple-mind-map 时须重新验证这四处内部成员仍存在（渲染进程的集成测试 `mindmap-layout-integration.test.ts` 覆盖此路径）。
+- 自研布局下 Drag 插件在实例层装卸（`addPlugin` / `removePlugin`），依赖库的 `plugin.instanceName` 契约。
 
 ## 修订记录
 
