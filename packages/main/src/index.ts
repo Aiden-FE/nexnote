@@ -39,6 +39,7 @@ import { VaultOperationsController } from './vault/vault-operations-controller';
 import { VaultCloneController } from './vault/vault-clone-controller';
 import { BUILTIN_PLUGIN_MANIFESTS } from './plugins/builtin/builtin-manifests';
 import { AgentGateway } from './agent/gateway';
+import { readVaultSettings } from './vault/vault-manager';
 import { ToolRegistry } from './agent/tool-registry';
 import { createBuiltinTools } from './agent/builtin-tools';
 import { BinaryEditorHostManager } from './binary/binary-editor-host';
@@ -248,11 +249,7 @@ async function bootstrap(): Promise<void> {
     applyGlobalSettings(global);
     void (async () => {
       const root = vaultSession.getCurrent()?.root;
-      const vault = root
-        ? await import('./vault/vault-manager').then(({ readVaultSettings }) =>
-            readVaultSettings(root),
-          )
-        : null;
+      const vault = root ? await readVaultSettings(root) : null;
       windows?.sendToMainWindow('settings:changed', { global, vault });
       if (root) {
         try {

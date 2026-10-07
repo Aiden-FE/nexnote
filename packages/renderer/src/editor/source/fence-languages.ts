@@ -1,38 +1,29 @@
 import { LanguageDescription } from '@codemirror/language';
+import { javascript } from '@codemirror/lang-javascript';
+import { html } from '@codemirror/lang-html';
+import { css } from '@codemirror/lang-css';
 
-/** CM grammars are loaded only when a matching fence is parsed. */
+/** CM grammar descriptors; packages are already in the static HTML/Markdown graph. */
 export const staticFenceLanguages: readonly LanguageDescription[] = [
   LanguageDescription.of({
     name: 'JavaScript',
     alias: ['javascript', 'js', 'jsx'],
-    async load() {
-      const { javascript } = await import('@codemirror/lang-javascript');
-      return javascript({ jsx: true });
-    },
+    load: async () => javascript({ jsx: true }),
   }),
   LanguageDescription.of({
     name: 'TypeScript',
     alias: ['typescript', 'ts', 'tsx'],
-    async load() {
-      const { javascript } = await import('@codemirror/lang-javascript');
-      return javascript({ typescript: true, jsx: true });
-    },
+    load: async () => javascript({ typescript: true, jsx: true }),
   }),
   LanguageDescription.of({
     name: 'HTML',
     alias: ['html', 'vue', 'svelte'],
-    async load() {
-      const { html } = await import('@codemirror/lang-html');
-      return html({ matchClosingTags: false });
-    },
+    load: async () => html({ matchClosingTags: false }),
   }),
   LanguageDescription.of({
     name: 'CSS',
     alias: ['css', 'scss', 'less'],
-    async load() {
-      const { css } = await import('@codemirror/lang-css');
-      return css();
-    },
+    load: async () => css(),
   }),
 ];
 

@@ -9,6 +9,7 @@ import type {
 import type { IpcRegistrar } from './registrar';
 import { GitServiceError } from '../git/git-service';
 import { GitSyncDoctorError } from '../git/git-sync-doctor';
+import { readVaultSettings, saveVaultSettings } from '../vault/vault-manager';
 
 /**
  * git:* 命名空间 handler：与 shared 契约一一对应，主进程唯一 Git 调用点。
@@ -96,7 +97,6 @@ export function registerGitHandlers(registrar: IpcRegistrar): void {
     async (_payload, services): Promise<Result<GitOperationResult>> => {
       const vault = services.vaultSession.getCurrent();
       if (!vault) throw new GitServiceError('尚未打开任何知识库', 'NO_VAULT');
-      const { readVaultSettings } = await import('../vault/vault-manager');
       const vaultSettings = await readVaultSettings(vault.root);
       const strategy = vaultSettings.git.syncStrategy === 'merge' ? 'merge' : 'rebase';
       const result = await services.git.sync({
@@ -109,23 +109,19 @@ export function registerGitHandlers(registrar: IpcRegistrar): void {
     },
   );
 
-  registrar.register(
-    'git:configureAutoSync',
-    async (_payload, services): Promise<Result<void>> => {
-      const vault = services.vaultSession.getCurrent();
-      if (!vault) {
-        services.git.stopAutoSync();
-        return ok(undefined);
-      }
-      const { readVaultSettings } = await import('../vault/vault-manager');
-      const vaultSettings = await readVaultSettings(vault.root);
-      services.git.configureAutoSync(
-        vaultSettings.git.autoSyncIntervalSec,
-        vaultSettings.git.syncStrategy === 'merge' ? 'merge' : 'rebase',
-      );
+  registrar.register('git:configureAutoSync', async (_payload, services): Promise<Result<void>> => {
+    const vault = services.vaultSession.getCurrent();
+    if (!vault) {
+      services.git.stopAutoSync();
       return ok(undefined);
-    },
-  );
+    }
+    const vaultSettings = await readVaultSettings(vault.root);
+    services.git.configureAutoSync(
+      vaultSettings.git.autoSyncIntervalSec,
+      vaultSettings.git.syncStrategy === 'merge' ? 'merge' : 'rebase',
+    );
+    return ok(undefined);
+  });
 
   registrar.register(
     'git:previewRestore',
@@ -165,7 +161,6 @@ export function registerGitHandlers(registrar: IpcRegistrar): void {
       throw new GitServiceError('尚未打开任何知识库', 'NO_VAULT');
     }
     // legacy channel 仍可用，但写入 vault config 这一唯一权威，再回灌 GitService。
-    const { saveVaultSettings } = await import('../vault/vault-manager');
     const updated = await saveVaultSettings(root, {
       git: { autoCommitIntervalMs: milliseconds },
     });

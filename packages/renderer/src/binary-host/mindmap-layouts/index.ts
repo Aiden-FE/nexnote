@@ -1,5 +1,5 @@
 import { UpStructure } from './up-structure';
-import { XStructure } from './x-structure';
+import { XStructure, clearXStructureAssignments } from './x-structure';
 
 /**
  * DEV-102 / ADR-0020 决策 2：自研布局的注册与应用。
@@ -74,6 +74,8 @@ export function applyMindmapLayout(mindMap: object, layout: string): void {
   internals.render(null, 'changeLayout');
   internals.emit('layout_change', layout);
 }
+
+export { clearXStructureAssignments };
 
 export { UpStructure } from './up-structure';
 export { XStructure } from './x-structure';

@@ -27,6 +27,7 @@
 - **ADR-0021~0025 + CONTEXT.md 术语**：记录上述五项决策；CONTEXT.md 新增术语「产品文档 / 快速上手页 / 应用内引导 / 界面语言 / 消息目录」。
 - **文档站**：仓库 Markdown 成为单一真相源，`docs/user-guide.md` 退役拆为 `docs/user-guide/{zh,en}/`；官网新增 `/docs` 与 `/zh/docs` 路由（文档首页 + 分章页 + 未知路径兜底），逐页 title/description/canonical/hreflang，顶部导航与页脚加文档入口；自研最小 Markdown 渲染器（输出转义、链接仅放行相对路径与 http(s)）；顺带修复既有路由缺陷（页内锚点改为 replaceState 并滚动到目标）。
 - **欢迎页跳转**：按决策 2 落地，URL 语言跟随界面语言设置。
+- **设置页文档入口**：帮助区提供「产品文档」行，复用同一 URL 构造器按界面语言打开快速上手文档；官网域名以 `package.json homepage` 为单一来源。
 - **测试**：新增 `website-docs-render.test.tsx`（文档渲染回归，含「预注入标题会被转义成字面文本」的回归断言）与文档链接语言分支用例；用真实浏览器核验中英索引页/章节页的标题、表格、目录锚点、canonical/hreflang 全部正确。
 
 ## 验收（已随 v0.0.30 达成）
@@ -34,9 +35,12 @@
 - [x] 官网 `/docs`、`/zh/docs` 深链直达返回 200，正确渲染文档首页与快速上手章（中英）
 - [x] 逐页 canonical / hreflang（en ↔ zh 配对）正确；页内目录锚点滚动正常
 - [x] 欢迎页「快速上手」点击后用系统默认浏览器打开对应语言版本的文档快速上手页
+- [x] 设置页「帮助 → 产品文档」入口按界面语言打开对应文档页（2026-10-08 审查补齐）
 - [x] 应用内引导保留（首次自动弹出 + 设置页重播）
 - [x] `pnpm lint` 零错误零警告；`pnpm typecheck` 5/5；`pnpm test` 1779 passed / 3 skipped 退出码 0；官网与应用构建通过
 - [x] 随 v0.0.30 发布（release run `37644828065` 全绿，latest 已指向 v0.0.30）
+
+2026-10-08 复核：当前生产域名的 `/docs`、`/docs/getting-started`、`/zh/docs`、`/zh/docs/getting-started` 四条深链均返回 HTTP 200。
 
 ## 待办（决策已定，实现未开始）
 

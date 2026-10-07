@@ -3,6 +3,7 @@ import type { AppInfo } from '@nexnote/shared';
 import { Command, FileCode2, GraduationCap, Link2, Moon, Sparkles, Sun } from 'lucide-react';
 import { Button } from '../components/ui/button';
 import { invoke } from '../lib/ipc';
+import { gettingStartedDocsUrl } from '../lib/product-docs';
 import { usePaletteStore } from '../stores/palette-store';
 import { useSettingsStore } from '../stores/settings-store';
 import { useUiStore } from '../stores/ui-store';
@@ -13,8 +14,6 @@ import { useVault } from '../shell/vault-context';
  * 官网产品文档（ADR-0021 / ADR-0022）。语言跟随界面语言设置，
  * 与官网 `/docs`（英文）、`/zh/docs`（简体中文）一一对应。
  */
-const DOCS_BASE_URL = 'https://nexnote-app.vercel.app';
-
 const CAPABILITY_LINE =
   '块编辑与 Markdown 双格式文档 · 页面树、双向链接与图谱 · 内置 Git 版本历史 · AI 对话与写作辅助';
 
@@ -34,9 +33,7 @@ export function WelcomePage() {
   const language = useSettingsStore((s) => s.global?.appearance.language);
   const [appInfo, setAppInfo] = useState<AppInfo | null>(null);
 
-  const gettingStartedUrl = `${DOCS_BASE_URL}${
-    language === 'en-US' ? '/docs' : '/zh/docs'
-  }/getting-started`;
+  const gettingStartedUrl = gettingStartedDocsUrl(language);
 
   useEffect(() => {
     void invoke('app:getInfo')

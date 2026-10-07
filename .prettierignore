@@ -1,7 +1,13 @@
 node_modules
+.pnpm-store
+.wt
 out
 release
 dist
+.dart_tool
+apps/mobile/build
+apps/mobile/ios/Pods
+packages/*/release
 pnpm-lock.yaml
 .scratch
 *.md

@@ -7,6 +7,7 @@ import {
   UP_STRUCTURE_LAYOUT,
   X_STRUCTURE_LAYOUT,
 } from '../src/binary-host/mindmap-layouts';
+import { MINDMAP_STRUCTURE_OPTIONS } from '../src/binary-host/mindmap-structures';
 
 /**
  * DEV-102：走真实库管线的集成测试。
@@ -129,9 +130,12 @@ const center = (node: PositionedNode): { x: number; y: number } => ({
 });
 
 describe('自研布局走真实库管线（DEV-102）', () => {
-  it('自研布局名不被库的白名单降级（仍停在该布局上）', async () => {
+  it('六种结构经真实管线应用后仍停留在所选布局（不被白名单降级）', async () => {
     expect((await build(X_STRUCTURE_LAYOUT)).mindMap.getLayout()).toBe(X_STRUCTURE_LAYOUT);
     expect((await build(UP_STRUCTURE_LAYOUT)).mindMap.getLayout()).toBe(UP_STRUCTURE_LAYOUT);
+    for (const option of MINDMAP_STRUCTURE_OPTIONS) {
+      expect((await build(option.layout)).mindMap.getLayout()).toBe(option.layout);
+    }
   });
 
   it('X 结构：一级子节点落在四个不同象限', async () => {

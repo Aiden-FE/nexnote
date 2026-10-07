@@ -4,6 +4,7 @@ import { settingsSectionRegistry } from '../../registries';
 import { useSettingsStore } from '../../stores/settings-store';
 import { useUiStore } from '../../stores/ui-store';
 import { invoke } from '../../lib/ipc';
+import { gettingStartedDocsUrl } from '../../lib/product-docs';
 import { useVaultSettingsEffects } from '../../hooks/use-settings-effects';
 import { TranslationDefaultSettings } from '../ai/translation/TranslationDefaultSettings';
 import type {
@@ -260,7 +261,19 @@ function GeneralSection() {
       </div>
 
       <div className="border-t pt-6">
-        <SectionHeader title="帮助" description="重新查看产品使用引导" />
+        <SectionHeader title="帮助" description="查阅产品文档与重新查看产品使用引导" />
+        <Row label="产品文档" description="在系统默认浏览器中打开官网快速上手文档">
+          <button
+            type="button"
+            data-testid="settings-open-product-docs"
+            onClick={() =>
+              window.open(gettingStartedDocsUrl(global.appearance.language), '_blank', 'noopener')
+            }
+            className="h-8 rounded-md border bg-background px-3 text-xs font-medium hover:bg-accent"
+          >
+            打开文档
+          </button>
+        </Row>
         <Row label="新手引导" description="分步了解页面树、编辑器、AI 与版本时间线等核心区域">
           <button
             type="button"

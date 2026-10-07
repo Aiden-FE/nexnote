@@ -10,7 +10,7 @@ import { MindmapDrawer } from './mindmap-drawer';
 import { MINDMAP_NODE_BTN_ICONS } from './mindmap-icons';
 import { DEFAULT_MINDMAP_THEME, deepMergeTheme, themePresetById } from './mindmap-themes';
 import { DEFAULT_MINDMAP_STRUCTURE, countRootChildren, structureById } from './mindmap-structures';
-import { applyMindmapLayout } from './mindmap-layouts';
+import { applyMindmapLayout, clearXStructureAssignments } from './mindmap-layouts';
 
 /**
  * xmind 编辑器（DEV-074，ADR-0015 R3；DEV-099 操作界面）。
@@ -100,6 +100,7 @@ export function MindmapEditor({ path, model, onChange }: MindmapEditorProps): Re
 
   useEffect(() => {
     if (!hostRef.current) return;
+    clearXStructureAssignments();
     // simple-mind-map 构造函数选项极多（140+ 默认项），运行时自带默认值合并，这里用窄类型传参。
     type MindMapOptions = ConstructorParameters<typeof MindMap>[0];
     const mindMap = new MindMap({

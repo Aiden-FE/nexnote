@@ -1,7 +1,10 @@
 // @vitest-environment happy-dom
 import { describe, expect, it } from 'vitest';
 import { UpStructure } from '../src/binary-host/mindmap-layouts/up-structure';
-import { XStructure } from '../src/binary-host/mindmap-layouts/x-structure';
+import {
+  XStructure,
+  clearXStructureAssignments,
+} from '../src/binary-host/mindmap-layouts/x-structure';
 import type { RenderNode } from '../src/binary-host/mindmap-layouts/renderers';
 
 /**
@@ -193,6 +196,26 @@ describe('X 结构几何（DEV-102 决策 4）', () => {
     root.children = [fourth];
     position(makeLayout(XStructure, root));
     expect(centerOf(fourth).y).toBeGreaterThan(centerOf(root).y);
+  });
+
+  it('换文档实例后清空 uid 记忆，同 uid 不继承上一文档象限', () => {
+    const kept = node(60, 30);
+    const root = node(100, 40, [kept, node(60, 30), node(60, 30), node(60, 30)]);
+    position(makeLayout(XStructure, root));
+    expect(centerOf(kept).y).toBeLessThan(centerOf(root).y);
+
+    clearXStructureAssignments();
+    const sameUid = {
+      ...kept,
+      left: Number.NaN,
+      top: Number.NaN,
+      children: [],
+    } as RenderNode;
+    const nextRoot = node(100, 40, [sameUid]);
+    position(makeLayout(XStructure, nextRoot));
+    // 没有本实例历史时兜底为右侧单臂，而不是继承上一文档的上方。
+    expect(centerOf(sameUid).x).toBeGreaterThan(centerOf(nextRoot).x);
+    expect(centerOf(sameUid).y).toBeCloseTo(centerOf(nextRoot).y, 6);
   });
 
   it('每个象限的子树沿该象限方向生长（左上象限向上、右下象限向下）', () => {

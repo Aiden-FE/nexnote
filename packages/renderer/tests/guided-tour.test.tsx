@@ -303,6 +303,33 @@ describe('重播入口', () => {
     expect(useUiStore.getState().tourOpen).toBe(true);
   });
 
+  it('设置页「产品文档」按界面语言打开官网快速上手文档', async () => {
+    installBridge({
+      'settings:getAll': () => defaultGlobalSettings(),
+      'app:getInfo': () => ({ version: '0.0.0-test', platform: 'test' }),
+    });
+    const open = vi.spyOn(window, 'open').mockReturnValue(null);
+    mount(<SettingsPage />);
+    await act(async () => {
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+    act(() =>
+      document.querySelector<HTMLButtonElement>('[data-testid="settings-nav-general"]')?.click(),
+    );
+    act(() =>
+      document
+        .querySelector<HTMLButtonElement>('[data-testid="settings-open-product-docs"]')
+        ?.click(),
+    );
+    expect(open).toHaveBeenCalledWith(
+      'https://nexnote-app.vercel.app/zh/docs/getting-started',
+      '_blank',
+      'noopener',
+    );
+    open.mockRestore();
+  });
+
   it('欢迎页文档链接跟随界面语言切到英文文档', async () => {
     installBridge({
       'app:getInfo': () => ({ version: '0.0.0-test', platform: 'test' }),

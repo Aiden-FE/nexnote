@@ -7,7 +7,7 @@ supersedes-in-part: ADR-0010
 
 产品需要一套健全的使用文档来引导用户正确使用 NexNote，而仓库现有的 `docs/user-guide.md` 与 `docs/faq.md` 自称「适用版本 v0.0.1」，与当前 0.0.29 代码存在多处直接矛盾（自动保存默认 500ms 实为 1500ms、⌘T 实为新建标签页、本地 Embedding 并非 transformers.js、docx 应用内编辑已于 v0.0.28 移除、首启动向导为三选一而非四选一），继续把它们当事实源只会加速腐化。因此决定把产品文档做成**官网站内页面**，并以仓库 Markdown 为唯一真相源。
 
-官网在 `/docs` 与 `/zh/docs` 下新增文档路由，每章一页、英文 slug 共享（`/docs/getting-started` 与 `/zh/docs/getting-started`），`/docs` 为文档首页；内容源为拆分成多章的 `docs/user-guide/{zh,en}/<slug>.md`，frontmatter 定义 slug、顺序与标题，官网在构建期渲染为静态 HTML，保留 ADR-0010 的 React + Vite + TypeScript 纯静态站与 Vercel 发布绑定，**不引入独立文档框架**。文档始终为 living docs，页头标注「适用版本 v0.0.29+」，不按应用版本分叉快照。官方文档覆盖桌面端使用；手机端在具备公开发布渠道前不写官网章节（桌面与手机均已完成双语 UI，但「有双语界面」不等于「可被安装」）。
+官网在 `/docs` 与 `/zh/docs` 下新增文档路由，每章一页、英文 slug 共享（`/docs/getting-started` 与 `/zh/docs/getting-started`），`/docs` 为文档首页；内容源为拆分成多章的 `docs/user-guide/{zh,en}/<slug>.md`，frontmatter 定义 slug、顺序与标题，官网在构建期渲染为静态 HTML，保留 ADR-0010 的 React + Vite + TypeScript 纯静态站与 Vercel 发布绑定，**不引入独立文档框架**。文档始终为 living docs，页头标注「适用版本 v0.0.29+」，不按应用版本分叉快照。官方文档覆盖桌面端使用；手机端在具备公开发布渠道前不写官网章节。桌面与手机界面双语是 ADR-0023 / ADR-0024 的独立交付目标，「有双语界面」也不等于「可被安装」。
 
 ## Considered Options
 
@@ -29,4 +29,3 @@ supersedes-in-part: ADR-0010
 
 - 未实际部署到生产 Vercel 的深链（如 `/zh/docs/getting-started` 直达）不得声称已验证；构建产物存在不等于线上可达。
 - 文档内容「正确」以当前 master 代码为准；任何未实际执行的 UI 或平台行为标记为 `NOT_RUN`。
-

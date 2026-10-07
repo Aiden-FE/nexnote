@@ -1,6 +1,8 @@
 import { mkdtemp, readFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import * as path from 'node:path';
+import { execFile } from 'node:child_process';
+import { promisify } from 'node:util';
 import { afterEach, describe, it, expect } from 'vitest';
 import { validatePayload } from '../src/ipc/validation';
 import { registerBinaryHandlers } from '../src/ipc/binary-handlers';
@@ -10,6 +12,7 @@ import type { IpcServices } from '../src/ipc/services';
 import type { IpcRegistrar } from '../src/ipc/registrar';
 
 const roots: string[] = [];
+const run = promisify(execFile);
 afterEach(async () =>
   Promise.all(roots.splice(0).map((root) => rm(root, { recursive: true, force: true }))),
 );
@@ -102,5 +105,35 @@ describe('binary:mindmapStructure:set 处理器（DEV-102 / ADR-0020）', () => 
       servicesFor(''),
     );
     expect(result).toMatchObject({ ok: false });
+  });
+
+  it('sidecar 可随 Git 到达第二份工作副本并保持结构（跨设备验收）', async () => {
+    const source = await vault();
+    const docPath = 'Notes/plan.xmind';
+    await (
+      await import('node:fs/promises')
+    ).mkdir(path.join(source, 'Notes'), {
+      recursive: true,
+    });
+    await (
+      await import('node:fs/promises')
+    ).writeFile(path.join(source, docPath), Buffer.from('PK\u0003\u0004fake-xmind-bytes'));
+    await new MetadataStore(source).write(docPath, {
+      mindmapTheme: 'classic',
+      mindmapStructure: 'x',
+    });
+    await run('git', ['init', '--initial-branch=main', source]);
+    await run('git', ['-C', source, 'config', 'user.name', 'NexNote Test']);
+    await run('git', ['-C', source, 'config', 'user.email', 'test@nexnote.invalid']);
+    await run('git', ['-C', source, 'add', '.']);
+    await run('git', ['-C', source, 'commit', '-m', 'mindmap structure sidecar']);
+
+    const clone = await mkdtemp(path.join(tmpdir(), 'nexnote-structure-clone-'));
+    roots.push(clone);
+    await run('git', ['clone', source, clone]);
+    expect(await new MetadataStore(clone).read(docPath)).toMatchObject({
+      mindmapTheme: 'classic',
+      mindmapStructure: 'x',
+    });
   });
 });

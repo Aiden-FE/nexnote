@@ -142,7 +142,7 @@ async function mount(node: React.ReactElement): Promise<void> {
 }
 
 beforeEach(() => {
-  globalThis.localStorage?.clear();
+  window.localStorage.clear();
   useAiConfig.setState({ state: aiConfig(), loading: false });
   useTranslationStore.setState({ selection: null, document: null, input: null });
   useTabStore.setState({ tabs: [], activeTabId: null });

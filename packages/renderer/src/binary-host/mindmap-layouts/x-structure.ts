@@ -40,6 +40,14 @@ type Assignment = { kind: 'quadrant'; sector: Sector } | { kind: 'side'; side: '
 
 const lastAssignment = new Map<string, Assignment>();
 
+/**
+ * 随宿主文档实例清空降级记忆：uid 只在 simple-mind-map 实例内保证语义，
+ * 换文档/重建实例时不能让同 uid 继承上一个文档的象限。
+ */
+export function clearXStructureAssignments(): void {
+  lastAssignment.clear();
+}
+
 interface QuadrantRect {
   left: number;
   top: number;
