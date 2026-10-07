@@ -26,6 +26,6 @@ status: accepted
 
 ## 实施边界
 
-- 信息架构：Hero（定位 + 下载/GitHub 双 CTA）、核心差异（Local-first / Markdown / Git / 可控 AI）、产品实景、工作方式、隐私与控制、平台下载、GitHub 入口、FAQ 与 Footer；不建 Docs、Blog、Pricing、Changelog 与账号系统。
+- 信息架构：Hero（定位 + 下载/GitHub 双 CTA）、核心差异（Local-first / Markdown / Git / 可控 AI）、产品实景、工作方式、隐私与控制、平台下载、GitHub 入口、FAQ 与 Footer；不建 Docs、Blog、Pricing、Changelog 与账号系统。（**Docs 边界已由 ADR-0021 推翻**：官网新增 `/docs` 与 `/zh/docs` 产品文档并加入顶部导航与 Hero 次级 CTA；Blog、Pricing、Changelog 与账号系统仍不建。）
 - 转化目标：下载为主 CTA、GitHub 为次 CTA；不做邮件订阅与等待名单。
 - 受众优先级：开发者与本地优先知识管理用户为主，普通知识工作者为次。
