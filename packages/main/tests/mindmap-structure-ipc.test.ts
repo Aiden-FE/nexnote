@@ -14,11 +14,14 @@ afterEach(async () =>
   Promise.all(roots.splice(0).map((root) => rm(root, { recursive: true, force: true }))),
 );
 
+/** 注册进来的 IPC 处理器签名（payload → Result）。 */
+type CollectedHandler = (payload: unknown, services: IpcServices) => Promise<unknown>;
+
 /** 收集 register 调用，拿到 binary:mindmapStructure:set 的处理器直接调用。 */
-function collectHandlers(): { channel: string; handler: Function }[] {
-  const collected: { channel: string; handler: Function }[] = [];
+function collectHandlers(): { channel: string; handler: CollectedHandler }[] {
+  const collected: { channel: string; handler: CollectedHandler }[] = [];
   const registrar = {
-    register: (channel: string, handler: Function) => collected.push({ channel, handler }),
+    register: (channel: string, handler: CollectedHandler) => collected.push({ channel, handler }),
   } as unknown as IpcRegistrar;
   registerBinaryHandlers(registrar);
   return collected;
@@ -81,7 +84,7 @@ describe('binary:mindmapStructure:set 处理器（DEV-102 / ADR-0020）', () => 
     const store = new MetadataStore(root);
     // 先写一条既有元数据，验证 read-merge-write 不覆盖别的字段
     await store.write(docPath, { mindmapTheme: 'classic' });
-    await (handler as { handler: Function }).handler(
+    await (handler as { handler: CollectedHandler }).handler(
       { path: docPath, structure: 'x' },
       servicesFor(root),
     );
@@ -94,7 +97,7 @@ describe('binary:mindmapStructure:set 处理器（DEV-102 / ADR-0020）', () => 
 
   it('未打开知识库时不写 sidecar', async () => {
     const handler = collectHandlers().find((it) => it.channel === 'binary:mindmapStructure:set');
-    const result = await (handler as { handler: Function }).handler(
+    const result = await (handler as { handler: CollectedHandler }).handler(
       { path: 'a.xmind', structure: 'right' },
       servicesFor(''),
     );

@@ -10,7 +10,7 @@ import { MindmapDrawer } from './mindmap-drawer';
 import { MINDMAP_NODE_BTN_ICONS } from './mindmap-icons';
 import { DEFAULT_MINDMAP_THEME, deepMergeTheme, themePresetById } from './mindmap-themes';
 import { DEFAULT_MINDMAP_STRUCTURE, countRootChildren, structureById } from './mindmap-structures';
-import { registerCustomMindmapLayouts } from './mindmap-layouts';
+import { applyMindmapLayout } from './mindmap-layouts';
 
 /**
  * xmind 编辑器（DEV-074，ADR-0015 R3；DEV-099 操作界面）。
@@ -88,8 +88,7 @@ export function MindmapEditor({ path, model, onChange }: MindmapEditorProps): Re
     const withDrag = mindMap as unknown as MindMapLike;
     if (option.custom) withDrag.removePlugin(Drag);
     else withDrag.addPlugin(Drag);
-    registerCustomMindmapLayouts(mindMap);
-    mindMap.setLayout(option.layout);
+    applyMindmapLayout(mindMap, option.layout);
   };
 
   // 落盘状态（编辑中…/已保存/失败）来自宿主 session。

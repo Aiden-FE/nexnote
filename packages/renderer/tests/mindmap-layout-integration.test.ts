@@ -1,0 +1,114 @@
+// @vitest-environment happy-dom
+import { describe, expect, it } from 'vitest';
+import MindMap from 'simple-mind-map';
+import {
+  applyMindmapLayout,
+  UP_STRUCTURE_LAYOUT,
+  X_STRUCTURE_LAYOUT,
+} from '../src/binary-host/mindmap-layouts';
+
+/**
+ * DEV-102：走真实库管线的集成测试。
+ *
+ * 前面的纯几何单测直接调用布局类；这里改用 `new MindMap(...)` + `setLayout`，
+ * 验证自研布局确实能被库接受（绕过 layoutValueList 白名单）、被 Render 实例化、
+ * 并真的把一级子节点排到预期象限——即 ADR-0020 决策 2 的注册机制与决策 4 的
+ * 象限语义在完整管线里成立。
+ */
+
+const MODEL = {
+  data: { text: 'root' },
+  children: [
+    { data: { text: 'a' } },
+    { data: { text: 'b' } },
+    { data: { text: 'c' } },
+    { data: { text: 'd' } },
+  ],
+};
+
+const CANVAS = { width: 1000, height: 800 };
+
+interface PositionedNode {
+  left: number;
+  top: number;
+  width: number;
+  height: number;
+  children: PositionedNode[];
+}
+
+/** happy-dom 里元素没有真实尺寸，库会拒绝宽高为 0 的容器，因此打桩测量结果。 */
+function mountHost(): HTMLDivElement {
+  const el = document.createElement('div');
+  document.body.append(el);
+  el.getBoundingClientRect = () =>
+    ({
+      x: 0,
+      y: 0,
+      left: 0,
+      top: 0,
+      width: CANVAS.width,
+      height: CANVAS.height,
+      right: CANVAS.width,
+      bottom: CANVAS.height,
+      toJSON: () => ({}),
+    }) as DOMRect;
+  return el;
+}
+
+/**
+ * 库的排布是异步的（asyncRun 链式 setTimeout，实测约 5 跳），因此按「renderer.root
+ * 已产生」来收敛，而不是赌固定帧数或真实时间——单测不引入时间抖动。
+ */
+const MAX_TICKS = 50;
+
+async function settleRoot(mindMap: MindMap): Promise<PositionedNode> {
+  const renderer = (mindMap as unknown as { renderer: { root: PositionedNode | null } }).renderer;
+  for (let tick = 0; tick < MAX_TICKS && !renderer.root; tick += 1) {
+    await new Promise<void>((resolve) => setTimeout(resolve, 0));
+  }
+  const root = renderer.root;
+  if (!root) throw new Error('排布未在预期帧数内完成');
+  return root;
+}
+
+async function build(layout: string): Promise<{ mindMap: MindMap; root: PositionedNode }> {
+  const mindMap = new MindMap({
+    el: mountHost(),
+    data: MODEL,
+    layout: 'logicalStructure',
+    readonly: true,
+  } as unknown as ConstructorParameters<typeof MindMap>[0]);
+  applyMindmapLayout(mindMap, layout);
+  return { mindMap, root: await settleRoot(mindMap) };
+}
+
+const center = (node: PositionedNode): { x: number; y: number } => ({
+  x: node.left + node.width / 2,
+  y: node.top + node.height / 2,
+});
+
+describe('自研布局走真实库管线（DEV-102）', () => {
+  it('自研布局名不被库的白名单降级（仍停在该布局上）', async () => {
+    expect((await build(X_STRUCTURE_LAYOUT)).mindMap.getLayout()).toBe(X_STRUCTURE_LAYOUT);
+    expect((await build(UP_STRUCTURE_LAYOUT)).mindMap.getLayout()).toBe(UP_STRUCTURE_LAYOUT);
+  });
+
+  it('X 结构：一级子节点落在四个不同象限', async () => {
+    const { root } = await build(X_STRUCTURE_LAYOUT);
+    expect(root.children).toHaveLength(4);
+    const rc = center(root);
+    const quadrant = (child: PositionedNode): string => {
+      const c = center(child);
+      return `${c.x < rc.x ? 'left' : 'right'}-${c.y < rc.y ? 'top' : 'bottom'}`;
+    };
+    expect(new Set(root.children.map(quadrant)).size).toBe(4);
+  });
+
+  it('向上分支：一级子节点整体位于根节点上方', async () => {
+    const { root } = await build(UP_STRUCTURE_LAYOUT);
+    const rc = center(root);
+    for (const child of root.children) {
+      expect(center(child).y).toBeLessThanOrEqual(rc.y);
+    }
+  });
+});
