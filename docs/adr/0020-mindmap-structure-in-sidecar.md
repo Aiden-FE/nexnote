@@ -20,7 +20,7 @@
 
 1. **布局结构存 sidecar，不写 xmind 字节**。字段名 `mindmapStructure`，与既有 `mindmapTheme` 同构（`document:getMetadata` 读、`binary:mindmapStructure:set` 写）。v1 明确不承诺"外部 XMind 打开时布局一致"。
 2. **"向上"与"X"自研**，实现为新的布局类挂在 renderer，遵循 `Base` 契约（`doLayout` / `renderLine` / `renderExpandBtn` / `renderGeneralization`）。注册不动 `node_modules`，只用库已有的两个入口：`Render.setLayout` 的查找链 `layouts[name] || mindMap[name]` 允许把类挂到实例上；而白名单校验（`handleOpt` 与 `setLayout` 都检查模块级 `layoutValueList`，该数组无公开写入口）在**实例层绕行**——`applyMindmapLayout()` 对自研布局复刻 setLayout 的动作（`view.reset` → `renderer.setLayout` → `render` → `emit('layout_change')`）而跳过白名单校验。
-   之所以不在实例外注入白名单：渲染进程里 `simple-mind-map`（`package.json` 的 `main` 指向 dist UMD）与 `simple-mind-map/src/constants/constant.js` 很可能是**两份独立模块实例**，改其中一份对另一份无效（单测里实测复现：`layoutValueList.push` 后 `setLayout` 仍把自研名降级为 `logicalStructure`）。实例层绕行与模块解析结果无关。
+   之所以不在实例外注入白名单：`layoutValueList` 是模块级常量，而 `simple-mind-map` 与 `simple-mind-map/src/**` 是两个解析入口（前者按 `package.json` 的 `module`/`main` 字段，后者是子路径直引），两者是否落到同一个模块实例取决于打包器与解析条件——在 vitest 里就实测复现了两份实例（`layoutValueList.push` 之后 `setLayout` 仍把自研名降级为 `logicalStructure`）。实例层绕行不依赖这个前提，因此在任何解析结果下都成立，也才让"自研布局真的被应用"可以被单测直接断言。
 3. **"四向鱼骨"采用库内 `fishbone`**（主轴向右、一级分支在主轴上下交替），不做超出该算法的四象限同向鱼骨。UI 命名不做"向右"前缀，参照语雀画板面板惯例。
 4. **X 结构仅在根节点子节点 ≥ 2 时可选**；< 2 时菜单项置灰。选中 X 后子节点掉回 < 2 的，画布保持最后一次有效分布，菜单项相应置灰——不自动回退并改写用户的结构选择；恰为 2 个时退化为左右形式。
 5. **切换结构不写节点 data、不进撤销历史**：`setLayout` 本身不触发 `data_change`（`Command.js:127` 与 `Render.js:745` 只在 addHistory / undo/redo 触发），`.xmind` 字节因此保持纯净。导入的 xmind 一律按默认"向右分支结构"打开，忽略其自带 `structureClass`。
