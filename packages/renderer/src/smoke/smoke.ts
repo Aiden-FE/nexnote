@@ -474,7 +474,8 @@ export async function runSmokeIfEnabled(): Promise<void> {
         // so the following selection/AI smoke scenarios retain their original fixture.
         blockSlashKernel.setMarkdown(slashBaselineMarkdown);
         blockSlashKernel.editor.commands.focus();
-        await sleep(1200);
+        // 默认自动保存防抖为 1500ms；慢速 CI 上必须等基准文档真正落盘后再关闭 tab。
+        await sleep(2200);
       } else {
         check('TipTap 真实键入 /：块编辑器已挂载', false);
       }
