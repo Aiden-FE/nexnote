@@ -180,7 +180,14 @@ function GitStatusItem() {
       await invoke('git:doctor:repairExecute', { ticket: prepared.ticket });
       setDoctor(null);
     } catch (e) {
-      setError(e instanceof Error ? e.message : String(e));
+      const text = e instanceof Error ? e.message : String(e);
+      setError(text);
+      // NO_OPERATION 表示计划依据的状态已经消失（例如用户在终端里中止了
+      // rebase）。此时继续展示旧诊断只会让用户反复点击一个永远失败的按钮；
+      // 重新诊断让弹窗回到当前真实状态。
+      if ((e as { code?: string }).code === 'NO_OPERATION') {
+        await diagnose(text);
+      }
     } finally {
       setDoctorBusy(false);
       void refresh();
@@ -315,6 +322,7 @@ function GitStatusItem() {
         <DoctorDialog
           diagnosis={doctor}
           busy={doctorBusy}
+          error={error}
           onOneClickRepair={() => void runOneClickRepair()}
           onRepairAction={(action) => void runRepair(action)}
           onOpenAgentHelp={() => void openAgentHelp()}
@@ -612,6 +620,7 @@ function CommitRow({
 function DoctorDialog({
   diagnosis,
   busy,
+  error,
   onOneClickRepair,
   onRepairAction,
   onOpenAgentHelp,
@@ -619,6 +628,7 @@ function DoctorDialog({
 }: {
   diagnosis: GitDoctorDiagnosis;
   busy: boolean;
+  error: string | null;
   onOneClickRepair(): void;
   onRepairAction(action: GitRepairAction): void;
   onOpenAgentHelp(): void;
@@ -642,6 +652,7 @@ function DoctorDialog({
         <p className="mt-1 text-[10px]">冲突文件：{diagnosis.conflictFiles.join('、')}</p>
       )}
       <p className="mt-1 text-[10px] text-muted-foreground">{diagnosis.plan.manualGuidance}</p>
+      {error && <p className="mt-1 text-[10px] text-destructive">{error}</p>}
       <div className="mt-2 flex flex-wrap gap-2">
         {isContinueRepair ? (
           <>

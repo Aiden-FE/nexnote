@@ -35,6 +35,7 @@ interface CallLog {
 function installBridge(options: {
   gitStatus?: GitStatus;
   gitDiagnose?: unknown; // 返回 GitDoctorDiagnosis | null | throw
+  repairError?: { code: string; message: string };
   throwDiagnose?: boolean;
 }) {
   const calls: CallLog[] = [];
@@ -52,6 +53,19 @@ function installBridge(options: {
     }
     if (channel === 'git:configureAutoSync') {
       return { ok: true, data: undefined };
+    }
+    if (channel === 'git:doctor:repairPrepare') {
+      return { ok: true, data: { ticket: 'doctor-ticket', diagnosis: options.gitDiagnose } };
+    }
+    if (channel === 'git:doctor:repairExecute') {
+      if (options.repairError) {
+        return {
+          ok: false,
+          error: options.repairError.message,
+          code: options.repairError.code,
+        };
+      }
+      return { ok: true, data: { message: 'repaired' } };
     }
     return { ok: true, data: null };
   });
@@ -177,6 +191,51 @@ describe('DEV-076 GitStatusItem 真实组件行为', () => {
     // 点击事件已发起，但 doctor 失败 → 不应有对话框
     expect(bridge.calls.some((c) => c.channel === 'git:doctor:diagnose')).toBe(true);
     expect(document.querySelector('[role="dialog"][aria-label="Git 同步诊断"]')).toBeNull();
+  });
+
+  it('NO_OPERATION 后重新诊断并在 DoctorDialog 展示错误（DEV-106）', async () => {
+    const bridge = installBridge({
+      gitStatus: { ...baseStatus, rebaseInProgress: true },
+      gitDiagnose: {
+        ...diagnosis,
+        issue: {
+          category: 'conflict',
+          message: '存在未完成的 rebase/merge',
+          code: 'REBASE_IN_PROGRESS',
+        },
+        plan: {
+          ...diagnosis.plan,
+          action: 'preserve-local-and-abort',
+        },
+      },
+      repairError: {
+        code: 'NO_OPERATION',
+        message: '当前没有进行中的 rebase 或 merge，无需保留',
+      },
+    });
+    renderGitStatusItem();
+    await flushAsync();
+    await act(async () => {
+      await new Promise((r) => setTimeout(r, 50));
+    });
+    const dialog = document.querySelector('[role="dialog"][aria-label="Git 同步诊断"]');
+    expect(dialog).not.toBeNull();
+
+    const abortButton = [...dialog!.querySelectorAll('button')].find((button) =>
+      button.textContent?.includes('保留笔记并中止'),
+    );
+    expect(abortButton).toBeDefined();
+    await act(async () => {
+      abortButton!.click();
+    });
+    await flushAsync();
+
+    // 错误必须显示出来，不能“点了没效果”。
+    const dialogAfter = document.querySelector('[role="dialog"][aria-label="Git 同步诊断"]');
+    expect(dialogAfter?.textContent).toContain('当前没有进行中的 rebase 或 merge');
+    // NO_OPERATION 是状态过期，必须自动重新诊断，不能让旧按钮循环失败。
+    const diagnoseCalls = bridge.calls.filter((call) => call.channel === 'git:doctor:diagnose');
+    expect(diagnoseCalls.length).toBeGreaterThan(1);
   });
 
   it('sync 收到 phase=error 事件后 spinner 消失（error 不再被当作 busy）', async () => {

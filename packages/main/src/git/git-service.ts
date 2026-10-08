@@ -1156,11 +1156,22 @@ export class GitService {
   }
 
   /**
-   * Detect a paused rebase/merge without invoking status(): the presence of any
-   * of git's state files under GIT_DIR is authoritative and read-only. A rebase
-   * paused on a content conflict leaves rebase-merge/ (interactive) or
-   * rebase-apply/ (am) even before the index reports an unmerged path, so this
-   * catches the window where commitAuto() used to stack more layout commits.
+   * Detect a paused rebase/merge without invoking status(): the presence of
+   * git's operation directories/files under GIT_DIR is authoritative and
+   * read-only. A rebase paused on a content conflict leaves rebase-merge/
+   * (interactive) or rebase-apply/ (am) even before the index reports an
+   * unmerged path, so this catches the window where commitAuto() used to stack
+   * more layout commits.
+   *
+   * Marker 集合必须与 git 自身以及本类的 abort/resolve 动作保持一致：
+   * rebase-merge / rebase-apply / MERGE_HEAD。**不要把 REBASE_HEAD 加回来**——
+   * 它只是 rebase 停留期间指向最近 checkout 提交的伪引用，可能在 rebase 机制
+   * 结束后残留；孤立的 REBASE_HEAD 下 `git status` 完全干净，git 不认为有任何
+   * 操作进行中。历史缺陷：状态检测把它算作“rebase 进行中”，而
+   * abortInProgressRebaseOrMerge / preserveLocalAndAbortRebaseOrMerge /
+   * resolveConflictAndContinue 都只认上面三个标记，导致部分设备永久显示
+   * “存在未完成的 rebase/merge”，同时每次修复都正确地报 NO_OPERATION，
+   * commitAuto/commitManual 也被同一个误报锁死。
    */
   private async isRebaseOrMergeInProgress(root: string): Promise<boolean> {
     const git = this.git(root);
@@ -1168,7 +1179,7 @@ export class GitService {
     const gitDir = gitDirRaw.trim();
     if (!gitDir) return false;
     const base = path.isAbsolute(gitDir) ? gitDir : path.join(root, gitDir);
-    const markers = ['rebase-merge', 'rebase-apply', 'MERGE_HEAD', 'REBASE_HEAD'];
+    const markers = ['rebase-merge', 'rebase-apply', 'MERGE_HEAD'];
     const checks = await Promise.all(
       markers.map((name) =>
         fsp

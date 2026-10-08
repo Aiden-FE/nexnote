@@ -1335,6 +1335,24 @@ describe.runIf(runIfGit())('DEV-082 rebase/merge in-progress 时的自动提交�
     }
   });
 
+  it('孤立的 REBASE_HEAD 不再被误判为 rebase 进行中（DEV-106）', async () => {
+    await service.initialize(root);
+    await fsp.writeFile(path.join(root, '.git', 'REBASE_HEAD'), '0123456789abcdef\n');
+
+    const status = await service.status();
+    expect(status.rebaseInProgress).toBe(false);
+
+    // git 自身对这个状态同样视为“没有操作进行中”。
+    const porcelain = execFileSync(gitBinary(), ['status', '--porcelain=v1'], {
+      cwd: root,
+      stdio: 'pipe',
+    })
+      .toString()
+      .trim();
+    expect(porcelain).toBe('');
+    expect(await service.operationInProgress()).toBe(false);
+  });
+
   it('abortInProgressRebaseOrMerge 清理 rebase-merge/ 并回到干净 HEAD', async () => {
     const { cleanup } = await setupPausedRebase();
     try {
