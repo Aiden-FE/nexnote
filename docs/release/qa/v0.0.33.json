@@ -1,0 +1,48 @@
+{
+  "schema": "nexnote-release-qa/v1",
+  "repository": "Aiden-FE/nexnote",
+  "tag": "v0.0.33",
+  "commit": "5e63cfa96e9d2a1a08459363e779481897fe93aa",
+  "channel": "stable",
+  "allRequiredChecksPassed": true,
+  "scope": "v0.0.33-release",
+  "machineChecks": {
+    "typecheck": "passed (local CI=true pnpm -r --if-present typecheck at 5e63cfa; all applicable workspace projects clean, plus explicit tsc --noEmit -p packages/main/tsconfig.json clean after repairing one pre-existing strict error in git-service.ts)",
+    "lint": "passed (local CI=true pnpm lint at 5e63cfa; zero errors and zero warnings)",
+    "tests": "passed (local CI=true pnpm test at 5e63cfa; 1794 passed | 3 skipped, 191 test files passed | 1 skipped, exit code 0, output inspected with zero warnings/errors)",
+    "build": "passed (local CI=true pnpm build at 5e63cfa; main/preload/renderer builds completed with zero warnings/errors)",
+    "websiteBuild": "passed (local CI=true pnpm --filter website build at 5e63cfa; TypeScript + Vite production build completed)",
+    "releaseConfig": "31/31 passed (local pnpm verify:release-config at 5e63cfa)",
+    "changedFormat": "passed (scripts/check-changed-format.sh over origin/master...5e63cfa; changed files Prettier-clean)",
+    "packagedSmoke": "passed locally on macOS arm64 packaged app bound to 5e63cfa, app 0.0.33, Electron 44.2.0, ABI 149: 266/266 checks passed (261 pre-existing + 5 new xlsx round-trip checks). New checks: binary:create 生成 xlsx 副本; binary:save 接受编辑器运行态载荷; 保存后单元格内容保留 (cells=4 values=Plan|费用|Cursor Pro|20); 保存后工作表名保留 (AI Coding 支出); 内容未变的重复保存不重写文件 (sha 11dd9ede → 11dd9ede)",
+    "packagedIntegrity": "Ad hoc signature verified with codesign --verify --deep --strict (Signature=adhoc, TeamIdentifier unset); bundled Git verified through scripts/verify-bundled-git.mjs (git version 2.53.0)",
+    "ciLogHygiene": "local full-suite and packaged-smoke logs inspected at 5e63cfa; zero warnings/errors",
+    "gatekeeper": "Ad hoc signed app; Gatekeeper manual Open Anyway remains expected on first launch without Developer ID notarization"
+  },
+  "gateDecisions": {
+    "windowsLinuxPhysicalInstall": "WAIVED by repository owner Aiden-FE: no Windows/Linux hardware available; release CI still builds and smoke-tests the supported matrix",
+    "macosGatekeeper": "DEFERRED to first-launch Open Anyway on the owner Mac (Ad hoc signing only); Developer ID signing/notarization remains future work"
+  },
+  "candidateContents": {
+    "tickets": "Release: master candidate 5e63cfa96e9d2a1a08459363e779481897fe93aa, version 0.0.33; contains DEV-104 (P0 表格保存整表写空 + 同步链路丢弃待提交) with unit, packaged-smoke and build evidence.",
+    "highlights": [
+      "DEV-104 P0：xlsx 保存链路改写盘侧兼容编辑器运行态（@fortune-sheet/react 的 onChange 回传 data[r][c] 且已删除 celldata），修复「每次保存把整张表写成空表、只留工作表名」的不可恢复数据丢失。",
+      "DEV-104 P0：重写 zip 关系合并。原实现在 Id 冲突时用拼接正则删除重建端关系，会产出损坏 XML（原包缺少 sharedStrings 时必然触发）；现改为冲突改号 + 同步改写 owner part 的 r:id/r:embed/r:link，且变换幂等。",
+      "DEV-104 P0：无内容变化的保存短路（忽略 docProps 时间戳逐条目比较包内容），不再产生无意义 Git diff；二进制宿主新增交互门槛，载入首帧的 onChange 不再触发写盘。",
+      "DEV-104 P1：sync()/pull() 先落地待提交再走工作区守卫；commitAuto 在 rebase/冲突时重新排队而不是丢弃；自动同步退避（1→4×）改为 setTimeout 链后真正生效；两个 sidecar 写入口补调度自动提交；关窗时一并 flush 待提交；rebase/merge 暂停期 binary:save 返回 BINARY_SAVE_BLOCKED。",
+      "回归测试：新增 packages/main/tests/binary-xlsx-editor-payload.test.ts（含从真实 <Workbook> 组件抓取的 onChange 载荷 fixture）、git-service 同步链路 5 例、renderer 宿主交互门槛 1 例，并在打包冒烟中加入 xlsx 往返检查。"
+    ]
+  },
+  "artifacts": {
+    "macArm64Zip": "release/NexNote-0.0.33-mac-arm64.zip (sha256 4fc51d447bc574775847840b3818765061f5c48528822430e652b3eda26f09b9)",
+    "macArm64Dmg": "release/NexNote-0.0.33-mac-arm64.dmg (sha256 f7fff7e5795a7f7419dc927cca1ce15aa7bfc61d6f863178274d5ac70c66b389)"
+  },
+  "notRun": [
+    "matrix signed builds for mac-arm64/mac-x64/windows-x64/linux-x64 before tag dispatch (executed by the release-tag-bound pipeline)",
+    "Windows packaged smoke and Linux packaged smoke before tag dispatch (executed by the release-tag-bound pipeline)",
+    "macOS notarization / Developer ID code signing",
+    "Windows/Linux physical installation and real N-1 network upgrade",
+    "release-qa Environment required-reviewer approval before publication",
+    "post-publication 24-hour monitoring"
+  ]
+}
