@@ -1,0 +1,44 @@
+{
+  "schema": "nexnote-release-qa/v1",
+  "repository": "Aiden-FE/nexnote",
+  "tag": "v0.0.31",
+  "commit": "3f60b8436836a3d5bb05c59ef4566e887bb24bf9",
+  "channel": "stable",
+  "allRequiredChecksPassed": true,
+  "scope": "v0.0.31-release",
+  "machineChecks": {
+    "typecheck": "passed (local CI=true pnpm -r --if-present typecheck at 3f60b84; 6/6 applicable workspace projects clean, zero errors/warnings)",
+    "lint": "passed (local CI=true pnpm lint at 3f60b84; zero errors and zero warnings)",
+    "tests": "passed (local CI=true pnpm test at 3f60b84; 1782 passed | 3 skipped, 189 test files passed | 1 skipped, exit code 0, output inspected with zero warnings/errors)",
+    "build": "passed (local CI=true pnpm build at 3f60b84; main/preload/renderer builds completed with zero warnings/errors)",
+    "websiteBuild": "passed (local pnpm --filter website build at 74c26d6/3f60b84 lineage; TypeScript + Vite production build completed with zero warnings/errors)",
+    "releaseConfig": "31/31 passed (local CI=true pnpm verify:release-config at 3f60b84)",
+    "changedFormat": "passed (all non-Markdown changed files checked with Prettier; git diff --check clean)",
+    "packagedSmoke": "passed locally on macOS arm64 packaged app bound to 3f60b84, app 0.0.31, Electron 44.2.0, ABI 149: 261/261 checks passed; output contained zero warnings/errors",
+    "packagedIntegrity": "Ad hoc signature verified with codesign --verify --deep --strict; bundled Git verified through scripts/verify-bundled-git.mjs",
+    "ciLogHygiene": "local full-suite and packaged-smoke logs inspected at 3f60b84; zero warnings/errors",
+    "gatekeeper": "Ad hoc signed app; Gatekeeper manual Open Anyway remains expected on first launch without Developer ID notarization"
+  },
+  "gateDecisions": {
+    "windowsLinuxPhysicalInstall": "WAIVED by repository owner Aiden-FE: no Windows/Linux hardware available; release CI still builds and smoke-tests the supported matrix",
+    "macosGatekeeper": "DEFERRED to first-launch Open Anyway on the owner Mac (Ad hoc signing only); Developer ID signing/notarization remains future work"
+  },
+  "candidateContents": {
+    "tickets": "Release: master candidate 3f60b8436836a3d5bb05c59ef4566e887bb24bf9, version 0.0.31; includes DEV-102/DEV-103 review hardening, zero-warning test/build gates, settings-page product documentation entry, and deterministic packaged smoke.",
+    "highlights": [
+      "DEV-102 now covers all six mindmap layouts through the real simple-mind-map pipeline, verifies sidecar propagation through a second Git working copy, and isolates X-structure UID memory per document instance.",
+      "DEV-103 now provides the Settings Help product-documentation entry required by ADR-0022 and uses package.json homepage as the single production docs domain source.",
+      "Vitest workers provide an isolated Node localStorage file, eliminating lib0/Node 26 ExperimentalWarning noise while preserving application warnings.",
+      "Desktop build warnings are cleared at their source: first-party mixed imports were removed, chokidar’s unused Stats binding is removed only during build, and only non-actionable zod upstream annotation noise is filtered.",
+      "Packaged smoke stabilizes toolbar tooltip discovery after layout-driven DOM replacement and isolates smoke runs from the production auto-update feed; 261/261 checks pass with clean logs."
+    ]
+  },
+  "notRun": [
+    "matrix signed builds for mac-arm64/mac-x64/windows-x64/linux-x64 before dispatch (executed by the release-tag-bound pipeline)",
+    "Windows packaged smoke and Linux packaged smoke before dispatch (executed by the release-tag-bound pipeline)",
+    "macOS notarization / Developer ID code signing",
+    "Windows/Linux physical installation and real N-1 network upgrade",
+    "release-qa Environment required-reviewer approval before publication",
+    "post-publication 24-hour monitoring"
+  ]
+}
