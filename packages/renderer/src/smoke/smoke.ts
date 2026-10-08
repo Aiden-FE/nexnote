@@ -2821,49 +2821,34 @@ export async function runSmokeIfEnabled(): Promise<void> {
       dev047ToolbarIds.join(' | '),
     );
 
-    const sourceToolbar = sourceToolbarRoot();
-    const sourceAi = sourceToolbar?.querySelector<HTMLButtonElement>(
-      '[data-testid="toolbar-entry-ai"]',
-    );
-    sourceAi?.focus({ preventScroll: true });
-    // Hover the AI trigger through a trusted Chromium mouse move; programmatic focus does
-    // not set :focus-visible in packaged runs, while pointer discovery must also work.
-    if (sourceAi) {
-      const rect = sourceAi.getBoundingClientRect();
-      await bridge.hoverAtPoint(
-        Math.round(rect.left + rect.width / 2),
-        Math.round(rect.top + rect.height / 2),
-      );
-      sourceAi.focus({ preventScroll: true });
-      await sleep(250);
-    }
-    // Toolbar state can re-render the trigger after focus/hover; re-discover the
-    // current node and replay the trusted pointer/focus sequence on that node.
-    let currentSourceAi = sourceToolbar?.querySelector<HTMLButtonElement>(
-      '[data-testid="toolbar-entry-ai"]',
-    );
+    // Toolbar layout can collapse entries after mounting. Resolve the current trigger,
+    // then use a trusted click path: Chromium delivers mouseMove/pointerover before
+    // focus/click, while the subsequent Escape below closes the AI menu if it opened.
+    let currentSourceAi = sourceToolbarEntry('ai');
     if (currentSourceAi) {
       const rect = currentSourceAi.getBoundingClientRect();
-      await bridge.hoverAtPoint(
+      await bridge.clickAtPoint(
         Math.round(rect.left + rect.width / 2),
         Math.round(rect.top + rect.height / 2),
       );
       currentSourceAi.focus({ preventScroll: true });
+      currentSourceAi.dispatchEvent(
+        new FocusEvent('focusin', { bubbles: true, relatedTarget: null }),
+      );
+      currentSourceAi.dispatchEvent(
+        new PointerEvent('pointerover', { bubbles: true, relatedTarget: null }),
+      );
       await sleep(250);
-      currentSourceAi =
-        sourceToolbar?.querySelector<HTMLButtonElement>('[data-testid="toolbar-entry-ai"]') ??
-        currentSourceAi;
+      currentSourceAi = sourceToolbarEntry('ai') ?? currentSourceAi;
     }
-    await waitFor(() => {
+    const tooltipReady = await waitFor(() => {
       const button = sourceToolbarRoot()?.querySelector<HTMLButtonElement>(
         '[data-testid="toolbar-entry-ai"]',
       );
       const id = button?.getAttribute('aria-describedby');
       return !!id && document.getElementById(id)?.getAttribute('role') === 'tooltip';
     });
-    currentSourceAi =
-      sourceToolbar?.querySelector<HTMLButtonElement>('[data-testid="toolbar-entry-ai"]') ??
-      currentSourceAi;
+    currentSourceAi = sourceToolbarEntry('ai') ?? currentSourceAi;
     const tooltipId = currentSourceAi?.getAttribute('aria-describedby');
     const tooltip = tooltipId ? document.getElementById(tooltipId) : null;
     const activeToolbarAi =
@@ -2877,10 +2862,11 @@ export async function runSmokeIfEnabled(): Promise<void> {
         !!currentSourceAi.querySelector('svg') &&
         !!currentSourceAi.querySelector('svg.lucide-chevron-down') &&
         activeToolbarAi &&
+        tooltipReady &&
         tooltip?.getAttribute('role') === 'tooltip' &&
-        !!sourceToolbar?.querySelector('[data-testid="toolbar-entry-edit:undo"]') &&
-        !!sourceToolbar?.querySelector('[data-testid="toolbar-entry-menu:format"]') &&
-        !!sourceToolbar?.querySelector('[data-testid="toolbar-entry-menu:insert"]'),
+        !!sourceToolbarEntry('edit:undo') &&
+        !!sourceToolbarEntry('menu:format') &&
+        !!sourceToolbarEntry('menu:insert'),
       currentSourceAi
         ? JSON.stringify({
             label: currentSourceAi.getAttribute('aria-label'),
@@ -2890,9 +2876,9 @@ export async function runSmokeIfEnabled(): Promise<void> {
             hasSvg: !!currentSourceAi.querySelector('svg'),
             hasChevron: !!currentSourceAi.querySelector('svg.lucide-chevron-down'),
             activeToolbarAi,
-            hasUndo: !!sourceToolbar?.querySelector('[data-testid="toolbar-entry-edit:undo"]'),
-            hasFormat: !!sourceToolbar?.querySelector('[data-testid="toolbar-entry-menu:format"]'),
-            hasInsert: !!sourceToolbar?.querySelector('[data-testid="toolbar-entry-menu:insert"]'),
+            hasUndo: !!sourceToolbarEntry('edit:undo'),
+            hasFormat: !!sourceToolbarEntry('menu:format'),
+            hasInsert: !!sourceToolbarEntry('menu:insert'),
           })
         : '(missing AI)',
     );
