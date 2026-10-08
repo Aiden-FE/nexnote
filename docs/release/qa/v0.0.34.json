@@ -1,0 +1,48 @@
+{
+  "schema": "nexnote-release-qa/v1",
+  "repository": "Aiden-FE/nexnote",
+  "tag": "v0.0.34",
+  "commit": "191678e9042a589050996232a0803b39a82e0c6e",
+  "channel": "stable",
+  "allRequiredChecksPassed": true,
+  "scope": "v0.0.34-release",
+  "machineChecks": {
+    "typecheck": "passed (local CI=true pnpm -r --if-present typecheck at 191678e; all applicable workspace projects clean, zero errors/warnings)",
+    "lint": "passed (local CI=true pnpm lint at 191678e; zero errors and zero warnings)",
+    "tests": "passed (local CI=true pnpm test at 191678e; 1795 passed | 3 skipped, 190 test files passed | 1 skipped, exit code 0, output inspected with zero warnings/errors)",
+    "build": "passed (local CI=true pnpm build at 191678e; main/preload/renderer builds completed with zero warnings/errors)",
+    "websiteBuild": "passed (local CI=true pnpm --filter website build at 191678e; TypeScript + Vite production build completed)",
+    "releaseConfig": "31/31 passed (local pnpm verify:release-config at 191678e)",
+    "changedFormat": "passed (scripts/check-changed-format.sh; all matched files use Prettier code style)",
+    "packagedSmoke": "passed locally on macOS arm64 packaged app bound to 191678e, app 0.0.34, Electron 44.2.0, ABI 149: 266/266 checks passed, exit code 0. xlsx round-trip checks: 保存后单元格内容保留 (cells=4 values=Plan|费用|Cursor Pro|20); 保存后工作表名保留 (AI Coding 支出); 内容未变的重复保存不重写文件 (sha 6097b028 → 6097b028)",
+    "packagedIntegrity": "Ad hoc signature verified with codesign --verify --deep --strict (Signature=adhoc, TeamIdentifier unset); bundled Git verified through scripts/verify-bundled-git.mjs (git version 2.53.0)",
+    "ciLogHygiene": "local full-suite and packaged-smoke logs inspected at 191678e; zero warnings/errors",
+    "gatekeeper": "Ad hoc signed app; Gatekeeper manual Open Anyway remains expected on first launch without Developer ID notarization"
+  },
+  "gateDecisions": {
+    "windowsLinuxPhysicalInstall": "WAIVED by repository owner Aiden-FE: no Windows/Linux hardware available; release CI still builds and smoke-tests the supported matrix",
+    "macosGatekeeper": "DEFERRED to first-launch Open Anyway on the owner Mac (Ad hoc signing only); Developer ID signing/notarization remains future work"
+  },
+  "candidateContents": {
+    "tickets": "Release: master candidate 191678e9042a589050996232a0803b39a82e0c6e, version 0.0.34; contains DEV-106 (P0 孤立 REBASE_HEAD 误报 rebase 进行中 → Doctor 无限 NO_OPERATION 死循环) 与 DEV-105 (官网 Vercel Git 集成部署修复 + 生产域名统一)。",
+    "highlights": [
+      "DEV-106 P0：GitService.isRebaseOrMergeInProgress() 的“进行中”标记集合从 [rebase-merge, rebase-apply, MERGE_HEAD, REBASE_HEAD] 收敛为 [rebase-merge, rebase-apply, MERGE_HEAD]，与 git 语义及全部 abort/resolve 操作入口一致。真实 git 验证：孤立 REBASE_HEAD 下 git status 完全干净。历史影响：状态层报“有 rebase”而操作层报“没有操作”，在另一台设备上把自动提交与手动提交一并锁死，并让 Doctor 弹窗陷入无法终止的 NO_OPERATION 循环。",
+      "DEV-106 P0：GitStatusItem 的 DoctorDialog 新增 error prop 并渲染错误文案——此前 runRepair 已 setError 但弹窗从不接收该状态，用户只能感知“点击无效果”。",
+      "DEV-106 P0：runRepair 捕获 NO_OPERATION 后自动重新诊断。NO_OPERATION 语义是“计划依据的状态已消失”（例如用户在终端手工中止了 rebase），继续展示旧诊断只会让用户反复点击一个必然失败的动作。",
+      "DEV-105：仓库根新增 vercel.json（pnpm --filter website 安装与构建、outputDirectory=apps/website/dist、SPA rewrites）。此前 Git 集成按仓库根构建、跑 electron-vite 产出 out/，Vercel 期望 dist/，最近 100 次部署记录中 85 次失败、0 次成功。",
+      "回归测试：git-service 新增「孤立 REBASE_HEAD 不再被误判为 rebase 进行中」，renderer 新增「NO_OPERATION 后重新诊断并在 DoctorDialog 展示错误」，并用真实 git 夹具断言同一状态下 git status --porcelain 为空。"
+    ]
+  },
+  "artifacts": {
+    "macArm64Zip": "release/NexNote-0.0.34-mac-arm64.zip (sha256 352e23a852384f4b79074ff45f81b400dab902c0209c8dd4e492cb45b9e215a1)",
+    "macArm64Dmg": "release/NexNote-0.0.34-mac-arm64.dmg (sha256 d07c1e13108bc1ecc57743ecdc35b124a5339a7da4ea4d467e716d0aeabbe5d3)"
+  },
+  "notRun": [
+    "matrix signed builds for mac-arm64/mac-x64/windows-x64/linux-x64 before tag dispatch (executed by the release-tag-bound pipeline)",
+    "Windows packaged smoke and Linux packaged smoke before tag dispatch (executed by the release-tag-bound pipeline)",
+    "macOS notarization / Developer ID code signing",
+    "Windows/Linux physical installation and real N-1 network upgrade",
+    "release-qa Environment required-reviewer approval before publication",
+    "post-publication 24-hour monitoring"
+  ]
+}
