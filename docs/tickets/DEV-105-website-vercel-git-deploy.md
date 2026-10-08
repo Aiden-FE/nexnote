@@ -1,6 +1,6 @@
 # DEV-105 官网 Vercel Git 集成部署失败（No Output Directory named "dist"）
 
-状态：build pipeline fixed（2026-10-08，bf69969）；生产域名 `nexnote-app.vercel.app` 迁移待执行
+状态：done（2026-10-08；build pipeline fixed `bf69969`，生产域名统一到 `website-aiden-fes-projects.vercel.app`）
 分类：bug（发布基础设施）
 优先级：P1
 范围：仓库根 `vercel.json`
@@ -30,7 +30,7 @@ Vercel 项目按**仓库根**构建（未把 Root Directory 配到 `apps/website
 - [x] 干净 `git clone` 中原样执行 installCommand + buildCommand：产物 `apps/website/dist/index.html` 与 assets 齐全
 - [x] push `bf69969` 后 Vercel Git 集成部署**首次成功**（deployment `website-k9j8ljweu`，GitHub 状态 success）
 - [x] 项目生产域名 `website-aiden-fes-projects.vercel.app` 已切到新构建：引用 `assets/index-CP4C-V9K.js`（与本地构建同 hash），bundle 含 `getting-started` 文档内容，`/docs/getting-started` 深链 200
-- [ ] **待办**：公开域名 `nexnote-app.vercel.app`（README/GitHub/ADR-0010 绑定的正式 URL）仍指向旧部署（旧 bundle `index--e-_qXEP.js`，无文档）。需在 Vercel 控制台把该域名迁到 team `aiden-fes-projects` 的 `website` 项目——它不在当前自动部署的项目上。
+- [x] **生产域名统一**：旧域名 `nexnote-app.vercel.app` 仍指向无文档的旧部署（bundle `index--e-_qXEP.js`，不含 `getting-started`），而实际承载文档的是 team `aiden-fes-projects` 的 `website` 项目（bundle `index-CP4C-V9K.js`，含文档）。Vercel 控制台无法迁移动的域名，故统一改用实际可用的 `https://website-aiden-fes-projects.vercel.app`：`package.json#homepage`（ADR-0022 的文档 URL 唯一来源）、`apps/website/index.html#canonical`、README/README.zh-CN、renderer 引导链接测试断言全部对齐。核验：`nexnote-app.vercel.app` bundle 含 `getting-started` 0 处，`website-aiden-fes-projects.vercel.app` 含 3 处。
 
 ## 备注
 

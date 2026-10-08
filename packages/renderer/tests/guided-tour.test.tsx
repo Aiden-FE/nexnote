@@ -276,7 +276,7 @@ describe('重播入口', () => {
     // 应用内引导不再由该按钮触发，而是打开系统默认浏览器中的文档页。
     expect(useUiStore.getState().tourOpen).toBe(false);
     expect(open).toHaveBeenCalledWith(
-      'https://nexnote-app.vercel.app/zh/docs/getting-started',
+      'https://website-aiden-fes-projects.vercel.app/zh/docs/getting-started',
       '_blank',
       'noopener',
     );
@@ -323,7 +323,7 @@ describe('重播入口', () => {
         ?.click(),
     );
     expect(open).toHaveBeenCalledWith(
-      'https://nexnote-app.vercel.app/zh/docs/getting-started',
+      'https://website-aiden-fes-projects.vercel.app/zh/docs/getting-started',
       '_blank',
       'noopener',
     );
@@ -351,7 +351,7 @@ describe('重播入口', () => {
       document.querySelector<HTMLButtonElement>('[data-testid="welcome-start-tour"]')?.click();
     });
     expect(open).toHaveBeenCalledWith(
-      'https://nexnote-app.vercel.app/docs/getting-started',
+      'https://website-aiden-fes-projects.vercel.app/docs/getting-started',
       '_blank',
       'noopener',
     );
