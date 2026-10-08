@@ -398,12 +398,18 @@ async function bootstrap(): Promise<void> {
   windows.buildApplicationMenu();
   // DEV-074：二进制编辑器宿主挂到主窗口（WebContentsView 子视图满铺内容区）。
   binaryEditors.attach(mainWindow);
-  // 关闭主窗口前等待全部二进制编辑器的 pending 写入完成（ADR-0015 Decision 6）。
+  // 关闭主窗口前等待全部二进制编辑器的 pending 写入完成（ADR-0015 Decision 6），
+  // 并把 Git 侧「待提交的自动写入」一并落地——只 flush 编辑器会在关窗瞬间留下
+  // 「磁盘已写、Git 未提交」的脏工作区，下次打开同步就会被 WORKTREE_DIRTY 拦住。
   mainWindow.on('close', (event) => {
-    if (binaryEditors.size === 0) return;
+    if (binaryEditors.size === 0 && !git.hasPendingAutoCommit()) return;
     event.preventDefault();
-    void binaryEditors
-      .flushAll()
+    // 自动提交失败不阻止退出（内容已在磁盘上，工作区 dirty 会走 doctor 引导），
+    // 二进制编辑器写盘失败才拦住关窗，避免丢未保存的编辑。
+    const flushCommit = git.flushPendingAutoCommit('退出前保存').catch((error: unknown) => {
+      log('pending auto commit flush failed', error);
+    });
+    void Promise.all([binaryEditors.flushAll(), flushCommit])
       .then(() => {
         binaryEditors.destroyAll();
         mainWindow.destroy();

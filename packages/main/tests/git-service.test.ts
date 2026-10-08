@@ -1588,3 +1588,137 @@ describe.runIf(runIfGit())('DEV-082 rebase/merge in-progress 时的自动提交�
     expect(resolved.match(/^!\.nexnote\/metadata\/$/gm)?.length).toBe(1);
   });
 });
+
+describe.runIf(runIfGit())('同步链路：等待中的自动提交不再被丢弃（P0 回归）', () => {
+  // 根因回顾：sync()/pull() 入口只调 cancelAutoCommit()，把 30s 防抖窗口里的
+  // 「待提交」直接扔掉；紧接着的 WORKTREE_DIRTY 守卫又把这次同步挡回去，而且
+  // 没有任何机制会重新排队——工作区就此长期 dirty，每次同步都失败。
+  const withBareRemote = async (): Promise<{ remoteRoot: string; cleanup: () => void }> => {
+    const remoteRoot = mkdtempSync(path.join(tmpdir(), 'nexnote-pending-remote-'));
+    execFileSync(gitBinary(), ['init', '--bare', '--initial-branch=master', remoteRoot], {
+      stdio: 'ignore',
+    });
+    await service.initialize(root);
+    await service.addRemote('origin', remoteRoot);
+    execFileSync(gitBinary(), ['push', '-u', 'origin', 'HEAD'], { cwd: root, stdio: 'ignore' });
+    return { remoteRoot, cleanup: () => removeTempTree(remoteRoot) };
+  };
+
+  it('flushPendingAutoCommit 落地排队中的写入（没有待提交时保持 no-op）', async () => {
+    await service.initialize(root);
+    expect(service.hasPendingAutoCommit()).toBe(false);
+    await service.flushPendingAutoCommit('同步前保存');
+    expect((await service.timeline()).length).toBe(1);
+
+    await fsp.writeFile(path.join(root, 'pending.md'), 'v1\n');
+    service.scheduleAutoCommit('同步前保存', 60_000);
+    expect(service.hasPendingAutoCommit()).toBe(true);
+    await service.flushPendingAutoCommit('同步前保存');
+    expect(service.hasPendingAutoCommit()).toBe(false);
+    const timeline = await service.timeline();
+    expect(
+      timeline.some((entry) => entry.kind === 'auto' && entry.message.includes('同步前保存')),
+    ).toBe(true);
+  });
+
+  it('sync() 先把待提交写入落地，再推送（不再自伤成 WORKTREE_DIRTY）', async () => {
+    const { remoteRoot, cleanup } = await withBareRemote();
+    try {
+      await fsp.writeFile(path.join(root, 'pending.md'), 'v1\n');
+      service.scheduleAutoCommit('同步前保存', 60_000);
+      const result = await service.sync({ strategy: 'rebase' });
+      expect(result.status.ahead).toBe(0);
+      const timeline = await service.timeline();
+      expect(
+        timeline.some((entry) => entry.kind === 'auto' && entry.message.includes('同步前保存')),
+      ).toBe(true);
+      // 远端确实收到了这次写入
+      const remoteFiles = execFileSync(
+        gitBinary(),
+        ['--git-dir', remoteRoot, 'show', '--name-only', '--pretty=format:', 'HEAD'],
+        { stdio: 'pipe' },
+      ).toString();
+      expect(remoteFiles).toContain('pending.md');
+    } finally {
+      cleanup();
+    }
+  });
+
+  it('operationInProgress 反映 rebase 暂停状态（写路径据此拒绝落盘）', async () => {
+    expect(await service.operationInProgress()).toBe(false);
+    await service.initialize(root);
+    const rebaseDir = path.join(root, '.git', 'rebase-merge');
+    mkdirSync(rebaseDir, { recursive: true });
+    writeFileSync(path.join(rebaseDir, 'head-name'), 'refs/heads/master\n');
+    try {
+      expect(await service.operationInProgress()).toBe(true);
+    } finally {
+      rmSync(rebaseDir, { recursive: true, force: true });
+    }
+    expect(await service.operationInProgress()).toBe(false);
+  });
+
+  it('commitAuto 在 rebase 暂停时重新排队，rebase 结束后自动补交', async () => {
+    await service.initialize(root);
+    const rebaseDir = path.join(root, '.git', 'rebase-merge');
+    mkdirSync(rebaseDir, { recursive: true });
+    writeFileSync(path.join(rebaseDir, 'head-name'), 'refs/heads/master\n');
+    writeFileSync(path.join(rebaseDir, 'msgnum'), '1\n');
+    try {
+      await fsp.writeFile(path.join(root, 'queued.md'), 'queued\n');
+      await service.commitAuto('保存页面');
+      const duringRebase = await service.timeline();
+      expect(duringRebase.some((entry) => entry.message.includes('保存页面'))).toBe(false);
+      // 跳过 ≠ 放弃：必须重新排队，否则工作区会永久 dirty。
+      expect(service.hasPendingAutoCommit()).toBe(true);
+    } finally {
+      rmSync(rebaseDir, { recursive: true, force: true });
+    }
+    // rebase 结束后（debounce 已被测试工厂设为 50ms）自动补交。
+    const deadline = Date.now() + 10_000;
+    let timeline = await service.timeline();
+    while (
+      Date.now() < deadline &&
+      !timeline.some((entry) => entry.kind === 'auto' && entry.message.includes('保存页面'))
+    ) {
+      await new Promise((resolve) => setTimeout(resolve, 50));
+      timeline = await service.timeline();
+    }
+    expect(
+      timeline.some((entry) => entry.kind === 'auto' && entry.message.includes('保存页面')),
+    ).toBe(true);
+  });
+
+  it('自动同步失败按倍数退避（第二跳为 2×interval，而不是恒定周期）', async () => {
+    await service.initialize(root);
+    const originalSync = service.sync.bind(service);
+    const calls: number[] = [];
+    Object.defineProperty(service, 'sync', {
+      value: (async () => {
+        calls.push(Date.now());
+        throw new Error('network down');
+      }) as typeof service.sync,
+      writable: true,
+      configurable: true,
+    });
+    vi.useFakeTimers();
+    try {
+      service.configureAutoSync(1, 'rebase');
+      await vi.advanceTimersByTimeAsync(1_000);
+      expect(calls).toHaveLength(1);
+      // backoff=2 之后，第二个 interval 内不应再触发
+      await vi.advanceTimersByTimeAsync(1_000);
+      expect(calls).toHaveLength(1);
+      await vi.advanceTimersByTimeAsync(1_000);
+      expect(calls).toHaveLength(2);
+    } finally {
+      service.stopAutoSync();
+      vi.useRealTimers();
+      Object.defineProperty(service, 'sync', {
+        value: originalSync,
+        writable: true,
+        configurable: true,
+      });
+    }
+  });
+});

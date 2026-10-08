@@ -5,6 +5,7 @@ import {
   getSession,
   subscribeSession,
   markDirty,
+  markUserInteraction,
   reloadAfterConflict,
 } from './session';
 import type { SessionState } from './session';
@@ -82,7 +83,16 @@ function Host(): React.JSX.Element {
           )}
         </div>
       )}
-      <div className="min-h-0 flex-1">
+      {/* 交互门槛：编辑器初始化时会自己 emit 一次数据（等于刚载入的内容），
+          只有真实用户交互（点击/按键/输入法/粘贴）之后的变更才允许落盘，
+          否则「打开文档」本身就会覆盖磁盘内容。 */}
+      <div
+        className="min-h-0 flex-1"
+        onPointerDownCapture={() => markUserInteraction()}
+        onKeyDownCapture={() => markUserInteraction()}
+        onCompositionStartCapture={() => markUserInteraction()}
+        onPasteCapture={() => markUserInteraction()}
+      >
         {session.kind === 'xlsx' && session.xlsx && (
           <XlsxEditor
             path={session.path}

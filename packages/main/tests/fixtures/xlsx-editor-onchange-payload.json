@@ -1,0 +1,12 @@
+[
+  {
+    "name": "AI Coding 支出",
+    "id": "37c5625e-6d39-4711-bc74-6f37c367bc19",
+    "status": 1,
+    "data": [
+      [{ "v": "Plan", "m": "Plan", "bl": 1 }, { "v": "费用", "m": "费用", "bl": 1 }, null],
+      [{ "v": "Cursor Pro", "m": "Cursor Pro" }, { "v": 20, "m": "20" }, null],
+      [null, null, null]
+    ]
+  }
+]

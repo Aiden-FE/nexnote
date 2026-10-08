@@ -33,6 +33,10 @@ let saveTimer: ReturnType<typeof setTimeout> | null = null;
 let saving = false;
 let pendingSaves = 0;
 let flushFailure: Error | null = null;
+// 用户是否已与编辑器交互过：宿主挂载时编辑器会立刻回传一次 onChange
+// （fortune-sheet / simple-mind-map 初始化数据时都会 emit），其 payload 等于刚载入
+// 的内容。照单全收就会「打开即写盘」，对 xlsx 更是立刻覆盖磁盘（历史缺陷之一）。
+let userActive = false;
 const listeners = new Set<(state: SessionState | null) => void>();
 const flushResolvers: Array<{ resolve: () => void; reject: (error: unknown) => void }> = [];
 
@@ -43,6 +47,11 @@ export function subscribeSession(listener: (state: SessionState | null) => void)
 
 export function getSession(): SessionState | null {
   return session;
+}
+
+/** 宿主在编辑器容器捕获到 pointerdown/keydown 时调用：确认是真实用户交互。 */
+export function markUserInteraction(): void {
+  userActive = true;
 }
 
 function emit(): void {
@@ -146,6 +155,7 @@ function scheduleSave(): void {
 /** 编辑即写入口：宿主各编辑器 onChange 调用。 */
 export function markDirty(patch: { sheets?: unknown[]; model?: unknown }): void {
   if (!session) return; // load 完成前编辑器不可交互，防御性忽略。
+  if (!userActive) return; // 载入首帧的初始化回调不算编辑，不写盘。
   dirtyPayload = { ...dirtyPayload, ...patch };
   if (session.conflict) {
     session.status = '外部版本已变化；本地编辑仍保留在此窗口，未覆盖磁盘内容。';
@@ -214,6 +224,7 @@ export async function reloadAfterConflict(): Promise<void> {
   saveTimer = null;
   dirtyPayload = null;
   flushFailure = null;
+  userActive = false;
   session = reloaded;
   emit();
 }
@@ -224,6 +235,7 @@ async function handleCommand(command: BinaryEditorCommand): Promise<void> {
     if (session && session.path === command.path) return;
     // 切换文档前冲刷上一个文档的 pending 写入。
     await flushPending();
+    userActive = false;
     try {
       session = await loadDocument(command.kind, command.path);
     } catch (e) {

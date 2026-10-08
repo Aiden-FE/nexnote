@@ -27,6 +27,37 @@ export interface XlsxModel {
   sheets: unknown[];
 }
 
+/** 稀疏单元格：fortune-sheet / fortune-excel 的 celldata 元素。 */
+interface SheetCell {
+  r: number;
+  c: number;
+  v: unknown;
+}
+
+/**
+ * 读取 sheet 的单元格，兼容两种形态：
+ * - **磁盘模型**（`binary:read` 返回值）：稀疏 `celldata` 数组；
+ * - **编辑器运行态**（`@fortune-sheet/react` 的 `onChange` 载荷）：库在载入时把
+ *   `celldata` 展开成 `data[r][c]` 二维矩阵并 **delete celldata**
+ *   （见 core `initSheetData`），所以写盘侧必须同时接受 `data`。
+ *   历史缺陷：只读 `celldata` 会让每次保存都把工作簿写空（表名保留、单元格全丢）。
+ */
+export function readSheetCells(sheet: Record<string, unknown>): SheetCell[] {
+  const celldata = sheet.celldata;
+  if (Array.isArray(celldata)) return celldata as SheetCell[];
+  const data = sheet.data;
+  if (!Array.isArray(data)) return [];
+  const cells: SheetCell[] = [];
+  data.forEach((row, r) => {
+    if (!Array.isArray(row)) return;
+    row.forEach((value, c) => {
+      if (value === null || value === undefined) return;
+      cells.push({ r, c, v: value });
+    });
+  });
+  return cells;
+}
+
 /** fortune-excel 的 FortuneFile 期望 { 文件名: 文本内容 } 的 plain map。 */
 function collectZipFileMap(bytes: Buffer): Record<string, string> {
   const map: Record<string, string> = {};
@@ -37,9 +68,7 @@ function collectZipFileMap(bytes: Buffer): Record<string, string> {
     const start = 30 + nameLen + extraLen;
     const payload = entry.localBytes.subarray(start, start + entry.compressedSize);
     const data =
-      entry.method === 8
-        ? inflateRawSync(payload, { maxOutputLength: 64 * 1024 * 1024 })
-        : payload;
+      entry.method === 8 ? inflateRawSync(payload, { maxOutputLength: 64 * 1024 * 1024 }) : payload;
     map[entry.name] = data.toString('utf8');
   }
   return map;
@@ -91,11 +120,10 @@ export async function writeModelToXlsx(model: XlsxModel): Promise<Buffer> {
   const workbook = new ExcelJS.Workbook();
   for (const rawSheet of Array.isArray(model.sheets) ? model.sheets : []) {
     const sheet = rawSheet as Record<string, unknown>;
-    const name =
-      typeof sheet.name === 'string' && sheet.name.trim() ? sheet.name.trim() : 'Sheet';
+    const name = typeof sheet.name === 'string' && sheet.name.trim() ? sheet.name.trim() : 'Sheet';
     const worksheet = workbook.addWorksheet(name.slice(0, 31));
-    const celldata = Array.isArray(sheet.celldata) ? sheet.celldata : [];
-    for (const cell of celldata as Record<string, unknown>[]) {
+    const celldata = readSheetCells(sheet);
+    for (const cell of celldata as unknown as Record<string, unknown>[]) {
       const r = Number(cell.r);
       const c = Number(cell.c);
       if (!Number.isFinite(r) || !Number.isFinite(c) || r < 0 || c < 0) continue;
@@ -109,7 +137,10 @@ export async function writeModelToXlsx(model: XlsxModel): Promise<Buffer> {
       applyBasicStyle(target, v);
     }
     const config = (sheet.config ?? {}) as Record<string, unknown>;
-    const merge = (config.merge ?? {}) as Record<string, { r?: number; c?: number; rs?: number; cs?: number }>;
+    const merge = (config.merge ?? {}) as Record<
+      string,
+      { r?: number; c?: number; rs?: number; cs?: number }
+    >;
     for (const m of Object.values(merge)) {
       const r = Number(m?.r);
       const c = Number(m?.c);

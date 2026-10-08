@@ -1,3 +1,4 @@
+import path from 'node:path';
 import JSZip from 'jszip';
 
 /**
@@ -23,6 +24,43 @@ function entryNames(zip: JSZip): Set<string> {
   return names;
 }
 
+/** docProps 时间戳属于「每次写盘都会变」的噪声，比较包内容时归一化掉。 */
+const VOLATILE_XLSX_PARTS = new Set(['docProps/core.xml']);
+
+function normalizeVolatilePart(name: string, data: Buffer): string {
+  const text = data.toString('utf8');
+  if (!VOLATILE_XLSX_PARTS.has(name)) return text;
+  return text.replace(
+    /(<dcterms:(?:created|modified)[^>]*>)[^<]*(<\/dcterms:(?:created|modified)>)/g,
+    '$1$2',
+  );
+}
+
+/**
+ * 两个 xlsx 包在「忽略 docProps 时间戳」后是否等价。
+ * 用于跳过无内容变化的写盘：exceljs 每次重建都会刷新时间戳，若照写就会在 Git
+ * 工作区留下无意义的 diff（历史缺陷之一）。逐条目比较而非比字节，避免 zip
+ * 压缩参数/条目顺序造成的假差异。
+ */
+export async function xlsxPackagesEquivalent(a: Buffer, b: Buffer): Promise<boolean> {
+  const [zipA, zipB] = await Promise.all([loadZip(a), loadZip(b)]);
+  const namesA = [...entryNames(zipA)].sort();
+  const namesB = [...entryNames(zipB)].sort();
+  if (namesA.length !== namesB.length) return false;
+  for (let i = 0; i < namesA.length; i += 1) {
+    if (namesA[i] !== namesB[i]) return false;
+  }
+  for (const name of namesA) {
+    const [dataA, dataB] = await Promise.all([
+      zipA.file(name)?.async('nodebuffer'),
+      zipB.file(name)?.async('nodebuffer'),
+    ]);
+    if (!dataA || !dataB) return false;
+    if (normalizeVolatilePart(name, dataA) !== normalizeVolatilePart(name, dataB)) return false;
+  }
+  return true;
+}
+
 /**
  * 把 original 中 rebuilt 缺失的 entry 原样补回 rebuilt（xlsx / xmind 通用）。
  * 仅缺失名会被添加；同名条目以 rebuilt（模型输出）为准，防止旧模型数据覆盖新编辑。
@@ -46,7 +84,9 @@ async function fillMissingEntries(
 function isXlsxReadonlyPart(name: string): boolean {
   return (
     /^xl\/vbaProject\.bin$/i.test(name) ||
-    /^xl\/(?:charts|drawings|pivotCache|pivotTables|slicers|slicerCaches|externalLinks|embeddings)\//i.test(name)
+    /^xl\/(?:charts|drawings|pivotCache|pivotTables|slicers|slicerCaches|externalLinks|embeddings)\//i.test(
+      name,
+    )
   );
 }
 
@@ -85,54 +125,143 @@ function mergeXmlDefinitions(
   return rebuiltXml.slice(0, anchor) + inserted + rebuiltXml.slice(anchor);
 }
 
-function mergeRelationships(originalXml: string, rebuiltXml: string): string {
-  const collect = (xml: string): Map<string, string> => {
-    const found = new Map<string, string>();
-    for (const match of xml.matchAll(/<Relationship\b[^>]*(?:\/>|><\/Relationship>)/g)) {
-      const id = /Id="([^"]*)"/.exec(match[0])?.[1];
-      if (id) found.set(id, match[0]);
+interface RelationshipEntry {
+  id: string;
+  raw: string;
+  /** Target 属性；缺失时为 null。 */
+  target: string | null;
+  /** TargetMode="External" 的目标是外部 URI，不要求包内存在。 */
+  external: boolean;
+}
+
+function parseRelationships(xml: string): RelationshipEntry[] {
+  const entries: RelationshipEntry[] = [];
+  for (const match of xml.matchAll(/<Relationship\b[^>]*(?:\/>|><\/Relationship>)/g)) {
+    const raw = match[0];
+    const id = /Id="([^"]*)"/.exec(raw)?.[1];
+    if (!id) continue;
+    entries.push({
+      id,
+      raw,
+      target: /Target="([^"]*)"/.exec(raw)?.[1] ?? null,
+      external: /TargetMode="External"/.test(raw),
+    });
+  }
+  return entries;
+}
+
+/** `xl/_rels/workbook.xml.rels` → `xl/workbook.xml`；包根 `_rels/.rels` 没有 owner part。 */
+function relationshipOwnerPart(relsPath: string): string | null {
+  const marker = '_rels/';
+  const index = relsPath.lastIndexOf(marker);
+  if (index < 0) return null;
+  const fileName = relsPath.slice(index + marker.length);
+  if (!fileName.endsWith('.rels')) return null;
+  const owner = fileName.slice(0, -'.rels'.length);
+  if (!owner) return null;
+  return `${relsPath.slice(0, index)}${owner}`;
+}
+
+/** 把 Relationship 的 Target 解析成包内 part 路径（相对包根）。 */
+function resolveRelationshipTarget(relsPath: string, target: string): string {
+  const index = relsPath.lastIndexOf('_rels/');
+  const dir = index < 0 ? '' : relsPath.slice(0, index);
+  return path.posix.normalize(`${dir}${target}`);
+}
+
+function nextRelationshipId(used: Set<string>): number {
+  let max = 0;
+  for (const id of used) {
+    const match = /^rId(\d+)$/.exec(id);
+    if (match) max = Math.max(max, Number(match[1]));
+  }
+  return max + 1;
+}
+
+/**
+ * 合并关系文件：以重建包为基座，把原包中仍然有效的 Relationship 补回。
+ *
+ * 历史缺陷：原实现用 `Id="rId1|rId2|rId3"` 这种拼接正则「丢弃重建端同 Id 项」，
+ * 该正则既不能正确表达候选集合，也会从第一个 Relationship 之外开始吞字符——一旦
+ * 真的出现 Id 冲突（例如原包缺少 sharedStrings，重建端却带上了它），产物 rels 就是
+ * 损坏的 XML，整份工作簿随即无法解析（保存即报废）。
+ *
+ * 现在的策略：
+ * 1. 重建端的关系**永不删除**；与保留部件 Id 冲突时分配一个空闲 Id，并同步改写
+ *    owner part（workbook.xml / sheetN.xml …）中的 r:id / r:embed / r:link 引用；
+ * 2. 原包关系只在「目标部件确实存在于合并结果」且「重建端未指向同一部件」时补回，
+ *    避免悬空关系与重复条目。
+ */
+function mergeRelationships(input: {
+  relsPath: string;
+  originalXml: string;
+  rebuiltXml: string;
+  ownerXml: string | null;
+  partExists: (part: string) => boolean;
+}): { relsXml: string; ownerXml: string | null } {
+  const closing = '</Relationships>';
+  if (!input.rebuiltXml.includes(closing)) {
+    return { relsXml: input.rebuiltXml, ownerXml: input.ownerXml };
+  }
+  const originalRels = parseRelationships(input.originalXml);
+  const rebuiltRels = parseRelationships(input.rebuiltXml);
+  const rebuiltTargets = new Set(
+    rebuiltRels
+      .map((entry) => entry.target)
+      .filter((target): target is string => target !== null)
+      .map((target) => resolveRelationshipTarget(input.relsPath, target)),
+  );
+  // 先判定哪些原包关系真要保留，再决定是否给重建端改号。顺序反过来就不是幂等变换：
+  // 第一次保存会让「其实是重复条目」的原包 Id 也逼重建端改号，第二次保存又因 Id
+  // 空间不同产出另一份语义等价、逐字节不同的 rels（工作区因此反复变脏）。
+  const keptOriginal: RelationshipEntry[] = [];
+  for (const entry of originalRels) {
+    if (entry.external || entry.target === null) {
+      keptOriginal.push(entry);
+      continue;
     }
-    return found;
-  };
-  const originalRels = collect(originalXml);
-  const rebuiltRels = collect(rebuiltXml);
-
-  // 步骤 1：把原包中所有 Id 都纳入「保留候选」（无论 rebuilt 是否同名）。
-  // 步骤 2：处理 Id 冲突。重建端通常会给 styles/sharedStrings/themes/worksheets 分配 rId1..rIdN；
-  // 原包可能把这些 Id 复用于保留部件（vbaProject、charts、externalLinks 等）。
-  // OpenXML 引用方写死的是原 Id，**绝对不能改名**——否则原部件的 Target 找不到。
-  // 因此冲突时丢弃重建端的同 Id 关系项（保留原包关系，由原包指向原 Target）。
-  // 实践上极少需要丢弃重建端关系（styles/sharedStrings/themes 都是模型生成的），
-  // 但极端情况下（保留部件占用了 styles Id）必须保证 OpenXML 解析稳定。
-  const conflictingRebuiltIds: string[] = [];
-  for (const id of rebuiltRels.keys()) {
-    if (originalRels.has(id)) conflictingRebuiltIds.push(id);
+    const target = resolveRelationshipTarget(input.relsPath, entry.target);
+    if (rebuiltTargets.has(target)) continue;
+    if (!input.partExists(target)) continue;
+    keptOriginal.push(entry);
   }
-  let mergedXml = rebuiltXml;
-  if (conflictingRebuiltIds.length > 0) {
-    const escaped = conflictingRebuiltIds.map((id) => id.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'));
-    const dropPattern = new RegExp(
-      `<Relationship\\b[^>]*Id="${escaped.join('|')}"[^>]*(?:\\/>|><\\/Relationship>)`,
-      'g',
+
+  const keptOriginalIds = new Set(keptOriginal.map((entry) => entry.id));
+  const usedIds = new Set<string>(keptOriginalIds);
+  for (const entry of rebuiltRels) usedIds.add(entry.id);
+  let nextId = nextRelationshipId(usedIds);
+
+  const renamed = new Map<string, string>();
+  const rebuiltEntries: string[] = [];
+  for (const entry of rebuiltRels) {
+    if (!keptOriginalIds.has(entry.id)) {
+      rebuiltEntries.push(entry.raw);
+      continue;
+    }
+    const replacement = `rId${nextId}`;
+    nextId += 1;
+    renamed.set(entry.id, replacement);
+    rebuiltEntries.push(entry.raw.replace(`Id="${entry.id}"`, `Id="${replacement}"`));
+  }
+
+  const firstEntry = input.rebuiltXml.search(/<Relationship\b/);
+  const head =
+    firstEntry >= 0
+      ? input.rebuiltXml.slice(0, firstEntry)
+      : input.rebuiltXml.slice(0, input.rebuiltXml.lastIndexOf(closing));
+  const relsXml = `${head}${[...rebuiltEntries, ...keptOriginal.map((entry) => entry.raw)].join('')}${closing}`;
+
+  let ownerXml = input.ownerXml;
+  if (ownerXml !== null && renamed.size > 0) {
+    ownerXml = ownerXml.replace(
+      /(\sr:(?:id|embed|link)=")([^"]*)(")/g,
+      (match, prefix: string, id: string, suffix: string) => {
+        const replacement = renamed.get(id);
+        return replacement ? `${prefix}${replacement}${suffix}` : match;
+      },
     );
-    mergedXml = mergedXml.replace(dropPattern, '');
   }
-
-  // 步骤 3：原包所有 Id 都应出现在合并结果中。rebuilt 中存在的 Id 已被步骤 2 处理（冲突丢弃，
-  // 非冲突保留）；原包中剩余 Id 直接追加到合并 rels 中（无论 rebuilt 是否同名——同名时已被步骤 2 丢弃）。
-  const rebuiltIdsAfterDrop = new Set<string>();
-  for (const match of mergedXml.matchAll(/<Relationship\b[^>]*(?:\/>|><\/Relationship>)/g)) {
-    const id = /Id="([^"]*)"/.exec(match[0])?.[1];
-    if (id) rebuiltIdsAfterDrop.add(id);
-  }
-  const toAdd: string[] = [];
-  for (const [id, raw] of originalRels.entries()) {
-    if (!rebuiltIdsAfterDrop.has(id)) toAdd.push(raw);
-  }
-  if (toAdd.length === 0) return mergedXml;
-  const anchor = mergedXml.lastIndexOf('</Relationships>');
-  if (anchor < 0) return mergedXml;
-  return mergedXml.slice(0, anchor) + toAdd.join('') + mergedXml.slice(anchor);
+  return { relsXml, ownerXml };
 }
 
 /**
@@ -141,7 +270,10 @@ function mergeRelationships(originalXml: string, rebuiltXml: string): string {
  * 2) [Content_Types].xml 补回对应 Override/Default；
  * 3) 关系文件（_rels/.rels、xl/_rels/workbook.xml.rels 等）补回原 Relationship。
  */
-export async function preserveXlsxReadonly(originalBytes: Buffer, rebuiltBytes: Buffer): Promise<Buffer> {
+export async function preserveXlsxReadonly(
+  originalBytes: Buffer,
+  rebuiltBytes: Buffer,
+): Promise<Buffer> {
   const original = await loadZip(originalBytes);
   const rebuilt = await loadZip(rebuiltBytes);
   await fillMissingEntries(original, rebuilt, isXlsxReadonlyPart);
@@ -161,7 +293,20 @@ export async function preserveXlsxReadonly(originalBytes: Buffer, rebuiltBytes: 
     if (!rebuiltRels) continue; // fillMissingEntries 已经带回了整个关系文件
     const originalXml = await file.async('string');
     const rebuiltXml = await rebuiltRels.async('string');
-    rebuilt.file(name, mergeRelationships(originalXml, rebuiltXml));
+    const ownerPart = relationshipOwnerPart(name);
+    const ownerFile = ownerPart ? rebuilt.file(ownerPart) : null;
+    const merged = mergeRelationships({
+      relsPath: name,
+      originalXml,
+      rebuiltXml,
+      ownerXml: ownerFile ? await ownerFile.async('string') : null,
+      // 回填已在上方完成：这里用重建包的实际内容判断原包关系是否仍指向存在的部件。
+      partExists: (part) => rebuilt.file(part) !== null,
+    });
+    rebuilt.file(name, merged.relsXml);
+    if (ownerPart && ownerFile && merged.ownerXml !== null) {
+      rebuilt.file(ownerPart, merged.ownerXml);
+    }
   }
 
   return rebuilt.generateAsync({ type: 'nodebuffer' });
@@ -176,7 +321,10 @@ export async function preserveXlsxReadonly(originalBytes: Buffer, rebuiltBytes: 
  * 不实现这些字段的解析，必须原样回填以避免保存后丢失（ADR-0015 Decision 4）。
  * 编辑涉及的字段（id/class/title/rootTopic/children/summaries/extensions）以重建为准。
  */
-export async function preserveXmindReadonly(originalBytes: Buffer, rebuiltBytes: Buffer): Promise<Buffer> {
+export async function preserveXmindReadonly(
+  originalBytes: Buffer,
+  rebuiltBytes: Buffer,
+): Promise<Buffer> {
   const original = await loadZip(originalBytes);
   const rebuilt = await loadZip(rebuiltBytes);
   await fillMissingEntries(original, rebuilt, isXmindReadonlyPart);
@@ -204,8 +352,14 @@ export async function preserveXmindReadonly(originalBytes: Buffer, rebuiltBytes:
       const rebuiltJson = JSON.parse(await rebuiltManifest.async('string')) as {
         'file-entries'?: Record<string, unknown>;
       };
-      const mergedEntries = { ...(originalJson['file-entries'] ?? {}), ...(rebuiltJson['file-entries'] ?? {}) };
-      rebuilt.file('manifest.json', JSON.stringify({ ...rebuiltJson, 'file-entries': mergedEntries }));
+      const mergedEntries = {
+        ...(originalJson['file-entries'] ?? {}),
+        ...(rebuiltJson['file-entries'] ?? {}),
+      };
+      rebuilt.file(
+        'manifest.json',
+        JSON.stringify({ ...rebuiltJson, 'file-entries': mergedEntries }),
+      );
     } catch {
       // manifest 损坏则保持重建结果，不因保留区合并而失败整个保存。
     }

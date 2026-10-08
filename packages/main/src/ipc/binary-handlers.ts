@@ -101,6 +101,15 @@ export function registerBinaryHandlers(registrar: IpcRegistrar): void {
 
   registrar.register('binary:save', async ({ kind, path, data, expectedSha256 }, services) => {
     try {
+      // rebase/merge 暂停期间不在冲突状态上继续写盘：写进去也不会被提交
+      // （commitAuto 会跳过），反而给「中止/继续」制造额外的不一致。渲染层
+      // 收到该错误后保留内存编辑并自动重试，冲突解决后即可正常落盘。
+      if (await services.git.operationInProgress()) {
+        return err(
+          '存在未完成的 rebase/merge，暂不写入文档；解决冲突后会自动重试保存',
+          'BINARY_SAVE_BLOCKED',
+        );
+      }
       const result = await service(services).save(kind, path, data, expectedSha256);
       await recordWrite(services, `保存 ${kind.toUpperCase()} ${path}`);
       return ok(result);
@@ -145,6 +154,9 @@ export function registerBinaryHandlers(registrar: IpcRegistrar): void {
     const store = new MetadataStore(root);
     const current = (await store.read(path)) ?? {};
     await store.write(path, { ...current, mindmapTheme: theme });
+    // sidecar 也要触发自动提交，否则未跟踪的 .nexnote/metadata/*.json 会长期
+    // 留在工作区，把后续每次 sync 都挡在 WORKTREE_DIRTY 之外（历史缺陷之一）。
+    await recordWrite(services, `保存 MINDMAP ${path}`);
     return ok({ saved: true as const });
   });
 
@@ -155,6 +167,7 @@ export function registerBinaryHandlers(registrar: IpcRegistrar): void {
     const store = new MetadataStore(root);
     const current = (await store.read(path)) ?? {};
     await store.write(path, { ...current, mindmapStructure: structure });
+    await recordWrite(services, `保存 MINDMAP ${path}`);
     return ok({ saved: true as const });
   });
 

@@ -7,7 +7,11 @@ import { formatForPath } from '../document/document-domain';
 import { MetadataStore } from '../document/metadata-store';
 import { parseXlsxToModel, writeModelToXlsx } from './xlsx-convert';
 import { parseXmindToModel, writeModelToXmind } from './xmind-convert';
-import { preserveXlsxReadonly, preserveXmindReadonly } from './zip-preserve';
+import {
+  preserveXlsxReadonly,
+  preserveXmindReadonly,
+  xlsxPackagesEquivalent,
+} from './zip-preserve';
 import { XlsxError } from './xlsx-convert';
 import { XmindError } from './xmind-convert';
 
@@ -178,11 +182,13 @@ export class BinaryService {
     let bytes: Buffer;
     if (kind === 'xlsx') {
       const model = (data as { sheets?: unknown[] }) ?? {};
-      const rebuilt = await writeModelToXlsx({
-        sheets: Array.isArray(model.sheets) ? model.sheets : [],
-      });
+      const sheets = Array.isArray(model.sheets) ? model.sheets : [];
+      const rebuilt = await writeModelToXlsx({ sheets });
       // ADR-0015 Decision 4：模型未涵盖的宏、图表、透视表及其关系/类型声明从原包回填。
       bytes = await preserveXlsxReadonly(current, rebuilt);
+      // 包内容等价（只差 docProps 时间戳）时不落盘：exceljs 每次重建都会刷新时间戳，
+      // 照写会在 Git 工作区留下无意义的 diff（历史缺陷之一）。
+      if (await xlsxPackagesEquivalent(current, bytes)) return { sha256: actual };
     } else {
       const model = (data as { model?: Parameters<typeof writeModelToXmind>[0] })?.model;
       if (!model) throw new BinaryServiceError('xmind 数据缺失', 'BINARY_INVALID_DATA');

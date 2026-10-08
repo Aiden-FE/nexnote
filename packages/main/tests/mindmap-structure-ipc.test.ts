@@ -37,7 +37,15 @@ async function vault(): Promise<string> {
 }
 
 function servicesFor(root: string): IpcServices {
-  return { vaultSession: { getCurrent: () => ({ root }) } } as unknown as IpcServices;
+  return {
+    vaultSession: { getCurrent: () => ({ root }) },
+    // sidecar 写入后要触发自动提交（否则未跟踪 sidecar 会长期把工作区卡成 dirty）。
+    git: {
+      scheduleAutoCommit: () => undefined,
+      status: async () => ({}),
+    },
+    windows: { sendToMainWindow: () => undefined },
+  } as unknown as IpcServices;
 }
 
 /** DEV-102 / ADR-0020：布局结构选择经 binary:mindmapStructure:set 落 sidecar，

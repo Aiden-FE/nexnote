@@ -980,14 +980,24 @@ describe('IPC 集成（vault + fs，单一注册表）', () => {
       initGit: true,
     })) as { ok: boolean; data: { root: string } };
     expect(created.ok).toBe(true);
-    // 留一个未提交的脏变更
-    await ipc.invoke('fs:writeTextFile', { path: 'uncommitted.md', content: 'pending' });
+    // 留一个未提交的脏变更：直接落盘（模拟外部改动），应用没有排队中的自动提交，
+    // 因此守卫必须拒绝，避免 pull 覆盖掉这份内容。
+    await writeFile(path.join(created.data.root, 'uncommitted.md'), 'pending');
     const denied = (await ipc.invoke('git:pull', {})) as {
       ok: boolean;
       code?: string;
     };
     expect(denied.ok).toBe(false);
     expect(denied.code).toBe('WORKTREE_DIRTY');
+
+    // 应用自身写路径会排队自动提交：pull 先把待提交落地再继续，不再自伤成
+    // WORKTREE_DIRTY（历史缺陷：cancelAutoCommit() 直接丢弃待提交）。
+    await ipc.invoke('fs:writeTextFile', { path: 'app-write.md', content: 'pending' });
+    const flushed = (await ipc.invoke('git:pull', {})) as {
+      ok: boolean;
+      code?: string;
+    };
+    expect(flushed.code).not.toBe('WORKTREE_DIRTY');
 
     // force=true 仍要通过验证（不会因校验失败）；执行会因没远程而失败，但是错误
     // 应来自底层而非 WORKTREE_DIRTY 守卫。

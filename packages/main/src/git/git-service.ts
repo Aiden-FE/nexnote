@@ -53,7 +53,7 @@ export function isVaultSyncGuardedPath(file: string): boolean {
   if (segments.some((segment) => OS_METADATA_FILES_LOWER.includes(segment))) return true;
   if (segments[0] !== '.nexnote') return false;
   if (normalized.toLowerCase().startsWith('.nexnote/metadata/')) {
-    return segments[segments.length - 1].includes('.tmp-');
+    return (segments.at(-1) ?? '').includes('.tmp-');
   }
   return !VERSIONED_NEXNOTE_PATHS.includes(normalized);
 }
@@ -174,9 +174,11 @@ export class GitService {
   private networkProxyEnv: NodeJS.ProcessEnv | null = null;
   private networkCliConfig: string[] | null = null;
   /** DEV-073：定时自动同步计时器（vault 活跃时按 vault 配置触发 sync）。 */
-  private autoSyncTimer: ReturnType<typeof setInterval> | null = null;
+  private autoSyncTimer: ReturnType<typeof setTimeout> | null = null;
   private autoSyncIntervalSec = 0;
   private autoSyncStrategy: 'rebase' | 'merge' = 'rebase';
+  /** 自动同步失败退避倍数（1 → 4）。下一跳延迟按当前倍率计算。 */
+  private autoSyncBackoff = 1;
 
   /**
    * 分支绑定的上游远程；`branch.<name>.remote` 显式配置优先，
@@ -231,33 +233,52 @@ export class GitService {
   configureAutoSync(intervalSec: number, strategy: 'rebase' | 'merge'): void {
     this.autoSyncIntervalSec = Math.max(0, Math.round(intervalSec));
     this.autoSyncStrategy = strategy;
-    if (this.autoSyncTimer) clearInterval(this.autoSyncTimer);
-    this.autoSyncTimer = null;
+    this.stopAutoSyncTimer();
+    this.autoSyncBackoff = 1;
     if (this.autoSyncIntervalSec <= 0) return;
-    let backoff = 1;
-    this.autoSyncTimer = setInterval(
+    this.scheduleAutoSyncTick(this.autoSyncIntervalSec * 1000);
+  }
+
+  /**
+   * 单跳自动同步：用 `setTimeout` 链而不是 `setInterval` —— 后者在创建时就把
+   * 周期算死了，失败退避（backoff）永远不会生效（历史缺陷之一）。
+   */
+  private scheduleAutoSyncTick(delayMs: number): void {
+    this.stopAutoSyncTimer();
+    this.autoSyncTimer = setTimeout(
       () => {
-        if (!this.root) return;
+        this.autoSyncTimer = null;
+        if (!this.root || this.autoSyncIntervalSec <= 0) return;
         void this.sync({
           strategy: this.autoSyncStrategy,
           onProgress: this.syncProgressListener ?? undefined,
-        }).then(
-          () => {
-            backoff = 1;
-          },
-          () => {
-            backoff = Math.min(backoff * 2, 4);
-          },
-        );
+        })
+          .then(
+            () => {
+              this.autoSyncBackoff = 1;
+            },
+            () => {
+              this.autoSyncBackoff = Math.min(this.autoSyncBackoff * 2, 4);
+            },
+          )
+          .finally(() => {
+            if (this.autoSyncIntervalSec <= 0 || !this.root) return;
+            this.scheduleAutoSyncTick(this.autoSyncIntervalSec * 1000 * this.autoSyncBackoff);
+          });
       },
-      this.autoSyncIntervalSec * 1000 * backoff,
+      Math.max(0, delayMs),
     );
   }
 
-  stopAutoSync(): void {
-    if (this.autoSyncTimer) clearInterval(this.autoSyncTimer);
+  private stopAutoSyncTimer(): void {
+    if (this.autoSyncTimer) clearTimeout(this.autoSyncTimer);
     this.autoSyncTimer = null;
+  }
+
+  stopAutoSync(): void {
+    this.stopAutoSyncTimer();
     this.autoSyncIntervalSec = 0;
+    this.autoSyncBackoff = 1;
   }
 
   /** 实际生效的 Git 是否来自系统 PATH（含开发环境 payload 缺失的回退）。 */
@@ -346,7 +367,30 @@ export class GitService {
     this.autoTimer = null;
   }
 
-  async commitAuto(summary = '保存页面'): Promise<void> {
+  /** 是否存在排队中的自动提交计时器（关窗/sync 前据此决定是否需要 flush）。 */
+  hasPendingAutoCommit(): boolean {
+    return this.autoTimer !== null;
+  }
+
+  /**
+   * 同步/退出前落地「待提交」的自动写入。
+   * 没有待提交计时器时保持 no-op：工作区里其它来源的 dirty 仍由调用方按
+   * WORKTREE_DIRTY 守卫处理，不在这里擅自替用户提交。
+   */
+  async flushPendingAutoCommit(summary = '保存页面'): Promise<void> {
+    if (!this.autoTimer) return;
+    this.cancelAutoCommit();
+    await this.commitAuto(summary, { skipThrottle: true });
+  }
+
+  /** rebase/merge 进行中时，写路径（如二进制保存）不应在冲突状态上继续写盘。 */
+  async operationInProgress(): Promise<boolean> {
+    const root = this.root;
+    if (!root) return false;
+    return this.isRebaseOrMergeInProgress(root);
+  }
+
+  async commitAuto(summary = '保存页面', options: { skipThrottle?: boolean } = {}): Promise<void> {
     this.autoTimer = null;
     const root = this.requireRoot();
     // A paused rebase/merge must never receive another layout commit: doing so
@@ -354,10 +398,13 @@ export class GitService {
     // the conflict. Surface status so the UI shows the rebase badge instead.
     if (await this.isRebaseOrMergeInProgress(root)) {
       await this.notifyCurrentStatus();
+      // 跳过 ≠ 放弃：重新排队，冲突解决/中止后自动补交，避免工作区永久 dirty
+      // 导致后续每次 sync 都被 WORKTREE_DIRTY 拦下。
+      this.scheduleAutoCommit(summary);
       return;
     }
     const wait = this.minCommitIntervalMs - (Date.now() - this.lastCommitAt);
-    if (wait > 0) {
+    if (wait > 0 && options.skipThrottle !== true) {
       this.autoTimer = setTimeout(() => void this.commitAuto(summary).catch(() => undefined), wait);
       return;
     }
@@ -365,6 +412,7 @@ export class GitService {
     const status = await git.status();
     if (this.hasUnresolvedConflict(status) || (await this.hasConflictMarkers(root, status))) {
       await this.notifyCurrentStatus();
+      this.scheduleAutoCommit(summary);
       return;
     }
     // Skip a layout-only auto-commit when the versioned config/layout blobs are
@@ -908,6 +956,9 @@ export class GitService {
 
   async pull(input: { force?: boolean } = {}): Promise<GitOperationResult> {
     const root = this.requireRoot();
+    // 待提交的自动写入必须先落地：直接 cancelAutoCommit() 等于把它丢掉，
+    // 留下 dirty 工作区让本次拉取必然失败（历史缺陷之一）。
+    await this.flushPendingAutoCommit('拉取前保存');
     // Never allow a pre-pull debounce to race with merge/conflict handling.
     this.cancelAutoCommit();
     try {
@@ -973,6 +1024,9 @@ export class GitService {
         /* listener self-contained */
       }
     };
+    // 同步前先落地待提交的自动写入：cancelAutoCommit() 单独使用会把它丢弃，
+    // 本次同步随即被 WORKTREE_DIRTY 拦下，且没有任何机制会重新排队（历史缺陷之一）。
+    await this.flushPendingAutoCommit('同步前保存');
     this.cancelAutoCommit();
     const git = this.git(root);
     try {

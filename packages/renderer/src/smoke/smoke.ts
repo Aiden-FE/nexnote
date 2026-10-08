@@ -216,6 +216,57 @@ export async function runSmokeIfEnabled(): Promise<void> {
     check('默认欢迎 Tab 激活', !!document.querySelector('[data-testid="tab"][data-active="true"]'));
     await capture('02-workspace');
 
+    // ── 3a. P0 回归：xlsx 保存往返（编辑器运行态载荷不得丢单元格）────
+    // @fortune-sheet/react 的 onChange 回传的是运行态：单元格在 data[r][c]，没有
+    // celldata。这里用同一形态载荷走真实 IPC（create → save → read），让「保存把
+    // 表格整表写空」这类缺陷在打包冒烟里也被拦下。
+    const createdXlsx = await invoke('binary:create', { kind: 'xlsx', title: '冒烟支出表' });
+    check('binary:create 生成 xlsx 副本', createdXlsx.path.endsWith('.xlsx'), createdXlsx.path);
+    const runtimeSheets = [
+      {
+        name: 'AI Coding 支出',
+        id: 'smoke-sheet',
+        status: 1,
+        data: [
+          [{ v: 'Plan', m: 'Plan', bl: 1 }, { v: '费用', m: '费用', bl: 1 }, null],
+          [{ v: 'Cursor Pro', m: 'Cursor Pro' }, { v: 20, m: '20' }, null],
+          [null, null, null],
+        ],
+      },
+    ];
+    const savedXlsx = await invoke('binary:save', {
+      kind: 'xlsx',
+      path: createdXlsx.path,
+      data: { sheets: runtimeSheets },
+      expectedSha256: createdXlsx.sha256,
+    });
+    check('binary:save 接受编辑器运行态载荷', savedXlsx.sha256 !== createdXlsx.sha256);
+    const readBack = await invoke('binary:read', { kind: 'xlsx', path: createdXlsx.path });
+    const sheetModel = ((readBack.data as { sheets?: unknown[] }).sheets?.[0] ?? {}) as {
+      name?: string;
+      celldata?: { v?: { v?: unknown } }[];
+    };
+    const sheetCells = sheetModel.celldata ?? [];
+    const sheetValues = sheetCells.map((cell) => String(cell.v?.v ?? ''));
+    check(
+      '保存后单元格内容保留（P0：曾被整表写空）',
+      sheetCells.length === 4 &&
+        ['Plan', '费用', 'Cursor Pro', '20'].every((value) => sheetValues.includes(value)),
+      `cells=${sheetCells.length} values=${sheetValues.join('|')}`,
+    );
+    check('保存后工作表名保留', sheetModel.name === 'AI Coding 支出', String(sheetModel.name));
+    const resavedXlsx = await invoke('binary:save', {
+      kind: 'xlsx',
+      path: createdXlsx.path,
+      data: { sheets: runtimeSheets },
+      expectedSha256: savedXlsx.sha256,
+    });
+    check(
+      '内容未变的重复保存不重写文件（不制造无意义 Git diff）',
+      resavedXlsx.sha256 === savedXlsx.sha256,
+      `${savedXlsx.sha256.slice(0, 8)} → ${resavedXlsx.sha256.slice(0, 8)}`,
+    );
+
     // ── 4. 多 Tab 打开/关闭 ───────────────────────────────────
     const tabCount = () => document.querySelectorAll('[data-testid="tab"]').length;
     const before = tabCount();
