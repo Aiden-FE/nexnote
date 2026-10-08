@@ -244,7 +244,8 @@ async function bootstrap(): Promise<void> {
   });
   // DEV-016：updater 设置以 SettingsService.updates 为唯一权威，
   // 启动时同步到 updater 运行态 + AppStore 镜像；onChange 持续 diff-apply。
-  syncUpdaterSettings(settings, appStore);
+  const updaterSettings = extractUpdateSettings(settings);
+  if (!isSmokeMode) syncUpdaterSettings(settings, appStore);
   settings.onChange((global) => {
     applyGlobalSettings(global);
     void (async () => {
@@ -278,10 +279,12 @@ async function bootstrap(): Promise<void> {
 
   // DEV-018：自动更新。配置以 SettingsService.updates 为单一权威（DEV-016）；
   // syncUpdaterSettings 已将其同步到 updater 运行态，initAutoUpdater 据此初始化。
+  // Smoke 模式隔离外部生产 feed：端测输出必须只取决于被测应用，不受启动时
+  // 自动更新网络状况影响；正式用户路径仍完整使用 SettingsService 配置。
   initAutoUpdater(log, (status) => windows?.sendToMainWindow('app:updateStatus', status), {
-    channel: extractUpdateSettings(settings).channel,
-    autoDownload: extractUpdateSettings(settings).autoDownload,
-    checkOnLaunch: extractUpdateSettings(settings).checkOnLaunch,
+    channel: updaterSettings.channel,
+    autoDownload: isSmokeMode ? false : updaterSettings.autoDownload,
+    checkOnLaunch: isSmokeMode ? false : updaterSettings.checkOnLaunch,
   });
 
   const binaryEditors = new BinaryEditorHostManager();
