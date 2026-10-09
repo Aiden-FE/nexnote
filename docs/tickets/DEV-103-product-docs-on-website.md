@@ -1,6 +1,6 @@
 # DEV-103 官网产品文档上线 + 欢迎页「快速上手」跳转文档
 
-状态：partial（文档站 + 跳转已随 v0.0.30 发布；11 章内容已补齐并全部门禁通过；ADR-0023/0024 双语与 ADR-0025 截图仍待实现）
+状态：partial（文档站 + 跳转已随 v0.0.30 发布；11 章内容已补齐；ADR-0024 手机端双语已实现并全部门禁通过；ADR-0023 桌面端双语与 ADR-0025 截图仍待实现）
 日期：2026-10-07（grill 四轮确认；2026-10-07 随 v0.0.30 发布已落地的部分见「本轮实际交付」）
 关联：ADR-0021、ADR-0022、ADR-0023、ADR-0024、ADR-0025、ADR-0010（Docs 边界已被 ADR-0021 推翻并就地标注）、DEV-074
 
@@ -53,10 +53,22 @@
 ## 待办（决策已定，实现未开始）
 
 - [ ] ADR-0023 桌面端界面双语：消息目录 + 跨进程错误码化，完成门槛 en-US 全 UI 无中文残留
-- [ ] ADR-0024 手机端 Flutter l10n（`flutter_localizations` + `.arb` + iOS `CFBundleLocalizations`）
+- [x] ADR-0024 手机端 Flutter l10n（2026-10-09 完成：`flutter_localizations` + 各 161 key 的 `.arb` + 错误码化 + iOS `CFBundleLocalizations`/`knownRegions`；证据见下）
 - [ ] ADR-0025 演示知识库 + macOS 截图上官网；Windows/Linux 截图待环境就绪补拍
 - [x] 文档其余章节补齐（2026-10-09 完成：11 章中英双语，`website-docs-render.test.tsx` 目录契约测试锁定）
 - [ ] 官网部署到生产 Vercel 后核验深链对外可达（构建通过 ≠ 线上可达）
+
+### ADR-0024 验收证据（2026-10-09）
+
+- [x] `flutter_localizations` + `intl` + `l10n.yaml` + `lib/l10n/{app_zh,app_en}.arb`，各 161 key 逐 key 对齐
+- [x] 设置页提供界面语言选择（跟随系统 / 简体中文 / English）并持久化（`AppSettings.languageOverride`）
+- [x] 跟随系统默认生效；系统语言非 zh/en 时回退 en（`l10n_message_catalog_test.dart`）
+- [x] 切到 English 后界面文案无中文残留（`l10n_message_catalog_test.dart` CJK 正则扫描）
+- [x] 错误码化：`SyncMessageKind` / `GitErrorCode` / `AiRequestErrorCode` / `SecretVaultErrorCode` / `CaptureErrorCode`，UI 经 `app/message_descriptions.dart` 成文
+- [x] 提交摘要、AI 提示词、落盘页面标题不随界面语言变化（ADR-0024 否决项）
+- [x] iOS `CFBundleLocalizations` + `knownRegions` zh-Hans
+- [x] `flutter analyze` 无问题；`flutter test` 120 例通过
+- [ ] **NOT_RUN**：iOS 真机/模拟器系统语言切换与 Keychain 写入（本机无 iOS 运行时，需在 Xcode 环境补验）
 
 ## Out of scope
 

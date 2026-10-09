@@ -9,6 +9,7 @@ import '../../../git/device_git_service.dart';
 import '../../../reader/markdown_view.dart';
 import '../../../vault/frontmatter.dart';
 import '../../app_services.dart';
+import '../../message_descriptions.dart';
 import 'source_editor_page.dart';
 import '../../../l10n/app_localizations.dart';
 
@@ -77,7 +78,7 @@ class _BlockEditorPageState extends State<BlockEditorPage> {
       );
     } on GitServiceError catch (e) {
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(l10n.saveFailed(e.message))),
+        SnackBar(content: Text(l10n.saveFailed(describeGitError(l10n, e)))),
       );
     }
   }

@@ -16,7 +16,13 @@ import 'retrieval.dart';
 enum ChatRole { user, assistant }
 
 /// 语言中性的对话错误码；由 UI 层翻译为当前界面语言（ADR-0023 错误码化）。
-enum ChatErrorCode { noProfile, noApiKey, provider }
+enum ChatErrorCode {
+  noProfile,
+  noApiKey,
+  providerNetwork,
+  providerHttp,
+  providerUnexpected,
+}
 
 /// 一条对话消息
 class ChatMessage {
@@ -92,7 +98,7 @@ class ChatController extends ChangeNotifier {
     notifyListeners();
 
     final context = citations
-        .map((c) => '## ${c.title}（${c.stage.label}）\n'
+        .map((c) => '## ${c.title}（${c.stage.promptLabel}）\n'
             '${retrieval.contextFor(c.path)}')
         .join('\n\n');
     final prompt = [
@@ -118,14 +124,20 @@ class ChatController extends ChangeNotifier {
         notifyListeners();
       }
     } on AiRequestError catch (e) {
-      reply.errorCode = ChatErrorCode.provider;
-      reply.errorDetail = e.message;
-      lastErrorCode = ChatErrorCode.provider;
-      lastErrorDetail = e.message;
+      final code = switch (e.code) {
+        AiRequestErrorCode.network => ChatErrorCode.providerNetwork,
+        AiRequestErrorCode.httpStatus => ChatErrorCode.providerHttp,
+        AiRequestErrorCode.unexpected => ChatErrorCode.providerUnexpected,
+      };
+      final detail = e.statusCode?.toString() ?? e.detail;
+      reply.errorCode = code;
+      reply.errorDetail = detail;
+      lastErrorCode = code;
+      lastErrorDetail = detail;
     } on Object catch (e) {
-      reply.errorCode = ChatErrorCode.provider;
+      reply.errorCode = ChatErrorCode.providerUnexpected;
       reply.errorDetail = e.toString();
-      lastErrorCode = ChatErrorCode.provider;
+      lastErrorCode = ChatErrorCode.providerUnexpected;
       lastErrorDetail = e.toString();
     } finally {
       reply.streaming = false;

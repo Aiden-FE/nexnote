@@ -170,9 +170,9 @@ void main() {
       expect(context.length, lessThanOrEqualTo(6));
     });
 
-    test('阶段标签可读', () {
-      expect(RecallStage.keyword.label, '关键词');
-      expect(RecallStage.links.label, '双链扩展');
+    test('AI prompt 阶段标注固定中文（不随界面语言变化）', () {
+      expect(RecallStage.keyword.promptLabel, '关键词');
+      expect(RecallStage.links.promptLabel, '双链扩展');
     });
   });
 }

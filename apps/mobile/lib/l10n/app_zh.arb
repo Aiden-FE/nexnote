@@ -175,7 +175,7 @@
     }
   },
   "graphTitle": "图谱",
-  "graphSummary": "节点 {nodes} · 边 {edges} · 未解析 {unresolved}（点击节点查看，只读浏览）",
+  "graphSummary": "页面 {nodes} · 双链 {edges} · 未解析 {unresolved}（点击页面查看，只读浏览）",
   "@graphSummary": {
     "placeholders": {
       "nodes": {
@@ -326,14 +326,6 @@
   "profileSave": "保存",
   "errNoProfile": "未配置供应商 Profile，请先在设置中配置",
   "errNoApiKey": "该 Profile 未配置 API Key",
-  "errProvider": "供应商请求失败：{detail}",
-  "@errProvider": {
-    "placeholders": {
-      "detail": {
-        "type": "String"
-      }
-    }
-  },
   "syncInProgress": "同步进行中",
   "syncFetching": "拉取远端…",
   "syncRebasing": "整合远端变更…",
@@ -341,7 +333,7 @@
   "syncDone": "同步完成",
   "syncUpToDate": "已是最新",
   "syncNothingToPush": "本地无新提交",
-  "syncDirtyRejected": "工作区有未提交变更，已跳过自动同步",
+  "syncDirtyRejected": "知识库有未提交变更，已跳过自动同步",
   "gitNotInitialized": "尚未初始化 Git",
   "gitConflictSummary": "同步冲突：请在桌面端处理后重新同步",
   "gitStatusSummary": "{branch} · 变更 {changed} · 领先 {ahead} · 落后 {behind}",
@@ -368,5 +360,66 @@
   "settingsLanguage": "界面语言",
   "settingsLanguageSystem": "跟随系统",
   "settingsLanguageZh": "简体中文",
-  "settingsLanguageEn": "English"
+  "settingsLanguageEn": "English",
+  "syncStateIdle": "空闲",
+  "syncStateRunning": "进行中",
+  "syncStateUpToDate": "已是最新",
+  "syncStateAhead": "待推送",
+  "syncStateConflict": "冲突",
+  "syncStateError": "失败",
+  "gitErrNotInitialized": "知识库尚未初始化 Git",
+  "gitErrVaultNotEmpty": "知识库目录非空，拒绝 clone",
+  "gitErrNoChanges": "没有可提交的变更",
+  "gitErrConflictBlocked": "同步冲突禁写中：请在桌面端解决冲突并同步后重试",
+  "gitErrCredentialsMissing": "未配置远端凭证（请在设置中填写）",
+  "gitErrNetwork": "网络请求失败",
+  "gitErrAuth": "远端鉴权失败",
+  "gitErrCertificate": "远端主机证书或主机密钥校验失败",
+  "gitErrRemoteRejected": "远端拒绝了请求",
+  "gitErrOperation": "Git 操作失败",
+  "messageWithDetail": "{message}（{detail}）",
+  "@messageWithDetail": {
+    "placeholders": {
+      "message": {
+        "type": "String"
+      },
+      "detail": {
+        "type": "String"
+      }
+    }
+  },
+  "errProviderNetwork": "网络请求失败：{detail}",
+  "@errProviderNetwork": {
+    "placeholders": {
+      "detail": {
+        "type": "String"
+      }
+    }
+  },
+  "errProviderHttp": "供应商返回 HTTP {detail}",
+  "@errProviderHttp": {
+    "placeholders": {
+      "detail": {
+        "type": "String"
+      }
+    }
+  },
+  "errProviderUnexpected": "供应商请求失败：{detail}",
+  "@errProviderUnexpected": {
+    "placeholders": {
+      "detail": {
+        "type": "String"
+      }
+    }
+  },
+  "secretWriteFailed": "密钥写入失败",
+  "secretDeleteFailed": "密钥删除失败",
+  "errUnexpected": "操作失败：{detail}",
+  "@errUnexpected": {
+    "placeholders": {
+      "detail": {
+        "type": "String"
+      }
+    }
+  }
 }

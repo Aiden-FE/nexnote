@@ -17,8 +17,8 @@ class CaptureResult {
   const CaptureResult(this.path, this.title, {this.generatedTitle = false});
 }
 
-/// 缺省标题的语言中性稳定标识：文件名 / frontmatter 用它，UI 再本地化。
-const String untitledCaptureTitle = 'untitled';
+/// 缺省标题的落盘值：写入知识库的数据不随界面语言变化，UI 靠 [generatedTitle] 本地化。
+const String untitledCaptureTitle = '未命名捕获';
 
 /// 快速捕获
 class QuickCapture {

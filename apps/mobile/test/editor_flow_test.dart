@@ -10,11 +10,13 @@ import 'package:nexnote_mobile/l10n/app_localizations.dart';
 
 void main() {
   late Directory tmp;
+  late AppLocalizations l10n;
 
   setUp(() async {
     tmp = await Directory.systemTemp.createTemp('nexnote-editor-test');
     appServices.dispose();
     await appServices.bootstrap(appSupportOverride: tmp);
+    l10n = await AppLocalizations.delegate.load(const Locale('zh'));
   });
 
   tearDown(() {
@@ -27,7 +29,7 @@ void main() {
       MaterialApp(
         localizationsDelegates: AppLocalizations.localizationsDelegates,
         supportedLocales: AppLocalizations.supportedLocales,
-        // 本文件断言中文 UI 文案（如「保存」按钮），需固定中文 locale；
+        // 断言一律经 AppLocalizations 取值（见 l10n 字段），因此这里固定中文；
         // flutter test 默认系统 locale 为 en，会解析到英文文案。
         locale: const Locale('zh'),
         home: page,
@@ -52,7 +54,7 @@ void main() {
 
     await tester.enterText(find.text('原段落内容'), '新段落内容');
     await tester.pumpAndSettle();
-    await tester.tap(find.text('保存'));
+    await tester.tap(find.text(l10n.blockSave));
     await tester.pumpAndSettle();
     await flushAutoCommit(tester);
 
@@ -66,7 +68,7 @@ void main() {
     await pump(tester, const BlockEditorPage(path: 'notes/b.md'));
     // 保存按钮在无改动时为禁用态
     final saveButton = tester.widget<TextButton>(
-      find.widgetWithText(TextButton, '保存'),
+      find.widgetWithText(TextButton, l10n.blockSave),
     );
     expect(saveButton.onPressed, isNull);
     expect(readVault('notes/b.md'), original);
@@ -79,7 +81,7 @@ void main() {
     await pump(tester, const BlockEditorPage(path: 'notes/c.md'));
     await tester.enterText(find.text('原段落'), '改过的段落');
     await tester.pumpAndSettle();
-    await tester.tap(find.text('保存'));
+    await tester.tap(find.text(l10n.blockSave));
     await tester.pumpAndSettle();
     await flushAutoCommit(tester);
 
@@ -95,7 +97,7 @@ void main() {
 
     await tester.enterText(find.text('旧内容'), '独特关键词内容');
     await tester.pumpAndSettle();
-    await tester.tap(find.text('保存'));
+    await tester.tap(find.text(l10n.blockSave));
     await tester.pumpAndSettle();
     await flushAutoCommit(tester);
 
@@ -111,11 +113,11 @@ void main() {
     await pump(tester, const SourceEditorPage(path: 'notes/e.md'));
     expect(readVault('notes/e.md'), original);
 
-    await tester.tap(find.byTooltip('切换到块编辑模式'));
+    await tester.tap(find.byTooltip(l10n.sourceSwitchToBlock));
     await tester.pumpAndSettle();
     expect(readVault('notes/e.md'), original);
 
-    await tester.tap(find.byTooltip('切换到源码模式'));
+    await tester.tap(find.byTooltip(l10n.blockSwitchToSource));
     await tester.pumpAndSettle();
     expect(readVault('notes/e.md'), original);
   });
@@ -126,12 +128,12 @@ void main() {
 
     await pump(tester, const SourceEditorPage(path: 'notes/f.md'));
     // frontmatter 只读展示
-    expect(find.textContaining('元数据头（只读）'), findsOneWidget);
+    expect(find.textContaining(l10n.sourceFrontmatter), findsOneWidget);
     expect(find.textContaining('title: 页面'), findsOneWidget);
 
     await tester.enterText(find.byType(TextField), '正文改过');
     await tester.pumpAndSettle();
-    await tester.tap(find.widgetWithText(TextButton, '保存'));
+    await tester.tap(find.widgetWithText(TextButton, l10n.sourceSave));
     await tester.pumpAndSettle();
     await flushAutoCommit(tester);
 

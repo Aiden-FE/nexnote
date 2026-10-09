@@ -7,6 +7,7 @@ import 'package:flutter/material.dart';
 import '../../../git/device_git_service.dart';
 import '../../../vault/frontmatter.dart';
 import '../../app_services.dart';
+import '../../message_descriptions.dart';
 import 'block_editor_page.dart';
 import '../../../l10n/app_localizations.dart';
 
@@ -60,7 +61,7 @@ class _SourceEditorPageState extends State<SourceEditorPage> {
       );
     } on GitServiceError catch (e) {
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(l10n.saveFailed(e.message))),
+        SnackBar(content: Text(l10n.saveFailed(describeGitError(l10n, e)))),
       );
     }
   }

@@ -509,7 +509,7 @@ abstract class AppLocalizations {
   /// No description provided for @graphSummary.
   ///
   /// In zh, this message translates to:
-  /// **'节点 {nodes} · 边 {edges} · 未解析 {unresolved}（点击节点查看，只读浏览）'**
+  /// **'页面 {nodes} · 双链 {edges} · 未解析 {unresolved}（点击页面查看，只读浏览）'**
   String graphSummary(int nodes, int edges, int unresolved);
 
   /// No description provided for @readerMissing.
@@ -812,12 +812,6 @@ abstract class AppLocalizations {
   /// **'该 Profile 未配置 API Key'**
   String get errNoApiKey;
 
-  /// No description provided for @errProvider.
-  ///
-  /// In zh, this message translates to:
-  /// **'供应商请求失败：{detail}'**
-  String errProvider(String detail);
-
   /// No description provided for @syncInProgress.
   ///
   /// In zh, this message translates to:
@@ -863,7 +857,7 @@ abstract class AppLocalizations {
   /// No description provided for @syncDirtyRejected.
   ///
   /// In zh, this message translates to:
-  /// **'工作区有未提交变更，已跳过自动同步'**
+  /// **'知识库有未提交变更，已跳过自动同步'**
   String get syncDirtyRejected;
 
   /// No description provided for @gitNotInitialized.
@@ -931,6 +925,144 @@ abstract class AppLocalizations {
   /// In zh, this message translates to:
   /// **'English'**
   String get settingsLanguageEn;
+
+  /// No description provided for @syncStateIdle.
+  ///
+  /// In zh, this message translates to:
+  /// **'空闲'**
+  String get syncStateIdle;
+
+  /// No description provided for @syncStateRunning.
+  ///
+  /// In zh, this message translates to:
+  /// **'进行中'**
+  String get syncStateRunning;
+
+  /// No description provided for @syncStateUpToDate.
+  ///
+  /// In zh, this message translates to:
+  /// **'已是最新'**
+  String get syncStateUpToDate;
+
+  /// No description provided for @syncStateAhead.
+  ///
+  /// In zh, this message translates to:
+  /// **'待推送'**
+  String get syncStateAhead;
+
+  /// No description provided for @syncStateConflict.
+  ///
+  /// In zh, this message translates to:
+  /// **'冲突'**
+  String get syncStateConflict;
+
+  /// No description provided for @syncStateError.
+  ///
+  /// In zh, this message translates to:
+  /// **'失败'**
+  String get syncStateError;
+
+  /// No description provided for @gitErrNotInitialized.
+  ///
+  /// In zh, this message translates to:
+  /// **'知识库尚未初始化 Git'**
+  String get gitErrNotInitialized;
+
+  /// No description provided for @gitErrVaultNotEmpty.
+  ///
+  /// In zh, this message translates to:
+  /// **'知识库目录非空，拒绝 clone'**
+  String get gitErrVaultNotEmpty;
+
+  /// No description provided for @gitErrNoChanges.
+  ///
+  /// In zh, this message translates to:
+  /// **'没有可提交的变更'**
+  String get gitErrNoChanges;
+
+  /// No description provided for @gitErrConflictBlocked.
+  ///
+  /// In zh, this message translates to:
+  /// **'同步冲突禁写中：请在桌面端解决冲突并同步后重试'**
+  String get gitErrConflictBlocked;
+
+  /// No description provided for @gitErrCredentialsMissing.
+  ///
+  /// In zh, this message translates to:
+  /// **'未配置远端凭证（请在设置中填写）'**
+  String get gitErrCredentialsMissing;
+
+  /// No description provided for @gitErrNetwork.
+  ///
+  /// In zh, this message translates to:
+  /// **'网络请求失败'**
+  String get gitErrNetwork;
+
+  /// No description provided for @gitErrAuth.
+  ///
+  /// In zh, this message translates to:
+  /// **'远端鉴权失败'**
+  String get gitErrAuth;
+
+  /// No description provided for @gitErrCertificate.
+  ///
+  /// In zh, this message translates to:
+  /// **'远端主机证书或主机密钥校验失败'**
+  String get gitErrCertificate;
+
+  /// No description provided for @gitErrRemoteRejected.
+  ///
+  /// In zh, this message translates to:
+  /// **'远端拒绝了请求'**
+  String get gitErrRemoteRejected;
+
+  /// No description provided for @gitErrOperation.
+  ///
+  /// In zh, this message translates to:
+  /// **'Git 操作失败'**
+  String get gitErrOperation;
+
+  /// No description provided for @messageWithDetail.
+  ///
+  /// In zh, this message translates to:
+  /// **'{message}（{detail}）'**
+  String messageWithDetail(String message, String detail);
+
+  /// No description provided for @errProviderNetwork.
+  ///
+  /// In zh, this message translates to:
+  /// **'网络请求失败：{detail}'**
+  String errProviderNetwork(String detail);
+
+  /// No description provided for @errProviderHttp.
+  ///
+  /// In zh, this message translates to:
+  /// **'供应商返回 HTTP {detail}'**
+  String errProviderHttp(String detail);
+
+  /// No description provided for @errProviderUnexpected.
+  ///
+  /// In zh, this message translates to:
+  /// **'供应商请求失败：{detail}'**
+  String errProviderUnexpected(String detail);
+
+  /// No description provided for @secretWriteFailed.
+  ///
+  /// In zh, this message translates to:
+  /// **'密钥写入失败'**
+  String get secretWriteFailed;
+
+  /// No description provided for @secretDeleteFailed.
+  ///
+  /// In zh, this message translates to:
+  /// **'密钥删除失败'**
+  String get secretDeleteFailed;
+
+  /// No description provided for @errUnexpected.
+  ///
+  /// In zh, this message translates to:
+  /// **'操作失败：{detail}'**
+  String errUnexpected(String detail);
 }
 
 class _AppLocalizationsDelegate

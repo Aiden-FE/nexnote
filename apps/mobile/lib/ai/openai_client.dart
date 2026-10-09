@@ -11,14 +11,26 @@ import 'package:http/http.dart' as http;
 
 import 'provider_profile.dart';
 
+/// 语言中性的 AI 请求错误种类（ADR-0024）。
+enum AiRequestErrorCode { network, httpStatus, unexpected }
+
 /// AI 请求异常
 class AiRequestError implements Exception {
-  final String message;
+  final AiRequestErrorCode code;
+
+  /// 仅承载底层诊断（不含面向用户文案，不含供应商响应体）。
+  final String? detail;
   final int? statusCode;
-  const AiRequestError(this.message, {this.statusCode});
+
+  const AiRequestError(
+    this.code, {
+    this.detail,
+    this.statusCode,
+  });
+
   @override
   String toString() =>
-      'AiRequestError(${statusCode ?? '-'}): $message';
+      'AiRequestError(${code.name}, ${statusCode ?? '-'}): ${detail ?? '-'}';
 }
 
 /// OpenAI 兼容协议客户端
@@ -74,12 +86,12 @@ class OpenAiClient {
     try {
       response = await httpClient.send(request);
     } on Object catch (e) {
-      throw AiRequestError('网络请求失败：$e');
+      throw AiRequestError(AiRequestErrorCode.network, detail: e.toString());
     }
     if (response.statusCode != 200) {
       // 错误响应不携带供应商原文，避免敏感内容进入日志与界面
       throw AiRequestError(
-        '供应商返回 ${response.statusCode}',
+        AiRequestErrorCode.httpStatus,
         statusCode: response.statusCode,
       );
     }

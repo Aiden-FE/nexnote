@@ -1,5 +1,5 @@
 ---
-status: accepted
+status: implemented
 ---
 
 # 手机端界面双语：Flutter 官方 l10n，提交摘要不本地化
@@ -20,3 +20,27 @@ status: accepted
 - 需要生成 iOS 的 `zh-Hans` 本地化区域；未在真机或模拟器验证系统语言切换前，相关验收标记为 `NOT_RUN`。
 - 3 个测试文件的 UI 断言改为经本地化查找，不得硬编码中文文案。
 - 与 ADR-0023 边界一致：AI 提示词不属界面文案。
+
+## Implementation Notes（2026-10-09 落地）
+
+- 采用 Flutter 官方方案：`flutter_localizations` + `intl` + `generate: true` +
+  `lib/l10n/{app_zh.arb,app_en.arb}`（各 161 个 key，逐 key 对齐，由
+  `l10n_message_catalog_test.dart` 锁定）；`AppLocalizations` 生成文件入库。
+- 界面语言：`AppSettings.languageOverride`（仅接受 zh/en，其余按 null 处理）+
+  `AppServices.localeOverride`，设置页以 `SegmentedButton` 提供
+  跟随系统 / 简体中文 / English；`MaterialApp.locale` 为 null 时跟随系统，
+  系统语言既非 zh 也非 en 时按 `supportedLocales` 首项回退 en。
+- 错误码化（与 ADR-0023 同模式）：`SyncMessageKind` / `GitErrorCode` /
+  `AiRequestErrorCode` / `SecretVaultErrorCode` / `CaptureErrorCode` 为语言中性码，
+  界面经 `app/message_descriptions.dart` 成文；Git 自带错误不再携带面向用户的中文，
+  仅保留 libgit2 原生 detail 作诊断。
+- 按本 ADR 否决项保留中文：Git 提交摘要（`保存页面` 等）、AI system prompt
+  （含 `RecallStage.promptLabel`，显式区分于界面用的 `describeRecallStage`）、
+  快速捕获落盘标题（`未命名捕获`，UI 侧靠 `generatedTitle` 标志本地化）、
+  内部开发异常（`VaultPathError` / `ArgumentError`）与代码注释。
+- iOS：`Info.plist` 加 `CFBundleLocalizations`（`zh-Hans` / `en`），
+  `project.pbxproj` 的 `knownRegions` 加 `zh-Hans`。
+- 门禁：`flutter analyze` 无问题；`flutter test` 120 例通过；
+  `l10n_message_catalog_test.dart` 以 CJK 正则扫描锁定「EN 词典无中文残留」。
+- `NOT_RUN`：iOS 真机 / 模拟器上的系统语言切换与 Keychain 写入未在本机验证
+  （本机无 iOS 运行时），需在具备 Xcode 模拟器或真机的环境补验。

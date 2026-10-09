@@ -248,7 +248,7 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String graphSummary(int nodes, int edges, int unresolved) {
-    return '$nodes nodes · $edges edges · $unresolved unresolved (tap a node to open; read-only)';
+    return '$nodes pages · $edges wikilinks · $unresolved unresolved (tap a page to open; read-only)';
   }
 
   @override
@@ -430,11 +430,6 @@ class AppLocalizationsEn extends AppLocalizations {
   String get errNoApiKey => 'This profile has no API key configured';
 
   @override
-  String errProvider(String detail) {
-    return 'Provider request failed: $detail';
-  }
-
-  @override
   String get syncInProgress => 'Syncing…';
 
   @override
@@ -494,4 +489,87 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get settingsLanguageEn => 'English';
+
+  @override
+  String get syncStateIdle => 'idle';
+
+  @override
+  String get syncStateRunning => 'running';
+
+  @override
+  String get syncStateUpToDate => 'up to date';
+
+  @override
+  String get syncStateAhead => 'ahead of remote';
+
+  @override
+  String get syncStateConflict => 'conflict';
+
+  @override
+  String get syncStateError => 'failed';
+
+  @override
+  String get gitErrNotInitialized => 'Git is not initialized in this vault';
+
+  @override
+  String get gitErrVaultNotEmpty =>
+      'Vault directory is not empty; clone refused';
+
+  @override
+  String get gitErrNoChanges => 'No staged changes to commit';
+
+  @override
+  String get gitErrConflictBlocked =>
+      'Sync conflict blocks writes: resolve it on desktop, then sync again';
+
+  @override
+  String get gitErrCredentialsMissing =>
+      'No remote credentials configured (fill them in Settings)';
+
+  @override
+  String get gitErrNetwork => 'Network request failed';
+
+  @override
+  String get gitErrAuth => 'Remote authentication failed';
+
+  @override
+  String get gitErrCertificate =>
+      'Remote host certificate or host key check failed';
+
+  @override
+  String get gitErrRemoteRejected => 'The remote rejected the request';
+
+  @override
+  String get gitErrOperation => 'Git operation failed';
+
+  @override
+  String messageWithDetail(String message, String detail) {
+    return '$message ($detail)';
+  }
+
+  @override
+  String errProviderNetwork(String detail) {
+    return 'Network request failed: $detail';
+  }
+
+  @override
+  String errProviderHttp(String detail) {
+    return 'The provider returned HTTP $detail';
+  }
+
+  @override
+  String errProviderUnexpected(String detail) {
+    return 'Provider request failed: $detail';
+  }
+
+  @override
+  String get secretWriteFailed => 'Failed to write secret';
+
+  @override
+  String get secretDeleteFailed => 'Failed to delete secret';
+
+  @override
+  String errUnexpected(String detail) {
+    return 'Operation failed: $detail';
+  }
 }

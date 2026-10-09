@@ -69,9 +69,7 @@ class AppServices {
   void bumpVaultRevision() => vaultRevision.value++;
 
   /// 界面语言：null = 跟随系统，`Locale('zh'/'en')` = 覆盖（ADR-0024）。
-  ValueNotifier<Locale?>? _localeOverride;
-  ValueNotifier<Locale?> get localeOverride =>
-      _localeOverride ??= ValueNotifier<Locale?>(null);
+  final ValueNotifier<Locale?> localeOverride = ValueNotifier<Locale?>(null);
 
   /// 设置界面语言覆盖；传 null 恢复跟随系统，并持久化。
   void setLanguageOverride(Locale? locale) {
@@ -109,9 +107,8 @@ class AppServices {
     );
     _settingsStore = SettingsStore(appSupport: appSupport);
     final initialLanguage = _settingsStore!.load().languageOverride;
-    _localeOverride = ValueNotifier<Locale?>(
-      initialLanguage == null ? null : Locale(initialLanguage),
-    );
+    localeOverride.value =
+        initialLanguage == null ? null : Locale(initialLanguage);
     _profileStore = ProviderProfileStore(
       appSupport: appSupport,
       secrets: KeychainSecretVault(),

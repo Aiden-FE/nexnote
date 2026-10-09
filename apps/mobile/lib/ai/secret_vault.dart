@@ -6,6 +6,9 @@ library;
 
 import 'package:flutter/services.dart';
 
+/// 语言中性的密钥存取错误种类（ADR-0024）。
+enum SecretVaultErrorCode { writeFailed, deleteFailed }
+
 /// 密钥存取
 abstract class SecretVault {
   Future<void> write(String account, String secret);
@@ -61,7 +64,7 @@ class KeychainSecretVault implements SecretVault {
   Future<void> write(String account, String secret) async {
     final ok = await _KeychainChannel.write(account, secret);
     if (!ok) {
-      throw SecretVaultError('Keychain 写入失败');
+      throw const SecretVaultError(SecretVaultErrorCode.writeFailed);
     }
   }
 
@@ -72,7 +75,7 @@ class KeychainSecretVault implements SecretVault {
   Future<void> delete(String account) async {
     final ok = await _KeychainChannel.delete(account);
     if (!ok) {
-      throw SecretVaultError('Keychain 删除失败');
+      throw const SecretVaultError(SecretVaultErrorCode.deleteFailed);
     }
   }
 }
@@ -93,8 +96,8 @@ class InMemorySecretVault implements SecretVault {
 }
 
 class SecretVaultError implements Exception {
-  final String message;
-  const SecretVaultError(this.message);
+  final SecretVaultErrorCode code;
+  const SecretVaultError(this.code);
   @override
-  String toString() => 'SecretVaultError: $message';
+  String toString() => 'SecretVaultError(${code.name})';
 }

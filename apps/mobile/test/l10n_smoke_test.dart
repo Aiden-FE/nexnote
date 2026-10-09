@@ -16,11 +16,15 @@ Widget testApp(Locale locale, {Widget? home}) => MaterialApp(
 
 void main() {
   late Directory tmp;
+  late AppLocalizations zh;
+  late AppLocalizations en;
 
   setUp(() async {
     tmp = await Directory.systemTemp.createTemp('nexnote-l10n-test');
     appServices.dispose();
     await appServices.bootstrap(appSupportOverride: tmp);
+    zh = await AppLocalizations.delegate.load(const Locale('zh'));
+    en = await AppLocalizations.delegate.load(const Locale('en'));
   });
 
   tearDown(() {
@@ -31,19 +35,19 @@ void main() {
   testWidgets('中文环境底部导航显示中文标签', (tester) async {
     await tester.pumpWidget(testApp(const Locale('zh')));
     await tester.pumpAndSettle();
-    expect(find.text('库'), findsWidgets);
-    expect(find.text('搜索'), findsOneWidget);
-    expect(find.text('捕获'), findsOneWidget);
-    expect(find.text('设置'), findsOneWidget);
+    expect(find.text(zh.navVault), findsWidgets);
+    expect(find.text(zh.navSearch), findsOneWidget);
+    expect(find.text(zh.navCapture), findsOneWidget);
+    expect(find.text(zh.navSettings), findsOneWidget);
   });
 
   testWidgets('英文环境底部导航显示英文标签', (tester) async {
     await tester.pumpWidget(testApp(const Locale('en')));
     await tester.pumpAndSettle();
-    expect(find.text('Vault'), findsWidgets);
-    expect(find.text('Search'), findsOneWidget);
-    expect(find.text('Capture'), findsOneWidget);
-    expect(find.text('Settings'), findsOneWidget);
+    expect(find.text(en.navVault), findsWidgets);
+    expect(find.text(en.navSearch), findsOneWidget);
+    expect(find.text(en.navCapture), findsOneWidget);
+    expect(find.text(en.navSettings), findsOneWidget);
   });
 
   testWidgets('设置页按语言覆盖渲染对应标签', (tester) async {
@@ -51,15 +55,15 @@ void main() {
       testApp(const Locale('zh'), home: const SettingsPage()),
     );
     await tester.pumpAndSettle();
-    expect(find.text('界面语言'), findsOneWidget);
-    expect(find.text('跟随系统'), findsOneWidget);
+    expect(find.text(zh.settingsLanguage), findsOneWidget);
+    expect(find.text(zh.settingsLanguageSystem), findsOneWidget);
 
     await tester.pumpWidget(
       testApp(const Locale('en'), home: const SettingsPage()),
     );
     await tester.pumpAndSettle();
-    expect(find.text('Interface language'), findsOneWidget);
-    expect(find.text('Match system'), findsOneWidget);
+    expect(find.text(en.settingsLanguage), findsOneWidget);
+    expect(find.text(en.settingsLanguageSystem), findsOneWidget);
   });
 
   testWidgets('语言切换持久化到设置并可恢复跟随系统', (tester) async {
@@ -83,7 +87,7 @@ void main() {
     await tester.pumpAndSettle();
     expect(appServices.localeOverride.value, isNull);
 
-    await tester.tap(find.text('English'));
+    await tester.tap(find.text(zh.settingsLanguageEn));
     await tester.pumpAndSettle();
     expect(appServices.localeOverride.value, const Locale('en'));
     expect(appServices.settings.languageOverride, 'en');

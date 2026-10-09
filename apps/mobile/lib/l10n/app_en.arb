@@ -175,7 +175,7 @@
     }
   },
   "graphTitle": "Graph",
-  "graphSummary": "{nodes} nodes · {edges} edges · {unresolved} unresolved (tap a node to open; read-only)",
+  "graphSummary": "{nodes} pages · {edges} wikilinks · {unresolved} unresolved (tap a page to open; read-only)",
   "@graphSummary": {
     "placeholders": {
       "nodes": {
@@ -326,14 +326,6 @@
   "profileSave": "Save",
   "errNoProfile": "No provider profile configured. Add one in Settings.",
   "errNoApiKey": "This profile has no API key configured",
-  "errProvider": "Provider request failed: {detail}",
-  "@errProvider": {
-    "placeholders": {
-      "detail": {
-        "type": "String"
-      }
-    }
-  },
   "syncInProgress": "Syncing…",
   "syncFetching": "Fetching from remote…",
   "syncRebasing": "Rebasing onto remote…",
@@ -368,5 +360,66 @@
   "settingsLanguage": "Interface language",
   "settingsLanguageSystem": "Match system",
   "settingsLanguageZh": "简体中文",
-  "settingsLanguageEn": "English"
+  "settingsLanguageEn": "English",
+  "syncStateIdle": "idle",
+  "syncStateRunning": "running",
+  "syncStateUpToDate": "up to date",
+  "syncStateAhead": "ahead of remote",
+  "syncStateConflict": "conflict",
+  "syncStateError": "failed",
+  "gitErrNotInitialized": "Git is not initialized in this vault",
+  "gitErrVaultNotEmpty": "Vault directory is not empty; clone refused",
+  "gitErrNoChanges": "No staged changes to commit",
+  "gitErrConflictBlocked": "Sync conflict blocks writes: resolve it on desktop, then sync again",
+  "gitErrCredentialsMissing": "No remote credentials configured (fill them in Settings)",
+  "gitErrNetwork": "Network request failed",
+  "gitErrAuth": "Remote authentication failed",
+  "gitErrCertificate": "Remote host certificate or host key check failed",
+  "gitErrRemoteRejected": "The remote rejected the request",
+  "gitErrOperation": "Git operation failed",
+  "messageWithDetail": "{message} ({detail})",
+  "@messageWithDetail": {
+    "placeholders": {
+      "message": {
+        "type": "String"
+      },
+      "detail": {
+        "type": "String"
+      }
+    }
+  },
+  "errProviderNetwork": "Network request failed: {detail}",
+  "@errProviderNetwork": {
+    "placeholders": {
+      "detail": {
+        "type": "String"
+      }
+    }
+  },
+  "errProviderHttp": "The provider returned HTTP {detail}",
+  "@errProviderHttp": {
+    "placeholders": {
+      "detail": {
+        "type": "String"
+      }
+    }
+  },
+  "errProviderUnexpected": "Provider request failed: {detail}",
+  "@errProviderUnexpected": {
+    "placeholders": {
+      "detail": {
+        "type": "String"
+      }
+    }
+  },
+  "secretWriteFailed": "Failed to write secret",
+  "secretDeleteFailed": "Failed to delete secret",
+  "errUnexpected": "Operation failed: {detail}",
+  "@errUnexpected": {
+    "placeholders": {
+      "detail": {
+        "type": "String"
+      }
+    }
+  }
 }

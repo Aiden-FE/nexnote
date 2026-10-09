@@ -20,8 +20,12 @@ String describeChatError(
       return l10n.errNoProfile;
     case ChatErrorCode.noApiKey:
       return l10n.errNoApiKey;
-    case ChatErrorCode.provider:
-      return l10n.errProvider(detail ?? '');
+    case ChatErrorCode.providerNetwork:
+      return l10n.errProviderNetwork(detail ?? '');
+    case ChatErrorCode.providerHttp:
+      return l10n.errProviderHttp(detail ?? '');
+    case ChatErrorCode.providerUnexpected:
+      return l10n.errProviderUnexpected(detail ?? '');
   }
 }
 

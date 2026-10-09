@@ -57,7 +57,7 @@ class PageWriter {
     if (git.blockedByConflict) {
       throw const GitServiceError(
         GitErrorKind.conflict,
-        '同步冲突禁写中：请在桌面端解决冲突并同步后重试',
+        GitErrorCode.conflictBlocked,
       );
     }
   }

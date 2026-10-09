@@ -68,8 +68,9 @@ class _CapturePageState extends State<CapturePage> {
         _saving = false;
       });
     } on Object catch (e) {
+      final l10n = AppLocalizations.of(context)!;
       setState(() {
-        _error = '$e';
+        _error = l10n.errUnexpected(e.toString());
         _saving = false;
       });
     }

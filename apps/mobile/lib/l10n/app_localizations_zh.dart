@@ -243,7 +243,7 @@ class AppLocalizationsZh extends AppLocalizations {
 
   @override
   String graphSummary(int nodes, int edges, int unresolved) {
-    return '节点 $nodes · 边 $edges · 未解析 $unresolved（点击节点查看，只读浏览）';
+    return '页面 $nodes · 双链 $edges · 未解析 $unresolved（点击页面查看，只读浏览）';
   }
 
   @override
@@ -421,11 +421,6 @@ class AppLocalizationsZh extends AppLocalizations {
   String get errNoApiKey => '该 Profile 未配置 API Key';
 
   @override
-  String errProvider(String detail) {
-    return '供应商请求失败：$detail';
-  }
-
-  @override
   String get syncInProgress => '同步进行中';
 
   @override
@@ -447,7 +442,7 @@ class AppLocalizationsZh extends AppLocalizations {
   String get syncNothingToPush => '本地无新提交';
 
   @override
-  String get syncDirtyRejected => '工作区有未提交变更，已跳过自动同步';
+  String get syncDirtyRejected => '知识库有未提交变更，已跳过自动同步';
 
   @override
   String get gitNotInitialized => '尚未初始化 Git';
@@ -483,4 +478,83 @@ class AppLocalizationsZh extends AppLocalizations {
 
   @override
   String get settingsLanguageEn => 'English';
+
+  @override
+  String get syncStateIdle => '空闲';
+
+  @override
+  String get syncStateRunning => '进行中';
+
+  @override
+  String get syncStateUpToDate => '已是最新';
+
+  @override
+  String get syncStateAhead => '待推送';
+
+  @override
+  String get syncStateConflict => '冲突';
+
+  @override
+  String get syncStateError => '失败';
+
+  @override
+  String get gitErrNotInitialized => '知识库尚未初始化 Git';
+
+  @override
+  String get gitErrVaultNotEmpty => '知识库目录非空，拒绝 clone';
+
+  @override
+  String get gitErrNoChanges => '没有可提交的变更';
+
+  @override
+  String get gitErrConflictBlocked => '同步冲突禁写中：请在桌面端解决冲突并同步后重试';
+
+  @override
+  String get gitErrCredentialsMissing => '未配置远端凭证（请在设置中填写）';
+
+  @override
+  String get gitErrNetwork => '网络请求失败';
+
+  @override
+  String get gitErrAuth => '远端鉴权失败';
+
+  @override
+  String get gitErrCertificate => '远端主机证书或主机密钥校验失败';
+
+  @override
+  String get gitErrRemoteRejected => '远端拒绝了请求';
+
+  @override
+  String get gitErrOperation => 'Git 操作失败';
+
+  @override
+  String messageWithDetail(String message, String detail) {
+    return '$message（$detail）';
+  }
+
+  @override
+  String errProviderNetwork(String detail) {
+    return '网络请求失败：$detail';
+  }
+
+  @override
+  String errProviderHttp(String detail) {
+    return '供应商返回 HTTP $detail';
+  }
+
+  @override
+  String errProviderUnexpected(String detail) {
+    return '供应商请求失败：$detail';
+  }
+
+  @override
+  String get secretWriteFailed => '密钥写入失败';
+
+  @override
+  String get secretDeleteFailed => '密钥删除失败';
+
+  @override
+  String errUnexpected(String detail) {
+    return '操作失败：$detail';
+  }
 }

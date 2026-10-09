@@ -110,8 +110,11 @@ void main() {
           .toList();
     } on AiRequestError catch (e) {
       thrown = true;
+      expect(e.code, AiRequestErrorCode.httpStatus);
       expect(e.statusCode, 500);
-      expect(e.message, isNot(contains('secret detail')));
+      // 错误响应不携带供应商原文，避免敏感内容进入日志与界面
+      expect(e.detail, isNull);
+      expect(e.toString(), isNot(contains('secret detail')));
     }
     expect(thrown, isTrue);
   });

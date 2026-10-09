@@ -7,42 +7,9 @@ import '../../git/git_types.dart';
 import '../../ai/secret_vault.dart';
 import '../../vault/backup_exclusion.dart';
 import '../app_services.dart';
+import '../message_descriptions.dart';
 import 'settings/ai_profile_editor.dart';
 import '../../l10n/app_localizations.dart';
-
-/// 把同步消息种类翻译为当前界面语言（ADR-0023 错误码化）。
-String describeSyncMessage(AppLocalizations l10n, SyncMessageKind kind) {
-  switch (kind) {
-    case SyncMessageKind.inProgress:
-      return l10n.syncInProgress;
-    case SyncMessageKind.fetching:
-      return l10n.syncFetching;
-    case SyncMessageKind.rebasing:
-      return l10n.syncRebasing;
-    case SyncMessageKind.pushing:
-      return l10n.syncPushing;
-    case SyncMessageKind.done:
-      return l10n.syncDone;
-    case SyncMessageKind.upToDate:
-      return l10n.syncUpToDate;
-    case SyncMessageKind.nothingToPush:
-      return l10n.syncNothingToPush;
-    case SyncMessageKind.dirtyRejected:
-      return l10n.syncDirtyRejected;
-  }
-}
-
-/// 把 Git 状态摘要翻译为当前界面语言；服务层只提供结构化字段。
-String describeGitStatusSummary(AppLocalizations l10n, VaultStatus status) {
-  if (!status.initialized) return l10n.gitNotInitialized;
-  if (status.conflict) return l10n.gitConflictSummary;
-  return l10n.gitStatusSummary(
-    status.branch,
-    status.changed.length,
-    status.ahead,
-    status.behind,
-  );
-}
 
 /// 设置与诊断：设备知识库信息、Git 状态、同步与 M1 验收动作
 class SettingsPage extends StatefulWidget {
@@ -118,13 +85,16 @@ class _SettingsPageState extends State<SettingsPage> {
       _append(AppLocalizations.of(context)!.settingsActionDone(label));
     } on GitServiceError catch (e) {
       if (!mounted) return;
+      final l10n = AppLocalizations.of(context)!;
       _append(
-        AppLocalizations.of(context)!
-            .settingsActionFailed(label, '${e.kind.name} — ${e.message}'),
+        l10n.settingsActionFailed(label, describeGitError(l10n, e)),
       );
     } on Object catch (e) {
       if (!mounted) return;
-      _append(AppLocalizations.of(context)!.settingsActionFailed(label, '$e'));
+      final l10n = AppLocalizations.of(context)!;
+      _append(
+        l10n.settingsActionFailed(label, l10n.errUnexpected(e.toString())),
+      );
     } finally {
       setState(() => _busy = false);
       _refresh();
@@ -300,7 +270,7 @@ class _SettingsPageState extends State<SettingsPage> {
                 onPressed: _busy ? null : () => _run(l10n.settingsSyncNow, () async {
                       final result = await git.sync();
                       _append(l10n.settingsSyncResult(
-                          result.state.name,
+                          describeSyncState(l10n, result.state),
                           describeSyncMessage(l10n, result.message)));
                     }),
                 icon: const Icon(Icons.sync),

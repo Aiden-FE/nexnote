@@ -10,8 +10,11 @@ import '../reader/link_graph.dart';
 /// 召回阶段
 enum RecallStage { keyword, links }
 
-extension RecallStageLabel on RecallStage {
-  String get label => switch (this) {
+/// 召回阶段的 **AI prompt 标注**——属模型指令，不是界面文案，
+/// 因此固定中文且不随界面语言变化（ADR-0024）。
+/// 界面侧请用 `describeRecallStage` 经消息目录成文。
+extension RecallStagePromptLabel on RecallStage {
+  String get promptLabel => switch (this) {
         RecallStage.keyword => '关键词',
         RecallStage.links => '双链扩展',
       };

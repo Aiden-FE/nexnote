@@ -61,8 +61,12 @@ class _AiProfileEditorState extends State<AiProfileEditor> {
       await store.upsert(profile, _apiKey.text.trim().isEmpty ? null : _apiKey.text.trim());
       if (mounted) Navigator.of(context).pop();
     } on SecretVaultError catch (e) {
+      final message = switch (e.code) {
+        SecretVaultErrorCode.writeFailed => l10n.secretWriteFailed,
+        SecretVaultErrorCode.deleteFailed => l10n.secretDeleteFailed,
+      };
       setState(() {
-        _error = e.message;
+        _error = message;
         _saving = false;
       });
     }

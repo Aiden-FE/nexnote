@@ -24,10 +24,13 @@ import 'sync_guard.dart';
 /// Git 运算失败（已分类）
 class GitServiceError implements Exception {
   final GitErrorKind kind;
-  final String message;
-  const GitServiceError(this.kind, this.message);
+  final GitErrorCode code;
+  final String? detail;
+
+  const GitServiceError(this.kind, this.code, {this.detail});
+
   @override
-  String toString() => 'GitServiceError($kind): $message';
+  String toString() => 'GitServiceError($kind/${code.name}): ${detail ?? '-'}';
 }
 
 /// 设备端 Git 服务
@@ -86,7 +89,8 @@ class DeviceGitService {
     final existing = _repo;
     if (existing != null) return existing;
     if (!isRepoInitialized) {
-      throw const GitServiceError(GitErrorKind.unknown, '知识库尚未初始化 Git');
+      throw const GitServiceError(
+          GitErrorKind.unknown, GitErrorCode.notInitialized);
     }
     final r = Repository.open(vault.rootPath);
     _repo = r;
@@ -117,7 +121,7 @@ class DeviceGitService {
     final root = Directory(vault.rootPath);
     if (root.existsSync() && root.listSync().isNotEmpty) {
       throw const GitServiceError(
-          GitErrorKind.unknown, '知识库目录非空，拒绝 clone');
+          GitErrorKind.unknown, GitErrorCode.vaultNotEmpty);
     }
     _identityName = name;
     _identityEmail = email;
@@ -283,7 +287,8 @@ class DeviceGitService {
   }) {
     final allowed = _filterGuarded(paths);
     if (allowed.isEmpty) {
-      throw const GitServiceError(GitErrorKind.unknown, '没有可提交的变更');
+      throw const GitServiceError(
+          GitErrorKind.unknown, GitErrorCode.noChanges);
     }
     final r = repo;
     final index = r.index;
@@ -323,7 +328,7 @@ class DeviceGitService {
   void scheduleAutoCommit(String summary) {
     if (_blockedByConflict) {
       throw const GitServiceError(
-          GitErrorKind.conflict, '同步冲突禁写中，不能提交');
+          GitErrorKind.conflict, GitErrorCode.conflictBlocked);
     }
     _autoCommitDebounce?.cancel();
     final sinceLast = DateTime.now().difference(_lastAutoCommitAt);
@@ -388,11 +393,11 @@ class DeviceGitService {
       if (dirty.isNotEmpty) {
         return SyncResult(
           state: SyncState.idle,
-          message: SyncMessages.dirtyRejected,
+          message: SyncMessageKind.dirtyRejected,
         );
       }
 
-      _setStatus(SyncMessages.fetching);
+      _setStatus(SyncMessageKind.fetching);
       final remote = _origin;
       await Future<void>.delayed(Duration.zero);
       remote.fetch(callbacks: await _callbacks(remote.url));
@@ -415,21 +420,21 @@ class DeviceGitService {
         if (localOid == null) {
           return const SyncResult(
             state: SyncState.upToDate,
-            message: SyncMessages.nothingToPush,
+            message: SyncMessageKind.nothingToPush,
           );
         }
-        _setStatus(SyncMessages.pushing);
+        _setStatus(SyncMessageKind.pushing);
         await _push(branch, remote);
         return SyncResult(
           state: SyncState.ahead,
-          message: SyncMessages.done,
+          message: SyncMessageKind.done,
           ahead: 1,
           pushed: 1,
         );
       }
 
       if (behind > 0) {
-        _setStatus(SyncMessages.rebasing);
+        _setStatus(SyncMessageKind.rebasing);
         final upstream =
             Reference.lookup(repo: r, name: upstreamRef).target;
         await _rebaseOnto(r, upstream);
@@ -443,11 +448,11 @@ class DeviceGitService {
       }
 
       if (ahead > 0) {
-        _setStatus(SyncMessages.pushing);
+        _setStatus(SyncMessageKind.pushing);
         await _push(branch, remote);
         return SyncResult(
           state: SyncState.ahead,
-          message: SyncMessages.done,
+          message: SyncMessageKind.done,
           ahead: ahead,
           pushed: ahead,
         );
@@ -456,7 +461,7 @@ class DeviceGitService {
       _blockedByConflict = false;
       return SyncResult(
         state: SyncState.upToDate,
-        message: SyncMessages.doneUpToDate,
+        message: SyncMessageKind.upToDate,
       );
     } on GitServiceError {
       rethrow;
@@ -498,7 +503,8 @@ class DeviceGitService {
       _blockedByConflict = true;
       throw GitServiceError(
         GitErrorKind.conflict,
-        '同步冲突：${e.message}（请在桌面端解决后重新同步）',
+        GitErrorCode.conflictBlocked,
+        detail: e.message,
       );
     }
   }
@@ -521,7 +527,7 @@ class DeviceGitService {
     final creds = await credentials.httpsCredentials();
     if (creds == null) {
       throw const GitServiceError(
-          GitErrorKind.auth, '未配置远端凭证（请在设置中填写）');
+          GitErrorKind.auth, GitErrorCode.credentialsMissing);
     }
     return Callbacks(credentials: creds);
   }
@@ -559,37 +565,55 @@ class DeviceGitService {
       switch (e.errorClass) {
         case git_error_t.GIT_ERROR_HTTP:
         case git_error_t.GIT_ERROR_NET:
-          return GitServiceError(GitErrorKind.network, e.message);
+          return GitServiceError(GitErrorKind.network, GitErrorCode.networkFailed,
+              detail: e.message);
         case git_error_t.GIT_ERROR_SSL:
-          return GitServiceError(GitErrorKind.hostKey, e.message);
+          return GitServiceError(
+              GitErrorKind.hostKey, GitErrorCode.certificateRejected,
+              detail: e.message);
         case git_error_t.GIT_ERROR_SSH:
-          return GitServiceError(GitErrorKind.auth, e.message);
+          return GitServiceError(
+              GitErrorKind.auth, GitErrorCode.authenticationFailed,
+              detail: e.message);
         case git_error_t.GIT_ERROR_REBASE:
         case git_error_t.GIT_ERROR_MERGE:
         case git_error_t.GIT_ERROR_CHECKOUT:
-          return GitServiceError(GitErrorKind.conflict, e.message);
+          return GitServiceError(
+              GitErrorKind.conflict, GitErrorCode.conflictBlocked,
+              detail: e.message);
         default:
           break;
       }
       if (msg.contains('401') ||
           msg.contains('403') ||
           msg.contains('authenticat')) {
-        return GitServiceError(GitErrorKind.auth, e.message);
+        return GitServiceError(
+            GitErrorKind.auth, GitErrorCode.authenticationFailed,
+            detail: e.message);
       }
       if (msg.contains('certificate') || msg.contains('host key')) {
-        return GitServiceError(GitErrorKind.hostKey, e.message);
+        return GitServiceError(
+            GitErrorKind.hostKey, GitErrorCode.certificateRejected,
+            detail: e.message);
       }
       if (msg.contains('conflict')) {
-        return GitServiceError(GitErrorKind.conflict, e.message);
+        return GitServiceError(
+            GitErrorKind.conflict, GitErrorCode.conflictBlocked,
+            detail: e.message);
       }
       if (msg.contains('could not resolve host') ||
           msg.contains('connection') ||
           msg.contains('timed out')) {
-        return GitServiceError(GitErrorKind.network, e.message);
+        return GitServiceError(GitErrorKind.network, GitErrorCode.networkFailed,
+            detail: e.message);
       }
-      return GitServiceError(GitErrorKind.unknown, e.message);
+      return GitServiceError(
+          GitErrorKind.unknown, GitErrorCode.gitOperationFailed,
+          detail: e.message);
     }
-    return GitServiceError(GitErrorKind.unknown, e.toString());
+    return GitServiceError(
+        GitErrorKind.unknown, GitErrorCode.gitOperationFailed,
+        detail: e.toString());
   }
 
   /// 释放资源
