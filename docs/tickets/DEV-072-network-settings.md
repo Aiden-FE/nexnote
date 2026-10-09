@@ -1,6 +1,6 @@
 # DEV-072 应用网络设置（默认跟随系统）
 
-- 状态：实现完成（v0.0.27 候选，待发布）
+- 状态：done（v0.0.27 已发布，2026-10-09 核实）
 - 实现记录：AI/Git override 已加入全局设置、独立设置控件与代理派生；settings:setGlobal IPC allowlist 接受 network patch。AI 使用直接依赖的 undici EnvHttpProxyAgent，代理初始化/请求失败不回退直连；AI 与 Git 都应用配置的 bypass 主机列表。AI 网络错误与 Git/IPC 错误不回显代理凭证。macOS scutil 无代理时回退到 HTTP_PROXY/HTTPS_PROXY/ALL_PROXY。Git 每子进程经 GIT_CONFIG_COUNT/KEY/VALUE 注入代理配置，凭证不出现在命令参数；off 会清除继承的代理环境。用户提供的本机 HTTP proxy 实机验收覆盖 AI mock SSE 200 与公开 remote 只读操作；本机 bare-repo 集成覆盖 Git ls-remote/fetch/pull/push。
 - 0.0.21：设置页「网络」section、AI 走 ProxyAgent、Git 经 HTTP_PROXY/HTTPS_PROXY 环境变量与单命令配置注入。
 - 0.0.22 补齐：`mode=system` 主进程主动探测 OS 代理（macOS `scutil --proxy` / Windows `reg query` / Linux env+gsettings，30s TTL 缓存），探测结果派生为 AI 与 Git 的代理配置。

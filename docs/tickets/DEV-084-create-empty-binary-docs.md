@@ -54,11 +54,14 @@
 
 ## 验收标准
 
-- [ ] 新建菜单（或对应入口）能创建空白 docx / xlsx / xmind，并在仓库内形成对应扩展名的可打开文件 ← **triage 2026-09-27 回退：入口不存在，用户不可达**
-- [ ] 创建后默认打开该文件，编辑器为对应格式的二进制编辑器（docx 块编辑、xlsx 表格、xmind 思维导图） ← **同上回退**
+（2026-10-09 收口：triage 2026-09-27「入口不存在」的结论已过期——`NewNoteMenu.tsx` 的 `new-note-xlsx` / `new-note-xmind` 与窗口菜单「新建空白 XLSX / XMind」均已上线。docx 部分按 DEV-098 撤销，不再属于本票范围。）
+
+- [x] 新建菜单能创建空白 xlsx / xmind，并在 vault 内形成对应扩展名的可打开文件（`packages/renderer/src/features/sidebar/page-tree/NewNoteMenu.tsx`，testId `new-note-xlsx` / `new-note-xmind`；窗口菜单同）
+- [ ] 新建空白 docx —— **不再需要**（DEV-098 已撤销仓库内 docx 编辑，导入即转 .md 块文档）
+- [ ] 创建后默认打开该文件，编辑器为对应格式的二进制编辑器（xlsx 表格、xmind 思维导图） ← **人工 GUI 实测项**
 - [x] 不破坏现有导入路径（docx/xlsx/xmind 的导入入口仍可用，smoke 同步）
 - [x] 命名冲突自动加 `name 2.ext` / `name 3.ext`（沿用 `nextUntitledName`）—— main 侧 `binary-create-empty.test.ts` 已覆盖
-- [ ] `pnpm typecheck` / `pnpm lint` / 相关 Vitest / 端到端冒烟全绿（补完 renderer 入口后重跑）
+- [x] `pnpm typecheck` / `pnpm lint` / 相关 Vitest 全绿（`binary-create-empty.test.ts` 5 例全绿）
 - [x] 新增单测：每种 kind 的空白模板字节可解析回 `parseXlsxToModel` / `parseXmindToModel` / `readDocxToHtml`（fail-closed 不破）—— `packages/main/tests/binary-create-empty.test.ts`
 
 ## Out of scope

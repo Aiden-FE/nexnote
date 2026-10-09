@@ -1,6 +1,6 @@
 # DEV-074 应用内二进制编辑器（docx / xlsx / xmind）
 
-- 状态：实现完成（v0.0.27 候选，待发布）
+- 状态：done（v0.0.27 已发布；docx 部分后由 DEV-098 撤销，xlsx / xmind 保留；2026-10-09 核实）
 - code-review 修复（2026-09-24）：
   - `binary-editor-host` 不再用 `did-finish-load` 触发 pending drain；渲染层 bootstrap 完成后主动 `binary:host:ready` ack（senderId 识别），主进程 drain。roundTrip 等待 ack 到达且 `__nexnoteHostFlush` 缺失时抛错而非静默成功。`close()` 跨 await 用 entry 引用 + webContentsId 双重核对，防止 close/reopen 销毁错对象。
   - `xmind` `content.json` sheet/rootTopic 上未建模字段（boundaries/relationships/theme/skeleton/topicPositioning）原样保留。

@@ -1,6 +1,6 @@
 # DEV-098：撤销仓库内 docx 编辑，导入改为转块文档
 
-状态：in progress
+状态：done（2026-09-28 实现；2026-10-09 核实：编辑类 IPC 已删除，`DOCX_CHANNELS` 仅剩 `docx:import` / `docx:export`）
 日期：2026-09-28
 
 ## 背景
