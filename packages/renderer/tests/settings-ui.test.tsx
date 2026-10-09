@@ -237,14 +237,14 @@ describe('SettingsPage 搜索', () => {
       {
         id: 'appearance.theme',
         sectionId: 'general',
-        title: '主题',
+        titleKey: 'settings.search.appearance.theme',
         keywords: ['theme'],
         scope: 'global',
       },
       {
         id: 'shortcuts.list',
         sectionId: 'shortcuts',
-        title: '快捷键',
+        titleKey: 'settings.search.shortcuts.list',
         keywords: ['shortcut'],
         scope: 'global',
       },

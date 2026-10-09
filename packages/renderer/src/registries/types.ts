@@ -36,10 +36,17 @@ export interface StatusItemDef {
   render: ComponentType;
 }
 
-/** 设置页分区（DEV-016 设置系统在此挂载，本票仅注册表 + 占位分区）。 */
+/**
+ * 设置页分区（DEV-016 设置系统在此挂载，本票仅注册表 + 占位分区）。
+ *
+ * `title` 是界面文案：`titleKey` 时为消息目录 key，由设置页经 i18n 成文；
+ * 否则视为已定稿文案（如第三方插件贡献的标题，不参与翻译）。
+ */
 export interface SettingsSectionDef {
   id: string;
   title: string;
+  /** `title` 是否为消息目录 key（ADR-0023）；缺省视为已定稿文案。 */
+  titleIsKey?: boolean;
   icon: LucideIcon;
   order?: number;
   render?: ComponentType;

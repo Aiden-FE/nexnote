@@ -4,10 +4,18 @@ import { settingsSectionRegistry, useRegistryItems } from '../registries';
 import { useSettingsNav } from '../lib/open-settings';
 import { useSettingsStore } from '../stores/settings-store';
 import { cn } from '../lib/utils';
+import { useI18n } from '../lib/i18n';
 import type { SettingSearchEntry } from '@nexnote/shared';
 
 /** 设置页：分区导航、分区内容与可跳转的设置搜索。 */
 export function SettingsPage() {
+  const t = useI18n();
+  /** 分区标题：`titleIsKey` 时经消息目录成文，否则是已定稿文案（如插件贡献标题）。 */
+  const sectionTitle = (id: string): string => {
+    const def = settingsSectionRegistry.get(id);
+    if (!def) return id;
+    return def.titleIsKey ? t(def.title) : def.title;
+  };
   const sections = [...useRegistryItems(settingsSectionRegistry)].sort(
     (a, b) => (a.order ?? 0) - (b.order ?? 0),
   );
@@ -65,7 +73,7 @@ export function SettingsPage() {
     >
       <h1 className="mb-4 flex items-center gap-2 text-lg font-semibold tracking-tight">
         <SettingsIcon className="size-4.5" />
-        设置
+        {t('settings.page.title')}
       </h1>
       <div className="relative mb-4">
         <Search
@@ -75,8 +83,8 @@ export function SettingsPage() {
         <input
           type="search"
           data-testid="settings-search-input"
-          aria-label="搜索设置"
-          placeholder="搜索设置项…"
+          aria-label={t('settings.page.search')}
+          placeholder={t('settings.page.searchPlaceholder')}
           value={query}
           onChange={(event) => setQuery(event.target.value)}
           className="h-9 w-full rounded-md border bg-background pl-8 pr-3 text-sm outline-none focus:ring-2 focus:ring-ring/40"
@@ -87,18 +95,18 @@ export function SettingsPage() {
         <div
           data-testid="settings-search-results"
           role="region"
-          aria-label="设置搜索结果"
+          aria-label={t('settings.page.searchResultsLabel')}
           className="mb-4 max-h-64 overflow-auto rounded-md border bg-card"
         >
           {searchState === 'loading' && results.length === 0 && (
             <div className="flex items-center gap-2 px-3 py-2 text-xs text-muted-foreground">
               <Loader2 className="size-3.5 animate-spin" />
-              搜索中…
+              {t('settings.page.searching')}
             </div>
           )}
           {searchState === 'done' && results.length === 0 && (
             <div className="px-3 py-3 text-xs text-muted-foreground">
-              没有找到与 “{query.trim()}” 相关的设置
+              {t('settings.page.noResults', { query: query.trim() })}
             </div>
           )}
           {searchState === 'done' && results.length > 0 && (
@@ -108,7 +116,7 @@ export function SettingsPage() {
                 return (
                   <div key={sectionId}>
                     <div className="bg-muted/30 px-3 py-1 text-[11px] font-medium text-muted-foreground">
-                      {section?.title ?? sectionId}
+                      {section ? sectionTitle(section.id) : sectionId}
                     </div>
                     {entries.map((entry) => (
                       <button
@@ -118,7 +126,7 @@ export function SettingsPage() {
                         onClick={() => useSettingsNav.getState().setSection(entry.sectionId)}
                         className="flex w-full items-center justify-between gap-2 px-3 py-2 text-left text-sm hover:bg-accent/50"
                       >
-                        <span>{entry.title}</span>
+                        <span>{t(entry.titleKey)}</span>
                         <span className="text-[11px] text-muted-foreground">{entry.id}</span>
                       </button>
                     ))}
@@ -134,7 +142,7 @@ export function SettingsPage() {
           role="alert"
           className="mb-4 rounded-md border border-destructive/40 bg-destructive/10 px-3 py-2 text-xs text-destructive"
         >
-          搜索失败，请稍后再试
+          {t('settings.page.searchFailed')}
         </div>
       )}
 
@@ -157,7 +165,7 @@ export function SettingsPage() {
                 )}
               >
                 <Icon className="size-4 shrink-0" />
-                <span className="truncate">{section.title}</span>
+                <span className="truncate">{sectionTitle(section.id)}</span>
               </button>
             );
           })}

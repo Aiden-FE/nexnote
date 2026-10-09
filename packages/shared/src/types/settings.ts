@@ -1,4 +1,5 @@
 import type { UpdateChannel } from '../ipc/channels/app';
+import type { UiLanguage } from '../i18n/message-catalog';
 
 export type ThemePreference = 'light' | 'dark' | 'system';
 export type AppLanguage = 'zh-CN' | 'en-US';
@@ -127,7 +128,12 @@ export interface SettingSearchEntry {
     | 'shortcuts'
     | 'updates'
     | 'about';
-  title: string;
+  /** 消息目录 key；界面层按当前语言成文（ADR-0023 架构决策③：双语索引）。 */
+  titleKey: string;
+  /**
+   * 检索关键词——中英互通，保证英文界面下仍能搜到命令
+   * （ADR-0023：按当前界面语言索引 + 保留中英关键词互通）。
+   */
   keywords: string[];
   scope: 'global' | 'vault' | 'domain';
 }
@@ -149,12 +155,18 @@ export const DEFAULT_SHORTCUTS: readonly ShortcutOverride[] = [
   { commandId: 'editor.expandCurrentSection', key: 'Mod+Shift+]', disabled: false },
 ];
 
-export function defaultGlobalSettings(): GlobalSettings {
+/**
+ * 全局设置默认值。
+ *
+ * `language` 默认按系统语言初始化（ADR-0023：`zh*` → `zh-CN`，其余 → `en-US`）；
+ * 调用方未提供时回退 `zh-CN`（保持纯函数可测）。
+ */
+export function defaultGlobalSettings(language: UiLanguage = 'zh-CN'): GlobalSettings {
   return {
     version: 1,
     appearance: {
       theme: 'system',
-      language: 'zh-CN',
+      language,
       uiFontFamily: 'system-ui, -apple-system, "Segoe UI", sans-serif',
       editorFontFamily: 'ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace',
       uiFontSize: 14,

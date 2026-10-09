@@ -1,6 +1,7 @@
 import { useEffect } from 'react';
 import { useSettingsStore, subscribeSettingsChanges } from '../stores/settings-store';
 import type { GlobalSettings, VaultSettings } from '@nexnote/shared';
+import { setLanguage } from '../lib/i18n';
 
 const LS_THEME_KEY = 'nexnote:theme-preference';
 
@@ -42,6 +43,8 @@ export function useSettingsBootstrap(): void {
   // 应用全局视觉效果
   useEffect(() => {
     if (!global) return;
+    // ADR-0023：界面语言切换驱动消息目录；i18n 模块自己触发订阅者重渲染
+    setLanguage(global.appearance.language);
     applyGlobalAppearance(global);
   }, [global]);
 }

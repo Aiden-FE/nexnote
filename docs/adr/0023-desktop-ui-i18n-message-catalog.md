@@ -1,5 +1,5 @@
 ---
-status: accepted
+status: in_progress
 ---
 
 # 桌面端界面双语：共享消息目录 + 跨进程错误码化
@@ -31,3 +31,19 @@ status: accepted
 - 这是一次大范围机械变更，`git blame` 会大量指向本轮；评审以「是否只改文案形态、不改行为」为标准。
 - AI system prompt 属模型指令而非界面文案，本轮不随界面语言变化，其语言策略是独立议题。
 
+## Progress（2026-10-09）
+
+- 阶段①消息目录：`packages/shared/src/i18n/message-catalog.ts` 提供语义 key +
+  `zh-CN` / `en-US` 两份词典（当前各 64 key，逐 key 对齐）与 `translate()`
+  （zh-CN 兜底、key 缺失回退 key 本身、`{param}` 占位符替换）；
+  renderer 新增 `lib/i18n.ts`（`setLanguage` / `t()` / `useI18n`，
+  基于 `useSyncExternalStore`），设置语言变化经 `use-settings-effects` 驱动。
+- 首次启动按系统语言：`SettingsService` 按 `app.getPreferredSystemLanguages()`
+  推导初始语言（`zh*` → `zh-CN`，其余 → `en-US`），仅在无设置文件时生效；
+  既有设置值不被覆盖。
+- 阶段②第一批：设置页页面标题、搜索框与结果态、全部设置分区导航标题、
+  常规分区的外观/启动/帮助子项与翻译默认语言行迁移到消息目录。
+- `NOT_RUN` / 未达门槛：阶段②其余 renderer 模块、阶段③主进程错误码化与
+  原生菜单/对话框、阶段④既有测试断言均未完成。按本 ADR 完成门槛
+  「切到 en-US 后全 UI 无中文残留」，当前不得声称桌面端双语完成。
+- 门禁：`pnpm lint` 0；`pnpm typecheck` 5/5；`pnpm test` 1815 passed / 3 skipped。

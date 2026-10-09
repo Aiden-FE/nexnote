@@ -5,6 +5,7 @@ import { useSettingsStore } from '../../stores/settings-store';
 import { useUiStore } from '../../stores/ui-store';
 import { invoke } from '../../lib/ipc';
 import { gettingStartedDocsUrl } from '../../lib/product-docs';
+import { useI18n } from '../../lib/i18n';
 import { useVaultSettingsEffects } from '../../hooks/use-settings-effects';
 import { TranslationDefaultSettings } from '../ai/translation/TranslationDefaultSettings';
 import type {
@@ -26,7 +27,8 @@ import { normalizeShortcut } from '@nexnote/shared';
 
 settingsSectionRegistry.register({
   id: 'general',
-  title: '常规',
+  title: 'settings.section.general',
+  titleIsKey: true,
   icon: SettingsIcon,
   order: 10,
   render: () => <GeneralSection />,
@@ -34,7 +36,8 @@ settingsSectionRegistry.register({
 
 settingsSectionRegistry.register({
   id: 'editor',
-  title: '编辑器',
+  title: 'settings.section.editor',
+  titleIsKey: true,
   icon: FileText,
   order: 20,
   render: () => <EditorSection />,
@@ -42,7 +45,8 @@ settingsSectionRegistry.register({
 
 settingsSectionRegistry.register({
   id: 'git',
-  title: 'Git',
+  title: 'settings.section.git',
+  titleIsKey: true,
   icon: GitBranch,
   order: 30,
   render: () => <GitSection />,
@@ -50,7 +54,8 @@ settingsSectionRegistry.register({
 
 settingsSectionRegistry.register({
   id: 'network',
-  title: '网络',
+  title: 'settings.section.network',
+  titleIsKey: true,
   icon: Globe,
   order: 35,
   render: () => <NetworkSection />,
@@ -58,7 +63,8 @@ settingsSectionRegistry.register({
 
 settingsSectionRegistry.register({
   id: 'shortcuts',
-  title: '快捷键',
+  title: 'settings.section.shortcuts',
+  titleIsKey: true,
   icon: Keyboard,
   order: 40,
   render: () => <ShortcutsSection />,
@@ -66,7 +72,8 @@ settingsSectionRegistry.register({
 
 settingsSectionRegistry.register({
   id: 'about',
-  title: '关于',
+  title: 'settings.section.about',
+  titleIsKey: true,
   icon: Info,
   order: 100,
   render: () => <AboutSection />,
@@ -165,59 +172,61 @@ function Toggle({
   );
 }
 
-function GeneralSection() {
+/** 常规分区：外观、翻译默认值、启动、帮助。导出供 ADR-0023 接缝测试。 */
+export function GeneralSection() {
   const { global, setGlobal } = useGlobalSettings();
+  const t = useI18n();
   const [appVersion, setAppVersion] = useState<string>('');
 
   useEffect(() => {
     void invoke('app:getInfo').then((info) => setAppVersion(info.version));
   }, []);
 
-  if (!global) return <div className="text-sm text-muted-foreground">加载中…</div>;
+  if (!global) return <div className="text-sm text-muted-foreground">{t('settings.loading')}</div>;
 
   return (
     <div className="space-y-6">
-      <SectionHeader title="外观" description="主题、字体与语言" />
-      <Row label="主题" description="浅色、深色或跟随系统">
+      <SectionHeader title={t('settings.appearance.title')} description={t('settings.appearance.description')} />
+      <Row label={t('settings.appearance.theme')} description={t('settings.appearance.theme.description')}>
         <Select
           value={global.appearance.theme}
           onChange={(v) => void setGlobal({ appearance: { theme: v as ThemePreference } })}
           options={[
-            { value: 'system', label: '跟随系统' },
-            { value: 'light', label: '浅色' },
-            { value: 'dark', label: '深色' },
+            { value: 'system', label: t('settings.appearance.theme.system') },
+            { value: 'light', label: t('settings.appearance.theme.light') },
+            { value: 'dark', label: t('settings.appearance.theme.dark') },
           ]}
         />
       </Row>
-      <Row label="语言" description="界面显示语言">
+      <Row label={t('settings.appearance.language')} description={t('settings.appearance.language.description')}>
         <Select
           value={global.appearance.language}
           onChange={(v) => void setGlobal({ appearance: { language: v as 'zh-CN' | 'en-US' } })}
           options={[
-            { value: 'zh-CN', label: '简体中文' },
-            { value: 'en-US', label: 'English' },
+            { value: 'zh-CN', label: t('settings.appearance.language.zhCN') },
+            { value: 'en-US', label: t('settings.appearance.language.enUS') },
           ]}
         />
       </Row>
-      <Row label="UI 字体" description="CSS 字体族列表">
+      <Row label={t('settings.appearance.uiFont')} description={t('settings.appearance.uiFont.description')}>
         <input
-          aria-label="UI 字体"
+          aria-label={t('settings.appearance.uiFont')}
           type="text"
           value={global.appearance.uiFontFamily}
           onChange={(e) => void setGlobal({ appearance: { uiFontFamily: e.target.value } })}
           className="h-8 w-64 rounded-md border bg-background px-2 text-sm"
         />
       </Row>
-      <Row label="编辑器字体" description="编辑器与等宽文本字体族">
+      <Row label={t('settings.appearance.editorFont')} description={t('settings.appearance.editorFont.description')}>
         <input
-          aria-label="编辑器字体"
+          aria-label={t('settings.appearance.editorFont')}
           type="text"
           value={global.appearance.editorFontFamily}
           onChange={(e) => void setGlobal({ appearance: { editorFontFamily: e.target.value } })}
           className="h-8 w-64 rounded-md border bg-background px-2 text-sm"
         />
       </Row>
-      <Row label="UI 字号" description={`${global.appearance.uiFontSize}px`}>
+      <Row label={t('settings.appearance.uiFontSize')} description={`${global.appearance.uiFontSize}px`}>
         <input
           type="range"
           min={10}
@@ -227,7 +236,7 @@ function GeneralSection() {
           className="w-32"
         />
       </Row>
-      <Row label="编辑器字号" description={`${global.appearance.editorFontSize}px`}>
+      <Row label={t('settings.appearance.editorFontSize')} description={`${global.appearance.editorFontSize}px`}>
         <input
           type="range"
           min={10}
@@ -241,28 +250,28 @@ function GeneralSection() {
       </Row>
 
       <div className="border-t pt-6">
-        <SectionHeader title="翻译" description="划词 / 全文翻译与翻译工作台的默认目标语言" />
+        <SectionHeader title={t('settings.translation.title')} description={t('settings.translation.description')} />
         <TranslationDefaultSettings />
       </div>
 
       <div className="border-t pt-6">
-        <SectionHeader title="启动" description="应用打开时的行为" />
-        <Row label="启动时" description="打开上次知识库、走向导或打开特定知识库">
+        <SectionHeader title={t('settings.startup.title')} description={t('settings.startup.description')} />
+        <Row label={t('settings.startup.behavior')} description={t('settings.startup.behavior.description')}>
           <Select
             value={global.startup.behavior}
             onChange={(v) => void setGlobal({ startup: { behavior: v as StartupBehavior } })}
             options={[
-              { value: 'restore', label: '恢复上次知识库' },
-              { value: 'welcome', label: '显示欢迎页' },
-              { value: 'specific-vault', label: '打开特定知识库' },
+              { value: 'restore', label: t('settings.startup.behavior.restore') },
+              { value: 'welcome', label: t('settings.startup.behavior.welcome') },
+              { value: 'specific-vault', label: t('settings.startup.behavior.specificVault') },
             ]}
           />
         </Row>
       </div>
 
       <div className="border-t pt-6">
-        <SectionHeader title="帮助" description="查阅产品文档与重新查看产品使用引导" />
-        <Row label="产品文档" description="在系统默认浏览器中打开官网快速上手文档">
+        <SectionHeader title={t('settings.help.title')} description={t('settings.help.description')} />
+        <Row label={t('settings.help.productDocs')} description={t('settings.help.productDocs.description')}>
           <button
             type="button"
             data-testid="settings-open-product-docs"
@@ -271,17 +280,17 @@ function GeneralSection() {
             }
             className="h-8 rounded-md border bg-background px-3 text-xs font-medium hover:bg-accent"
           >
-            打开文档
+            {t('settings.help.productDocs.open')}
           </button>
         </Row>
-        <Row label="新手引导" description="分步了解页面树、编辑器、AI 与版本时间线等核心区域">
+        <Row label={t('settings.help.tour')} description={t('settings.help.tour.description')}>
           <button
             type="button"
             data-testid="settings-replay-tour"
             onClick={() => useUiStore.getState().setTourOpen(true)}
             className="h-8 rounded-md border bg-background px-3 text-xs font-medium hover:bg-accent"
           >
-            重新播放
+            {t('settings.help.tour.replay')}
           </button>
         </Row>
       </div>

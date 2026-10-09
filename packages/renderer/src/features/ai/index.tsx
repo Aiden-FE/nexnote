@@ -26,7 +26,8 @@ initAiConfig();
 
 settingsSectionRegistry.register({
   id: 'ai',
-  title: 'AI 供应商',
+  title: 'settings.section.ai',
+  titleIsKey: true,
   icon: Bot,
   order: 15,
   render: AiSettingsSection,

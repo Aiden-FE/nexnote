@@ -4,7 +4,8 @@ import { PluginsSettingsPage } from './PluginsSettingsPage';
 
 settingsSectionRegistry.register({
   id: 'plugins',
-  title: '插件',
+  title: 'settings.section.plugins',
+  titleIsKey: true,
   icon: Puzzle,
   order: 60,
   render: PluginsSettingsPage,

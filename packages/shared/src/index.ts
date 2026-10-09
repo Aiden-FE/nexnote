@@ -16,6 +16,8 @@ export * from './markdown/code-languages';
 export * from './editor/editor-actions';
 // Settings utils（纯函数，主/渲染共用）
 export { mergeGlobalPatch, mergeVaultPatch, normalizeShortcut } from './settings/settings-utils';
+// 桌面端消息目录（ADR-0023）：语义 key + zh-CN / en-US 两份词典，主/渲染共用
+export * from './i18n/message-catalog';
 // IPC
 export type * from './ipc/result';
 export type * from './ipc/contract';

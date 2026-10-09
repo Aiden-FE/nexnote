@@ -11,7 +11,8 @@ import { invoke, onEvent } from '../../lib/ipc';
 
 settingsSectionRegistry.register({
   id: 'updates',
-  title: '更新',
+  title: 'settings.section.updates',
+  titleIsKey: true,
   icon: Download,
   order: 90,
   render: UpdateSettingsSection,

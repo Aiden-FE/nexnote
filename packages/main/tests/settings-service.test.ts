@@ -24,6 +24,28 @@ afterEach(async () => {
   await rm(tmp, { recursive: true, force: true });
 });
 
+describe('首次启动按系统语言初始化（ADR-0023）', () => {
+  it('无设置文件时按注入的初始语言生成默认值', async () => {
+    const en = new SettingsService(path.join(tmp, 'en.json'), 'en-US');
+    expect(en.get().appearance.language).toBe('en-US');
+    const zh = new SettingsService(path.join(tmp, 'zh.json'), 'zh-CN');
+    expect(zh.get().appearance.language).toBe('zh-CN');
+  });
+
+  it('已有设置文件时以文件值为准，不被初始语言覆盖', async () => {
+    const file = path.join(tmp, 'existing.json');
+    const { writeFile } = await import('node:fs/promises');
+    await writeFile(file, JSON.stringify({ appearance: { language: 'zh-CN' } }));
+    const service = new SettingsService(file, 'en-US');
+    expect(service.get().appearance.language).toBe('zh-CN');
+  });
+
+  it('defaultGlobalSettings 接受显式语言，未提供时回退 zh-CN', () => {
+    expect(defaultGlobalSettings('en-US').appearance.language).toBe('en-US');
+    expect(defaultGlobalSettings().appearance.language).toBe('zh-CN');
+  });
+});
+
 describe('normalizeStoredGlobal', () => {
   it('空输入返回默认全局设置', () => {
     expect(normalizeStoredGlobal(null)).toEqual(defaultGlobalSettings());
@@ -121,21 +143,21 @@ describe('SettingsService', () => {
   });
 
   it('无文件时返回默认值', () => {
-    const service = new SettingsService(filePath);
+    const service = new SettingsService(filePath, 'zh-CN');
     expect(service.get()).toEqual(defaultGlobalSettings());
   });
 
   it('update 持久化并保留到磁盘', () => {
-    const service = new SettingsService(filePath);
+    const service = new SettingsService(filePath, 'zh-CN');
     const updated = service.update({ appearance: { theme: 'dark' } });
     expect(updated.appearance.theme).toBe('dark');
     // 重新构造实例，验证已持久化
-    const reloaded = new SettingsService(filePath);
+    const reloaded = new SettingsService(filePath, 'zh-CN');
     expect(reloaded.get().appearance.theme).toBe('dark');
   });
 
   it('update 剪除 undefined 字段，不产生 present-undefined', () => {
-    const service = new SettingsService(filePath);
+    const service = new SettingsService(filePath, 'zh-CN');
     const updated = service.update({
       appearance: { theme: 'light', uiFontSize: undefined as unknown as number },
     });
@@ -143,7 +165,7 @@ describe('SettingsService', () => {
   });
 
   it('不同的 AI 与 Git 代理配置可写入并从设置文件恢复', () => {
-    const service = new SettingsService(filePath);
+    const service = new SettingsService(filePath, 'zh-CN');
     const aiProxy = {
       mode: 'https' as const,
       host: 'ai.proxy.local',
@@ -162,18 +184,18 @@ describe('SettingsService', () => {
     };
     service.update({ network: { aiProxy, gitProxy } });
 
-    const reloaded = new SettingsService(filePath);
+    const reloaded = new SettingsService(filePath, 'zh-CN');
     expect(reloaded.get().network.aiProxy).toEqual(aiProxy);
     expect(reloaded.get().network.gitProxy).toEqual(gitProxy);
   });
 
   it('setShortcuts 规范化并持久化', () => {
-    const service = new SettingsService(filePath);
+    const service = new SettingsService(filePath, 'zh-CN');
     const result = service.setShortcuts([
       { commandId: 'search.open', key: 'ctrl+shift+f', disabled: false },
     ]);
     expect(result[0]?.key).toBe('Ctrl+Shift+F');
-    const reloaded = new SettingsService(filePath);
+    const reloaded = new SettingsService(filePath, 'zh-CN');
     // DEV-022 起读取归一化会补齐默认命令，按 commandId 查找而非依赖数组首位。
     expect(reloaded.get().shortcuts.find((s) => s.commandId === 'search.open')?.key).toBe(
       'Ctrl+Shift+F',
@@ -181,7 +203,7 @@ describe('SettingsService', () => {
   });
 
   it('导出/导入快捷键 JSON 往返', () => {
-    const service = new SettingsService(filePath);
+    const service = new SettingsService(filePath, 'zh-CN');
     service.setShortcuts([{ commandId: 'app.save', key: 'Mod+S', disabled: false }]);
     const exported = service.exportShortcutsJson();
     const parsed = JSON.parse(exported);
@@ -196,20 +218,32 @@ describe('SettingsService', () => {
   });
 
   it('导入非法 JSON / 错误结构返回 0 导入', () => {
-    const service = new SettingsService(filePath);
+    const service = new SettingsService(filePath, 'zh-CN');
     expect(service.importShortcutsJson('not json').imported).toBe(0);
     expect(service.importShortcutsJson(JSON.stringify({ foo: 1 })).imported).toBe(0);
   });
 
   it('search 按标题/关键字命中', () => {
-    const service = new SettingsService(filePath);
+    const service = new SettingsService(filePath, 'zh-CN');
     expect(service.search('主题').length).toBeGreaterThan(0);
     expect(service.search('autosave').some((e) => e.id === 'editor.autoSaveMs')).toBe(true);
     expect(service.search('').length).toBe(0);
   });
 
+  it('search 中英关键词互通（ADR-0023 双语索引）', () => {
+    const service = new SettingsService(filePath, 'zh-CN');
+    // 中文标题命中
+    expect(service.search('主题').some((e) => e.id === 'appearance.theme')).toBe(true);
+    // 英文标题命中同一条目（界面层再按当前语言成文）
+    expect(service.search('theme').some((e) => e.id === 'appearance.theme')).toBe(true);
+    expect(service.search('autosave').some((e) => e.id === 'editor.autoSaveMs')).toBe(true);
+    // 条目只暴露 titleKey，不含已成文标题
+    expect(service.search('主题')[0]).not.toHaveProperty('title');
+    expect(service.search('主题')[0]?.titleKey).toBeTruthy();
+  });
+
   it('search 条目 sectionId 与设置页实际位置一致（归属整理）', () => {
-    const service = new SettingsService(filePath);
+    const service = new SettingsService(filePath, 'zh-CN');
     // 全局外观的编辑器字体/字号在常规分区，而非编辑器分区
     for (const id of ['appearance.editorFontFamily', 'appearance.editorFontSize']) {
       expect(service.search(id).find((e) => e.id === id)?.sectionId).toBe('general');
@@ -222,7 +256,7 @@ describe('SettingsService', () => {
   });
 
   it('onChange 通知订阅者', () => {
-    const service = new SettingsService(filePath);
+    const service = new SettingsService(filePath, 'zh-CN');
     let fired = 0;
     service.onChange(() => void fired++);
     service.update({ appearance: { theme: 'dark' } });
@@ -290,7 +324,7 @@ describe('shared 设置工具函数', () => {
 
 describe('SettingsService 磁盘格式', () => {
   it('写入的 JSON 是可读的美化格式', async () => {
-    const service = new SettingsService(filePath);
+    const service = new SettingsService(filePath, 'zh-CN');
     service.update({ appearance: { theme: 'dark' } });
     const raw = await readFile(filePath, 'utf8');
     expect(JSON.parse(raw).appearance.theme).toBe('dark');

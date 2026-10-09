@@ -1,10 +1,15 @@
 import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs';
 import { dirname } from 'node:path';
+import { app } from 'electron';
 import {
+  CATALOGS,
   defaultGlobalSettings,
   mergeGlobalPatch,
+  translate,
   mergeVaultPatch,
   normalizeShortcut,
+  uiLanguageFromSystem,
+  type AppLanguage,
   type GlobalSettings,
   type GlobalSettingsPatch,
   type NetworkProxyConfig,
@@ -19,12 +24,32 @@ import {
  * 单一权威：主进程持有完整数据；渲染层仅通过 IPC 拿到视图，
  * 绝不出现在 localStorage（避免双权威）。
  */
+/** 系统首选语言列表；Electron 不可用时（单测）回退 undefined → en-US 之外的默认推导。 */
+function systemLanguages(): string[] {
+  try {
+    return app.getPreferredSystemLanguages();
+  } catch {
+    return [];
+  }
+}
+
 export class SettingsService {
   private data: GlobalSettings;
   private listeners: Set<(settings: GlobalSettings) => void> = new Set();
 
-  constructor(private readonly filePath: string) {
+  constructor(
+    private readonly filePath: string,
+    /** 首次生成默认设置时的界面语言；未提供时由系统语言推导（ADR-0023）。 */
+    initialLanguage?: AppLanguage,
+  ) {
+    this.initialLanguage = initialLanguage ?? uiLanguageFromSystem(systemLanguages());
     this.data = this.load();
+  }
+
+  private readonly initialLanguage: AppLanguage;
+
+  private defaults(): GlobalSettings {
+    return defaultGlobalSettings(this.initialLanguage);
   }
 
   onChange(listener: (settings: GlobalSettings) => void): () => void {
@@ -34,11 +59,11 @@ export class SettingsService {
 
   private load(): GlobalSettings {
     try {
-      if (!existsSync(this.filePath)) return defaultGlobalSettings();
+      if (!existsSync(this.filePath)) return this.defaults();
       const parsed = JSON.parse(readFileSync(this.filePath, 'utf8'));
-      return normalizeStoredGlobal(parsed);
+      return normalizeStoredGlobal(parsed, this.initialLanguage);
     } catch {
-      return defaultGlobalSettings();
+      return this.defaults();
     }
   }
 
@@ -106,262 +131,270 @@ export class SettingsService {
   search(query: string): SettingSearchEntry[] {
     const q = query.trim().toLowerCase();
     if (!q) return [];
-    return SEARCH_ENTRIES.filter((entry) =>
-      `${entry.title} ${entry.id} ${entry.keywords.join(' ')}`.toLowerCase().includes(q),
-    );
+    // 主进程不感知界面语言、不把标题拼进数据；但需保留中英关键词互通
+    // （ADR-0023 架构决策③：按当前界面语言索引 + 保留中英关键词互通）。
+    // 因此检索文本由「id + 关键词 + titleKey 在两种语言下的成文」构成，
+    // 中文标题、英文标题与关键词都能命中。
+    return SEARCH_ENTRIES.filter((entry) => searchableText(entry).includes(q));
   }
+}
+
+function searchableText(entry: SettingSearchEntry): string {
+  const zh = translate(CATALOGS['zh-CN'], entry.titleKey, 'zh-CN');
+  const en = translate(CATALOGS['en-US'], entry.titleKey, 'en-US');
+  return `${entry.id} ${entry.keywords.join(' ')} ${zh} ${en}`.toLowerCase();
 }
 
 export const SEARCH_ENTRIES: SettingSearchEntry[] = [
   {
     id: 'appearance.theme',
     sectionId: 'general',
-    title: '主题',
+    titleKey: 'settings.search.appearance.theme',
     keywords: ['theme', 'dark', 'light', 'system', '暗色', '亮色', '系统'],
     scope: 'global',
   },
   {
     id: 'appearance.language',
     sectionId: 'general',
-    title: '语言',
+    titleKey: 'settings.search.appearance.language',
     keywords: ['language', 'locale', '中文', 'english'],
     scope: 'global',
   },
   {
     id: 'appearance.uiFontFamily',
     sectionId: 'general',
-    title: 'UI 字体',
+    titleKey: 'settings.search.appearance.uiFontFamily',
     keywords: ['font', 'ui', '字体'],
     scope: 'global',
   },
   {
     id: 'appearance.uiFontSize',
     sectionId: 'general',
-    title: 'UI 字号',
+    titleKey: 'settings.search.appearance.uiFontSize',
     keywords: ['font', 'size', 'ui', '字号'],
     scope: 'global',
   },
   {
     id: 'appearance.editorFontFamily',
     sectionId: 'general',
-    title: '编辑器字体',
+    titleKey: 'settings.search.appearance.editorFontFamily',
     keywords: ['font', 'editor', '字体', '编辑器'],
     scope: 'global',
   },
   {
     id: 'appearance.editorFontSize',
     sectionId: 'general',
-    title: '编辑器字号',
+    titleKey: 'settings.search.appearance.editorFontSize',
     keywords: ['font', 'size', 'editor', '字号'],
     scope: 'global',
   },
   {
     id: 'updates.checkOnLaunch',
     sectionId: 'updates',
-    title: '启动时检查更新',
+    titleKey: 'settings.search.updates.checkOnLaunch',
     keywords: ['update', 'auto', '更新', '自动'],
     scope: 'global',
   },
   {
     id: 'updates.autoDownload',
     sectionId: 'updates',
-    title: '自动下载更新',
+    titleKey: 'settings.search.updates.autoDownload',
     keywords: ['update', 'download', '自动下载'],
     scope: 'global',
   },
   {
     id: 'updates.channel',
     sectionId: 'updates',
-    title: '更新通道',
+    titleKey: 'settings.search.updates.channel',
     keywords: ['update', 'channel', 'stable', 'beta', 'alpha', '通道'],
     scope: 'global',
   },
   {
     id: 'startup.behavior',
     sectionId: 'general',
-    title: '启动行为',
+    titleKey: 'settings.search.startup.behavior',
     keywords: ['startup', 'launch', '启动', '恢复', 'welcome', '特定'],
     scope: 'global',
   },
   {
     id: 'git.useSystemGit',
     sectionId: 'git',
-    title: '使用系统 Git',
+    titleKey: 'settings.search.git.useSystemGit',
     keywords: ['git', 'system', 'binary', 'bundled', '系统'],
     scope: 'global',
   },
   {
     id: 'editor.autoSaveMs',
     sectionId: 'editor',
-    title: '自动保存间隔',
+    titleKey: 'settings.search.editor.autoSaveMs',
     keywords: ['autosave', 'save', 'debounce', '自动保存'],
     scope: 'vault',
   },
   {
     id: 'editor.defaultPageTemplate',
     sectionId: 'editor',
-    title: '默认新页面模板',
+    titleKey: 'settings.search.editor.defaultPageTemplate',
     keywords: ['template', '模板', '默认', 'new'],
     scope: 'vault',
   },
   {
     id: 'editor.bindFileNameToTitle',
     sectionId: 'editor',
-    title: '文件名与标题联动',
+    titleKey: 'settings.search.editor.bindFileNameToTitle',
     keywords: ['title', 'bind', 'h1', '标题', '联动'],
     scope: 'vault',
   },
   {
     id: 'editor.vimMode',
     sectionId: 'editor',
-    title: 'Vim 模式',
+    titleKey: 'settings.search.editor.vimMode',
     keywords: ['vim', '编辑器', '模态'],
     scope: 'vault',
   },
   {
     id: 'editor.codeTheme',
     sectionId: 'editor',
-    title: '代码块主题',
+    titleKey: 'settings.search.editor.codeTheme',
     keywords: ['code', 'theme', 'syntax', '代码', '高亮'],
     scope: 'vault',
   },
   {
     id: 'git.autoCommit',
     sectionId: 'git',
-    title: '自动提交',
+    titleKey: 'settings.search.git.autoCommit',
     keywords: ['git', 'auto', 'commit', '自动提交'],
     scope: 'vault',
   },
   {
     id: 'git.autoCommitIntervalMs',
     sectionId: 'git',
-    title: '自动提交间隔',
+    titleKey: 'settings.search.git.autoCommitIntervalMs',
     keywords: ['git', 'interval', '间隔'],
     scope: 'vault',
   },
   {
     id: 'git.commitMessageTemplate',
     sectionId: 'git',
-    title: '自动提交消息模板',
+    titleKey: 'settings.search.git.commitMessageTemplate',
     keywords: ['git', 'message', 'template', '提交', '模板'],
     scope: 'vault',
   },
   {
     id: 'git.defaultBranch',
     sectionId: 'git',
-    title: '默认分支名',
+    titleKey: 'settings.search.git.defaultBranch',
     keywords: ['git', 'branch', 'default', '分支'],
     scope: 'vault',
   },
   {
     id: 'shortcuts.list',
     sectionId: 'shortcuts',
-    title: '快捷键',
+    titleKey: 'settings.search.shortcuts.list',
     keywords: ['keyboard', 'shortcut', '热键', '快捷键'],
     scope: 'global',
   },
   {
     id: 'shortcuts.import',
     sectionId: 'shortcuts',
-    title: '导入快捷键',
+    titleKey: 'settings.search.shortcuts.import',
     keywords: ['import', '导入'],
     scope: 'global',
   },
   {
     id: 'shortcuts.export',
     sectionId: 'shortcuts',
-    title: '导出快捷键',
+    titleKey: 'settings.search.shortcuts.export',
     keywords: ['export', '导出'],
     scope: 'global',
   },
   {
     id: 'ai.section',
     sectionId: 'ai',
-    title: 'AI 设置',
+    titleKey: 'settings.search.ai.section',
     keywords: ['ai', 'model', 'api', '人工智能', '模型', 'profile'],
     scope: 'domain',
   },
   {
     id: 'plugins.section',
     sectionId: 'plugins',
-    title: '插件',
+    titleKey: 'settings.search.plugins.section',
     keywords: ['plugin', 'extension', '插件'],
     scope: 'domain',
   },
   {
     id: 'skills.section',
     sectionId: 'skills',
-    title: '检索 Skill',
+    titleKey: 'settings.search.skills.section',
     keywords: ['skill', '检索', '召回'],
     scope: 'domain',
   },
   {
     id: 'about.version',
     sectionId: 'about',
-    title: '版本信息',
+    titleKey: 'settings.search.about.version',
     keywords: ['version', 'about', '版本', '关于'],
     scope: 'global',
   },
   {
     id: 'network.mode',
     sectionId: 'network',
-    title: '网络模式',
+    titleKey: 'settings.search.network.mode',
     keywords: ['network', 'proxy', '代理', 'system', '跟随系统'],
     scope: 'global',
   },
   {
     id: 'network.applyToGit',
     sectionId: 'network',
-    title: '代理 Git 操作',
+    titleKey: 'settings.search.network.applyToGit',
     keywords: ['network', 'git', 'proxy', '代理'],
     scope: 'global',
   },
   {
     id: 'network.aiProxy',
     sectionId: 'network',
-    title: 'AI 独立代理',
+    titleKey: 'settings.search.network.aiProxy',
     keywords: ['network', 'ai', 'proxy', '独立', '代理'],
     scope: 'global',
   },
   {
     id: 'network.gitProxy',
     sectionId: 'network',
-    title: 'Git 独立代理',
+    titleKey: 'settings.search.network.gitProxy',
     keywords: ['network', 'git', 'proxy', '独立', '代理'],
     scope: 'global',
   },
   {
     id: 'network.host',
     sectionId: 'network',
-    title: '代理主机与端口',
+    titleKey: 'settings.search.network.host',
     keywords: ['network', 'host', 'port', 'proxy', '主机', '端口'],
     scope: 'global',
   },
   {
     id: 'network.bypass',
     sectionId: 'network',
-    title: '绕过主机',
+    titleKey: 'settings.search.network.bypass',
     keywords: ['network', 'bypass', 'proxy', '绕过', '直连'],
     scope: 'global',
   },
   {
     id: 'ai.translationTargetLanguage',
     sectionId: 'general',
-    title: '翻译默认目标语言',
+    titleKey: 'settings.search.ai.translationTargetLanguage',
     keywords: ['ai', 'translation', '翻译', '目标语言', '语言'],
     scope: 'domain',
   },
   {
     id: 'git.binaryUntrack',
     sectionId: 'git',
-    title: '二进制文档不随 Git 跟踪',
+    titleKey: 'settings.search.git.binaryUntrack',
     keywords: ['git', 'binary', 'docx', 'xlsx', 'xmind', 'gitignore', '跟踪'],
     scope: 'vault',
   },
   {
     id: 'binary.maxConcurrentTabs',
     sectionId: 'editor',
-    title: '二进制文档编辑器并发上限',
+    titleKey: 'settings.search.binary.maxConcurrentTabs',
     keywords: ['binary', 'docx', 'xlsx', 'xmind', 'tab', '并发', '编辑器', 'DEV-074'],
     scope: 'vault',
   },
@@ -371,8 +404,11 @@ export function mergeVaultSettings(base: VaultSettings, patch: VaultSettingsPatc
   return mergeVaultPatch(base, patch);
 }
 
-export function normalizeStoredGlobal(raw: unknown): GlobalSettings {
-  const base = defaultGlobalSettings();
+export function normalizeStoredGlobal(
+  raw: unknown,
+  defaultLanguage: GlobalSettings['appearance']['language'] = 'zh-CN',
+): GlobalSettings {
+  const base = defaultGlobalSettings(defaultLanguage);
   if (typeof raw !== 'object' || raw === null || Array.isArray(raw)) return base;
   const value = raw as Record<string, unknown>;
   const appearance = asRecord(value.appearance);
