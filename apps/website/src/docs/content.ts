@@ -1,5 +1,25 @@
 import rawEnGettingStarted from '../../../../docs/user-guide/en/getting-started.md?raw';
 import rawZhGettingStarted from '../../../../docs/user-guide/zh/getting-started.md?raw';
+import rawEnWikilinks from '../../../../docs/user-guide/en/wikilinks.md?raw';
+import rawZhWikilinks from '../../../../docs/user-guide/zh/wikilinks.md?raw';
+import rawEnGitAndSync from '../../../../docs/user-guide/en/git-and-sync.md?raw';
+import rawZhGitAndSync from '../../../../docs/user-guide/zh/git-and-sync.md?raw';
+import rawEnAiAssistant from '../../../../docs/user-guide/en/ai-assistant.md?raw';
+import rawZhAiAssistant from '../../../../docs/user-guide/zh/ai-assistant.md?raw';
+import rawEnSpreadsheets from '../../../../docs/user-guide/en/spreadsheets-and-mindmaps.md?raw';
+import rawZhSpreadsheets from '../../../../docs/user-guide/zh/spreadsheets-and-mindmaps.md?raw';
+import rawEnEditor from '../../../../docs/user-guide/en/editor.md?raw';
+import rawZhEditor from '../../../../docs/user-guide/zh/editor.md?raw';
+import rawEnSearch from '../../../../docs/user-guide/en/search-and-recall.md?raw';
+import rawZhSearch from '../../../../docs/user-guide/zh/search-and-recall.md?raw';
+import rawEnConfidence from '../../../../docs/user-guide/en/confidence.md?raw';
+import rawZhConfidence from '../../../../docs/user-guide/zh/confidence.md?raw';
+import rawEnPlugins from '../../../../docs/user-guide/en/plugins.md?raw';
+import rawZhPlugins from '../../../../docs/user-guide/zh/plugins.md?raw';
+import rawEnSettings from '../../../../docs/user-guide/en/settings.md?raw';
+import rawZhSettings from '../../../../docs/user-guide/zh/settings.md?raw';
+import rawEnTroubleshooting from '../../../../docs/user-guide/en/troubleshooting.md?raw';
+import rawZhTroubleshooting from '../../../../docs/user-guide/zh/troubleshooting.md?raw';
 
 export type Lang = 'en' | 'zh';
 
@@ -45,8 +65,33 @@ function chapter(lang: Lang, raw: string): Chapter {
 }
 
 const byLang: Record<Lang, Record<string, Chapter>> = {
-  zh: { 'getting-started': chapter('zh', rawZhGettingStarted) },
-  en: { 'getting-started': chapter('en', rawEnGettingStarted) },
+  zh: {
+    'getting-started': chapter('zh', rawZhGettingStarted),
+    editor: chapter('zh', rawZhEditor),
+    wikilinks: chapter('zh', rawZhWikilinks),
+    'search-and-recall': chapter('zh', rawZhSearch),
+    confidence: chapter('zh', rawZhConfidence),
+    'git-and-sync': chapter('zh', rawZhGitAndSync),
+    'ai-assistant': chapter('zh', rawZhAiAssistant),
+    plugins: chapter('zh', rawZhPlugins),
+    'spreadsheets-and-mindmaps': chapter('zh', rawZhSpreadsheets),
+    settings: chapter('zh', rawZhSettings),
+    troubleshooting: chapter('zh', rawZhTroubleshooting),
+  },
+  en: {
+    'getting-started': chapter('en', rawEnGettingStarted),
+    editor: chapter('en', rawEnEditor),
+    wikilinks: chapter('en', rawEnWikilinks),
+    'search-and-recall': chapter('en', rawEnSearch),
+    confidence: chapter('en', rawEnConfidence),
+    'git-and-sync': chapter('en', rawEnGitAndSync),
+    'ai-assistant':
+      chapter('en', rawEnAiAssistant),
+    plugins: chapter('en', rawEnPlugins),
+    'spreadsheets-and-mindmaps': chapter('en', rawEnSpreadsheets),
+    settings: chapter('en', rawEnSettings),
+    troubleshooting: chapter('en', rawEnTroubleshooting),
+  },
 };
 
 /** 按 order 升序返回该语言的章节。 */

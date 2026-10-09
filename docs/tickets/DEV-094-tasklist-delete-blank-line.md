@@ -40,12 +40,14 @@ DEV-069 修了无序列表（`bulletList`）与有序列表（`orderedList`）�
 
 ## 验收标准
 
-- [ ] 3 项待办列表清空中间项并按 Backspace → 只剩 2 项且无空白行
-- [ ] 待办列表末尾项/首项按 Backspace 的退出行为与无序列表一致，不残留空段
-- [ ] Markdown 导出再回读：待办项数量、勾选状态、无多余空行
-- [ ] `bulletList` / `orderedList` 行为不回归（DEV-069 用例全绿，含有序编号连续）
-- [ ] 新增单测覆盖 `taskItem` 的"夹在中间空项被整体删除"，与现有 `list-dev069.test.ts` 用例并列
-- [ ] `pnpm typecheck` / `pnpm lint` / 相关 Vitest 全绿
+（2026-10-09 回填：`list-dev069.test.ts` 的「DEV-094 · 待办列表」段覆盖，相关套件全绿）
+
+- [x] 3 项待办列表清空中间项并按 Backspace → 只剩 2 项且无空白行——「3 项待办列表删中间项：整体删除，不留空白行，剩 2 项」
+- [x] 待办列表末尾项/首项按 Backspace 的退出行为与无序列表一致，不残留空段——「空 taskItem 位于首/尾时探测返回 false（让默认 lift 退出列表）」
+- [x] Markdown 导出再回读：待办项数量、勾选状态、无多余空行——「已勾选（checked）的中间空 taskItem 同样被整体删除且不改变其他项勾选态」
+- [x] `bulletList` / `orderedList` 行为不回归（DEV-069 用例全绿，含有序编号连续）——同文件 DEV-069 段
+- [x] 新增单测覆盖 `taskItem` 的"夹在中间空项被整体删除"，与现有 `list-dev069.test.ts` 用例并列
+- [x] `pnpm typecheck` / `pnpm lint` / 相关 Vitest 全绿
 
 ## Out of scope
 

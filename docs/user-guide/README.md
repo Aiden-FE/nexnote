@@ -7,6 +7,18 @@
 | # | 章节 | 中文 | English |
 | --- | --- | --- | --- |
 | 1 | 快速上手 | [zh](zh/getting-started.md) | [en](en/getting-started.md) |
+| 2 | 编辑器：块编辑与快捷插入 | [zh](zh/editor.md) | [en](en/editor.md) |
+| 3 | 双链与知识网络 | [zh](zh/wikilinks.md) | [en](en/wikilinks.md) |
+| 4 | 搜索与 AI 召回 | [zh](zh/search-and-recall.md) | [en](en/search-and-recall.md) |
+| 5 | 置信度 | [zh](zh/confidence.md) | [en](en/confidence.md) |
+| 6 | 版本历史与同步 | [zh](zh/git-and-sync.md) | [en](en/git-and-sync.md) |
+| 7 | AI 助手与权限模式 | [zh](zh/ai-assistant.md) | [en](en/ai-assistant.md) |
+| 8 | 插件 | [zh](zh/plugins.md) | [en](en/plugins.md) |
+| 9 | 表格与思维导图 | [zh](zh/spreadsheets-and-mindmaps.md) | [en](en/spreadsheets-and-mindmaps.md) |
+| 10 | 设置与快捷键 | [zh](zh/settings.md) | [en](en/settings.md) |
+| 11 | 故障排查 | [zh](zh/troubleshooting.md) | [en](en/troubleshooting.md) |
+
+章节的 `order` frontmatter 决定官网索引排序，两种语言必须一致；`slug` 决定 URL，两种语言共用同一个。
 
 写作约定：
 

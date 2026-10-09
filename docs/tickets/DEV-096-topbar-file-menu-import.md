@@ -49,12 +49,14 @@ DEV-085 已把"导入"从新建下拉里拆出来，做成了页面树工具栏�
 
 ## 验收标准
 
-- [ ] 应用顶栏存在「文件」菜单，其中「新建」与「导入」分组清晰、互不混淆
-- [ ] **页面树工具栏不再出现两个外观相近的并列下拉箭头**；新建入口形态单一可辨
-- [ ] 从「文件」菜单可完成 docx / xlsx / xmind 的**导入**，行为与迁移前一致（文件进入 vault 副本并打开对应编辑器）
-- [ ] 从「文件」菜单可完成空白 docx / xlsx / xmind 的**新建**（与 DEV-084 联动；DEV-084 未落地时该项至少可延后但不得回归）
-- [ ] 无重复入口：同一动作在 UI 上只有一处主入口（context menu 可保留但不得喧宾夺主）
-- [ ] 相关测试与 smoke 契约同步更新并全绿；`pnpm typecheck` / `pnpm lint` / 相关 Vitest 全绿
+（2026-10-09 回填：页面树入口由 `new-note-menu.test.tsx` 覆盖，原生「文件」菜单只在启动时构建、无自动化测试，GUI 项保留）
+
+- [x] 应用顶栏存在「文件」菜单，其中「新建」与「导入」分组清晰、互不混淆——`window.ts` buildApplicationMenu：新建组（文档/MD/空白 XLSX/XMind）与导入组（Word/XLSX/XMind）分段
+- [x] **页面树工具栏不再出现两个外观相近的并列下拉箭头**；新建入口形态单一可辨——new-note-menu「主按钮保持原单一按钮行为：直接新建（块编辑），不展开菜单」
+- [x] 从「文件」菜单可完成 docx / xlsx / xmind 的**导入**，行为与迁移前一致（文件进入 vault 副本并打开对应编辑器）——菜单「导入 Word（转为块文档）/ XLSX / XMind」
+- [x] 从「文件」菜单可完成空白 docx / xlsx / xmind 的**新建**——DOCX 按 DEV-098 撤销，XLSX/XMind 已在菜单与 new-note-menu 上线
+- [x] 无重复入口：同一动作在 UI 上只有一处主入口（context menu 可保留但不得喧宾夺主）
+- [x] 相关测试与 smoke 契约同步更新并全绿；`pnpm typecheck` / `pnpm lint` / 相关 Vitest 全绿——new-note-menu.test.tsx 6 例全绿
 - [ ] **本机 GUI 实测**：打开应用能直观找到导入入口，无需猜测箭头含义
 
 ## Out of scope

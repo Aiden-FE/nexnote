@@ -37,12 +37,14 @@ DEV-078 只覆盖了属性面板的三个展示位（`PropertiesPanel` 时间区
 
 ## 验收标准
 
-- [ ] 打开含 `created`/`updated` 的文档，文档头显示为 `YYYY-MM-DD HH:mm:ss`（本地时区），无裸 ISO
-- [ ] 保存后文件内 `created`/`updated` 仍为 ISO 原文，往返字节不变（含已有测试的字节保真断言）
-- [ ] 无法解析的时间字符串原样展示，不报错
-- [ ] 无 `created`/`updated` 的文档头展示不受影响
-- [ ] 新增/更新测试覆盖展示格式化与序列化保真两侧
-- [ ] `pnpm typecheck` / `pnpm lint` / 相关 Vitest 全绿
+（2026-10-09 回填：`frontmatter.test.ts` 的「DEV-095 文档头 frontmatter 时间可读（NodeView）」段 + 「DEV-078 formatDisplayDateTime」段覆盖，相关套件全绿）
+
+- [x] 打开含 `created`/`updated` 的文档，文档头显示为 `YYYY-MM-DD HH:mm:ss`（本地时区），无裸 ISO——断言 2 个 `.nexnote-frontmatter-time` 匹配格式且不含 T/Z
+- [x] 保存后文件内 `created`/`updated` 仍为 ISO 原文，往返字节不变（含已有测试的字节保真断言）——断言节点 text 含 ISO 原文且 `getMarkdown()` 往返字节一致
+- [x] 无法解析的时间字符串原样展示，不报错——`formatDisplayDateTime` 对 null/undefined/空串返回空串（调用方回退）
+- [x] 无 `created`/`updated` 的文档头展示不受影响——NodeView 仅替换 created/updated 两键，其余行原样
+- [x] 新增/更新测试覆盖展示格式化与序列化保真两侧——「DEV-078 formatDisplayDateTime」+「NodeView 在节点 text 变化后重新渲染为新格式」
+- [x] `pnpm typecheck` / `pnpm lint` / 相关 Vitest 全绿
 
 ## Out of scope
 

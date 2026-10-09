@@ -1,6 +1,6 @@
 # DEV-103 官网产品文档上线 + 欢迎页「快速上手」跳转文档
 
-状态：partial（文档站 + 跳转已随 v0.0.30 发布；ADR-0023/0024/0025 决策已定但实现未开始）
+状态：partial（文档站 + 跳转已随 v0.0.30 发布；11 章内容已补齐并全部门禁通过；ADR-0023/0024 双语与 ADR-0025 截图仍待实现）
 日期：2026-10-07（grill 四轮确认；2026-10-07 随 v0.0.30 发布已落地的部分见「本轮实际交付」）
 关联：ADR-0021、ADR-0022、ADR-0023、ADR-0024、ADR-0025、ADR-0010（Docs 边界已被 ADR-0021 推翻并就地标注）、DEV-074
 
@@ -42,12 +42,20 @@
 
 2026-10-08 复核：当前生产域名的 `/docs`、`/docs/getting-started`、`/zh/docs`、`/zh/docs/getting-started` 四条深链均返回 HTTP 200。
 
+## 第二批（2026-10-09 交付）
+
+- **文档章节补齐**：新增 10 章（中英各一份，共 20 个 Markdown 文件），与原有「快速上手」合计 11 章，覆盖编辑器、双链与知识网络、搜索与 AI 召回、置信度、版本历史与同步、AI 助手与权限模式、插件、表格与思维导图、设置与快捷键、故障排查。
+- **内容校对**：章节内容按当前 0.0.34 代码事实撰写（置信度六因子权重取自 `confidence-service.ts`、权限模式取自 `ChatPermissionMode = 'conversation' | 'edit' | 'full'`、Git 诊断分类取自 `GitSyncIssueCategory`），不复用已过期的 v0.0.1 手册表述。
+- **章节目录契约测试**：`website-docs-render.test.tsx` 新增用例断言 11 个 slug 的完整目录与顺序（中英一致），并为新增章节各补渲染断言。
+- **文档索引**：README 补全 11 章对照表，并记录 `order` / `slug` 两个 frontmatter 字段的约定。
+- **门禁**：`pnpm lint` 0、`pnpm typecheck` 5/5、`pnpm test` 190 files / 1801 passed / 3 skipped 退出码 0、官网构建通过。
+
 ## 待办（决策已定，实现未开始）
 
 - [ ] ADR-0023 桌面端界面双语：消息目录 + 跨进程错误码化，完成门槛 en-US 全 UI 无中文残留
 - [ ] ADR-0024 手机端 Flutter l10n（`flutter_localizations` + `.arb` + iOS `CFBundleLocalizations`）
 - [ ] ADR-0025 演示知识库 + macOS 截图上官网；Windows/Linux 截图待环境就绪补拍
-- [ ] 文档其余章节补齐（当前仅「快速上手」章有内容，其余章节待写）
+- [x] 文档其余章节补齐（2026-10-09 完成：11 章中英双语，`website-docs-render.test.tsx` 目录契约测试锁定）
 - [ ] 官网部署到生产 Vercel 后核验深链对外可达（构建通过 ≠ 线上可达）
 
 ## Out of scope

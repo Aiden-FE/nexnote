@@ -41,13 +41,15 @@
 
 ## 验收标准
 
-- [ ] 块编辑器：光标置于文档中部持续输入，自动保存触发多次后，光标仍在原输入位置（不跳末尾）
-- [ ] 源码模式（CodeMirror）：同上，光标不跳位置 0
-- [ ] 单次「输入 → 等自动保存 → 立刻继续输入」，落点与输入顺序正确，内容不乱序
-- [ ] 保存后 `frontmatter.updated` 仍被正确刷新（DEV-077 语义不回归）
-- [ ] 真实外部修改仍正确弹出冲突/重载（`classifyExternalChange` 语义不回归）
-- [ ] 新增回归测试：模拟"保存 → app 回声 fs:changed"，断言不调用全量 setMarkdown 且选区不变
-- [ ] `pnpm typecheck` / `pnpm lint` / 相关 Vitest 全绿
+（2026-10-09 回填：由 `app-origin-change.test.tsx`、`source-mode-autosave.test.tsx`、`caret-insert.test.ts` 覆盖，相关套件全绿）
+
+- [x] 块编辑器：光标置于文档中部持续输入，自动保存触发多次后，光标仍在原输入位置（不跳末尾）——app-origin-change「保存刷新 updated 后的自身回声不得重载编辑器，光标位置保持不变」
+- [x] 源码模式（CodeMirror）：同上，光标不跳位置 0——`source-mode-autosave.test.tsx` + caret-insert「CodeMirror 在当前光标单事务插入，并可单步 undo」
+- [x] 单次「输入 → 等自动保存 → 立刻继续输入」，落点与输入顺序正确，内容不乱序——app-origin-change「写入后事件窗口内继续输入（dirty）」「120ms 事件窗口内继续输入」
+- [x] 保存后 `frontmatter.updated` 仍被正确刷新（DEV-077 语义不回归）——app-origin-change「保存刷新 updated」
+- [x] 真实外部修改仍正确弹出冲突/重载（`classifyExternalChange` 语义不回归）——app-origin-change「未带 origin 的真外部事件保持 conflict 语义（回归保护）」
+- [x] 新增回归测试：模拟"保存 → app 回声 fs:changed"，断言不调用全量 setMarkdown 且选区不变——app-origin-change 自身回声用例
+- [x] `pnpm typecheck` / `pnpm lint` / 相关 Vitest 全绿
 
 ## Out of scope
 

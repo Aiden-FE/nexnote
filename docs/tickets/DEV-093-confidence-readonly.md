@@ -34,12 +34,14 @@
 
 ## 验收标准
 
-- [ ] 属性表格中 `confidence` 渲染为只读（存在 `data-testid="frontmatter-readonly-confidence"`），无可编辑输入框
-- [ ] 只读值为数字文本，空值回退 `—`
-- [ ] `updated` 的只读行为不回归
-- [ ] 引擎仍按 `confidenceFrontmatter` 开关写回 `confidence`，计算结果不变
-- [ ] 新增/更新单测：`isReadonlyStandardField('confidence') === true`，且 FieldEditor 对 confidence 走只读分支
-- [ ] `pnpm typecheck` / `pnpm lint` / 相关 Vitest 全绿
+（2026-10-09 回填：`field-catalog.test.tsx` 与 `frontmatter.test.ts` 覆盖，相关套件全绿）
+
+- [x] 属性表格中 `confidence` 渲染为只读（存在 `data-testid="frontmatter-readonly-confidence"`），无可编辑输入框——field-catalog「confidence 走只读分支，无可编辑输入框」
+- [x] 只读值为数字文本，空值回退 `—`——field-catalog「confidence 空值回退 —」
+- [x] `updated` 的只读行为不回归——同用例断言 updated 只读且无 input
+- [x] 引擎仍按 `confidenceFrontmatter` 开关写回 `confidence`，计算结果不变——frontmatter.test.ts / properties-confidence.test.tsx 覆盖
+- [x] 新增/更新单测：`isReadonlyStandardField('confidence') === true`，且 FieldEditor 对 confidence 走只读分支
+- [x] `pnpm typecheck` / `pnpm lint` / 相关 Vitest 全绿
 
 ## Out of scope
 
