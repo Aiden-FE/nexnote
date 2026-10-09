@@ -56,7 +56,7 @@
 - [x] ADR-0024 手机端 Flutter l10n（2026-10-09 完成：`flutter_localizations` + 各 161 key 的 `.arb` + 错误码化 + iOS `CFBundleLocalizations`/`knownRegions`；证据见下）
 - [ ] ADR-0025 演示知识库 + macOS 截图上官网；Windows/Linux 截图待环境就绪补拍
 - [x] 文档其余章节补齐（2026-10-09 完成：11 章中英双语，`website-docs-render.test.tsx` 目录契约测试锁定）
-- [ ] 官网部署到生产 Vercel 后核验深链对外可达（构建通过 ≠ 线上可达）
+- [x] 官网部署到生产 Vercel 后核验深链对外可达（2026-10-09：四条生产深链均 200，且真实 Chrome 渲染核验中英快速上手页内容完整）
 
 ### ADR-0024 验收证据（2026-10-09）
 
@@ -69,6 +69,18 @@
 - [x] iOS `CFBundleLocalizations` + `knownRegions` zh-Hans
 - [x] `flutter analyze` 无问题；`flutter test` 120 例通过
 - [ ] **NOT_RUN**：iOS 真机/模拟器系统语言切换与 Keychain 写入（本机无 iOS 运行时，需在 Xcode 环境补验）
+
+### 生产深链可达核验（2026-10-09）
+
+- [x] `https://website-aiden-fes-projects.vercel.app` 的 `/docs`、`/docs/getting-started`、`/zh/docs`、`/zh/docs/getting-started` 均返回 HTTP 200
+- [x] 真实 Chrome 渲染核验：`/zh/docs/getting-started` 标题、11 章侧栏目录、7 节正文表格与段落、页内锚点与「下一章」链接全部正确（静态 HTML 仅 SPA 外壳，故以浏览器渲染为准）
+
+### ADR-0025 截图进展（2026-10-09）
+
+- [x] 演示知识库已新建于 `docs/demo-vault/`（本地资产、不入外层仓库）：自带独立 `.git`、中英双语 4 个真实示例页面、双链与标签关系真实存在（ADR-0010/0025 硬约束）
+- [ ] macOS 全套截图：**被环境阻塞**——本轮执行时 Mac 进入锁屏，GUI 自动化无法解锁；需在解锁后的图形会话中启动打包应用打开演示库并经 `capturePage` 截图
+- [ ] 截图入官网并标注「截图以 macOS 为准，各平台功能一致」
+- [ ] Windows/Linux 截图（环境不具备，见 ADR-0025 已登记后续项）
 
 ## Out of scope
 

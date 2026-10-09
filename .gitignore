@@ -22,3 +22,7 @@ dist/
 # 冒烟测试生成物（最终精选证据需要入库时使用 git add -f）
 .scratch/nexnote-build/smoke/
 packages/*/.scratch-smoke-*/
+
+# 演示知识库自带独立 .git（ADR-0025），作为本地截图资产不入库：
+# 外层仓库无法追踪嵌套 Git 仓库内容，截图产物入库、源库按 ADR 保留本地
+docs/demo-vault/
