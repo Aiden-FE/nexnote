@@ -281,6 +281,9 @@ describe('DEV-059 真实入口行为', () => {
     const usePaletteStore = (await import('../src/stores/palette-store')).usePaletteStore;
     usePaletteStore.setState({ open: true });
     await import('../src/features/ai');
+    // 命令面板文案随界面语言（ADR-0023）；默认语言为 zh-CN。
+    const { setLanguage } = await import('../src/lib/i18n');
+    setLanguage('zh-CN');
     const CommandPalette = await importPalette();
     await mount(<CommandPalette />);
     const items = Array.from(

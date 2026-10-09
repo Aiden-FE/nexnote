@@ -93,13 +93,6 @@ async function render(node: React.ReactNode): Promise<void> {
   });
 }
 
-/** 断言目标元素文本在 en-US 下无中文残留。 */
-function expectElementWithoutCjk(selector: string): void {
-  const el = container.querySelector(selector);
-  expect(el, selector).not.toBeNull();
-  expect(el?.textContent ?? '', selector).not.toMatch(/[一-鿿]/);
-}
-
 describe('ADR-0023 阶段②：已迁移模块真实渲染为 en-US', () => {
   it('欢迎页：标题/按钮/亮点/能力行全部为英文', async () => {
     await render(
@@ -149,7 +142,7 @@ describe('ADR-0023 阶段②：已迁移模块真实渲染为 en-US', () => {
     ).not.toMatch(/[一-鿿]/);
   });
 
-  it('命令面板骨架：占位符/空结果/提示为英文（命令条目本身属未迁移区域，不扫描）', async () => {
+  it('命令面板：骨架与全部命令条目在 en-US 下成文（含空态）', async () => {
     usePaletteStore.setState({ open: true });
     await render(<CommandPalette />);
     const palette = container.querySelector('[data-testid="command-palette"]');
@@ -174,8 +167,22 @@ describe('ADR-0023 阶段②：已迁移模块真实渲染为 en-US', () => {
       await Promise.resolve();
     });
     expect(container.textContent).toContain('No matching commands');
-    // 只扫描骨架静态文案区域（输入栏与底部提示），不扫描命令列表
-    expectElementWithoutCjk('.border-b');
+    // 切回空查询：命令列表全部展示，条目已随消息目录成文，整面板无中文残留
+    await act(async () => {
+      const setter = Object.getOwnPropertyDescriptor(
+        window.HTMLInputElement.prototype,
+        'value',
+      )?.set;
+      setter?.call(input, '');
+      input.dispatchEvent(new Event('input', { bubbles: true }));
+    });
+    await act(async () => {
+      await Promise.resolve();
+    });
+    const paletteText = palette.textContent ?? '';
+    // 命令标题/分类/骨架全部成文；key 不出现在渲染文本中
+    expect(paletteText).not.toContain('command.');
+    expect(paletteText).not.toMatch(/[一-鿿]/);
   });
 
   it('状态栏：主题切换条目在 en-US 下成文（状态）', async () => {

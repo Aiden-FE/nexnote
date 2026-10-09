@@ -35,21 +35,22 @@ settingsSectionRegistry.register({
 
 commandRegistry.register({
   id: 'ai.translation.workbench',
-  title: '翻译工作台',
-  category: 'AI',
-  keywords: ['translate', 'translation', '翻译', '输入', '工作台'],
+  title: 'command.ai.translationWorkbench',
+  category: 'command.category.ai',
+  keywords: ['translate', 'translation', 'workbench', '翻译', '输入', '工作台'],
   run: () => void openTranslationWorkbench(),
 });
 
 commandRegistry.register({
   id: 'ai.settings',
-  title: 'AI 供应商设置',
-  category: 'AI',
+  title: 'command.ai.settings',
+  category: 'command.category.ai',
   keywords: [
     'ai',
     'provider',
     'profile',
     'llm',
+    'provider settings',
     '配置',
     '供应商',
     'setup',

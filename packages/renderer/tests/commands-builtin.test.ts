@@ -1,7 +1,11 @@
 // @vitest-environment happy-dom
 import { describe, expect, it } from 'vitest';
+import { translate, CATALOGS } from '@nexnote/shared';
 import { commandRegistry } from '../src/registries';
 import '../src/features/commands/builtin';
+
+/** 命令 title / category 存消息目录 key，按语言成文（ADR-0023）。 */
+const zh = (key: string) => translate(CATALOGS['zh-CN'], key, 'zh-CN');
 
 /**
  * DEV-021：删除文件浏览占位页后，⌘K 面板不应再有「打开 Vault 文件浏览」命令。
@@ -13,20 +17,22 @@ describe('内置命令（DEV-021 移除文件浏览占位）', () => {
 
   it('内置命令标题不含 vault / Vault 字样（用户文案统一「知识库」）', () => {
     for (const command of commandRegistry.all()) {
-      expect(command.title, command.id).not.toMatch(/vault/i);
+      expect(zh(command.title), command.id).not.toMatch(/vault/i);
     }
   });
 
   it('命令面板仅提供“全部展开章节”，不提供无差别全部折叠', () => {
-    expect(commandRegistry.get('editor.expandAllHeadings')).toMatchObject({
-      title: '全部展开章节',
-      category: '编辑器',
-    });
+    const expandAll = commandRegistry.get('editor.expandAllHeadings');
+    expect(expandAll).toBeDefined();
+    expect(zh(expandAll!.title)).toBe('全部展开章节');
+    expect(zh(expandAll!.category)).toBe('编辑器');
     expect(
       commandRegistry
         .all()
         .filter((command) =>
-          /全部折叠|collapse all/i.test(`${command.title} ${command.keywords.join(' ')}`),
+          /全部折叠|collapse all/i.test(
+            `${zh(command.title)} ${zh(command.category)} ${command.keywords.join(' ')}`,
+          ),
         ),
     ).toEqual([]);
   });

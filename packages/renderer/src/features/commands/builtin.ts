@@ -4,6 +4,7 @@ import { useUiStore } from '../../stores/ui-store';
 import { useThemeStore } from '../../theme/theme-store';
 import { usePaletteStore } from '../../stores/palette-store';
 import { invoke } from '../../lib/ipc';
+import { t } from '../../lib/i18n';
 import { openSettings } from '../../lib/open-settings';
 import { createPage } from '../editor/create-page';
 import { expandAllCurrentHeadingFolds } from '../../editor/expand-all';
@@ -30,8 +31,8 @@ const ui = useUiStore;
 
 commandRegistry.register({
   id: 'tab.new',
-  title: '新建标签页',
-  category: '标签页',
+  title: 'command.tab.new',
+  category: 'command.category.tabs',
   keywords: ['new', 'tab', '页面'],
   shortcut: '⌘T',
   run: () => void createPage(),
@@ -39,8 +40,8 @@ commandRegistry.register({
 
 commandRegistry.register({
   id: 'tab.close',
-  title: '关闭当前标签页',
-  category: '标签页',
+  title: 'command.tab.close',
+  category: 'command.category.tabs',
   keywords: ['close', 'tab'],
   run: () => {
     const state = tabs.getState();
@@ -50,8 +51,8 @@ commandRegistry.register({
 
 commandRegistry.register({
   id: 'tab.next',
-  title: '切换到下一个标签页',
-  category: '标签页',
+  title: 'command.tab.next',
+  category: 'command.category.tabs',
   keywords: ['next', 'tab', 'cycle', '切换', '循环', '页签'],
   shortcut: '⌃Tab / Ctrl+Tab',
   run: () => tabs.getState().activateAdjacentTab(1),
@@ -59,8 +60,8 @@ commandRegistry.register({
 
 commandRegistry.register({
   id: 'tab.prev',
-  title: '切换到上一个标签页',
-  category: '标签页',
+  title: 'command.tab.prev',
+  category: 'command.category.tabs',
   keywords: ['previous', 'prev', 'tab', 'cycle', '切换', '循环', '页签'],
   shortcut: '⌃⇧Tab / Ctrl+Shift+Tab',
   run: () => tabs.getState().activateAdjacentTab(-1),
@@ -68,8 +69,8 @@ commandRegistry.register({
 
 commandRegistry.register({
   id: 'editor.expandAllHeadings',
-  title: '全部展开章节',
-  category: '编辑器',
+  title: 'command.editor.expandAllHeadings',
+  category: 'command.category.editor',
   keywords: ['expand all', 'unfold', '全部展开', '章节', '标题'],
   run: () => {
     expandAllCurrentHeadingFolds();
@@ -80,8 +81,8 @@ commandRegistry.register({
 // 不提供无差别 Fold All，沿用 ADR-0013 边界：折叠必须明确指向章节或层级。
 commandRegistry.register({
   id: 'editor.foldCurrentSection',
-  title: '折叠当前章节',
-  category: '编辑器',
+  title: 'command.editor.foldCurrentSection',
+  category: 'command.category.editor',
   keywords: ['fold', 'collapse', '折叠', '章节', 'section'],
   shortcut: '⌘/Ctrl+Shift+[',
   run: () => {
@@ -90,8 +91,8 @@ commandRegistry.register({
 });
 commandRegistry.register({
   id: 'editor.expandCurrentSection',
-  title: '展开当前章节',
-  category: '编辑器',
+  title: 'command.editor.expandCurrentSection',
+  category: 'command.category.editor',
   keywords: ['expand', 'unfold', '展开', '章节', 'section'],
   shortcut: '⌘/Ctrl+Shift+]',
   run: () => {
@@ -100,8 +101,8 @@ commandRegistry.register({
 });
 commandRegistry.register({
   id: 'editor.toggleCurrentSectionFold',
-  title: '切换当前章节折叠',
-  category: '编辑器',
+  title: 'command.editor.toggleCurrentSectionFold',
+  category: 'command.category.editor',
   keywords: ['toggle', 'fold', '切换', '折叠', '章节'],
   run: () => {
     toggleCurrentSectionFold();
@@ -109,14 +110,14 @@ commandRegistry.register({
 });
 
 for (const [id, title, level, keywords] of [
-  ['editor.foldToLevel1', '折叠到 H1', 1, ['fold', 'level', 'H1', '层级', '折叠到层级']],
-  ['editor.foldToLevel2', '折叠到 H2', 2, ['fold', 'level', 'H2', '层级']],
-  ['editor.foldToLevel3', '折叠到 H3', 3, ['fold', 'level', 'H3', '层级']],
+  ['editor.foldToLevel1', 'command.editor.foldToLevel1', 1, ['fold', 'level', 'H1', '层级', '折叠到层级']],
+  ['editor.foldToLevel2', 'command.editor.foldToLevel2', 2, ['fold', 'level', 'H2', '层级']],
+  ['editor.foldToLevel3', 'command.editor.foldToLevel3', 3, ['fold', 'level', 'H3', '层级']],
 ] as const) {
   commandRegistry.register({
     id,
     title,
-    category: '编辑器',
+    category: 'command.category.editor',
     keywords: [...keywords],
     run: () => {
       foldToLevel(level);
@@ -126,8 +127,8 @@ for (const [id, title, level, keywords] of [
 
 commandRegistry.register({
   id: 'editor.toggleSourceMode',
-  title: '切换源码模式',
-  category: '编辑器',
+  title: 'command.editor.toggleSourceMode',
+  category: 'command.category.editor',
   keywords: ['source', 'markdown', '源码', '分栏', '编辑器'],
   shortcut: '⌘/Ctrl+E',
   run: requestActiveSourceModeToggle,
@@ -135,22 +136,22 @@ commandRegistry.register({
 
 commandRegistry.register({
   id: 'editor.togglePreviewView',
-  title: '切换预览视图',
-  category: '编辑器',
+  title: 'command.editor.togglePreviewView',
+  category: 'command.category.editor',
   keywords: ['preview', 'read', '预览', '阅读'],
   shortcut: '⌘/Ctrl+Shift+E',
   run: requestActiveMarkdownPreviewToggle,
 });
 
 for (const [id, title, keywords, view] of [
-  ['editor.viewSource', '切换到源码视图', ['source', '源码'], 'source'],
-  ['editor.viewSplit', '切换到分栏视图', ['split', '分栏'], 'split'],
-  ['editor.viewPreview', '切换到预览视图', ['preview', '预览'], 'preview'],
+  ['editor.viewSource', 'command.editor.viewSource', ['source', '源码', 'source view'], 'source'],
+  ['editor.viewSplit', 'command.editor.viewSplit', ['split', '分栏', 'split view'], 'split'],
+  ['editor.viewPreview', 'command.editor.viewPreview', ['preview', '预览', 'preview view'], 'preview'],
 ] as const) {
   commandRegistry.register({
     id,
     title,
-    category: '编辑器',
+    category: 'command.category.editor',
     keywords: [...keywords],
     run: () => requestActiveMarkdownView(view),
   });
@@ -158,35 +159,35 @@ for (const [id, title, keywords, view] of [
 
 commandRegistry.register({
   id: 'view.graph',
-  title: '打开全局知识图谱',
-  category: '视图',
+  title: 'command.view.graph',
+  category: 'command.category.view',
   keywords: ['graph', 'knowledge', '图谱', '知识'],
   shortcut: '⌘K',
   run: () => {
-    openWorkspaceTab('graph', '知识图谱');
+    openWorkspaceTab('graph', t('command.view.graph.tabTitle'));
   },
 });
 
 commandRegistry.register({
   id: 'view.toggleSidebar',
-  title: '折叠/展开侧栏',
-  category: '视图',
+  title: 'command.view.toggleSidebar',
+  category: 'command.category.view',
   keywords: ['sidebar', '侧栏'],
   run: () => ui.getState().toggleSidebar(),
 });
 
 commandRegistry.register({
   id: 'view.toggleDock',
-  title: '显示/隐藏右侧 Dock',
-  category: '视图',
+  title: 'command.view.toggleDock',
+  category: 'command.category.view',
   keywords: ['dock', 'ai'],
   run: () => ui.getState().toggleDock(),
 });
 
 commandRegistry.register({
   id: 'theme.toggle',
-  title: '切换亮/暗主题',
-  category: '主题',
+  title: 'command.theme.toggle',
+  category: 'command.category.theme',
   keywords: ['theme', 'dark', 'light', '主题', '暗色', '亮色'],
   run: () => {
     const { resolved, setPreference } = useThemeStore.getState();
@@ -196,24 +197,24 @@ commandRegistry.register({
 
 commandRegistry.register({
   id: 'theme.system',
-  title: '主题跟随系统',
-  category: '主题',
+  title: 'command.theme.system',
+  category: 'command.category.theme',
   keywords: ['theme', 'system', '系统'],
   run: () => useThemeStore.getState().setPreference('system'),
 });
 
 commandRegistry.register({
   id: 'vault.switch',
-  title: '切换/打开其他知识库',
-  category: '知识库',
+  title: 'command.vault.switch',
+  category: 'command.category.vault',
   keywords: ['vault', 'switch', '切换', '向导'],
   run: () => void invoke('vault:close').catch(() => undefined),
 });
 
 commandRegistry.register({
   id: 'app.settings',
-  title: '打开设置',
-  category: '应用',
+  title: 'command.app.settings',
+  category: 'command.category.app',
   keywords: ['settings', 'preferences', '设置', '首选项'],
   shortcut: '⌘,',
   run: () => openSettings(),
@@ -222,32 +223,32 @@ commandRegistry.register({
 // 二进制文档导入命令入口（另两个入口为页面树「新建」菜单与拖拽导入）。
 commandRegistry.register({
   id: 'binary.importDocx',
-  title: '导入 Word 文档（转为块文档）',
-  category: '文档',
+  title: 'command.binary.importDocx',
+  category: 'command.category.document',
   keywords: ['import', 'docx', 'word', '导入', '文档'],
   run: () => void importDocxIn('').catch(() => undefined),
 });
 
 commandRegistry.register({
   id: 'binary.importXlsx',
-  title: '导入 XLSX（应用内编辑）',
-  category: '文档',
+  title: 'command.binary.importXlsx',
+  category: 'command.category.document',
   keywords: ['import', 'xlsx', 'excel', '导入', '表格'],
   run: () => void importBinaryIn('xlsx', '').catch(() => undefined),
 });
 
 commandRegistry.register({
   id: 'binary.importXmind',
-  title: '导入 XMIND（应用内编辑）',
-  category: '文档',
+  title: 'command.binary.importXmind',
+  category: 'command.category.document',
   keywords: ['import', 'xmind', 'mindmap', '导入', '思维导图'],
   run: () => void importBinaryIn('mindmap', '').catch(() => undefined),
 });
 
 commandRegistry.register({
   id: 'app.palette',
-  title: '打开命令面板',
-  category: '应用',
+  title: 'command.app.palette',
+  category: 'command.category.app',
   keywords: ['palette', 'command', '面板'],
   shortcut: '⌘K',
   run: () => usePaletteStore.getState().setOpen(true),
@@ -255,19 +256,22 @@ commandRegistry.register({
 
 commandRegistry.register({
   id: 'app.checkUpdates',
-  title: '检查更新',
-  category: '应用',
+  title: 'command.app.checkUpdates',
+  category: 'command.category.app',
   keywords: ['update', '更新'],
   run: async () => {
     const result = await invoke('app:checkForUpdates');
-    window.alert(`更新检查：${result.status}${result.message ? `\n${result.message}` : ''}`);
+    window.alert(
+      `${t('command.checkUpdates.result', { status: result.status })}` +
+        (result.message ? `\n${result.message}` : ''),
+    );
   },
 });
 
 commandRegistry.register({
   id: 'app.about',
-  title: '关于 NexNote',
-  category: '应用',
+  title: 'command.app.about',
+  category: 'command.category.app',
   keywords: ['about', '关于'],
   run: async () => {
     const info = await invoke('app:getInfo');
@@ -279,8 +283,8 @@ commandRegistry.register({
 
 commandRegistry.register({
   id: 'app.save',
-  title: '保存当前工作区',
-  category: '应用',
+  title: 'command.app.save',
+  category: 'command.category.app',
   keywords: ['save', '保存', 'commit', '提交'],
   shortcut: '⌘S',
   run: async () => {

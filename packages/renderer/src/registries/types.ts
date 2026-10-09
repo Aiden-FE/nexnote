@@ -27,7 +27,13 @@ export interface DockPanelDef {
   render: ComponentType;
 }
 
-/** ⌘K 命令面板条目。 */
+/**
+ * ⌘K 命令面板条目。
+ *
+ * `title` / `category` 为消息目录 key，由命令面板按当前界面语言成文
+ * （ADR-0023：消息目录为唯一真相，命令与分类随界面语言切换）。
+ * `keywords` 保留中英互通，保证任一语言下都能搜到命令。
+ */
 export interface CommandDef {
   id: string;
   title: string;

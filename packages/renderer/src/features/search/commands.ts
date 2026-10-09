@@ -5,9 +5,9 @@ import { useIndexStore } from '../../stores/index-store';
 
 commandRegistry.register({
   id: 'search.open',
-  title: '全文搜索',
-  category: '搜索',
-  keywords: ['search', 'fts', '全文', '搜索'],
+  title: 'command.search.open',
+  category: 'command.category.search',
+  keywords: ['search', 'fts', 'full text', '全文', '搜索'],
   shortcut: '⌘⇧F',
   run: () => useUiStore.getState().setSearchOpen(true),
 });
@@ -15,8 +15,8 @@ commandRegistry.register({
 
 commandRegistry.register({
   id: 'index.rebuild',
-  title: '重建关系索引',
-  category: '搜索',
-  keywords: ['index', 'rebuild', '索引', '重建'],
+  title: 'command.index.rebuild',
+  category: 'command.category.search',
+  keywords: ['index', 'rebuild', 'relation index', '索引', '重建'],
   run: () => useIndexStore.getState().rebuild(),
 });

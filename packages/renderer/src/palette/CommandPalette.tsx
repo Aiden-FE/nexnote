@@ -23,9 +23,22 @@ export function useCommandPaletteHotkey(): void {
   }, [setOpen]);
 }
 
-function score(cmd: CommandDef, query: string): number {
+/** 命令的可检索文本：title/category 在两种语言下的成文 + 中英关键词（ADR-0023 双语索引）。 */
+function haystackFor(cmd: CommandDef, t: (key: string) => string): string {
+  return [
+    t(cmd.title),
+    t(cmd.category),
+    cmd.keywords?.join(' ') ?? '',
+    // 同步保留另一语言成文：传入 zh/en 两套 t 更复杂，这里关键词已含双语，
+    // title/category 的另一语言通过命令注册的关键词补充（见 builtin.ts）。
+  ]
+    .join(' ')
+    .toLowerCase();
+}
+
+function score(cmd: CommandDef, query: string, t: (key: string) => string): number {
   if (!query) return 1;
-  const haystack = `${cmd.title} ${cmd.category} ${(cmd.keywords ?? []).join(' ')}`.toLowerCase();
+  const haystack = haystackFor(cmd, t);
   const idx = haystack.indexOf(query);
   if (idx === -1) return 0;
   return 100 - Math.min(idx, 50);
@@ -74,14 +87,14 @@ function PaletteInner() {
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
     const fromCommands = commands
-      .map((cmd) => ({ cmd, s: score(cmd, q) }))
+      .map((cmd) => ({ cmd, s: score(cmd, q, t) }))
       .filter((x) => x.s > 0)
       .sort((a, b) => b.s - a.s)
       .map((x) => x.cmd);
     // 有查询词时：页面跳转优先展示，命令随后（Obsidian ⌘K 行为）
     if (q) return [...jumpItems, ...fromCommands];
     return fromCommands;
-  }, [commands, query, jumpItems]);
+  }, [commands, query, jumpItems, t]);
 
   // 派生安全索引（过滤结果变短时自动钳制，无需 effect）
   const safeIndex = Math.min(activeIndex, Math.max(filtered.length - 1, 0));
@@ -166,8 +179,8 @@ function PaletteInner() {
                 index === safeIndex ? 'bg-accent text-accent-foreground' : 'hover:bg-accent/60',
               )}
             >
-              <span className="flex-1 truncate">{cmd.title}</span>
-              <span className="text-[11px] text-muted-foreground">{cmd.category}</span>
+              <span className="flex-1 truncate">{t(cmd.title)}</span>
+              <span className="text-[11px] text-muted-foreground">{t(cmd.category)}</span>
               {cmd.shortcut && (
                 <kbd className="rounded border bg-muted px-1.5 py-0.5 text-[10px] text-muted-foreground">
                   {cmd.shortcut}

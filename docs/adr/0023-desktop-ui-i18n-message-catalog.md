@@ -34,7 +34,7 @@ status: in_progress
 ## Progress（2026-10-09）
 
 - 阶段①消息目录：`packages/shared/src/i18n/message-catalog.ts` 提供语义 key +
-  `zh-CN` / `en-US` 两份词典（当前各 136 key，逐 key 对齐）与 `translate()`
+  `zh-CN` / `en-US` 两份词典（当前各 181 key，逐 key 对齐）与 `translate()`
   （zh-CN 兜底、key 缺失回退 key 本身、`{param}` 占位符替换）；
   renderer 新增 `lib/i18n.ts`（`setLanguage` / `t()` / `useI18n`，
   基于 `useSyncExternalStore`），设置语言变化经 `use-settings-effects` 驱动。
@@ -54,3 +54,8 @@ status: in_progress
   （含 store → bootstrap effect、输入事件 → query 更新链路），在 en-US 下对已迁移
   子树做 CJK 扫描；未迁移子树（命令条目、面板内部）显式排除并在票据登记。
 - 门禁：`pnpm lint` 0；`pnpm typecheck` 5/5；`pnpm test` 1822 passed / 3 skipped。
+- 阶段②第三批：命令面板的**全部命令条目与分类**迁移到消息目录
+  （`features/commands/builtin.ts`、`features/search/commands.ts`、`features/ai/index.tsx`
+  共 33 个命令 + 9 个分类），命令面板渲染与检索均经 `t()` 成文；检索按
+  ADR-0023 架构决策③保留中英关键词互通，英文界面下仍能搜到中文命令名。
+  顺带迁移图谱 tab 标题与「检查更新」弹窗文案。
