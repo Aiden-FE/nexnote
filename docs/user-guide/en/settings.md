@@ -11,10 +11,13 @@ Settings are organized by section, with a search box at the top. This chapter li
 
 | Section | Contents |
 | --- | --- |
-| General | Theme, interface language, fonts and sizes, startup behavior |
-| AI Providers | Provider profiles and feature bindings (chat / writing / translation / embeddings) |
+| General | Theme, interface language, fonts and sizes, default translation target, startup behavior, help entry |
+| Editor | Vault editor behavior: autosave interval, filename bound to title, code theme, Vim mode |
+| AI | Provider profiles and feature bindings (chat / writing / translation / embeddings) |
 | Git | Use the bundled Git or the system Git |
 | Network | Proxy mode and separate proxies for AI / Git |
+| Plugins | Install / enable / inspect capabilities |
+| Retrieval skills | Enable, reorder, tune |
 | Shortcuts | View and rebind every command |
 | Updates | Update channel, launch check, auto-download |
 | About | Version and links |

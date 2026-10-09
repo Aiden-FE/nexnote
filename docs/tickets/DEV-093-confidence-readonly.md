@@ -34,12 +34,12 @@
 
 ## 验收标准
 
-（2026-10-09 回填：`field-catalog.test.tsx` 与 `frontmatter.test.ts` 覆盖，相关套件全绿）
+（2026-10-09 回填：`field-catalog.test.tsx`（只读渲染）与 `packages/main/tests/confidence-service.test.ts`（confidenceFrontmatter 开关写回）覆盖，相关套件全绿）
 
 - [x] 属性表格中 `confidence` 渲染为只读（存在 `data-testid="frontmatter-readonly-confidence"`），无可编辑输入框——field-catalog「confidence 走只读分支，无可编辑输入框」
 - [x] 只读值为数字文本，空值回退 `—`——field-catalog「confidence 空值回退 —」
 - [x] `updated` 的只读行为不回归——同用例断言 updated 只读且无 input
-- [x] 引擎仍按 `confidenceFrontmatter` 开关写回 `confidence`，计算结果不变——frontmatter.test.ts / properties-confidence.test.tsx 覆盖
+- [x] 引擎仍按 `confidenceFrontmatter` 开关写回 `confidence`，计算结果不变——confidence-service.test.ts「does not write frontmatter by default, but writes score when explicitly enabled」
 - [x] 新增/更新单测：`isReadonlyStandardField('confidence') === true`，且 FieldEditor 对 confidence 走只读分支
 - [x] `pnpm typecheck` / `pnpm lint` / 相关 Vitest 全绿
 

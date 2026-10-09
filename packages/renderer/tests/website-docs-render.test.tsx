@@ -102,7 +102,9 @@ describe('website docs', () => {
     expect(zh).toContain('href="/zh/docs/spreadsheets-and-mindmaps"');
     const en = render(<DocsIndex lang="en" text={docsCopy.en} />);
     expect(en).toContain('Spreadsheets & Mindmaps');
-    const chapter = render(<DocsChapter lang="zh" text={docsCopy.zh} slug="spreadsheets-and-mindmaps" />);
+    const chapter = render(
+      <DocsChapter lang="zh" text={docsCopy.zh} slug="spreadsheets-and-mindmaps" />,
+    );
     expect(chapter).toContain('导入或新建');
   });
 });

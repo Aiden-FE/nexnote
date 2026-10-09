@@ -85,8 +85,7 @@ const byLang: Record<Lang, Record<string, Chapter>> = {
     'search-and-recall': chapter('en', rawEnSearch),
     confidence: chapter('en', rawEnConfidence),
     'git-and-sync': chapter('en', rawEnGitAndSync),
-    'ai-assistant':
-      chapter('en', rawEnAiAssistant),
+    'ai-assistant': chapter('en', rawEnAiAssistant),
     plugins: chapter('en', rawEnPlugins),
     'spreadsheets-and-mindmaps': chapter('en', rawEnSpreadsheets),
     settings: chapter('en', rawEnSettings),
