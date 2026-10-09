@@ -5,6 +5,7 @@ import { invoke } from '../../lib/ipc';
 import { useVault } from '../../shell/vault-context';
 import { useThemeStore } from '../../theme/theme-store';
 import type { AppInfo } from '@nexnote/shared';
+import { useI18n } from '../../lib/i18n';
 
 /**
  * 状态栏内置条目：
@@ -27,18 +28,19 @@ function VaultStatusItem() {
 }
 
 function ThemeToggleItem() {
+  const t = useI18n();
   const resolved = useThemeStore((s) => s.resolved);
   const setPreference = useThemeStore((s) => s.setPreference);
   return (
     <button
       type="button"
       data-testid="theme-toggle"
-      title={resolved === 'dark' ? '切换到亮色主题' : '切换到暗色主题'}
+      title={resolved === 'dark' ? t('status.theme.toLight') : t('status.theme.toDark')}
       onClick={() => setPreference(resolved === 'dark' ? 'light' : 'dark')}
       className="flex items-center gap-1 rounded px-1.5 py-0.5 hover:bg-accent hover:text-foreground"
     >
       {resolved === 'dark' ? <Sun className="size-3.5" /> : <Moon className="size-3.5" />}
-      {resolved === 'dark' ? '暗色' : '亮色'}
+      {resolved === 'dark' ? t('status.theme.dark') : t('status.theme.light')}
     </button>
   );
 }

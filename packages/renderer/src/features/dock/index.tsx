@@ -8,7 +8,8 @@ import { AiDockPanel } from '../ai/AiDockPanel';
  */
 dockPanelRegistry.register({
   id: 'ai-chat',
-  title: 'AI 对话',
+  title: 'dock.panel.aiChat',
+  titleIsKey: true,
   icon: Sparkles,
   render: AiDockPanel,
 });

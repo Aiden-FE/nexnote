@@ -6,6 +6,7 @@ import { usePaletteStore } from '../stores/palette-store';
 import { useUiStore } from '../stores/ui-store';
 import { notifyPaletteQuery } from '../features/search';
 import { cn } from '../lib/utils';
+import { useI18n } from '../lib/i18n';
 
 /** ⌘K 全局监听（App 挂载时注册一次）。 */
 export function useCommandPaletteHotkey(): void {
@@ -42,6 +43,7 @@ export function CommandPalette() {
 
 function PaletteInner() {
   const setOpen = usePaletteStore((s) => s.setOpen);
+  const t = useI18n();
   const commands = useRegistryItems(commandRegistry);
   const jumpResults = useUiStore((s) => s.jumpResults);
   const [query, setQuery] = useState('');
@@ -61,12 +63,12 @@ function PaletteInner() {
       jumpResults.map((r) => ({
         id: `jump:${r.path}`,
         title: r.title,
-        category: '页面',
+        category: t('palette.category.pages'),
         run: () => {
           void openDocumentTab(r.path);
         },
       })) as CommandDef[],
-    [jumpResults],
+    [jumpResults, t],
   );
 
   const filtered = useMemo(() => {
@@ -139,7 +141,7 @@ function PaletteInner() {
               onQueryChange(e.target.value);
             }}
             onKeyDown={onKeyDown}
-            placeholder="搜索命令…"
+            placeholder={t('palette.placeholder')}
             className="h-11 w-full bg-transparent text-sm outline-none placeholder:text-muted-foreground/70"
           />
           <kbd className="rounded border bg-muted px-1.5 py-0.5 text-[10px] text-muted-foreground">
@@ -149,7 +151,7 @@ function PaletteInner() {
 
         <div ref={listRef} className="max-h-80 overflow-auto p-1.5">
           {filtered.length === 0 && (
-            <p className="px-3 py-8 text-center text-sm text-muted-foreground">未找到匹配的命令</p>
+            <p className="px-3 py-8 text-center text-sm text-muted-foreground">{t('palette.noResults')}</p>
           )}
           {filtered.map((cmd, index) => (
             <button
@@ -177,7 +179,7 @@ function PaletteInner() {
         </div>
 
         <div className="border-t px-3.5 py-1.5 text-[11px] text-muted-foreground">
-          ↑↓ 选择 · ↵ 运行 · esc 关闭
+          {t('palette.hint')}
         </div>
       </div>
     </div>

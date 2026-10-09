@@ -1,20 +1,28 @@
 import type { ComponentType } from 'react';
 import type { LucideIcon } from 'lucide-react';
 
-/** 侧栏面板插槽（DEV-003 页面树 / DEV-004 回链与标签在此挂载）。 */
+/**
+ * 侧栏面板插槽（DEV-003 页面树 / DEV-004 回链与标签在此挂载）。
+ *
+ * `title` 是界面文案：`titleIsKey` 时为消息目录 key，由侧栏经 i18n 成文；
+ * 否则视为已定稿文案（如第三方插件贡献的标题，不参与翻译）。
+ */
 export interface SidebarPanelDef {
   id: string;
   title: string;
+  /** `title` 是否为消息目录 key（ADR-0023）；缺省视为已定稿文案。 */
+  titleIsKey?: boolean;
   icon: LucideIcon;
   render: ComponentType;
   /** 可选标签角标（由面板自身订阅实时数据；DEV-024 反链计数）。 */
   renderBadge?: ComponentType;
 }
 
-/** 右侧 dock 面板插槽（DEV-012 AI 对话在此挂载）。 */
+/** 右侧 dock 面板插槽（DEV-012 AI 对话在此挂载）。`titleIsKey` 同侧栏面板。 */
 export interface DockPanelDef {
   id: string;
   title: string;
+  titleIsKey?: boolean;
   icon: LucideIcon;
   render: ComponentType;
 }

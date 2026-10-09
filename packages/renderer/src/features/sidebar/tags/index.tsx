@@ -17,7 +17,8 @@ import { buildTagTree, type TagNode } from './tree';
  */
 sidebarPanelRegistry.register({
   id: 'tags',
-  title: '标签',
+  title: 'sidebar.panel.tags',
+  titleIsKey: true,
   icon: Tags,
   render: TagsPanel,
 });

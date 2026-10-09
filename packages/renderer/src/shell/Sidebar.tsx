@@ -3,6 +3,7 @@ import { useRegistryItems, sidebarPanelRegistry } from '../registries';
 import { openSettings } from '../lib/open-settings';
 import { useUiStore } from '../stores/ui-store';
 import { useVault } from './vault-context';
+import { useI18n } from '../lib/i18n';
 import { invoke } from '../lib/ipc';
 import { Resizer } from './Resizer';
 import { cn } from '../lib/utils';
@@ -12,7 +13,11 @@ import { cn } from '../lib/utils';
  * DEV-003（页面树）/ DEV-004（回链、标签）通过注册新面板接入，本组件不改。
  */
 export function Sidebar() {
+  const t = useI18n();
   const panels = useRegistryItems(sidebarPanelRegistry);
+  /** `titleIsKey` 时经消息目录成文，否则为已定稿文案（插件贡献）。 */
+  const panelTitle = (title: string, isKey: boolean | undefined): string =>
+    isKey ? t(title) : title;
   const {
     sidebarWidth,
     sidebarCollapsed,
@@ -35,8 +40,8 @@ export function Sidebar() {
       >
         <button
           type="button"
-          title="展开侧栏"
-          aria-label="展开侧栏"
+          title={t('sidebar.expand')}
+          aria-label={t('sidebar.expand')}
           onClick={() => toggleSidebar()}
           className="rounded p-1.5 text-muted-foreground hover:bg-sidebar-accent hover:text-foreground"
         >
@@ -49,7 +54,7 @@ export function Sidebar() {
             <button
               key={panel.id}
               type="button"
-              title={panel.title}
+              title={panelTitle(panel.title, panel.titleIsKey)}
               onClick={() => setActiveSidebarPanel(panel.id)}
               className="flex items-center gap-0.5 rounded p-1.5 text-muted-foreground hover:bg-sidebar-accent hover:text-foreground"
             >
@@ -74,12 +79,12 @@ export function Sidebar() {
         <div className="flex h-10 items-center gap-1.5 border-b border-sidebar-border px-2.5">
           <FolderGit2 className="size-4 shrink-0 text-muted-foreground" />
           <span className="truncate text-sm font-medium" title={vault?.root}>
-            {vault?.name ?? '未打开知识库'}
+            {vault?.name ?? t('sidebar.noVault')}
           </span>
           <button
             type="button"
-            title="折叠侧栏"
-            aria-label="折叠侧栏"
+            title={t('sidebar.collapse')}
+            aria-label={t('sidebar.collapse')}
             onClick={() => toggleSidebar()}
             className="ml-auto rounded p-1 text-muted-foreground hover:bg-sidebar-accent hover:text-foreground"
           >
@@ -105,7 +110,7 @@ export function Sidebar() {
                 )}
               >
                 <Icon className="size-3.5" />
-                {panel.title}
+                {panelTitle(panel.title, panel.titleIsKey)}
                 {panel.renderBadge ? <panel.renderBadge /> : null}
               </button>
             );
@@ -117,7 +122,7 @@ export function Sidebar() {
           {ActiveContent ? (
             <ActiveContent />
           ) : (
-            <p className="text-muted-foreground">暂无侧栏面板</p>
+            <p className="text-muted-foreground">{t('sidebar.noPanel')}</p>
           )}
         </div>
 
@@ -127,20 +132,20 @@ export function Sidebar() {
             type="button"
             data-tour="settings"
             onClick={() => openSettings()}
-            title="打开设置"
+            title={t('sidebar.openSettings')}
             className="flex items-center gap-1.5 rounded px-2 py-1 text-xs text-muted-foreground hover:bg-sidebar-accent hover:text-foreground"
           >
             <Settings2 className="size-3.5" />
-            设置
+            {t('sidebar.settings')}
           </button>
           <button
             type="button"
             onClick={() => void invoke('vault:close').catch(() => undefined)}
-            title="关闭当前知识库，返回向导"
+            title={t('sidebar.switchVault')}
             className="ml-auto flex items-center gap-1.5 rounded px-2 py-1 text-xs text-muted-foreground hover:bg-sidebar-accent hover:text-foreground"
           >
             <LogOut className="size-3.5" />
-            切换知识库
+            {t('sidebar.switchVault.short')}
           </button>
         </div>
       </aside>

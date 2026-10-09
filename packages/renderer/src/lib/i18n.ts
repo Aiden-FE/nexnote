@@ -6,7 +6,7 @@
  * - `useI18n()` 订阅语言变化，切到 English 后所有用它的组件重渲染。
  * - 界面语言不改变页面正文、提交历史与 AI 提示词。
  */
-import { useSyncExternalStore } from 'react';
+import { useCallback, useSyncExternalStore } from 'react';
 import {
   CATALOGS,
   DEFAULT_UI_LANGUAGE,
@@ -49,13 +49,22 @@ export function t(
   return translate(CATALOGS[currentLanguage], key, currentLanguage, params);
 }
 
-/** 组件内取文案；订阅语言，切语言时重渲染。 */
+/**
+ * 组件内取文案；订阅语言，切语言时重渲染。
+ *
+ * 返回值随语言变化（`useCallback` 依赖 `language`），以便把 `t` 放进
+ * `useMemo` / `useEffect` 依赖时能在切语言后正确重算。
+ */
 export function useI18n(): (
   key: string,
   params?: Readonly<Record<string, string | number>>,
 ) => string {
-  useSyncExternalStore(subscribeLanguage, getLanguage);
-  return t;
+  const language = useSyncExternalStore(subscribeLanguage, getLanguage);
+  return useCallback(
+    (key: string, params?: Readonly<Record<string, string | number>>) =>
+      translate(CATALOGS[language], key, language, params),
+    [language],
+  );
 }
 
 export function useLanguage(): UiLanguage {

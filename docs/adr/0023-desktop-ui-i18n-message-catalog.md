@@ -34,7 +34,7 @@ status: in_progress
 ## Progress（2026-10-09）
 
 - 阶段①消息目录：`packages/shared/src/i18n/message-catalog.ts` 提供语义 key +
-  `zh-CN` / `en-US` 两份词典（当前各 64 key，逐 key 对齐）与 `translate()`
+  `zh-CN` / `en-US` 两份词典（当前各 136 key，逐 key 对齐）与 `translate()`
   （zh-CN 兜底、key 缺失回退 key 本身、`{param}` 占位符替换）；
   renderer 新增 `lib/i18n.ts`（`setLanguage` / `t()` / `useI18n`，
   基于 `useSyncExternalStore`），设置语言变化经 `use-settings-effects` 驱动。
@@ -46,4 +46,11 @@ status: in_progress
 - `NOT_RUN` / 未达门槛：阶段②其余 renderer 模块、阶段③主进程错误码化与
   原生菜单/对话框、阶段④既有测试断言均未完成。按本 ADR 完成门槛
   「切到 en-US 后全 UI 无中文残留」，当前不得声称桌面端双语完成。
-- 门禁：`pnpm lint` 0；`pnpm typecheck` 5/5；`pnpm test` 1815 passed / 3 skipped。
+- 阶段②第二批：欢迎页、命令面板**骨架**（占位符/空态/提示；命令条目本身仍为中文，未迁移）、
+  状态栏（主题/索引）、首启动向导、侧栏框架、Dock 框架（头部/折叠/空态）
+  与四个内置侧栏面板的**标题**（面板内部文案仍为中文，未迁移）迁移到消息目录；
+  侧栏/dock 注册表新增显式 `titleIsKey`（插件贡献标题保持既定不翻译边界）。
+- 可执行残留检查：`desktop-i18n-migrated-modules.test.tsx` 对已迁移模块做**真实渲染**
+  （含 store → bootstrap effect、输入事件 → query 更新链路），在 en-US 下对已迁移
+  子树做 CJK 扫描；未迁移子树（命令条目、面板内部）显式排除并在票据登记。
+- 门禁：`pnpm lint` 0；`pnpm typecheck` 5/5；`pnpm test` 1822 passed / 3 skipped。

@@ -46,7 +46,8 @@ const isOpenableDocument = (name: string): boolean =>
  */
 sidebarPanelRegistry.register({
   id: 'pages',
-  title: '页面',
+  title: 'sidebar.panel.pages',
+  titleIsKey: true,
   icon: FolderTree,
   render: PageTreePanel,
 });

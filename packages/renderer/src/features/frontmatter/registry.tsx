@@ -8,7 +8,8 @@ import { useConfidence } from './use-confidence';
 /** DEV-005：右侧 Dock 的文档属性页签。 */
 dockPanelRegistry.register({
   id: 'document-properties',
-  title: '属性',
+  title: 'dock.panel.documentProperties',
+  titleIsKey: true,
   icon: SlidersHorizontal,
   render: DocumentPropertiesDockPanel,
 });

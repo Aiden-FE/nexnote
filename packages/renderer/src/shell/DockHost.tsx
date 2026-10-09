@@ -3,13 +3,18 @@ import { useRegistryItems, dockPanelRegistry } from '../registries';
 import { useUiStore } from '../stores/ui-store';
 import { Resizer } from './Resizer';
 import { cn } from '../lib/utils';
+import { useI18n } from '../lib/i18n';
 
 /**
  * 右侧 dock：面板插槽（注册表驱动）+ 可折叠 + 宽度可调。
  * DEV-012（AI 对话）通过注册 dock 面板接入，本组件不改。
  */
 export function DockHost() {
+  const t = useI18n();
   const panels = useRegistryItems(dockPanelRegistry);
+  /** `titleIsKey` 时经消息目录成文，否则为已定稿文案（插件贡献）。 */
+  const panelTitle = (title: string, isKey: boolean | undefined): string =>
+    isKey ? t(title) : title;
   const {
     dockVisible,
     dockWidth,
@@ -40,11 +45,13 @@ export function DockHost() {
       >
         <div className="flex h-10 items-center gap-1.5 border-b px-2.5 text-sm">
           <Sparkles className="size-3.5 text-muted-foreground" />
-          <span className="font-medium">{active?.title ?? 'Dock'}</span>
+          <span className="font-medium">
+            {active ? panelTitle(active.title, active.titleIsKey) : 'Dock'}
+          </span>
           <button
             type="button"
-            title="折叠 Dock"
-            aria-label="折叠 Dock"
+            title={t('dock.collapse')}
+            aria-label={t('dock.collapse')}
             onClick={() => toggleDock()}
             className="ml-auto rounded p-1 text-muted-foreground hover:bg-accent hover:text-foreground"
           >
@@ -71,7 +78,7 @@ export function DockHost() {
                   )}
                 >
                   <Icon className="size-3.5" />
-                  {panel.title}
+                  {panelTitle(panel.title, panel.titleIsKey)}
                 </button>
               );
             })}
@@ -85,7 +92,7 @@ export function DockHost() {
           {ActiveContent ? (
             <ActiveContent />
           ) : (
-            <p className="text-muted-foreground">暂无 Dock 面板</p>
+            <p className="text-muted-foreground">{t('dock.noPanel')}</p>
           )}
         </div>
       </aside>

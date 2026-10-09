@@ -34,7 +34,8 @@ import {
 statusBarRegistry.register({ id: 'git', align: 'left', render: GitStatusItem });
 dockPanelRegistry.register({
   id: 'git-timeline',
-  title: '版本时间线',
+  title: 'dock.panel.gitTimeline',
+  titleIsKey: true,
   icon: History,
   render: GitTimeline,
 });

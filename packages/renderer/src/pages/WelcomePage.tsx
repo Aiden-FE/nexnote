@@ -9,28 +9,22 @@ import { useSettingsStore } from '../stores/settings-store';
 import { useUiStore } from '../stores/ui-store';
 import { useThemeStore } from '../theme/theme-store';
 import { useVault } from '../shell/vault-context';
-
-/**
- * 官网产品文档（ADR-0021 / ADR-0022）。语言跟随界面语言设置，
- * 与官网 `/docs`（英文）、`/zh/docs`（简体中文）一一对应。
- */
-const CAPABILITY_LINE =
-  '块编辑与 Markdown 双格式文档 · 页面树、双向链接与图谱 · 内置 Git 版本历史 · AI 对话与写作辅助';
-
-const highlights = [
-  { icon: FileCode2, text: '源码 / 分栏 / 预览随时切' },
-  { icon: Sparkles, text: 'AI 仅在显式意图时发起' },
-  { icon: Link2, text: '[[双链]] 与回链自动生成' },
-];
+import { useI18n } from '../lib/i18n';
 
 /** 默认欢迎 Tab。 */
 export function WelcomePage() {
+  const t = useI18n();
   const vault = useVault();
   const setPaletteOpen = usePaletteStore((s) => s.setOpen);
   const toggleTheme = useThemeStore((s) => s.setPreference);
   const resolved = useThemeStore((s) => s.resolved);
   const toggleDock = useUiStore((s) => s.toggleDock);
   const language = useSettingsStore((s) => s.global?.appearance.language);
+  const highlights = [
+    { icon: FileCode2, text: t('welcome.highlight.views') },
+    { icon: Sparkles, text: t('welcome.highlight.ai') },
+    { icon: Link2, text: t('welcome.highlight.wikilinks') },
+  ];
   const [appInfo, setAppInfo] = useState<AppInfo | null>(null);
 
   const gettingStartedUrl = gettingStartedDocsUrl(language);
@@ -56,9 +50,9 @@ export function WelcomePage() {
             </p>
           </div>
         </div>
-        <h1 className="mt-6 text-2xl font-semibold tracking-tight">这里是你的本地知识库</h1>
+        <h1 className="mt-6 text-2xl font-semibold tracking-tight">{t('welcome.title')}</h1>
         <p className="mx-auto mt-2 max-w-md text-sm text-muted-foreground">
-          打开左侧页面树开始写作，或直接进入一个动作。
+          {t('welcome.subtitle')}
         </p>
       </header>
 
@@ -71,7 +65,7 @@ export function WelcomePage() {
           onClick={() => window.open(gettingStartedUrl, '_blank', 'noopener')}
         >
           <GraduationCap className="size-4" />
-          快速上手
+          {t('welcome.gettingStarted')}
         </Button>
         <div className="flex w-full max-w-sm gap-2">
           <Button
@@ -81,17 +75,17 @@ export function WelcomePage() {
             onClick={() => setPaletteOpen(true)}
           >
             <Command className="size-4" />
-            命令面板
+            {t('welcome.commandPalette')}
           </Button>
           <Button
             variant="outline"
             size="lg"
             className="h-11 flex-1"
-            aria-label="切换主题"
+            aria-label={t('welcome.toggleTheme')}
             onClick={() => toggleTheme(resolved === 'dark' ? 'light' : 'dark')}
           >
             {resolved === 'dark' ? <Sun className="size-4" /> : <Moon className="size-4" />}
-            主题
+            {t('welcome.theme')}
           </Button>
         </div>
         <button
@@ -99,7 +93,7 @@ export function WelcomePage() {
           onClick={toggleDock}
           className="mt-1 text-[11px] text-muted-foreground underline-offset-4 hover:underline"
         >
-          切换 Dock
+          {t('welcome.toggleDock')}
         </button>
       </div>
 
@@ -116,7 +110,7 @@ export function WelcomePage() {
       </div>
 
       <p className="text-center text-[11px] leading-relaxed text-muted-foreground/80">
-        {CAPABILITY_LINE}
+        {t('welcome.capabilityLine')}
       </p>
     </div>
   );

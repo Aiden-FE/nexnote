@@ -17,7 +17,8 @@ import { graphNodeTypes } from './GraphPageNode';
 
 sidebarPanelRegistry.register({
   id: 'graph',
-  title: '图谱',
+  title: 'sidebar.panel.graph',
+  titleIsKey: true,
   icon: Network,
   render: LocalGraphPanel,
 });

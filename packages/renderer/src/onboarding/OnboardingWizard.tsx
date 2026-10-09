@@ -12,6 +12,7 @@ import { invoke } from '../lib/ipc';
 import type { RecentVaultEntry } from '@nexnote/shared';
 import { cn } from '../lib/utils';
 import { CloneRemoteStep } from './CloneRemoteStep';
+import { useI18n } from '../lib/i18n';
 
 interface OnboardingWizardProps {
   recent: RecentVaultEntry[];
@@ -23,6 +24,7 @@ type Step = 'choose' | 'create' | 'clone';
 
 /** 首启动向导：三选一（新建空 vault / 打开本地文件夹 / 克隆远程仓库占位）。 */
 export function OnboardingWizard({ recent, onRecentsChanged }: OnboardingWizardProps) {
+  const t = useI18n();
   const [step, setStep] = useState<Step>('choose');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -108,7 +110,7 @@ export function OnboardingWizard({ recent, onRecentsChanged }: OnboardingWizardP
 
   const runCreate = async () => {
     if (!parentDir) {
-      setError('请先选择存放位置');
+      setError(t('onboarding.error.chooseParent'));
       return;
     }
     setBusy(true);
@@ -150,10 +152,10 @@ export function OnboardingWizard({ recent, onRecentsChanged }: OnboardingWizardP
             N
           </div>
           <h1 className="text-2xl font-semibold tracking-tight text-foreground">
-            欢迎使用 NexNote
+            {t('onboarding.title')}
           </h1>
           <p className="mt-1.5 text-sm text-muted-foreground">
-            本地优先的知识库：块编辑 × 双链 × Git × AI
+            {t('onboarding.subtitle')}
           </p>
         </div>
 
@@ -163,7 +165,7 @@ export function OnboardingWizard({ recent, onRecentsChanged }: OnboardingWizardP
             className="mb-4 flex items-center gap-2 rounded-md border bg-muted/50 px-3 py-2 text-xs text-muted-foreground"
           >
             <Loader2 className="size-3.5 animate-spin" />
-            正在检测 {inspecting} …
+            {t('onboarding.inspecting', { path: inspecting })}
           </p>
         )}
 
@@ -181,16 +183,16 @@ export function OnboardingWizard({ recent, onRecentsChanged }: OnboardingWizardP
             data-testid="git-init-confirmation"
             className="mb-4 rounded-md border border-amber-500/40 bg-amber-500/10 p-3 text-sm"
           >
-            <p className="font-medium">此文件夹还不是 Git 仓库</p>
+            <p className="font-medium">{t('onboarding.gitInit.title')}</p>
             {inspectResult?.isObsidian && (
               <p className="mt-1 text-xs text-muted-foreground">
-                检测到 Obsidian 知识库（.obsidian 目录）。NexNote 不会修改你的 Obsidian 配置，
-                仅添加 .nexnote/ 和 .git。
+                {t('onboarding.gitInit.obsidian')}
               </p>
             )}
             <p className="mt-1 text-xs text-muted-foreground">
-              是否在 <code className="break-all">{pendingGitInitPath}</code> 中初始化 Git？ 这会创建
-              .git、.gitignore 和初始提交；仅在你确认后执行。
+              {t('onboarding.gitInit.confirmBefore')}{' '}
+              <code className="break-all">{pendingGitInitPath}</code>
+              {t('onboarding.gitInit.confirmAfter')}
             </p>
             <div className="mt-3 flex gap-2">
               <button
@@ -199,7 +201,7 @@ export function OnboardingWizard({ recent, onRecentsChanged }: OnboardingWizardP
                 onClick={() => void confirmGitInitialization()}
                 className="rounded bg-primary px-3 py-1.5 text-xs font-medium text-primary-foreground disabled:opacity-50"
               >
-                {busy ? '初始化中…' : '初始化 Git 并打开'}
+                {busy ? t('onboarding.gitInit.initializing') : t('onboarding.gitInit.open')}
               </button>
               <button
                 type="button"
@@ -210,7 +212,7 @@ export function OnboardingWizard({ recent, onRecentsChanged }: OnboardingWizardP
                 }}
                 className="rounded border px-3 py-1.5 text-xs hover:bg-accent"
               >
-                取消
+                {t('onboarding.gitInit.cancel')}
               </button>
             </div>
           </section>
@@ -220,14 +222,14 @@ export function OnboardingWizard({ recent, onRecentsChanged }: OnboardingWizardP
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
             <OptionCard
               icon={FolderPlus}
-              title="新建知识库"
-              desc="创建一个空的本地知识库"
+              title={t('onboarding.choose.newVault')}
+              desc={t('onboarding.choose.newVault.desc')}
               onClick={() => setStep('create')}
             />
             <OptionCard
               icon={FolderOpen}
-              title="打开本地文件夹"
-              desc="选择已有文件夹作为知识库"
+              title={t('onboarding.choose.openFolder')}
+              desc={t('onboarding.choose.openFolder.desc')}
               disabled={busy}
               onClick={async () => {
                 try {
@@ -240,8 +242,8 @@ export function OnboardingWizard({ recent, onRecentsChanged }: OnboardingWizardP
             />
             <OptionCard
               icon={CloudDownload}
-              title="克隆远程仓库"
-              desc="支持 GitHub/GitLab 等 HTTPS 或 SSH 仓库"
+              title={t('onboarding.choose.clone')}
+              desc={t('onboarding.choose.clone.desc')}
               onClick={() => setStep('clone')}
             />
 
@@ -249,7 +251,7 @@ export function OnboardingWizard({ recent, onRecentsChanged }: OnboardingWizardP
               <section className="col-span-full mt-2">
                 <h2 className="mb-2 flex items-center gap-1.5 text-xs font-medium text-muted-foreground">
                   <History className="size-3.5" />
-                  最近打开
+                  {t('onboarding.choose.recent')}
                 </h2>
                 <ul className="overflow-hidden rounded-lg border">
                   {recent.slice(0, 5).map((entry) => (
@@ -272,8 +274,8 @@ export function OnboardingWizard({ recent, onRecentsChanged }: OnboardingWizardP
                       </button>
                       <button
                         type="button"
-                        aria-label={`移除 ${entry.name}`}
-                        title="从最近列表移除"
+                        aria-label={t('onboarding.recent.remove', { name: entry.name })}
+                        title={t('onboarding.recent.remove.title')}
                         onClick={() => void removeRecent(entry.path)}
                         className="rounded p-1 text-muted-foreground hover:bg-accent hover:text-foreground"
                       >
@@ -297,35 +299,35 @@ export function OnboardingWizard({ recent, onRecentsChanged }: OnboardingWizardP
                 type="button"
                 onClick={() => setStep('choose')}
                 className="rounded p-1 text-muted-foreground hover:bg-accent hover:text-foreground"
-                aria-label="返回"
+                aria-label={t('onboarding.create.back')}
               >
                 <ArrowLeft className="size-4" />
               </button>
-              <h2 className="text-sm font-semibold">新建知识库</h2>
+              <h2 className="text-sm font-semibold">{t('onboarding.create.title')}</h2>
             </div>
 
-            <label className="mb-1.5 block text-xs font-medium text-muted-foreground">名称</label>
+            <label className="mb-1.5 block text-xs font-medium text-muted-foreground">{t('onboarding.create.name')}</label>
             <input
               data-testid="vault-name-input"
               value={name}
               onChange={(e) => setName(e.target.value)}
-              placeholder="我的知识库"
+              placeholder={t('onboarding.create.name.placeholder')}
               className="mb-4 h-9 w-full rounded-md border bg-background px-3 text-sm outline-none focus:ring-2 focus:ring-ring/40"
             />
 
             <label className="mb-1.5 block text-xs font-medium text-muted-foreground">
-              存放位置
+              {t('onboarding.create.location')}
             </label>
             <div className="mb-5 flex items-center gap-2">
               <span className="flex h-9 min-w-0 flex-1 items-center truncate rounded-md border bg-muted/50 px-3 text-xs text-muted-foreground">
-                {parentDir ?? '未选择'}
+                {parentDir ?? t('onboarding.create.location.unselected')}
               </span>
               <button
                 type="button"
                 onClick={() => void pickAgain()}
                 className="h-9 shrink-0 rounded-md border bg-background px-3 text-xs font-medium hover:bg-accent"
               >
-                选择位置…
+                {t('onboarding.create.location.pick')}
               </button>
             </div>
 
@@ -336,7 +338,7 @@ export function OnboardingWizard({ recent, onRecentsChanged }: OnboardingWizardP
                 onChange={(e) => setCreateWithGit(e.target.checked)}
                 className="size-3.5"
               />
-              同时初始化 Git（推荐：自动版本跟踪）
+              {t('onboarding.create.withGit')}
             </label>
 
             <button
@@ -350,11 +352,12 @@ export function OnboardingWizard({ recent, onRecentsChanged }: OnboardingWizardP
               )}
             >
               {busy && <Loader2 className="size-4 animate-spin" />}
-              {busy ? '创建中…' : '创建知识库'}
+              {busy ? t('onboarding.create.working') : t('onboarding.create.submit')}
             </button>
             <p className="mt-3 text-[11px] leading-relaxed text-muted-foreground">
-              将在所选位置创建同名文件夹与 .nexnote/ 配置目录
-              {createWithGit ? '，并初始化 Git（首次提交）。' : '，暂不初始化 Git。'}
+              {createWithGit
+                ? t('onboarding.create.hint.withGit')
+                : t('onboarding.create.hint.withoutGit')}
             </p>
           </div>
         )}

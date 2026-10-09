@@ -1,6 +1,7 @@
 import { openDocumentTab } from '../../../lib/open-document';
 import { useEffect } from 'react';
 import { Link2 } from 'lucide-react';
+import { useI18n } from '../../../lib/i18n';
 import { sidebarPanelRegistry } from '../../../registries';
 import { useIndexStore } from '../../../stores/index-store';
 import { useTabStore } from '../../../stores/tab-store';
@@ -12,7 +13,8 @@ import type { Backlink } from '@nexnote/shared';
  */
 sidebarPanelRegistry.register({
   id: 'backlinks',
-  title: '反向链接',
+  title: 'sidebar.panel.backlinks',
+  titleIsKey: true,
   icon: Link2,
   render: BacklinksPanel,
   renderBadge: BacklinksBadge,
@@ -20,6 +22,7 @@ sidebarPanelRegistry.register({
 
 /** 当前激活页面的反链数量角标；不主动改变侧栏当前面板。 */
 export function BacklinksBadge() {
+  const t = useI18n();
   const backlinks = useIndexStore((s) => s.backlinks);
   const backlinksFor = useIndexStore((s) => s.backlinksFor);
   const status = useIndexStore((s) => s.backlinksStatus);
@@ -38,7 +41,7 @@ export function BacklinksBadge() {
   return (
     <span
       data-testid="sidebar-backlink-badge"
-      title={`${count} 条反向链接`}
+      title={t('sidebar.backlinks.badge', { count })}
       className="rounded-full bg-sidebar-accent px-1 text-[10px] leading-4 text-foreground"
     >
       {count}

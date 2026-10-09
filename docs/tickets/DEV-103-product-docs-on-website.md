@@ -60,10 +60,11 @@
 
 ### ADR-0023 进展（2026-10-09，阶段①②第一批）
 
-- [x] 消息目录基建：`@nexnote/shared` 语义 key + zh/en 各 64 key 对齐 + `translate()`；renderer `lib/i18n.ts` 的 `t()` / `useI18n`
+- [x] 消息目录基建：`@nexnote/shared` 语义 key + zh/en 各 136 key 对齐 + `translate()`；renderer `lib/i18n.ts` 的 `t()` / `useI18n`
 - [x] 设置真生效：语言切换驱动消息目录；首次启动按系统语言初始化（主进程 `app.getPreferredSystemLanguages()`，无设置文件时）
 - [x] 阶段②第一批：设置页标题/搜索态/全分区导航标题/常规分区外观·启动·帮助与翻译默认语言行迁移
-- [ ] 阶段②其余 renderer 模块（编辑器、命令面板、AI、Git、侧栏等）
+- [x] 阶段②第二批（2026-10-10）：欢迎页、命令面板**骨架**、状态栏、首启动向导、侧栏与 Dock 框架 + 四个内置侧栏面板的**标题**（命令条目与面板内部仍中文，见下方未完成项）；`desktop-i18n-migrated-modules.test.tsx` 真实渲染锁定已迁移区域
+- [ ] 阶段②其余 renderer 模块：命令面板的命令条目、四个侧栏面板内部文案、编辑器、AI 对话、Git 面板内容、frontmatter 属性面板、onboarding 克隆步骤等
 - [ ] 阶段③主进程错误码化 + 原生菜单/对话框（当前主进程对消息目录零消费）
 - [ ] 阶段④既有测试中文断言迁移
 - [ ] **NOT_RUN / 未达门槛**：按 ADR「en-US 全 UI 无中文残留」，当前不声称桌面端双语完成
