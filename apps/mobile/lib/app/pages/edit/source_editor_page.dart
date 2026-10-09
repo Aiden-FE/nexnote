@@ -8,6 +8,7 @@ import '../../../git/device_git_service.dart';
 import '../../../vault/frontmatter.dart';
 import '../../app_services.dart';
 import 'block_editor_page.dart';
+import '../../../l10n/app_localizations.dart';
 
 class SourceEditorPage extends StatefulWidget {
   final String path;
@@ -43,6 +44,7 @@ class _SourceEditorPageState extends State<SourceEditorPage> {
   bool get _blocked => appServices.gitService.blockedByConflict;
 
   void _save() {
+    final l10n = AppLocalizations.of(context)!;
     try {
       final content = (_frontmatter ?? '') + _controller.text;
       final changed = appServices.pageWriter.writePage(
@@ -52,24 +54,27 @@ class _SourceEditorPageState extends State<SourceEditorPage> {
       );
       setState(() => _dirty = false);
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(changed ? '已保存，将自动提交' : '内容未变化')),
+        SnackBar(
+          content: Text(changed ? l10n.saveAutoCommit : l10n.saveNoChange),
+        ),
       );
     } on GitServiceError catch (e) {
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('保存失败：${e.message}')),
+        SnackBar(content: Text(l10n.saveFailed(e.message))),
       );
     }
   }
 
   @override
   Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context)!;
     return Scaffold(
       appBar: AppBar(
-        title: const Text('源码编辑'),
+        title: Text(l10n.sourceTitle),
         actions: [
           IconButton(
             icon: const Icon(Icons.view_agenda_outlined),
-            tooltip: '切换到块编辑模式',
+            tooltip: l10n.sourceSwitchToBlock,
             onPressed: _blocked
                 ? null
                 : () => Navigator.of(context).pushReplacement(
@@ -80,7 +85,7 @@ class _SourceEditorPageState extends State<SourceEditorPage> {
           ),
           TextButton(
             onPressed: _blocked || !_dirty ? null : _save,
-            child: const Text('保存'),
+            child: Text(l10n.sourceSave),
           ),
         ],
       ),
@@ -91,7 +96,7 @@ class _SourceEditorPageState extends State<SourceEditorPage> {
               width: double.infinity,
               color: Theme.of(context).colorScheme.errorContainer,
               padding: const EdgeInsets.all(12),
-              child: const Text('同步冲突禁写中：请在桌面端解决冲突后重试'),
+              child: Text(l10n.sourceConflict),
             ),
           if (_frontmatter != null)
             Container(
@@ -106,7 +111,7 @@ class _SourceEditorPageState extends State<SourceEditorPage> {
                       const Icon(Icons.lock_outline, size: 14),
                       const SizedBox(width: 4),
                       Text(
-                        '元数据头（只读）',
+                        l10n.sourceFrontmatter,
                         style: Theme.of(context).textTheme.labelSmall,
                       ),
                     ],

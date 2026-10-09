@@ -6,12 +6,19 @@ library;
 import '../vault/frontmatter.dart';
 import '../vault/page_writer.dart';
 
+/// 捕获错误种类（语言中性）；UI 层翻译（ADR-0023）。
+enum CaptureErrorCode { empty }
+
 /// 捕获结果
 class CaptureResult {
   final String path;
   final String title;
-  const CaptureResult(this.path, this.title);
+  final bool generatedTitle;
+  const CaptureResult(this.path, this.title, {this.generatedTitle = false});
 }
+
+/// 缺省标题的语言中性稳定标识：文件名 / frontmatter 用它，UI 再本地化。
+const String untitledCaptureTitle = 'untitled';
 
 /// 快速捕获
 class QuickCapture {
@@ -26,7 +33,7 @@ class QuickCapture {
   CaptureResult capture(String text, {String captureDirectory = 'Inbox'}) {
     final body = text.trim();
     if (body.isEmpty) {
-      throw const CaptureError('内容为空');
+      throw const CaptureError(CaptureErrorCode.empty);
     }
     final title = _titleOf(body);
     final now = DateTime.now();
@@ -37,7 +44,11 @@ class QuickCapture {
     final content =
         '${buildFrontmatter({'title': title, 'created': stamp, 'type': defaultType})}\n$body\n';
     writer.createPage(path, content, summary: '快速捕获 $title');
-    return CaptureResult(path, title);
+    return CaptureResult(
+      path,
+      title,
+      generatedTitle: title == untitledCaptureTitle,
+    );
   }
 
   static String _two(int value) => value.toString().padLeft(2, '0');
@@ -53,7 +64,7 @@ class QuickCapture {
           ? withoutMarker.substring(0, 60)
           : withoutMarker;
     }
-    return '未命名捕获';
+    return untitledCaptureTitle;
   }
 
   /// 文件名安全化：去掉路径分隔符与非法字符
@@ -63,7 +74,7 @@ class QuickCapture {
         .replaceAll(RegExp(r'-+'), '-')
         .replaceAll(RegExp(r'\s+'), ' ')
         .trim();
-    return cleaned.isEmpty ? '未命名捕获' : cleaned;
+    return cleaned.isEmpty ? untitledCaptureTitle : cleaned;
   }
 
   /// 同名时追加序号，绝不覆盖
@@ -88,8 +99,8 @@ class QuickCapture {
 }
 
 class CaptureError implements Exception {
-  final String message;
-  const CaptureError(this.message);
+  final CaptureErrorCode code;
+  const CaptureError(this.code);
   @override
-  String toString() => message;
+  String toString() => code.name;
 }

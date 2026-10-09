@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import 'app/app_services.dart';
 import 'app/home_shell.dart';
+import 'l10n/app_localizations.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -14,19 +15,25 @@ class NexNoteMobileApp extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return MaterialApp(
-      title: 'NexNote',
-      theme: ThemeData(
-        colorSchemeSeed: const Color(0xFF7C6FF0),
-        useMaterial3: true,
-        brightness: Brightness.light,
+    return ListenableBuilder(
+      listenable: appServices.localeOverride,
+      builder: (context, _) => MaterialApp(
+        title: 'NexNote',
+        localizationsDelegates: AppLocalizations.localizationsDelegates,
+        supportedLocales: AppLocalizations.supportedLocales,
+        locale: appServices.localeOverride.value,
+        theme: ThemeData(
+          colorSchemeSeed: const Color(0xFF7C6FF0),
+          useMaterial3: true,
+          brightness: Brightness.light,
+        ),
+        darkTheme: ThemeData(
+          colorSchemeSeed: const Color(0xFF7C6FF0),
+          useMaterial3: true,
+          brightness: Brightness.dark,
+        ),
+        home: const HomeShell(),
       ),
-      darkTheme: ThemeData(
-        colorSchemeSeed: const Color(0xFF7C6FF0),
-        useMaterial3: true,
-        brightness: Brightness.dark,
-      ),
-      home: const HomeShell(),
     );
   }
 }

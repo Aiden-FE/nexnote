@@ -4,6 +4,20 @@ import 'package:flutter/material.dart';
 import '../../capture/quick_capture.dart';
 import '../app_services.dart';
 import 'page_reader_page.dart';
+import '../../l10n/app_localizations.dart';
+
+/// 把捕获错误码翻译为当前界面语言。
+String describeCaptureError(AppLocalizations l10n, CaptureErrorCode code) {
+  switch (code) {
+    case CaptureErrorCode.empty:
+      return l10n.captureEmpty;
+  }
+}
+
+/// 捕获标题：缺省标题本地化，其余用实际标题。
+String displayCaptureTitle(AppLocalizations l10n, CaptureResult result) {
+  return result.generatedTitle ? l10n.captureUntitled : result.title;
+}
 
 class CapturePage extends StatefulWidget {
   const CapturePage({super.key});
@@ -40,11 +54,17 @@ class _CapturePageState extends State<CapturePage> {
         _saving = false;
       });
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('已捕获：${result.title}')),
+        SnackBar(
+          content: Text(
+            AppLocalizations.of(context)!.captureSuccess(
+              displayCaptureTitle(AppLocalizations.of(context)!, result),
+            ),
+          ),
+        ),
       );
     } on CaptureError catch (e) {
       setState(() {
-        _error = e.message;
+        _error = describeCaptureError(AppLocalizations.of(context)!, e.code);
         _saving = false;
       });
     } on Object catch (e) {
@@ -57,9 +77,10 @@ class _CapturePageState extends State<CapturePage> {
 
   @override
   Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context)!;
     final directory = appServices.settings.captureDirectory;
     return Scaffold(
-      appBar: AppBar(title: const Text('捕获')),
+      appBar: AppBar(title: Text(l10n.captureTitle)),
       body: Column(
         children: [
           Padding(
@@ -68,7 +89,7 @@ class _CapturePageState extends State<CapturePage> {
               children: [
                 const Icon(Icons.folder_outlined, size: 16),
                 const SizedBox(width: 4),
-                Text('落点目录：$directory',
+                Text(l10n.captureDirectory(directory),
                     style: Theme.of(context).textTheme.bodySmall),
               ],
             ),
@@ -80,7 +101,7 @@ class _CapturePageState extends State<CapturePage> {
               maxLines: 8,
               textInputAction: TextInputAction.newline,
               decoration: InputDecoration(
-                hintText: '随手记下想法，首行作为标题',
+                hintText: l10n.captureHint,
                 border: const OutlineInputBorder(),
                 errorText: _error,
               ),
@@ -93,7 +114,7 @@ class _CapturePageState extends State<CapturePage> {
                 FilledButton.icon(
                   onPressed: _saving ? null : _capture,
                   icon: const Icon(Icons.add),
-                  label: const Text('捕获'),
+                  label: Text(l10n.captureAction),
                 ),
                 const Spacer(),
                 if (_lastCapturedPath != null)
@@ -103,7 +124,7 @@ class _CapturePageState extends State<CapturePage> {
                         builder: (_) => PageReaderPage(path: _lastCapturedPath!),
                       ),
                     ),
-                    child: const Text('打开刚捕获的页面'),
+                    child: Text(l10n.captureOpenLast),
                   ),
               ],
             ),

@@ -7,6 +7,33 @@ import '../../ai/chat_controller.dart';
 import '../../ai/retrieval.dart';
 import '../app_services.dart';
 import 'page_reader_page.dart';
+import '../../l10n/app_localizations.dart';
+
+/// 把对话错误码翻译为当前界面语言；供应商错误保留其原始细节。
+String describeChatError(
+  AppLocalizations l10n,
+  ChatErrorCode code,
+  String? detail,
+) {
+  switch (code) {
+    case ChatErrorCode.noProfile:
+      return l10n.errNoProfile;
+    case ChatErrorCode.noApiKey:
+      return l10n.errNoApiKey;
+    case ChatErrorCode.provider:
+      return l10n.errProvider(detail ?? '');
+  }
+}
+
+/// 把召回阶段翻译为当前界面语言；system prompt 内的阶段标注不走这里。
+String describeRecallStage(AppLocalizations l10n, RecallStage stage) {
+  switch (stage) {
+    case RecallStage.keyword:
+      return l10n.recallKeyword;
+    case RecallStage.links:
+      return l10n.recallLinks;
+  }
+}
 
 class AiPage extends StatefulWidget {
   const AiPage({super.key});
@@ -33,15 +60,16 @@ class _AiPageState extends State<AiPage> {
 
   @override
   Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context)!;
     final controller = _controller!;
     final profile = controller.activeProfile();
     return Scaffold(
       appBar: AppBar(
-        title: const Text('AI 对话'),
+        title: Text(l10n.aiTitle),
         actions: [
           IconButton(
             icon: const Icon(Icons.delete_outline),
-            tooltip: '清空',
+            tooltip: l10n.aiClearTooltip,
             onPressed: controller.messages.isEmpty ? null : controller.clear,
           ),
         ],
@@ -59,8 +87,8 @@ class _AiPageState extends State<AiPage> {
                 Expanded(
                   child: Text(
                     profile == null
-                        ? '未配置供应商 Profile（只读对话）'
-                        : '只读对话 · ${profile.name} · ${profile.defaultModel}',
+                        ? l10n.aiNoProfile
+                        : l10n.aiReadOnlySession(profile.name, profile.defaultModel),
                     style: Theme.of(context).textTheme.labelSmall,
                   ),
                 ),
@@ -69,9 +97,7 @@ class _AiPageState extends State<AiPage> {
           ),
           Expanded(
             child: controller.messages.isEmpty
-                ? const Center(
-                    child: Text('提问会先做两阶段召回（关键词 + 双链扩展）'),
-                  )
+                ? Center(child: Text(l10n.aiEmptyHint))
                 : ListView.builder(
                     padding: const EdgeInsets.all(16),
                     itemCount: controller.messages.length,
@@ -88,11 +114,15 @@ class _AiPageState extends State<AiPage> {
                     },
                   ),
           ),
-          if (controller.lastError != null)
+          if (controller.lastErrorCode != null)
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: 16),
               child: Text(
-                controller.lastError!,
+                describeChatError(
+                  l10n,
+                  controller.lastErrorCode!,
+                  controller.lastErrorDetail,
+                ),
                 style: TextStyle(color: Theme.of(context).colorScheme.error),
               ),
             ),
@@ -106,9 +136,9 @@ class _AiPageState extends State<AiPage> {
                       controller: _input,
                       minLines: 1,
                       maxLines: 4,
-                      decoration: const InputDecoration(
-                        hintText: '问点什么…',
-                        border: OutlineInputBorder(),
+                      decoration: InputDecoration(
+                        hintText: l10n.aiInputHint,
+                        border: const OutlineInputBorder(),
                       ),
                     ),
                   ),
@@ -142,6 +172,7 @@ class _MessageBubble extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final isUser = message.role == ChatRole.user;
+    final l10n = AppLocalizations.of(context)!;
     return Align(
       alignment: isUser ? Alignment.centerRight : Alignment.centerLeft,
       child: Container(
@@ -159,14 +190,18 @@ class _MessageBubble extends StatelessWidget {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            if (message.error != null)
+            if (message.errorCode != null)
               Text(
-                message.error!,
+                describeChatError(
+                  l10n,
+                  message.errorCode!,
+                  message.errorDetail,
+                ),
                 style: TextStyle(color: Theme.of(context).colorScheme.error),
               )
             else
               SelectableText(message.content.isEmpty && message.streaming
-                  ? '思考中…'
+                  ? l10n.aiThinking
                   : message.content),
             if (message.citations.isNotEmpty) ...[
               const SizedBox(height: 8),
@@ -176,7 +211,9 @@ class _MessageBubble extends StatelessWidget {
                 children: [
                   for (final citation in message.citations)
                     ActionChip(
-                      label: Text('${citation.title} · ${citation.stage.label}'),
+                      label: Text(
+                        '${citation.title} · ${describeRecallStage(l10n, citation.stage)}',
+                      ),
                       onPressed: () => onOpenSource(citation.path),
                     ),
                 ],

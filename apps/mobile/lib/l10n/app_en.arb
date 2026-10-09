@@ -1,0 +1,372 @@
+{
+  "@@locale": "en",
+  "appTitle": "NexNote",
+  "navVault": "Vault",
+  "navSearch": "Search",
+  "navCapture": "Capture",
+  "navAi": "AI",
+  "navSettings": "Settings",
+  "vaultTitle": "Vault",
+  "vaultTagFilterTooltip": "Filter by tag",
+  "vaultEmpty": "The device vault is empty. Clone or initialize it from Settings.",
+  "vaultRootDir": "root",
+  "vaultUncategorized": "uncategorized",
+  "searchTitle": "Search",
+  "searchHint": "Search page content (Chinese substrings supported)",
+  "searchResultCount": "{count} matching pages",
+  "@searchResultCount": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "searchInitial": "Type a keyword to search",
+  "searchRebuild": "Rebuild index",
+  "searchNoResults": "No matching results",
+  "captureTitle": "Capture",
+  "captureDirectory": "Saves to: {directory}",
+  "@captureDirectory": {
+    "placeholders": {
+      "directory": {
+        "type": "String"
+      }
+    }
+  },
+  "captureHint": "Jot something down; the first line becomes the title",
+  "captureAction": "Capture",
+  "captureSuccess": "Captured: {title}",
+  "@captureSuccess": {
+    "placeholders": {
+      "title": {
+        "type": "String"
+      }
+    }
+  },
+  "captureOpenLast": "Open the page just captured",
+  "aiTitle": "AI Chat",
+  "aiClearTooltip": "Clear",
+  "aiNoProfile": "No provider profile configured (read-only chat)",
+  "aiReadOnlySession": "Read-only · {name} · {model}",
+  "@aiReadOnlySession": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      },
+      "model": {
+        "type": "String"
+      }
+    }
+  },
+  "aiEmptyHint": "Questions run a two-stage recall first (keywords + link expansion)",
+  "aiInputHint": "Ask something…",
+  "aiThinking": "Thinking…",
+  "settingsTitle": "Settings",
+  "settingsDeviceVault": "Device Vault",
+  "settingsPath": "Path: {path}",
+  "@settingsPath": {
+    "placeholders": {
+      "path": {
+        "type": "String"
+      }
+    }
+  },
+  "settingsPageCount": "Pages: {count}",
+  "@settingsPageCount": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "settingsBackupOn": "Excluded from iCloud backup: active",
+  "settingsBackupOff": "Excluded from iCloud backup: unconfirmed",
+  "settingsUnpushed": "{count} unpushed commits. This device is their only copy — sync soon.",
+  "@settingsUnpushed": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "settingsGitStatus": "Git Status",
+  "settingsReading": "Loading…",
+  "settingsRemote": "Remote: {url}",
+  "@settingsRemote": {
+    "placeholders": {
+      "url": {
+        "type": "String"
+      }
+    }
+  },
+  "settingsConflictBanner": "Sync conflict: writes are disabled on mobile; resolve on desktop",
+  "settingsRemoteLabel": "Test remote (file:// or https://)",
+  "settingsClone": "Clone remote",
+  "settingsWriteAndCommit": "Write page and commit",
+  "settingsSyncNow": "Sync now",
+  "settingsTimeline": "Version timeline",
+  "settingsNoCommits": "(no commits yet)",
+  "settingsCaptureDir": "Quick capture folder",
+  "settingsCapturePathLabel": "Relative path inside the vault",
+  "settingsSave": "Save",
+  "settingsAiProfiles": "AI Provider Profiles",
+  "settingsKeyConfigured": "key configured",
+  "settingsKeyMissing": "no key",
+  "settingsAddProfile": "Add profile",
+  "settingsDiagnosticLog": "Diagnostic log",
+  "settingsNoLog": "(no log yet)",
+  "settingsBackupExcludeFailed": "Failed to write the backup-exclusion marker; check system settings",
+  "settingsActionDone": "{label}: done",
+  "@settingsActionDone": {
+    "placeholders": {
+      "label": {
+        "type": "String"
+      }
+    }
+  },
+  "settingsActionFailed": "{label}: failed {detail}",
+  "@settingsActionFailed": {
+    "placeholders": {
+      "label": {
+        "type": "String"
+      },
+      "detail": {
+        "type": "String"
+      }
+    }
+  },
+  "settingsCloneLabel": "Clone",
+  "settingsCommitAppend": "Commit {sha}",
+  "@settingsCommitAppend": {
+    "placeholders": {
+      "sha": {
+        "type": "String"
+      }
+    }
+  },
+  "settingsNoChange": "(no changes)",
+  "settingsSyncResult": "Sync {state}: {message}",
+  "@settingsSyncResult": {
+    "placeholders": {
+      "state": {
+        "type": "String"
+      },
+      "message": {
+        "type": "String"
+      }
+    }
+  },
+  "settingsCaptureUpdated": "Capture folder updated to {dir}",
+  "@settingsCaptureUpdated": {
+    "placeholders": {
+      "dir": {
+        "type": "String"
+      }
+    }
+  },
+  "tagsTitle": "Tags",
+  "tagsEmpty": "No tags yet",
+  "tagsPageCount": "{count} pages",
+  "@tagsPageCount": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "graphTitle": "Graph",
+  "graphSummary": "{nodes} nodes · {edges} edges · {unresolved} unresolved (tap a node to open; read-only)",
+  "@graphSummary": {
+    "placeholders": {
+      "nodes": {
+        "type": "int"
+      },
+      "edges": {
+        "type": "int"
+      },
+      "unresolved": {
+        "type": "int"
+      }
+    }
+  },
+  "readerMissing": "Page not found",
+  "readerTargetMissing": "Target page not found: {target}",
+  "@readerTargetMissing": {
+    "placeholders": {
+      "target": {
+        "type": "String"
+      }
+    }
+  },
+  "readerOutlineTooltip": "Outline",
+  "readerBacklinksTooltip": "Backlinks",
+  "readerTimelineTooltip": "Version timeline",
+  "readerGraphTooltip": "Graph",
+  "readerEditTooltip": "Edit",
+  "readerBacklinksButton": "Backlinks ({count})",
+  "@readerBacklinksButton": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "readerNoBacklinks": "No backlinks yet",
+  "readerNoCommits": "No commits yet",
+  "readerType": "type {value}",
+  "@readerType": {
+    "placeholders": {
+      "value": {
+        "type": "String"
+      }
+    }
+  },
+  "readerCreated": "created {value}",
+  "@readerCreated": {
+    "placeholders": {
+      "value": {
+        "type": "String"
+      }
+    }
+  },
+  "readerUpdated": "updated {value}",
+  "@readerUpdated": {
+    "placeholders": {
+      "value": {
+        "type": "String"
+      }
+    }
+  },
+  "readerAliases": "aliases {value}",
+  "@readerAliases": {
+    "placeholders": {
+      "value": {
+        "type": "String"
+      }
+    }
+  },
+  "readerConfidence": "confidence {value}",
+  "@readerConfidence": {
+    "placeholders": {
+      "value": {
+        "type": "String"
+      }
+    }
+  },
+  "blockTitle": "Block Editor",
+  "blockSwitchToSource": "Switch to source mode",
+  "blockSave": "Save",
+  "blockConflict": "Writes disabled by sync conflict: resolve it on desktop, then retry",
+  "blockFrontmatter": "Frontmatter (read-only)\n{content}",
+  "@blockFrontmatter": {
+    "placeholders": {
+      "content": {
+        "type": "String"
+      }
+    }
+  },
+  "blockCode": "code{language}",
+  "@blockCode": {
+    "placeholders": {
+      "language": {
+        "type": "String"
+      }
+    }
+  },
+  "blockImage": "image",
+  "blockTable": "table (read-only)",
+  "blockMath": "math (read-only)",
+  "blockHtml": "HTML (read-only)",
+  "blockEditableInSource": "Editable in source mode",
+  "sourceTitle": "Source Editor",
+  "sourceSwitchToBlock": "Switch to block editor",
+  "sourceSave": "Save",
+  "sourceConflict": "Writes disabled by sync conflict: resolve it on desktop, then retry",
+  "sourceFrontmatter": "Frontmatter (read-only)",
+  "saveAutoCommit": "Saved; it will be committed automatically",
+  "saveNoChange": "No content changes",
+  "saveFailed": "Save failed: {message}",
+  "@saveFailed": {
+    "placeholders": {
+      "message": {
+        "type": "String"
+      }
+    }
+  },
+  "mdMathReadonly": "math (read-only)",
+  "mdImageAlt": "image",
+  "mdImageMissing": "image: {alt} ({src})",
+  "@mdImageMissing": {
+    "placeholders": {
+      "alt": {
+        "type": "String"
+      },
+      "src": {
+        "type": "String"
+      }
+    }
+  },
+  "mdImagePlaceholder": "[image]",
+  "mdImagePlaceholderAlt": "[image:{alt}]",
+  "@mdImagePlaceholderAlt": {
+    "placeholders": {
+      "alt": {
+        "type": "String"
+      }
+    }
+  },
+  "profileRequired": "Name and base-url are required",
+  "profileAdd": "Add profile",
+  "profileEdit": "Edit profile",
+  "profileName": "Name",
+  "profileModel": "Model",
+  "profileApiKey": "API Key",
+  "profileApiKeyKeep": "API Key (leave blank to keep the current key)",
+  "profileCancel": "Cancel",
+  "profileSave": "Save",
+  "errNoProfile": "No provider profile configured. Add one in Settings.",
+  "errNoApiKey": "This profile has no API key configured",
+  "errProvider": "Provider request failed: {detail}",
+  "@errProvider": {
+    "placeholders": {
+      "detail": {
+        "type": "String"
+      }
+    }
+  },
+  "syncInProgress": "Syncing…",
+  "syncFetching": "Fetching from remote…",
+  "syncRebasing": "Rebasing onto remote…",
+  "syncPushing": "Pushing local changes…",
+  "syncDone": "Sync complete",
+  "syncUpToDate": "Already up to date",
+  "syncNothingToPush": "Nothing new to push",
+  "syncDirtyRejected": "Uncommitted changes present; auto-sync skipped",
+  "gitNotInitialized": "Git not initialized",
+  "gitConflictSummary": "Sync conflict: resolve it on desktop, then sync again",
+  "gitStatusSummary": "{branch} · {changed} changed · {ahead} ahead · {behind} behind",
+  "@gitStatusSummary": {
+    "placeholders": {
+      "branch": {
+        "type": "String"
+      },
+      "changed": {
+        "type": "int"
+      },
+      "ahead": {
+        "type": "int"
+      },
+      "behind": {
+        "type": "int"
+      }
+    }
+  },
+  "recallKeyword": "keywords",
+  "recallLinks": "link expansion",
+  "captureEmpty": "Content is empty",
+  "captureUntitled": "Untitled capture",
+  "settingsLanguage": "Interface language",
+  "settingsLanguageSystem": "Match system",
+  "settingsLanguageZh": "简体中文",
+  "settingsLanguageEn": "English"
+}

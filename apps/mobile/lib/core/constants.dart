@@ -8,16 +8,29 @@ abstract final class CommitPrefix {
   static const initial = 'nexnote:init:';
 }
 
-/// 同步消息，与桌面端 `git.autoSync` 状态广播语义对齐
+/// 同步消息种类（语言中性）；由 UI 层翻译为当前界面语言（ADR-0023）。
+/// 与桌面端 `git.autoSync` 状态广播语义对齐。
+enum SyncMessageKind {
+  inProgress,
+  fetching,
+  rebasing,
+  pushing,
+  done,
+  upToDate,
+  nothingToPush,
+  dirtyRejected,
+}
+
+/// 兼容过渡：旧调用点的字符串常量改为对应枚举。
 abstract final class SyncMessages {
-  static const starting = '开始同步…';
-  static const fetching = '拉取远端…';
-  static const rebasing = '整合远端变更…';
-  static const pushing = '推送本地变更…';
-  static const done = '同步完成';
-  static const doneUpToDate = '已是最新';
-  static const nothingToPush = '本地无新提交';
-  static const dirtyRejected = '工作区有未提交变更，已跳过自动同步';
+  static const starting = SyncMessageKind.inProgress;
+  static const fetching = SyncMessageKind.fetching;
+  static const rebasing = SyncMessageKind.rebasing;
+  static const pushing = SyncMessageKind.pushing;
+  static const done = SyncMessageKind.done;
+  static const doneUpToDate = SyncMessageKind.upToDate;
+  static const nothingToPush = SyncMessageKind.nothingToPush;
+  static const dirtyRejected = SyncMessageKind.dirtyRejected;
 }
 
 /// 同步状态

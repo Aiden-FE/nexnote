@@ -5,6 +5,7 @@ import 'pages/capture_page.dart';
 import 'pages/search_page.dart';
 import 'pages/settings_page.dart';
 import 'pages/vault_tree_page.dart';
+import '../l10n/app_localizations.dart';
 
 /// 底部导航：库 / 搜索 / 捕获 / AI / 设置
 class HomeShell extends StatefulWidget {
@@ -19,12 +20,13 @@ class _HomeShellState extends State<HomeShell> {
 
   @override
   Widget build(BuildContext context) {
-    final destinations = const [
-      NavigationDestination(icon: Icon(Icons.folder_outlined), label: '库'),
-      NavigationDestination(icon: Icon(Icons.search_outlined), label: '搜索'),
-      NavigationDestination(icon: Icon(Icons.add_circle_outline), label: '捕获'),
-      NavigationDestination(icon: Icon(Icons.forum_outlined), label: 'AI'),
-      NavigationDestination(icon: Icon(Icons.settings_outlined), label: '设置'),
+    final l10n = AppLocalizations.of(context)!;
+    final destinations = [
+      NavigationDestination(icon: const Icon(Icons.folder_outlined), label: l10n.navVault),
+      NavigationDestination(icon: const Icon(Icons.search_outlined), label: l10n.navSearch),
+      NavigationDestination(icon: const Icon(Icons.add_circle_outline), label: l10n.navCapture),
+      NavigationDestination(icon: const Icon(Icons.forum_outlined), label: l10n.navAi),
+      NavigationDestination(icon: const Icon(Icons.settings_outlined), label: l10n.navSettings),
     ];
     final pages = const [
       VaultTreePage(),

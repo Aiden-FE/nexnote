@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../app_services.dart';
 import 'page_reader_page.dart';
 import 'tags_page.dart';
+import '../../l10n/app_localizations.dart';
 
 /// 库：页面树（相对路径分组展示）
 class VaultTreePage extends StatefulWidget {
@@ -38,13 +39,14 @@ class _VaultTreePageState extends State<VaultTreePage> {
 
   @override
   Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context)!;
     return Scaffold(
       appBar: AppBar(
-        title: const Text('库'),
+        title: Text(l10n.vaultTitle),
         actions: [
           IconButton(
             icon: const Icon(Icons.label_outline),
-            tooltip: '标签筛选',
+            tooltip: l10n.vaultTagFilterTooltip,
             onPressed: () => Navigator.of(context).push(
               MaterialPageRoute<void>(builder: (_) => const TagsPage()),
             ),
@@ -53,8 +55,8 @@ class _VaultTreePageState extends State<VaultTreePage> {
         ],
       ),
       body: _paths.isEmpty
-          ? const Center(
-              child: Text('设备知识库为空，先在「设置」里克隆或初始化。'),
+          ? Center(
+              child: Text(l10n.vaultEmpty),
             )
           : ListView.builder(
               itemCount: _paths.length,
@@ -62,11 +64,11 @@ class _VaultTreePageState extends State<VaultTreePage> {
                 final path = _paths[index];
                 final page = appServices.vaultRepository.readPage(path);
                 final title = page?.title ?? path;
-                final dir = path.contains('/') ? path.split('/').first : '根目录';
+                final dir = path.contains('/') ? path.split('/').first : l10n.vaultRootDir;
                 return ListTile(
                   leading: const Icon(Icons.description_outlined),
                   title: Text(title),
-                  subtitle: Text('$dir · ${page?.frontmatter?.type ?? '未分类'}'),
+                  subtitle: Text('$dir · ${page?.frontmatter?.type ?? l10n.vaultUncategorized}'),
                   onTap: () async {
                     await Navigator.of(context).push(
                       MaterialPageRoute<void>(

@@ -15,20 +15,25 @@ import 'retrieval.dart';
 /// 消息角色
 enum ChatRole { user, assistant }
 
+/// 语言中性的对话错误码；由 UI 层翻译为当前界面语言（ADR-0023 错误码化）。
+enum ChatErrorCode { noProfile, noApiKey, provider }
+
 /// 一条对话消息
 class ChatMessage {
   final ChatRole role;
   String content;
   final List<Citation> citations;
   bool streaming;
-  String? error;
+  ChatErrorCode? errorCode;
+  String? errorDetail;
 
   ChatMessage({
     required this.role,
     required this.content,
     this.citations = const [],
     this.streaming = false,
-    this.error,
+    this.errorCode,
+    this.errorDetail,
   });
 }
 
@@ -39,7 +44,8 @@ class ChatController extends ChangeNotifier {
   final ProviderProfileStore profiles;
 
   bool sending = false;
-  String? lastError;
+  ChatErrorCode? lastErrorCode;
+  String? lastErrorDetail;
 
   ChatController({required this.retrieval, required this.profiles});
 
@@ -58,19 +64,22 @@ class ChatController extends ChangeNotifier {
     if (text.isEmpty || sending) return;
     final profile = activeProfile();
     if (profile == null) {
-      lastError = '未配置供应商 Profile，请先在设置中配置';
+      lastErrorCode = ChatErrorCode.noProfile;
+      lastErrorDetail = null;
       notifyListeners();
       return;
     }
     final apiKey = await profiles.keyFor(profile);
     if (apiKey == null || apiKey.isEmpty) {
-      lastError = '该 Profile 未配置 API Key';
+      lastErrorCode = ChatErrorCode.noApiKey;
+      lastErrorDetail = null;
       notifyListeners();
       return;
     }
 
     sending = true;
-    lastError = null;
+    lastErrorCode = null;
+    lastErrorDetail = null;
     final citations = retrieval.recall(text);
     messages.add(ChatMessage(role: ChatRole.user, content: text));
     final reply = ChatMessage(
@@ -109,11 +118,15 @@ class ChatController extends ChangeNotifier {
         notifyListeners();
       }
     } on AiRequestError catch (e) {
-      reply.error = e.message;
-      lastError = e.message;
+      reply.errorCode = ChatErrorCode.provider;
+      reply.errorDetail = e.message;
+      lastErrorCode = ChatErrorCode.provider;
+      lastErrorDetail = e.message;
     } on Object catch (e) {
-      reply.error = e.toString();
-      lastError = e.toString();
+      reply.errorCode = ChatErrorCode.provider;
+      reply.errorDetail = e.toString();
+      lastErrorCode = ChatErrorCode.provider;
+      lastErrorDetail = e.toString();
     } finally {
       reply.streaming = false;
       sending = false;
@@ -123,7 +136,8 @@ class ChatController extends ChangeNotifier {
 
   void clear() {
     messages.clear();
-    lastError = null;
+    lastErrorCode = null;
+    lastErrorDetail = null;
     notifyListeners();
   }
 }

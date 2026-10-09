@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../../index/search_index.dart';
 import '../app_services.dart';
 import 'page_reader_page.dart';
+import '../../l10n/app_localizations.dart';
 
 /// 搜索：设备本地索引 + 中文分词（离线可用）
 class SearchPage extends StatefulWidget {
@@ -32,8 +33,9 @@ class _SearchPageState extends State<SearchPage> {
 
   @override
   Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context)!;
     return Scaffold(
-      appBar: AppBar(title: const Text('搜索')),
+      appBar: AppBar(title: Text(l10n.searchTitle)),
       body: Column(
         children: [
           Padding(
@@ -43,7 +45,7 @@ class _SearchPageState extends State<SearchPage> {
               textInputAction: TextInputAction.search,
               onSubmitted: _run,
               decoration: InputDecoration(
-                hintText: '搜索页面内容（支持中文子串）',
+                hintText: l10n.searchHint,
                 prefixIcon: const Icon(Icons.search),
                 border: const OutlineInputBorder(),
                 suffixIcon: IconButton(
@@ -58,7 +60,9 @@ class _SearchPageState extends State<SearchPage> {
             child: Row(
               children: [
                 Text(
-                  _searched ? '命中 ${_hits.length} 个页面' : '输入关键词开始搜索',
+                  _searched
+                      ? l10n.searchResultCount(_hits.length)
+                      : l10n.searchInitial,
                   style: Theme.of(context).textTheme.bodySmall,
                 ),
                 const Spacer(),
@@ -68,14 +72,14 @@ class _SearchPageState extends State<SearchPage> {
                     _run(_controller.text);
                   },
                   icon: const Icon(Icons.refresh, size: 18),
-                  label: const Text('重建索引'),
+                  label: Text(l10n.searchRebuild),
                 ),
               ],
             ),
           ),
           Expanded(
             child: _hits.isEmpty
-                ? const Center(child: Text('没有命中结果'))
+                ? Center(child: Text(l10n.searchNoResults))
                 : ListView.builder(
                     itemCount: _hits.length,
                     itemBuilder: (context, index) {

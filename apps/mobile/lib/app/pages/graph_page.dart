@@ -8,6 +8,7 @@ import 'package:flutter/material.dart';
 import '../../reader/link_graph.dart';
 import '../app_services.dart';
 import 'page_reader_page.dart';
+import '../../l10n/app_localizations.dart';
 
 class GraphPage extends StatefulWidget {
   const GraphPage({super.key});
@@ -66,9 +67,10 @@ class _GraphPageState extends State<GraphPage> {
 
   @override
   Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context)!;
     return Scaffold(
       appBar: AppBar(
-        title: const Text('图谱'),
+        title: Text(l10n.graphTitle),
         actions: [
           if (_selected != null)
             TextButton(
@@ -114,8 +116,11 @@ class _GraphPageState extends State<GraphPage> {
         child: Padding(
           padding: const EdgeInsets.all(12),
           child: Text(
-            '节点 ${_nodes.length} · 边 ${_graph.edges.length} ·'
-            ' 未解析 ${_graph.unresolved.length}（点击节点查看，只读浏览）',
+            l10n.graphSummary(
+              _nodes.length,
+              _graph.edges.length,
+              _graph.unresolved.length,
+            ),
             textAlign: TextAlign.center,
             style: Theme.of(context).textTheme.bodySmall,
           ),

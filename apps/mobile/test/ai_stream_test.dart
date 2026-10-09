@@ -123,7 +123,7 @@ void main() {
     );
     await controller.send('你好');
     expect(controller.messages, isEmpty);
-    expect(controller.lastError, contains('未配置供应商 Profile'));
+    expect(controller.lastErrorCode, ChatErrorCode.noProfile);
   });
 
   test('无密钥的 Profile 不发起请求', () async {
@@ -137,7 +137,7 @@ void main() {
     );
     await controller.send('你好');
     expect(controller.messages, isEmpty);
-    expect(controller.lastError, contains('未配置 API Key'));
+    expect(controller.lastErrorCode, ChatErrorCode.noApiKey);
   });
 
   test('空问题不触发任何状态变化', () async {
@@ -147,6 +147,6 @@ void main() {
     );
     await controller.send('   ');
     expect(controller.messages, isEmpty);
-    expect(controller.lastError, isNull);
+    expect(controller.lastErrorCode, isNull);
   });
 }

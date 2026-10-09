@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import '../../reader/link_graph.dart';
 import '../app_services.dart';
 import 'page_reader_page.dart';
+import '../../l10n/app_localizations.dart';
 
 /// 按标签列出页面（只读导航）
 class TagsPage extends StatefulWidget {
@@ -24,23 +25,24 @@ class _TagsPageState extends State<TagsPage> {
 
   @override
   Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context)!;
     final tags = _graph.tagIndex();
     final entries = tags.keys.toList()..sort();
     return Scaffold(
       appBar: AppBar(
-        title: const Text('标签'),
+        title: Text(l10n.tagsTitle),
         actions: [
           IconButton(icon: const Icon(Icons.refresh), onPressed: _refresh),
         ],
       ),
       body: entries.isEmpty
-          ? const Center(child: Text('暂无标签'))
+          ? Center(child: Text(l10n.tagsEmpty))
           : ListView(
               children: [
                 for (final tag in entries)
                   ExpansionTile(
                     title: Text(tag),
-                    subtitle: Text('${tags[tag]!.length} 个页面'),
+                    subtitle: Text(l10n.tagsPageCount(tags[tag]!.length)),
                     children: [
                       for (final path in (tags[tag]!.toList()..sort()))
                         ListTile(

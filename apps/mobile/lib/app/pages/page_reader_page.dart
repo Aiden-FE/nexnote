@@ -7,6 +7,7 @@ import '../../vault/link_extractor.dart';
 import '../app_services.dart';
 import 'edit/source_editor_page.dart';
 import 'graph_page.dart';
+import '../../l10n/app_localizations.dart';
 
 /// 页面阅读：渲染 + 目录 + 回链 + 时间线 + 双链跳转
 class PageReaderPage extends StatelessWidget {
@@ -16,12 +17,13 @@ class PageReaderPage extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context)!;
     final repo = appServices.vaultRepository;
     final page = repo.readPage(path);
     if (page == null) {
       return Scaffold(
         appBar: AppBar(),
-        body: const Center(child: Text('页面不存在')),
+        body: Center(child: Text(l10n.readerMissing)),
       );
     }
     final fm = page.frontmatter;
@@ -34,7 +36,9 @@ class PageReaderPage extends StatelessWidget {
       if (resolved == null) {
         if (!context.mounted) return;
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('目标页面不存在：$target')),
+          SnackBar(
+            content: Text(AppLocalizations.of(context)!.readerTargetMissing(target)),
+          ),
         );
         return;
       }
@@ -51,29 +55,29 @@ class PageReaderPage extends StatelessWidget {
           if (headings.isNotEmpty)
             IconButton(
               icon: const Icon(Icons.list),
-              tooltip: '标题目录',
+              tooltip: l10n.readerOutlineTooltip,
               onPressed: () => _showHeadings(context, headings, page.body),
             ),
           IconButton(
             icon: const Icon(Icons.call_split),
-            tooltip: '反向链接',
+            tooltip: l10n.readerBacklinksTooltip,
             onPressed: () => _showBacklinks(context, backlinks, graph),
           ),
           IconButton(
             icon: const Icon(Icons.history),
-            tooltip: '版本时间线',
+            tooltip: l10n.readerTimelineTooltip,
             onPressed: () => _showTimeline(context, path),
           ),
           IconButton(
             icon: const Icon(Icons.hub_outlined),
-            tooltip: '图谱',
+            tooltip: l10n.readerGraphTooltip,
             onPressed: () => Navigator.of(context).push(
               MaterialPageRoute<void>(builder: (_) => const GraphPage()),
             ),
           ),
           IconButton(
             icon: const Icon(Icons.edit_outlined),
-            tooltip: '编辑',
+            tooltip: l10n.readerEditTooltip,
             onPressed: () => Navigator.of(context).push(
               MaterialPageRoute<void>(
                 builder: (_) => SourceEditorPage(path: path),
@@ -103,7 +107,7 @@ class PageReaderPage extends StatelessWidget {
           OutlinedButton.icon(
             onPressed: () => _showBacklinks(context, backlinks, graph),
             icon: const Icon(Icons.call_split),
-            label: Text('反向链接（${backlinks.length}）'),
+            label: Text(l10n.readerBacklinksButton(backlinks.length)),
           ),
         ],
       ),
@@ -140,14 +144,15 @@ class PageReaderPage extends StatelessWidget {
     List<LinkEdge> backlinks,
     LinkGraph graph,
   ) {
+    final l10n = AppLocalizations.of(context)!;
     showModalBottomSheet<void>(
       context: context,
       showDragHandle: true,
       builder: (sheetContext) => SafeArea(
         child: backlinks.isEmpty
-            ? const Padding(
+            ? Padding(
                 padding: EdgeInsets.all(24),
-                child: Text('暂无反向链接'),
+                child: Text(l10n.readerNoBacklinks),
               )
             : ListView(
                 shrinkWrap: true,
@@ -172,6 +177,7 @@ class PageReaderPage extends StatelessWidget {
   }
 
   void _showTimeline(BuildContext context, String path) {
+    final l10n = AppLocalizations.of(context)!;
     final git = appServices.gitService;
     final records = git.isRepoInitialized ? git.timeline(limit: 50) : const <CommitRecord>[];
     showModalBottomSheet<void>(
@@ -179,9 +185,9 @@ class PageReaderPage extends StatelessWidget {
       showDragHandle: true,
       builder: (sheetContext) => SafeArea(
         child: records.isEmpty
-            ? const Padding(
+            ? Padding(
                 padding: EdgeInsets.all(24),
-                child: Text('暂无提交记录'),
+                child: Text(l10n.readerNoCommits),
               )
             : ListView(
                 shrinkWrap: true,
@@ -215,6 +221,7 @@ class _FrontmatterBar extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context)!;
     final fm = frontmatter;
     if (fm == null) return const SizedBox.shrink();
     return Wrap(
@@ -222,11 +229,16 @@ class _FrontmatterBar extends StatelessWidget {
       runSpacing: 4,
       children: [
         for (final tag in fm.tags) Chip(label: Text(tag)),
-        if (fm.type != null) Chip(label: Text('类型 ${fm.type}')),
-        if (fm.created != null) Chip(label: Text('创建 ${fm.created}')),
-        if (fm.updated != null) Chip(label: Text('更新 ${fm.updated}')),
-        if (fm.aliases.isNotEmpty) Chip(label: Text('别名 ${fm.aliases.join('、')}')),
-        if (fm.confidence != null) Chip(label: Text('置信度 ${fm.confidence}')),
+        if (fm.type != null)
+          Chip(label: Text(l10n.readerType('${fm.type}'))),
+        if (fm.created != null)
+          Chip(label: Text(l10n.readerCreated('${fm.created}'))),
+        if (fm.updated != null)
+          Chip(label: Text(l10n.readerUpdated('${fm.updated}'))),
+        if (fm.aliases.isNotEmpty)
+          Chip(label: Text(l10n.readerAliases(fm.aliases.join('、')))),
+        if (fm.confidence != null)
+          Chip(label: Text(l10n.readerConfidence('${fm.confidence}'))),
       ],
     );
   }

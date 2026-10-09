@@ -9,6 +9,7 @@ import 'package:markdown/markdown.dart' as md;
 
 import 'dart:io';
 
+import '../l10n/app_localizations.dart';
 import '../vault/link_extractor.dart';
 
 /// 只读 Markdown 视图
@@ -263,6 +264,7 @@ class MarkdownView extends StatelessWidget {
   }
 
   Widget _mathBlock(BuildContext context, String text) {
+    final l10n = AppLocalizations.of(context)!;
     final theme = Theme.of(context);
     final inner = text.startsWith(r'$$') && text.endsWith(r'$$')
         ? text.substring(2, text.length - 2)
@@ -283,7 +285,7 @@ class MarkdownView extends StatelessWidget {
               Icon(Icons.functions, size: 14, color: theme.colorScheme.primary),
               const SizedBox(width: 4),
               Text(
-                '公式（只读）',
+                l10n.mdMathReadonly,
                 style: theme.textTheme.labelSmall
                     ?.copyWith(color: theme.colorScheme.primary),
               ),
@@ -300,8 +302,9 @@ class MarkdownView extends StatelessWidget {
   }
 
   Widget _image(BuildContext context, md.Element img) {
+    final l10n = AppLocalizations.of(context)!;
     final src = img.attributes['src'] ?? '';
-    final alt = img.attributes['alt'] ?? '图片';
+    final alt = img.attributes['alt'] ?? l10n.mdImageAlt;
     final resolved = src.isEmpty ? null : _resolveImage(src);
     if (resolved == null) {
       return Padding(
@@ -316,7 +319,7 @@ class MarkdownView extends StatelessWidget {
             children: [
               const Icon(Icons.image_outlined),
               const SizedBox(width: 8),
-              Expanded(child: Text('图片：$alt（$src）')),
+              Expanded(child: Text(l10n.mdImageMissing(alt, src))),
             ],
           ),
         ),
@@ -400,7 +403,15 @@ class MarkdownView extends StatelessWidget {
             spans.add(const TextSpan(text: '\n'));
           case 'img':
             final alt = node.attributes['alt'] ?? '';
-            spans.add(TextSpan(text: alt.isEmpty ? '[图片]' : '[图片:$alt]'));
+            final l10n =
+                context == null ? null : AppLocalizations.of(context);
+            spans.add(
+              TextSpan(
+                text: alt.isEmpty
+                    ? (l10n?.mdImagePlaceholder ?? '[image]')
+                    : (l10n?.mdImagePlaceholderAlt(alt) ?? '[image:$alt]'),
+              ),
+            );
           default:
             spans.addAll(_inlineSpans(context, node.children));
         }

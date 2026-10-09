@@ -27,7 +27,7 @@ class VaultStatus {
   final String? remoteUrl;
 
   /// 最近一次同步结果文案
-  final String? lastSyncMessage;
+  final SyncMessageKind? lastSyncMessage;
 
   const VaultStatus({
     required this.initialized,
@@ -48,18 +48,12 @@ class VaultStatus {
   /// 是否允许写入（冲突禁写）
   bool get writable => !conflict;
 
-  /// 状态摘要文案
-  String get summary {
-    if (!initialized) return '尚未初始化 Git';
-    if (conflict) return '同步冲突：请在桌面端处理后重新同步';
-    return '$branch · 变更 ${changed.length} · 领先 $ahead · 落后 $behind';
-  }
 }
 
 /// 一次同步的结果
 class SyncResult {
   final SyncState state;
-  final String message;
+  final SyncMessageKind message;
   final int ahead;
   final int behind;
   final int pushed;

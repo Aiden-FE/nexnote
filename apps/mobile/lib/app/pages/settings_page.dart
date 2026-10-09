@@ -8,6 +8,41 @@ import '../../ai/secret_vault.dart';
 import '../../vault/backup_exclusion.dart';
 import '../app_services.dart';
 import 'settings/ai_profile_editor.dart';
+import '../../l10n/app_localizations.dart';
+
+/// 把同步消息种类翻译为当前界面语言（ADR-0023 错误码化）。
+String describeSyncMessage(AppLocalizations l10n, SyncMessageKind kind) {
+  switch (kind) {
+    case SyncMessageKind.inProgress:
+      return l10n.syncInProgress;
+    case SyncMessageKind.fetching:
+      return l10n.syncFetching;
+    case SyncMessageKind.rebasing:
+      return l10n.syncRebasing;
+    case SyncMessageKind.pushing:
+      return l10n.syncPushing;
+    case SyncMessageKind.done:
+      return l10n.syncDone;
+    case SyncMessageKind.upToDate:
+      return l10n.syncUpToDate;
+    case SyncMessageKind.nothingToPush:
+      return l10n.syncNothingToPush;
+    case SyncMessageKind.dirtyRejected:
+      return l10n.syncDirtyRejected;
+  }
+}
+
+/// 把 Git 状态摘要翻译为当前界面语言；服务层只提供结构化字段。
+String describeGitStatusSummary(AppLocalizations l10n, VaultStatus status) {
+  if (!status.initialized) return l10n.gitNotInitialized;
+  if (status.conflict) return l10n.gitConflictSummary;
+  return l10n.gitStatusSummary(
+    status.branch,
+    status.changed.length,
+    status.ahead,
+    status.behind,
+  );
+}
 
 /// 设置与诊断：设备知识库信息、Git 状态、同步与 M1 验收动作
 class SettingsPage extends StatefulWidget {
@@ -71,7 +106,7 @@ class _SettingsPageState extends State<SettingsPage> {
   Future<void> _ensureBackupExcluded() async {
     final ok = await appServices.vaultStore.ensureExcludedFromBackup();
     if (!ok && mounted) {
-      _append('备份排除标记写入失败，请检查系统设置');
+      _append(AppLocalizations.of(context)!.settingsBackupExcludeFailed);
     }
   }
 
@@ -79,11 +114,17 @@ class _SettingsPageState extends State<SettingsPage> {
     setState(() => _busy = true);
     try {
       await action();
-      _append('$label：完成');
+      if (!mounted) return;
+      _append(AppLocalizations.of(context)!.settingsActionDone(label));
     } on GitServiceError catch (e) {
-      _append('$label：失败 ${e.kind.name} — ${e.message}');
+      if (!mounted) return;
+      _append(
+        AppLocalizations.of(context)!
+            .settingsActionFailed(label, '${e.kind.name} — ${e.message}'),
+      );
     } on Object catch (e) {
-      _append('$label：失败 $e');
+      if (!mounted) return;
+      _append(AppLocalizations.of(context)!.settingsActionFailed(label, '$e'));
     } finally {
       setState(() => _busy = false);
       _refresh();
@@ -92,11 +133,12 @@ class _SettingsPageState extends State<SettingsPage> {
 
   @override
   Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context)!;
     final git = appServices.gitService;
     final status = _status;
     return Scaffold(
       appBar: AppBar(
-        title: const Text('设置'),
+        title: Text(l10n.settingsTitle),
         actions: [
           IconButton(icon: const Icon(Icons.refresh), onPressed: _refresh),
         ],
@@ -110,13 +152,58 @@ class _SettingsPageState extends State<SettingsPage> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text('设备知识库',
+                  Text(l10n.settingsDeviceVault,
                       style: Theme.of(context).textTheme.titleMedium),
                   const SizedBox(height: 8),
-                  Text('路径：${appServices.vaultStore.rootPath}'),
-                  Text('页面数：${appServices.vaultRepository.listPagePaths().length}'),
-                  Text('iCloud 备份排除：'
-                      '${appServices.backupExcluded ? '已生效' : '未确认'}'),
+                  Text(l10n.settingsPath(appServices.vaultStore.rootPath)),
+                  Text(l10n.settingsPageCount(
+                      appServices.vaultRepository.listPagePaths().length)),
+                  Text(appServices.backupExcluded
+                      ? l10n.settingsBackupOn
+                      : l10n.settingsBackupOff),
+                ],
+              ),
+            ),
+          ),
+          const SizedBox(height: 12),
+          Card(
+            child: Padding(
+              padding: const EdgeInsets.all(16),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(l10n.settingsLanguage,
+                      style: Theme.of(context).textTheme.titleMedium),
+                  const SizedBox(height: 8),
+                  SizedBox(
+                    width: double.infinity,
+                    child: SegmentedButton<String>(
+                      segments: [
+                        ButtonSegment(
+                          value: 'system',
+                          label: Text(l10n.settingsLanguageSystem),
+                        ),
+                        ButtonSegment(
+                          value: 'zh',
+                          label: Text(l10n.settingsLanguageZh),
+                        ),
+                        ButtonSegment(
+                          value: 'en',
+                          label: Text(l10n.settingsLanguageEn),
+                        ),
+                      ],
+                      selected: {
+                        appServices.localeOverride.value?.languageCode ??
+                            'system'
+                      },
+                      onSelectionChanged: (values) {
+                        final code = values.first;
+                        appServices.setLanguageOverride(
+                          code == 'system' ? null : Locale(code),
+                        );
+                      },
+                    ),
+                  ),
                 ],
               ),
             ),
@@ -128,8 +215,7 @@ class _SettingsPageState extends State<SettingsPage> {
               child: Padding(
                 padding: const EdgeInsets.all(16),
                 child: Text(
-                  '有 ${status!.unpushed} 个未推送提交。'
-                  '设备端是这些提交的唯一副本，请尽快同步。',
+                  l10n.settingsUnpushed(status!.unpushed),
                 ),
               ),
             ),
@@ -140,12 +226,14 @@ class _SettingsPageState extends State<SettingsPage> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text('Git 状态',
+                  Text(l10n.settingsGitStatus,
                       style: Theme.of(context).textTheme.titleMedium),
                   const SizedBox(height: 8),
-                  Text(status?.summary ?? '读取中…'),
+                  Text(status == null
+                      ? l10n.settingsReading
+                      : describeGitStatusSummary(l10n, status)),
                   if (status?.remoteUrl != null)
-                    Text('远端：${status!.remoteUrl}'),
+                    Text(l10n.settingsRemote(status!.remoteUrl!)),
                   if (status?.conflict ?? false)
                     Container(
                       margin: const EdgeInsets.only(top: 8),
@@ -154,7 +242,7 @@ class _SettingsPageState extends State<SettingsPage> {
                         color: Theme.of(context).colorScheme.errorContainer,
                         borderRadius: BorderRadius.circular(8),
                       ),
-                      child: const Text('同步冲突：手机端已禁写，请在桌面端处理'),
+                      child: Text(l10n.settingsConflictBanner),
                     ),
                 ],
               ),
@@ -163,9 +251,9 @@ class _SettingsPageState extends State<SettingsPage> {
           const SizedBox(height: 12),
           TextField(
             controller: _remoteController,
-            decoration: const InputDecoration(
-              labelText: '测试远端（file:// 或 https://）',
-              border: OutlineInputBorder(),
+            decoration: InputDecoration(
+              labelText: l10n.settingsRemoteLabel,
+              border: const OutlineInputBorder(),
             ),
           ),
           const SizedBox(height: 12),
@@ -176,7 +264,7 @@ class _SettingsPageState extends State<SettingsPage> {
               FilledButton.icon(
                 onPressed: _busy
                     ? null
-                    : () => _run('克隆', () async {
+                    : () => _run(l10n.settingsCloneLabel, () async {
                           await appServices.cloneVault(
                             url: _remoteController.text.trim(),
                             name: 'NexNote Mobile',
@@ -184,12 +272,12 @@ class _SettingsPageState extends State<SettingsPage> {
                           );
                         }),
                 icon: const Icon(Icons.download),
-                label: const Text('克隆远端'),
+                label: Text(l10n.settingsClone),
               ),
               FilledButton.tonalIcon(
                 onPressed: _busy
                     ? null
-                    : () => _run('写页面并提交', () async {
+                    : () => _run(l10n.settingsWriteAndCommit, () async {
                           final stamp = DateTime.now()
                               .toIso8601String()
                               .replaceAll(':', '-')
@@ -202,26 +290,29 @@ class _SettingsPageState extends State<SettingsPage> {
                           final sha = git.commitAll(
                             message: '${CommitPrefix.manual} 手机端 spike $stamp',
                           );
-                          _append('提交 ${sha ?? '（无变更）'}');
+                          _append(AppLocalizations.of(context)!
+                              .settingsCommitAppend(sha ?? l10n.settingsNoChange));
                         }),
                 icon: const Icon(Icons.edit_note),
-                label: const Text('写页面并提交'),
+                label: Text(l10n.settingsWriteAndCommit),
               ),
               FilledButton.tonalIcon(
-                onPressed: _busy ? null : () => _run('同步', () async {
+                onPressed: _busy ? null : () => _run(l10n.settingsSyncNow, () async {
                       final result = await git.sync();
-                      _append('同步 ${result.state.name}：${result.message}');
+                      _append(l10n.settingsSyncResult(
+                          result.state.name,
+                          describeSyncMessage(l10n, result.message)));
                     }),
                 icon: const Icon(Icons.sync),
-                label: const Text('立即同步'),
+                label: Text(l10n.settingsSyncNow),
               ),
             ],
           ),
           const SizedBox(height: 16),
-          Text('版本时间线', style: Theme.of(context).textTheme.titleMedium),
+          Text(l10n.settingsTimeline, style: Theme.of(context).textTheme.titleMedium),
           const SizedBox(height: 8),
           if (_timeline.isEmpty)
-            const Text('（暂无提交）')
+            Text(l10n.settingsNoCommits)
           else
             for (final record in _timeline)
               ListTile(
@@ -236,7 +327,7 @@ class _SettingsPageState extends State<SettingsPage> {
                     '${record.hash.substring(0, 7)} · ${record.author} · ${record.kind.name}'),
               ),
           const SizedBox(height: 16),
-          Text('快速捕获目录',
+          Text(l10n.settingsCaptureDir,
               style: Theme.of(context).textTheme.titleMedium),
           const SizedBox(height: 8),
           Row(
@@ -244,9 +335,9 @@ class _SettingsPageState extends State<SettingsPage> {
               Expanded(
                 child: TextField(
                   controller: _captureDirController,
-                  decoration: const InputDecoration(
-                    labelText: '知识库内相对路径',
-                    border: OutlineInputBorder(),
+                  decoration: InputDecoration(
+                    labelText: l10n.settingsCapturePathLabel,
+                    border: const OutlineInputBorder(),
                   ),
                 ),
               ),
@@ -256,15 +347,15 @@ class _SettingsPageState extends State<SettingsPage> {
                   final settings = appServices.settings;
                   settings.captureDirectory = _captureDirController.text.trim();
                   appServices.settingsStore.save(settings);
-                  _append('捕获目录已更新为 ${settings.captureDirectory}');
+                  _append(l10n.settingsCaptureUpdated(settings.captureDirectory));
                   setState(() {});
                 },
-                child: const Text('保存'),
+                child: Text(l10n.settingsSave),
               ),
             ],
           ),
           const SizedBox(height: 16),
-          Text('AI 供应商 Profile',
+          Text(l10n.settingsAiProfiles,
               style: Theme.of(context).textTheme.titleMedium),
           const SizedBox(height: 8),
           for (final profile in appServices.profileStore.list())
@@ -274,7 +365,7 @@ class _SettingsPageState extends State<SettingsPage> {
               title: Text(profile.name),
               subtitle: Text(
                 '${profile.baseUrl} · ${profile.defaultModel} · '
-                '${profile.hasKey ? '已配置密钥' : '未配置密钥'}',
+                '${profile.hasKey ? l10n.settingsKeyConfigured : l10n.settingsKeyMissing}',
               ),
               trailing: Row(
                 mainAxisSize: MainAxisSize.min,
@@ -307,14 +398,15 @@ class _SettingsPageState extends State<SettingsPage> {
                 secrets: _secrets,
               ),
               icon: const Icon(Icons.add),
-              label: const Text('新增 Profile'),
+              label: Text(l10n.settingsAddProfile),
             ),
           ),
           const SizedBox(height: 16),
-          Text('诊断日志', style: Theme.of(context).textTheme.titleMedium),
+          Text(l10n.settingsDiagnosticLog,
+              style: Theme.of(context).textTheme.titleMedium),
           const SizedBox(height: 8),
           if (_log.isEmpty)
-            const Text('（暂无日志）')
+            Text(l10n.settingsNoLog)
           else
             for (final line in _log)
               SelectableText(line,

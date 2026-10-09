@@ -1,0 +1,372 @@
+{
+  "@@locale": "zh",
+  "appTitle": "NexNote",
+  "navVault": "库",
+  "navSearch": "搜索",
+  "navCapture": "捕获",
+  "navAi": "AI",
+  "navSettings": "设置",
+  "vaultTitle": "库",
+  "vaultTagFilterTooltip": "标签筛选",
+  "vaultEmpty": "设备知识库为空，先在「设置」里克隆或初始化。",
+  "vaultRootDir": "根目录",
+  "vaultUncategorized": "未分类",
+  "searchTitle": "搜索",
+  "searchHint": "搜索页面内容（支持中文子串）",
+  "searchResultCount": "命中 {count} 个页面",
+  "@searchResultCount": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "searchInitial": "输入关键词开始搜索",
+  "searchRebuild": "重建索引",
+  "searchNoResults": "没有命中结果",
+  "captureTitle": "捕获",
+  "captureDirectory": "落点目录：{directory}",
+  "@captureDirectory": {
+    "placeholders": {
+      "directory": {
+        "type": "String"
+      }
+    }
+  },
+  "captureHint": "随手记下想法，首行作为标题",
+  "captureAction": "捕获",
+  "captureSuccess": "已捕获：{title}",
+  "@captureSuccess": {
+    "placeholders": {
+      "title": {
+        "type": "String"
+      }
+    }
+  },
+  "captureOpenLast": "打开刚捕获的页面",
+  "aiTitle": "AI 对话",
+  "aiClearTooltip": "清空",
+  "aiNoProfile": "未配置供应商 Profile（只读对话）",
+  "aiReadOnlySession": "只读对话 · {name} · {model}",
+  "@aiReadOnlySession": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      },
+      "model": {
+        "type": "String"
+      }
+    }
+  },
+  "aiEmptyHint": "提问会先做两阶段召回（关键词 + 双链扩展）",
+  "aiInputHint": "问点什么…",
+  "aiThinking": "思考中…",
+  "settingsTitle": "设置",
+  "settingsDeviceVault": "设备知识库",
+  "settingsPath": "路径：{path}",
+  "@settingsPath": {
+    "placeholders": {
+      "path": {
+        "type": "String"
+      }
+    }
+  },
+  "settingsPageCount": "页面数：{count}",
+  "@settingsPageCount": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "settingsBackupOn": "iCloud 备份排除：已生效",
+  "settingsBackupOff": "iCloud 备份排除：未确认",
+  "settingsUnpushed": "有 {count} 个未推送提交。设备端是这些提交的唯一副本，请尽快同步。",
+  "@settingsUnpushed": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "settingsGitStatus": "Git 状态",
+  "settingsReading": "读取中…",
+  "settingsRemote": "远端：{url}",
+  "@settingsRemote": {
+    "placeholders": {
+      "url": {
+        "type": "String"
+      }
+    }
+  },
+  "settingsConflictBanner": "同步冲突：手机端已禁写，请在桌面端处理",
+  "settingsRemoteLabel": "测试远端（file:// 或 https://）",
+  "settingsClone": "克隆远端",
+  "settingsWriteAndCommit": "写页面并提交",
+  "settingsSyncNow": "立即同步",
+  "settingsTimeline": "版本时间线",
+  "settingsNoCommits": "（暂无提交）",
+  "settingsCaptureDir": "快速捕获目录",
+  "settingsCapturePathLabel": "知识库内相对路径",
+  "settingsSave": "保存",
+  "settingsAiProfiles": "AI 供应商 Profile",
+  "settingsKeyConfigured": "已配置密钥",
+  "settingsKeyMissing": "未配置密钥",
+  "settingsAddProfile": "新增 Profile",
+  "settingsDiagnosticLog": "诊断日志",
+  "settingsNoLog": "（暂无日志）",
+  "settingsBackupExcludeFailed": "备份排除标记写入失败，请检查系统设置",
+  "settingsActionDone": "{label}：完成",
+  "@settingsActionDone": {
+    "placeholders": {
+      "label": {
+        "type": "String"
+      }
+    }
+  },
+  "settingsActionFailed": "{label}：失败 {detail}",
+  "@settingsActionFailed": {
+    "placeholders": {
+      "label": {
+        "type": "String"
+      },
+      "detail": {
+        "type": "String"
+      }
+    }
+  },
+  "settingsCloneLabel": "克隆",
+  "settingsCommitAppend": "提交 {sha}",
+  "@settingsCommitAppend": {
+    "placeholders": {
+      "sha": {
+        "type": "String"
+      }
+    }
+  },
+  "settingsNoChange": "（无变更）",
+  "settingsSyncResult": "同步 {state}：{message}",
+  "@settingsSyncResult": {
+    "placeholders": {
+      "state": {
+        "type": "String"
+      },
+      "message": {
+        "type": "String"
+      }
+    }
+  },
+  "settingsCaptureUpdated": "捕获目录已更新为 {dir}",
+  "@settingsCaptureUpdated": {
+    "placeholders": {
+      "dir": {
+        "type": "String"
+      }
+    }
+  },
+  "tagsTitle": "标签",
+  "tagsEmpty": "暂无标签",
+  "tagsPageCount": "{count} 个页面",
+  "@tagsPageCount": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "graphTitle": "图谱",
+  "graphSummary": "节点 {nodes} · 边 {edges} · 未解析 {unresolved}（点击节点查看，只读浏览）",
+  "@graphSummary": {
+    "placeholders": {
+      "nodes": {
+        "type": "int"
+      },
+      "edges": {
+        "type": "int"
+      },
+      "unresolved": {
+        "type": "int"
+      }
+    }
+  },
+  "readerMissing": "页面不存在",
+  "readerTargetMissing": "目标页面不存在：{target}",
+  "@readerTargetMissing": {
+    "placeholders": {
+      "target": {
+        "type": "String"
+      }
+    }
+  },
+  "readerOutlineTooltip": "标题目录",
+  "readerBacklinksTooltip": "反向链接",
+  "readerTimelineTooltip": "版本时间线",
+  "readerGraphTooltip": "图谱",
+  "readerEditTooltip": "编辑",
+  "readerBacklinksButton": "反向链接（{count}）",
+  "@readerBacklinksButton": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "readerNoBacklinks": "暂无反向链接",
+  "readerNoCommits": "暂无提交记录",
+  "readerType": "类型 {value}",
+  "@readerType": {
+    "placeholders": {
+      "value": {
+        "type": "String"
+      }
+    }
+  },
+  "readerCreated": "创建 {value}",
+  "@readerCreated": {
+    "placeholders": {
+      "value": {
+        "type": "String"
+      }
+    }
+  },
+  "readerUpdated": "更新 {value}",
+  "@readerUpdated": {
+    "placeholders": {
+      "value": {
+        "type": "String"
+      }
+    }
+  },
+  "readerAliases": "别名 {value}",
+  "@readerAliases": {
+    "placeholders": {
+      "value": {
+        "type": "String"
+      }
+    }
+  },
+  "readerConfidence": "置信度 {value}",
+  "@readerConfidence": {
+    "placeholders": {
+      "value": {
+        "type": "String"
+      }
+    }
+  },
+  "blockTitle": "块编辑",
+  "blockSwitchToSource": "切换到源码模式",
+  "blockSave": "保存",
+  "blockConflict": "同步冲突禁写中：请在桌面端解决冲突后重试",
+  "blockFrontmatter": "元数据头（只读）\n{content}",
+  "@blockFrontmatter": {
+    "placeholders": {
+      "content": {
+        "type": "String"
+      }
+    }
+  },
+  "blockCode": "代码块{language}",
+  "@blockCode": {
+    "placeholders": {
+      "language": {
+        "type": "String"
+      }
+    }
+  },
+  "blockImage": "图片",
+  "blockTable": "表格（只读）",
+  "blockMath": "公式（只读）",
+  "blockHtml": "HTML（只读）",
+  "blockEditableInSource": "源码模式可编辑",
+  "sourceTitle": "源码编辑",
+  "sourceSwitchToBlock": "切换到块编辑模式",
+  "sourceSave": "保存",
+  "sourceConflict": "同步冲突禁写中：请在桌面端解决冲突后重试",
+  "sourceFrontmatter": "元数据头（只读）",
+  "saveAutoCommit": "已保存，将自动提交",
+  "saveNoChange": "内容未变化",
+  "saveFailed": "保存失败：{message}",
+  "@saveFailed": {
+    "placeholders": {
+      "message": {
+        "type": "String"
+      }
+    }
+  },
+  "mdMathReadonly": "公式（只读）",
+  "mdImageAlt": "图片",
+  "mdImageMissing": "图片：{alt}（{src}）",
+  "@mdImageMissing": {
+    "placeholders": {
+      "alt": {
+        "type": "String"
+      },
+      "src": {
+        "type": "String"
+      }
+    }
+  },
+  "mdImagePlaceholder": "[图片]",
+  "mdImagePlaceholderAlt": "[图片:{alt}]",
+  "@mdImagePlaceholderAlt": {
+    "placeholders": {
+      "alt": {
+        "type": "String"
+      }
+    }
+  },
+  "profileRequired": "名称与 base-url 必填",
+  "profileAdd": "新增 Profile",
+  "profileEdit": "编辑 Profile",
+  "profileName": "名称",
+  "profileModel": "模型名",
+  "profileApiKey": "API Key",
+  "profileApiKeyKeep": "API Key（留空则不改动）",
+  "profileCancel": "取消",
+  "profileSave": "保存",
+  "errNoProfile": "未配置供应商 Profile，请先在设置中配置",
+  "errNoApiKey": "该 Profile 未配置 API Key",
+  "errProvider": "供应商请求失败：{detail}",
+  "@errProvider": {
+    "placeholders": {
+      "detail": {
+        "type": "String"
+      }
+    }
+  },
+  "syncInProgress": "同步进行中",
+  "syncFetching": "拉取远端…",
+  "syncRebasing": "整合远端变更…",
+  "syncPushing": "推送本地变更…",
+  "syncDone": "同步完成",
+  "syncUpToDate": "已是最新",
+  "syncNothingToPush": "本地无新提交",
+  "syncDirtyRejected": "工作区有未提交变更，已跳过自动同步",
+  "gitNotInitialized": "尚未初始化 Git",
+  "gitConflictSummary": "同步冲突：请在桌面端处理后重新同步",
+  "gitStatusSummary": "{branch} · 变更 {changed} · 领先 {ahead} · 落后 {behind}",
+  "@gitStatusSummary": {
+    "placeholders": {
+      "branch": {
+        "type": "String"
+      },
+      "changed": {
+        "type": "int"
+      },
+      "ahead": {
+        "type": "int"
+      },
+      "behind": {
+        "type": "int"
+      }
+    }
+  },
+  "recallKeyword": "关键词",
+  "recallLinks": "双链扩展",
+  "captureEmpty": "内容为空",
+  "captureUntitled": "未命名捕获",
+  "settingsLanguage": "界面语言",
+  "settingsLanguageSystem": "跟随系统",
+  "settingsLanguageZh": "简体中文",
+  "settingsLanguageEn": "English"
+}

@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 
 import '../../../ai/provider_profile.dart';
 import '../../../ai/secret_vault.dart';
+import '../../../l10n/app_localizations.dart';
 
 /// 新建或编辑 Profile
 class AiProfileEditor extends StatefulWidget {
@@ -35,10 +36,11 @@ class _AiProfileEditorState extends State<AiProfileEditor> {
   }
 
   Future<void> _save(ProviderProfileStore store, SecretVault secrets) async {
+    final l10n = AppLocalizations.of(context)!;
     final name = _name.text.trim();
     final baseUrl = _baseUrl.text.trim();
     if (name.isEmpty || baseUrl.isEmpty) {
-      setState(() => _error = '名称与 base-url 必填');
+      setState(() => _error = l10n.profileRequired);
       return;
     }
     final profile = ProviderProfile(
@@ -68,13 +70,17 @@ class _AiProfileEditorState extends State<AiProfileEditor> {
 
   @override
   Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context)!;
     return AlertDialog(
-      title: Text(widget.existing == null ? '新增 Profile' : '编辑 Profile'),
+      title: Text(widget.existing == null ? l10n.profileAdd : l10n.profileEdit),
       content: SingleChildScrollView(
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            TextField(controller: _name, decoration: const InputDecoration(labelText: '名称')),
+            TextField(
+              controller: _name,
+              decoration: InputDecoration(labelText: l10n.profileName),
+            ),
             TextField(
               controller: _baseUrl,
               decoration: const InputDecoration(
@@ -84,13 +90,15 @@ class _AiProfileEditorState extends State<AiProfileEditor> {
             ),
             TextField(
               controller: _model,
-              decoration: const InputDecoration(labelText: '模型名'),
+              decoration: InputDecoration(labelText: l10n.profileModel),
             ),
             TextField(
               controller: _apiKey,
               obscureText: true,
               decoration: InputDecoration(
-                labelText: widget.existing?.hasKey == true ? 'API Key（留空则不改动）' : 'API Key',
+                labelText: widget.existing?.hasKey == true
+                    ? l10n.profileApiKeyKeep
+                    : l10n.profileApiKey,
               ),
             ),
             if (_error != null)
@@ -107,7 +115,7 @@ class _AiProfileEditorState extends State<AiProfileEditor> {
       actions: [
         TextButton(
           onPressed: _saving ? null : () => Navigator.of(context).pop(),
-          child: const Text('取消'),
+          child: Text(l10n.profileCancel),
         ),
         FilledButton(
           onPressed: _saving
@@ -117,7 +125,7 @@ class _AiProfileEditorState extends State<AiProfileEditor> {
                     context.findAncestorWidgetOfExactType<_AiProfileEditorScope>()!.store,
                     context.findAncestorWidgetOfExactType<_AiProfileEditorScope>()!.secrets,
                   ),
-          child: const Text('保存'),
+          child: Text(l10n.profileSave),
         ),
       ],
     );

@@ -188,7 +188,7 @@ class DeviceGitService {
   }
 
   /// 全量状态
-  VaultStatus status({String? lastSyncMessage}) {
+  VaultStatus status({SyncMessageKind? lastSyncMessage}) {
     if (!isRepoInitialized) {
       return VaultStatus(
         initialized: false,
@@ -231,7 +231,7 @@ class DeviceGitService {
     );
   }
 
-  void _broadcastStatus([String? message]) {
+  void _broadcastStatus([SyncMessageKind? message]) {
     if (!_syncStatusController.hasListener) return;
     _syncStatusController.add(status(lastSyncMessage: message));
   }
@@ -373,7 +373,10 @@ class DeviceGitService {
   /// 同步：fetch → rebase（落后时）→ push（领先时）
   Future<SyncResult> sync() async {
     if (_syncing) {
-      return const SyncResult(state: SyncState.idle, message: '同步进行中');
+      return const SyncResult(
+        state: SyncState.idle,
+        message: SyncMessageKind.inProgress,
+      );
     }
     _syncing = true;
     try {
@@ -467,7 +470,7 @@ class DeviceGitService {
     }
   }
 
-  void _setStatus(String message) {
+  void _setStatus(SyncMessageKind message) {
     _broadcastStatus(message);
   }
 

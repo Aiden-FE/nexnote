@@ -2,6 +2,7 @@
 library;
 
 import 'dart:io';
+import 'dart:ui';
 
 import 'package:flutter/foundation.dart';
 import 'package:path/path.dart' as p;
@@ -67,6 +68,19 @@ class AppServices {
 
   void bumpVaultRevision() => vaultRevision.value++;
 
+  /// 界面语言：null = 跟随系统，`Locale('zh'/'en')` = 覆盖（ADR-0024）。
+  ValueNotifier<Locale?>? _localeOverride;
+  ValueNotifier<Locale?> get localeOverride =>
+      _localeOverride ??= ValueNotifier<Locale?>(null);
+
+  /// 设置界面语言覆盖；传 null 恢复跟随系统，并持久化。
+  void setLanguageOverride(Locale? locale) {
+    final settings = this.settings;
+    settings.languageOverride = locale?.languageCode;
+    settingsStore.save(settings);
+    localeOverride.value = locale;
+  }
+
   /// 备份排除标记是否已生效（false = 平台未确认，需在设置页提示）
   bool backupExcluded = false;
 
@@ -94,6 +108,10 @@ class AppServices {
       onChanged: bumpVaultRevision,
     );
     _settingsStore = SettingsStore(appSupport: appSupport);
+    final initialLanguage = _settingsStore!.load().languageOverride;
+    _localeOverride = ValueNotifier<Locale?>(
+      initialLanguage == null ? null : Locale(initialLanguage),
+    );
     _profileStore = ProviderProfileStore(
       appSupport: appSupport,
       secrets: KeychainSecretVault(),

@@ -10,6 +10,7 @@ import '../../../reader/markdown_view.dart';
 import '../../../vault/frontmatter.dart';
 import '../../app_services.dart';
 import 'source_editor_page.dart';
+import '../../../l10n/app_localizations.dart';
 
 class BlockEditorPage extends StatefulWidget {
   final String path;
@@ -61,6 +62,7 @@ class _BlockEditorPageState extends State<BlockEditorPage> {
   bool get _blocked => appServices.gitService.blockedByConflict;
 
   void _save() {
+    final l10n = AppLocalizations.of(context)!;
     try {
       final body = _document.serialize();
       final content = (_frontmatter ?? '') + body;
@@ -71,11 +73,11 @@ class _BlockEditorPageState extends State<BlockEditorPage> {
       );
       setState(() => _dirty = false);
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(changed ? '已保存，将自动提交' : '内容未变化')),
+        SnackBar(content: Text(changed ? l10n.saveAutoCommit : l10n.saveNoChange)),
       );
     } on GitServiceError catch (e) {
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('保存失败：${e.message}')),
+        SnackBar(content: Text(l10n.saveFailed(e.message))),
       );
     }
   }
@@ -90,18 +92,19 @@ class _BlockEditorPageState extends State<BlockEditorPage> {
 
   @override
   Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context)!;
     return Scaffold(
       appBar: AppBar(
-        title: const Text('块编辑'),
+        title: Text(l10n.blockTitle),
         actions: [
           IconButton(
             icon: const Icon(Icons.code),
-            tooltip: '切换到源码模式',
+            tooltip: l10n.blockSwitchToSource,
             onPressed: _blocked ? null : _switchToSource,
           ),
           TextButton(
             onPressed: _blocked || !_dirty ? null : _save,
-            child: const Text('保存'),
+            child: Text(l10n.blockSave),
           ),
         ],
       ),
@@ -112,7 +115,7 @@ class _BlockEditorPageState extends State<BlockEditorPage> {
               width: double.infinity,
               color: Theme.of(context).colorScheme.errorContainer,
               padding: const EdgeInsets.all(12),
-              child: const Text('同步冲突禁写中：请在桌面端解决冲突后重试'),
+              child: Text(l10n.blockConflict),
             ),
           if (_frontmatter != null)
             Container(
@@ -120,7 +123,7 @@ class _BlockEditorPageState extends State<BlockEditorPage> {
               color: Theme.of(context).colorScheme.surfaceContainerHighest,
               padding: const EdgeInsets.all(12),
               child: Text(
-                '元数据头（只读）\n${_frontmatter!.trimRight()}',
+                l10n.blockFrontmatter(_frontmatter!.trimRight()),
                 style: const TextStyle(fontFamily: 'Menlo', fontSize: 12),
               ),
             ),
@@ -138,6 +141,7 @@ class _BlockEditorPageState extends State<BlockEditorPage> {
   }
 
   Widget _buildBlock(Block block) {
+    final l10n = AppLocalizations.of(context)!;
     switch (block.type) {
       case BlockType.blank:
         return const SizedBox(height: 8);
@@ -197,7 +201,7 @@ class _BlockEditorPageState extends State<BlockEditorPage> {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Text(
-                '代码块${block.language == null ? '' : ' · ${block.language}'}',
+                l10n.blockCode(block.language == null ? '' : ' · ${block.language}'),
                 style: Theme.of(context).textTheme.labelSmall,
               ),
               _field(block, singleLine: false, monospace: true),
@@ -241,7 +245,7 @@ class _BlockEditorPageState extends State<BlockEditorPage> {
                 children: [
                   const Icon(Icons.image_outlined, size: 16),
                   const SizedBox(width: 4),
-                  Text('图片', style: Theme.of(context).textTheme.labelSmall),
+                  Text(l10n.blockImage, style: Theme.of(context).textTheme.labelSmall),
                 ],
               ),
               _field(block, singleLine: true, monospace: true),
@@ -305,9 +309,9 @@ class _ReadOnlyBlock extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final label = switch (block.type) {
-      BlockType.table => '表格（只读）',
-      BlockType.math => '公式（只读）',
-      _ => 'HTML（只读）',
+      BlockType.table => AppLocalizations.of(context)!.blockTable,
+      BlockType.math => AppLocalizations.of(context)!.blockMath,
+      _ => AppLocalizations.of(context)!.blockHtml,
     };
     return Container(
       margin: const EdgeInsets.symmetric(vertical: 6),
@@ -327,7 +331,7 @@ class _ReadOnlyBlock extends StatelessWidget {
               Text(label, style: Theme.of(context).textTheme.labelSmall),
               const Spacer(),
               Text(
-                '源码模式可编辑',
+                AppLocalizations.of(context)!.blockEditableInSource,
                 style: Theme.of(context).textTheme.labelSmall,
               ),
             ],

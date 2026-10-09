@@ -6,6 +6,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:nexnote_mobile/app/app_services.dart';
 import 'package:nexnote_mobile/app/pages/edit/block_editor_page.dart';
 import 'package:nexnote_mobile/app/pages/edit/source_editor_page.dart';
+import 'package:nexnote_mobile/l10n/app_localizations.dart';
 
 void main() {
   late Directory tmp;
@@ -22,7 +23,16 @@ void main() {
   });
 
   Future<void> pump(WidgetTester tester, Widget page) async {
-    await tester.pumpWidget(MaterialApp(home: page));
+    await tester.pumpWidget(
+      MaterialApp(
+        localizationsDelegates: AppLocalizations.localizationsDelegates,
+        supportedLocales: AppLocalizations.supportedLocales,
+        // 本文件断言中文 UI 文案（如「保存」按钮），需固定中文 locale；
+        // flutter test 默认系统 locale 为 en，会解析到英文文案。
+        locale: const Locale('zh'),
+        home: page,
+      ),
+    );
     await tester.pumpAndSettle();
   }
 
