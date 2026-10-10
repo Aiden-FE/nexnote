@@ -5,6 +5,7 @@ import type { GitFileHistoryIndex, GitService } from '../git/git-service';
 import type { LinkIndexService } from '../indexer/index-service';
 import { readVaultConfig } from '../vault/vault-manager';
 import { setFrontmatterNumber } from '../fs/page-ops';
+import { tCurrent } from '@nexnote/shared';
 
 export interface ConfidencePageInput {
   id: number;
@@ -29,13 +30,13 @@ export const CONFIDENCE_WEIGHTS = {
   manual_boost: 0.1,
 } as const;
 
-const FACTOR_LABELS: Record<ConfidenceFactor['key'], string> = {
-  stability: '内容稳定性',
-  review_count: '修订次数',
-  author_count: '作者数量',
-  age: '文档年龄',
-  link_authority: '链接权威度',
-  manual_boost: '手动加权',
+const FACTOR_LABEL_KEYS: Record<ConfidenceFactor['key'], string> = {
+  stability: 'confidence.factor.stability.label',
+  review_count: 'confidence.factor.review_count.label',
+  author_count: 'confidence.factor.author_count.label',
+  age: 'confidence.factor.age.label',
+  link_authority: 'confidence.factor.link_authority.label',
+  manual_boost: 'confidence.factor.manual_boost.label',
 };
 
 function clamp01(value: number): number {
@@ -102,7 +103,7 @@ function factor(key: ConfidenceFactor['key'], score: number, detail: string): Co
   const weight = CONFIDENCE_WEIGHTS[key];
   return {
     key,
-    label: FACTOR_LABELS[key],
+    label: tCurrent(FACTOR_LABEL_KEYS[key]),
     score: Number(normalized.toFixed(4)),
     weight,
     contribution: Number((normalized * weight * 100).toFixed(2)),
@@ -149,13 +150,21 @@ export function computeConfidenceResults({
       factor(
         'stability',
         stabilityScore,
-        `${events.length} 次历史改动按近期权重聚合，改动越小越稳定`,
+        tCurrent('confidence.factor.stability.detail', { count: events.length }),
       ),
-      factor('review_count', reviewScore, `${history?.commits ?? 0} 次提交，20 次后饱和`),
-      factor('author_count', authorScore, `${authorCount} 位作者，单人保留基础分`),
-      factor('age', ageScore, `文档存活 ${Math.floor(ageDays)} 天，按对数增长`),
-      factor('link_authority', linkScore, '由去重入链图的简化 PageRank 归一化'),
-      factor('manual_boost', manualScore, '系统中性分，不受用户输入影响'),
+      factor(
+        'review_count',
+        reviewScore,
+        tCurrent('confidence.factor.review_count.detail', { count: history?.commits ?? 0 }),
+      ),
+      factor(
+        'author_count',
+        authorScore,
+        tCurrent('confidence.factor.author_count.detail', { count: authorCount }),
+      ),
+      factor('age', ageScore, tCurrent('confidence.factor.age.detail', { count: Math.floor(ageDays) })),
+      factor('link_authority', linkScore, tCurrent('confidence.factor.link_authority.detail')),
+      factor('manual_boost', manualScore, tCurrent('confidence.factor.manual_boost.detail')),
     ];
     const raw = factors.reduce((total, item) => total + item.contribution, 0);
     const score = Math.max(1, Math.round(raw));
@@ -238,6 +247,6 @@ export class ConfidenceService {
       this.recordAppWrite?.(absolute);
       changed = true;
     }
-    if (changed) this.git.scheduleAutoCommit('同步置信度到 frontmatter', 0);
+    if (changed) this.git.scheduleAutoCommit(tCurrent('confidence.autosummary.sync'), 0);
   }
 }

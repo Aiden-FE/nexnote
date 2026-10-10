@@ -231,3 +231,9 @@ status: in_progress
   服务缺失。新增 13 key，zh/en 各 1325 key。agent runtime / loop / e2e /
   IPC registrar / catalog targeted tests 通过；全量门禁 195 files /
   1846 passed / 3 skipped 退出码 0。
+- 阶段③第十八批（2026-10-10）：置信度引擎因子标签、明细解释与 frontmatter
+  同步自动提交摘要成文；因子 key、分数、Git 数据和页面内容保留边界。此前
+  “factor label/detail 是服务数据边界”的口径已被本批取代。新增 13 key，
+  zh/en 各 1338 key。`confidence-service` 新增 en-US 语言权威测试；
+  confidence / PropertiesPanel / catalog targeted tests 通过；全量门禁
+  195 files / 1847 passed / 3 skipped 退出码 0。

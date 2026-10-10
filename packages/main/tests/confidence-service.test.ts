@@ -4,6 +4,7 @@ import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 import { defaultVaultConfig } from '@nexnote/shared';
+import { setCurrentLanguage } from '@nexnote/shared';
 import { GitService } from '../src/git/git-service';
 import { LinkIndexService } from '../src/indexer/index-service';
 import { computeConfidenceResults, ConfidenceService } from '../src/confidence/confidence-service';
@@ -55,6 +56,7 @@ function factor(result: NonNullable<ReturnType<LinkIndexService['confidence']>>,
 }
 
 describe('DEV-008 confidence engine', () => {
+  afterEach(() => setCurrentLanguage('zh-CN'));
   afterEach(async () => {
     await Promise.all(tempDirs.splice(0).map((root) => rm(root, { recursive: true, force: true })));
   });
@@ -245,5 +247,31 @@ describe('DEV-008 confidence engine', () => {
     });
     expect(results).toHaveLength(1_000);
     expect(performance.now() - started).toBeLessThan(10_000);
+  });
+});
+
+describe('ADR-0023 confidence service text language authority', () => {
+  it('computes factor labels and details in English', () => {
+    setCurrentLanguage('en-US');
+    const [result] = computeConfidenceResults({
+      pages: [{ id: 1, path: 'target.md', createdAt: '2025-01-01T00:00:00.000Z', confidenceBoost: null }],
+      graph: {
+        pages: [{ path: 'target.md', title: 'target.md', folder: '', tags: [], inboundLinks: 0, outboundLinks: 0 }],
+        links: [],
+      },
+      histories: new Map([
+        ['target.md', {
+          commits: 2,
+          authors: 1,
+          firstCommitAt: '2025-01-01T00:00:00.000Z',
+          lastCommitAt: '2025-02-01T00:00:00.000Z',
+          events: [{ date: '2025-02-01T00:00:00.000Z', additions: 5, deletions: 2 }],
+        }],
+      ]),
+      now: new Date('2026-01-01T00:00:00.000Z'),
+    });
+    const stability = result!.factors.find((factor) => factor.key === 'stability')!;
+    expect(stability.label).toBe('Content stability');
+    expect(stability.detail).toContain('1 historical changes');
   });
 });
