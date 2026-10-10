@@ -92,3 +92,8 @@ status: in_progress
   上游消息原文边界，本应用按钮/状态成文。新增 16 key，消息目录 zh/en 各 500 key。
   `writing-layer.test.tsx` 新增 en-US 渲染残留检查（服务/模型消息显式除外）；
   门禁 193 files / 1826 passed / 3 skipped。
+- 阶段②第八批（2026-10-10）：Git 状态栏、同步进度、时间线、远程设置、
+  同步诊断弹窗与恢复预览迁移；冲突 hover 改为按当前语言组装，Agent 结构化
+  prompt / chip 文本与主进程诊断文案保留原文边界。新增 68 key，消息目录
+  zh/en 各 567 key；`git-status-item.test.tsx` 新增状态栏与时间线 en-US
+  残留检查，门禁 193 files / 1827 passed / 3 skipped。
