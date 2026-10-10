@@ -5,6 +5,7 @@ import type {
   RetrievalStageStats,
 } from '@nexnote/shared';
 import type { EmbedResult, RetrievalIndexStatusPayload } from '@nexnote/shared';
+import { tCurrent } from '@nexnote/shared';
 import type { CandidateBlock, LinkIndexService, VectorItem } from '../indexer/index-service';
 
 /** 可替身的 embedding 提供者（AiService.embedWithMetadata 满足；测试可 fake）。 */
@@ -270,7 +271,8 @@ export class RetrievalService {
     if (!stages.some((s) => s.stage === 'vector')) {
       stages.push({
         stage: 'vector', candidates: scored.size, elapsedMs: Date.now() - t2,
-        enabled: !degraded, note: degraded ? 'embedding 不可用，已降级为两阶段召回' : undefined,
+        enabled: !degraded,
+        note: degraded ? tCurrent('retrieval.vectorDegraded') : undefined,
       });
     }
 

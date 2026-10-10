@@ -184,3 +184,7 @@ status: in_progress
   自动提交摘要成文。服务数据、搜索内容和索引错误保留边界。新增 1 key，
   zh/en 各 1199 key。index / confidence / IPC registrar / catalog targeted
   tests 通过；门禁 195 files / 1843 passed / 3 skipped 退出码 0。
+- 阶段③第九批（2026-10-10）：retrieval 向量降级状态迁移；阶段统计 note 按当前
+  语言成文，错误原文与召回来源保留边界。新增 1 key，zh/en 各 1200 key。
+  retrieval / bug-bash / e2e / catalog targeted tests 通过；全量门禁
+  195 files / 1843 passed / 3 skipped 退出码 0。
