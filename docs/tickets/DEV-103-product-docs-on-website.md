@@ -90,6 +90,7 @@
 - [x] 阶段③第十一批（2026-10-10）：AI store Profile / assignment 校验错误成文；Profile / 模型 / Base URL 数据保留边界。新增 5 key，消息目录 zh/en 各 1233 key；门禁 195 files / 1843 passed / 3 skipped。
 - [x] 阶段③第十二批（2026-10-10）：PluginService 安装 / 生命周期 / RPC / 授权服务错误成文；插件内容与 manifest 数据保留边界。新增 20 key，消息目录 zh/en 各 1253 key；门禁 195 files / 1843 passed / 3 skipped。
 - [x] 阶段③第十三批（2026-10-10）：插件安装预检 / 安全 ZIP / 授权会话错误成文；manifest 内容与上游数据保留边界。新增 29 key，消息目录 zh/en 各 1282 key；门禁 195 files / 1844 passed / 3 skipped。
+- [x] 阶段③第十四批（2026-10-10）：插件 manifest 校验框架文案成文；插件声明值和内容保留边界。新增 13 key，消息目录 zh/en 各 1295 key；门禁 195 files / 1845 passed / 3 skipped。
 - [ ] 阶段③剩余：GitService、vault、DOCX 等主进程服务消息错误码化（doctor 服务状态已完成；这些剩余服务消息仍为中文）
 - [ ] 阶段④既有测试中文断言迁移
 - [ ] **NOT_RUN / 未达门槛**：按 ADR「en-US 全 UI 无中文残留」，当前不声称桌面端双语完成

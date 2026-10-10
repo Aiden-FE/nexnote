@@ -7,6 +7,7 @@ import type {
   PluginSkillContribution,
 } from '@nexnote/shared';
 import { isValidSemver, semverGte } from './version-compat';
+import { tCurrent } from '@nexnote/shared';
 
 export const PERMISSIONS: readonly PluginPermission[] = [
   'read',
@@ -40,43 +41,62 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 
 function stringList(value: unknown, field: string): string[] {
   if (!Array.isArray(value) || value.some((item) => typeof item !== 'string')) {
-    throw new ManifestError(`manifest.${field} 必须是字符串数组`, 'INVALID_MANIFEST');
+    throw new ManifestError(
+      tCurrent('plugin.manifest.INVALID_STRING_LIST', { field }),
+      'INVALID_MANIFEST',
+    );
   }
   return value;
 }
 
 export function validateManifest(raw: unknown): PluginManifest {
-  if (!isRecord(raw)) throw new ManifestError('manifest 必须是 JSON 对象', 'INVALID_MANIFEST');
+  if (!isRecord(raw))
+    throw new ManifestError(tCurrent('plugin.manifest.NOT_OBJECT'), 'INVALID_MANIFEST');
   for (const field of ['id', 'name', 'version', 'minAppVersion', 'main'] as const) {
     if (typeof raw[field] !== 'string' || (raw[field] as string).trim() === '') {
-      throw new ManifestError(`manifest.${field} 必须是非空字符串`, 'INVALID_MANIFEST');
+      throw new ManifestError(
+        tCurrent('plugin.manifest.EMPTY_REQUIRED_FIELD', { field }),
+        'INVALID_MANIFEST',
+      );
     }
   }
   if (!isValidSemver(String(raw.version))) {
-    throw new ManifestError('manifest.version 必须是合法 semver', 'INVALID_PLUGIN_VERSION');
+    throw new ManifestError(tCurrent('plugin.manifest.INVALID_VERSION'), 'INVALID_PLUGIN_VERSION');
   }
   if (!isValidSemver(String(raw.minAppVersion))) {
-    throw new ManifestError('manifest.minAppVersion 必须是合法 semver', 'INVALID_MIN_APP_VERSION');
+    throw new ManifestError(
+      tCurrent('plugin.manifest.INVALID_MIN_APP_VERSION'),
+      'INVALID_MIN_APP_VERSION',
+    );
   }
   if (!/^[a-z0-9]+(?:[.-][a-z0-9]+)+$/i.test(String(raw.id))) {
-    throw new ManifestError('插件 ID 必须是反向域名式命名空间', 'INVALID_MANIFEST');
+    throw new ManifestError(tCurrent('plugin.manifest.INVALID_ID'), 'INVALID_MANIFEST');
   }
   const main = String(raw.main);
   const normalizedMain = normalize(main).replaceAll('\\', '/');
   if (isAbsolute(main) || normalizedMain === '..' || normalizedMain.startsWith('../')) {
-    throw new ManifestError('manifest.main 必须是插件目录内的相对路径', 'INVALID_MANIFEST');
+    throw new ManifestError(
+      tCurrent('plugin.manifest.MAIN_NOT_RELATIVE'),
+      'INVALID_MANIFEST',
+    );
   }
   const declared = stringList(raw.capabilities ?? [], 'capabilities') as PluginPermission[];
   const permissions = stringList(raw.permissions ?? declared, 'permissions') as PluginPermission[];
   for (const permission of [...declared, ...permissions]) {
     if (!PERMISSIONS.includes(permission)) {
-      throw new ManifestError(`未知权限: ${permission}`, 'INVALID_MANIFEST');
+      throw new ManifestError(
+        tCurrent('plugin.manifest.UNKNOWN_PERMISSION', { permission }),
+        'INVALID_MANIFEST',
+      );
     }
   }
   const contributions: Partial<Record<PluginContributionKind, PluginContribution[]>> = {};
   if (raw.contributions !== undefined) {
     if (!isRecord(raw.contributions)) {
-      throw new ManifestError('manifest.contributions 必须是对象', 'INVALID_MANIFEST');
+      throw new ManifestError(
+        tCurrent('plugin.manifest.CONTRIBUTIONS_NOT_OBJECT'),
+        'INVALID_MANIFEST',
+      );
     }
     for (const kind of CONTRIBUTION_KINDS) {
       const value = raw.contributions[kind];
@@ -88,7 +108,10 @@ export function validateManifest(raw: unknown): PluginManifest {
             !isRecord(item) || typeof item.id !== 'string' || typeof item.title !== 'string',
         )
       ) {
-        throw new ManifestError(`manifest.contributions.${kind} 格式无效`, 'INVALID_MANIFEST');
+        throw new ManifestError(
+          tCurrent('plugin.manifest.INVALID_CONTRIBUTIONS', { kind }),
+          'INVALID_MANIFEST',
+        );
       }
       contributions[kind] = value.map((item) => ({
         id: String(item.id),
@@ -120,7 +143,7 @@ export function validateManifest(raw: unknown): PluginManifest {
       !Array.isArray(raw.skills) ||
       raw.skills.some((skill) => !isRecord(skill) || typeof skill.id !== 'string')
     ) {
-      throw new ManifestError('manifest.skills 格式无效（需要 {id,...} 数组）', 'INVALID_MANIFEST');
+      throw new ManifestError(tCurrent('plugin.manifest.INVALID_SKILLS'), 'INVALID_MANIFEST');
     }
     skills = raw.skills.map((skill) => ({
       id: String(skill.id),
@@ -145,17 +168,25 @@ export function validateManifest(raw: unknown): PluginManifest {
 
 export function assertHostCompatible(manifest: PluginManifest, hostVersion: string): void {
   if (!isValidSemver(hostVersion)) {
-    throw new ManifestError(`宿主版本不是合法 semver: ${hostVersion}`, 'INVALID_HOST_VERSION');
+    throw new ManifestError(
+      tCurrent('plugin.manifest.INVALID_HOST_VERSION', { version: hostVersion }),
+      'INVALID_HOST_VERSION',
+    );
   }
   if (!isValidSemver(manifest.minAppVersion)) {
     throw new ManifestError(
-      `manifest.minAppVersion 非法: ${manifest.minAppVersion}`,
+      tCurrent('plugin.manifest.INVALID_MIN_APP_VERSION', {
+        version: manifest.minAppVersion,
+      }),
       'INVALID_MIN_APP_VERSION',
     );
   }
   if (!semverGte(hostVersion, manifest.minAppVersion)) {
     throw new ManifestError(
-      `插件需要 NexNote >= ${manifest.minAppVersion}，当前为 ${hostVersion}`,
+      tCurrent('plugin.manifest.HOST_VERSION_TOO_OLD', {
+        required: manifest.minAppVersion,
+        current: hostVersion,
+      }),
       'HOST_VERSION_TOO_OLD',
     );
   }

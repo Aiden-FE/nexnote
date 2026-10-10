@@ -1,5 +1,6 @@
 import {
   chmodSync,
+  mkdirSync,
   mkdtempSync,
   readFileSync,
   readdirSync,
@@ -158,6 +159,18 @@ describe('PluginService secure runtime', () => {
     expect(() =>
       service.beginSession('com.nexnote.demo', 'short', 'plugin-frame'),
     ).toThrow('The nonce must be at least 16 characters');
+  });
+
+  it('manifest validation messages follow the current UI language', () => {
+    setCurrentLanguage('en-US');
+    const invalid = join(tmp, 'invalid-manifest');
+    mkdirSync(invalid, { recursive: true });
+    const manifest = JSON.parse(readFileSync(join(fixture, 'manifest.json'), 'utf8'));
+    manifest.version = 'not-semver';
+    writeFileSync(join(invalid, 'manifest.json'), JSON.stringify(manifest));
+    expect(() => makeService().previewInstall('directory', invalid)).toThrow(
+      'manifest.version must be valid semver',
+    );
   });
 
   it('requires a staged ticket and activation executes manifest commands', () => {

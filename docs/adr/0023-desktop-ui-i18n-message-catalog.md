@@ -209,3 +209,8 @@ status: in_progress
   上游压缩异常和审计明细保留边界。新增 29 key，zh/en 各 1282 key。
   `plugin-service` 新增 en-US intake / auth 语言测试；门禁 195 files /
   1844 passed / 3 skipped 退出码 0。
+- 阶段③第十四批（2026-10-10）：插件 manifest 校验框架文案成文。覆盖必填字段、
+  semver、反向域名 ID、相对入口、权限、贡献点、Skill 与宿主兼容性；插件声明
+  的权限标识和内容字段保留边界。新增 13 key，zh/en 各 1295 key。
+  `plugin-service` 新增 en-US manifest 校验测试；门禁 195 files /
+  1845 passed / 3 skipped 退出码 0。
