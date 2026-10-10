@@ -6,6 +6,7 @@ import { useIndexStore } from '../../stores/index-store';
 import { useUiStore } from '../../stores/ui-store';
 import { cn } from '../../lib/utils';
 import { invoke } from '../../lib/ipc';
+import { t, useI18n } from '../../lib/i18n';
 
 /**
  * ⌘⇧F 全文搜索面板（DEV-004）：FTS5 实时结果 + 高亮片段。
@@ -26,11 +27,11 @@ export function useSearchHotkey(): void {
   }, []);
 }
 
-const TIER_LABEL: Record<SearchHit['tier'], string> = {
-  title: '标题',
-  tag: '标签',
-  alias: '别名',
-  content: '正文',
+const TIER_KEY: Record<SearchHit['tier'], string> = {
+  title: 'search.tier.title',
+  tag: 'search.tier.tag',
+  alias: 'search.tier.alias',
+  content: 'search.tier.content',
 };
 
 export function SearchPanel() {
@@ -45,6 +46,7 @@ export function SearchPanel() {
 }
 
 function TagSearchResults({ tag, paths }: { tag: string; paths: string[] }) {
+  const tr = useI18n();
   const setOpen = useUiStore((s) => s.setSearchOpen);
   const go = (path: string): void => {
     setOpen(false);
@@ -61,12 +63,12 @@ function TagSearchResults({ tag, paths }: { tag: string; paths: string[] }) {
       <div className="w-[620px] max-w-[90vw] overflow-hidden rounded-xl border bg-popover text-popover-foreground shadow-2xl">
         <div className="flex items-center gap-2 border-b px-3.5 py-3">
           <Search className="size-4 text-muted-foreground" />
-          <span className="text-sm font-medium">标签搜索：#{tag}</span>
+          <span className="text-sm font-medium">{tr('search.tagResults', { tag })}</span>
         </div>
         <div className="max-h-96 overflow-auto p-1.5">
           {paths.length === 0 ? (
             <p className="px-3 py-8 text-center text-sm text-muted-foreground">
-              未找到含该标签的页面
+              {tr('search.tagEmpty')}
             </p>
           ) : (
             paths.map((path) => (
@@ -108,6 +110,7 @@ function highlight(text: string, query: string): Array<{ text: string; hit: bool
 }
 
 function SearchPanelInner() {
+  const tr = useI18n();
   const setOpen = useUiStore((s) => s.setSearchOpen);
   const search = useIndexStore((s) => s.search);
   const [query, setQuery] = useState('');
@@ -184,7 +187,7 @@ function SearchPanelInner() {
                 if (hits[0]) go(hits[0].path);
               }
             }}
-            placeholder="全文搜索（标题 / 标签 / 别名 / 正文）…"
+            placeholder={tr('search.placeholder')}
             className="h-11 w-full bg-transparent text-sm outline-none placeholder:text-muted-foreground/70"
           />
           <kbd className="rounded border bg-muted px-1.5 py-0.5 text-[10px] text-muted-foreground">
@@ -193,7 +196,9 @@ function SearchPanelInner() {
         </div>
         <div className="max-h-96 overflow-auto p-1.5" data-testid="search-results">
           {status === 'done' && hits.length === 0 && (
-            <p className="px-3 py-8 text-center text-sm text-muted-foreground">未找到匹配内容</p>
+            <p className="px-3 py-8 text-center text-sm text-muted-foreground">
+              {tr('search.empty')}
+            </p>
           )}
           {hits.map((hit, i) => (
             <button
@@ -209,7 +214,7 @@ function SearchPanelInner() {
               <span className="flex items-center gap-2">
                 <span className="flex-1 truncate font-medium">{hit.title || hit.path}</span>
                 <span className="rounded border bg-muted px-1 py-0.5 text-[10px] text-muted-foreground">
-                  {TIER_LABEL[hit.tier]}
+                  {t(TIER_KEY[hit.tier])}
                 </span>
               </span>
               {hit.snippet && (
@@ -229,7 +234,7 @@ function SearchPanelInner() {
           ))}
         </div>
         <div className="border-t px-3.5 py-1.5 text-[11px] text-muted-foreground">
-          ↑↵ 打开第一条 · esc 关闭 · 标题 &gt; 标签 &gt; 别名 &gt; 正文排序
+          {tr('search.hint')}
         </div>
       </div>
     </div>

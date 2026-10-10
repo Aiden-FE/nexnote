@@ -3,6 +3,7 @@ import { ArrowDown, ArrowUp, RefreshCw, Sparkles } from 'lucide-react';
 import type { SkillView } from '@nexnote/shared';
 import { invoke, onEvent } from '../../lib/ipc';
 import { cn } from '../../lib/utils';
+import { useI18n } from '../../lib/i18n';
 
 /**
  * 检索 Skill 设置页（DEV-014）：
@@ -10,6 +11,7 @@ import { cn } from '../../lib/utils';
  * 多 Skill 组合召回由主进程合并重排（skills:retrieve）。
  */
 export function SkillsSettingsPage() {
+  const tr = useI18n();
   const [skills, setSkills] = useState<SkillView[] | null>(null);
   const [error, setError] = useState<string | null>(null);
 
@@ -65,7 +67,7 @@ export function SkillsSettingsPage() {
   if (skills === null) {
     return (
       <div className="space-y-3 text-sm" data-testid="skills-settings">
-        <p className="text-muted-foreground">加载中…</p>
+        <p className="text-muted-foreground">{tr('settings.loading')}</p>
       </div>
     );
   }
@@ -75,12 +77,12 @@ export function SkillsSettingsPage() {
       <div className="flex items-center gap-2">
         <h2 className="flex items-center gap-1.5 text-base font-semibold tracking-tight">
           <Sparkles className="size-4" />
-          检索 Skill
+          {tr('skills.title')}
         </h2>
         <button
           type="button"
           onClick={() => void refresh()}
-          title="刷新"
+          title={tr('git.timeline.refresh')}
           className="rounded p-1 text-muted-foreground hover:bg-accent hover:text-foreground"
         >
           <RefreshCw className="size-3.5" />
@@ -92,7 +94,7 @@ export function SkillsSettingsPage() {
         </p>
       )}
       <p className="text-xs text-muted-foreground">
-        启用的 Skill 在对话召回时各自检索、合并去重并跨源重排；排序决定组合与展示顺序。
+        {tr('skills.description')}
       </p>
       <ul className="space-y-2" data-testid="skills-list">
         {skills.map((skill, index) => (
@@ -110,7 +112,7 @@ export function SkillsSettingsPage() {
                   data-testid={`skill-toggle-${skill.id}`}
                   className="size-3.5"
                 />
-                启用
+                {tr('skills.enabled')}
               </label>
               <span className="font-medium">{skill.name}</span>
               <span
@@ -121,13 +123,15 @@ export function SkillsSettingsPage() {
                     : 'bg-violet-500/15 text-violet-600',
                 )}
               >
-                {skill.source === 'builtin' ? '内置' : '插件'}
+                {skill.source === 'builtin'
+                  ? tr('skills.source.builtin')
+                  : tr('skills.source.plugin')}
               </span>
               <span className="ml-auto flex items-center gap-1">
                 <button
                   type="button"
                   onClick={() => void move(index, -1)}
-                  title="上移"
+                  title={tr('skills.moveUp')}
                   data-testid={`skill-up-${skill.id}`}
                   className="rounded p-1 text-muted-foreground hover:bg-accent hover:text-foreground"
                 >
@@ -136,7 +140,7 @@ export function SkillsSettingsPage() {
                 <button
                   type="button"
                   onClick={() => void move(index, 1)}
-                  title="下移"
+                  title={tr('skills.moveDown')}
                   data-testid={`skill-down-${skill.id}`}
                   className="rounded p-1 text-muted-foreground hover:bg-accent hover:text-foreground"
                 >
@@ -161,7 +165,7 @@ export function SkillsSettingsPage() {
                 />
               </label>
               <label className="flex items-center gap-1">
-                置信度权重
+                {tr('skills.confidenceWeight')}
                 <input
                   type="number"
                   min={0}

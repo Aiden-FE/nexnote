@@ -12,11 +12,13 @@ import '@xyflow/react/dist/style.css';
 import { useIndexStore } from '../../stores/index-store';
 import { filterGraph, graphElements, layoutGraph, uniqueFolders, uniqueTags } from './model';
 import { graphNodeTypes } from './GraphPageNode';
+import { useI18n } from '../../lib/i18n';
 
 export function GlobalGraphView() {
   const graph = useIndexStore((state) => state.graph);
   const status = useIndexStore((state) => state.graphStatus);
   const loadGraph = useIndexStore((state) => state.loadGraph);
+  const tr = useI18n();
   const [tag, setTag] = useState('');
   const [folder, setFolder] = useState('');
   const [showIsolated, setShowIsolated] = useState(true);
@@ -46,21 +48,24 @@ export function GlobalGraphView() {
   return (
     <div data-testid="global-graph-view" className="flex h-full min-h-0 flex-col bg-background">
       <div className="flex flex-wrap items-center gap-2 border-b border-border/60 px-4 py-2">
-        <strong className="text-sm">知识图谱</strong>
+        <strong className="text-sm">{tr('graph.title')}</strong>
         <span className="text-xs text-muted-foreground">
           {status === 'loading'
-            ? '索引更新中…'
-            : `${filtered.pages.length} 页面 · ${filtered.links.length} 链接`}
+            ? tr('graph.loading')
+            : tr('graph.summary', {
+                pages: filtered.pages.length,
+                links: filtered.links.length,
+              })}
         </span>
         <label className="ml-auto flex items-center gap-1 text-xs text-muted-foreground">
-          标签
+          {tr('graph.tag')}
           <select
             data-testid="graph-tag-filter"
             value={tag}
             onChange={(event) => setTag(event.target.value)}
             className="h-7 rounded border bg-card px-1 text-xs"
           >
-            <option value="">全部</option>
+            <option value="">{tr('graph.all')}</option>
             {uniqueTags(graph).map((item) => (
               <option key={item} value={item}>
                 {item}
@@ -69,14 +74,14 @@ export function GlobalGraphView() {
           </select>
         </label>
         <label className="flex items-center gap-1 text-xs text-muted-foreground">
-          文件夹
+          {tr('graph.folder')}
           <select
             data-testid="graph-folder-filter"
             value={folder}
             onChange={(event) => setFolder(event.target.value)}
             className="h-7 max-w-42 rounded border bg-card px-1 text-xs"
           >
-            <option value="">全部</option>
+            <option value="">{tr('graph.all')}</option>
             {uniqueFolders(graph).map((item) => (
               <option key={item} value={item}>
                 {item}
@@ -91,7 +96,7 @@ export function GlobalGraphView() {
             onChange={(event) => setShowIsolated(event.target.checked)}
             className="size-3.5"
           />
-          孤立页面
+          {tr('graph.isolated')}
         </label>
       </div>
       <div className="relative min-h-0 flex-1">
@@ -118,7 +123,7 @@ export function GlobalGraphView() {
         </ReactFlow>
         {status === 'error' && (
           <div className="absolute top-3 left-1/2 -translate-x-1/2 rounded border border-destructive/40 bg-destructive/10 px-3 py-1.5 text-xs text-destructive">
-            图谱索引不可用，请稍后重试
+            {tr('graph.unavailable')}
           </div>
         )}
       </div>
