@@ -418,7 +418,7 @@ export class PluginService {
             'permission.request',
             false,
             permission,
-            'manifest 未声明',
+            tCurrent('plugin.error.PERMISSION_UNDECLARED'),
           );
           throw new PluginError(tCurrent('plugin.error.PERMISSION_UNDECLARED'), 'PERMISSION_UNDECLARED');
         }

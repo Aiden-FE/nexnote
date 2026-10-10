@@ -1,4 +1,5 @@
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it } from 'vitest';
+import { setCurrentLanguage } from '@nexnote/shared';
 import { LocalEmbeddingAdapter } from '../src/ai/provider/local-embedding';
 import { ProviderError } from '../src/ai/provider/types';
 
@@ -53,5 +54,29 @@ describe('LocalEmbeddingAdapter（本地 embedding runtime backend）', () => {
     );
     await handle.done;
     expect(events.at(-1)?.code).toBe('UNSUPPORTED_CAPABILITY');
+  });
+});
+
+describe('ADR-0023 local embedding message language authority', () => {
+  const a = new LocalEmbeddingAdapter();
+  afterEach(() => setCurrentLanguage('zh-CN'));
+
+  it('renders unsupported-capability and unknown-model messages in the active language', async () => {
+    setCurrentLanguage('en-US');
+    await expect(
+      a.embeddings({ model: 'missing', inputs: ['x'] }),
+    ).rejects.toThrow('Unknown local embedding model: missing');
+    const events: Array<{ type: string; message?: string; code?: string }> = [];
+    const handle = a.chatCompletionStream(
+      { model: 'x', messages: [{ role: 'user', content: 'y' }] },
+      (event) => events.push(event),
+    );
+    await handle.done;
+    expect(events.at(-1)?.message).toBe('The local embedding backend does not provide chat');
+
+    setCurrentLanguage('zh-CN');
+    await expect(a.embeddings({ model: 'missing', inputs: ['x'] })).rejects.toThrow(
+      '未知本地 embedding 模型: missing',
+    );
   });
 });

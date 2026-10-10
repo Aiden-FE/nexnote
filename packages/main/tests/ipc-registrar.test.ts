@@ -220,6 +220,38 @@ describe('IPC 注册表框架', () => {
     expect(dismissed).toMatchObject({ ok: false, code: 'NO_VAULT' });
   });
 
+  it('未初始化的 doctor / git / binary 通道在 en-US 下返回词典文案而非中文', async () => {
+    setCurrentLanguage('en-US');
+    const ipc = new FakeIpcMain();
+    const { services } = makeServices();
+    registerAllIpcHandlers(ipc, services);
+    const invoke = async (channel: string, payload: unknown = {}) =>
+      (await ipc.invoke(channel, payload)) as { ok: boolean; error?: string };
+
+    const doctor = (await ipc.invoke('git:doctor:diagnose')) as {
+      ok: boolean;
+      error?: string;
+    };
+    expect(doctor).toMatchObject({
+      ok: false,
+      error: 'The Git doctor is not initialized',
+    });
+
+    const cases: Array<{ channel: string; payload: unknown; expected: string }> = [
+      { channel: 'git:sync', payload: undefined, expected: 'No vault is open yet' },
+      {
+        channel: 'git:setAutoCommitDebounce',
+        payload: { milliseconds: 1000 },
+        expected: 'No vault is open yet',
+      },
+    ];
+    for (const c of cases) {
+      const result = await invoke(c.channel, c.payload);
+      expect(result.ok).toBe(false);
+      expect(result.error).toBe(c.expected);
+    }
+  });
+
   it('git:doctor:repairExecute 的原始 statusFor 异常不会经 IPC 泄漏', async () => {
     const ipc = new FakeIpcMain();
     const { services } = makeServices();

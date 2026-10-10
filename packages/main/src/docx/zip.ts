@@ -1,4 +1,5 @@
 import { deflateRawSync, inflateRawSync } from 'node:zlib';
+import { tCurrent } from '@nexnote/shared';
 
 /**
  * DOCX 专用最小 ZIP 读写器（零第三方依赖）：
@@ -56,7 +57,7 @@ function findEocd(buf: Buffer): number {
   for (let i = buf.length - 22; i >= min; i -= 1) {
     if (buf.readUInt32LE(i) === EOCD_SIG) return i;
   }
-  throw new ZipError('非法 zip：找不到中央目录结尾');
+  throw new ZipError(tCurrent('docx.zip.invalid'));
 }
 
 function readCentralEntries(buf: Buffer): CentralEntry[] {
@@ -65,20 +66,20 @@ function readCentralEntries(buf: Buffer): CentralEntry[] {
   const cdSize = buf.readUInt32LE(eocd + 12);
   const cdOffset = buf.readUInt32LE(eocd + 16);
   if (count === 0xffff || cdSize === 0xffffffff || cdOffset === 0xffffffff) {
-    throw new ZipError('不支持 ZIP64 包');
+    throw new ZipError(tCurrent('docx.zip.unsupportedZip64'));
   }
-  if (cdOffset + cdSize > buf.length) throw new ZipError('非法 zip：中央目录越界');
+  if (cdOffset + cdSize > buf.length) throw new ZipError(tCurrent('docx.zip.invalid'));
   const entries: CentralEntry[] = [];
   let offset = cdOffset;
   for (let i = 0; i < count; i += 1) {
     if (offset + 46 > buf.length || buf.readUInt32LE(offset) !== CENTRAL_SIG) {
-      throw new ZipError('非法 zip：中央目录损坏');
+      throw new ZipError(tCurrent('docx.zip.invalid'));
     }
     const nameLen = buf.readUInt16LE(offset + 28);
     const extraLen = buf.readUInt16LE(offset + 30);
     const commentLen = buf.readUInt16LE(offset + 32);
     const recordEnd = offset + 46 + nameLen + extraLen + commentLen;
-    if (recordEnd > buf.length) throw new ZipError('非法 zip：中央目录越界');
+    if (recordEnd > buf.length) throw new ZipError(tCurrent('docx.zip.invalid'));
     entries.push({
       method: buf.readUInt16LE(offset + 10),
       crc: buf.readUInt32LE(offset + 16),
@@ -105,14 +106,14 @@ export function readZipEntries(buf: Buffer): ZipEntry[] {
       localOffset + 30 > buf.length ||
       buf.readUInt32LE(localOffset) !== LOCAL_SIG
     ) {
-      throw new ZipError('非法 zip：本地文件头损坏');
+      throw new ZipError(tCurrent('docx.zip.invalid'));
     }
     const nameLen = buf.readUInt16LE(localOffset + 26);
     const extraLen = buf.readUInt16LE(localOffset + 28);
     const dataStart = localOffset + 30 + nameLen + extraLen;
     const dataEnd = dataStart + entry.compressedSize;
     if (dataStart > buf.length || dataEnd > buf.length) {
-      throw new ZipError('非法 zip：条目数据越界');
+      throw new ZipError(tCurrent('docx.zip.invalid'));
     }
     // bit 3 means sizes are written in a data descriptor after the payload.
     // The central directory remains authoritative, but preserve the descriptor bytes.
@@ -122,12 +123,12 @@ export function readZipEntries(buf: Buffer): ZipEntry[] {
       const descriptorLength =
         dataEnd + 16 <= buf.length && buf.readUInt32LE(dataEnd) === DATA_DESCRIPTOR_SIG ? 16 : 12;
       localEnd += descriptorLength;
-      if (localEnd > buf.length) throw new ZipError('非法 zip：数据描述符越界');
+      if (localEnd > buf.length) throw new ZipError(tCurrent('docx.zip.invalid'));
     }
     // 中央目录里的条目名必须与本地头一致（防御偏移错位的包）。
     const localName = buf.subarray(localOffset + 30, localOffset + 30 + nameLen);
     if (localName.toString('utf8') !== entry.name) {
-      throw new ZipError(`非法 zip：条目名不一致: ${entry.name}`);
+      throw new ZipError(tCurrent('docx.zip.invalidDetail', { message: entry.name }));
     }
     result.push({
       ...entry,
@@ -146,19 +147,19 @@ function findCentralRecordFor(buf: Buffer, entry: CentralEntry): Buffer {
   let offset = cdOffset;
   for (let i = 0; i < count; i += 1) {
     if (offset + 46 > buf.length || buf.readUInt32LE(offset) !== CENTRAL_SIG) {
-      throw new ZipError('非法 zip：中央目录损坏');
+      throw new ZipError(tCurrent('docx.zip.invalid'));
     }
     const nameLen = buf.readUInt16LE(offset + 28);
     const extraLen = buf.readUInt16LE(offset + 30);
     const commentLen = buf.readUInt16LE(offset + 32);
     const recordEnd = offset + 46 + nameLen + extraLen + commentLen;
-    if (recordEnd > buf.length) throw new ZipError('非法 zip：中央目录越界');
+    if (recordEnd > buf.length) throw new ZipError(tCurrent('docx.zip.invalid'));
     if (buf.readUInt32LE(offset + 42) === entry.localOffset) {
       return buf.subarray(offset, recordEnd);
     }
     offset = recordEnd;
   }
-  throw new ZipError('非法 zip：中央目录损坏');
+  throw new ZipError(tCurrent('docx.zip.invalid'));
 }
 
 /**
@@ -167,21 +168,22 @@ function findCentralRecordFor(buf: Buffer, entry: CentralEntry): Buffer {
  */
 export function readZipEntry(buf: Buffer, wanted: string, maxBytes = 64 * 1024 * 1024): Buffer {
   const entry = readCentralEntries(buf).find((e) => e.name === wanted);
-  if (!entry) throw new ZipError(`zip 中缺少 ${wanted}`, 'DOCX_ENTRY_NOT_FOUND');
-  if (entry.uncompressedSize > maxBytes) throw new ZipError('zip 条目过大', 'DOCX_ENTRY_TOO_LARGE');
+  if (!entry) throw new ZipError(tCurrent('docx.zip.entryNotFound', { name: wanted }), 'DOCX_ENTRY_NOT_FOUND');
+  if (entry.uncompressedSize > maxBytes)
+    throw new ZipError(tCurrent('docx.zip.entryTooLarge'), 'DOCX_ENTRY_TOO_LARGE');
   const { localOffset } = entry;
   if (
     localOffset < 0 ||
     localOffset + 30 > buf.length ||
     buf.readUInt32LE(localOffset) !== LOCAL_SIG
   ) {
-    throw new ZipError('非法 zip：本地文件头损坏');
+    throw new ZipError(tCurrent('docx.zip.invalid'));
   }
   const nameLen = buf.readUInt16LE(localOffset + 26);
   const extraLen = buf.readUInt16LE(localOffset + 28);
   const dataStart = localOffset + 30 + nameLen + extraLen;
   const dataEnd = dataStart + entry.compressedSize;
-  if (dataStart > buf.length || dataEnd > buf.length) throw new ZipError('非法 zip：条目数据越界');
+  if (dataStart > buf.length || dataEnd > buf.length) throw new ZipError(tCurrent('docx.zip.invalid'));
   const raw = buf.subarray(dataStart, dataEnd);
   let data: Buffer;
   if (entry.method === 0) data = raw;
@@ -190,15 +192,18 @@ export function readZipEntry(buf: Buffer, wanted: string, maxBytes = 64 * 1024 *
       // maxOutputLength 在解压过程中强制上限，防止声明小尺寸的 zip 炸弹在校验前耗尽内存。
       data = inflateRawSync(raw, { maxOutputLength: maxBytes });
     } catch (e) {
-      throw new ZipError(`zip 解压失败: ${(e as Error).message}`);
+      throw new ZipError(tCurrent('docx.zip.invalidDetail', { message: (e as Error).message }));
     }
   } else {
-    throw new ZipError(`不支持的压缩方式: ${entry.method}`, 'DOCX_UNSUPPORTED_COMPRESSION');
+    throw new ZipError(
+      tCurrent('docx.zip.unsupportedCompression', { method: entry.method }),
+      'DOCX_UNSUPPORTED_COMPRESSION',
+    );
   }
   if (data.length > maxBytes || data.length !== entry.uncompressedSize) {
-    throw new ZipError('zip 条目大小校验失败');
+    throw new ZipError(tCurrent('docx.zip.sizeCheckFailed'));
   }
-  if (crc32(data) !== entry.crc) throw new ZipError('zip 条目 CRC 校验失败');
+  if (crc32(data) !== entry.crc) throw new ZipError(tCurrent('docx.zip.crcCheckFailed'));
   return data;
 }
 
@@ -212,7 +217,7 @@ export function rebuildZip(buf: Buffer, replacement: ZipReplacement): Buffer {
   const entries = readZipEntries(buf);
   const replacementEntry = entries.find((entry) => entry.name === replacement.name);
   if (!replacementEntry)
-    throw new ZipError(`zip 中缺少 ${replacement.name}`, 'DOCX_ENTRY_NOT_FOUND');
+    throw new ZipError(tCurrent('docx.zip.entryNotFound', { name: replacement.name }), 'DOCX_ENTRY_NOT_FOUND');
   const locals: Buffer[] = [];
   const centrals: Buffer[] = [];
   let offset = 0;
@@ -280,7 +285,7 @@ export interface ZipFileInput {
 
 export function buildZip(files: ZipFileInput[]): Buffer {
   if (files.length === 0 || files.length > 0xffff) {
-    throw new ZipError('zip 文件列表无效', 'DOCX_ZIP_WRITE_FAILED');
+    throw new ZipError(tCurrent('docx.zip.writeFailed'), 'DOCX_ZIP_WRITE_FAILED');
   }
   const dosTime = 0;
   // 固定 DOS 日期 2020-01-01（内容哈希稳定，避免写入当前时间导致产物不确定）。

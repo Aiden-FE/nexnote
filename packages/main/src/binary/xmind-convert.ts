@@ -1,5 +1,6 @@
 import JSZip from 'jszip';
 import xmlConvert from 'xml-js';
+import { tCurrent, type BinaryReadonlyTag } from '@nexnote/shared';
 
 /**
  * xmind ↔ simple-mind-map 数据转换（DEV-074，ADR-0015 R3）。
@@ -60,14 +61,17 @@ function stripHtml(text: string): string {
 /** 读 xmind 字节 → simple-mind-map 树（含只读保留区计数）。任何损坏抛 XmindError。 */
 export async function parseXmindToModel(bytes: Buffer): Promise<{
   model: SmmNode;
-  readonly: string[];
+  readonly: BinaryReadonlyTag[];
   unsupportedCount: number;
 }> {
   let zip: JSZip;
   try {
     zip = await JSZip.loadAsync(bytes);
   } catch (e) {
-    throw new XmindError(`非法 xmind 包：${(e as Error).message}`, 'XMIND_INVALID_ZIP');
+    throw new XmindError(
+      tCurrent('binary.error.XMIND_INVALID_ZIP', { message: (e as Error).message }),
+      'XMIND_INVALID_ZIP',
+    );
   }
   const jsonFile = zip.files['content.json'];
   const xmlFile = zip.files['content.xml'] ?? zip.files['/content.xml'];
@@ -75,9 +79,9 @@ export async function parseXmindToModel(bytes: Buffer): Promise<{
     if (jsonFile) {
       const json = JSON.parse(await jsonFile.async('string')) as { rootTopic?: RawXmindTopic }[];
       const data = Array.isArray(json) && json.length > 0 ? json[0] : null;
-      if (!data?.rootTopic) throw new XmindError('xmind 缺少 rootTopic', 'XMIND_NO_ROOT');
+      if (!data?.rootTopic) throw new XmindError(tCurrent('binary.error.XMIND_NO_ROOT'), 'XMIND_NO_ROOT');
       const model = transformXmindTopic(data.rootTopic);
-      return { model, readonly: ['外框 / 关联线（只读）'], unsupportedCount: countUnsupported(data.rootTopic) };
+      return { model, readonly: ['BORDER_OR_RELATION'], unsupportedCount: countUnsupported(data.rootTopic) };
     }
     if (xmlFile) {
       const xml = await xmlFile.async('string');
@@ -85,13 +89,16 @@ export async function parseXmindToModel(bytes: Buffer): Promise<{
         elements?: Xmind8Element[];
       };
       const root = xmind8Root(json.elements ?? []);
-      if (!root) throw new XmindError('xmind8 缺少根主题', 'XMIND_NO_ROOT');
-      return { model: transformXmind8(root), readonly: ['外框 / 关联线（只读）'], unsupportedCount: 0 };
+      if (!root) throw new XmindError(tCurrent('binary.error.XMIND_NO_ROOT'), 'XMIND_NO_ROOT');
+      return { model: transformXmind8(root), readonly: ['BORDER_OR_RELATION'], unsupportedCount: 0 };
     }
-    throw new XmindError('xmind 缺少 content.json / content.xml', 'XMIND_NO_CONTENT');
+    throw new XmindError(tCurrent('binary.error.XMIND_NO_CONTENT'), 'XMIND_NO_CONTENT');
   } catch (e) {
     if (e instanceof XmindError) throw e;
-    throw new XmindError(`xmind 解析失败：${(e as Error).message}`, 'XMIND_PARSE_FAILED');
+    throw new XmindError(
+      tCurrent('binary.error.XMIND_PARSE_FAILED', { message: (e as Error).message }),
+      'XMIND_PARSE_FAILED',
+    );
   }
 }
 

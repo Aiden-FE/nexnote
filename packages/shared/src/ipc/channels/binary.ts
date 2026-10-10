@@ -38,9 +38,19 @@ export interface BinaryReadResult {
   /** 语义模型（JSON 可序列化）：xlsx 为 fortune 工作簿数据，xmind 为 simple-mind-map 数据。 */
   data: unknown;
   sha256: string;
-  /** 只读保留区摘要（编辑器据此展示「原字节不丢失、此处不编辑」标注）。 */
-  readonly?: string[];
+  /**
+   * 只读保留区 code（编辑器按当前语言成文为「原字节不丢失、此处不编辑」标注）。
+   * 传稳定枚举而非中文文本，避免经 IPC 泄漏语言。
+   */
+  readonly?: BinaryReadonlyTag[];
 }
+
+/** 只读保留区稳定 code。 */
+export type BinaryReadonlyTag =
+  | 'MACRO'
+  | 'CHART'
+  | 'PIVOT_TABLE'
+  | 'BORDER_OR_RELATION';
 
 export const BINARY_CHANNELS = [
   'binary:ping',

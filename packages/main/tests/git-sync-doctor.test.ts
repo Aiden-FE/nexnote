@@ -128,6 +128,31 @@ describe('ADR-0023 doctor service text language authority', () => {
       'Remote authentication failed',
     );
   });
+
+  it('known issue codes resolve from the catalog instead of a hard-coded fallback', () => {
+    expect(classifySyncIssue({ ...ok, repository: false }).message).toBe(
+      'The current directory is not a Git repository',
+    );
+    expect(classifySyncIssue({ ...ok, remote: null }).message).toBe(
+      'The current branch has no remote configured',
+    );
+    expect(classifySyncIssue({ ...ok, ahead: 1, behind: 1 }).message).toBe(
+      'The local and remote branches have diverged',
+    );
+    expect(classifySyncIssue(ok).message).toBe('Local and remote are in sync');
+    expect(
+      classifySyncError(
+        Object.assign(new Error('bundled Git missing'), { code: 'GIT_BINARY_MISSING' }),
+      ).message,
+    ).toBe('The Git executable is unavailable');
+  });
+
+  it('unknown codes keep the sanitized runtime message as the upstream boundary', () => {
+    expect(classifySyncError(new Error('fatal: unrelated plumbing failure')).message).toBe(
+      'fatal: unrelated plumbing failure',
+    );
+  });
+
 });
 
 describe('classifySyncError（异常分类兜底）', () => {

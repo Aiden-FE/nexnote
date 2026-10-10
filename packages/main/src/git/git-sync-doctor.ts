@@ -65,9 +65,15 @@ const REPAIR_ACTION_KEYS: Record<GitRepairAction, string> = {
 };
 
 /** 分类 / 修复命令预览这类用户可读服务状态在主进程按当前语言成文。 */
-function issueMessage(code: string, fallback: string): string {
+function issueText(code: string): string {
   const key = ISSUE_MESSAGE_KEYS[code];
-  return key ? tCurrent(key) : fallback;
+  // 未登记的 code 不应产生空消息：回退成 code 本身，保持可诊断而不是静默空白。
+  return key ? tCurrent(key) : code;
+}
+
+/** 已知 code 一律查词典成文；未知 code 保留调用方传入的运行时消息（已脱敏）。 */
+function issueMessage(code: string, runtimeMessage: string): string {
+  return ISSUE_MESSAGE_KEYS[code] ? issueText(code) : runtimeMessage;
 }
 
 export class GitSyncDoctorError extends Error {
@@ -182,7 +188,7 @@ export function classifySyncIssue(input: {
     return {
       category: 'git-missing',
       code: 'NOT_A_REPOSITORY',
-      message: issueMessage('NOT_A_REPOSITORY', '当前目录不是 Git 仓库'),
+      message: issueText('NOT_A_REPOSITORY'),
     };
   // DEV-082: rebase/merge paused state surfaces before unmerged-index conflicts
   // because it covers the wider window where the user is locked out of
@@ -191,14 +197,14 @@ export function classifySyncIssue(input: {
     return {
       category: 'conflict',
       code: 'REBASE_IN_PROGRESS',
-      message: issueMessage('REBASE_IN_PROGRESS', '存在未完成的 rebase/merge'),
+      message: issueText('REBASE_IN_PROGRESS'),
     };
   }
   if (input.conflict)
     return {
       category: 'conflict',
       code: 'MERGE_CONFLICT',
-      message: issueMessage('MERGE_CONFLICT', '存在未解决的合并冲突'),
+      message: issueText('MERGE_CONFLICT'),
     };
   if (input.changed > 0)
     return {
@@ -210,13 +216,13 @@ export function classifySyncIssue(input: {
     return {
       category: 'no-remote',
       code: 'NO_REMOTE',
-      message: issueMessage('NO_REMOTE', '当前分支未配置远程仓库'),
+      message: issueText('NO_REMOTE'),
     };
   if (input.ahead > 0 && input.behind > 0)
     return {
       category: 'non-fast-forward',
       code: 'DIVERGED',
-      message: issueMessage('DIVERGED', '本地与远程分支已分叉'),
+      message: issueText('DIVERGED'),
     };
   if (input.behind > 0 || input.ahead > 0)
     return {
@@ -230,7 +236,7 @@ export function classifySyncIssue(input: {
   return {
     category: 'unknown',
     code: 'SYNC_OK',
-    message: issueMessage('SYNC_OK', '本地与远程同步正常'),
+    message: issueText('SYNC_OK'),
   };
 }
 
@@ -248,7 +254,7 @@ export function classifySyncError(error: unknown): {
     return {
       category: 'git-missing',
       code: 'GIT_BINARY_MISSING',
-      message: issueMessage('GIT_BINARY_MISSING', 'Git 可执行文件不可用'),
+      message: issueText('GIT_BINARY_MISSING'),
     };
   if (
     /Authentication failed|auth|credential|permission denied|403|could not read from remote/i.test(
@@ -258,7 +264,7 @@ export function classifySyncError(error: unknown): {
     return {
       category: 'auth',
       code: 'AUTH_FAILED',
-      message: issueMessage('AUTH_FAILED', '远程认证失败'),
+      message: issueText('AUTH_FAILED'),
     };
   if (
     /network|timed? ?out|timeout|ENOTFOUND|EAI_AGAIN|could not resolve|connection refused|offline/i.test(
@@ -268,19 +274,19 @@ export function classifySyncError(error: unknown): {
     return {
       category: 'network',
       code: 'NETWORK_ERROR',
-      message: issueMessage('NETWORK_ERROR', '网络不可达或远程超时'),
+      message: issueText('NETWORK_ERROR'),
     };
   if (/non-fast-forward|fetch first|rejected|divergent/i.test(text))
     return {
       category: 'non-fast-forward',
       code: 'PUSH_REJECTED',
-      message: issueMessage('PUSH_REJECTED', '推送被拒绝：远程包含本地没有的提交'),
+      message: issueText('PUSH_REJECTED'),
     };
   if (/CONFLICT|unmerged/i.test(text))
     return {
       category: 'conflict',
       code: 'MERGE_CONFLICT',
-      message: issueMessage('MERGE_CONFLICT', '存在未解决的合并冲突'),
+      message: issueText('MERGE_CONFLICT'),
     };
   return { category: 'unknown', code: code ?? 'UNKNOWN', message: text };
 }
@@ -436,7 +442,7 @@ export class GitSyncDoctor {
       const issue: GitSyncIssue = {
         category: 'git-missing',
         code: 'NO_VAULT',
-        message: issueMessage('NO_VAULT', '尚未打开任何知识库'),
+        message: issueText('NO_VAULT'),
       };
       return {
         issue,
@@ -535,7 +541,7 @@ export class GitSyncDoctor {
       );
     const root = this.deps.getRoot();
     if (!root)
-      throw new GitSyncDoctorError(issueMessage('NO_VAULT', '尚未打开任何知识库'), 'NO_VAULT');
+      throw new GitSyncDoctorError(issueText('NO_VAULT'), 'NO_VAULT');
     const fingerprint = fingerprintFromSnapshot(diagnosis.status);
     this.sweepExpired();
     const ticket = randomUUID();

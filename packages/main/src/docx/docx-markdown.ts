@@ -1,3 +1,4 @@
+import { tCurrent } from '@nexnote/shared';
 import { readZipEntry } from './zip';
 
 /**
@@ -132,7 +133,10 @@ export function documentXmlToMarkdown(xml: string): string {
     const between = source.slice(lastIndex, m.index);
     if (captureText) textBuffer += between;
     else if (between.trim().length > 0) {
-      throw new DocxError(`document.xml 结构损坏：标签外存在游离文本`, 'DOCX_INVALID_XML');
+      throw new DocxError(
+        tCurrent('docx.error.INVALID_XML', { message: 'stray text outside tags' }),
+        'DOCX_INVALID_XML',
+      );
     }
     lastIndex = m.index + raw.length;
 
@@ -140,7 +144,7 @@ export function documentXmlToMarkdown(xml: string): string {
       const top = stack.pop();
       if (top !== name) {
         throw new DocxError(
-          `document.xml 结构损坏：${name} 与 ${top ?? '(空栈)'} 不配对`,
+          tCurrent('docx.error.INVALID_XML', { message: `${name} does not match ${top ?? '(empty stack)'}` }),
           'DOCX_INVALID_XML',
         );
       }
@@ -184,7 +188,10 @@ export function documentXmlToMarkdown(xml: string): string {
     }
 
     if (rootClosed) {
-      throw new DocxError('document.xml 结构损坏：根元素结束后仍有内容', 'DOCX_INVALID_XML');
+      throw new DocxError(
+        tCurrent('docx.error.INVALID_XML', { message: 'content after the root element' }),
+        'DOCX_INVALID_XML',
+      );
     }
     if (!selfClosing) {
       stack.push(name);
@@ -241,16 +248,22 @@ export function documentXmlToMarkdown(xml: string): string {
   }
 
   if (!captureText && source.slice(lastIndex).trim().length > 0) {
-    throw new DocxError('document.xml 结构损坏：末尾存在游离文本', 'DOCX_INVALID_XML');
+    throw new DocxError(
+      tCurrent('docx.error.INVALID_XML', { message: 'stray trailing text' }),
+      'DOCX_INVALID_XML',
+    );
   }
   if (stack.length > 0) {
     throw new DocxError(
-      `document.xml 结构损坏：存在未闭合标签 ${stack[stack.length - 1]}`,
+      tCurrent('docx.error.INVALID_XML', { message: `unclosed tag ${stack[stack.length - 1]}` }),
       'DOCX_INVALID_XML',
     );
   }
   if (rootName !== 'w:document') {
-    throw new DocxError(`document.xml 根元素异常: ${rootName ?? '(空)'}`, 'DOCX_INVALID_XML');
+    throw new DocxError(
+      tCurrent('docx.error.INVALID_XML_DETAIL', { message: rootName ?? '(empty)' }),
+      'DOCX_INVALID_XML',
+    );
   }
   return blocks.join('\n\n');
 }

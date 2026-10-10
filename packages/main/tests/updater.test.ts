@@ -360,6 +360,39 @@ describe('updater policy', () => {
     expect(adapter.quitAndInstall).not.toHaveBeenCalled();
   });
 
+  it('renders the Mac manual-download message in the active language', async () => {
+    delete process.env.NEXNOTE_UPDATE_CHANNEL;
+    envBackup = { ...process.env };
+    const { adapter, listeners } = makeAdapter();
+    const emitted: Array<{ status: string; message?: string }> = [];
+    restore = setUpdaterAdapterForTests(adapter, { isPackaged: true, getVersion: () => '0.1.0' });
+    restorePlatform = setUpdaterPlatformForTests({
+      platform: 'darwin',
+      arch: 'arm64',
+      getAppBundlePath: () => '/Applications/NexNote.app',
+      verifyMacAppSignature: async () => ({ status: 'adhoc', authorities: [] }),
+      openExternal: vi.fn(),
+    });
+
+    setCurrentLanguage('en-US');
+    initAutoUpdater(
+      () => {},
+      (status) =>
+        emitted.push({
+          status: status.status,
+          ...(typeof status.message === 'string' ? { message: status.message } : {}),
+        }),
+    );
+    await checkForUpdates();
+    listeners.get('update-downloaded')?.({ version: '9.9.9' });
+    await installUpdate();
+    expect(emitted.at(-1)).toEqual({
+      status: 'downloaded',
+      message:
+        'Current Mac architecture arm64: Ad hoc signature (not notarized). Releases has been opened; please download manually.',
+    });
+  });
+
   it('starts installation on a signed Mac', async () => {
     const { adapter, listeners } = makeAdapter();
     restore = setUpdaterAdapterForTests(adapter, { isPackaged: true, getVersion: () => '0.1.0' });

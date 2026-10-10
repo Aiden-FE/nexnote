@@ -2,6 +2,7 @@ import { inflateRawSync } from 'node:zlib';
 import ExcelJS from 'exceljs';
 import { FortuneFile } from '@corbe30/fortune-excel/dist/ToFortuneSheet/FortuneFile';
 import { readZipEntries, ZipError } from '../docx/zip';
+import { tCurrent, type BinaryReadonlyTag } from '@nexnote/shared';
 
 /**
  * xlsx ↔ fortune-sheet 数据转换（DEV-074，ADR-0015 R3）：
@@ -75,13 +76,16 @@ function collectZipFileMap(bytes: Buffer): Record<string, string> {
 }
 
 /** xlsx 导入 fail-closed 校验 + fortune 工作簿解析。任何损坏抛 XlsxError。 */
-export function parseXlsxToModel(bytes: Buffer): XlsxModel & { readonly: string[] } {
+export function parseXlsxToModel(bytes: Buffer): XlsxModel & { readonly: BinaryReadonlyTag[] } {
   // zip 结构先做零依赖校验（与 docx 导入同口径），再交给 fortune-excel 深解析。
   try {
     readZipEntries(bytes);
   } catch (e) {
     if (e instanceof ZipError) {
-      throw new XlsxError(`非法 xlsx 包：${e.message}`, 'XLSX_INVALID_ZIP');
+      throw new XlsxError(
+        tCurrent('binary.error.XLSX_INVALID_ZIP', { message: e.message }),
+        'XLSX_INVALID_ZIP',
+      );
     }
     throw e;
   }
@@ -91,22 +95,25 @@ export function parseXlsxToModel(bytes: Buffer): XlsxModel & { readonly: string[
     file.Parse();
     model = file.serialize() as unknown as { sheets?: unknown[] };
   } catch (e) {
-    throw new XlsxError(`xlsx 解析失败：${(e as Error).message}`, 'XLSX_PARSE_FAILED');
+    throw new XlsxError(
+      tCurrent('binary.error.XLSX_PARSE_FAILED', { message: (e as Error).message }),
+      'XLSX_PARSE_FAILED',
+    );
   }
   if (!model || !Array.isArray(model.sheets) || model.sheets.length === 0) {
-    throw new XlsxError('xlsx 缺少工作表', 'XLSX_NO_SHEETS');
+    throw new XlsxError(tCurrent('binary.error.XLSX_NO_SHEETS'), 'XLSX_NO_SHEETS');
   }
-  const readonly: string[] = [];
+  const readonly: BinaryReadonlyTag[] = [];
   // 宏：xl/vbaProject.bin 存在即标记（只读保留区，保存时原字节不参与重建）。
   for (const entry of readZipEntries(bytes)) {
     if (/^xl\/vbaProject\.bin$/i.test(entry.name)) {
-      readonly.push('宏（只读）');
+      readonly.push('MACRO');
       break;
     }
   }
   for (const sheet of model.sheets as Record<string, unknown>[]) {
-    if (Array.isArray(sheet.chart) && sheet.chart.length > 0) readonly.push('图表（只读）');
-    if (sheet.isPivotTable === true) readonly.push('透视表（只读）');
+    if (Array.isArray(sheet.chart) && sheet.chart.length > 0) readonly.push('CHART');
+    if (sheet.isPivotTable === true) readonly.push('PIVOT_TABLE');
   }
   return { sheets: model.sheets, readonly: [...new Set(readonly)] };
 }

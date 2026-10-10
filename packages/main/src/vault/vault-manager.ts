@@ -54,7 +54,7 @@ export function sanitizeVaultName(
  */
 export async function validateVaultRoot(root: string): Promise<string> {
   if (!path.isAbsolute(root)) {
-    throw new VaultError(`知识库路径必须是绝对路径: ${root}`, 'PATH_NOT_ABSOLUTE');
+    throw new VaultError(tCurrent('vault.error.PATH_NOT_ABSOLUTE', { path: root }), 'PATH_NOT_ABSOLUTE');
   }
   // `..` segments are rejected before any normalization: resolving first would make
   // `/safe/link/../vault` lstat the wrong directory while Git still uses the raw one.
@@ -209,7 +209,10 @@ export function assertNoDotDotSegments(absolute: string): void {
  */
 export async function safeVaultPath(absPath: string): Promise<string> {
   if (!path.isAbsolute(absPath)) {
-    throw new VaultError(`知识库路径必须是绝对路径: ${absPath}`, 'PATH_NOT_ABSOLUTE');
+    throw new VaultError(
+      tCurrent('vault.error.PATH_NOT_ABSOLUTE', { path: absPath }),
+      'PATH_NOT_ABSOLUTE',
+    );
   }
   assertNoDotDotSegments(absPath);
   const absolute = path.resolve(absPath);

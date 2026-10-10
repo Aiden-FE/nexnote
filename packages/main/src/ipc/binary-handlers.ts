@@ -205,7 +205,7 @@ export function registerBinaryHandlers(registrar: IpcRegistrar): void {
 
   registrar.register('binary:gitignore:get', async (_payload, services) => {
     const root = services.vaultSession.getCurrent()?.root;
-    if (!root) return err('当前未打开知识库', 'NO_VAULT');
+    if (!root) return err(tCurrent('docx.error.NO_VAULT'), 'NO_VAULT');
     const current = await fsp.readFile(path.join(root, '.gitignore'), 'utf8').catch(() => '');
     return ok({ untracked: current.split(/\r?\n/).includes(BINARY_IGNORE_MARKER) });
   });

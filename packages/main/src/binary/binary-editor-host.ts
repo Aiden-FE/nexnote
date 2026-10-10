@@ -1,7 +1,7 @@
 import type { BrowserWindow } from 'electron';
 import { WebContentsView } from 'electron';
 import { join } from 'node:path';
-import type { BinaryEditorCommand, IpcEventChannel } from '@nexnote/shared';
+import { tCurrent, type BinaryEditorCommand, type IpcEventChannel } from '@nexnote/shared';
 
 /**
  * DEV-074 二进制编辑器宿主管理（ADR-0015 Decision 3）：
@@ -322,7 +322,9 @@ export class BinaryEditorHostManager {
         entry.readyWaiters.push(onAck);
       });
       if (!ack) {
-        throw new Error(`binary host 未在 ${FLUSH_READY_TIMEOUT_MS}ms 内 ack`);
+        throw new Error(
+          tCurrent('binary.error.HOST_ACK_TIMEOUT', { ms: FLUSH_READY_TIMEOUT_MS }),
+        );
       }
     }
     if (entry.view.webContents.isDestroyed()) return;

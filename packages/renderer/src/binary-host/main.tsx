@@ -11,6 +11,7 @@ import {
 import type { SessionState } from './session';
 import { XlsxEditor } from './xlsx-editor';
 import { MindmapEditor } from './mindmap-editor';
+import { useI18n } from '../lib/i18n';
 // Tailwind 与主题令牌：宿主是独立 HTML 入口，不导入 globals.css 时
 // 所有布局工具类（h-full/flex/flex-1/min-h-0）都不生效，编辑器容器会高度塌陷。
 import '../globals.css';
@@ -22,6 +23,7 @@ import './host.css';
  * 与主窗口共用 window.nexnote preload 桥；主进程经 binary:editorCommand 驱动 load/flush/destroy。
  */
 function Host(): React.JSX.Element {
+  const t = useI18n();
   const [session, setSession] = useState<SessionState | null>(() => getSession());
   const [reloading, setReloading] = useState(false);
   const [reloadError, setReloadError] = useState<string | null>(null);
@@ -58,7 +60,11 @@ function Host(): React.JSX.Element {
         <div className="shrink-0 border-b border-neutral-200 bg-neutral-50 px-4 py-1.5 text-xs">
           {readonlyNote && (
             <span data-testid="binary-readonly-note" className="mr-3 text-neutral-600">
-              只读保留区（原字节不丢失，此处不编辑）：{session.readonly.join('、')}
+              {t('binary.readonly.banner', {
+                tags: session.readonly
+                  .map((tag) => t(`binary.readonly.tag.${tag}`))
+                  .join('、'),
+              })}
             </span>
           )}
           {session.status && (

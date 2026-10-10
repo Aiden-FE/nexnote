@@ -1,6 +1,6 @@
 import { promises as fsp } from 'node:fs';
 import path from 'node:path';
-import { ok, type Result } from '@nexnote/shared';
+import { ok, tCurrent, type Result } from '@nexnote/shared';
 import type { IpcRegistrar } from './registrar';
 import type { IpcServices } from './services';
 import { DocxService } from '../docx/docx-service';
@@ -27,7 +27,7 @@ export function registerDocxHandlers(registrar: IpcRegistrar): void {
       // 不接受 renderer 直接传外部路径，防止任意本地文件被读入 vault。
       if (!data) {
         const picked = await services.dialogs.pickFile([
-          { name: 'Word 文档', extensions: ['docx'] },
+          { name: tCurrent('docx.dialog.wordDocument'), extensions: ['docx'] },
         ]);
         if (!picked) return ok(null);
         const handle = await fsp.open(picked, 'r');
@@ -35,7 +35,7 @@ export function registerDocxHandlers(registrar: IpcRegistrar): void {
         try {
           const stat = await handle.stat();
           if (stat.size > 200 * 1024 * 1024) {
-            throw new Error('DOCX 文件过大');
+            throw new Error(tCurrent('docx.error.DOCX_TOO_LARGE'));
           }
           bytes = Buffer.alloc(stat.size);
           await handle.read(bytes, 0, stat.size, 0);

@@ -1,4 +1,5 @@
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it } from 'vitest';
+import { setCurrentLanguage } from '@nexnote/shared';
 import {
   createSecretVault,
   decryptLegacySafeStorage,
@@ -48,5 +49,27 @@ describe('SecretVault', () => {
     expect(decryptLegacySafeStorage(blob, legacySafe)).toBe('legacy-secret');
     expect(() => decryptLegacySafeStorage(blob, { ...legacySafe, getSelectedStorageBackend: () => 'basic_text' }))
       .toThrow(SecretStorageUnavailableError);
+  });
+});
+
+describe('ADR-0023 secret store message language authority', () => {
+  afterEach(() => setCurrentLanguage('zh-CN'));
+
+  it('renders the unavailable / unrecognized-blob messages in the active language', () => {
+    setCurrentLanguage('en-US');
+    expect(new SecretStorageUnavailableError().message).toBe(
+      'The system credential store is unavailable, so the API key cannot be saved safely; enable the system keychain and try again',
+    );
+    expect(() => decryptLegacySafeStorage('not-a-legacy-blob', legacySafe)).toThrow(
+      'Unrecognized legacy credential blob',
+    );
+
+    setCurrentLanguage('zh-CN');
+    expect(new SecretStorageUnavailableError().message).toBe(
+      '系统凭据存储不可用，无法安全保存 API Key；请启用系统钥匙串后重试',
+    );
+    expect(() => decryptLegacySafeStorage('not-a-legacy-blob', legacySafe)).toThrow(
+      '无法识别的 legacy credential blob',
+    );
   });
 });

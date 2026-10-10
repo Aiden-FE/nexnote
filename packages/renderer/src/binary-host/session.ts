@@ -1,5 +1,5 @@
 import { invoke, onEvent } from '../lib/ipc';
-import type { BinaryEditorCommand } from '@nexnote/shared';
+import type { BinaryEditorCommand, BinaryReadonlyTag } from '@nexnote/shared';
 
 /**
  * DEV-074 二进制编辑器宿主的会话与落盘编排。
@@ -15,7 +15,7 @@ export interface SessionState {
   sha256: string;
   xlsx?: { sheets: unknown[] };
   mindmap?: { model: unknown };
-  readonly: string[];
+  readonly: BinaryReadonlyTag[];
   /** 只读保留区标注（宏/图表/透视表/外框/关联线）。 */
   status: string | null;
   conflict: boolean;

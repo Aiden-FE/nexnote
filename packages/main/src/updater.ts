@@ -513,12 +513,16 @@ export async function installUpdate(): Promise<UpdateInstallResult> {
     const bundlePath = platformAdapter.getAppBundlePath();
     const signature = bundlePath
       ? await platformAdapter.verifyMacAppSignature(bundlePath)
-      : { status: 'invalid' as const, authorities: [], detail: '无法定位 .app' };
+      : {
+          status: 'invalid' as const,
+          authorities: [],
+          detail: tCurrent('updates.macAppBundleNotFound'),
+        };
     if (signature.status !== 'signed') {
       const reason =
         signature.status === 'adhoc'
-          ? 'Ad hoc 签名（未公证）'
-          : '未签名或签名异常（可能需要移除 xattr quarantine）';
+          ? tCurrent('updates.macSignatureAdhoc')
+          : tCurrent('updates.macSignatureInvalid');
       try {
         await platformAdapter.openExternal(RELEASES_LATEST_URL);
       } catch (e) {
@@ -528,7 +532,7 @@ export async function installUpdate(): Promise<UpdateInstallResult> {
       logger(`[updater] Mac ${reason}，改用手动下载 (${platformAdapter.arch})`);
       emit(
         'downloaded',
-        `当前 Mac 架构 ${platformAdapter.arch}：${reason}；已打开 Releases，请手动下载。`,
+        tCurrent('updates.macManualDownloadRequired', { arch: platformAdapter.arch, reason }),
         undefined,
         { action: 'manual-download', arch: platformAdapter.arch },
       );

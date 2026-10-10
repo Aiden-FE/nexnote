@@ -263,3 +263,21 @@ status: in_progress
   key。IPC registrar / translation / agent runtime / mindmap / settings /
   catalog targeted tests（120 passed）通过；全量门禁 195 files /
   1848 passed / 3 skipped 退出码 0。
+- 阶段③第二十三批（2026-10-10）：建立主进程残留**棘轮门禁**并收敛漏网错误。
+  `main-i18n-residue.test.ts` 剥离行/块注释后扫描 `main/src`，以
+  `fixtures/main-i18n-residue.json` 冻结只减不增基线，每条残留必须带保留理由
+  （AI prompt / 工具 description / 上游 ZIP-XML 错误 / Git commit message /
+  开发日志 / 数据标签 / 插件 manifest / 搜索关键词 / mock fixture / 语言分支）。
+  同时迁移 Git doctor 已知 code 的中文 fallback（未知 code 保留脱敏运行时消息）、
+  本地 embedding 不支持对话/未知模型、secret store 不可用与 legacy blob、
+  binary host ack 超时（消息会进入关窗错误对话框 detail）、retrieval 服务不可用、
+  DOCX 对话框过滤名与大小限制、git IPC 无 vault / doctor 未初始化、
+  更新通道切换与 Mac 手动下载、vault 绝对路径校验、插件审计明细。
+  补齐 xlsx / xmind 解析错误与 docx zip / XML 损坏的稳定 code 成文，
+  并把 binary 只读保留区标签由中文文本改为稳定枚举
+  （`MACRO` / `CHART` / `PIVOT_TABLE` / `BORDER_OR_RELATION`），由 binary-host
+  渲染端按当前语言成文。错误 code 与行为保持不变。新增 35 key，
+  zh/en 各 1474 key；基线从 171 条收敛至 134 条（10 类保留边界，逐条带理由）。
+  doctor / secret / local-embedding / updater / IPC registrar / docx / binary /
+  catalog targeted tests 通过；全量门禁 196 files / 1855 passed /
+  3 skipped 退出码 0。

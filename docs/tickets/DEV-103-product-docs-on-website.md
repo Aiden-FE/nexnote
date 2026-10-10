@@ -99,7 +99,8 @@
 - [x] 阶段③第二十批（2026-10-10）：Chat session 与 Skill 服务校验错误成文；会话正文 / Skill 名称 / 插件内容保留边界。新增 9 key，消息目录 zh/en 各 1364 key；门禁 195 files / 1847 passed / 3 skipped。
 - [x] 阶段③第二十一批（2026-10-10）：preload / IPC registrar / document service / metadata store 契约错误成文；通道名、路径与 IPC 数据保留边界。新增 8 key，消息目录 zh/en 各 1372 key；门禁 195 files / 1848 passed / 3 skipped。
 - [x] 阶段③第二十二批（2026-10-10）：IPC validation 框架与 payload 校验错误成文；校验 code 不变，检索关键词保留数据边界。新增 67 key，消息目录 zh/en 各 1439 key；门禁 195 files / 1848 passed / 3 skipped。
-- [ ] 阶段③剩余：主进程用户可读状态与校验错误残留继续按目录扫描收敛；GitService / vault / doctor / DOCX / FS / AI service / plugin manifest / settings IPC / agent gateway/tools / confidence / binary / chat / skill / preload / IPC validation 服务状态已完成
+- [x] 阶段③第二十三批（2026-10-10）：主进程残留棘轮门禁 + 漏网服务错误收敛。新增 `main-i18n-residue.test.ts`，剥离行/块注释扫描 `main/src` 并以 `fixtures/main-i18n-residue.json` 建立**只减不增**基线（每条残留必须带保留理由）；覆盖 Git doctor 中文 fallback（已知 code 查词典、未知 code 保留脱敏运行时消息）、本地 embedding 不支持对话/未知模型、secret store 不可用与 legacy blob、binary host ack 超时、retrieval 服务不可用、DOCX 对话框/大小、xlsx/xmind 解析错误、docx zip/XML 损坏、git IPC 无 vault / doctor 未初始化、更新通道与 Mac 手动下载、vault 绝对路径、插件审计明细。错误 code 与行为不变。新增 35 key，消息目录 zh/en 各 1474 key；基线从 171 收敛至 134 条（10 类保留边界）；门禁 196 files / 1855 passed / 3 skipped。
+- [ ] 阶段③剩余：主进程用户可读状态与校验错误残留继续按棘轮基线收敛；GitService / vault / doctor / DOCX / FS / AI service / plugin manifest / settings IPC / agent gateway/tools / confidence / binary / chat / skill / preload / IPC validation 服务状态已完成
 - [ ] 阶段④既有测试中文断言迁移
 - [ ] **NOT_RUN / 未达门槛**：按 ADR「en-US 全 UI 无中文残留」，当前不声称桌面端双语完成
 

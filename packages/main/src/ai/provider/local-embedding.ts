@@ -1,5 +1,5 @@
 import { createHash } from 'node:crypto';
-import type { ChatStreamEvent, ProviderCapabilities } from '@nexnote/shared';
+import { tCurrent, type ChatStreamEvent, type ProviderCapabilities } from '@nexnote/shared';
 import {
   ProviderError,
   type ChatRequest,
@@ -34,7 +34,7 @@ export class LocalEmbeddingAdapter implements ProviderAdapter {
   }
 
   async chatCompletion(_req: ChatRequest): Promise<{ content: string; model: string }> {
-    throw new ProviderError('本地 embedding 后端不提供对话', 'UNSUPPORTED_CAPABILITY');
+    throw new ProviderError(tCurrent('ai.error.LOCAL_EMBEDDING_NO_CHAT'), 'UNSUPPORTED_CAPABILITY');
   }
 
   chatCompletionStream(
@@ -43,7 +43,7 @@ export class LocalEmbeddingAdapter implements ProviderAdapter {
   ): ChatStreamHandle {
     onEvent({
       type: 'error',
-      message: '本地 embedding 后端不提供对话',
+      message: tCurrent('ai.error.LOCAL_EMBEDDING_NO_CHAT'),
       code: 'UNSUPPORTED_CAPABILITY',
     });
     return { abort: () => undefined, done: Promise.resolve() };
@@ -51,7 +51,10 @@ export class LocalEmbeddingAdapter implements ProviderAdapter {
 
   async embeddings(req: EmbedRequest): Promise<EmbedResponse> {
     if (req.model !== LocalEmbeddingAdapter.model) {
-      throw new ProviderError(`未知本地 embedding 模型: ${req.model}`, 'MODEL_NOT_FOUND');
+      throw new ProviderError(
+        tCurrent('ai.error.LOCAL_EMBEDDING_UNKNOWN_MODEL', { model: req.model }),
+        'MODEL_NOT_FOUND',
+      );
     }
     return { vectors: req.inputs.map((text) => this.embedText(text)), model: req.model };
   }

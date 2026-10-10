@@ -1,4 +1,4 @@
-import { ok, type Result } from '@nexnote/shared';
+import { ok, tCurrent, type Result } from '@nexnote/shared';
 import type {
   GitCommit,
   GitOperationResult,
@@ -96,7 +96,7 @@ export function registerGitHandlers(registrar: IpcRegistrar): void {
     'git:sync',
     async (_payload, services): Promise<Result<GitOperationResult>> => {
       const vault = services.vaultSession.getCurrent();
-      if (!vault) throw new GitServiceError('尚未打开任何知识库', 'NO_VAULT');
+      if (!vault) throw new GitServiceError(tCurrent('vault.error.NO_VAULT'), 'NO_VAULT');
       const vaultSettings = await readVaultSettings(vault.root);
       const strategy = vaultSettings.git.syncStrategy === 'merge' ? 'merge' : 'rebase';
       const result = await services.git.sync({
@@ -158,7 +158,7 @@ export function registerGitHandlers(registrar: IpcRegistrar): void {
   registrar.register('git:setAutoCommitDebounce', async ({ milliseconds }, services) => {
     const root = services.vaultSession.getCurrent()?.root;
     if (!root) {
-      throw new GitServiceError('尚未打开任何知识库', 'NO_VAULT');
+      throw new GitServiceError(tCurrent('vault.error.NO_VAULT'), 'NO_VAULT');
     }
     // legacy channel 仍可用，但写入 vault config 这一唯一权威，再回灌 GitService。
     const updated = await saveVaultSettings(root, {
@@ -176,7 +176,8 @@ export function registerGitHandlers(registrar: IpcRegistrar): void {
 function requireDoctor(services: {
   gitDoctor?: unknown;
 }): asserts services is { gitDoctor: NonNullable<typeof services.gitDoctor> } {
-  if (!services.gitDoctor) throw new GitSyncDoctorError('Git doctor 未初始化', 'NO_VAULT');
+  if (!services.gitDoctor)
+    throw new GitSyncDoctorError(tCurrent('git.doctor.error.DOCTOR_UNAVAILABLE'), 'NO_VAULT');
 }
 
 export { GitServiceError, GitSyncDoctorError };

@@ -1,4 +1,4 @@
-import { ok } from '@nexnote/shared';
+import { ok, tCurrent } from '@nexnote/shared';
 import type { Result } from '@nexnote/shared';
 import type { IpcRegistrar } from './registrar';
 import type { AiService } from '../ai/ai-service';
@@ -94,7 +94,13 @@ export function registerAiHandlers(registrar: IpcRegistrar, ai: AiService): void
         stages: [
           { stage: 'fts', candidates: 0, elapsedMs: 0, enabled: false },
           { stage: 'links', candidates: 0, elapsedMs: 0, enabled: false },
-          { stage: 'vector', candidates: 0, elapsedMs: 0, enabled: false, note: '召回服务不可用' },
+          {
+            stage: 'vector',
+            candidates: 0,
+            elapsedMs: 0,
+            enabled: false,
+            note: tCurrent('retrieval.serviceUnavailable'),
+          },
         ],
       });
     }

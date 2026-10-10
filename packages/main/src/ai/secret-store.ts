@@ -1,4 +1,5 @@
 import { randomUUID } from 'node:crypto';
+import { tCurrent } from '@nexnote/shared';
 export interface SecretVault {
   readonly available: boolean;
   put(account: string, secret: string): void;
@@ -9,7 +10,7 @@ export interface SecretVault {
 export class SecretStorageUnavailableError extends Error {
   readonly code = 'SECRET_STORAGE_UNAVAILABLE';
   constructor() {
-    super('系统凭据存储不可用，无法安全保存 API Key；请启用系统钥匙串后重试');
+    super(tCurrent('ai.error.SECRET_STORAGE_UNAVAILABLE'));
     this.name = 'SecretStorageUnavailableError';
   }
 }
@@ -112,7 +113,7 @@ export async function createSecretVault(
 
 /** Decrypts only legacy safeStorage blobs, for one-time migration. */
 export function decryptLegacySafeStorage(blob: string, safeStorage: SafeStorageLike): string {
-  if (!blob.startsWith('enc:v1:')) throw new Error('无法识别的 legacy credential blob');
+  if (!blob.startsWith('enc:v1:')) throw new Error(tCurrent('ai.error.LEGACY_CREDENTIAL_BLOB'));
   if (!safeStorage.isEncryptionAvailable()) throw new SecretStorageUnavailableError();
   const backend = safeStorage.getSelectedStorageBackend?.();
   if (backend && backend !== 'OSCrypt') throw new SecretStorageUnavailableError();
