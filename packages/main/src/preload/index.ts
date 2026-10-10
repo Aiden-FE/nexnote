@@ -1,5 +1,5 @@
 import { contextBridge, ipcRenderer } from 'electron';
-import { isIpcChannel, isIpcEventChannel } from '@nexnote/shared';
+import { isIpcChannel, isIpcEventChannel, tCurrent } from '@nexnote/shared';
 
 /**
  * 最小化 preload 桥：sandboxed、contextIsolation 下渲染层唯一的原生通道。
@@ -11,7 +11,7 @@ contextBridge.exposeInMainWorld('nexnote', {
     if (!isIpcChannel(channel)) {
       return Promise.resolve({
         ok: false,
-        error: `未在 IPC 契约中声明的通道: ${channel}`,
+        error: tCurrent('ipc.error.UNKNOWN_CHANNEL', { channel }),
         code: 'UNKNOWN_CHANNEL',
       });
     }
@@ -19,7 +19,7 @@ contextBridge.exposeInMainWorld('nexnote', {
   },
   on(channel: string, callback: (payload: unknown) => void): () => void {
     if (!isIpcEventChannel(channel)) {
-      throw new Error(`未在事件契约中声明的通道: ${channel}`);
+      throw new Error(tCurrent('ipc.error.UNKNOWN_EVENT_CHANNEL', { channel }));
     }
     const listener = (_event: unknown, payload: unknown) => callback(payload);
     ipcRenderer.on(channel, listener);

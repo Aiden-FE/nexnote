@@ -11,6 +11,7 @@ import {
   mergeDocumentMetadata,
 } from './document-domain';
 import { MetadataStore } from './metadata-store';
+import { tCurrent } from '@nexnote/shared';
 
 export class DocumentService {
   private readonly metadata: MetadataStore;
@@ -45,7 +46,7 @@ export class DocumentService {
     // docx/xlsx/mindmap 的写盘走专用二进制通道（binary:*），本方法是 UTF-8 文本通道，
     // 即使仓库内副本可原地覆写（DEV-074）也不在这里直写。
     if (ref.format !== 'markdown' || !DOCUMENT_CAPABILITIES[ref.format].write) {
-      throw new Error(`文档格式不可直接写入: ${ref.format}`);
+      throw new Error(tCurrent('document.error.FORMAT_NOT_DIRECT_WRITABLE', { format: ref.format }));
     }
     const absolute = this.absolute(ref.path);
     await fsp.mkdir(path.dirname(absolute), { recursive: true });
@@ -77,7 +78,7 @@ export class DocumentService {
     const absolute = path.resolve(this.root, documentPath);
     const relative = path.relative(this.root, absolute);
     if (relative.startsWith('..') || path.isAbsolute(relative))
-      throw new Error('文档路径越出知识库');
+      throw new Error(tCurrent('document.error.PATH_OUTSIDE_VAULT'));
     return absolute;
   }
 

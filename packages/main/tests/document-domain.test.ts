@@ -2,6 +2,7 @@ import { mkdtemp, readFile, rm, stat } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import * as path from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
+import { setCurrentLanguage } from '@nexnote/shared';
 import { DocumentService } from '../src/document/document-service';
 import { MetadataStore } from '../src/document/metadata-store';
 import { documentRef, formatForPath, metadataPathFor } from '../src/document/document-domain';
@@ -18,6 +19,8 @@ async function root() {
 }
 
 describe('document domain', () => {
+  afterEach(() => setCurrentLanguage('zh-CN'));
+
   it('detects supported formats and keeps metadata in a sidecar', async () => {
     const vault = await root();
     expect(formatForPath('Notes/readme.md')).toBe('markdown');
@@ -71,5 +74,16 @@ describe('document domain', () => {
     await expect(metadata.read('archive/a.md')).resolves.toBeNull();
     await expect(metadata.read('archive/sub/b.md')).resolves.toBeNull();
     await expect(metadata.read('outside.md')).resolves.toEqual({ id: 'outside' });
+  });
+});
+
+describe('ADR-0023 document service language authority', () => {
+  it('writes document format errors in English', async () => {
+    setCurrentLanguage('en-US');
+    const vault = await root();
+    const service = new DocumentService(vault);
+    await expect(service.write('report.docx', 'text')).rejects.toThrow(
+      'The document format cannot be written directly: docx',
+    );
   });
 });

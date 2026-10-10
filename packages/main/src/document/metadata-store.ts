@@ -3,6 +3,7 @@ import { promises as fsp } from 'node:fs';
 import * as path from 'node:path';
 import type { DocumentMetadata } from './document-domain';
 import { metadataPathFor } from './document-domain';
+import { tCurrent } from '@nexnote/shared';
 
 export class MetadataStore {
   constructor(private readonly root: string) {}
@@ -40,7 +41,7 @@ export class MetadataStore {
       return value as DocumentMetadata;
     } catch (error) {
       if ((error as { code?: string }).code === 'ENOENT') return null;
-      throw new Error(`读取文档 metadata 失败: ${documentPath}`);
+      throw new Error(tCurrent('document.error.METADATA_READ_FAILED', { path: documentPath }));
     }
   }
 

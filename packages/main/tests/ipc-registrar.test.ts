@@ -14,7 +14,7 @@ import { PluginService } from '../src/plugins/plugin-service';
 import { SkillService } from '../src/skills/skill-service';
 import { GitService } from '../src/git/git-service';
 import { LinkIndexService } from '../src/indexer/index-service';
-import { IPC_CHANNELS } from '@nexnote/shared';
+import { IPC_CHANNELS, setCurrentLanguage } from '@nexnote/shared';
 import type { IpcServices } from '../src/ipc/services';
 import { AiStore } from '../src/ai/ai-store';
 import { AiService } from '../src/ai/ai-service';
@@ -155,6 +155,8 @@ function makeServices(): {
 }
 
 describe('IPC 注册表框架', () => {
+  afterEach(() => setCurrentLanguage('zh-CN'));
+
   it('契约中的全部通道都能被注册（无遗漏/无重复）', () => {
     const ipc = new FakeIpcMain();
     const { services } = makeServices();
@@ -246,13 +248,14 @@ describe('IPC 注册表框架', () => {
   });
 
   it('拒绝重复注册', () => {
+    setCurrentLanguage('en-US');
     const ipc = new FakeIpcMain();
     const { services } = makeServices();
     const registrar = createIpcRegistrar(ipc, services);
     registrar.register('app:getInfo', (_p, s) => ({ ok: true, data: s.appInfo() }));
     expect(() =>
       registrar.register('app:getInfo', (_p, s) => ({ ok: true, data: s.appInfo() })),
-    ).toThrow(/重复注册/);
+    ).toThrow('The IPC channel is registered more than once: app:getInfo');
   });
 
   it('handler 抛错时统一转 Result 错误信封（含错误码）', async () => {

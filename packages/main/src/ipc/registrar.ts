@@ -1,5 +1,5 @@
 import type { ChannelRequest, ChannelResponse, IpcChannel, Result } from '@nexnote/shared';
-import { isIpcChannel } from '@nexnote/shared';
+import { isIpcChannel, tCurrent } from '@nexnote/shared';
 import type { IpcServices } from './services';
 import { validatePayload } from './validation';
 import { sanitizeRemoteText } from '../git/git-service';
@@ -21,7 +21,11 @@ export interface IpcHandlerContext {
 
 function toErrorResult(thrown: unknown): Result<never> {
   const rawError =
-    thrown instanceof Error ? thrown.message : typeof thrown === 'string' ? thrown : '内部错误';
+    thrown instanceof Error
+      ? thrown.message
+      : typeof thrown === 'string'
+        ? thrown
+        : tCurrent('ipc.error.INTERNAL');
   // IPC 错误信封同样可能携带 git/provider 原始文本，统一脱敏后再返回渲染层。
   const error = sanitizeRemoteText(rawError);
   const code =
@@ -60,10 +64,12 @@ export function createIpcRegistrar(ipcMain: IpcMainLike, services: IpcServices) 
   return {
     register<C extends IpcChannel>(channel: C, handler: IpcHandler<C>): void {
       if (typeof channel !== 'string' || !isIpcChannel(channel)) {
-        throw new Error(`IPC 通道未在 shared 契约中声明: ${String(channel)}`);
+        throw new Error(
+          tCurrent('ipc.error.REGISTRAR_UNKNOWN_CHANNEL', { channel: String(channel) }),
+        );
       }
       if (registered.has(channel)) {
-        throw new Error(`IPC 通道重复注册: ${channel}`);
+        throw new Error(tCurrent('ipc.error.DUPLICATE_CHANNEL', { channel }));
       }
       registered.add(channel);
       ipcMain.handle(channel, async (event: unknown, payload: unknown) => {

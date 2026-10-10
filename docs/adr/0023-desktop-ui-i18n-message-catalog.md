@@ -250,3 +250,9 @@ status: in_progress
   新增 9 key，zh/en 各 1364 key。chat / chat-format / skill / IPC registrar /
   catalog targeted tests 通过；全量门禁 195 files / 1847 passed /
   3 skipped 退出码 0。
+- 阶段③第二十一批（2026-10-10）：preload 桥、IPC registrar 与 document
+  service / metadata store 的用户可读契约错误成文。覆盖未知 IPC/event 通道、
+  内部错误、重复注册、文档格式直写拒绝、路径越界与 metadata 读取失败；
+  通道名、文档路径和 IPC 数据载荷保留边界。新增 8 key，zh/en 各 1372 key。
+  document-domain / IPC registrar / catalog targeted tests 通过；类型检查和
+  lint 通过；全量门禁 195 files / 1848 passed / 3 skipped 退出码 0。
