@@ -7,6 +7,7 @@
  */
 
 import type { GitStatus } from '@nexnote/shared';
+import { tCurrent } from '@nexnote/shared';
 
 export type SyncPhase = 'fetching' | 'rebasing' | 'merging' | 'pushing' | 'done' | 'error';
 
@@ -39,15 +40,15 @@ export const SYNC_CLEAR_AFTER_MS = 600;
 export function initialPhaseMessage(phase: SyncPhase): string {
   switch (phase) {
     case 'fetching':
-      return '正在拉取远程更新…';
+      return tCurrent('git.progress.fetching');
     case 'rebasing':
-      return '正在对齐远程提交…';
+      return tCurrent('git.progress.rebasing');
     case 'merging':
-      return '正在合并远程变更…';
+      return tCurrent('git.progress.merging');
     case 'pushing':
-      return '正在推送本地提交…';
+      return tCurrent('git.progress.pushing');
     default:
-      return '正在同步…';
+      return tCurrent('git.status.syncing');
   }
 }
 
@@ -73,13 +74,16 @@ export function conflictHoverText(
   conflictFiles: string[] = [],
 ): string {
   if (!status.conflict) return '';
-  const base = '存在未解决的合并冲突';
-  if (conflictFiles.length === 0) return `${base}。点击可打开诊断与修复入口。`;
+  const base = tCurrent('git.conflict.base');
+  if (conflictFiles.length === 0)
+    return `${base}${tCurrent('git.conflict.titleEnd')}${tCurrent('git.conflict.openDiagnostics')}${tCurrent('git.conflict.titleEnd')}`;
   const MAX_INLINE = 5;
   const shown = conflictFiles.slice(0, MAX_INLINE);
   const suffix =
-    conflictFiles.length > MAX_INLINE ? `，等 ${conflictFiles.length} 个文件` : '';
-  return `${base}：${shown.join('、')}${suffix}。点击可打开诊断与修复入口。`;
+    conflictFiles.length > MAX_INLINE
+      ? tCurrent('git.conflict.moreFiles', { count: conflictFiles.length })
+      : '';
+  return `${base}${tCurrent('git.conflict.titleSeparator')}${shown.join(tCurrent('git.conflict.listSeparator'))}${suffix}${tCurrent('git.conflict.titleEnd')}${tCurrent('git.conflict.openDiagnostics')}${tCurrent('git.conflict.titleEnd')}`;
 }
 
 /**

@@ -19,6 +19,7 @@ import type {
 } from '@nexnote/shared';
 import { dockPanelRegistry, statusBarRegistry } from '../../registries';
 import { invoke, onEvent } from '../../lib/ipc';
+import { t, useI18n } from '../../lib/i18n';
 import { requestAppSave } from '../../editor/app-save';
 import { useVault } from '../../shell/vault-context';
 import { useUiStore } from '../../stores/ui-store';
@@ -71,6 +72,7 @@ function useGitStatus(): [GitStatus | null, () => Promise<void>] {
 }
 
 function GitStatusItem() {
+  const tr = useI18n();
   const vault = useVault();
   const [status, refresh] = useGitStatus();
   const [phase, setPhase] = useState<SyncPhase | null>(null);
@@ -223,7 +225,7 @@ function GitStatusItem() {
     useChatStore.getState().addChip({
       id: nextChipId('sync-doctor'),
       kind: 'sync-doctor',
-      label: '同步医生诊断',
+      label: t('git.chat.syncDoctorLabel'),
       text: chipText,
     });
 
@@ -263,8 +265,8 @@ function GitStatusItem() {
   const busy = phase !== null && phase !== 'done' && phase !== 'error';
   const titleText =
     error ??
-    (busy ? (phaseMessage ?? '正在同步…') : undefined) ??
-    `${status.usingSystemGit ? '系统' : '捆绑'} Git · ${status.remote ?? '未配置远程'} · 点击同步`;
+    (busy ? (phaseMessage ?? tr('git.status.syncing')) : undefined) ??
+    `${status.usingSystemGit ? tr('git.status.systemGit') : tr('git.status.bundledGit')} Git · ${status.remote ?? tr('git.status.noRemote')} · ${tr('git.status.clickToSync')}`;
   return (
     <div
       data-testid="status-git"
@@ -274,7 +276,7 @@ function GitStatusItem() {
     >
       <span data-testid="status-git-branch" className="flex items-center gap-1">
         <GitBranch className="size-3.5" />
-        {status.branch ?? '未初始化'}
+        {status.branch ?? tr('git.status.notInitialized')}
       </span>
       {status.conflict && (
         <button
@@ -284,16 +286,16 @@ function GitStatusItem() {
           title={conflictHoverText(status)}
           onClick={() => void openConflictDiagnosis()}
         >
-          ⚠ 冲突
+          ⚠ {tr('git.status.conflict')}
         </button>
       )}
       {status.rebaseInProgress && (
         <span
           data-testid="status-git-rebase"
           className="rounded bg-amber-500/15 px-1 font-medium text-amber-700"
-          title="存在未完成的 rebase/merge，请点击一键恢复"
+          title={tr('git.status.rebaseTitle')}
         >
-          ⤴︎ 同步中
+          ⤴︎ {tr('git.status.rebaseInProgress')}
         </span>
       )}
       {status.changed > 0 && (
@@ -307,7 +309,7 @@ function GitStatusItem() {
       )}
       <button
         type="button"
-        title={busy ? (phaseMessage ?? '正在同步…') : '一键同步：拉取 + 合并 + 推送'}
+        title={busy ? (phaseMessage ?? tr('git.status.syncing')) : tr('git.status.syncTitle')}
         disabled={busy}
         onClick={() => void runSync()}
         className="rounded p-0.5 hover:bg-accent disabled:opacity-60"
@@ -336,6 +338,7 @@ function GitStatusItem() {
 
 function GitTimeline() {
   const vault = useVault();
+  const tr = useI18n();
   const [commits, setCommits] = useState<TimelineCommit[]>([]);
   const [filePath, setFilePath] = useState('');
   const [manualMessage, setManualMessage] = useState('');
@@ -379,12 +382,12 @@ function GitTimeline() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [vault?.root, filePath]);
   const commitManual = async (): Promise<void> => {
-    if (!manualMessage.trim()) return setMessage('提交说明不能为空');
+    if (!manualMessage.trim()) return setMessage(t('git.message.commitMessageRequired'));
     try {
       await requestAppSave(window);
       await invoke('git:commit', { message: manualMessage });
       setManualMessage('');
-      setMessage('已创建手动提交');
+      setMessage(t('git.message.manualCommitCreated'));
       await refresh();
     } catch (caught) {
       setMessage(caught instanceof Error ? caught.message : String(caught));
@@ -393,7 +396,7 @@ function GitTimeline() {
   const submitRemote = async () => {
     try {
       await invoke('git:addRemote', { name: remoteName, url: remoteUrl });
-      setMessage('远程已保存并通过授权预检');
+      setMessage(t('git.message.remoteSaved'));
       setRemoteUrl('');
       await refresh();
     } catch (e) {
@@ -401,7 +404,7 @@ function GitTimeline() {
     }
   };
   const previewRestore = async (commit: TimelineCommit) => {
-    if (!filePath.trim()) return setMessage('请输入要恢复的知识库内相对文件路径');
+    if (!filePath.trim()) return setMessage(t('git.message.restorePathRequired'));
     try {
       setRestore({
         commit,
@@ -416,22 +419,22 @@ function GitTimeline() {
     <section data-testid="git-timeline" className="space-y-3">
       <div className="flex items-center gap-2">
         <History className="size-4" />
-        <h2 className="font-medium">版本时间线</h2>
+        <h2 className="font-medium">{tr('git.timeline.title')}</h2>
         <button
           type="button"
           className="ml-auto rounded p-1 hover:bg-accent"
-          title="刷新"
+          title={tr('git.timeline.refresh')}
           onClick={() => void refresh()}
         >
           <RefreshCw className="size-3.5" />
         </button>
       </div>
       <label className="block text-xs">
-        单篇文件时间线
+        {tr('git.timeline.fileFilter')}
         <input
           value={filePath}
           onChange={(e) => setFilePath(e.target.value)}
-          placeholder="notes/page.md（留空显示全部）"
+          placeholder={tr('git.timeline.fileFilterPlaceholder')}
           className="mt-1 h-8 w-full rounded border bg-background px-2 text-xs"
         />
       </label>
@@ -439,7 +442,7 @@ function GitTimeline() {
         <input
           value={manualMessage}
           onChange={(e) => setManualMessage(e.target.value)}
-          placeholder="手动提交说明（点击提交）"
+          placeholder={tr('git.timeline.commitMessagePlaceholder')}
           className="h-8 min-w-0 flex-1 rounded border bg-background px-2 text-xs"
         />
         <button
@@ -447,24 +450,24 @@ function GitTimeline() {
           onClick={() => void commitManual()}
           className="rounded border px-2 text-xs hover:bg-accent"
         >
-          提交
+          {tr('git.timeline.commit')}
         </button>
       </div>
       <details className="rounded border p-2">
-        <summary className="cursor-pointer text-xs font-medium">远程仓库与 Git 设置</summary>
+        <summary className="cursor-pointer text-xs font-medium">{tr('git.timeline.remoteSettings')}</summary>
         <div className="mt-2 space-y-2">
           <div className="flex gap-1">
             <input
               value={remoteName}
               onChange={(e) => setRemoteName(e.target.value)}
-              aria-label="远程名称"
+              aria-label={tr('git.timeline.remoteName')}
               className="h-8 w-20 rounded border px-2 text-xs"
             />
             <input
               value={remoteUrl}
               onChange={(e) => setRemoteUrl(e.target.value)}
-              aria-label="远程地址"
-              placeholder="HTTPS 或 SSH 地址"
+              aria-label={tr('git.timeline.remoteUrl')}
+              placeholder={tr('git.timeline.remoteUrlPlaceholder')}
               className="h-8 min-w-0 flex-1 rounded border px-2 text-xs"
             />
             <button
@@ -472,11 +475,11 @@ function GitTimeline() {
               onClick={() => void submitRemote()}
               className="rounded border px-2 text-xs"
             >
-              添加/更新
+              {tr('git.timeline.addOrUpdate')}
             </button>
           </div>
           <p className="text-[10px] text-muted-foreground">
-            保存时执行 git ls-remote 授权预检；失败请检查网络、SSH key 或 HTTPS 凭证。
+            {tr('git.timeline.remotePreflight')}
           </p>
           {remotes.map((remote) => (
             <button
@@ -488,7 +491,7 @@ function GitTimeline() {
               }}
               className="block text-left text-xs underline"
             >
-              {remote.name}: {remote.pushUrl || remote.fetchUrl}（编辑）
+              {remote.name}: {remote.pushUrl || remote.fetchUrl}{tr('git.timeline.editRemote')}
             </button>
           ))}
           <label className="flex items-center gap-2 text-xs">
@@ -505,7 +508,7 @@ function GitTimeline() {
                   );
               }}
             />
-            使用系统 Git（默认使用捆绑 Git）
+            {tr('git.timeline.useSystemGit')}
           </label>
         </div>
       </details>
@@ -534,7 +537,7 @@ function GitTimeline() {
             })
               .then(() => {
                 setRestore(null);
-                setMessage('已恢复文件并创建新的恢复提交');
+                setMessage(t('git.message.restoreCreated'));
                 void refresh();
               })
               .catch((caught: unknown) =>
@@ -567,6 +570,7 @@ function AutoGroup({
   onRestore(commit: TimelineCommit): void;
 }) {
   const [open, setOpen] = useState(false);
+  const tr = useI18n();
   return (
     <li className="rounded border bg-muted/30">
       <button
@@ -574,7 +578,10 @@ function AutoGroup({
         onClick={() => setOpen(!open)}
         className="w-full px-2 py-1.5 text-left text-xs"
       >
-        自动提交 · {entries.length} 条 · {open ? '收起' : '展开'}
+        {tr('git.timeline.autoGroup', {
+          count: entries.length,
+          action: open ? tr('git.timeline.collapse') : tr('git.timeline.expand'),
+        })}
       </button>
       {open && (
         <ol className="space-y-1 border-t p-1">
@@ -593,6 +600,7 @@ function CommitRow({
   entry: TimelineCommit;
   onRestore(commit: TimelineCommit): void;
 }) {
+  const tr = useI18n();
   return (
     <li
       className={`rounded border px-2 py-1.5 text-xs ${entry.kind === 'manual' ? 'border-primary/40 bg-primary/5' : ''}`}
@@ -613,7 +621,7 @@ function CommitRow({
         className="mt-1 flex items-center gap-1 text-[10px] text-primary"
       >
         <RotateCcw className="size-3" />
-        恢复此版本
+        {tr('git.timeline.restoreVersion')}
       </button>
     </li>
   );
@@ -635,6 +643,7 @@ function DoctorDialog({
   onOpenAgentHelp(): void;
   onDismiss(): void;
 }) {
+  const tr = useI18n();
   const canRepair = diagnosis.plan.action !== null;
   const isRebaseRepair =
     diagnosis.plan.action === 'preserve-local-and-abort' ||
@@ -644,13 +653,19 @@ function DoctorDialog({
   return (
     <div
       role="dialog"
-      aria-label="Git 同步诊断"
+      aria-label={tr('git.doctor.title')}
       className="fixed bottom-10 left-4 z-20 w-80 rounded border bg-card p-3 shadow"
     >
-      <p className="font-medium">同步遇到问题：{diagnosis.issue.message}</p>
+      <p className="font-medium">
+        {tr('git.doctor.heading', { message: diagnosis.issue.message })}
+      </p>
       <p className="mt-1 text-xs">{diagnosis.explanation}</p>
       {diagnosis.conflictFiles.length > 0 && (
-        <p className="mt-1 text-[10px]">冲突文件：{diagnosis.conflictFiles.join('、')}</p>
+        <p className="mt-1 text-[10px]">
+          {tr('git.doctor.conflictFiles', {
+            files: diagnosis.conflictFiles.join(t('git.conflict.listSeparator')),
+          })}
+        </p>
       )}
       <p className="mt-1 text-[10px] text-muted-foreground">{diagnosis.plan.manualGuidance}</p>
       {error && <p className="mt-1 text-[10px] text-destructive">{error}</p>}
@@ -663,23 +678,23 @@ function DoctorDialog({
               onClick={onOneClickRepair}
               className="rounded bg-primary px-2 py-1 text-xs text-primary-foreground disabled:opacity-60"
             >
-              {busy ? '正在解决…' : '让 Agent 修复'}
+              {busy ? tr('git.doctor.busy.resolving') : tr('git.doctor.agentRepair')}
             </button>
             <button
               type="button"
               disabled={busy}
               onClick={() => onRepairAction('preserve-local-and-abort')}
               className="rounded border px-2 py-1 text-xs disabled:opacity-60"
-              title="改为备份本地提交并中止 rebase（同步不会完成）"
+              title={tr('git.doctor.title.continueRepair')}
             >
-              保留笔记并中止
+              {tr('git.doctor.preserveAbort')}
             </button>
             <button
               type="button"
               onClick={onOpenAgentHelp}
               className="rounded border px-2 py-1 text-xs"
             >
-              让 Agent 帮助解决
+              {tr('git.doctor.agentHelp')}
             </button>
           </>
         ) : canRepair && isRebaseRepair ? (
@@ -690,23 +705,23 @@ function DoctorDialog({
               onClick={() => onRepairAction('preserve-local-and-abort')}
               className="rounded bg-primary px-2 py-1 text-xs text-primary-foreground disabled:opacity-60"
             >
-              {busy ? '正在保留…' : '保留笔记并中止 rebase'}
+              {busy ? tr('git.doctor.busy.preserving') : tr('git.doctor.preserveAbortRebase')}
             </button>
             <button
               type="button"
               disabled={busy}
               onClick={() => onRepairAction('force-abort-rebase-or-merge')}
               className="rounded border border-destructive/40 px-2 py-1 text-xs text-destructive disabled:opacity-60"
-              title="会丢弃你未推送的笔记提交——仅在你想完全放弃本地修改时使用"
+              title={tr('git.doctor.title.discardLocal')}
             >
-              {busy ? '正在中止…' : '放弃本地改动'}
+              {busy ? tr('git.doctor.busy.aborting') : tr('git.doctor.discardLocal')}
             </button>
             <button
               type="button"
               onClick={onOpenAgentHelp}
               className="rounded border px-2 py-1 text-xs"
             >
-              让 Agent 帮助解决
+              {tr('git.doctor.agentHelp')}
             </button>
           </>
         ) : canRepair ? (
@@ -716,7 +731,7 @@ function DoctorDialog({
             onClick={onOneClickRepair}
             className="rounded bg-primary px-2 py-1 text-xs text-primary-foreground disabled:opacity-60"
           >
-            {busy ? '正在修复…' : '让 Agent 修复'}
+            {busy ? tr('git.doctor.busy.repairing') : tr('git.doctor.agentRepair')}
           </button>
         ) : (
           <button
@@ -724,11 +739,11 @@ function DoctorDialog({
             onClick={onOpenAgentHelp}
             className="rounded bg-primary px-2 py-1 text-xs text-primary-foreground"
           >
-            让 Agent 帮助解决
+            {tr('git.doctor.agentHelp')}
           </button>
         )}
         <button type="button" onClick={onDismiss} className="rounded border px-2 py-1 text-xs">
-          忽略
+          {tr('git.doctor.dismiss')}
         </button>
       </div>
     </div>
@@ -744,30 +759,34 @@ function RestorePreview({
   onCancel(): void;
   onConfirm(): void;
 }) {
+  const tr = useI18n();
   return (
     <div
       role="dialog"
-      aria-label="恢复预览"
+      aria-label={tr('git.restore.title')}
       className="rounded border border-amber-500/40 bg-amber-500/10 p-3 text-xs"
     >
       <p className="font-medium">
-        确认恢复 {restore.preview.path} 到 {restore.commit.shortHash}？
+        {tr('git.restore.confirmTitle', {
+          path: restore.preview.path,
+          hash: restore.commit.shortHash,
+        })}
       </p>
-      <p className="mt-1">将生成新的恢复提交，不会改写历史。</p>
+      <p className="mt-1">{tr('git.restore.description')}</p>
       <pre className="mt-2 max-h-48 overflow-auto whitespace-pre-wrap rounded bg-background p-2 font-mono text-[10px]">
         {buildLineDiff(restore.preview.current ?? '', restore.preview.target)}
       </pre>
-      <p className="mt-1 text-[10px] text-muted-foreground">- 当前内容 · + 恢复后的目标内容</p>
+      <p className="mt-1 text-[10px] text-muted-foreground">{tr('git.restore.legend')}</p>
       <div className="mt-2 flex gap-2">
         <button
           type="button"
           onClick={onConfirm}
           className="rounded bg-primary px-2 py-1 text-primary-foreground"
         >
-          确认恢复
+          {tr('git.restore.confirm')}
         </button>
         <button type="button" onClick={onCancel} className="rounded border px-2 py-1">
-          取消
+          {tr('common.cancel')}
         </button>
       </div>
     </div>

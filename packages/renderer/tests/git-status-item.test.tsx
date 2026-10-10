@@ -3,8 +3,9 @@ import { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { GitStatus } from '@nexnote/shared';
-import { statusBarRegistry } from '../src/registries';
+import { dockPanelRegistry, statusBarRegistry } from '../src/registries';
 import { VaultContext } from '../src/shell/vault-context';
+import { setLanguage } from '../src/lib/i18n';
 import '../src/features/git'; // side-effect: register statusBarRegistry 'git' entry
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
@@ -54,6 +55,8 @@ function installBridge(options: {
     if (channel === 'git:configureAutoSync') {
       return { ok: true, data: undefined };
     }
+    if (channel === 'git:getTimeline') return { ok: true, data: [] };
+    if (channel === 'git:listRemotes') return { ok: true, data: [] };
     if (channel === 'git:doctor:repairPrepare') {
       return { ok: true, data: { ticket: 'doctor-ticket', diagnosis: options.gitDiagnose } };
     }
@@ -131,6 +134,7 @@ afterEach(() => {
   root = null;
   document.body.innerHTML = '';
   delete (window as unknown as { nexnote?: unknown }).nexnote;
+  setLanguage('zh-CN');
 });
 
 describe('DEV-076 GitStatusItem 真实组件行为', () => {
@@ -343,5 +347,39 @@ describe('DEV-076 GitStatusItem 真实组件行为', () => {
       await new Promise((r) => setTimeout(r, 50));
     });
     expect(bridge.calls.some((c) => c.channel === 'git:doctor:diagnose')).toBe(false);
+  });
+});
+
+describe('ADR-0023 Git 面板 en-US 残留检查', () => {
+  it('状态栏与时间线本应用 UI 无中文残留', async () => {
+    setLanguage('en-US');
+    installBridge({ gitStatus: { ...baseStatus, rebaseInProgress: true } });
+    renderGitStatusItem();
+    await flushAsync();
+    const status = document.querySelector('[data-testid="status-git"]');
+    expect(status?.textContent).toContain('Syncing');
+    expect(status?.textContent).not.toMatch(/[一-鿿]/);
+
+    const entry = dockPanelRegistry.get('git-timeline');
+    const Timeline = entry?.render as (() => React.ReactNode) | undefined;
+    expect(Timeline).toBeDefined();
+    const timelineRoot = document.createElement('div');
+    document.body.append(timelineRoot);
+    const timelineReactRoot = createRoot(timelineRoot);
+    await act(async () => {
+      timelineReactRoot.render(
+        <VaultContext.Provider value={vault as never}>
+          <Timeline />
+        </VaultContext.Provider>,
+      );
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    });
+    const timeline = timelineRoot.querySelector('[data-testid="git-timeline"]');
+    expect(timeline?.textContent).toContain('Version timeline');
+    expect(timeline?.textContent).not.toMatch(/[一-鿿]/);
+    await act(async () => {
+      timelineReactRoot.unmount();
+    });
+    timelineRoot.remove();
   });
 });
