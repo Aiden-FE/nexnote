@@ -331,3 +331,10 @@ status: in_progress
   属于内容数据，因此只断言 UI 模板片段无 CJK。本批只改测试，不新增消息 key，
   zh/en 保持 1553 key；git-sync-progress / tabstrip-title-tooltip targeted
   tests 通过；全量门禁 196 files / 1872 passed / 3 skipped 退出码 0。
+- 阶段④第六批（2026-10-11）：召回透明 UI 与源码快捷插入菜单测试迁移。
+  `retrieval-sources` 的来源计数/模型徽标/三阶段名/相似度/置信度/降级徽标断言
+  改为词典取值，并新增 en-US 降级渲染断言；来源标题与 snippet 仍作为内容数据。
+  `source-slash-menu` 的列表 aria-label 与分组标题改为词典断言，并新增 en-US
+  渲染断言（菜单文本无 CJK）。本批只改测试，不新增消息 key，zh/en 保持
+  1553 key；retrieval-sources / source-slash-menu targeted tests 通过；
+  全量门禁 196 files / 1874 passed / 3 skipped 退出码 0。

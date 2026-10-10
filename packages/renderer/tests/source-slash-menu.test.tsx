@@ -1,7 +1,8 @@
 // @vitest-environment happy-dom
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { undo, redo } from '@codemirror/commands';
-import { pluginQuickInsertMetadata } from '@nexnote/shared';
+import { CATALOGS, pluginQuickInsertMetadata, translate } from '@nexnote/shared';
+import { setLanguage } from '../src/lib/i18n';
 import { createSourceEditor } from '../src/editor/source/codemirror-host';
 import { getSourceEditorForTab } from '../src/editor/source/active-source-editor';
 import { SourceModeView } from '../src/editor/source/SourceModeView';
@@ -68,6 +69,12 @@ function mountWithViewport(): Fixture {
 
 globalThis.IS_REACT_ACT_ENVIRONMENT = true;
 
+const text = (
+  language: 'zh-CN' | 'en-US',
+  key: string,
+  params?: Record<string, string | number>,
+): string => translate(CATALOGS[language], key, language, params);
+
 /** Deliberately walk browser events, not `view.dispatch`: DOM insertion causes CodeMirror's input path. */
 async function type(fixture: Fixture, text: string): Promise<void> {
   const dom = fixture.editor.view.contentDOM;
@@ -118,6 +125,7 @@ function press(fixture: Fixture, key: string): void {
 afterEach(() => {
   document.body.innerHTML = '';
   vi.restoreAllMocks();
+  setLanguage('zh-CN');
 });
 
 describe('Markdown CodeMirror / 快捷输入（DEV-053）', () => {
@@ -131,7 +139,7 @@ describe('Markdown CodeMirror / 快捷输入（DEV-053）', () => {
     await type(fixture, query);
     const menu = fixture.parent.querySelector<HTMLElement>('[data-testid="source-slash-menu"]');
     expect(menu?.getAttribute('role')).toBe('listbox');
-    expect(menu?.getAttribute('aria-label')).toBe('快捷插入动作');
+    expect(menu?.getAttribute('aria-label')).toBe(text('zh-CN', 'source.slash.ariaLabel'));
     expect(menu?.matches('[data-slash-menu]')).toBe(true);
     expect(menu?.getAttribute('style')).not.toContain('display: none');
     press(fixture, 'Enter');
@@ -140,6 +148,20 @@ describe('Markdown CodeMirror / 快捷输入（DEV-053）', () => {
     expect(fixture.editor.getText()).toBe(`${prefix}${query}`);
     expect(redo(fixture.editor.view)).toBe(true);
     expect(fixture.editor.getText()).toBe(expected);
+    fixture.cleanup();
+  });
+
+  it('en-US 快捷插入菜单的 aria-label、分组与动作名按词典成文（ADR-0023）', async () => {
+    setLanguage('en-US');
+    const fixture = mount();
+    await type(fixture, '/h2');
+
+    const menu = fixture.parent.querySelector<HTMLElement>('[data-testid="source-slash-menu"]')!;
+    expect(menu.getAttribute('aria-label')).toBe(text('en-US', 'source.slash.ariaLabel'));
+    expect(menu.querySelector('.nexnote-slash-menu__group')?.textContent).toBe(
+      text('en-US', 'editorAction.group.basic.name'),
+    );
+    expect(menu.textContent ?? '').not.toMatch(/[\u4e00-\u9fff]/);
     fixture.cleanup();
   });
 
@@ -166,7 +188,9 @@ describe('Markdown CodeMirror / 快捷输入（DEV-053）', () => {
     await type(structure, '/表格');
     const table = structure.parent.querySelector('[data-slash-item="insert:table"]');
     expect(table?.querySelector('[data-slash-icon="table"]')?.textContent).toBe('▦');
-    expect(structure.parent.querySelector('.nexnote-slash-menu__group')?.textContent).toBe('插入');
+    expect(structure.parent.querySelector('.nexnote-slash-menu__group')?.textContent).toBe(
+      text('zh-CN', 'editorAction.group.insert.name'),
+    );
     press(structure, 'Tab');
     expect(structure.editor.getText()).toBe(
       '正文 后文\n\n| 列 1 | 列 2 |\n| --- | --- |\n|  |  |\n',
