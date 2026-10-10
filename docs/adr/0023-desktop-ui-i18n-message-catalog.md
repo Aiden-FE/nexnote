@@ -322,3 +322,12 @@ status: in_progress
   本批只改测试，不新增消息 key，zh/en 保持 1553 key；open-document /
   binary-tab-close targeted tests 通过；全量门禁 196 files /
   1870 passed / 3 skipped 退出码 0。
+- 阶段④第五批（2026-10-11）：Git 同步状态机与 Tab 关闭可访问名测试迁移。
+  `git-sync-progress` 的 `initialPhaseMessage` / `conflictHoverText` 断言从中文
+  片段改为 `git.progress.*` / `git.conflict.*` 词典取值（含 `{count}` 截断后缀），
+  并新增 en-US 覆盖四个阶段与三种 hover 形态；`tabstrip-title-tooltip` 的关闭
+  按钮 aria-label 改为 `tabs.closeWithTitle` 词典断言，并新增 en-US 用例锁定
+  `tabs.tablistLabel` / `tabs.newTab` 与关闭名模板片段——关闭名拼接用户标题，
+  属于内容数据，因此只断言 UI 模板片段无 CJK。本批只改测试，不新增消息 key，
+  zh/en 保持 1553 key；git-sync-progress / tabstrip-title-tooltip targeted
+  tests 通过；全量门禁 196 files / 1872 passed / 3 skipped 退出码 0。

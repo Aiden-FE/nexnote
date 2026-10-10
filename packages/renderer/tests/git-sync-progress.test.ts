@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { CATALOGS, setCurrentLanguage, translate } from '@nexnote/shared';
 import {
   reduceSyncProgress,
   conflictHoverText,
@@ -6,6 +7,9 @@ import {
   isBusyPhase,
   SYNC_CLEAR_AFTER_MS,
 } from '../src/features/git/state-machine';
+
+const text = (language: 'zh-CN' | 'en-US', key: string, params?: Record<string, string | number>) =>
+  translate(CATALOGS[language], key, language, params);
 
 describe('DEV-076 git sync state machine', () => {
   const doneResult = reduceSyncProgress({ phase: null, phaseMessage: null }, { phase: 'done', message: null });
@@ -46,35 +50,57 @@ describe('DEV-076 git sync state machine', () => {
   });
 
   it('initialPhaseMessage has text for every non-terminal phase', () => {
-    expect(initialPhaseMessage('fetching')).toContain('拉取');
-    expect(initialPhaseMessage('rebasing')).toContain('对齐');
-    expect(initialPhaseMessage('merging')).toContain('合并');
-    expect(initialPhaseMessage('pushing')).toContain('推送');
+    expect(initialPhaseMessage('fetching')).toBe(text('zh-CN', 'git.progress.fetching'));
+    expect(initialPhaseMessage('rebasing')).toBe(text('zh-CN', 'git.progress.rebasing'));
+    expect(initialPhaseMessage('merging')).toBe(text('zh-CN', 'git.progress.merging'));
+    expect(initialPhaseMessage('pushing')).toBe(text('zh-CN', 'git.progress.pushing'));
   });
 
   it('conflictHoverText: no files falls back to actionable message', () => {
-    const text = conflictHoverText({ conflict: true });
-    expect(text).toContain('冲突');
-    expect(text).toContain('点击');
-    expect(text).toContain('诊断');
+    const hover = conflictHoverText({ conflict: true });
+    expect(hover).toContain(text('zh-CN', 'git.conflict.base'));
+    expect(hover).toContain(text('zh-CN', 'git.conflict.openDiagnostics'));
   });
 
   it('conflictHoverText: lists conflict files when provided', () => {
-    const text = conflictHoverText({ conflict: true }, ['a.md', 'b.md']);
-    expect(text).toContain('a.md');
-    expect(text).toContain('b.md');
+    const hover = conflictHoverText({ conflict: true }, ['a.md', 'b.md']);
+    expect(hover).toContain('a.md');
+    expect(hover).toContain('b.md');
   });
 
   it('conflictHoverText: truncates long lists with count suffix', () => {
     const files = Array.from({ length: 8 }, (_, i) => `f${i}.md`);
-    const text = conflictHoverText({ conflict: true }, files);
+    const hover = conflictHoverText({ conflict: true }, files);
     // 只显示前 5 个 + 总数
-    expect(text).toContain('f4.md');
-    expect(text).not.toContain('f5.md');
-    expect(text).toContain('等 8 个');
+    expect(hover).toContain('f4.md');
+    expect(hover).not.toContain('f5.md');
+    expect(hover).toContain(text('zh-CN', 'git.conflict.moreFiles', { count: 8 }));
   });
 
   it('conflictHoverText: empty when no conflict', () => {
     expect(conflictHoverText({ conflict: false })).toBe('');
+  });
+
+  it('en-US progress and conflict hover are catalog-driven without CJK (ADR-0023)', () => {
+    setCurrentLanguage('en-US');
+    try {
+      for (const phase of ['fetching', 'rebasing', 'merging', 'pushing'] as const) {
+        expect(initialPhaseMessage(phase), phase).toBe(
+          text('en-US', `git.progress.${phase}`),
+        );
+      }
+      const empty = conflictHoverText({ conflict: true });
+      expect(empty).toContain(text('en-US', 'git.conflict.base'));
+      expect(empty).toContain(text('en-US', 'git.conflict.openDiagnostics'));
+      const listed = conflictHoverText({ conflict: true }, ['a.md', 'b.md']);
+      expect(listed).toContain('a.md');
+      expect(listed).toContain('b.md');
+      const files = Array.from({ length: 8 }, (_, i) => `f${i}.md`);
+      const truncated = conflictHoverText({ conflict: true }, files);
+      expect(truncated).toContain(text('en-US', 'git.conflict.moreFiles', { count: 8 }));
+      expect([empty, listed, truncated].join('\n')).not.toMatch(/[\u4e00-\u9fff]/);
+    } finally {
+      setCurrentLanguage('zh-CN');
+    }
   });
 });
