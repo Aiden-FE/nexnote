@@ -214,3 +214,7 @@ status: in_progress
   的权限标识和内容字段保留边界。新增 13 key，zh/en 各 1295 key。
   `plugin-service` 新增 en-US manifest 校验测试；门禁 195 files /
   1845 passed / 3 skipped 退出码 0。
+- 阶段③第十五批（2026-10-10）：settings IPC 无 vault 与快捷键导入/导出文件
+  IO 错误复用 shared 成文；导入 JSON 结构校验保持无错误文案的宽容降级语义。
+  新增 2 key，zh/en 各 1297 key。settings IPC / service / catalog targeted
+  tests 通过；门禁 195 files / 1845 passed / 3 skipped 退出码 0。
