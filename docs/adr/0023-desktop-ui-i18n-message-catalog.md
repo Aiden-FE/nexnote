@@ -256,3 +256,10 @@ status: in_progress
   通道名、文档路径和 IPC 数据载荷保留边界。新增 8 key，zh/en 各 1372 key。
   document-domain / IPC registrar / catalog targeted tests 通过；类型检查和
   lint 通过；全量门禁 195 files / 1848 passed / 3 skipped 退出码 0。
+- 阶段③第二十二批（2026-10-10）：IPC validation 框架与全部 payload 校验
+  错误成文。覆盖基础字段类型、对象/未知字段、DOCX/binary/base64、布局、
+  Agent chat/writing/translation、chat save、plugin/object 与更新通道校验；
+  校验 code 不变，检索关键词数组保持数据边界。新增 67 key，zh/en 各 1439
+  key。IPC registrar / translation / agent runtime / mindmap / settings /
+  catalog targeted tests（120 passed）通过；全量门禁 195 files /
+  1848 passed / 3 skipped 退出码 0。

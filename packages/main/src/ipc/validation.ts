@@ -1,5 +1,5 @@
 import type { IpcChannel, ChannelRequest } from '@nexnote/shared';
-import { isMindmapStructureId } from '@nexnote/shared';
+import { isMindmapStructureId, tCurrent } from '@nexnote/shared';
 import { TARGET_LANGUAGE_PATTERN, TRANSLATION_MAX_TEXT_CHARS } from '../agent/translation';
 
 /** Stable error returned when renderer-controlled IPC input does not match its contract. */
@@ -19,7 +19,7 @@ const stringField =
   (key: string): PayloadValidator =>
   (payload) => {
     if (typeof (payload as Record<string, unknown>)[key] !== 'string') {
-      return invalid(`${key} 必须是字符串`);
+      return invalid(tCurrent('validation.error.FIELD_STRING', { key }));
     }
     return null;
   };
@@ -28,7 +28,7 @@ const booleanField =
   (key: string): PayloadValidator =>
   (payload) => {
     if (typeof (payload as Record<string, unknown>)[key] !== 'boolean') {
-      return invalid(`${key} 必须是布尔值`);
+      return invalid(tCurrent('validation.error.FIELD_BOOLEAN', { key }));
     }
     return null;
   };
@@ -38,7 +38,7 @@ const finiteNumberField =
   (payload) => {
     const value = (payload as Record<string, unknown>)[key];
     if (typeof value !== 'number' || !Number.isFinite(value)) {
-      return invalid(`${key} 必须是有限数字`);
+      return invalid(tCurrent('validation.error.FIELD_FINITE_NUMBER', { key }));
     }
     return null;
   };
@@ -48,17 +48,19 @@ const optionalField =
   (payload) => {
     const value = (payload as Record<string, unknown>)[key];
     if (value === undefined) return null;
-    if (typeof value !== type) return invalid(`${key} 必须为可选 ${type}`);
-    if (type === 'number' && !Number.isFinite(value)) return invalid(`${key} 必须为有限数字`);
+    if (typeof value !== type)
+      return invalid(tCurrent('validation.error.OPTIONAL_FIELD_TYPE', { key, type }));
+    if (type === 'number' && !Number.isFinite(value))
+      return invalid(tCurrent('validation.error.FIELD_FINITE_NUMBER', { key }));
     return null;
   };
 
 const validateObject =
   (allowed: readonly string[], fields: PayloadValidator[]): PayloadValidator =>
   (payload) => {
-    if (!isPlainObject(payload)) return invalid('payload 必须是普通对象');
+    if (!isPlainObject(payload)) return invalid(tCurrent('validation.error.PAYLOAD_OBJECT'));
     for (const key of Object.keys(payload)) {
-      if (!allowed.includes(key)) return invalid(`未知字段 ${key}`);
+      if (!allowed.includes(key)) return invalid(tCurrent('validation.error.UNKNOWN_FIELD', { key }));
     }
     for (const validate of fields) {
       const error = validate(payload);
@@ -96,7 +98,7 @@ const createNote: PayloadValidator = (payload) => {
   if (base) return base;
   const format = (payload as Record<string, unknown>).format;
   if (format !== undefined && format !== 'native-block' && format !== 'markdown') {
-    return invalid('format 必须是 native-block 或 markdown');
+    return invalid(tCurrent('validation.error.FORMAT'));
   }
   return null;
 };
@@ -133,13 +135,14 @@ const docxImport: PayloadValidator = (payload) => {
   const value = payload as Record<string, unknown>;
   if (base) return base;
   if (value.data === undefined) return null;
-  if (typeof value.data !== 'string' || value.data.length === 0) return invalid('data 不能为空');
+  if (typeof value.data !== 'string' || value.data.length === 0)
+    return invalid(tCurrent('validation.error.DATA_REQUIRED'));
   if (
     value.data.length > 268_435_456 ||
     value.data.length % 4 !== 0 ||
     !/^[A-Za-z0-9+/]*={0,2}$/.test(value.data)
   ) {
-    return invalid('data 不是合法 base64');
+    return invalid(tCurrent('validation.error.DATA_BASE64'));
   }
   return null;
 };
@@ -153,7 +156,7 @@ const binaryImport: PayloadValidator = (payload) => {
       (p) =>
         binaryKind((p as Record<string, unknown>).kind)
           ? null
-          : invalid('kind 必须是 xlsx 或 mindmap'),
+          : invalid(tCurrent('validation.error.BINARY_KIND')),
       optionalField('data', 'string'),
       optionalField('name', 'string'),
       optionalField('targetDir', 'string'),
@@ -162,35 +165,38 @@ const binaryImport: PayloadValidator = (payload) => {
   if (base) return base;
   const value = payload as Record<string, unknown>;
   if (value.data === undefined) return null;
-  if (typeof value.data !== 'string' || value.data.length === 0) return invalid('data 不能为空');
+  if (typeof value.data !== 'string' || value.data.length === 0)
+    return invalid(tCurrent('validation.error.DATA_REQUIRED'));
   if (
     value.data.length > 268_435_456 ||
     value.data.length % 4 !== 0 ||
     !/^[A-Za-z0-9+/]*={0,2}$/.test(value.data)
   ) {
-    return invalid('data 不是合法 base64');
+    return invalid(tCurrent('validation.error.DATA_BASE64'));
   }
   return null;
 };
 const binaryRead: PayloadValidator = (payload) => {
-  if (!isPlainObject(payload)) return invalid('payload 必须是普通对象');
-  if (!binaryKind(payload.kind)) return invalid('kind 必须是 xlsx 或 mindmap');
+  if (!isPlainObject(payload)) return invalid(tCurrent('validation.error.PAYLOAD_OBJECT'));
+  if (!binaryKind(payload.kind)) return invalid(tCurrent('validation.error.BINARY_KIND'));
   return stringField('path')(payload);
 };
 const binarySave: PayloadValidator = (payload) => {
-  if (!isPlainObject(payload)) return invalid('payload 必须是普通对象');
-  if (!binaryKind(payload.kind)) return invalid('kind 必须是 xlsx 或 mindmap');
+  if (!isPlainObject(payload)) return invalid(tCurrent('validation.error.PAYLOAD_OBJECT'));
+  if (!binaryKind(payload.kind)) return invalid(tCurrent('validation.error.BINARY_KIND'));
   const pathCheck = stringField('path')(payload);
   if (pathCheck) return pathCheck;
   const shaCheck = stringField('expectedSha256')(payload);
   if (shaCheck) return shaCheck;
-  return payload.data !== undefined && payload.data !== null ? null : invalid('data 缺失');
+  return payload.data !== undefined && payload.data !== null
+    ? null
+    : invalid(tCurrent('validation.error.DATA_MISSING'));
 };
 const binaryGitignoreSet = object(['untrack'], [booleanField('untrack')]);
 const binaryHostKind = (v: unknown): boolean => v === 'xlsx' || v === 'mindmap';
 const binaryHostRef: PayloadValidator = (payload) => {
-  if (!isPlainObject(payload)) return invalid('payload 必须是普通对象');
-  if (!binaryHostKind(payload.kind)) return invalid('kind 必须是 xlsx / mindmap');
+  if (!isPlainObject(payload)) return invalid(tCurrent('validation.error.PAYLOAD_OBJECT'));
+  if (!binaryHostKind(payload.kind)) return invalid(tCurrent('validation.error.BINARY_HOST_KIND'));
   return stringField('path')(payload);
 };
 const binaryHostSetActive: PayloadValidator = (payload) => {
@@ -202,11 +208,11 @@ const binaryHostSetBounds: PayloadValidator = (payload) => {
   if (refCheck) return refCheck;
   const bounds = (payload as { bounds?: unknown }).bounds;
   if (bounds === null) return null;
-  if (!isPlainObject(bounds)) return invalid('bounds 必须是矩形对象或 null');
+  if (!isPlainObject(bounds)) return invalid(tCurrent('validation.error.BOUNDS_OBJECT'));
   for (const key of ['x', 'y', 'width', 'height'] as const) {
     const value = (bounds as Record<string, unknown>)[key];
     if (typeof value !== 'number' || !Number.isFinite(value) || value < 0) {
-      return invalid(`bounds.${key} 必须是非负有限数`);
+      return invalid(tCurrent('validation.error.BOUNDS_FIELD_NONNEGATIVE', { key: `bounds.${key}` }));
     }
   }
   return null;
@@ -216,7 +222,9 @@ const binaryEditorTheme = object(
   [
     (p) => {
       const theme = (p as Record<string, unknown>).theme;
-      return theme === 'light' || theme === 'dark' ? null : invalid('theme 必须是 light 或 dark');
+      return theme === 'light' || theme === 'dark'
+        ? null
+        : invalid(tCurrent('validation.error.THEME'));
     },
   ],
 );
@@ -229,7 +237,9 @@ const isMindmapStructureIdField =
   (key: string): PayloadValidator =>
   (payload) => {
     const value = (payload as Record<string, unknown>)[key];
-    return isMindmapStructureId(value) ? null : invalid(`${key} 必须是已登记的布局结构 id`);
+    return isMindmapStructureId(value)
+      ? null
+      : invalid(tCurrent('validation.error.STRUCTURE_ID', { key }));
   };
 const binaryMindmapStructureSet = object(
   ['path', 'structure'],
@@ -241,7 +251,7 @@ const stringArrayField =
   (payload) => {
     const value = (payload as Record<string, unknown>)[key];
     if (!Array.isArray(value) || value.some((item) => typeof item !== 'string')) {
-      return invalid(`${key} 必须是字符串数组`);
+      return invalid(tCurrent('validation.error.FIELD_STRING_ARRAY', { key }));
     }
     return null;
   };
@@ -255,7 +265,9 @@ const aiProfileSave = object(
   [
     optionalField('id', 'string'),
     (p) =>
-      isPlainObject((p as Record<string, unknown>).profile) ? null : invalid('profile 必须是对象'),
+      isPlainObject((p as Record<string, unknown>).profile)
+        ? null
+        : invalid(tCurrent('validation.error.PROFILE_OBJECT')),
   ],
 );
 const idOnly = object(['id'], [stringField('id')]);
@@ -268,7 +280,7 @@ const aiFeaturesSet: PayloadValidator = (payload) => {
         const assignment = (p as Record<string, unknown>).assignment;
         return assignment === null || isPlainObject(assignment)
           ? null
-          : invalid('assignment 必须是对象或 null');
+          : invalid(tCurrent('validation.error.ASSIGNMENT_OBJECT_OR_NULL'));
       },
     ],
   )(payload);
@@ -276,16 +288,16 @@ const aiFeaturesSet: PayloadValidator = (payload) => {
   const feature = (payload as Record<string, unknown>).feature;
   return ['writing', 'translation', 'chat', 'embedding'].includes(String(feature))
     ? null
-    : invalid('feature 无效');
+    : invalid(tCurrent('validation.error.FEATURE'));
 };
 const aiTranslationLanguage = object(
   ['targetLanguage'],
   [
     (payload) => {
       const value = (payload as Record<string, unknown>).targetLanguage;
-      if (typeof value !== 'string') return invalid('targetLanguage 无效');
+      if (typeof value !== 'string') return invalid(tCurrent('validation.error.TARGET_LANGUAGE'));
       if (value === '' || TARGET_LANGUAGE_PATTERN.test(value)) return null;
-      return invalid('targetLanguage 无效');
+      return invalid(tCurrent('validation.error.TARGET_LANGUAGE'));
     },
   ],
 );
@@ -296,14 +308,16 @@ const _aiChatRequest = object(
       const messages = (p as Record<string, unknown>).messages;
       return Array.isArray(messages) && messages.every(isPlainObject)
         ? null
-        : invalid('messages 必须是消息对象数组');
+        : invalid(tCurrent('validation.error.MESSAGES_OBJECT_ARRAY'));
     },
     optionalField('profileId', 'string'),
     optionalField('feature', 'string'),
     optionalField('model', 'string'),
     (p) => {
       const params = (p as Record<string, unknown>).params;
-      return params === undefined || isPlainObject(params) ? null : invalid('params 必须是对象');
+      return params === undefined || isPlainObject(params)
+        ? null
+        : invalid(tCurrent('validation.error.PARAMS_OBJECT'));
     },
   ],
 );
@@ -315,7 +329,7 @@ const aiConnectionTarget: PayloadValidator = (payload) => {
       (p) => {
         const candidate = (p as Record<string, unknown>).candidate;
         if (candidate === undefined) return null;
-        if (!isPlainObject(candidate)) return invalid('candidate 必须是对象');
+        if (!isPlainObject(candidate)) return invalid(tCurrent('validation.error.CANDIDATE_OBJECT'));
         return object(
           ['kind', 'baseUrl', 'credentialToken', 'defaultModel'],
           [
@@ -332,10 +346,10 @@ const aiConnectionTarget: PayloadValidator = (payload) => {
   const target = payload as Record<string, unknown>;
   return target.profileId !== undefined || target.candidate !== undefined
     ? null
-    : invalid('必须提供 profileId 或 candidate');
+    : invalid(tCurrent('validation.error.PROFILE_OR_CANDIDATE_REQUIRED'));
 };
 const agentRun: PayloadValidator = (payload) => {
-  if (!isPlainObject(payload)) return invalid('payload 必须是普通对象');
+  if (!isPlainObject(payload)) return invalid(tCurrent('validation.error.PAYLOAD_OBJECT'));
   const allowed = [
     'messages',
     'skillIds',
@@ -345,7 +359,7 @@ const agentRun: PayloadValidator = (payload) => {
     'contextPaths',
   ];
   if (Object.keys(payload).some((key) => !allowed.includes(key)))
-    return invalid('agent payload 包含未知字段');
+    return invalid(tCurrent('validation.error.AGENT_UNKNOWN_FIELD'));
   const messages = payload.messages;
   if (
     !Array.isArray(messages) ||
@@ -356,79 +370,81 @@ const agentRun: PayloadValidator = (payload) => {
         typeof m.content !== 'string',
     )
   )
-    return invalid('messages 必须是合法消息数组');
+    return invalid(tCurrent('validation.error.MESSAGES_VALID_ARRAY'));
   if (
     payload.skillIds !== undefined &&
     (!Array.isArray(payload.skillIds) || payload.skillIds.some((id) => typeof id !== 'string'))
   )
-    return invalid('skillIds 必须是字符串数组');
+    return invalid(tCurrent('validation.error.SKILL_IDS_STRING_ARRAY'));
   if (payload.contextText !== undefined && typeof payload.contextText !== 'string')
-    return invalid('contextText 必须是字符串');
+    return invalid(tCurrent('validation.error.CONTEXT_TEXT_STRING'));
   if (payload.params !== undefined && !isPlainObject(payload.params))
-    return invalid('params 必须是对象');
+    return invalid(tCurrent('validation.error.PARAMS_OBJECT'));
   if (
     payload.permissionMode !== undefined &&
     !['conversation', 'edit', 'full'].includes(String(payload.permissionMode))
   )
-    return invalid('permissionMode 必须是 conversation/edit/full');
+    return invalid(tCurrent('validation.error.PERMISSION_MODE'));
   if (
     payload.contextPaths !== undefined &&
     (!Array.isArray(payload.contextPaths) ||
       payload.contextPaths.some((p) => typeof p !== 'string'))
   )
-    return invalid('contextPaths 必须是字符串数组');
+    return invalid(tCurrent('validation.error.CONTEXT_PATHS_STRING_ARRAY'));
   return null;
 };
 
 const agentWritingRun: PayloadValidator = (payload) => {
-  if (!isPlainObject(payload)) return invalid('payload 必须是普通对象');
+  if (!isPlainObject(payload)) return invalid(tCurrent('validation.error.PAYLOAD_OBJECT'));
   const allowed = ['actionId', 'target', 'contextText', 'params'];
   if (Object.keys(payload).some((key) => !allowed.includes(key)))
-    return invalid('writing payload 包含未知字段');
+    return invalid(tCurrent('validation.error.WRITING_UNKNOWN_FIELD'));
   if (
     !['rewrite', 'expand', 'condense', 'polish', 'fillgaps', 'evidence'].includes(
       String(payload.actionId),
     )
   )
-    return invalid('actionId 无效');
+    return invalid(tCurrent('validation.error.ACTION_ID'));
   if (payload.target !== undefined && typeof payload.target !== 'string')
-    return invalid('target 必须是字符串');
+    return invalid(tCurrent('validation.error.TARGET_STRING'));
   if (payload.contextText !== undefined && typeof payload.contextText !== 'string')
-    return invalid('contextText 必须是字符串');
+    return invalid(tCurrent('validation.error.CONTEXT_TEXT_STRING'));
   if (payload.params !== undefined && !isPlainObject(payload.params))
-    return invalid('params 必须是对象');
+    return invalid(tCurrent('validation.error.PARAMS_OBJECT'));
   return null;
 };
 
 const agentTranslationRun: PayloadValidator = (payload) => {
-  if (!isPlainObject(payload)) return invalid('payload 必须是普通对象');
+  if (!isPlainObject(payload)) return invalid(tCurrent('validation.error.PAYLOAD_OBJECT'));
   const allowed = ['translation', 'params'];
   if (Object.keys(payload).some((key) => !allowed.includes(key)))
-    return invalid('translation payload 包含未知字段');
-  if (!isPlainObject(payload.translation)) return invalid('translation 必须是对象');
+    return invalid(tCurrent('validation.error.TRANSLATION_UNKNOWN_FIELD'));
+  if (!isPlainObject(payload.translation))
+    return invalid(tCurrent('validation.error.TRANSLATION_OBJECT'));
   const translation = payload.translation;
   const translationFields = ['mode', 'targetLanguage', 'text'];
   if (Object.keys(translation).some((key) => !translationFields.includes(key)))
-    return invalid('translation 包含未知字段');
+    return invalid(tCurrent('validation.error.TRANSLATION_FIELDS_UNKNOWN'));
   if (
     translation.mode !== 'selection' &&
     translation.mode !== 'document' &&
     translation.mode !== 'input'
   )
-    return invalid('translation.mode 必须是 selection/document/input');
+    return invalid(tCurrent('validation.error.TRANSLATION_MODE'));
   if (
     typeof translation.targetLanguage !== 'string' ||
     !TARGET_LANGUAGE_PATTERN.test(translation.targetLanguage)
   )
-    return invalid('translation.targetLanguage 无效');
+    return invalid(tCurrent('validation.error.TRANSLATION_TARGET_LANGUAGE'));
   if (typeof translation.text !== 'string' || translation.text.trim().length === 0)
-    return invalid('translation.text 不能为空');
-  if (translation.text.length > TRANSLATION_MAX_TEXT_CHARS) return invalid('translation.text 过长');
+    return invalid(tCurrent('validation.error.TRANSLATION_TEXT_REQUIRED'));
+  if (translation.text.length > TRANSLATION_MAX_TEXT_CHARS)
+    return invalid(tCurrent('validation.error.TRANSLATION_TEXT_TOO_LONG'));
   if (payload.params !== undefined) {
-    if (!isPlainObject(payload.params)) return invalid('params 必须是对象');
+    if (!isPlainObject(payload.params)) return invalid(tCurrent('validation.error.PARAMS_OBJECT'));
     // reasoning 由主进程固定关闭：渲染层连提交该字段都不允许。
     if ('reasoningEffort' in payload.params)
-      return invalid('translation 不接受 params.reasoningEffort');
+      return invalid(tCurrent('validation.error.TRANSLATION_REASONING_UNSUPPORTED'));
   }
   return null;
 };
@@ -442,7 +458,7 @@ const agentApproval = object(
       (p as Record<string, unknown>).decision === 'approved' ||
       (p as Record<string, unknown>).decision === 'denied'
         ? null
-        : invalid('decision 无效'),
+        : invalid(tCurrent('validation.error.DECISION')),
   ],
 );
 const aiEmbed = object(['texts'], [stringArrayField('texts')]);
@@ -459,7 +475,7 @@ const timeline: PayloadValidator = (payload) => {
     limit !== undefined &&
     (typeof limit !== 'number' || !Number.isInteger(limit) || limit < 1 || limit > 500)
   ) {
-    return invalid('limit 必须是 1 到 500 的整数');
+    return invalid(tCurrent('validation.error.LIMIT'));
   }
   return null;
 };
@@ -482,7 +498,7 @@ const confidence = object(
       const pageId = (payload as Record<string, unknown>).pageId;
       return typeof pageId === 'number' && Number.isInteger(pageId) && pageId > 0
         ? null
-        : invalid('pageId 必须是正整数');
+        : invalid(tCurrent('validation.error.PAGE_ID_POSITIVE_INTEGER'));
     },
   ],
 );
@@ -525,39 +541,44 @@ const vaultCancelOperation = object(['operationId'], [stringField('operationId')
 
 // Settings validators（DEV-016）：浅校验（类型+结构），深度校验交给 merge 函数。
 const settingsSetGlobal: PayloadValidator = (payload) => {
-  if (!isPlainObject(payload)) return invalid('payload 必须是普通对象');
+  if (!isPlainObject(payload)) return invalid(tCurrent('validation.error.PAYLOAD_OBJECT'));
   if (typeof payload.patch !== 'object' || payload.patch === null || Array.isArray(payload.patch)) {
-    return invalid('patch 必须是对象');
+    return invalid(tCurrent('validation.error.PATCH_OBJECT'));
   }
   const allowedTop = ['appearance', 'updates', 'startup', 'git', 'network'];
   for (const key of Object.keys(payload.patch as Record<string, unknown>)) {
-    if (!allowedTop.includes(key)) return invalid(`patch 未知字段 ${key}`);
+    if (!allowedTop.includes(key))
+      return invalid(tCurrent('validation.error.PATCH_UNKNOWN_FIELD', { key }));
   }
   return null;
 };
 
 const settingsSetVault: PayloadValidator = (payload) => {
-  if (!isPlainObject(payload)) return invalid('payload 必须是普通对象');
+  if (!isPlainObject(payload)) return invalid(tCurrent('validation.error.PAYLOAD_OBJECT'));
   if (typeof payload.patch !== 'object' || payload.patch === null || Array.isArray(payload.patch)) {
-    return invalid('patch 必须是对象');
+    return invalid(tCurrent('validation.error.PATCH_OBJECT'));
   }
   const allowedTop = ['editor', 'git', 'binary'];
   for (const key of Object.keys(payload.patch as Record<string, unknown>)) {
-    if (!allowedTop.includes(key)) return invalid(`patch 未知字段 ${key}`);
+    if (!allowedTop.includes(key))
+      return invalid(tCurrent('validation.error.PATCH_UNKNOWN_FIELD', { key }));
   }
   return null;
 };
 
 const settingsSetShortcuts: PayloadValidator = (payload) => {
-  if (!isPlainObject(payload)) return invalid('payload 必须是普通对象');
-  if (!Array.isArray(payload.shortcuts)) return invalid('shortcuts 必须是数组');
+  if (!isPlainObject(payload)) return invalid(tCurrent('validation.error.PAYLOAD_OBJECT'));
+  if (!Array.isArray(payload.shortcuts))
+    return invalid(tCurrent('validation.error.SHORTCUTS_ARRAY'));
   for (const item of payload.shortcuts as unknown[]) {
-    if (!isPlainObject(item)) return invalid('shortcuts 每项必须是对象');
+    if (!isPlainObject(item)) return invalid(tCurrent('validation.error.SHORTCUTS_ITEM_OBJECT'));
     const entry = item as Record<string, unknown>;
-    if (typeof entry.commandId !== 'string') return invalid('shortcuts[*].commandId 必须是字符串');
-    if (typeof entry.key !== 'string') return invalid('shortcuts[*].key 必须是字符串');
+    if (typeof entry.commandId !== 'string')
+      return invalid(tCurrent('validation.error.SHORTCUTS_COMMAND_ID_STRING'));
+    if (typeof entry.key !== 'string')
+      return invalid(tCurrent('validation.error.SHORTCUTS_KEY_STRING'));
     if (entry.disabled !== undefined && typeof entry.disabled !== 'boolean') {
-      return invalid('shortcuts[*].disabled 必须是布尔值');
+      return invalid(tCurrent('validation.error.SHORTCUTS_DISABLED_BOOLEAN'));
     }
   }
   return null;
@@ -568,15 +589,18 @@ const settingsImportShortcuts = object(['json'], [stringField('json')]);
 const settingsSearch = object(['query'], [stringField('query')]);
 
 const settingsSaveExportFile: PayloadValidator = (payload) => {
-  if (!isPlainObject(payload)) return invalid('payload 必须是普通对象');
-  if (typeof payload.suggestedName !== 'string') return invalid('suggestedName 必须是字符串');
-  if (typeof payload.contents !== 'string') return invalid('contents 必须是字符串');
+  if (!isPlainObject(payload)) return invalid(tCurrent('validation.error.PAYLOAD_OBJECT'));
+  if (typeof payload.suggestedName !== 'string')
+    return invalid(tCurrent('validation.error.SUGGESTED_NAME_STRING'));
+  if (typeof payload.contents !== 'string')
+    return invalid(tCurrent('validation.error.CONTENTS_STRING'));
   return null;
 };
 const saveLayout: PayloadValidator = (payload) => {
-  if (!isPlainObject(payload)) return invalid('payload 必须是普通对象');
-  if (Object.keys(payload).some((key) => key !== 'layout')) return invalid('未知字段');
-  if (!isPlainObject(payload.layout)) return invalid('layout 必须是对象');
+  if (!isPlainObject(payload)) return invalid(tCurrent('validation.error.PAYLOAD_OBJECT'));
+  if (Object.keys(payload).some((key) => key !== 'layout'))
+    return invalid(tCurrent('validation.error.UNKNOWN_FIELD_TOP'));
+  if (!isPlainObject(payload.layout)) return invalid(tCurrent('validation.error.LAYOUT_OBJECT'));
   const layout = payload.layout;
   const fields: Record<string, 'number' | 'boolean' | 'nullable-string' | 'string-array'> = {
     sidebarWidth: 'number',
@@ -592,22 +616,23 @@ const saveLayout: PayloadValidator = (payload) => {
     // DEV-022 页签顺序；旧配置缺省时读取侧按空数组兜底。
     tabOrder: 'string-array',
   };
-  if (Object.keys(layout).some((key) => !(key in fields))) return invalid('layout 包含未知字段');
+  if (Object.keys(layout).some((key) => !(key in fields)))
+    return invalid(tCurrent('validation.error.LAYOUT_UNKNOWN_FIELD'));
   for (const [key, type] of Object.entries(fields)) {
     const value = layout[key];
     // DEV-003 layouts may predate newer tree fields; missing fields are defaulted on read.
     if (value === undefined) continue;
     if (type === 'number' && (typeof value !== 'number' || !Number.isFinite(value)))
-      return invalid(`layout.${key} 必须是有限数字`);
+      return invalid(tCurrent('validation.error.LAYOUT_FIELD_FINITE_NUMBER', { key: `layout.${key}` }));
     if (type === 'boolean' && typeof value !== 'boolean')
-      return invalid(`layout.${key} 必须是布尔值`);
+      return invalid(tCurrent('validation.error.LAYOUT_FIELD_BOOLEAN', { key: `layout.${key}` }));
     if (type === 'nullable-string' && value !== null && typeof value !== 'string')
-      return invalid(`layout.${key} 必须是字符串或 null`);
+      return invalid(tCurrent('validation.error.LAYOUT_FIELD_STRING_OR_NULL', { key: `layout.${key}` }));
     if (
       type === 'string-array' &&
       (!Array.isArray(value) || value.some((item) => typeof item !== 'string'))
     )
-      return invalid(`layout.${key} 必须是字符串数组`);
+      return invalid(tCurrent('validation.error.LAYOUT_FIELD_STRING_ARRAY', { key: `layout.${key}` }));
   }
   return null;
 };
@@ -618,7 +643,9 @@ const chatSave = object(
   ['session', 'status', 'error'],
   [
     (p) =>
-      isPlainObject((p as Record<string, unknown>).session) ? null : invalid('session 必须是对象'),
+      isPlainObject((p as Record<string, unknown>).session)
+        ? null
+        : invalid(tCurrent('validation.error.SESSION_OBJECT')),
     (p) => {
       const status = (p as Record<string, unknown>).status;
       if (status === undefined) return null;
@@ -627,7 +654,7 @@ const chatSave = object(
         status === 'cancelled' ||
         status === 'failed'
         ? null
-        : invalid('status 必须是 complete/streaming/cancelled/failed');
+        : invalid(tCurrent('validation.error.STATUS_VALUE'));
     },
   ],
 );
@@ -655,7 +682,7 @@ const pluginObjectChannels = [
   'plugins:rpc',
 ] as const;
 const pluginObject: PayloadValidator = (payload) =>
-  isPlainObject(payload) ? null : invalid('payload 必须是对象');
+  isPlainObject(payload) ? null : invalid(tCurrent('validation.error.PAYLOAD_OBJECT'));
 
 const skillsObjectChannels = [
   'skills:setEnabled',
@@ -665,18 +692,19 @@ const skillsObjectChannels = [
 ] as const;
 
 const updateChannel: PayloadValidator = (payload) => {
-  if (!isPlainObject(payload)) return invalid('payload 必须是普通对象');
+  if (!isPlainObject(payload)) return invalid(tCurrent('validation.error.PAYLOAD_OBJECT'));
   const channel = (payload as Record<string, unknown>).channel;
   if (channel !== 'stable' && channel !== 'beta' && channel !== 'alpha')
-    return invalid('channel 必须是 stable/beta/alpha');
+    return invalid(tCurrent('validation.error.CHANNEL'));
   return null;
 };
 
 const updateSettingsPatch: PayloadValidator = (payload) => {
-  if (!isPlainObject(payload)) return invalid('payload 必须是普通对象');
+  if (!isPlainObject(payload)) return invalid(tCurrent('validation.error.PAYLOAD_OBJECT'));
   const allowed = ['channel', 'autoDownload', 'checkOnLaunch'] as const;
   for (const key of Object.keys(payload)) {
-    if (!allowed.includes(key as (typeof allowed)[number])) return invalid(`未知字段 ${key}`);
+    if (!allowed.includes(key as (typeof allowed)[number]))
+      return invalid(tCurrent('validation.error.UNKNOWN_FIELD', { key }));
   }
   const p = payload as Record<string, unknown>;
   if (
@@ -685,12 +713,12 @@ const updateSettingsPatch: PayloadValidator = (payload) => {
     p.channel !== 'beta' &&
     p.channel !== 'alpha'
   ) {
-    return invalid('channel 必须是 stable/beta/alpha');
+    return invalid(tCurrent('validation.error.CHANNEL'));
   }
   if (p.autoDownload !== undefined && typeof p.autoDownload !== 'boolean')
-    return invalid('autoDownload 必须是布尔值');
+    return invalid(tCurrent('validation.error.AUTO_DOWNLOAD_BOOLEAN'));
   if (p.checkOnLaunch !== undefined && typeof p.checkOnLaunch !== 'boolean')
-    return invalid('checkOnLaunch 必须是布尔值');
+    return invalid(tCurrent('validation.error.CHECK_ON_LAUNCH_BOOLEAN'));
   return null;
 };
 
@@ -789,7 +817,9 @@ const VALIDATORS: Partial<Record<IpcChannel, PayloadValidator>> = {
       [
         (p) => {
           const k = (p as Record<string, unknown>).kind;
-          return k === 'xlsx' || k === 'mindmap' ? null : invalid('kind 必须是 xlsx 或 mindmap');
+          return k === 'xlsx' || k === 'mindmap'
+            ? null
+            : invalid(tCurrent('validation.error.BINARY_KIND'));
         },
         optionalField('title', 'string'),
         optionalField('targetDir', 'string'),
@@ -818,7 +848,8 @@ export function validatePayload<C extends IpcChannel>(
 ): ValidationError | null {
   const validator = VALIDATORS[channel];
   if (validator) return validator(payload);
-  if (payload !== undefined && payload !== null) return invalid(`${channel} 不接受 payload`);
+  if (payload !== undefined && payload !== null)
+    return invalid(tCurrent('validation.error.CHANNEL_NO_PAYLOAD', { channel }));
   return null;
 }
 

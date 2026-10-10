@@ -98,7 +98,8 @@
 - [x] 阶段③第十九批（2026-10-10）：binary / xlsx / mindmap 服务状态与校验错误成文；文档数据、路径和底层解析错误保留边界。新增 17 key，消息目录 zh/en 各 1355 key；门禁 195 files / 1847 passed / 3 skipped。
 - [x] 阶段③第二十批（2026-10-10）：Chat session 与 Skill 服务校验错误成文；会话正文 / Skill 名称 / 插件内容保留边界。新增 9 key，消息目录 zh/en 各 1364 key；门禁 195 files / 1847 passed / 3 skipped。
 - [x] 阶段③第二十一批（2026-10-10）：preload / IPC registrar / document service / metadata store 契约错误成文；通道名、路径与 IPC 数据保留边界。新增 8 key，消息目录 zh/en 各 1372 key；门禁 195 files / 1848 passed / 3 skipped。
-- [ ] 阶段③剩余：主进程用户可读状态与校验错误残留继续按目录扫描收敛；GitService / vault / doctor / DOCX / FS / AI service / plugin manifest / settings IPC / agent gateway/tools / confidence / binary / chat / skill / preload 服务状态已完成
+- [x] 阶段③第二十二批（2026-10-10）：IPC validation 框架与 payload 校验错误成文；校验 code 不变，检索关键词保留数据边界。新增 67 key，消息目录 zh/en 各 1439 key；门禁 195 files / 1848 passed / 3 skipped。
+- [ ] 阶段③剩余：主进程用户可读状态与校验错误残留继续按目录扫描收敛；GitService / vault / doctor / DOCX / FS / AI service / plugin manifest / settings IPC / agent gateway/tools / confidence / binary / chat / skill / preload / IPC validation 服务状态已完成
 - [ ] 阶段④既有测试中文断言迁移
 - [ ] **NOT_RUN / 未达门槛**：按 ADR「en-US 全 UI 无中文残留」，当前不声称桌面端双语完成
 
