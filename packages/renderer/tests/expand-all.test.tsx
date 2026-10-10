@@ -2,6 +2,8 @@
 import { act } from 'react';
 import { createRoot } from 'react-dom/client';
 import { afterEach, describe, expect, it } from 'vitest';
+import { CATALOGS, translate } from '@nexnote/shared';
+import { setLanguage } from '../src/lib/i18n';
 import { createEditor } from '@nexnote/kernel';
 import { registerEditor } from '../src/editor/active-editor';
 import {
@@ -15,6 +17,12 @@ import { sourceFoldState } from '../src/editor/source/heading-fold';
 import { useTabStore, type TabDescriptor } from '../src/stores/tab-store';
 
 globalThis.IS_REACT_ACT_ENVIRONMENT = true;
+const expectText = (
+  language: 'zh-CN' | 'en-US',
+  key: string,
+  params?: Record<string, string | number>,
+): string => translate(CATALOGS[language], key, language, params);
+
 const originalStore = useTabStore.getState();
 const cleanups: Array<() => void | Promise<void>> = [];
 
@@ -30,6 +38,7 @@ afterEach(async () => {
   for (const cleanup of cleanups.splice(0).reverse()) await cleanup();
   useTabStore.setState({ tabs: originalStore.tabs, activeTabId: originalStore.activeTabId });
   document.body.innerHTML = '';
+  setLanguage('zh-CN');
 });
 
 function Announcement({ tabId }: { tabId: string }) {
@@ -99,7 +108,7 @@ describe('DEV-056 当前 tab / 当前编辑视图全部展开', () => {
       );
     });
     const activeFirst = host.querySelector('[data-testid="announcement-active"]');
-    expect(activeFirst?.textContent).toBe('当前页面没有折叠章节');
+    expect(activeFirst?.textContent).toBe(expectText('zh-CN', 'heading.noFoldedHeadings'));
     expect(activeFirst).not.toBe(activeBefore);
     expect(host.querySelector('[data-testid="announcement-background"]')).toBe(backgroundBefore);
 
@@ -109,6 +118,33 @@ describe('DEV-056 当前 tab / 当前编辑视图全部展开', () => {
       );
     });
     expect(host.querySelector('[data-testid="announcement-active"]')).not.toBe(activeFirst);
+  });
+
+  it('展开反馈按当前语言成文（ADR-0023）', async () => {
+    const host = document.createElement('div');
+    document.body.append(host);
+    const root = createRoot(host);
+    cleanups.push(async () => act(async () => root.unmount()));
+
+    setLanguage('en-US');
+    await act(async () => root.render(<Announcement tabId="i18n" />));
+    await act(async () => {
+      window.dispatchEvent(
+        new CustomEvent(HEADING_FOLDS_EXPANDED_EVENT, { detail: { tabId: 'i18n', count: 0 } }),
+      );
+    });
+    expect(host.querySelector('[data-testid="announcement-i18n"]')?.textContent).toBe(
+      expectText('en-US', 'heading.noFoldedHeadings'),
+    );
+
+    await act(async () => {
+      window.dispatchEvent(
+        new CustomEvent(HEADING_FOLDS_EXPANDED_EVENT, { detail: { tabId: 'i18n', count: 2 } }),
+      );
+    });
+    expect(host.querySelector('[data-testid="announcement-i18n"]')?.textContent).toBe(
+      expectText('en-US', 'heading.foldsExpanded', { count: 2 }),
+    );
   });
 
   it('Markdown 命令按 activeTabId 精确寻址，不串改后来注册的后台视图', () => {

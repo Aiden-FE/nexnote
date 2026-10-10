@@ -101,8 +101,9 @@
 - [x] 阶段③第二十二批（2026-10-10）：IPC validation 框架与 payload 校验错误成文；校验 code 不变，检索关键词保留数据边界。新增 67 key，消息目录 zh/en 各 1439 key；门禁 195 files / 1848 passed / 3 skipped。
 - [x] 阶段③第二十三批（2026-10-10）：主进程残留棘轮门禁 + 漏网服务错误收敛。新增 `main-i18n-residue.test.ts`，剥离行/块注释扫描 `main/src` 并以 `fixtures/main-i18n-residue.json` 建立**只减不增**基线（每条残留必须带保留理由）；覆盖 Git doctor 中文 fallback（已知 code 查词典、未知 code 保留脱敏运行时消息）、本地 embedding 不支持对话/未知模型、secret store 不可用与 legacy blob、binary host ack 超时、retrieval 服务不可用、DOCX 对话框/大小、xlsx/xmind 解析错误、docx zip/XML 损坏、git IPC 无 vault / doctor 未初始化、更新通道与 Mac 手动下载、vault 绝对路径、插件审计明细。错误 code 与行为不变。新增 35 key，消息目录 zh/en 各 1474 key；基线从 171 收敛至 134 条（10 类保留边界）；门禁 196 files / 1855 passed / 3 skipped。
 - [x] 阶段③第二十四批（2026-10-10）：binary-host 独立编辑器宿主双语 + 跨 WebContentsView 语言同步。宿主加载页、丢弃本地修改确认、保存/冲突/加载状态、思维导图工具栏/抽屉、结构/主题/标记/形状枚举全部改走消息目录；结构/主题/标记/形状目录改为稳定 key，由宿主按当前语言成文；`BinaryEditorCommand` 新增 `language`，ack pull 模型首命令总是返回当前语言，设置变更时 `applyLanguage` 广播；主进程残留门禁扩展为 main 棘轮 + binary-host 源码零 CJK。新增 77 key，消息目录 zh/en 各 1551 key；binary-host 剥离注释后 UI CJK 为 0；门禁 196 files / 1861 passed / 3 skipped。
+- [x] 阶段④第一批（2026-10-11）：标题折叠 aria-live 反馈与新建菜单测试迁移。补上 `use-heading-fold-announcement.ts` 漏网中文（新增 `heading.foldsExpanded` / `heading.noFoldedHeadings`），`expand-all` 测试改为词典断言并补 en-US 分支；`new-note-menu` 补 en-US 渲染断言并做 CJK 残留检查。新增 2 key，消息目录 zh/en 各 1553 key；门禁 196 files / 1863 passed / 3 skipped。
 - [ ] 阶段③剩余：主进程用户可读状态与校验错误残留继续按棘轮基线收敛；GitService / vault / doctor / DOCX / FS / AI service / plugin manifest / settings IPC / agent gateway/tools / confidence / binary / chat / skill / preload / IPC validation 服务状态已完成
-- [ ] 阶段④既有测试中文断言迁移
+- [ ] 阶段④剩余：继续按「真实 UI 断言 + 内容/服务消息边界」分批迁移既有测试
 - [ ] **NOT_RUN / 未达门槛**：按 ADR「en-US 全 UI 无中文残留」，当前不声称桌面端双语完成
 
 ### ADR-0024 验收证据（2026-10-09）

@@ -293,3 +293,11 @@ status: in_progress
   CJK 必须为 0。新增 77 key，zh/en 各 1551 key；binary editor host / binary-host session /
   mindmap editor UI / catalog targeted tests 通过；全量门禁 196 files /
   1861 passed / 3 skipped 退出码 0。
+- 阶段④第一批（2026-10-11）：修正一处阶段③漏网的标题折叠 aria-live 反馈
+  （`use-heading-fold-announcement.ts` 原为硬编码中文），新增
+  `heading.foldsExpanded` / `heading.noFoldedHeadings` 词典 key；
+  `expand-all` 测试改为 shared 词典断言并补 en-US 反馈分支，`new-note-menu`
+  测试补 en-US 渲染断言与 CJK 残留检查。测试断言不再绑定硬编码英文文本，
+  而是从 `translate(CATALOGS[language], …)` 取预期。新增 2 key，zh/en 各 1553 key；
+  expand-all / new-note-menu / catalog targeted tests 通过；全量门禁 196 files /
+  1863 passed / 3 skipped 退出码 0。

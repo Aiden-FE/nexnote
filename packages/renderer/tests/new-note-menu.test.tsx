@@ -2,12 +2,15 @@
 import { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { CATALOGS, translate } from '@nexnote/shared';
 import '../src/features/sidebar/page-tree';
 import { sidebarPanelRegistry } from '../src/registries';
 import { usePageTreeStore } from '../src/stores/page-tree-store';
 import { useTabStore } from '../src/stores/tab-store';
 import { useUiStore } from '../src/stores/ui-store';
+import { setLanguage } from '../src/lib/i18n';
 globalThis.IS_REACT_ACT_ENVIRONMENT = true;
+const en = (key: string): string => translate(CATALOGS['en-US'], key, 'en-US');
 
 type Handler = (payload: Record<string, unknown>) => unknown;
 
@@ -99,6 +102,7 @@ afterEach(async () => {
   root = null;
   container = null;
   delete (window as unknown as { nexnote?: unknown }).nexnote;
+  setLanguage('zh-CN');
 });
 
 describe('页面树「新建」下拉菜单（DEV-084 含空白二进制，DEV-096 移除导入）', () => {
@@ -131,6 +135,21 @@ describe('页面树「新建」下拉菜单（DEV-084 含空白二进制，DEV-0
     expect(badgeOf(items[2])).toBe('XLSX');
     expect(items[3].textContent).toContain('新建空白 XMind');
     expect(badgeOf(items[3])).toBe('XMIND');
+  });
+
+  it('菜单文案按当前语言成文，en-US 无中文残留（ADR-0023）', async () => {
+    setLanguage('en-US');
+    const view = await mountPageTree();
+    const trigger = view.querySelector<HTMLElement>('[data-testid="tree-new-note-menu"]')!;
+    act(() => trigger.click());
+    const menu = view.querySelector('[data-testid="new-note-menu"]')!;
+    const items = [...menu.querySelectorAll<HTMLElement>('[role="menuitem"]')];
+
+    expect(items[0]?.textContent).toContain(en('sidebar.newMenu.newBlock'));
+    expect(items[1]?.textContent).toContain(en('sidebar.newMenu.newMarkdown'));
+    expect(items[2]?.textContent).toContain(en('sidebar.newMenu.newXlsx'));
+    expect(items[3]?.textContent).toContain(en('sidebar.newMenu.newXmind'));
+    expect(menu.textContent ?? '').not.toMatch(/[\u4e00-\u9fff]/);
   });
 
   it('默认项（块编辑）经 fs:createNote 新建并按块编辑模式打开', async () => {

@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { HEADING_FOLDS_EXPANDED_EVENT, type HeadingFoldsExpandedDetail } from './expand-all';
+import { tCurrent } from '@nexnote/shared';
 
 export interface HeadingFoldAnnouncement {
   key: number;
@@ -19,7 +20,10 @@ export function useHeadingFoldAnnouncement(tabId: string): HeadingFoldAnnounceme
       if (detail.tabId !== tabId) return;
       setAnnouncement((current) => ({
         key: current.key + 1,
-        message: detail.count > 0 ? `已展开 ${detail.count} 个折叠章节` : '当前页面没有折叠章节',
+        message:
+          detail.count > 0
+            ? tCurrent('heading.foldsExpanded', { count: detail.count })
+            : tCurrent('heading.noFoldedHeadings'),
       }));
     };
     window.addEventListener(HEADING_FOLDS_EXPANDED_EVENT, announce);

@@ -323,6 +323,8 @@ export const MESSAGES_ZH_CN = {
   // —— 标题折叠
   'heading.unfold': '展开章节',
   'heading.fold': '折叠章节',
+  'heading.foldsExpanded': '已展开 {count} 个折叠章节',
+  'heading.noFoldedHeadings': '当前页面没有折叠章节',
 
   // —— 源码模式
   'source.saveStatus.saving': '保存中…',
@@ -1928,6 +1930,8 @@ export const MESSAGES_EN_US = {
   // —— Heading fold
   'heading.unfold': 'Unfold section',
   'heading.fold': 'Fold section',
+  'heading.foldsExpanded': 'Expanded {count} folded sections',
+  'heading.noFoldedHeadings': 'There are no folded sections on this page',
 
   // —— Source mode
   'source.saveStatus.saving': 'Saving…',
