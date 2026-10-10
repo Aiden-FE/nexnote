@@ -35,6 +35,8 @@ import {
   deriveAiProxyUrlFromCache,
   deriveNetworkProxyFromCache,
 } from './settings/network-proxy';
+import { getCurrentLanguage, setCurrentLanguage } from '@nexnote/shared';
+import { tCurrent } from '@nexnote/shared';
 import { VaultOperationsController } from './vault/vault-operations-controller';
 import { VaultCloneController } from './vault/vault-clone-controller';
 import { BUILTIN_PLUGIN_MANIFESTS } from './plugins/builtin/builtin-manifests';
@@ -229,6 +231,8 @@ async function bootstrap(): Promise<void> {
 
   // DEV-016：全局设置单一权威（替代 AppStore 中的零散字段 + localStorage 主题）。
   const settings = new SettingsService(join(app.getPath('userData'), 'nexnote-settings.json'));
+  // ADR-0023 stage 3：主进程 native menu/dialog 与渲染层共享同一当前语言权威。
+  setCurrentLanguage(settings.get().appearance.language);
   const applyGlobalSettings = (global: ReturnType<SettingsService['get']>): void => {
     const useSystemGit = global.git.useSystemGit;
     git.setUseSystemGit(useSystemGit);
@@ -247,6 +251,9 @@ async function bootstrap(): Promise<void> {
   const updaterSettings = extractUpdateSettings(settings);
   if (!isSmokeMode) syncUpdaterSettings(settings, appStore);
   settings.onChange((global) => {
+    const languageChanged = getCurrentLanguage() !== global.appearance.language;
+    setCurrentLanguage(global.appearance.language);
+    if (languageChanged) windows?.buildApplicationMenu();
     applyGlobalSettings(global);
     void (async () => {
       const root = vaultSession.getCurrent()?.root;
@@ -302,7 +309,7 @@ async function bootstrap(): Promise<void> {
       async pickDirectory() {
         const win = windows?.getMainWindow() ?? null;
         const options: Electron.OpenDialogOptions = {
-          title: '选择文件夹',
+          title: tCurrent('app.dialog.pickDirectory'),
           properties: ['openDirectory', 'createDirectory'],
         };
         const result = win
@@ -313,7 +320,7 @@ async function bootstrap(): Promise<void> {
       async pickFile(filters) {
         const win = windows?.getMainWindow() ?? null;
         const options: Electron.OpenDialogOptions = {
-          title: '选择文件',
+          title: tCurrent('app.dialog.pickFile'),
           properties: ['openFile'],
           ...(filters ? { filters } : {}),
         };
@@ -418,10 +425,10 @@ async function bootstrap(): Promise<void> {
         log('binary editor flush failed; keeping the window open', error);
         void dialog.showMessageBox(mainWindow, {
           type: 'error',
-          title: '无法关闭 NexNote',
-          message: '有二进制文档未能保存。编辑器仍保持打开，请重试保存后再关闭。',
+          title: tCurrent('app.dialog.binaryFlush.title'),
+          message: tCurrent('app.dialog.binaryFlush.message'),
           detail: error instanceof Error ? error.message : String(error),
-          buttons: ['返回'],
+          buttons: [tCurrent('app.dialog.binaryFlush.button')],
         });
       });
   });

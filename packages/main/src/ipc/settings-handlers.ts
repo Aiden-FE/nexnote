@@ -1,5 +1,6 @@
 import { ok, err } from '@nexnote/shared';
 import type { GlobalSettings, Result, ShortcutOverride, VaultSettings } from '@nexnote/shared';
+import { tCurrent } from '@nexnote/shared';
 import { readVaultSettings, saveVaultSettings } from '../vault/vault-manager';
 import type { IpcRegistrar } from './registrar';
 
@@ -85,8 +86,8 @@ export function registerSettingsHandlers(registrar: IpcRegistrar): void {
     'settings:pickImportFile',
     async (_payload, services): Promise<Result<string | null>> => {
       const filePath = await services.dialogs.pickFile([
-        { name: 'NexNote 快捷键', extensions: ['json'] },
-        { name: '所有文件', extensions: ['*'] },
+        { name: tCurrent('settings.dialog.shortcutsFilter'), extensions: ['json'] },
+        { name: tCurrent('settings.dialog.allFilesFilter'), extensions: ['*'] },
       ]);
       if (!filePath) return ok(null);
       // 主进程读完文件内容，把字符串回传；渲染层绝不直接访问文件系统。
@@ -104,11 +105,11 @@ export function registerSettingsHandlers(registrar: IpcRegistrar): void {
     const { dialog } = await import('electron');
     const { writeFile } = await import('node:fs/promises');
     const result = await dialog.showSaveDialog({
-      title: '导出快捷键',
+      title: tCurrent('settings.dialog.exportShortcuts'),
       defaultPath: payload.suggestedName || 'nexnote-shortcuts.json',
       filters: [
-        { name: 'NexNote 快捷键', extensions: ['json'] },
-        { name: '所有文件', extensions: ['*'] },
+        { name: tCurrent('settings.dialog.shortcutsFilter'), extensions: ['json'] },
+        { name: tCurrent('settings.dialog.allFilesFilter'), extensions: ['*'] },
       ],
     });
     if (result.canceled || !result.filePath) return ok(null);

@@ -111,3 +111,9 @@ status: in_progress
   词典成文。新增 85 key，消息目录 zh/en 各 725 key。
   `properties-confidence` / `field-catalog` / `source-mode-markdown-panel`
   新增 en-US 渲染残留检查；门禁 193 files / 1831 passed / 3 skipped。
+- 阶段③第一批（2026-10-10）：主进程接入 shared 当前语言权威；原生菜单四组
+  自定义条目、目录/文件选择、二进制保存失败对话框和快捷键导入/导出对话框
+  迁移，界面语言切换时重建原生菜单。新增 16 key，消息目录 zh/en 各 741 key。
+  新增 `window-menu.test.ts` 锁定 zh/en 菜单模板与菜单动作；门禁
+  195 files / 1833 passed / 3 skipped。updater / Git / doctor 消息仍在阶段③
+  剩余批次处理。
