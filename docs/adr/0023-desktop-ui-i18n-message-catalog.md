@@ -160,3 +160,10 @@ status: in_progress
   新增 26 key，zh/en 各 1101 key。`vault-manager` / IPC registrar /
   doctor / catalog targeted tests 通过；门禁 195 files / 1842 passed /
   3 skipped 退出码 0。
+- 阶段③第五批（2026-10-10）：DOCX 导入/导出服务状态与旧版打开提示迁移。
+  DocxService 应用自有校验/写入/导出错误按 code 对应词典成文；底层 ZIP /
+  XML / 上游解压细节与路径数据保留原文边界。新增 10 key，zh/en 各 1111 key。
+  `open-document` 新增 en-US notice 测试；`docx-service` / catalog targeted
+  tests 通过；全量门禁 195 files / 1843 passed / 3 skipped 退出码 0
+  （`list-dev069` 曾出现退出进程后的 ProseMirror DOM timer unhandled error，
+  单独重跑通过，全量重跑干净退出 0）。

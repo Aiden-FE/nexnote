@@ -7,6 +7,7 @@ import {
   type MarkdownView,
 } from '../stores/tab-store';
 import { useSettingsStore } from '../stores/settings-store';
+import { t } from '../lib/i18n';
 
 /** DEV-074：vault 设置的「二进制文档 tab 并发上限」（默认 3，设置内可放宽）。 */
 function binaryMaxConcurrent(): number {
@@ -30,7 +31,7 @@ export async function openDocumentTab(
     getTabStore()
       .getState()
       .setDocxNotice(
-        'DOCX 不再支持在知识库内打开。请用「文件 → 导入 Word 文档（转为块文档）」重新导入。',
+        t('docx.notice.legacyOpenUnsupported'),
       );
     return { kind: 'docx' };
   }

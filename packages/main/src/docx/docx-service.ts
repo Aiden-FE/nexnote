@@ -5,6 +5,7 @@ import { formatForPath } from '../document/document-domain';
 import { MetadataStore } from '../document/metadata-store';
 import { projectDocxToMarkdown } from './docx-markdown';
 import { markdownToDocx } from './docx-writer';
+import { tCurrent } from '@nexnote/shared';
 
 export interface DocxImportInput {
   /** renderer 已持有字节时走 base64（外部路径一律经主进程 dialogs.pickFile 后转 base64）。 */
@@ -30,7 +31,7 @@ export class DocxService {
 
   private requireRoot(): string {
     const root = this.getRoot();
-    if (!root) throw new DocxServiceError('当前未打开知识库', 'NO_VAULT');
+    if (!root) throw new DocxServiceError(tCurrent('docx.error.NO_VAULT'), 'NO_VAULT');
     return root;
   }
 
@@ -42,7 +43,7 @@ export class DocxService {
   async importDocx(input: DocxImportInput, targetDir: string): Promise<{ path: string }> {
     const root = this.requireRoot();
     if (!input.base64) {
-      throw new DocxServiceError('必须提供 DOCX base64 数据', 'DOCX_IMPORT_SOURCE');
+      throw new DocxServiceError(tCurrent('docx.error.DOCX_IMPORT_SOURCE_MISSING'), 'DOCX_IMPORT_SOURCE');
     }
     const encoded = input.base64;
     if (
@@ -50,17 +51,17 @@ export class DocxService {
       encoded.length % 4 !== 0 ||
       !/^[A-Za-z0-9+/]*={0,2}$/.test(encoded)
     ) {
-      throw new DocxServiceError('DOCX base64 无效', 'DOCX_IMPORT_SOURCE');
+      throw new DocxServiceError(tCurrent('docx.error.DOCX_IMPORT_SOURCE_INVALID'), 'DOCX_IMPORT_SOURCE');
     }
     let bytes: Buffer;
     try {
       bytes = Buffer.from(encoded, 'base64');
     } catch {
-      throw new DocxServiceError('DOCX base64 无效', 'DOCX_IMPORT_SOURCE');
+      throw new DocxServiceError(tCurrent('docx.error.DOCX_IMPORT_SOURCE_INVALID'), 'DOCX_IMPORT_SOURCE');
     }
-    if (bytes.length === 0) throw new DocxServiceError('DOCX 内容为空', 'DOCX_INVALID_ZIP');
+    if (bytes.length === 0) throw new DocxServiceError(tCurrent('docx.error.DOCX_EMPTY'), 'DOCX_INVALID_ZIP');
     if (bytes.length > MAX_DOCX_BYTES) {
-      throw new DocxServiceError('DOCX 文件过大', 'DOCX_TOO_LARGE');
+      throw new DocxServiceError(tCurrent('docx.error.DOCX_TOO_LARGE'), 'DOCX_TOO_LARGE');
     }
     const raw = (input.name ?? '导入文档.docx').trim();
     const base =
@@ -77,7 +78,7 @@ export class DocxService {
     }
     const result = await this.fs.createTextFile(relPath, `${markdown}\n`, true);
     if (!result.created) {
-      throw new DocxServiceError(`写入块文档失败: ${relPath}`, 'DOCX_IMPORT_WRITE');
+      throw new DocxServiceError(tCurrent('docx.error.DOCX_IMPORT_WRITE', { path: relPath }), 'DOCX_IMPORT_WRITE');
     }
     await new MetadataStore(root).write(relPath, {
       format: 'native-block',
@@ -95,7 +96,7 @@ export class DocxService {
     const root = this.requireRoot();
     const format = formatForPath(relPath);
     if (format !== 'markdown') {
-      throw new DocxServiceError(`导出源必须是 Markdown: ${relPath}`, 'DOCX_EXPORT_SOURCE');
+      throw new DocxServiceError(tCurrent('docx.error.DOCX_EXPORT_SOURCE', { path: relPath }), 'DOCX_EXPORT_SOURCE');
     }
     const markdown = await this.fs.readTextFile(relPath);
     const bytes = markdownToDocx(markdown);
@@ -103,10 +104,10 @@ export class DocxService {
     const stem = path.posix.basename(relPath, path.posix.extname(relPath));
     if (targetPath !== undefined) {
       if (formatForPath(targetPath) !== 'docx') {
-        throw new DocxServiceError('导出目标必须是 .docx', 'DOCX_EXPORT_TARGET');
+        throw new DocxServiceError(tCurrent('docx.error.DOCX_EXPORT_TARGET'), 'DOCX_EXPORT_TARGET');
       }
       if (targetPath !== relPath && (await this.fs.exists(targetPath))) {
-        throw new DocxServiceError(`目标已存在: ${targetPath}`, 'TARGET_EXISTS');
+        throw new DocxServiceError(tCurrent('docx.error.TARGET_EXISTS', { path: targetPath }), 'TARGET_EXISTS');
       }
       const written = await this.fs.importBinaryFile(targetPath, bytes, { createParentDirs: true });
       return { path: written };

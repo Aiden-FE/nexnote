@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { setLanguage } from '../src/lib/i18n';
 
 const invokeMock = vi.fn();
 
@@ -40,7 +41,8 @@ vi.mock('../src/stores/settings-store', () => ({
 }));
 
 describe('openDocumentTab 统一打开入口', () => {
-  beforeEach(() => {
+beforeEach(() => {
+  setLanguage('zh-CN');
     invokeMock.mockReset();
     openPageMock.mockClear();
     openBinaryMock.mockClear();
@@ -51,12 +53,22 @@ describe('openDocumentTab 统一打开入口', () => {
   });
 
   it('.docx 不打开 tab，设置提示引导重新导入（DEV-098）', async () => {
+    setLanguage('zh-CN');
     const { openDocumentTab } = await import('../src/lib/open-document');
     const result = await openDocumentTab('reports/a.docx');
     expect(result.kind).toBe('docx');
     expect(openBinaryMock).not.toHaveBeenCalled();
     expect(openPageMock).not.toHaveBeenCalled();
     expect(tabState.setDocxNotice).toHaveBeenCalledWith(expect.stringContaining('导入 Word 文档'));
+  });
+
+  it('.docx notice is catalog-driven in English', async () => {
+    setLanguage('en-US');
+    const { openDocumentTab } = await import('../src/lib/open-document');
+    await openDocumentTab('reports/a.docx');
+    expect(tabState.setDocxNotice).toHaveBeenCalledWith(
+      'DOCX files no longer open inside the vault. Use “File → Import Word document (convert to block document)” to import it again.',
+    );
   });
 
   it('.xlsx → xlsx tab；.xmind → mindmap tab（DEV-074）', async () => {
