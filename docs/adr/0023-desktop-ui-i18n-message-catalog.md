@@ -87,3 +87,8 @@ status: in_progress
   `pnpm test` 193 files / 1824 passed / 3 skipped 退出码 0。
 - 第六批门禁：shared / kernel / renderer tsc 通过；`pnpm lint` 0；
   `pnpm test` 193 files / 1825 passed / 3 skipped 退出码 0。
+- 阶段②第七批（2026-10-10）：AI 写作 diff 浮层（状态、错误、关闭/停止/接受/拒绝）
+  与划词工具栏停止控件迁移；写作动作名补充消息目录 key。会话错误与截断提示保持
+  上游消息原文边界，本应用按钮/状态成文。新增 16 key，消息目录 zh/en 各 500 key。
+  `writing-layer.test.tsx` 新增 en-US 渲染残留检查（服务/模型消息显式除外）；
+  门禁 193 files / 1826 passed / 3 skipped。

@@ -160,7 +160,7 @@ export function WritingAssistantLayer() {
               onClick={() => session.accept()}
               disabled={!hasContent}
             >
-            <Check className="size-3" /> {tr('ai.writing.accept')}
+              <Check className="size-3" /> {tr('ai.writing.accept')}
             </Button>
           </>
         )}

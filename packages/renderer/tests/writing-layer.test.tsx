@@ -10,6 +10,8 @@ import {
   type WritingSession,
 } from '../src/features/ai/writing';
 import { tCurrent } from '@nexnote/shared';
+import { setLanguage } from '../src/lib/i18n';
+import { afterEach } from 'vitest';
 
 function flush(): Promise<void> {
   return new Promise((r) => setTimeout(r, 0));
@@ -47,6 +49,33 @@ function baseSession(over: Partial<WritingSession> = {}): WritingSession {
 }
 
 describe('WritingAssistantLayer diff 预览浮层', () => {
+  afterEach(() => {
+    setLanguage('zh-CN');
+  });
+
+  it('en-US 下浮层的本应用 UI 无中文残留；插件/服务消息边界除外', async () => {
+    setLanguage('en-US');
+    await act(async () => {
+      useWritingStore.getState().openSession(
+        baseSession({
+          status: 'error',
+          error: '未翻译的运行时消息（explicit boundary）',
+          truncated: true,
+          note: '未翻译的模型提示（explicit boundary）',
+          generated: '生成的正文（untranslated）',
+          original: '旧正文（untranslated）',
+        }),
+      );
+    });
+    await renderLayer();
+    const title = document.querySelector('[data-testid="writing-incomplete"]');
+    const close = document.querySelector('[data-testid="writing-close"]');
+    const reject = document.querySelector('[data-testid="writing-reject"]');
+    expect(title?.textContent).not.toMatch(/[一-鿿]/);
+    expect(close?.getAttribute('aria-label')).not.toMatch(/[一-鿿]/);
+    expect(reject?.textContent).not.toMatch(/[一-鿿]/);
+  });
+
   it('替换类渲染删除/新增 diff，点击接受触发 accept', async () => {
     const accept = vi.fn();
     await act(async () => {
