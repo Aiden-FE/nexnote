@@ -3,7 +3,7 @@ import MindMap from 'simple-mind-map';
 import Drag from 'simple-mind-map/src/plugins/Drag.js';
 import type { MindmapStructureId } from '@nexnote/shared';
 import { invoke } from '../lib/ipc';
-import { subscribeSession, flushPending } from './session';
+import { subscribeSession, flushPending, sessionStatusText } from './session';
 import type { SessionState } from './session';
 import { MindmapToolbar } from './mindmap-toolbar';
 import { MindmapDrawer } from './mindmap-drawer';
@@ -11,6 +11,7 @@ import { MINDMAP_NODE_BTN_ICONS } from './mindmap-icons';
 import { DEFAULT_MINDMAP_THEME, deepMergeTheme, themePresetById } from './mindmap-themes';
 import { DEFAULT_MINDMAP_STRUCTURE, countRootChildren, structureById } from './mindmap-structures';
 import { applyMindmapLayout, clearXStructureAssignments } from './mindmap-layouts';
+import { useI18n } from '../lib/i18n';
 
 /**
  * xmind 编辑器（DEV-074，ADR-0015 R3；DEV-099 操作界面）。
@@ -47,6 +48,7 @@ type MindMapWithInternals = MindMap & {
 };
 
 export function MindmapEditor({ path, model, onChange }: MindmapEditorProps): React.JSX.Element {
+  const t = useI18n();
   const hostRef = useRef<HTMLDivElement | null>(null);
   const mapRef = useRef<MindMapWithInternals | null>(null);
   // onChange 经 useEffect 同步进 ref，避免渲染期写 ref（react-hooks/refs）。
@@ -93,7 +95,8 @@ export function MindmapEditor({ path, model, onChange }: MindmapEditorProps): Re
 
   // 落盘状态（编辑中…/已保存/失败）来自宿主 session。
   useEffect(() => {
-    const apply = (session: SessionState | null): void => setSaveStatus(session?.status ?? null);
+    const apply = (session: SessionState | null): void =>
+      setSaveStatus(sessionStatusText(session?.status ?? null));
     apply(null);
     return subscribeSession(apply);
   }, []);
@@ -251,7 +254,7 @@ export function MindmapEditor({ path, model, onChange }: MindmapEditorProps): Re
           onClick={() => setDrawerPinnedOpen(true)}
           className="absolute right-3 top-1/2 z-20 -translate-y-1/2 rounded-l-md border border-r-0 border-neutral-200/80 bg-white/80 px-1 py-3 text-xs text-neutral-600 shadow-sm backdrop-blur hover:bg-white dark:border-neutral-700/80 dark:bg-neutral-800/80 dark:text-neutral-300"
         >
-          编辑
+          {t('binary.drawer.edit')}
         </button>
       )}
     </div>

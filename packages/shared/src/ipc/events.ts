@@ -7,6 +7,7 @@ import type { ChatStreamEvent } from '../types/ai';
 import type { IndexStatus } from '../types/index';
 import type { RetrievalIndexStatusPayload } from '../types/retrieval';
 import type { GlobalSettings, VaultSettings } from '../types/settings';
+import type { UiLanguage } from '../i18n/message-catalog';
 
 /**
  * 主进程 → 渲染层推送事件契约。
@@ -60,15 +61,20 @@ export type MenuAction =
   | { type: 'importXlsx' }
   | { type: 'importXmind' };
 
-export interface BinaryEditorCommand {
-  /** 'load'：加载文档；'flush'：等待 pending 写入落盘；'theme'：切换主题；'destroy'：销毁。 */
-  command: 'load' | 'flush' | 'theme' | 'destroy';
+interface BinaryEditorCommandBase {
   /** kind 与 TabKind 对齐；宿主用它过滤自身不关心的指令（DEV-098 后仅 xlsx / mindmap）。 */
   kind: 'xlsx' | 'mindmap';
   /** 文档 vault 相对路径（load / flush / destroy 用）。 */
   path?: string;
-  theme?: 'light' | 'dark';
 }
+
+/** 主窗口 → 二进制编辑器宿主的控制指令（ADR-0023：language 必须显式携带，不允许静默回退）。 */
+export type BinaryEditorCommand =
+  | (BinaryEditorCommandBase & { command: 'load' })
+  | (BinaryEditorCommandBase & { command: 'flush' })
+  | (BinaryEditorCommandBase & { command: 'theme'; theme?: 'light' | 'dark' })
+  | (BinaryEditorCommandBase & { command: 'language'; language: UiLanguage })
+  | (BinaryEditorCommandBase & { command: 'destroy' });
 
 export interface FsChangeEvent {
   kind: 'add' | 'addDir' | 'unlink' | 'unlinkDir' | 'change';

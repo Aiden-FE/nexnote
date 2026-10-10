@@ -21,6 +21,7 @@ export type MindmapStructureIcon =
 
 export interface MindmapStructureOption {
   id: MindmapStructureId;
+  /** 消息目录 key（binary.structure.*），由渲染端按当前语言成文。 */
   label: string;
   /** 传给 simple-mind-map 的布局名（库内名或自研布局注册的标识）。 */
   layout: string;
@@ -32,28 +33,28 @@ export interface MindmapStructureOption {
 export const MINDMAP_STRUCTURE_OPTIONS: MindmapStructureOption[] = [
   {
     id: 'right',
-    label: '向右分支',
+    label: 'binary.structure.right',
     layout: 'logicalStructure',
     custom: false,
     icon: 'arrow-right',
   },
   {
     id: 'left',
-    label: '向左分支',
+    label: 'binary.structure.left',
     layout: 'logicalStructureLeft',
     custom: false,
     icon: 'arrow-left',
   },
-  { id: 'up', label: '向上分支', layout: 'nexxUpStructure', custom: true, icon: 'arrow-up' },
+  { id: 'up', label: 'binary.structure.up', layout: 'nexxUpStructure', custom: true, icon: 'arrow-up' },
   {
     id: 'down',
-    label: '向下分支',
+    label: 'binary.structure.down',
     layout: 'organizationStructure',
     custom: false,
     icon: 'arrow-down',
   },
-  { id: 'fishbone', label: '鱼骨结构', layout: 'fishbone', custom: false, icon: 'git-branch' },
-  { id: 'x', label: 'X 结构', layout: 'nexxXStructure', custom: true, icon: 'asterisk' },
+  { id: 'fishbone', label: 'binary.structure.fishbone', layout: 'fishbone', custom: false, icon: 'git-branch' },
+  { id: 'x', label: 'binary.structure.x', layout: 'nexxXStructure', custom: true, icon: 'asterisk' },
 ];
 
 export const DEFAULT_MINDMAP_STRUCTURE: MindmapStructureId = 'right';

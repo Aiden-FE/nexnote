@@ -7,6 +7,7 @@
 
 export interface MindmapMarker {
   id: string;
+  /** 消息目录 key（binary.icon.*），由渲染端按当前语言成文。 */
   label: string;
   /** 写入 model 的 SVG 字符串（simple-mind-map icon 数据）。 */
   svg: string;
@@ -23,7 +24,7 @@ function svg(color: string, body: string): string {
 export const MINDMAP_MARKERS: MindmapMarker[] = [
   {
     id: 'priority-high',
-    label: '优先级 高',
+    label: 'binary.icon.priorityHigh',
     svg: svg(
       '#ef4444',
       '<path d="M2 20h.01"/><path d="M7 20v-4"/><path d="M12 20v-8"/><path d="M17 20V8"/>',
@@ -31,22 +32,22 @@ export const MINDMAP_MARKERS: MindmapMarker[] = [
   },
   {
     id: 'priority-medium',
-    label: '优先级 中',
+    label: 'binary.icon.priorityMedium',
     svg: svg('#f59e0b', '<path d="M2 20h.01"/><path d="M7 20v-4"/><path d="M12 20v-8"/>'),
   },
   {
     id: 'priority-low',
-    label: '优先级 低',
+    label: 'binary.icon.priorityLow',
     svg: svg('#3b82f6', '<path d="M2 20h.01"/><path d="M7 20v-4"/>'),
   },
   {
     id: 'progress-0',
-    label: '进度 0%',
+    label: 'binary.icon.progress0',
     svg: svg('#9ca3af', '<circle cx="12" cy="12" r="10"/>'),
   },
   {
     id: 'progress-50',
-    label: '进度 50%',
+    label: 'binary.icon.progress50',
     svg: svg(
       '#3b82f6',
       '<circle cx="12" cy="12" r="10"/><path d="M12 18a6 6 0 0 0 0-12v12z" fill="#3b82f6" stroke="none"/>',
@@ -54,17 +55,17 @@ export const MINDMAP_MARKERS: MindmapMarker[] = [
   },
   {
     id: 'progress-100',
-    label: '进度 100%',
+    label: 'binary.icon.progress100',
     svg: svg('#22c55e', '<circle cx="12" cy="12" r="10"/><path d="m9 12 2 2 4-4"/>'),
   },
   {
     id: 'done',
-    label: '完成',
+    label: 'binary.icon.complete',
     svg: svg('#22c55e', '<circle cx="12" cy="12" r="10"/><path d="m9 12 2 2 4-4"/>'),
   },
   {
     id: 'undone',
-    label: '未完成',
+    label: 'binary.icon.incomplete',
     svg: svg(
       '#ef4444',
       '<circle cx="12" cy="12" r="10"/><path d="m15 9-6 6"/><path d="m9 9 6 6"/>',
@@ -72,7 +73,7 @@ export const MINDMAP_MARKERS: MindmapMarker[] = [
   },
   {
     id: 'star',
-    label: '星标',
+    label: 'binary.icon.star',
     svg: svg(
       '#f59e0b',
       '<path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01z" fill="#f59e0b" stroke="none"/>',
@@ -80,7 +81,7 @@ export const MINDMAP_MARKERS: MindmapMarker[] = [
   },
   {
     id: 'flag',
-    label: '旗标',
+    label: 'binary.icon.flag',
     svg: svg(
       '#6366f1',
       '<path d="M4 15s1-1 4-1 5 2 8 2 4-1 4-1V3s-1 1-4 1-5-2-8-2-4 1-4 1z"/><line x1="4" x2="4" y1="22" y2="15"/>',
@@ -88,7 +89,7 @@ export const MINDMAP_MARKERS: MindmapMarker[] = [
   },
   {
     id: 'heart',
-    label: '关注',
+    label: 'binary.icon.follow',
     svg: svg(
       '#ec4899',
       '<path d="M19 14c1.49-1.46 3-3.21 3-5.5A5.5 5.5 0 0 0 16.5 3c-1.76 0-3 .5-4.5 2-1.5-1.5-2.74-2-4.5-2A5.5 5.5 0 0 0 2 8.5c0 2.3 1.5 4.05 3 5.5l7 7Z" fill="#ec4899" stroke="none"/>',
@@ -96,7 +97,7 @@ export const MINDMAP_MARKERS: MindmapMarker[] = [
   },
   {
     id: 'warning',
-    label: '警告',
+    label: 'binary.icon.warning',
     svg: svg(
       '#f97316',
       '<path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z"/><path d="M12 9v4"/><path d="M12 17h.01"/>',

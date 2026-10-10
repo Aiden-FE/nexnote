@@ -7,6 +7,7 @@ import {
   markDirty,
   markUserInteraction,
   reloadAfterConflict,
+  sessionStatusText,
 } from './session';
 import type { SessionState } from './session';
 import { XlsxEditor } from './xlsx-editor';
@@ -32,7 +33,7 @@ function Host(): React.JSX.Element {
   useEffect(() => bootstrapBinaryHost(), []);
 
   const discardAndReload = async (): Promise<void> => {
-    if (!window.confirm('本地编辑尚未保存。重新加载将丢弃本地修改，是否继续？')) return;
+    if (!window.confirm(t('binary.host.confirmDiscard'))) return;
     setReloading(true);
     setReloadError(null);
     try {
@@ -47,7 +48,7 @@ function Host(): React.JSX.Element {
   if (!session) {
     return (
       <div className="flex h-full items-center justify-center text-sm text-neutral-500">
-        等待加载文档…
+        {t('binary.host.waiting')}
       </div>
     );
   }
@@ -67,9 +68,9 @@ function Host(): React.JSX.Element {
               })}
             </span>
           )}
-          {session.status && (
+          {sessionStatusText(session.status) && (
             <span className={session.conflict ? 'text-amber-700' : 'text-neutral-500'}>
-              {session.status}
+              {sessionStatusText(session.status)}
             </span>
           )}
           {session.conflict && (
@@ -79,7 +80,7 @@ function Host(): React.JSX.Element {
               onClick={() => void discardAndReload()}
               className="ml-3 rounded border border-amber-600 px-2 py-0.5 text-amber-800 disabled:opacity-50"
             >
-              {reloading ? '重新加载中…' : '放弃本地修改并重新加载'}
+              {reloading ? t('binary.host.reloading') : t('binary.host.discardReload')}
             </button>
           )}
           {reloadError && (

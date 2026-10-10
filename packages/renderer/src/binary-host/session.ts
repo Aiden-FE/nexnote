@@ -1,5 +1,10 @@
 import { invoke, onEvent } from '../lib/ipc';
-import type { BinaryEditorCommand, BinaryReadonlyTag } from '@nexnote/shared';
+import {
+  setCurrentLanguage,
+  tCurrent,
+  type BinaryEditorCommand,
+  type BinaryReadonlyTag,
+} from '@nexnote/shared';
 
 /**
  * DEV-074 二进制编辑器宿主的会话与落盘编排。
@@ -17,9 +22,18 @@ export interface SessionState {
   mindmap?: { model: unknown };
   readonly: BinaryReadonlyTag[];
   /** 只读保留区标注（宏/图表/透视表/外框/关联线）。 */
-  status: string | null;
+  /** 语言无关的保存状态；UI 按当前语言成文。 */
+  status: SessionStatus | null;
   conflict: boolean;
 }
+
+/** 保存状态的语义快照（避免把旧语言文本缓存在 session 中）。 */
+export type SessionStatus =
+  | { kind: 'saved' }
+  | { kind: 'editing' }
+  | { kind: 'externalModified'; phase: 'conflict' | 'dirty' }
+  | { kind: 'saveFailed'; message: string }
+  | { kind: 'loadFailed'; message: string };
 
 const DEBOUNCE_MS = 1200;
 
@@ -32,13 +46,38 @@ let dirtyPayload: DirtyPayload | null = null;
 let saveTimer: ReturnType<typeof setTimeout> | null = null;
 let saving = false;
 let pendingSaves = 0;
-let flushFailure: Error | null = null;
+let flushFailureCode: string | null = null;
 // 用户是否已与编辑器交互过：宿主挂载时编辑器会立刻回传一次 onChange
 // （fortune-sheet / simple-mind-map 初始化数据时都会 emit），其 payload 等于刚载入
 // 的内容。照单全收就会「打开即写盘」，对 xlsx 更是立刻覆盖磁盘（历史缺陷之一）。
 let userActive = false;
 const listeners = new Set<(state: SessionState | null) => void>();
 const flushResolvers: Array<{ resolve: () => void; reject: (error: unknown) => void }> = [];
+
+/** 把语言无关的保存状态成文（renderer 与 flush 拒绝错误共用）。 */
+function renderStatus(status: SessionStatus): string {
+  switch (status.kind) {
+    case 'saved':
+      return tCurrent('binary.status.saved');
+    case 'editing':
+      return tCurrent('binary.status.editing');
+    case 'externalModified':
+      return tCurrent(
+        status.phase === 'conflict'
+          ? 'binary.status.externalModifiedConflict'
+          : 'binary.status.externalModifiedDirty',
+      );
+    case 'saveFailed':
+      return tCurrent('binary.status.saveFailed', { message: status.message });
+    case 'loadFailed':
+      return tCurrent('binary.status.loadFailed', { message: status.message });
+  }
+}
+
+/** 导出给 UI 使用的状态成文函数。 */
+export function sessionStatusText(status: SessionStatus | null): string | null {
+  return status ? renderStatus(status) : null;
+}
 
 export function subscribeSession(listener: (state: SessionState | null) => void): () => void {
   listeners.add(listener);
@@ -69,6 +108,14 @@ function rejectPendingFlushes(error: Error): void {
   for (const waiter of resolvers) waiter.reject(error);
 }
 
+/** flush 失败按调用时的当前语言成文，避免冲突后切换语言仍抛旧语言文本。 */
+function flushFailureError(code: string): Error {
+  if (code === 'BINARY_CONFLICT') {
+    return Object.assign(new Error(tCurrent('binary.status.saveConflict')), { code });
+  }
+  return new Error(tCurrent('ipc.error.INTERNAL'));
+}
+
 function saveCompleted(): void {
   pendingSaves = Math.max(0, pendingSaves - 1);
   settleFlushesIfIdle();
@@ -90,7 +137,7 @@ async function persistNow(): Promise<void> {
         expectedSha256: session.sha256,
       });
       session.sha256 = result.sha256;
-      session.status = '已保存';
+      session.status = { kind: 'saved' };
       session.conflict = false;
     } else if (session.kind === 'mindmap' && payload.model !== undefined) {
       const result = await invoke('binary:save', {
@@ -100,30 +147,30 @@ async function persistNow(): Promise<void> {
         expectedSha256: session.sha256,
       });
       session.sha256 = result.sha256;
-      session.status = '已保存';
+      session.status = { kind: 'saved' };
       session.conflict = false;
     }
-    flushFailure = null;
+    flushFailureCode = null;
   } catch (e) {
     const code = (e as { code?: string }).code;
     if (code === 'BINARY_CONFLICT') {
-      const conflictError = Object.assign(
-        new Error('保存冲突：本地编辑尚未保存，请复制内容或重新加载外部版本。'),
-        { code: 'BINARY_CONFLICT' },
-      );
+      const conflictError = flushFailureError('BINARY_CONFLICT');
       const retry: DirtyPayload = { ...payload };
       if (dirtyPayload) Object.assign(retry, dirtyPayload);
       dirtyPayload = retry;
-      flushFailure = conflictError;
+      flushFailureCode = 'BINARY_CONFLICT';
       session.conflict = true;
-      session.status = '副本已被外部修改；本地编辑仍保留在此窗口，未覆盖磁盘内容。';
+      session.status = { kind: 'externalModified', phase: 'conflict' };
       rejectPendingFlushes(conflictError);
     } else {
       // 保存失败不丢编辑：把内容放回 dirtyPayload，下一次编辑/flush 重试。
       const retry: DirtyPayload = { ...payload };
       if (dirtyPayload) Object.assign(retry, dirtyPayload);
       dirtyPayload = retry;
-      session.status = `保存失败（将自动重试）：${e instanceof Error ? e.message : String(e)}`;
+      session.status = {
+        kind: 'saveFailed',
+        message: e instanceof Error ? e.message : String(e),
+      };
       scheduleSave();
     }
   } finally {
@@ -158,11 +205,11 @@ export function markDirty(patch: { sheets?: unknown[]; model?: unknown }): void 
   if (!userActive) return; // 载入首帧的初始化回调不算编辑，不写盘。
   dirtyPayload = { ...dirtyPayload, ...patch };
   if (session.conflict) {
-    session.status = '外部版本已变化；本地编辑仍保留在此窗口，未覆盖磁盘内容。';
+    session.status = { kind: 'externalModified', phase: 'dirty' };
     emit();
     return;
   }
-  session.status = '编辑中…';
+  session.status = { kind: 'editing' };
   emit();
   scheduleSave();
 }
@@ -195,7 +242,7 @@ async function loadDocument(kind: SessionState['kind'], path: string): Promise<S
 
 /** 等待所有 pending 写入完成（主进程 flush 指令对应）。 */
 export function flushPending(): Promise<void> {
-  if (flushFailure) return Promise.reject(flushFailure);
+  if (flushFailureCode) return Promise.reject(flushFailureError(flushFailureCode));
   return new Promise((resolve, reject) => {
     // 先冲刷当前 debounce，并把 resolver 挂入队列。persistNow 若正忙会立即返回；
     // 当前保存 finally 会看到 resolver 并继续排空期间新增的 dirtyPayload。
@@ -218,12 +265,14 @@ export async function reloadAfterConflict(): Promise<void> {
   const pending = dirtyPayload;
   const reloaded = await loadDocument(current.kind, current.path);
   if (session !== current || dirtyPayload !== pending) {
-    throw new Error('重新加载期间文档状态已变化；本地编辑仍保留。');
+    throw Object.assign(new Error(tCurrent('binary.status.reloadStateChanged')), {
+      code: 'BINARY_STATE_CHANGED',
+    });
   }
   if (saveTimer) clearTimeout(saveTimer);
   saveTimer = null;
   dirtyPayload = null;
-  flushFailure = null;
+  flushFailureCode = null;
   userActive = false;
   session = reloaded;
   emit();
@@ -244,7 +293,10 @@ async function handleCommand(command: BinaryEditorCommand): Promise<void> {
         path: command.path,
         sha256: '',
         readonly: [],
-        status: `加载失败：${e instanceof Error ? e.message : String(e)}`,
+        status: {
+          kind: 'loadFailed',
+          message: e instanceof Error ? e.message : String(e),
+        },
         conflict: false,
       };
     }
@@ -263,6 +315,12 @@ async function handleCommand(command: BinaryEditorCommand): Promise<void> {
   }
   if (command.command === 'theme') {
     document.documentElement.dataset.theme = command.theme ?? 'light';
+    return;
+  }
+  if (command.command === 'language') {
+    setCurrentLanguage(command.language);
+    // 保存状态是语言无关的语义快照；切换语言后重算所有已渲染文本。
+    emit();
   }
 }
 

@@ -281,3 +281,15 @@ status: in_progress
   doctor / secret / local-embedding / updater / IPC registrar / docx / binary /
   catalog targeted tests 通过；全量门禁 196 files / 1855 passed /
   3 skipped 退出码 0。
+- 阶段③第二十四批（2026-10-10）：完成 binary-host 独立 WebContentsView 宿主双语，
+  并修复跨视图语言权威同步。宿主加载页、丢弃本地修改 confirm、保存/冲突/外部修改/
+  加载失败状态、思维导图工具栏/抽屉、结构/主题/标记/形状枚举全部走 shared catalog；
+  structures / themes / markers / shapes 目录改为语言无关 key（`binary.structure.*`、
+  `binary.theme.*`、`binary.icon.*`、`binary.drawer.*`），渲染端用 `useI18n()` 成文。
+  因 binary-host 是独立 renderer 进程、不共享主窗口 renderer 内存，`BinaryEditorCommand`
+  新增 `language` 命令：host ack 的 pull 响应首命令总是携带主进程当前语言，设置语言变化
+  时由 `BinaryEditorHostManager.applyLanguage()` 广播；`session.ts` 收到后调用
+  `setCurrentLanguage`。残留门禁扩展为 main/src 棘轮 + binary-host 源码剥离注释后
+  CJK 必须为 0。新增 77 key，zh/en 各 1551 key；binary editor host / binary-host session /
+  mindmap editor UI / catalog targeted tests 通过；全量门禁 196 files /
+  1861 passed / 3 skipped 退出码 0。

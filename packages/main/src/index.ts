@@ -254,6 +254,7 @@ async function bootstrap(): Promise<void> {
     const languageChanged = getCurrentLanguage() !== global.appearance.language;
     setCurrentLanguage(global.appearance.language);
     if (languageChanged) windows?.buildApplicationMenu();
+    if (languageChanged) binaryEditors.applyLanguage(global.appearance.language);
     applyGlobalSettings(global);
     void (async () => {
       const root = vaultSession.getCurrent()?.root;

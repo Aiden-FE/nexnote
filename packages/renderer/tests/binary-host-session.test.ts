@@ -1,12 +1,54 @@
 // @vitest-environment happy-dom
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import { setCurrentLanguage } from '@nexnote/shared';
 
 describe('binary host flush save queue (DEV-074)', () => {
   afterEach(() => {
     vi.resetModules();
     delete (window as unknown as { nexnote?: unknown }).nexnote;
+    setCurrentLanguage('zh-CN');
   });
 
+  it('renders session statuses in the active language', async () => {
+    setCurrentLanguage('en-US');
+    const commands: Array<(payload: unknown) => void> = [];
+    (window as unknown as { nexnote: unknown }).nexnote = {
+      invoke: vi.fn((channel: string) => {
+        if (channel === 'binary:read')
+          return Promise.resolve({
+            ok: true,
+            data: {
+              data: { kind: 'xlsx', sheets: [{ name: 'Sheet1' }] },
+              sha256: 'base',
+              readonly: ['MACRO'],
+            },
+          });
+        if (channel === 'binary:save')
+          return Promise.resolve({ ok: true, data: { sha256: 'next' } });
+        throw new Error(`unexpected IPC: ${channel}`);
+      }),
+      on: vi.fn((_channel: string, callback: (payload: unknown) => void) => {
+        commands.push(callback);
+        return () => undefined;
+      }),
+    };
+    const sessionModule = await import('../src/binary-host/session');
+    const stop = sessionModule.bootstrapBinaryHost();
+    commands[0]?.({ command: 'load', kind: 'xlsx', path: 'notes/en.xlsx' });
+    await vi.waitFor(() => expect(sessionModule.getSession()?.path).toBe('notes/en.xlsx'));
+
+    sessionModule.markUserInteraction();
+    sessionModule.markDirty({ sheets: [{ name: 'edited' }] });
+    expect(sessionModule.sessionStatusText(sessionModule.getSession()?.status ?? null)).toBe(
+      'Editing…',
+    );
+    await sessionModule.flushPending();
+    expect(sessionModule.sessionStatusText(sessionModule.getSession()?.status ?? null)).toBe(
+      'Saved',
+    );
+    expect(sessionModule.getSession()?.readonly).toEqual(['MACRO']);
+    stop();
+  });
   it('BINARY_CONFLICT retains dirty edits and rejects close flushes instead of resolving', async () => {
     const commands: Array<(payload: unknown) => void> = [];
     const savePayloads: unknown[] = [];
@@ -60,6 +102,41 @@ describe('binary host flush save queue (DEV-074)', () => {
     stop();
   });
 
+  it('re-renders an existing status when the host language command arrives', async () => {
+    const commands: Array<(payload: unknown) => void> = [];
+    (window as unknown as { nexnote: unknown }).nexnote = {
+      invoke: vi.fn((channel: string) => {
+        if (channel === 'binary:read')
+          return Promise.resolve({
+            ok: true,
+            data: { data: { kind: 'xlsx', sheets: [{ name: 'Sheet1' }] }, sha256: 'base' },
+          });
+        return Promise.resolve({ ok: true, data: { commands: [] } });
+      }),
+      on: vi.fn((_channel: string, callback: (payload: unknown) => void) => {
+        commands.push(callback);
+        return () => undefined;
+      }),
+    };
+    const sessionModule = await import('../src/binary-host/session');
+    const stop = sessionModule.bootstrapBinaryHost();
+    commands[0]?.({ command: 'load', kind: 'xlsx', path: 'notes/switch.xlsx' });
+    await vi.waitFor(() => expect(sessionModule.getSession()?.path).toBe('notes/switch.xlsx'));
+
+    sessionModule.markUserInteraction();
+    sessionModule.markDirty({ sheets: [{ name: 'edited' }] });
+    expect(sessionModule.sessionStatusText(sessionModule.getSession()?.status ?? null)).toBe(
+      '编辑中…',
+    );
+
+    commands[0]?.({ command: 'language', kind: 'xlsx', language: 'en-US' });
+    await vi.waitFor(() =>
+      expect(sessionModule.sessionStatusText(sessionModule.getSession()?.status ?? null)).toBe(
+        'Editing…',
+      ),
+    );
+    stop();
+  });
   it('载入首帧的 onChange 不算编辑：用户交互前不写盘，交互后才落盘（P0 回归）', async () => {
     // 根因回顾：fortune-sheet / simple-mind-map 在载入数据时会自己 emit 一次
     // onChange（payload 等于刚载入的内容）。宿主若照单全收就会「打开即写盘」——

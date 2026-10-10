@@ -1,7 +1,13 @@
 import type { BrowserWindow } from 'electron';
 import { WebContentsView } from 'electron';
 import { join } from 'node:path';
-import { tCurrent, type BinaryEditorCommand, type IpcEventChannel } from '@nexnote/shared';
+import {
+  getCurrentLanguage,
+  tCurrent,
+  type BinaryEditorCommand,
+  type IpcEventChannel,
+  type UiLanguage,
+} from '@nexnote/shared';
 
 /**
  * DEV-074 二进制编辑器宿主管理（ADR-0015 Decision 3）：
@@ -178,6 +184,17 @@ export class BinaryEditorHostManager {
     }
   }
 
+  /** 切换界面语言：广播给全部宿主（独立 WebContentsView 不共享 renderer 内存）。 */
+  applyLanguage(language: UiLanguage): void {
+    for (const [key, entry] of this.hosts) {
+      this.queue(key, {
+        command: 'language',
+        kind: entry.kind,
+        language,
+      } satisfies BinaryEditorCommand);
+    }
+  }
+
   destroyAll(): void {
     for (const key of [...this.hosts.keys()]) this.destroy(key);
   }
@@ -189,7 +206,8 @@ export class BinaryEditorHostManager {
   /**
    * 渲染层 ack：把对应 entry 标 ready，pending 队列**作为返回值交还**给调用方
    * （binary:host:ready 的 invoke 响应），由宿主页在订阅之后自行应用。
-   * 主进程通过 webContentsId 识别（renderer → main 端）。重复 ack 幂等（返回空数组）。
+   * 主进程通过 webContentsId 识别（renderer → main 端）。重复 ack 不重投已排队的 load，
+   * 但每次都返回当前语言命令，宿主可随时重新对齐语言权威。
    * senderId 为 0（单测里的假 ipcMain 不带 sender）按 no-op 处理：等价的真实路径下不会发生。
    */
   acknowledgeReady(senderId: number): BinaryEditorCommand[] {
@@ -199,13 +217,19 @@ export class BinaryEditorHostManager {
     const entry = this.hosts.get(key);
     if (!entry || entry.webContentsId !== senderId) return [];
     if (entry.view.webContents.isDestroyed()) return [];
+    // Pull 模型：ack 时总把当前语言作为首条命令返回，确保独立宿主在订阅后立即同步语言。
+    const languageCommand = {
+      command: 'language',
+      kind: entry.kind,
+      language: getCurrentLanguage(),
+    } satisfies BinaryEditorCommand;
     const drained = entry.pending.splice(0);
     if (!entry.ready) {
       entry.ready = true;
       const waiters = entry.readyWaiters.splice(0);
       for (const w of waiters) w();
     }
-    return drained;
+    return [languageCommand, ...drained];
   }
 
   private destroy(key: string): void {

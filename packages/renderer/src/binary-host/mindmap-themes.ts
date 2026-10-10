@@ -7,6 +7,7 @@
 
 export interface MindmapThemePreset {
   id: string;
+  /** 消息目录 key（binary.theme.*），由渲染端按当前语言成文。 */
   label: string;
   /** 覆盖 default 主题配置的局部对象。 */
   config: Record<string, unknown>;
@@ -15,7 +16,7 @@ export interface MindmapThemePreset {
 export const MINDMAP_THEME_PRESETS: MindmapThemePreset[] = [
   {
     id: 'classic',
-    label: '经典绿',
+    label: 'binary.theme.classic',
     config: {
       backgroundColor: '#fafafa',
       lineColor: '#549688',
@@ -26,7 +27,7 @@ export const MINDMAP_THEME_PRESETS: MindmapThemePreset[] = [
   },
   {
     id: 'business',
-    label: '商务蓝',
+    label: 'binary.theme.business',
     config: {
       backgroundColor: '#f5f7fa',
       lineColor: '#2f6fed',
@@ -37,7 +38,7 @@ export const MINDMAP_THEME_PRESETS: MindmapThemePreset[] = [
   },
   {
     id: 'warm',
-    label: '暖橙',
+    label: 'binary.theme.warm',
     config: {
       backgroundColor: '#fff8f2',
       lineColor: '#e8833a',
@@ -48,7 +49,7 @@ export const MINDMAP_THEME_PRESETS: MindmapThemePreset[] = [
   },
   {
     id: 'dark',
-    label: '暗色',
+    label: 'binary.theme.dark',
     config: {
       backgroundColor: '#1f2328',
       lineColor: '#4b5563',
@@ -59,7 +60,7 @@ export const MINDMAP_THEME_PRESETS: MindmapThemePreset[] = [
   },
   {
     id: 'minimal',
-    label: '极简灰',
+    label: 'binary.theme.minimal',
     config: {
       backgroundColor: '#ffffff',
       lineColor: '#9ca3af',

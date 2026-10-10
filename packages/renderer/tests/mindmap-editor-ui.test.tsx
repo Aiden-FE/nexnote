@@ -1,5 +1,6 @@
 // @vitest-environment happy-dom
-import { describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { setCurrentLanguage } from '@nexnote/shared';
 import { createElement } from 'react';
 import { createRoot } from 'react-dom/client';
 import { act } from 'react-dom/test-utils';
@@ -84,6 +85,80 @@ describe('MindmapToolbar（DEV-099）', () => {
     const dark = view.querySelector('[data-testid="mindmap-theme-dark"]');
     act(() => (dark as HTMLElement).dispatchEvent(new MouseEvent('click', { bubbles: true })));
     expect(picked).toBe('dark');
+  });
+});
+
+describe('ADR-0023 binary host English rendering', () => {
+  beforeEach(() => setCurrentLanguage('en-US'));
+  afterEach(() => setCurrentLanguage('zh-CN'));
+
+  it('renders the toolbar and drawer without CJK residue', () => {
+    const toolbar = mount(
+      createElement(MindmapToolbar, {
+        mindMap: null,
+        scale: 1,
+        themeId: 'classic',
+        saveStatus: null,
+        onThemeChange: () => undefined,
+        onSaveNow: () => undefined,
+        structure: 'right',
+        rootChildCount: 1,
+        onStructureChange: () => undefined,
+      }),
+    );
+    const drawer = mount(
+      createElement(MindmapDrawer, {
+        mindMap: null,
+        activeNodes: [],
+        open: true,
+        onClose: () => undefined,
+      }),
+    );
+    const cjk = /[\u4e00-\u9fff]/;
+    expect(toolbar.textContent ?? '').not.toMatch(cjk);
+    for (const button of toolbar.querySelectorAll('button')) {
+      expect(button.getAttribute('title') ?? '').not.toMatch(cjk);
+    }
+    expect(drawer.textContent ?? '').not.toMatch(cjk);
+    for (const button of drawer.querySelectorAll('button')) {
+      expect(button.getAttribute('title') ?? '').not.toMatch(cjk);
+      expect(button.getAttribute('aria-label') ?? '').not.toMatch(cjk);
+    }
+  });
+
+  it('resolves structure and theme labels from the catalog', () => {
+    const view = mount(
+      createElement(MindmapToolbar, {
+        mindMap: null,
+        scale: 1,
+        themeId: 'classic',
+        saveStatus: null,
+        onThemeChange: () => undefined,
+        onSaveNow: () => undefined,
+        structure: 'right',
+        rootChildCount: 1,
+        onStructureChange: () => undefined,
+      }),
+    );
+    const structure = [...view.querySelectorAll('button')].find(
+      (b) => b.getAttribute('title') === 'Structure',
+    );
+    act(() => structure?.click());
+    const items = view.querySelectorAll('[data-testid="mindmap-structure-menu"] [role="menuitem"]');
+    expect([...items].map((el) => el.textContent?.trim())).toEqual([
+      'Right branch',
+      'Left branch',
+      'Upward branch',
+      'Downward branch',
+      'Fishbone structure',
+      'X structureRequires more than 2 child nodes',
+    ]);
+
+    const theme = [...view.querySelectorAll('button')].find(
+      (b) => b.getAttribute('title') === 'Theme',
+    );
+    act(() => theme?.click());
+    expect(view.querySelector('[data-testid="mindmap-theme-dark"]')?.textContent).toContain('Dark');
   });
 });
 

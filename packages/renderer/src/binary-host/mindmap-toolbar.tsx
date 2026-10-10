@@ -24,6 +24,7 @@ import {
   type MindmapStructureIcon,
 } from './mindmap-structures';
 import type { MindmapStructureId } from '@nexnote/shared';
+import { useI18n } from '../lib/i18n';
 
 /** DEV-102：结构菜单的图标映射（icon 字段与 lucide 组件的连接点，收在此处）。 */
 const STRUCTURE_ICONS: Record<MindmapStructureIcon, typeof MoveRight> = {
@@ -96,6 +97,7 @@ export function MindmapToolbar({
   rootChildCount,
   onStructureChange,
 }: MindmapToolbarProps): React.JSX.Element {
+  const t = useI18n();
   const [themeMenuOpen, setThemeMenuOpen] = useState(false);
   const [structureMenuOpen, setStructureMenuOpen] = useState(false);
   const menuRef = useRef<HTMLDivElement | null>(null);
@@ -130,14 +132,14 @@ export function MindmapToolbar({
       <div className="pointer-events-none absolute left-3 top-3 z-20">
         <div className={GROUP_CLASS}>
           <FloatButton
-            title="撤销 (Ctrl+Z)"
+            title={t('binary.toolbar.undo')}
             disabled={!mindMap}
             onClick={() => mindMap?.execCommand('BACK')}
           >
             <Undo2 className="size-4" />
           </FloatButton>
           <FloatButton
-            title="重做 (Ctrl+Shift+Z)"
+            title={t('binary.toolbar.redo')}
             disabled={!mindMap}
             onClick={() => mindMap?.execCommand('FORWARD')}
           >
@@ -146,11 +148,11 @@ export function MindmapToolbar({
           <span
             data-testid="mindmap-save-status"
             className="max-w-40 truncate px-1 text-xs text-neutral-500 dark:text-neutral-400"
-            title={saveStatus ?? '已保存'}
+            title={saveStatus ?? t('binary.status.saved')}
           >
-            {saveStatus ?? '已保存'}
+            {saveStatus ?? t('binary.status.saved')}
           </span>
-          <FloatButton title="立即保存 (Ctrl+S)" onClick={onSaveNow}>
+          <FloatButton title={t('binary.toolbar.saveNow')} onClick={onSaveNow}>
             <Save className="size-4" />
           </FloatButton>
         </div>
@@ -158,7 +160,7 @@ export function MindmapToolbar({
 
       <div className="pointer-events-none absolute right-3 top-3 z-20">
         <div className={GROUP_CLASS}>
-          <FloatButton title="缩小" disabled={!mindMap} onClick={() => call('narrow')}>
+          <FloatButton title={t('binary.toolbar.zoomOut')} disabled={!mindMap} onClick={() => call('narrow')}>
             <ZoomOut className="size-4" />
           </FloatButton>
           <span
@@ -167,17 +169,17 @@ export function MindmapToolbar({
           >
             {Math.round(scale * 100)}%
           </span>
-          <FloatButton title="放大" disabled={!mindMap} onClick={() => call('enlarge')}>
+          <FloatButton title={t('binary.toolbar.zoomIn')} disabled={!mindMap} onClick={() => call('enlarge')}>
             <ZoomIn className="size-4" />
           </FloatButton>
-          <FloatButton title="适应画布" disabled={!mindMap} onClick={() => call('fit')}>
+          <FloatButton title={t('binary.toolbar.fit')} disabled={!mindMap} onClick={() => call('fit')}>
             <Maximize className="size-4" />
           </FloatButton>
-          <FloatButton title="复位 100%" disabled={!mindMap} onClick={() => call('reset')}>
+          <FloatButton title={t('binary.toolbar.reset')} disabled={!mindMap} onClick={() => call('reset')}>
             <RotateCcw className="size-4" />
           </FloatButton>
           <div ref={structureMenuRef} className="relative">
-            <FloatButton title="结构" onClick={() => setStructureMenuOpen((open) => !open)}>
+            <FloatButton title={t('binary.toolbar.structure')} onClick={() => setStructureMenuOpen((open) => !open)}>
               <GitBranch className="size-4" />
             </FloatButton>
             {structureMenuOpen && (
@@ -200,8 +202,11 @@ export function MindmapToolbar({
                       disabled={!selectable}
                       title={
                         selectable
-                          ? option.label
-                          : `${option.label}（需 ${MIN_ROOT_CHILDREN_FOR_X} 个以上子节点）`
+                          ? t(option.label)
+                          : t('binary.structure.requiresChildren', {
+                              label: t(option.label),
+                              count: MIN_ROOT_CHILDREN_FOR_X,
+                            })
                       }
                       onClick={() => {
                         onStructureChange(option.id);
@@ -214,8 +219,10 @@ export function MindmapToolbar({
                       } ${selectable ? '' : 'cursor-not-allowed opacity-40'}`}
                     >
                       {Icon && <Icon className="size-3.5" aria-hidden="true" />}
-                      <span className="flex-1">{option.label}</span>
-                      {!selectable && <span className="text-[10px]">需 2 个以上子节点</span>}
+                      <span className="flex-1">{t(option.label)}</span>
+                      {!selectable && (
+                        <span className="text-[10px]">{t('binary.structure.hintChildren')}</span>
+                      )}
                     </button>
                   );
                 })}
@@ -223,7 +230,7 @@ export function MindmapToolbar({
             )}
           </div>
           <div ref={menuRef} className="relative">
-            <FloatButton title="主题" onClick={() => setThemeMenuOpen((open) => !open)}>
+            <FloatButton title={t('binary.toolbar.theme')} onClick={() => setThemeMenuOpen((open) => !open)}>
               <Palette className="size-4" />
             </FloatButton>
             {themeMenuOpen && (
@@ -256,7 +263,7 @@ export function MindmapToolbar({
                           (preset.config.root as { fillColor?: string })?.fillColor ?? '#888',
                       }}
                     />
-                    {preset.label}
+                    {t(preset.label)}
                   </button>
                 ))}
               </div>

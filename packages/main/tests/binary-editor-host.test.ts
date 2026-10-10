@@ -1,4 +1,5 @@
-import { describe, expect, it, vi } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
+import { setCurrentLanguage } from '@nexnote/shared';
 
 interface FakeWebContents {
   id: number;
@@ -66,6 +67,32 @@ function windowStub() {
 }
 
 describe('binary host lifecycle and bounds (DEV-074)', () => {
+  afterEach(() => setCurrentLanguage('zh-CN'));
+
+  it('ack returns the current language before queued commands and applies later changes', async () => {
+    setCurrentLanguage('en-US');
+    const manager = new BinaryEditorHostManager();
+    const win = windowStub();
+    manager.attach(win as never);
+
+    await manager.open('mindmap', 'english.xmind');
+    const view = createdViews.at(-1)!;
+    manager.setActive('mindmap', 'english.xmind');
+
+    expect(manager.acknowledgeReady(view.webContents.id)).toEqual([
+      { command: 'language', kind: 'mindmap', language: 'en-US' },
+      { command: 'load', kind: 'mindmap', path: 'english.xmind' },
+    ]);
+
+    manager.applyLanguage('zh-CN');
+    expect(view.webContents.send).toHaveBeenLastCalledWith('binary:editorCommand', {
+      command: 'language',
+      kind: 'mindmap',
+      language: 'zh-CN',
+    });
+    manager.destroyAll();
+  });
+
   it('queues load until renderer ack ready, drains only then', async () => {
     const manager = new BinaryEditorHostManager();
     const win = windowStub();
@@ -98,7 +125,10 @@ describe('binary host lifecycle and bounds (DEV-074)', () => {
 
     // Pull 模型：ack 返回排队的初始命令（页面在订阅之后应用），不走 webContents.send。
     const drained = manager.acknowledgeReady(view.webContents.id);
-    expect(drained).toEqual([{ command: 'load', kind: 'xlsx', path: 'sheet.xlsx' }]);
+    expect(drained).toEqual([
+      { command: 'language', kind: 'xlsx', language: 'zh-CN' },
+      { command: 'load', kind: 'xlsx', path: 'sheet.xlsx' },
+    ]);
     expect(view.webContents.send).not.toHaveBeenCalled();
 
     manager.setBounds('xlsx', 'sheet.xlsx', null);
@@ -168,9 +198,14 @@ describe('binary host lifecycle and bounds (DEV-074)', () => {
     const view = createdViews.at(-1)!;
     manager.setActive('xlsx', 'idem.xlsx');
     const firstDrain = manager.acknowledgeReady(view.webContents.id);
-    expect(firstDrain).toEqual([{ command: 'load', kind: 'xlsx', path: 'idem.xlsx' }]);
+    expect(firstDrain).toEqual([
+      { command: 'language', kind: 'xlsx', language: 'zh-CN' },
+      { command: 'load', kind: 'xlsx', path: 'idem.xlsx' },
+    ]);
     // 重复 ack 不重复下发（返回空数组，命令只交付一次）
-    expect(manager.acknowledgeReady(view.webContents.id)).toEqual([]);
+    expect(manager.acknowledgeReady(view.webContents.id)).toEqual([
+      { command: 'language', kind: 'xlsx', language: 'zh-CN' },
+    ]);
     // 未知 senderId 直接忽略（不会抛错，返回空数组）
     expect(manager.acknowledgeReady(0)).toEqual([]);
     expect(manager.acknowledgeReady(99999)).toEqual([]);
@@ -226,7 +261,9 @@ describe('binary host lifecycle and bounds (DEV-074)', () => {
     expect(
       view.webContents.send.mock.calls.filter(([channel]) => channel === 'binary:editorCommand'),
     ).toHaveLength(0);
-    expect(manager.acknowledgeReady(view.webContents.id)).toEqual([]);
+    expect(manager.acknowledgeReady(view.webContents.id)).toEqual([
+      { command: 'language', kind: 'xlsx', language: 'zh-CN' },
+    ]);
   });
 
   it('close() captures entry identity and survives concurrent destroy', async () => {
@@ -291,7 +328,10 @@ describe('binary host lifecycle and bounds (DEV-074)', () => {
       const drained = manager.acknowledgeReady(view.webContents.id);
 
       // ack 响应必须把排队的初始 load 交还给页面（pull 模式），而不是曾经 send 进虚空。
-      expect(drained).toEqual([{ command: 'load', kind: 'mindmap', path: 'slow.xmind' }]);
+      expect(drained).toEqual([
+        { command: 'language', kind: 'mindmap', language: 'zh-CN' },
+        { command: 'load', kind: 'mindmap', path: 'slow.xmind' },
+      ]);
       expect(view.webContents.send).not.toHaveBeenCalled();
     } finally {
       vi.useRealTimers();

@@ -24,6 +24,7 @@ import { describe, expect, it } from 'vitest';
  */
 
 const mainSrc = resolve(import.meta.dirname, '../src');
+const binaryHostSrc = resolve(import.meta.dirname, '../../renderer/src/binary-host');
 const baselinePath = join(import.meta.dirname, 'fixtures/main-i18n-residue.json');
 
 interface ResidueEntry {
@@ -97,8 +98,8 @@ function stripComments(line: string, inBlock: boolean): { code: string; inBlock:
 
 const cjk = /[\u4e00-\u9fff]/;
 
-/** 收集 main/src 里所有剥掉注释后仍含 CJK 的行内容。 */
-function scan(): { file: string; text: string }[] {
+/** 收集指定目录里所有剥掉注释后仍含 CJK 的行内容。 */
+function scan(root: string): { file: string; text: string }[] {
   const found: { file: string; text: string }[] = [];
   const walk = (dir: string): void => {
     for (const entry of readdirSync(dir)) {
@@ -108,7 +109,7 @@ function scan(): { file: string; text: string }[] {
         continue;
       }
       if (!/\.(ts|tsx)$/.test(entry)) continue;
-      const file = full.slice(mainSrc.length + 1);
+      const file = full.slice(root.length + 1);
       const lines = readFileSync(full, 'utf8').split('\n');
       let inBlockComment = false;
       for (const raw of lines) {
@@ -120,13 +121,13 @@ function scan(): { file: string; text: string }[] {
       }
     }
   };
-  walk(mainSrc);
+  walk(root);
   return found;
 }
 
 describe('main process i18n residue ratchet（ADR-0023 阶段③）', () => {
   it('中文残留基线只减不增：新增或改动的未登记中文即失败', () => {
-    const actual = scan();
+    const actual = scan(mainSrc);
     const baseline: ResidueEntry[] = JSON.parse(readFileSync(baselinePath, 'utf8'));
 
     if (process.env.UPDATE_MAIN_I18N_BASELINE === '1') {
@@ -178,5 +179,9 @@ describe('main process i18n residue ratchet（ADR-0023 阶段③）', () => {
         `main i18n 棘轮：${resolved.length} 条基线残留已迁移（当前源码残留 ${actual.length} 条），可刷新基线`,
       );
     }
+  });
+
+  it('binary-host 独立宿主源码不含用户可见中文残留（ADR-0023 阶段④）', () => {
+    expect(scan(binaryHostSrc)).toEqual([]);
   });
 });
