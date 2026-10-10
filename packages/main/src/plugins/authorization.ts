@@ -1,4 +1,5 @@
 import { randomBytes } from 'node:crypto';
+import { tCurrent } from '@nexnote/shared';
 import type { PluginAuthChallenge, PluginRpcRequest, PluginSessionToken } from '@nexnote/shared';
 
 export class AuthError extends Error {
@@ -42,14 +43,14 @@ export class AuthorizationManager {
     now = Date.now(),
   ): PluginSessionToken {
     if (!nonce || nonce.length < 16) {
-      throw new AuthError('nonce 必须至少 16 字符', 'INVALID_NONCE');
+      throw new AuthError(tCurrent('plugin.auth.INVALID_NONCE'), 'INVALID_NONCE');
     }
     if (origin !== 'plugin-frame') {
-      throw new AuthError('origin 必须为 plugin-frame', 'INVALID_ORIGIN');
+      throw new AuthError(tCurrent('plugin.auth.INVALID_ORIGIN'), 'INVALID_ORIGIN');
     }
     for (const session of this.sessions.values()) {
       if (session.consumedNonces.has(nonce)) {
-        throw new AuthError('nonce 已被消费', 'NONCE_REUSED');
+        throw new AuthError(tCurrent('plugin.auth.NONCE_REUSED'), 'NONCE_REUSED');
       }
     }
     const sessionId = newSecret().slice(0, 16);
@@ -85,14 +86,15 @@ export class AuthorizationManager {
     now = Date.now(),
   ): AuthSession {
     const session = this.sessions.get(sessionId);
-    if (!session) throw new AuthError('会话不存在', 'SESSION_NOT_FOUND');
-    if (session.token !== token) throw new AuthError('token 不匹配', 'SESSION_TOKEN_MISMATCH');
+    if (!session) throw new AuthError(tCurrent('plugin.auth.SESSION_NOT_FOUND'), 'SESSION_NOT_FOUND');
+    if (session.token !== token)
+      throw new AuthError(tCurrent('plugin.auth.SESSION_TOKEN_MISMATCH'), 'SESSION_TOKEN_MISMATCH');
     if (pluginId !== undefined && session.pluginId !== pluginId) {
-      throw new AuthError('session/pluginId 不匹配', 'SESSION_PLUGIN_MISMATCH');
+      throw new AuthError(tCurrent('plugin.auth.SESSION_PLUGIN_MISMATCH'), 'SESSION_PLUGIN_MISMATCH');
     }
     if (session.expiresAt < now) {
       this.revokeSession(sessionId);
-      throw new AuthError('会话已过期', 'SESSION_EXPIRED');
+      throw new AuthError(tCurrent('plugin.auth.SESSION_EXPIRED'), 'SESSION_EXPIRED');
     }
     return session;
   }
@@ -138,19 +140,21 @@ export class AuthorizationManager {
     now = Date.now(),
   ): PluginAuthChallenge {
     const record = this.challenges.get(challenge);
-    if (!record) throw new AuthError('challenge 不存在', 'CHALLENGE_NOT_FOUND');
+    if (!record)
+      throw new AuthError(tCurrent('plugin.auth.CHALLENGE_NOT_FOUND'), 'CHALLENGE_NOT_FOUND');
     this.challenges.delete(challenge);
-    if (record.expiresAt < now) throw new AuthError('challenge 已过期', 'CHALLENGE_EXPIRED');
+    if (record.expiresAt < now)
+      throw new AuthError(tCurrent('plugin.auth.CHALLENGE_EXPIRED'), 'CHALLENGE_EXPIRED');
     if (options.expectedSessionId && record.sessionId !== options.expectedSessionId) {
-      throw new AuthError('挑战绑定会话不匹配', 'CHALLENGE_SESSION_MISMATCH');
+      throw new AuthError(tCurrent('plugin.auth.CHALLENGE_SESSION_MISMATCH'), 'CHALLENGE_SESSION_MISMATCH');
     }
     if (options.expectedRequestId && record.requestId !== options.expectedRequestId) {
-      throw new AuthError('挑战绑定请求不匹配', 'CHALLENGE_REQUEST_MISMATCH');
+      throw new AuthError(tCurrent('plugin.auth.CHALLENGE_REQUEST_MISMATCH'), 'CHALLENGE_REQUEST_MISMATCH');
     }
     if (options.token !== undefined) {
       const session = this.sessions.get(record.sessionId);
       if (!session || session.token !== options.token) {
-        throw new AuthError('挑战绑定 token 不匹配', 'CHALLENGE_TOKEN_MISMATCH');
+        throw new AuthError(tCurrent('plugin.auth.CHALLENGE_TOKEN_MISMATCH'), 'CHALLENGE_TOKEN_MISMATCH');
       }
     }
     return record;

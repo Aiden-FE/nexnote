@@ -203,3 +203,9 @@ status: in_progress
   插件数据边界。新增 20 key，zh/en 各 1253 key。`plugin-service` /
   catalog targeted tests 通过；门禁 195 files / 1843 passed / 3 skipped
   退出码 0。
+- 阶段③第十三批（2026-10-10）：插件安装预检、安全 ZIP 解析与授权会话错误
+  成文。覆盖 manifest / entry / staging / artifact 校验、ZIP 安全限制、
+  session nonce / token / challenge 校验；插件 manifest 内容、入口路径、
+  上游压缩异常和审计明细保留边界。新增 29 key，zh/en 各 1282 key。
+  `plugin-service` 新增 en-US intake / auth 语言测试；门禁 195 files /
+  1844 passed / 3 skipped 退出码 0。

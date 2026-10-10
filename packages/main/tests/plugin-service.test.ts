@@ -15,6 +15,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import {
   BUILTIN_PLUGIN_IDS,
   PLUGIN_API_VERSION,
+  setCurrentLanguage,
   type PluginRpcRequest,
 } from '@nexnote/shared';
 import { PluginService } from '../src/plugins/plugin-service';
@@ -28,6 +29,7 @@ beforeEach(() => {
   tmp = mkdtempSync(join(tmpdir(), 'nexnote-plugin-test-'));
 });
 afterEach(() => {
+  setCurrentLanguage('zh-CN');
   rmSync(tmp, { recursive: true, force: true });
 });
 
@@ -142,6 +144,20 @@ describe('PluginService secure runtime', () => {
     writeFileSync(invalid, '');
     expect(() => makeService().previewInstall('directory', invalid)).toThrow();
     expect(manifest.minAppVersion).toBeTruthy();
+  });
+
+  it('intake defenses and authorization errors follow the current UI language', () => {
+    setCurrentLanguage('en-US');
+    const service = makeService();
+    const invalid = join(tmp, 'missing-manifest');
+    writeFileSync(invalid, '');
+    expect(() => service.previewInstall('directory', invalid)).toThrow(
+      'manifest.json is missing',
+    );
+    install(service);
+    expect(() =>
+      service.beginSession('com.nexnote.demo', 'short', 'plugin-frame'),
+    ).toThrow('The nonce must be at least 16 characters');
   });
 
   it('requires a staged ticket and activation executes manifest commands', () => {

@@ -1,6 +1,7 @@
 import { inflateRawSync } from 'node:zlib';
 import { mkdirSync, writeFileSync } from 'node:fs';
 import { dirname, join, normalize } from 'node:path';
+import { tCurrent } from '@nexnote/shared';
 
 /**
  * 最小 ZIP 读取器（DEV-013），零第三方依赖：
@@ -36,7 +37,7 @@ function findEOCD(buf: Buffer): number {
   for (let i = buf.length - 22; i >= buf.length - max && i >= 0; i -= 1) {
     if (buf.readUInt32LE(i) === EOCD_SIG) return i;
   }
-  throw new ZipError('非法 zip：找不到中央目录结尾', 'INVALID_ZIP');
+  throw new ZipError(tCurrent('plugin.zip.INVALID_ZIP_EOCD'), 'INVALID_ZIP');
 }
 
 interface CentralRecord {
@@ -55,7 +56,7 @@ function readCentralDirectory(buf: Buffer): CentralRecord[] {
   const records: CentralRecord[] = [];
   for (let i = 0; i < total; i += 1) {
     if (buf.readUInt32LE(offset) !== CENTRAL_SIG) {
-      throw new ZipError('非法 zip：中央目录损坏', 'INVALID_ZIP');
+      throw new ZipError(tCurrent('plugin.zip.INVALID_ZIP_CENTRAL'), 'INVALID_ZIP');
     }
     const method = buf.readUInt16LE(offset + 10);
     const compressedSize = buf.readUInt32LE(offset + 20);
@@ -75,7 +76,7 @@ function readCentralDirectory(buf: Buffer): CentralRecord[] {
 function readLocalData(buf: Buffer, rec: CentralRecord): Buffer {
   const off = rec.localOffset;
   if (buf.readUInt32LE(off) !== LOCAL_SIG) {
-    throw new ZipError('非法 zip：本地文件头损坏', 'INVALID_ZIP');
+    throw new ZipError(tCurrent('plugin.zip.INVALID_ZIP_LOCAL_HEADER'), 'INVALID_ZIP');
   }
   const nameLen = buf.readUInt16LE(off + 26);
   const extraLen = buf.readUInt16LE(off + 28);
@@ -83,7 +84,10 @@ function readLocalData(buf: Buffer, rec: CentralRecord): Buffer {
   const raw = buf.slice(dataStart, dataStart + rec.compressedSize);
   if (rec.method === 0) return raw;
   if (rec.method === 8) return inflateRawSync(raw);
-  throw new ZipError(`不支持的压缩方式: ${rec.method}`, 'ZIP_UNSUPPORTED_METHOD');
+  throw new ZipError(
+    tCurrent('plugin.zip.ZIP_UNSUPPORTED_METHOD', { method: rec.method }),
+    'ZIP_UNSUPPORTED_METHOD',
+  );
 }
 
 /** 去掉单一包裹目录：所有非根条目共享同一个顶层目录时剥离。 */
@@ -108,11 +112,12 @@ export interface SafeExtractOptions {
 /** 读取并校验 zip 条目（含 wrapper 目录归一化）；不写盘。 */
 export function readZipEntries(buffer: Buffer, options: SafeExtractOptions): ZipEntry[] {
   if (buffer.byteLength > options.maxTotalBytes) {
-    throw new ZipError('zip 资源超限', 'ZIP_BOMB');
+    throw new ZipError(tCurrent('plugin.zip.ZIP_BOMB'), 'ZIP_BOMB');
   }
   const central = readCentralDirectory(buffer);
-  if (central.length === 0) throw new ZipError('zip 为空', 'INVALID_ZIP');
-  if (central.length > options.maxEntries) throw new ZipError('zip 条目过多', 'ZIP_ENTRY_LIMIT');
+  if (central.length === 0) throw new ZipError(tCurrent('plugin.zip.ZIP_EMPTY'), 'INVALID_ZIP');
+  if (central.length > options.maxEntries)
+    throw new ZipError(tCurrent('plugin.zip.ZIP_ENTRY_LIMIT'), 'ZIP_ENTRY_LIMIT');
 
   const rawNames = central.map((r) => r.name.replaceAll('\\', '/'));
   const normalized = stripWrapperDir(rawNames);
@@ -124,7 +129,7 @@ export function readZipEntries(buffer: Buffer, options: SafeExtractOptions): Zip
     const dirName = rawNames[i]!.endsWith('/') || name.endsWith('/');
     if (name === '' || name === '.') return;
     if (name.split('/').includes('..') || name.startsWith('/')) {
-      throw new ZipError('zip 路径越界', 'ZIP_PATH_TRAVERSAL');
+      throw new ZipError(tCurrent('plugin.zip.ZIP_PATH_TRAVERSAL'), 'ZIP_PATH_TRAVERSAL');
     }
     const isDir = dirName || (rec.externalAttr >>> 16 & 0x10) !== 0;
     if (isDir) {
@@ -132,14 +137,15 @@ export function readZipEntries(buffer: Buffer, options: SafeExtractOptions): Zip
       return;
     }
     if (rec.uncompressedSize > options.maxEntryBytes) {
-      throw new ZipError('zip 单条目过大', 'ZIP_ENTRY_TOO_LARGE');
+      throw new ZipError(tCurrent('plugin.zip.ZIP_ENTRY_TOO_LARGE'), 'ZIP_ENTRY_TOO_LARGE');
     }
     const data = readLocalData(buffer, rec);
     if (data.byteLength > options.maxEntryBytes) {
-      throw new ZipError('zip 单条目过大', 'ZIP_ENTRY_TOO_LARGE');
+      throw new ZipError(tCurrent('plugin.zip.ZIP_ENTRY_TOO_LARGE'), 'ZIP_ENTRY_TOO_LARGE');
     }
     total += data.byteLength;
-    if (total > options.maxTotalBytes) throw new ZipError('zip 解压总量超限', 'ZIP_BOMB');
+    if (total > options.maxTotalBytes)
+      throw new ZipError(tCurrent('plugin.zip.ZIP_BOMB'), 'ZIP_BOMB');
     entries.push({ name, dir: false, data });
   });
   return entries;
@@ -153,7 +159,7 @@ export function extractZipTo(buffer: Buffer, target: string, options: SafeExtrac
     const dest = join(target, entry.name);
     const rel = normalize(dest);
     if (!rel.startsWith(normalize(target))) {
-      throw new ZipError('zip 路径越界', 'ZIP_PATH_TRAVERSAL');
+      throw new ZipError(tCurrent('plugin.zip.ZIP_PATH_TRAVERSAL'), 'ZIP_PATH_TRAVERSAL');
     }
     if (entry.dir) {
       mkdirSync(dest, { recursive: true });
@@ -169,6 +175,7 @@ export function extractZipTo(buffer: Buffer, target: string, options: SafeExtrac
 /** 在 zip 条目中定位唯一的 manifest.json（wrapper 已剥离）。 */
 export function findManifestEntry(entries: ZipEntry[]): ZipEntry | null {
   const matches = entries.filter((e) => !e.dir && /(^|\/)manifest\.json$/.test(e.name));
-  if (matches.length > 1) throw new ZipError('zip 中存在多个 manifest.json', 'DUPLICATE_MANIFEST');
+  if (matches.length > 1)
+    throw new ZipError(tCurrent('plugin.zip.DUPLICATE_MANIFEST'), 'DUPLICATE_MANIFEST');
   return matches[0] ?? null;
 }

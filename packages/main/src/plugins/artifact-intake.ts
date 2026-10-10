@@ -10,6 +10,7 @@ import { dirname, isAbsolute, join, resolve } from 'node:path';
 import type { PluginInstallTicket, PluginManifest, PluginPermission } from '@nexnote/shared';
 import { validateManifest } from './manifest-validator';
 import { extractZipTo, readZipEntries, ZipError, type SafeExtractOptions } from './zip-extract';
+import { tCurrent } from '@nexnote/shared';
 
 export const MAX_ARTIFACT_BYTES = 64 * 1024 * 1024;
 const MANIFEST_LIMIT = 1_048_576;
@@ -54,17 +55,20 @@ function hashOf(manifest: Buffer, entry: Buffer): string {
 }
 
 function readManifestFile(abs: string): { manifest: PluginManifest; raw: Buffer } {
-  if (!existsSync(abs)) throw new IntakeError('manifest.json 缺失', 'MANIFEST_MISSING');
+  if (!existsSync(abs)) throw new IntakeError(tCurrent('plugin.intake.MANIFEST_MISSING'), 'MANIFEST_MISSING');
   const raw = readFileSync(abs);
-  if (raw.byteLength > MANIFEST_LIMIT) throw new IntakeError('manifest 超过 1 MiB 限制', 'MANIFEST_TOO_LARGE');
+  if (raw.byteLength > MANIFEST_LIMIT)
+    throw new IntakeError(tCurrent('plugin.intake.MANIFEST_TOO_LARGE'), 'MANIFEST_TOO_LARGE');
   return { manifest: validateManifest(JSON.parse(raw.toString('utf8'))), raw };
 }
 
 /** 复制入口文件到 staging（只读）。仅快照 manifest 与入口，运行时只需要入口源码。 */
 function snapshotEntry(srcEntry: string, destEntry: string): Buffer {
-  if (!existsSync(srcEntry)) throw new IntakeError(`插件入口缺失: ${srcEntry}`, 'ENTRY_NOT_FOUND');
+  if (!existsSync(srcEntry))
+    throw new IntakeError(tCurrent('plugin.intake.ENTRY_NOT_FOUND', { path: srcEntry }), 'ENTRY_NOT_FOUND');
   const buf = readFileSync(srcEntry);
-  if (buf.byteLength > MAX_ARTIFACT_BYTES) throw new IntakeError('入口超过资源限制', 'PLUGIN_RESOURCE_LIMIT');
+  if (buf.byteLength > MAX_ARTIFACT_BYTES)
+    throw new IntakeError(tCurrent('plugin.error.PLUGIN_RESOURCE_LIMIT'), 'PLUGIN_RESOURCE_LIMIT');
   mkdirSync(dirname(destEntry), { recursive: true });
   writeFileSync(destEntry, buf, { mode: 0o400 });
   return buf;
@@ -80,7 +84,7 @@ export function stageArtifact(
   pluginsRoot: string,
 ): StageResult {
   if (!isAbsolute(sourcePath)) {
-    throw new IntakeError('安装路径必须是绝对路径', 'INVALID_SOURCE_PATH');
+    throw new IntakeError(tCurrent('plugin.intake.INVALID_SOURCE_PATH'), 'INVALID_SOURCE_PATH');
   }
   const ticket = randomBytes(16).toString('hex');
   const staging = stageDir(pluginsRoot, ticket);
@@ -102,7 +106,7 @@ export function stageArtifact(
     } else {
       const zipBuf = readFileSync(sourcePath);
       if (zipBuf.byteLength > MAX_ARTIFACT_BYTES) {
-        throw new IntakeError('zip 资源超限', 'ARTIFACT_TOO_LARGE');
+        throw new IntakeError(tCurrent('plugin.intake.ARTIFACT_TOO_LARGE'), 'ARTIFACT_TOO_LARGE');
       }
       // 先预扫描校验，再解压（wrapper 目录归一化在 readZipEntries 内完成）。
       readZipEntries(zipBuf, ZIP_LIMITS);
@@ -117,7 +121,7 @@ export function stageArtifact(
   } catch (error) {
     rmSync(staging, { recursive: true, force: true });
     if (error instanceof IntakeError || error instanceof ZipError) throw error;
-    throw new IntakeError((error as Error).message, 'STAGE_FAILED');
+    throw new IntakeError(tCurrent('plugin.intake.STAGE_FAILED', { message: (error as Error).message }), 'STAGE_FAILED');
   }
 
   return {
@@ -137,7 +141,7 @@ export function assertStageUnchanged(stage: Pick<StageResult, 'stagingPath' | 'm
   const entry = readFileSync(join(stage.stagingPath, stage.mainRel));
   const hash = hashOf(manifestRaw, entry);
   if (hash !== stage.artifactHash) {
-    throw new IntakeError('安装内容在校验后发生变化', 'ARTIFACT_CHANGED');
+    throw new IntakeError(tCurrent('plugin.intake.ARTIFACT_CHANGED'), 'ARTIFACT_CHANGED');
   }
   return entry;
 }
