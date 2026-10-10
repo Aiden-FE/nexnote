@@ -4,6 +4,7 @@ import { getActiveEditor } from '../../../editor/active-editor';
 import { useTabStore } from '../../../stores/tab-store';
 import { titleFromPath } from '../../../editor/title-sync';
 import { useChatStore, nextChipId, type AskPayload } from './chat-store';
+import { tCurrent } from '@nexnote/shared';
 
 /** 当前激活 tab 中打开的页面（无则 null）。 */
 export function activePageRef(): { path: string; title: string } | null {
@@ -50,7 +51,9 @@ export function addSelectionContext(payload: AskPayload): void {
   kept.push({
     id: nextChipId('selection'),
     kind: 'selection',
-    label: payload.docTitle ? `选区 · ${payload.docTitle}` : '当前选区',
+    label: payload.docTitle
+      ? tCurrent('chat.context.selectionLabel', { title: payload.docTitle })
+      : tCurrent('chat.context.addSelection'),
     path: payload.docPath ?? undefined,
     text: payload.selectionText,
   });

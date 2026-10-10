@@ -1,11 +1,12 @@
 import { openDocumentTab } from '../../../lib/open-document';
 import type { RetrievalResponse, RetrievalStageName } from '@nexnote/shared';
+import { t } from '../../../lib/i18n';
 import { cn } from '../../../lib/utils';
 
-const STAGE_LABEL: Record<RetrievalStageName, string> = {
-  fts: '全文粗筛',
-  links: '双链扩展',
-  vector: '向量重排',
+const STAGE_KEY: Record<RetrievalStageName, string> = {
+  fts: 'retrieval.stage.fts',
+  links: 'retrieval.stage.links',
+  vector: 'retrieval.stage.vector',
 };
 
 /** 召回参考来源 + 分阶段统计（召回透明 UI，DEV-012 对话面板复用）。 */
@@ -23,20 +24,22 @@ export function RetrievalSources({
   return (
     <div data-testid={testId} className="space-y-1.5 text-[11px]">
       <div className="flex flex-wrap items-center gap-1">
-        <span className="text-muted-foreground">参考来源 {response.sources.length}</span>
+        <span className="text-muted-foreground">
+          {t('retrieval.title', { count: response.sources.length })}
+        </span>
         {response.degraded ? (
           <span
             data-testid="retrieval-degraded"
             className="rounded-full bg-amber-500/15 px-1.5 py-0.5 text-[10px] text-amber-600 dark:text-amber-400"
           >
-            两阶段（向量不可用）
+            {t('retrieval.degraded')}
           </span>
         ) : (
           <span
             data-testid="retrieval-model"
             className="rounded-full bg-emerald-500/10 px-1.5 py-0.5 text-[10px] text-emerald-600 dark:text-emerald-400"
           >
-            向量重排 · {response.model ?? ''}
+            {t('retrieval.reranked', { model: response.model ?? '' })}
           </span>
         )}
       </div>
@@ -56,7 +59,10 @@ export function RetrievalSources({
             )}
             title={s.note}
           >
-            {STAGE_LABEL[s.stage]} {s.enabled ? `${s.candidates}·${s.elapsedMs}ms` : '跳过'}
+            {t(STAGE_KEY[s.stage])}{' '}
+            {s.enabled
+              ? `${s.candidates}·${s.elapsedMs}ms`
+              : t('retrieval.stage.skipped')}
           </span>
         ))}
       </div>
@@ -73,22 +79,26 @@ export function RetrievalSources({
               type="button"
               className="block max-w-full truncate text-left font-medium text-foreground hover:underline"
               onClick={() => openPage(src.path, src.title)}
-              title={`打开 ${src.path}`}
+              title={t('retrieval.openPath', { path: src.path })}
             >
               《{src.title}》
             </button>
             <p className="mt-0.5 line-clamp-2 text-muted-foreground">{src.snippet}</p>
             <div className="mt-0.5 flex gap-1.5 text-[10px] text-muted-foreground">
               {src.vectorSim !== null && (
-                <span data-testid="source-sim">相似度 {src.vectorSim.toFixed(2)}</span>
+                <span data-testid="source-sim">
+                  {t('retrieval.similarity', { score: src.vectorSim.toFixed(2) })}
+                </span>
               )}
-              {src.confidenceScore !== null && <span>置信度 {src.confidenceScore}</span>}
-              <span className="ml-auto">{STAGE_LABEL[src.via]}</span>
+              {src.confidenceScore !== null && (
+                <span>{t('retrieval.confidence', { score: src.confidenceScore })}</span>
+              )}
+              <span className="ml-auto">{t(STAGE_KEY[src.via])}</span>
             </div>
           </li>
         ))}
         {response.sources.length === 0 && (
-          <li className="text-muted-foreground">未召回到相关块。</li>
+          <li className="text-muted-foreground">{t('retrieval.empty')}</li>
         )}
       </ul>
     </div>

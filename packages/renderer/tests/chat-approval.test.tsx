@@ -24,6 +24,7 @@ import { statusBarRegistry } from '../src/registries';
 import { VaultContext } from '../src/shell/vault-context';
 import { useChatStore, type PendingApproval } from '../src/features/ai/chat/chat-store';
 import { ChatDock } from '../src/features/ai/chat/ChatDock';
+import { setLanguage } from '../src/lib/i18n';
 import '../src/features/git';
 import '../src/features/ai/chat/ChatDock';
 
@@ -144,6 +145,7 @@ beforeEach(() => {
   mockRuntime.sendMessage.mockClear();
   mockRuntime.setPermissionMode.mockClear();
   vi.useFakeTimers({ shouldAdvanceTime: true });
+  setLanguage('zh-CN');
 });
 
 afterEach(() => {
@@ -261,6 +263,18 @@ describe('DoctorDialog → Chat Dock 同步助手入口', () => {
 });
 
 describe('审批 banner', () => {
+  it('en-US 下 ChatDock 空态本应用 UI 无中文残留', async () => {
+    setLanguage('en-US');
+    installBridge({ gitStatus: baseStatus, gitDiagnose: diagnosis });
+    renderChatDock();
+    await flushAsync();
+    const dock = document.querySelector('[data-testid="chat-dock"]');
+    expect(dock).not.toBeNull();
+    expect(dock?.textContent).toContain('AI chat');
+    expect(dock?.textContent).toContain('New chat');
+    expect(dock?.textContent).not.toMatch(/[一-鿿]/);
+  });
+
   it('approvalRequired 事件触发后 ChatDock 显示 banner，含工具名和剩余时间', async () => {
     installBridge({ gitStatus: baseStatus, gitDiagnose: diagnosis });
     renderChatDock();

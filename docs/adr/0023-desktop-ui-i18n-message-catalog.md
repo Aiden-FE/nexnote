@@ -97,3 +97,9 @@ status: in_progress
   prompt / chip 文本与主进程诊断文案保留原文边界。新增 68 key，消息目录
   zh/en 各 567 key；`git-status-item.test.tsx` 新增状态栏与时间线 en-US
   残留检查，门禁 193 files / 1827 passed / 3 skipped。
+- 阶段②第九批（2026-10-10）：AI 对话面板迁移完成，包括历史、权限、导出、
+  空态、插入、发送/停止、会话状态、Agent 审批与执行横幅；上下文 chips、
+  召回来源与 Skill 选择器一并迁移。会话错误 / 上下文块 / 会话标题 /
+  Skill 名称保留 runtime 或插件内容边界。新增 73 key，消息目录 zh/en 各 640 key。
+  `chat-approval.test.tsx` 新增 en-US ChatDock 空态残留检查；门禁
+  193 files / 1828 passed / 3 skipped。

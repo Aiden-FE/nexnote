@@ -13,6 +13,7 @@ import { useIndexStore } from '../../../stores/index-store';
 import { usePageTreeStore } from '../../../stores/page-tree-store';
 import { titleFromPath } from '../../../editor/title-sync';
 import { cn } from '../../../lib/utils';
+import { useI18n } from '../../../lib/i18n';
 
 const KIND_ICON = {
   document: FileText,
@@ -23,6 +24,7 @@ const KIND_ICON = {
 } as const;
 
 function Chip({ chip, onRemove }: { chip: ChatContextChip; onRemove: (id: string) => void }) {
+  const tr = useI18n();
   const [open, setOpen] = useState(false);
   const triggerRef = useRef<HTMLButtonElement>(null);
   const Icon = KIND_ICON[chip.kind];
@@ -47,7 +49,7 @@ function Chip({ chip, onRemove }: { chip: ChatContextChip; onRemove: (id: string
         <span
           role="button"
           tabIndex={0}
-          aria-label="移除上下文"
+          aria-label={tr('chat.context.remove')}
           data-testid="context-chip-remove"
           onClick={(e) => {
             e.stopPropagation();
@@ -76,6 +78,7 @@ function Chip({ chip, onRemove }: { chip: ChatContextChip; onRemove: (id: string
 }
 
 function AddMenu() {
+  const tr = useI18n();
   const [open, setOpen] = useState(false);
   const [filter, setFilter] = useState('');
   const backlinks = useIndexStore((s) => s.backlinks);
@@ -110,7 +113,7 @@ function AddMenu() {
         onClick={() => setOpen((v) => !v)}
         className="flex items-center gap-0.5 rounded-full border border-dashed px-1.5 py-0.5 text-[11px] text-muted-foreground hover:bg-muted hover:text-foreground"
       >
-        <Plus className="size-3" /> 添加
+        <Plus className="size-3" /> {tr('chat.context.add')}
       </button>
       <DockPopover
         open={open}
@@ -134,13 +137,19 @@ function AddMenu() {
           }}
           className="flex w-full items-center gap-1.5 rounded px-1.5 py-1 text-left hover:bg-accent disabled:opacity-40"
         >
-          <SquareMousePointer className="size-3.5" /> 当前选区
-          {!sel && <span className="ml-auto text-[10px] text-muted-foreground">无选区</span>}
+          <SquareMousePointer className="size-3.5" /> {tr('chat.context.addSelection')}
+          {!sel && (
+            <span className="ml-auto text-[10px] text-muted-foreground">
+              {tr('chat.context.noSelection')}
+            </span>
+          )}
         </button>
 
         {linkDocs.length > 0 && (
           <div className="mt-1 border-t pt-1">
-            <p className="px-1.5 py-0.5 text-[10px] text-muted-foreground">反向链接文档</p>
+            <p className="px-1.5 py-0.5 text-[10px] text-muted-foreground">
+              {tr('chat.context.backlinkDocuments')}
+            </p>
             <div className="max-h-28 overflow-auto">
               {linkDocs.map((b) => (
                 <button
@@ -160,11 +169,13 @@ function AddMenu() {
         )}
 
         <div className="mt-1 border-t pt-1">
-          <p className="px-1.5 py-0.5 text-[10px] text-muted-foreground">特定页面</p>
+          <p className="px-1.5 py-0.5 text-[10px] text-muted-foreground">
+            {tr('chat.context.pages')}
+          </p>
           <input
             value={filter}
             onChange={(e) => setFilter(e.target.value)}
-            placeholder="过滤页面…"
+            placeholder={tr('chat.context.filterPages')}
             className="mb-1 w-full rounded border bg-background px-1.5 py-0.5 text-[11px] focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring/40"
           />
           <div className="max-h-32 overflow-auto">
@@ -183,7 +194,9 @@ function AddMenu() {
                 <FileText className="size-3.5 shrink-0" /> {titleFromPath(e.name)}
               </button>
             ))}
-            {pages.length === 0 && <p className="px-1.5 py-1 text-muted-foreground">无匹配页面</p>}
+            {pages.length === 0 && (
+              <p className="px-1.5 py-1 text-muted-foreground">{tr('chat.context.noPages')}</p>
+            )}
           </div>
         </div>
       </DockPopover>
@@ -192,6 +205,7 @@ function AddMenu() {
 }
 
 export function ContextChips() {
+  const tr = useI18n();
   const chips = useChatStore((s) => s.chips);
   const removeChip = useChatStore((s) => s.removeChip);
   const assembly = useMemo(() => assembleChatContext(chips), [chips]);
@@ -210,7 +224,8 @@ export function ContextChips() {
             assembly.truncated && 'text-amber-600 dark:text-amber-400',
           )}
         >
-          ~{assembly.totalTokens} tokens{assembly.truncated ? ' · 已截断' : ''}
+          ~{assembly.totalTokens} tokens
+          {assembly.truncated ? tr('chat.context.truncated') : ''}
         </span>
       </div>
     </div>

@@ -6,6 +6,7 @@ import { cn } from '../../lib/utils';
 import { Button } from '../../components/ui/button';
 import { DockPopover } from '../ai/chat/DockPopover';
 import { setSelectedSkillIds, useSelectedSkillIds } from './chat-skill-store';
+import { t } from '../../lib/i18n';
 
 /** 对话 dock 工具栏的 Skill 组合选择器（多选，空 = 全部已启用）。 */
 export function ChatSkillPicker() {
@@ -38,7 +39,7 @@ export function ChatSkillPicker() {
         aria-expanded={open}
         className={cn('h-7 gap-1 px-2 text-[11px]', selected.length > 0 && 'text-primary')}
         onClick={() => setOpen((value) => !value)}
-        title="选择参与召回的检索 Skill（组合后合并重排）"
+        title={t('skills.chatPicker.title')}
       >
         <Sparkles className="size-3.5" />
         Skill{selected.length > 0 ? ` · ${selected.length}` : ''}
@@ -51,10 +52,12 @@ export function ChatSkillPicker() {
         className="w-60 rounded-lg border bg-popover p-2 shadow-xl"
       >
         <p className="px-1 pb-1 text-[10px] text-muted-foreground">
-          勾选要组合的检索 Skill；不勾选则使用全部已启用。
+          {t('skills.chatPicker.hint')}
         </p>
         {enabled.length === 0 ? (
-          <p className="px-1 py-2 text-[11px] text-muted-foreground">暂无已启用 Skill</p>
+          <p className="px-1 py-2 text-[11px] text-muted-foreground">
+            {t('skills.chatPicker.empty')}
+          </p>
         ) : (
           enabled.map((skill) => (
             <label
@@ -70,7 +73,7 @@ export function ChatSkillPicker() {
               />
               <span>{skill.name}</span>
               <span className="ml-auto text-[10px] text-muted-foreground">
-                {skill.source === 'builtin' ? '内置' : '插件'}
+                {skill.source === 'builtin' ? t('skills.chatPicker.builtin') : t('skills.chatPicker.plugin')}
               </span>
             </label>
           ))

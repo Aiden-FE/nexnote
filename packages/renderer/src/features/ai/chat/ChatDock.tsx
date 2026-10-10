@@ -38,6 +38,7 @@ import {
 import { addSelectionContext, refreshAutoDocumentChip } from './chat-context-bridge';
 import { ChatSkillPicker } from '../../skills/ChatSkillPicker';
 import { DockPopover } from './DockPopover';
+import { t, useI18n } from '../../../lib/i18n';
 
 function sourcesResponse(turn: ChatTurn): RetrievalResponse | null {
   const meta = turn.meta;
@@ -53,6 +54,7 @@ function sourcesResponse(turn: ChatTurn): RetrievalResponse | null {
 }
 
 function TurnView({ turn }: { turn: ChatTurn }) {
+  const tr = useI18n();
   const isUser = turn.role === 'user';
   const sources = !isUser ? sourcesResponse(turn) : null;
   const insertionMode = useActiveInsertionMode();
@@ -77,12 +79,18 @@ function TurnView({ turn }: { turn: ChatTurn }) {
               disabled={insertionMode === null}
               title={
                 insertionMode === null
-                  ? '没有活动编辑器'
-                  : `插入当前${insertionMode === 'source' ? '源码' : '块编辑'}光标（可撤销）`
+                  ? tr('chat.insert.noEditor')
+                  : tr('chat.insert.title', {
+                      mode: tr(
+                        insertionMode === 'source'
+                          ? 'chat.insert.mode.source'
+                          : 'chat.insert.mode.block',
+                      ),
+                    })
               }
               onClick={() => insertAtActiveCursor(turn.content)}
             >
-              <CornerDownLeft className="size-3" /> 插入到光标
+              <CornerDownLeft className="size-3" /> {tr('chat.insertToCursor')}
             </button>
           </div>
           {sources && (
@@ -91,7 +99,7 @@ function TurnView({ turn }: { turn: ChatTurn }) {
               className="rounded-md border bg-muted/30 px-2 py-1 text-[11px]"
             >
               <summary className="cursor-pointer select-none text-muted-foreground">
-                参考来源
+                {tr('chat.sources.title')}
               </summary>
               <div className="mt-1.5">
                 <RetrievalSources response={sources} testId="chat-retrieval-sources" />
@@ -104,14 +112,15 @@ function TurnView({ turn }: { turn: ChatTurn }) {
   );
 }
 
-const STATUS_LABEL: Record<ChatSessionStatus, string> = {
-  complete: '',
-  streaming: '未完成',
-  cancelled: '已取消',
-  failed: '失败',
+const STATUS_KEY: Record<ChatSessionStatus, string> = {
+  complete: 'chat.sessionStatus.complete',
+  streaming: 'chat.sessionStatus.streaming',
+  cancelled: 'chat.sessionStatus.cancelled',
+  failed: 'chat.sessionStatus.failed',
 };
 
 function HistoryMenu() {
+  const tr = useI18n();
   const summaries = useChatStore((s) => s.summaries);
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState('');
@@ -135,7 +144,7 @@ function HistoryMenu() {
         className="h-7 gap-1 px-2 text-[11px]"
         onClick={() => setOpen((v) => !v)}
       >
-        历史 <ChevronDown className="size-3" />
+        {tr('chat.history.title')} <ChevronDown className="size-3" />
       </Button>
       <DockPopover
         open={open}
@@ -151,13 +160,15 @@ function HistoryMenu() {
             data-testid="chat-history-search"
             value={query}
             onChange={(e) => setQuery(e.target.value)}
-            placeholder="搜索会话标题…"
+            placeholder={tr('chat.history.searchPlaceholder')}
             className="w-full rounded border bg-transparent py-1 pl-7 pr-2 text-[12px] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/40"
           />
         </div>
         {summaries.length === 0 && (
           <p className="px-2 py-2 text-muted-foreground">
-            {query.trim() ? '没有匹配的会话' : '暂无历史会话'}
+            {query.trim()
+              ? tr('chat.history.emptyWithQuery')
+              : tr('chat.history.empty')}
           </p>
         )}
         {summaries.map((s) => (
@@ -181,12 +192,15 @@ function HistoryMenu() {
                   className="flex shrink-0 items-center gap-0.5 rounded bg-amber-500/15 px-1 text-[9px] text-amber-700"
                 >
                   <AlertTriangle className="size-2.5" />
-                  {STATUS_LABEL[s.status]}
+                  {t(STATUS_KEY[s.status])}
                 </span>
               )}
             </span>
             <span className="block text-[10px] text-muted-foreground">
-              {s.turnCount} 条 · {new Date(s.updatedAt).toLocaleString()}
+              {tr('chat.history.turnCount', {
+                count: s.turnCount,
+                time: new Date(s.updatedAt).toLocaleString(),
+              })}
             </span>
           </button>
         ))}
@@ -196,6 +210,7 @@ function HistoryMenu() {
 }
 
 export function ChatDock() {
+  const tr = useI18n();
   const active = useChatStore((s) => s.active);
   const streaming = useChatStore((s) => s.streaming);
   const error = useChatStore((s) => s.error);
@@ -249,8 +264,9 @@ export function ChatDock() {
 
   const hasTurns = (active?.turns.length ?? 0) > 0;
   const placeholder = useMemo(
-    () => (active ? `向 AI 提问…（⌘Enter 发送）` : '开始一个新对话…（⌘Enter 发送）'),
-    [active],
+    () =>
+      tr(active ? 'chat.input.placeholder.active' : 'chat.input.placeholder.new'),
+    [active, tr],
   );
 
   return (
@@ -266,25 +282,25 @@ export function ChatDock() {
             inputRef.current?.focus();
           }}
         >
-          <MessageSquarePlus className="size-3.5" /> 新会话
+          <MessageSquarePlus className="size-3.5" /> {tr('chat.new')}
         </Button>
         <HistoryMenu />
         <label
           className="flex items-center gap-1 text-[11px] text-muted-foreground"
-          title="仅约束 Chat Dock Agent 工具"
+          title={tr('chat.permission.toolTitle')}
         >
-          权限
+          {tr('chat.permission.title')}
           <select
             data-testid="chat-permission-mode"
-            aria-label="Chat Dock 权限模式"
+            aria-label={tr('chat.permission.ariaLabel')}
             value={permissionMode}
             disabled={!active || streaming}
             onChange={(e) => void setPermissionMode(e.target.value as ChatPermissionMode)}
             className="h-7 rounded border bg-transparent px-1 text-[11px] text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/40"
           >
-            <option value="conversation">对话（只读）</option>
-            <option value="edit">编辑（逐项审批）</option>
-            <option value="full">完全权限（自动写回）</option>
+            <option value="conversation">{tr('chat.permission.conversation')}</option>
+            <option value="edit">{tr('chat.permission.edit')}</option>
+            <option value="full">{tr('chat.permission.full')}</option>
           </select>
         </label>
         <Button
@@ -294,16 +310,16 @@ export function ChatDock() {
           className="h-7 gap-1 px-2 text-[11px] disabled:opacity-40"
           disabled={!hasTurns || streaming}
           onClick={() => void saveAsDoc()}
-          title="将会话导出为普通文档并在当前标签打开（导出后与会话脱钩）"
+          title={tr('chat.export.title')}
         >
-          <FileDown className="size-3.5" /> 导出为页面
+          <FileDown className="size-3.5" /> {tr('chat.export.label')}
         </Button>
         <ChatSkillPicker />
         <Button
           variant="ghost"
           size="sm"
           className="ml-auto h-7 w-7 p-0"
-          aria-label="AI 设置"
+          aria-label={tr('chat.aiSettings')}
           onClick={() => openSettings('ai')}
         >
           <Settings2 className="size-3.5" />
@@ -321,13 +337,12 @@ export function ChatDock() {
           <div className="flex size-11 items-center justify-center rounded-full bg-muted">
             <Sparkles className="size-5 text-primary" />
           </div>
-          <p className="text-sm font-medium">AI 对话</p>
+          <p className="text-sm font-medium">{tr('chat.empty.title')}</p>
           <p className="max-w-60 text-[11px] leading-relaxed text-muted-foreground">
-            提问会自动附带当前笔记上下文与知识库召回；会话保存在知识库内部存储（不进入文档树、不参与双链），
-            可从「历史」续聊或「导出为页面」转为普通文档。
+            {tr('chat.empty.description')}
           </p>
           <Button data-testid="chat-empty-start" size="sm" onClick={() => void startNewSession()}>
-            <MessageSquarePlus className="size-3.5" /> 开始新对话
+            <MessageSquarePlus className="size-3.5" /> {tr('chat.empty.start')}
           </Button>
         </div>
       ) : (
@@ -339,7 +354,9 @@ export function ChatDock() {
           >
             {active.turns.length === 0 && (
               <p className="p-2 text-[11px] text-muted-foreground">
-                {modelLabel ? `已连接 ${modelLabel}，开始提问吧。` : '输入问题开始对话。'}
+                {modelLabel
+                  ? tr('chat.empty.connected', { model: modelLabel })
+                  : tr('chat.empty.prompt')}
               </p>
             )}
             {active.turns.map((turn, i) => (
@@ -358,7 +375,9 @@ export function ChatDock() {
                 data-testid="chat-unfinished"
                 className="rounded-md border border-amber-500/40 bg-amber-500/10 p-2 text-[11px] text-amber-700"
               >
-                上次回复{STATUS_LABEL[sessionStatus]}；直接继续提问即可续聊。
+                {tr('chat.unfinished', {
+                  status: t(STATUS_KEY[sessionStatus]),
+                })}
               </div>
             )}
           </div>
@@ -396,7 +415,7 @@ export function ChatDock() {
                 className="h-9 px-2 text-[12px]"
                 onClick={() => stopStream()}
               >
-                停止
+                {tr('chat.stop')}
               </Button>
             ) : (
               <Button
@@ -406,7 +425,7 @@ export function ChatDock() {
                 className="h-9 px-3 text-[12px]"
                 disabled={!input.trim()}
               >
-                发送
+                {tr('chat.send')}
               </Button>
             )}
           </form>
@@ -423,6 +442,7 @@ export function ChatDock() {
  * 5 分钟 TTL 由主进程 ApprovalStore 维护；超时未点 → APPROVAL_EXPIRED。
  */
 function PendingApprovalBanner() {
+  const tr = useI18n();
   const pending = useChatStore((s) => s.pendingApproval);
   const respond = useChatStore((s) => s.respondApproval);
   const [now, setNow] = useState(() => Date.now());
@@ -438,23 +458,27 @@ function PendingApprovalBanner() {
   if (!pending) return null;
   const remainMs = Math.max(0, pending.expiresAt - now);
   const remainSec = Math.ceil(remainMs / 1000);
-  const toolLabel = TOOL_LABEL[pending.tool] ?? `Agent 工具 ${pending.tool}`;
+  const toolLabel = t(TOOL_LABEL[pending.tool] ?? 'chat.approval.tool.fallback', {
+    tool: pending.tool,
+  });
   return (
     <div
       data-testid="chat-approval-banner"
       role="alertdialog"
-      aria-label="Agent 工具审批"
+      aria-label={tr('chat.approval.title')}
       className="shrink-0 rounded-md border border-amber-500/40 bg-amber-500/10 p-2 text-[12px] text-amber-700"
     >
       <div className="flex items-start gap-2">
         <AlertTriangle className="mt-0.5 size-3.5 shrink-0" />
         <div className="min-w-0 flex-1">
-          <p className="font-medium">Agent 请求执行：{toolLabel}</p>
+          <p className="font-medium">
+            {tr('chat.approval.heading', { tool: toolLabel })}
+          </p>
           {pending.summary && <p>{pending.summary}</p>}
           <p className="text-[10px] opacity-80">
             {remainSec > 0
-              ? `本审批在 ${remainSec} 秒后过期，过期需重新诊断`
-              : '已过期——等待主进程撤销'}
+              ? tr('chat.approval.expiresIn', { seconds: remainSec })
+              : tr('chat.approval.expired')}
           </p>
         </div>
         <div className="flex shrink-0 gap-1">
@@ -465,7 +489,7 @@ function PendingApprovalBanner() {
             data-testid="chat-approval-deny"
             onClick={() => void respond(pending.approvalId, 'denied')}
           >
-            拒绝
+            {tr('chat.approval.deny')}
           </Button>
           <Button
             size="sm"
@@ -473,7 +497,7 @@ function PendingApprovalBanner() {
             data-testid="chat-approval-approve"
             onClick={() => void respond(pending.approvalId, 'approved')}
           >
-            批准
+            {tr('chat.approval.approve')}
           </Button>
         </div>
       </div>
@@ -482,9 +506,9 @@ function PendingApprovalBanner() {
 }
 
 const TOOL_LABEL: Record<string, string> = {
-  git_doctor_repair: '执行 git 修复',
-  edit_current_selection: '替换当前选区',
-  append_to_document: '向当前文档追加内容',
+  git_doctor_repair: 'chat.approval.tool.git_doctor_repair',
+  edit_current_selection: 'chat.approval.tool.edit_current_selection',
+  append_to_document: 'chat.approval.tool.append_to_document',
 };
 
 /**
@@ -492,9 +516,12 @@ const TOOL_LABEL: Record<string, string> = {
  * （rebase 多个 commit + push），没有它用户只看到一个空气泡，像卡死。
  */
 function RunningToolBanner() {
+  const tr = useI18n();
   const runningTool = useChatStore((s) => s.runningTool);
   if (!runningTool) return null;
-  const label = TOOL_LABEL[runningTool] ?? `执行 ${runningTool}`;
+  const label = t(TOOL_LABEL[runningTool] ?? 'chat.runningTool.fallback', {
+    tool: runningTool,
+  });
   return (
     <div
       data-testid="chat-running-tool"
@@ -502,7 +529,7 @@ function RunningToolBanner() {
       className="flex shrink-0 items-center gap-1.5 rounded-md border bg-muted/40 p-2 text-[11px] text-muted-foreground"
     >
       <Loader2 className="size-3.5 animate-spin" />
-      已批准，正在{label}…完成后会在这里给出结果。
+      {tr('chat.runningTool', { label })}
     </div>
   );
 }
