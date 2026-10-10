@@ -18,6 +18,7 @@ import type {
   SkillParams,
 } from '@nexnote/shared';
 import { PLUGIN_API_VERSION } from '@nexnote/shared';
+import { tCurrent } from '@nexnote/shared';
 import { AuthorizationManager } from './authorization';
 import { assertStageUnchanged, stageArtifact, toInstallTicket } from './artifact-intake';
 import {
@@ -177,7 +178,7 @@ export class PluginService {
   }
 
   previewInstall(source: 'directory' | 'zip', path: string): PluginInstallTicket {
-    if (!this.pluginsRoot) throw new PluginError('缺少 pluginsRoot，无法执行 preview', 'NO_ROOT');
+    if (!this.pluginsRoot) throw new PluginError(tCurrent('plugin.error.NO_ROOT'), 'NO_ROOT');
     const stage = stageArtifact(source, path, this.pluginsRoot);
     assertHostCompatible(stage.manifest, this.hostVersion);
     this.tickets.set(stage.ticket, {
@@ -196,11 +197,11 @@ export class PluginService {
   confirmInstall(ticket: string, accept: boolean): PluginView {
     const stage = this.tickets.get(ticket);
     this.tickets.delete(ticket);
-    if (!stage) throw new PluginError('安装票据已过期或不存在', 'TICKET_NOT_FOUND');
+    if (!stage) throw new PluginError(tCurrent('plugin.error.TICKET_NOT_FOUND'), 'TICKET_NOT_FOUND');
     if (!accept) {
       this.record(stage.manifest.id, 'install.reject', false, undefined, 'user declined');
       rmSync(stage.stagingPath, { recursive: true, force: true });
-      throw new PluginError('用户未确认安装', 'INSTALL_NOT_ACCEPTED');
+      throw new PluginError(tCurrent('plugin.error.INSTALL_NOT_ACCEPTED'), 'INSTALL_NOT_ACCEPTED');
     }
     const approvedSource = assertStageUnchanged(stage).toString('utf8');
     return this.activateFromStage(stage, approvedSource);
@@ -209,7 +210,10 @@ export class PluginService {
   uninstall(pluginId: string): void {
     const plugin = this.require(pluginId);
     if (plugin.manifest.builtin) {
-      throw new PluginError('内置插件不可卸载（可在设置页禁用）', 'BUILTIN_NOT_UNINSTALLABLE');
+      throw new PluginError(
+        tCurrent('plugin.error.BUILTIN_NOT_UNINSTALLABLE'),
+        'BUILTIN_NOT_UNINSTALLABLE',
+      );
     }
     this.auth.revokeAllForPlugin(pluginId);
     this.deactivate(plugin);
@@ -223,7 +227,7 @@ export class PluginService {
   setEnabled(pluginId: string, enabled: boolean): PluginView {
     const plugin = this.require(pluginId);
     if (plugin.state === 'crashed') {
-      throw new PluginError('已崩溃的插件需要先卸载再重装', 'PLUGIN_CRASHED');
+      throw new PluginError(tCurrent('plugin.error.PLUGIN_CRASHED_REINSTALL'), 'PLUGIN_CRASHED');
     }
     plugin.enabled = enabled;
     if (enabled) this.activate(plugin);
@@ -242,8 +246,9 @@ export class PluginService {
   ): PluginAuthChallenge {
     const session = this.auth.verifySession(sessionId, token);
     const plugin = this.require(session.pluginId);
-    if (!plugin.enabled) throw new PluginError('插件未启用', 'PLUGIN_DISABLED');
-    if (plugin.state !== 'active') throw new PluginError('插件未激活', 'PLUGIN_NOT_ACTIVE');
+    if (!plugin.enabled) throw new PluginError(tCurrent('plugin.error.PLUGIN_DISABLED'), 'PLUGIN_DISABLED');
+    if (plugin.state !== 'active')
+      throw new PluginError(tCurrent('plugin.error.PLUGIN_NOT_ACTIVE'), 'PLUGIN_NOT_ACTIVE');
     return this.auth.beginChallenge(sessionId, token, session.pluginId, request);
   }
 
@@ -275,7 +280,7 @@ export class PluginService {
   revokePermission(pluginId: string, permission: PluginPermission): PluginView {
     const plugin = this.require(pluginId);
     if (!plugin.manifest.permissions.includes(permission)) {
-      throw new PluginError('权限未在 manifest 中声明', 'PERMISSION_UNDECLARED');
+      throw new PluginError(tCurrent('plugin.error.PERMISSION_UNDECLARED'), 'PERMISSION_UNDECLARED');
     }
     plugin.grants.set(permission, { granted: false, alwaysAllow: false });
     this.record(plugin.manifest.id, 'permission.revoke', true, permission);
@@ -290,8 +295,9 @@ export class PluginService {
 
   beginSession(pluginId: string, nonce: string, origin: string): PluginSessionToken {
     const plugin = this.require(pluginId);
-    if (!plugin.enabled) throw new PluginError('插件未启用', 'PLUGIN_DISABLED');
-    if (plugin.state !== 'active') throw new PluginError('插件未激活', 'PLUGIN_NOT_ACTIVE');
+    if (!plugin.enabled) throw new PluginError(tCurrent('plugin.error.PLUGIN_DISABLED'), 'PLUGIN_DISABLED');
+    if (plugin.state !== 'active')
+      throw new PluginError(tCurrent('plugin.error.PLUGIN_NOT_ACTIVE'), 'PLUGIN_NOT_ACTIVE');
     return this.auth.beginSession(pluginId, nonce, origin);
   }
 
@@ -307,7 +313,8 @@ export class PluginService {
   ): { pluginId: string; source: string } {
     this.auth.verifySession(sessionId, token, pluginId);
     const plugin = this.require(pluginId);
-    if (plugin.state !== 'active') throw new PluginError('插件未激活', 'PLUGIN_NOT_ACTIVE');
+    if (plugin.state !== 'active')
+      throw new PluginError(tCurrent('plugin.error.PLUGIN_NOT_ACTIVE'), 'PLUGIN_NOT_ACTIVE');
     return { pluginId, source: this.readSource(plugin) };
   }
 
@@ -331,7 +338,8 @@ export class PluginService {
 
   runCommand(pluginId: string, commandId: string, payload: unknown): unknown {
     const plugin = this.require(pluginId);
-    if (plugin.state !== 'active') throw new PluginError('插件未激活', 'PLUGIN_NOT_ACTIVE');
+    if (plugin.state !== 'active')
+      throw new PluginError(tCurrent('plugin.error.PLUGIN_NOT_ACTIVE'), 'PLUGIN_NOT_ACTIVE');
     this.record(pluginId, 'command.run', true, undefined, commandId);
     return { pluginId, commandId, payload };
   }
@@ -343,10 +351,11 @@ export class PluginService {
   private dispatchRpc(sessionId: string, token: string, request: PluginRpcRequest): unknown {
     const session = this.auth.verifySession(sessionId, token);
     const plugin = this.require(session.pluginId);
-    if (plugin.state !== 'active') throw new PluginError('插件未激活', 'PLUGIN_NOT_ACTIVE');
+    if (plugin.state !== 'active')
+      throw new PluginError(tCurrent('plugin.error.PLUGIN_NOT_ACTIVE'), 'PLUGIN_NOT_ACTIVE');
     if (request.apiVersion !== PLUGIN_API_VERSION) {
       throw new PluginError(
-        `插件 API 版本不兼容（需要 ${PLUGIN_API_VERSION}）`,
+        tCurrent('plugin.error.API_VERSION_MISMATCH', { version: PLUGIN_API_VERSION }),
         'API_VERSION_MISMATCH',
       );
     }
@@ -355,7 +364,7 @@ export class PluginService {
         this.requirePermission(plugin, 'read', request.method);
         const params = request.params as { id?: unknown; title?: unknown; keywords?: unknown };
         if (typeof params?.id !== 'string' || typeof params?.title !== 'string') {
-          throw new PluginError('command.register 参数无效', 'BAD_RPC_PARAMS');
+          throw new PluginError(tCurrent('plugin.error.BAD_COMMAND_PARAMS'), 'BAD_RPC_PARAMS');
         }
         const id = `${plugin.manifest.id}:${params.id}`;
         plugin.commands.set(id, {
@@ -377,10 +386,10 @@ export class PluginService {
           typeof params.intent.type !== 'string' ||
           !Number.isInteger(params.expectedRevision)
         ) {
-          throw new PluginError('transact 参数无效', 'BAD_RPC_PARAMS');
+          throw new PluginError(tCurrent('plugin.error.BAD_TRANSACT_PARAMS'), 'BAD_RPC_PARAMS');
         }
         if (params.expectedRevision !== this.revision) {
-          throw new PluginError('文档 revision 已变化，请重新读取后重试', 'REVISION_CONFLICT');
+          throw new PluginError(tCurrent('plugin.error.REVISION_CONFLICT'), 'REVISION_CONFLICT');
         }
         this.revision += 1;
         return { revision: this.revision };
@@ -389,17 +398,20 @@ export class PluginService {
         const params = request.params as { permission?: unknown; operation?: unknown };
         const permission = params.permission as PluginPermission;
         if (!PERMISSIONS.includes(permission) || typeof params.operation !== 'string') {
-          throw new PluginError('capability.call 参数无效', 'BAD_RPC_PARAMS');
+          throw new PluginError(tCurrent('plugin.error.BAD_CAPABILITY_PARAMS'), 'BAD_RPC_PARAMS');
         }
         this.requirePermission(plugin, permission, params.operation);
         this.consumeOneShotGrant(plugin, permission);
-        throw new PluginError(`能力尚未实现: ${params.operation}`, 'NOT_IMPLEMENTED');
+        throw new PluginError(
+          tCurrent('plugin.error.NOT_IMPLEMENTED', { operation: String(params.operation) }),
+          'NOT_IMPLEMENTED',
+        );
       }
       case 'permission.request': {
         const params = request.params as { permission?: unknown };
         const permission = params.permission as PluginPermission;
         if (!PERMISSIONS.includes(permission))
-          throw new PluginError('请求了未知权限', 'BAD_RPC_PARAMS');
+          throw new PluginError(tCurrent('plugin.error.UNKNOWN_PERMISSION'), 'BAD_RPC_PARAMS');
         if (!plugin.manifest.permissions.includes(permission)) {
           this.record(
             plugin.manifest.id,
@@ -408,17 +420,23 @@ export class PluginService {
             permission,
             'manifest 未声明',
           );
-          throw new PluginError('权限未在 manifest 中声明', 'PERMISSION_UNDECLARED');
+          throw new PluginError(tCurrent('plugin.error.PERMISSION_UNDECLARED'), 'PERMISSION_UNDECLARED');
         }
         const state = plugin.grants.get(permission);
         this.record(plugin.manifest.id, 'permission.request', state?.granted === true, permission);
         if (state?.granted !== true) {
-          throw new PluginError(`需要用户授权 ${permission}`, 'PERMISSION_REQUIRED');
+          throw new PluginError(
+            tCurrent('plugin.error.PERMISSION_REQUIRED', { permission }),
+            'PERMISSION_REQUIRED',
+          );
         }
         return { granted: true, alwaysAllow: state.alwaysAllow };
       }
       default:
-        throw new PluginError(`未知 RPC 方法: ${String(request.method)}`, 'UNKNOWN_METHOD');
+        throw new PluginError(
+          tCurrent('plugin.error.UNKNOWN_METHOD', { method: String(request.method) }),
+          'UNKNOWN_METHOD',
+        );
     }
   }
 
@@ -470,7 +488,7 @@ export class PluginService {
 
   private require(pluginId: string): InstalledPlugin {
     const plugin = this.plugins.get(pluginId);
-    if (!plugin) throw new PluginError(`插件不存在: ${pluginId}`, 'PLUGIN_NOT_FOUND');
+    if (!plugin) throw new PluginError(tCurrent('plugin.error.PLUGIN_NOT_FOUND', { id: pluginId }), 'PLUGIN_NOT_FOUND');
     return plugin;
   }
 
@@ -481,12 +499,18 @@ export class PluginService {
   ): void {
     if (!plugin.manifest.permissions.includes(permission)) {
       this.record(plugin.manifest.id, 'permission.request', false, permission, 'undeclared');
-      throw new PluginError(`权限未在 manifest 中声明: ${permission}`, 'PERMISSION_UNDECLARED');
+      throw new PluginError(
+        tCurrent('plugin.error.PERMISSION_UNDECLARED_WITH_NAME', { permission }),
+        'PERMISSION_UNDECLARED',
+      );
     }
     const state = plugin.grants.get(permission);
     if (state?.granted !== true) {
       this.record(plugin.manifest.id, 'permission.request', false, permission, operation);
-      throw new PluginError(`需要用户授权 ${permission}`, 'PERMISSION_REQUIRED');
+      throw new PluginError(
+        tCurrent('plugin.error.PERMISSION_REQUIRED', { permission }),
+        'PERMISSION_REQUIRED',
+      );
     }
     this.record(plugin.manifest.id, 'permission.request', true, permission, operation);
   }
@@ -545,7 +569,7 @@ export class PluginService {
     const source =
       plugin.approvedSource ?? readFileSync(join(plugin.source.path, plugin.manifest.main), 'utf8');
     if (source.length > MAX_PLUGIN_SOURCE_BYTES) {
-      throw new PluginError('插件入口超过 1 MiB 资源限制', 'PLUGIN_RESOURCE_LIMIT');
+      throw new PluginError(tCurrent('plugin.error.PLUGIN_RESOURCE_LIMIT'), 'PLUGIN_RESOURCE_LIMIT');
     }
     return source;
   }

@@ -198,3 +198,8 @@ status: in_progress
   Profile 名、模型名、Base URL 和导入 skipped 名称保留数据边界。新增 5 key，
   zh/en 各 1233 key。`ai-store` / `ai-service` / catalog targeted tests 通过；
   门禁 195 files / 1843 passed / 3 skipped 退出码 0。
+- 阶段③第十二批（2026-10-10）：PluginService 安装票据 / 生命周期 / RPC / 授权
+  服务错误成文；插件名、贡献标题、manifest 内容、RPC 输入与审计明细保留
+  插件数据边界。新增 20 key，zh/en 各 1253 key。`plugin-service` /
+  catalog targeted tests 通过；门禁 195 files / 1843 passed / 3 skipped
+  退出码 0。
