@@ -4,7 +4,8 @@ import { AuditStore } from '../src/agent/audit-store';
 import { ToolRegistry, type AgentTool } from '../src/agent/tool-registry';
 import { validatePayload } from '../src/ipc/validation';
 import { createBuiltinTools } from '../src/agent/builtin-tools';
-import { setCurrentLanguage, type GitRepairAction } from '@nexnote/shared';
+import type { GitRepairAction, IpcEventMap } from '@nexnote/shared';
+import { setCurrentLanguage } from '@nexnote/shared';
 
 const readTool = (name = 'search_notes'): AgentTool => ({
   definition: { name, description: name, access: 'read', requiresApproval: false, inputSchema: {} },
@@ -22,7 +23,9 @@ describe('agent runtime blocker contracts', () => {
         ai: {
           getState: () => ({ profiles: [], defaultProfileId: null, features: {} }),
         } as never,
-        sendEvent: (_channel: never, payload: never) => events.push(payload),
+        sendEvent: (_channel: keyof IpcEventMap, payload: unknown) => {
+          events.push(payload);
+        },
         piAvailable: false,
       });
       void gateway.run('translation', {});

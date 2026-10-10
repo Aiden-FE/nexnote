@@ -5,6 +5,7 @@ import type {
 } from '@nexnote/shared';
 import { GIT_REPAIR_ACTIONS } from '../git/git-sync-doctor';
 import type { AgentTool } from './tool-registry';
+import { tCurrent } from '@nexnote/shared';
 
 /**
  * 主进程受控只读 NexNote tools。
@@ -50,7 +51,7 @@ function isRecord(v: unknown): v is Record<string, unknown> {
 
 function readSearchInput(input: unknown): { query: string; topK?: number } {
   if (!isRecord(input) || typeof input.query !== 'string' || !input.query.trim()) {
-    throw new Error('search_notes 输入必须是 { query: string }');
+    throw new Error(tCurrent('agent.error.INVALID_SEARCH_INPUT'));
   }
   const topK =
     input.topK === undefined ? undefined : typeof input.topK === 'number' ? input.topK : undefined;
@@ -113,19 +114,22 @@ export function createBuiltinTools(deps: BuiltinToolDeps): AgentTool[] {
       },
     },
     async execute(input) {
-      if (!deps.document) throw new Error('文档写入服务不可用');
+      if (!deps.document)
+        throw new Error(tCurrent('agent.error.DOCUMENT_SERVICE_UNAVAILABLE'));
       if (
         !isRecord(input) ||
         typeof input.path !== 'string' ||
         typeof input.expectedText !== 'string' ||
         typeof input.content !== 'string'
       ) {
-        throw new Error('edit_current_selection 输入无效');
+        throw new Error(tCurrent('agent.error.INVALID_EDIT_INPUT'));
       }
       const current = await deps.document.read(input.path);
       const index = current.indexOf(input.expectedText);
       if (index < 0 || current.indexOf(input.expectedText, index + 1) >= 0) {
-        throw Object.assign(new Error('选区已变化或不唯一'), { code: 'STALE_SELECTION' });
+        throw Object.assign(new Error(tCurrent('agent.error.STALE_SELECTION')), {
+          code: 'STALE_SELECTION',
+        });
       }
       const next =
         current.slice(0, index) + input.content + current.slice(index + input.expectedText.length);
@@ -152,9 +156,10 @@ export function createBuiltinTools(deps: BuiltinToolDeps): AgentTool[] {
       },
     },
     async execute(input) {
-      if (!deps.document) throw new Error('文档写入服务不可用');
+      if (!deps.document)
+        throw new Error(tCurrent('agent.error.DOCUMENT_SERVICE_UNAVAILABLE'));
       if (!isRecord(input) || typeof input.path !== 'string' || typeof input.content !== 'string')
-        throw new Error('append_to_document 输入无效');
+        throw new Error(tCurrent('agent.error.INVALID_APPEND_INPUT'));
       const current = await deps.document.read(input.path);
       const next = current + (current.endsWith('\n') ? '' : '\n') + input.content;
       if (deps.document.writeTransaction) {
@@ -213,22 +218,25 @@ function createDoctorTools(deps: BuiltinToolDeps): AgentTool[] {
       },
       async execute(input, ctx) {
         if (!isRecord(input) || typeof input.action !== 'string') {
-          throw new Error('git_doctor_repair 输入必须是 { action: GitRepairAction }');
+          throw new Error(tCurrent('agent.error.INVALID_DOCTOR_INPUT'));
         }
         if (!ctx.approval?.approvalId) {
           // gateway 在审批通过后才注入 approvalId；这里是双保险
-          throw new Error('git_doctor_repair 必须在审批通过后调用');
+          throw new Error(tCurrent('agent.error.DOCTOR_REQUIRES_APPROVAL'));
         }
         const action = input.action;
         if (!GIT_REPAIR_ACTIONS.includes(action as GitRepairAction)) {
-          throw new Error(`git_doctor_repair action 无效: ${action}`);
+          throw new Error(tCurrent('agent.error.INVALID_DOCTOR_ACTION', { action }));
         }
         const repairAction = action as GitRepairAction;
         const diagnosis = await doctor.diagnose();
         if (diagnosis.plan.action !== repairAction) {
           throw Object.assign(
             new Error(
-              `Git Doctor 当前推荐的操作是 ${diagnosis.plan.action ?? '无自动修复'}，拒绝执行 ${repairAction}`,
+              tCurrent('agent.error.DOCTOR_ACTION_MISMATCH', {
+                recommended: diagnosis.plan.action ?? tCurrent('agent.error.noAutoRepair'),
+                action: repairAction,
+              }),
             ),
             { code: 'DOCTOR_ACTION_MISMATCH' },
           );

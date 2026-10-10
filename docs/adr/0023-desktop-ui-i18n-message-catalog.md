@@ -225,3 +225,9 @@ status: in_progress
   zh/en 各 1312 key。`agent-gateway-e2e` / `agent-tool-loop` /
   `agent-runtime-blockers` / translation / catalog targeted tests 通过；
   门禁 195 files / 1846 passed / 3 skipped 退出码 0。
+- 阶段③第十七批（2026-10-10）：Agent builtin tools / ToolRegistry / Skill IPC
+  的用户可读校验与拒绝错误成文；工具 description 仍作为模型指令保留边界。
+  覆盖检索、选区编辑、追加、Doctor 动作审批、工具注册/查找/写禁用和 Skill
+  服务缺失。新增 13 key，zh/en 各 1325 key。agent runtime / loop / e2e /
+  IPC registrar / catalog targeted tests 通过；全量门禁 195 files /
+  1846 passed / 3 skipped 退出码 0。

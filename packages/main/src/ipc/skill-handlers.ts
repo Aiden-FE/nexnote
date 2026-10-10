@@ -1,4 +1,5 @@
 import { ok, type Result } from '@nexnote/shared';
+import { tCurrent } from '@nexnote/shared';
 import type { SkillView } from '@nexnote/shared';
 import type { IpcRegistrar } from './registrar';
 
@@ -12,19 +13,19 @@ export function registerSkillHandlers(registrar: IpcRegistrar): void {
     return ok(s.skills.list());
   });
   registrar.register('skills:setEnabled', (payload, s): Result<SkillView> => {
-    if (!s.skills) throw new Error('Skill 服务不可用');
+    if (!s.skills) throw new Error(tCurrent('agent.error.SKILL_SERVICE_UNAVAILABLE'));
     const view = s.skills.setEnabled(payload.id, payload.enabled);
     s.windows.sendToMainWindow('skills:changed', { reason: 'enabled' });
     return ok(view);
   });
   registrar.register('skills:setOrder', (payload, s) => {
-    if (!s.skills) throw new Error('Skill 服务不可用');
+    if (!s.skills) throw new Error(tCurrent('agent.error.SKILL_SERVICE_UNAVAILABLE'));
     const views = s.skills.setOrder(payload.order);
     s.windows.sendToMainWindow('skills:changed', { reason: 'order' });
     return ok(views);
   });
   registrar.register('skills:setParams', (payload, s): Result<SkillView> => {
-    if (!s.skills) throw new Error('Skill 服务不可用');
+    if (!s.skills) throw new Error(tCurrent('agent.error.SKILL_SERVICE_UNAVAILABLE'));
     const view = s.skills.setParams(payload.id, payload.params);
     s.windows.sendToMainWindow('skills:changed', { reason: 'params' });
     return ok(view);

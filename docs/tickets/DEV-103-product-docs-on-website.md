@@ -93,6 +93,7 @@
 - [x] 阶段③第十四批（2026-10-10）：插件 manifest 校验框架文案成文；插件声明值和内容保留边界。新增 13 key，消息目录 zh/en 各 1295 key；门禁 195 files / 1845 passed / 3 skipped。
 - [x] 阶段③第十五批（2026-10-10）：settings IPC 无 vault 与快捷键文件 IO 错误成文；导入宽容降级语义保持不变。新增 2 key，消息目录 zh/en 各 1297 key；门禁 195 files / 1845 passed / 3 skipped。
 - [x] 阶段③第十六批（2026-10-10）：Agent gateway 运行错误 / 护栏 / 审批摘要成文；AI prompt、工具 description 和模型输出保留边界。新增 15 key，消息目录 zh/en 各 1312 key；门禁 195 files / 1846 passed / 3 skipped。
+- [x] 阶段③第十七批（2026-10-10）：Agent builtin tools / ToolRegistry / Skill IPC 校验与拒绝错误成文；工具 description 保留模型指令边界。新增 13 key，消息目录 zh/en 各 1325 key；门禁 195 files / 1846 passed / 3 skipped。
 - [ ] 阶段③剩余：Agent gateway / builtin tools / skill / confidence / binary / chat / preload 等主进程用户可读状态与校验错误错误码化；GitService / vault / doctor / DOCX / FS / AI service / plugin manifest / settings IPC 服务状态已完成
 - [ ] 阶段④既有测试中文断言迁移
 - [ ] **NOT_RUN / 未达门槛**：按 ADR「en-US 全 UI 无中文残留」，当前不声称桌面端双语完成

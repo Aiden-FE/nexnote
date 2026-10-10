@@ -1,4 +1,5 @@
 import type { AgentScenario, AgentToolDefinition, ChatPermissionMode } from '@nexnote/shared';
+import { tCurrent } from '@nexnote/shared';
 export class ToolRegistryError extends Error {
   constructor(
     message: string,
@@ -30,7 +31,10 @@ export class ToolRegistry {
   }
   register(tool: AgentTool): void {
     if (this.tools.has(tool.definition.name))
-      throw new ToolRegistryError(`工具重复注册: ${tool.definition.name}`, 'TOOL_DUPLICATE');
+      throw new ToolRegistryError(
+        tCurrent('agent.error.TOOL_DUPLICATE', { name: tool.definition.name }),
+        'TOOL_DUPLICATE',
+      );
     this.tools.set(tool.definition.name, tool);
   }
   registerAll(tools: AgentTool[]): void {
@@ -50,10 +54,14 @@ export class ToolRegistry {
   }
   async execute(name: string, input: unknown, ctx: ToolContext): Promise<unknown> {
     const tool = this.tools.get(name);
-    if (!tool) throw new ToolRegistryError(`工具不存在: ${name}`, 'TOOL_NOT_FOUND');
+    if (!tool)
+      throw new ToolRegistryError(tCurrent('agent.error.TOOL_NOT_FOUND', { name }), 'TOOL_NOT_FOUND');
     const def = tool.definition;
     if (def.access === 'write' && (!WRITE_TOOLS_ENABLED || ctx.permissionMode === undefined))
-      throw new ToolRegistryError(`写工具已禁用: ${name}`, 'TOOL_WRITE_DISABLED');
+      throw new ToolRegistryError(
+        tCurrent('agent.error.TOOL_WRITE_DISABLED', { name }),
+        'TOOL_WRITE_DISABLED',
+      );
     return tool.execute(input, ctx);
   }
 }
