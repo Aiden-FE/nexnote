@@ -7,6 +7,7 @@ import type { IpcServices } from './services';
 import { BinaryService, MAX_BINARY_BYTES } from '../binary/binary-service';
 import { BINARY_IGNORE_MARKER, updateBinaryIgnoreBlock } from '../binary/binary-gitignore';
 import { MetadataStore } from '../document/metadata-store';
+import { tCurrent } from '@nexnote/shared';
 
 /**
  * binary:* — 应用内二进制编辑器（DEV-074，ADR-0015；DEV-098 撤销 docx 后仅 xlsx / xmind）。
@@ -14,8 +15,8 @@ import { MetadataStore } from '../document/metadata-store';
  */
 
 const KIND_FILTERS: Record<BinaryKind, { name: string; extensions: string[] }> = {
-  xlsx: { name: 'Excel 工作簿', extensions: ['xlsx'] },
-  mindmap: { name: 'XMind 思维导图', extensions: ['xmind'] },
+  xlsx: { name: tCurrent('binary.dialog.xlsx'), extensions: ['xlsx'] },
+  mindmap: { name: tCurrent('binary.dialog.mindmap'), extensions: ['xmind'] },
 };
 
 function toErrorResult(e: unknown): Result<never> {
@@ -30,7 +31,7 @@ async function readPickedFile(picked: string): Promise<Buffer> {
   try {
     const stat = await handle.stat();
     if (stat.size > MAX_BINARY_BYTES) {
-      throw new Error('文件过大（上限 200MB）');
+      throw new Error(tCurrent('binary.error.TOO_LARGE_LIMIT'));
     }
     const bytes = Buffer.alloc(stat.size);
     await handle.read(bytes, 0, stat.size, 0);
@@ -65,7 +66,7 @@ export function registerBinaryHandlers(registrar: IpcRegistrar): void {
           { base64: bytes.toString('base64'), name: path.basename(picked) },
           targetDir ?? '',
         );
-        await recordWrite(services, `导入 ${kind.toUpperCase()} ${result.path}`);
+        await recordWrite(services, tCurrent('binary.autosummary.import', { kind: kind.toUpperCase(), path: result.path }));
         return ok(result);
       }
       const result = await service(services).importBinary(
@@ -73,7 +74,7 @@ export function registerBinaryHandlers(registrar: IpcRegistrar): void {
         { base64: data, name },
         targetDir ?? '',
       );
-      await recordWrite(services, `导入 ${kind.toUpperCase()} ${result.path}`);
+      await recordWrite(services, tCurrent('binary.autosummary.import', { kind: kind.toUpperCase(), path: result.path }));
       return ok(result);
     } catch (e) {
       return toErrorResult(e);
@@ -92,7 +93,7 @@ export function registerBinaryHandlers(registrar: IpcRegistrar): void {
   registrar.register('binary:create', async ({ kind, title, targetDir }, services) => {
     try {
       const result = await service(services).createBinary(kind, { title, targetDir });
-      await recordWrite(services, `新建空白 ${kind.toUpperCase()} ${result.path}`);
+      await recordWrite(services, tCurrent('binary.autosummary.create', { kind: kind.toUpperCase(), path: result.path }));
       return ok(result);
     } catch (e) {
       return toErrorResult(e);
@@ -106,12 +107,12 @@ export function registerBinaryHandlers(registrar: IpcRegistrar): void {
       // 收到该错误后保留内存编辑并自动重试，冲突解决后即可正常落盘。
       if (await services.git.operationInProgress()) {
         return err(
-          '存在未完成的 rebase/merge，暂不写入文档；解决冲突后会自动重试保存',
+          tCurrent('binary.error.SAVE_BLOCKED_REBASE'),
           'BINARY_SAVE_BLOCKED',
         );
       }
       const result = await service(services).save(kind, path, data, expectedSha256);
-      await recordWrite(services, `保存 ${kind.toUpperCase()} ${path}`);
+      await recordWrite(services, tCurrent('binary.autosummary.save', { kind: kind.toUpperCase(), path }));
       return ok(result);
     } catch (e) {
       return toErrorResult(e);
@@ -150,24 +151,24 @@ export function registerBinaryHandlers(registrar: IpcRegistrar): void {
   // DEV-099：xmind 主题预设持久化到 sidecar（read-merge-write，不碰 xmind 字节）。
   registrar.register('binary:mindmapTheme:set', async ({ path, theme }, services) => {
     const root = services.vaultSession.getCurrent()?.root;
-    if (!root) return err('当前未打开知识库', 'NO_VAULT');
+    if (!root) return err(tCurrent('vault.error.NO_VAULT'), 'NO_VAULT');
     const store = new MetadataStore(root);
     const current = (await store.read(path)) ?? {};
     await store.write(path, { ...current, mindmapTheme: theme });
     // sidecar 也要触发自动提交，否则未跟踪的 .nexnote/metadata/*.json 会长期
     // 留在工作区，把后续每次 sync 都挡在 WORKTREE_DIRTY 之外（历史缺陷之一）。
-    await recordWrite(services, `保存 MINDMAP ${path}`);
+    await recordWrite(services, tCurrent('binary.autosummary.saveMindmap', { path }));
     return ok({ saved: true as const });
   });
 
   // DEV-102：xmind 布局结构持久化到 sidecar（read-merge-write，不碰 xmind 字节；ADR-0020）。
   registrar.register('binary:mindmapStructure:set', async ({ path, structure }, services) => {
     const root = services.vaultSession.getCurrent()?.root;
-    if (!root) return err('当前未打开知识库', 'NO_VAULT');
+    if (!root) return err(tCurrent('vault.error.NO_VAULT'), 'NO_VAULT');
     const store = new MetadataStore(root);
     const current = (await store.read(path)) ?? {};
     await store.write(path, { ...current, mindmapStructure: structure });
-    await recordWrite(services, `保存 MINDMAP ${path}`);
+    await recordWrite(services, tCurrent('binary.autosummary.saveMindmap', { path }));
     return ok({ saved: true as const });
   });
 
@@ -187,14 +188,15 @@ export function registerBinaryHandlers(registrar: IpcRegistrar): void {
 
   registrar.register('binary:gitignore:set', async ({ untrack }, services) => {
     const root = services.vaultSession.getCurrent()?.root;
-    if (!root) return err('当前未打开知识库', 'NO_VAULT');
+    if (!root) return err(tCurrent('vault.error.NO_VAULT'), 'NO_VAULT');
     const gitignorePath = path.join(root, '.gitignore');
     try {
       const current = await fsp.readFile(gitignorePath, 'utf8').catch(() => '');
       const content = updateBinaryIgnoreBlock(current, untrack);
       if (content !== current) await fsp.writeFile(gitignorePath, content);
       const removedFromIndex = untrack ? await services.git.untrackBinaryDocuments(root) : 0;
-      if (removedFromIndex > 0) services.git.scheduleAutoCommit('停止跟踪二进制文档');
+      if (removedFromIndex > 0)
+        services.git.scheduleAutoCommit(tCurrent('binary.autosummary.untrack'));
       return ok({ untracked: untrack, removedFromIndex });
     } catch (e) {
       return toErrorResult(e);

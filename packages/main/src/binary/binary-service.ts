@@ -14,6 +14,7 @@ import {
 } from './zip-preserve';
 import { XlsxError } from './xlsx-convert';
 import { XmindError } from './xmind-convert';
+import { tCurrent } from '@nexnote/shared';
 
 /**
  * 二进制文档领域服务（DEV-074，ADR-0015；DEV-098 撤销 docx 后仅 xlsx / xmind）：
@@ -47,20 +48,23 @@ export class BinaryService {
 
   private requireRoot(): string {
     const root = this.getRoot();
-    if (!root) throw new BinaryServiceError('当前未打开知识库', 'NO_VAULT');
+    if (!root) throw new BinaryServiceError(tCurrent('vault.error.NO_VAULT'), 'NO_VAULT');
     return root;
   }
 
   private async readBytes(relPath: string, kind: BinaryKind): Promise<Buffer> {
     if (formatForPath(relPath) !== kind) {
-      throw new BinaryServiceError(`不是 ${kind} 文档: ${relPath}`, 'BINARY_NOT_MATCH');
+      throw new BinaryServiceError(
+        tCurrent('binary.error.NOT_MATCH', { kind, path: relPath }),
+        'BINARY_NOT_MATCH',
+      );
     }
     const { abs } = await this.fs.resolve(relPath);
     try {
       return await fsp.readFile(abs);
     } catch (e) {
       throw new BinaryServiceError(
-        `读取失败: ${relPath}（${(e as Error).message}）`,
+        tCurrent('binary.error.READ_FAILED', { path: relPath, message: (e as Error).message }),
         'READ_FAILED',
       );
     }
@@ -74,7 +78,7 @@ export class BinaryService {
   ): Promise<{ path: string; sha256: string }> {
     const root = this.requireRoot();
     if (!input.base64) {
-      throw new BinaryServiceError('必须提供 base64 数据', 'BINARY_IMPORT_SOURCE');
+      throw new BinaryServiceError(tCurrent('binary.error.IMPORT_SOURCE_MISSING'), 'BINARY_IMPORT_SOURCE');
     }
     const encoded = input.base64;
     if (
@@ -82,17 +86,17 @@ export class BinaryService {
       encoded.length % 4 !== 0 ||
       !/^[A-Za-z0-9+/]*={0,2}$/.test(encoded)
     ) {
-      throw new BinaryServiceError('base64 无效', 'BINARY_IMPORT_SOURCE');
+      throw new BinaryServiceError(tCurrent('binary.error.IMPORT_SOURCE_INVALID'), 'BINARY_IMPORT_SOURCE');
     }
     let bytes: Buffer;
     try {
       bytes = Buffer.from(encoded, 'base64');
     } catch {
-      throw new BinaryServiceError('base64 无效', 'BINARY_IMPORT_SOURCE');
+      throw new BinaryServiceError(tCurrent('binary.error.IMPORT_SOURCE_INVALID'), 'BINARY_IMPORT_SOURCE');
     }
-    if (bytes.length === 0) throw new BinaryServiceError('内容为空', 'BINARY_EMPTY');
+    if (bytes.length === 0) throw new BinaryServiceError(tCurrent('binary.error.EMPTY'), 'BINARY_EMPTY');
     if (bytes.length > MAX_BINARY_BYTES) {
-      throw new BinaryServiceError('文件过大', 'BINARY_TOO_LARGE');
+      throw new BinaryServiceError(tCurrent('binary.error.TOO_LARGE'), 'BINARY_TOO_LARGE');
     }
     // fail-closed 预检：损坏 / 加密文件在此即被拒绝（与 docx 导入同一策略）。
     await this.probe(kind, bytes);
@@ -177,7 +181,7 @@ export class BinaryService {
     const current = await this.readBytes(relPath, kind);
     const actual = createHash('sha256').update(current).digest('hex');
     if (actual !== expectedSha256) {
-      throw new BinaryServiceError('副本已被外部修改', 'BINARY_CONFLICT');
+      throw new BinaryServiceError(tCurrent('binary.error.CONFLICT'), 'BINARY_CONFLICT');
     }
     let bytes: Buffer;
     if (kind === 'xlsx') {
@@ -191,7 +195,7 @@ export class BinaryService {
       if (await xlsxPackagesEquivalent(current, bytes)) return { sha256: actual };
     } else {
       const model = (data as { model?: Parameters<typeof writeModelToXmind>[0] })?.model;
-      if (!model) throw new BinaryServiceError('xmind 数据缺失', 'BINARY_INVALID_DATA');
+      if (!model) throw new BinaryServiceError(tCurrent('binary.error.INVALID_DATA'), 'BINARY_INVALID_DATA');
       const rebuilt = await writeModelToXmind(model, path.basename(relPath, EXT_BY_KIND[kind]));
       // ADR-0015 Decision 4：恢复模型未涵盖的主题资源、外框/关联线等原始 archive entries。
       bytes = await preserveXmindReadonly(current, rebuilt);

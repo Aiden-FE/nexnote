@@ -237,3 +237,10 @@ status: in_progress
   zh/en 各 1338 key。`confidence-service` 新增 en-US 语言权威测试；
   confidence / PropertiesPanel / catalog targeted tests 通过；全量门禁
   195 files / 1847 passed / 3 skipped 退出码 0。
+- 阶段③第十九批（2026-10-10）：binary service / binary IPC 服务状态与校验
+  错误成文。覆盖 xlsx / mindmap 类型校验、读取失败、导入 base64 / 尺寸校验、
+  乐观锁冲突、xmind 数据校验、rebase 保存阻塞、文件对话框过滤名与自动提交
+  摘要；二进制文档名 / 路径 / 底层 ZIP-XML 解析错误保留边界。新增 17 key，
+  zh/en 各 1355 key。binary xlsx / xmind / create / payload / mindmap IPC /
+  catalog targeted tests 通过；全量门禁 195 files / 1847 passed / 3 skipped
+  退出码 0。
