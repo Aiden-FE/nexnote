@@ -314,3 +314,11 @@ status: in_progress
   search role、输入标签/占位符、无结果、上一/下一匹配与关闭按钮。本批只改测试，
   不新增消息 key，zh/en 保持 1553 key；welcome-page / page-tree-ui / editor-find
   targeted tests 通过；全量门禁 196 files / 1869 passed / 3 skipped 退出码 0。
+- 阶段④第四批（2026-10-11）：DOCX 打开提示与二进制标签关闭失败测试迁移。
+  `open-document` 的 en-US 提示断言从硬编码英文改为词典取值并加 CJK 检查；
+  `binary-tab-close` 补全 `binary.saveError` / `binary.editorLoading` 的词典
+  精确断言，并新增 en-US 的「标签被保留 + 错误成文 + 加载态」完整用例；
+  同时在 afterEach 统一卸载 React root，修复用例间残留组件触发的 act 竞态。
+  本批只改测试，不新增消息 key，zh/en 保持 1553 key；open-document /
+  binary-tab-close targeted tests 通过；全量门禁 196 files /
+  1870 passed / 3 skipped 退出码 0。

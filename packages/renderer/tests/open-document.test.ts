@@ -1,7 +1,10 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { CATALOGS, translate } from '@nexnote/shared';
 import { setLanguage } from '../src/lib/i18n';
 
 const invokeMock = vi.fn();
+const text = (language: 'zh-CN' | 'en-US', key: string): string =>
+  translate(CATALOGS[language], key, language);
 
 vi.mock('../src/lib/ipc', () => ({ invoke: (...args: unknown[]) => invokeMock(...args) }));
 
@@ -41,8 +44,8 @@ vi.mock('../src/stores/settings-store', () => ({
 }));
 
 describe('openDocumentTab 统一打开入口', () => {
-beforeEach(() => {
-  setLanguage('zh-CN');
+  beforeEach(() => {
+    setLanguage('zh-CN');
     invokeMock.mockReset();
     openPageMock.mockClear();
     openBinaryMock.mockClear();
@@ -59,16 +62,18 @@ beforeEach(() => {
     expect(result.kind).toBe('docx');
     expect(openBinaryMock).not.toHaveBeenCalled();
     expect(openPageMock).not.toHaveBeenCalled();
-    expect(tabState.setDocxNotice).toHaveBeenCalledWith(expect.stringContaining('导入 Word 文档'));
+    expect(tabState.setDocxNotice).toHaveBeenCalledWith(
+      text('zh-CN', 'docx.notice.legacyOpenUnsupported'),
+    );
   });
 
-  it('.docx notice is catalog-driven in English', async () => {
+  it('.docx 提示按 en-US 词典成文', async () => {
     setLanguage('en-US');
     const { openDocumentTab } = await import('../src/lib/open-document');
     await openDocumentTab('reports/a.docx');
-    expect(tabState.setDocxNotice).toHaveBeenCalledWith(
-      'DOCX files no longer open inside the vault. Use “File → Import Word document (convert to block document)” to import it again.',
-    );
+    const notice = text('en-US', 'docx.notice.legacyOpenUnsupported');
+    expect(tabState.setDocxNotice).toHaveBeenCalledWith(notice);
+    expect(notice).not.toMatch(/[\u4e00-\u9fff]/);
   });
 
   it('.xlsx → xlsx tab；.xmind → mindmap tab（DEV-074）', async () => {
