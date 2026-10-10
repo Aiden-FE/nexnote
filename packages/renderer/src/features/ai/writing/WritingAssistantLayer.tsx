@@ -1,3 +1,5 @@
+import { useI18n } from '../../../lib/i18n';
+import { tCurrent } from '@nexnote/shared';
 import { useMemo } from 'react';
 import { Check, Loader2, Sparkles, TriangleAlert, X } from 'lucide-react';
 import { Button } from '../../../components/ui/button';
@@ -13,6 +15,7 @@ import { isIncomplete, useWritingStore } from './writing-store';
  */
 export function WritingAssistantLayer() {
   const session = useWritingStore((s) => s.session);
+  const tr = useI18n();
 
   const ops = useMemo(() => {
     if (!session) return [];
@@ -45,7 +48,7 @@ export function WritingAssistantLayer() {
     >
       <div className="flex items-center gap-2 border-b px-3 py-2 text-xs font-medium">
         <Sparkles className="size-3.5 text-primary" />
-        <span data-testid="writing-label">AI · {session.label}</span>
+        <span data-testid="writing-label">AI · {tCurrent(`ai.writing.action.${session.actionId}.label`)}</span>
         {streaming && (
           <>
             <Loader2
@@ -53,7 +56,7 @@ export function WritingAssistantLayer() {
               className="size-3.5 animate-spin text-muted-foreground"
             />
             <span data-testid="writing-progress" className="text-[11px] text-muted-foreground">
-              生成中…
+              {tr('ai.writing.generating')}
             </span>
           </>
         )}
@@ -62,16 +65,21 @@ export function WritingAssistantLayer() {
             data-testid="writing-incomplete"
             className="rounded bg-amber-500/15 px-1.5 py-0.5 text-[11px] font-normal text-amber-600 dark:text-amber-400"
             title={
-              session.status === 'cancelled' ? '已停止生成，内容未完成' : '生成失败，内容未完成'
+              session.status === 'cancelled'
+                ? tr('ai.writing.stoppedIncomplete')
+                : tr('ai.writing.failedIncomplete')
             }
           >
-            未完成 · {session.status === 'cancelled' ? '已停止' : '生成失败'}
+            {tr('ai.writing.incomplete')} ·{' '}
+            {session.status === 'cancelled'
+              ? tr('ai.writing.stopped')
+              : tr('ai.writing.failed')}
           </span>
         )}
         <button
           type="button"
           data-testid="writing-close"
-          aria-label="关闭"
+          aria-label={tr('common.close')}
           className="ml-auto rounded p-0.5 text-muted-foreground hover:bg-accent hover:text-foreground"
           onClick={() => session.reject()}
         >
@@ -93,7 +101,9 @@ export function WritingAssistantLayer() {
         data-testid="writing-diff"
         className="max-h-64 min-h-[3rem] overflow-auto whitespace-pre-wrap break-words px-3 py-2 text-[13px] leading-relaxed"
       >
-        {ops.length === 0 && streaming && <span className="text-muted-foreground">生成中…</span>}
+        {ops.length === 0 && streaming && (
+          <span className="text-muted-foreground">{tr('ai.writing.generating')}</span>
+        )}
         {ops.map((op, i) => (
           <div
             key={i}
@@ -117,7 +127,7 @@ export function WritingAssistantLayer() {
           data-testid="writing-error"
           className="border-t border-destructive/30 bg-destructive/10 px-3 py-1.5 text-[11px] text-destructive"
         >
-          {session.error ?? '生成失败'}
+          {session.error ?? tr('ai.writing.failed')}
         </div>
       )}
 
@@ -130,7 +140,7 @@ export function WritingAssistantLayer() {
             className="h-7 px-2 text-xs"
             onClick={() => session.stop()}
           >
-            <X className="size-3" /> 停止生成
+            <X className="size-3" /> {tr('ai.writing.stop')}
           </Button>
         ) : (
           <>
@@ -141,7 +151,7 @@ export function WritingAssistantLayer() {
               className="h-7 px-2 text-xs"
               onClick={() => session.reject()}
             >
-              <X className="size-3" /> 拒绝
+              <X className="size-3" /> {tr('ai.writing.reject')}
             </Button>
             <Button
               data-testid="writing-accept"
@@ -150,7 +160,7 @@ export function WritingAssistantLayer() {
               onClick={() => session.accept()}
               disabled={!hasContent}
             >
-              <Check className="size-3" /> 接受
+            <Check className="size-3" /> {tr('ai.writing.accept')}
             </Button>
           </>
         )}

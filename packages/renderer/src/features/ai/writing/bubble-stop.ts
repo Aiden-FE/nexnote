@@ -1,4 +1,5 @@
 import { attachBubbleTooltip, defaultBubbleIconRenderer } from '@nexnote/kernel';
+import { tCurrent } from '@nexnote/shared';
 import { useWritingStore, type WritingSession } from './writing-store';
 
 /**
@@ -26,7 +27,8 @@ export function writingStopControl(): BubbleStopControl {
   dom.className = 'nexnote-selection-bubble__stop';
   dom.dataset.bubbleAction = 'ai:stop';
   dom.dataset.testid = 'bubble-stop';
-  dom.setAttribute('aria-label', '停止生成');
+  const stopLabel = () => tCurrent('ai.writing.stop');
+  dom.setAttribute('aria-label', stopLabel());
   const icon = document.createElement('span');
   icon.className = 'nexnote-selection-bubble__icon';
   icon.dataset.icon = 'stop';
@@ -34,7 +36,7 @@ export function writingStopControl(): BubbleStopControl {
   const svg = defaultBubbleIconRenderer('stop');
   if (svg) icon.append(svg);
   dom.append(icon);
-  attachBubbleTooltip(dom, 'nexnote-selection-bubble', () => '停止生成');
+  attachBubbleTooltip(dom, 'nexnote-selection-bubble', stopLabel);
   // 与其它工具栏按钮一致：mousedown 不抢编辑器选区
   dom.addEventListener('mousedown', (event) => event.preventDefault());
   dom.addEventListener('click', (event) => {

@@ -1,5 +1,6 @@
 import type { AgentWritingActionId } from '@nexnote/shared';
 import type { WritingActionDef } from './actions';
+import { tCurrent } from '@nexnote/shared';
 import { startWritingStream, type WritingStreamHandle } from './stream';
 import { nextSessionId, useWritingStore } from './writing-store';
 
@@ -80,7 +81,10 @@ export function beginWritingSession(plan: WritingSessionPlan): Promise<boolean> 
       if (current()) {
         useWritingStore.getState().patchSession({
           status: 'error',
-          error: `${message}${code ? `（${code}）` : ''}`,
+          error: tCurrent('ai.writing.errorWithCode', {
+            message,
+            code: code ? `（${code}）` : '',
+          }),
         });
       }
     },

@@ -9,6 +9,7 @@ import {
   useWritingStore,
   type WritingSession,
 } from '../src/features/ai/writing';
+import { tCurrent } from '@nexnote/shared';
 
 function flush(): Promise<void> {
   return new Promise((r) => setTimeout(r, 0));
@@ -54,7 +55,9 @@ describe('WritingAssistantLayer diff 预览浮层', () => {
     const container = await renderLayer();
     const card = container.querySelector('[data-testid="writing-assistant"]');
     expect(card).toBeTruthy();
-    expect(card?.querySelector('[data-testid="writing-label"]')?.textContent).toContain('改写');
+    expect(card?.querySelector('[data-testid="writing-label"]')?.textContent).toContain(
+      tCurrent('ai.writing.action.rewrite.label'),
+    );
     const ops = Array.from(container.querySelectorAll('[data-diff-op]')).map((el) =>
       el.getAttribute('data-diff-op'),
     );
