@@ -11,6 +11,7 @@ import type {
 } from '@nexnote/shared';
 import type { PluginService } from '../plugins/plugin-service';
 import { mergeSkillResults, packContextText } from './merge-rerank';
+import { tCurrent } from '@nexnote/shared';
 
 const DEFAULT_TOP_K = 8;
 const DEFAULT_BUDGET = 4000;
@@ -83,7 +84,7 @@ export class SkillService {
 
   private builtin(id: string): BuiltinSkill {
     const skill = BUILTIN_SKILLS.find((item) => item.id === id);
-    if (!skill) throw new SkillError(`内置 Skill 不存在: ${id}`, 'SKILL_NOT_FOUND');
+    if (!skill) throw new SkillError(tCurrent('skill.error.BUILTIN_NOT_FOUND', { id }), 'SKILL_NOT_FOUND');
     return skill;
   }
 
@@ -137,7 +138,7 @@ export class SkillService {
 
   private requireSkill(id: string): SkillView {
     const skill = this.list().find((item) => item.id === id);
-    if (!skill) throw new SkillError(`Skill 不存在: ${id}`, 'SKILL_NOT_FOUND');
+    if (!skill) throw new SkillError(tCurrent('skill.error.NOT_FOUND', { id }), 'SKILL_NOT_FOUND');
     return skill;
   }
 

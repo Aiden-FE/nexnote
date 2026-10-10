@@ -5,6 +5,7 @@ import { FsError, type VaultFsService } from '../fs/fs-service';
 import { defaultNoteMetadata } from '../fs/page-ops';
 import { MetadataStore } from '../document/metadata-store';
 import { parseChatJsonl, serializeChatRecord, type ParsedChatSession } from './chat-format';
+import { tCurrent } from '@nexnote/shared';
 
 /** 会话内部存储目录（vault 相对，ADR-0007）。 */
 export const SESSION_DIR = '.nexnote/sessions';
@@ -24,7 +25,7 @@ export class ChatService {
 
   private root(): string {
     const root = this.getRoot();
-    if (!root) throw new FsError('尚未打开任何知识库', 'NO_VAULT');
+    if (!root) throw new FsError(tCurrent('vault.error.NO_VAULT'), 'NO_VAULT');
     return root;
   }
 
@@ -35,7 +36,10 @@ export class ChatService {
 
   private assertSessionPath(relPath: string): void {
     if (!SESSION_FILE_RE.test(relPath)) {
-      throw new FsError(`会话必须位于 ${SESSION_DIR}/ 内: ${relPath}`, 'INVALID_SESSION_PATH');
+      throw new FsError(
+        tCurrent('chat.error.INVALID_SESSION_PATH', { dir: SESSION_DIR, path: relPath }),
+        'INVALID_SESSION_PATH',
+      );
     }
   }
 
@@ -83,14 +87,15 @@ export class ChatService {
   async getChat(relPath: string): Promise<ParsedChatSession> {
     this.assertSessionPath(relPath);
     const session = parseChatJsonl(relPath, await this.fs.readTextFile(relPath));
-    if (!session) throw new FsError(`不是有效的会话文件: ${relPath}`, 'NOT_A_CHAT');
+    if (!session)
+      throw new FsError(tCurrent('chat.error.NOT_A_CHAT', { path: relPath }), 'NOT_A_CHAT');
     return session;
   }
 
   /** 分配新会话（id + 不变 hash 路径），不落盘；首条消息后由 saveChat 写入。 */
   async newChat(titleInput?: string): Promise<ChatSession> {
     const now = new Date().toISOString();
-    const title = titleInput?.trim() || '新对话';
+    const title = titleInput?.trim() || tCurrent('chat.default.title');
     const id = randomUUID();
     return {
       path: this.sessionPathFor(id),
@@ -113,10 +118,14 @@ export class ChatService {
     status?: ParsedChatSession['status'],
     error?: string,
   ): Promise<FileInfo> {
-    if (session.meta.id.trim() === '') throw new FsError('会话缺少 id', 'INVALID_CHAT');
+    if (session.meta.id.trim() === '')
+      throw new FsError(tCurrent('chat.error.MISSING_ID'), 'INVALID_CHAT');
     this.assertSessionPath(session.path);
     if (this.sessionPathFor(session.meta.id) !== session.path) {
-      throw new FsError(`会话路径与 id 不匹配: ${session.path}`, 'SESSION_PATH_MISMATCH');
+      throw new FsError(
+        tCurrent('chat.error.PATH_MISMATCH', { path: session.path }),
+        'SESSION_PATH_MISMATCH',
+      );
     }
     return this.fs.appendTextFile(session.path, serializeChatRecord(session, status, error), true);
   }
@@ -127,7 +136,7 @@ export class ChatService {
    */
   async saveAsDocument(relPath: string, userAsQuote = true): Promise<FileInfo> {
     const session = await this.getChat(relPath);
-    const title = session.meta.title || '对话笔记';
+    const title = session.meta.title || tCurrent('chat.default.documentTitle');
     const body = this.renderDocumentBody(session.turns, userAsQuote);
     const fileName = await this.uniqueRootName(title);
     const target = `${fileName}.md`;
@@ -139,13 +148,13 @@ export class ChatService {
 
   private async uniqueRootName(title: string): Promise<string> {
     const sanitized = sanitizeEntryName(title.replace(/\.md$/i, ''));
-    const base = sanitized.ok ? sanitized.value : '对话笔记';
+    const base = sanitized.ok ? sanitized.value : tCurrent('chat.default.documentTitle');
     if (!(await this.fs.exists(`${base}.md`))) return base;
     for (let i = 2; i < 1000; i += 1) {
       const candidate = `${base} ${i}`;
       if (!(await this.fs.exists(`${candidate}.md`))) return candidate;
     }
-    throw new FsError('无法生成不冲突的文档文件名', 'NAME_CONFLICT');
+    throw new FsError(tCurrent('chat.error.NAME_CONFLICT'), 'NAME_CONFLICT');
   }
 
   private renderDocumentBody(turns: ChatTurn[], userAsQuote: boolean): string {

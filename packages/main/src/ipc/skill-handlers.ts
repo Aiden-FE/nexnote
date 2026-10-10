@@ -1,5 +1,4 @@
-import { ok, type Result } from '@nexnote/shared';
-import { tCurrent } from '@nexnote/shared';
+import { ok, tCurrent, type Result } from '@nexnote/shared';
 import type { SkillView } from '@nexnote/shared';
 import type { IpcRegistrar } from './registrar';
 

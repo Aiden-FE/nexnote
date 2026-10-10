@@ -244,3 +244,9 @@ status: in_progress
   zh/en 各 1355 key。binary xlsx / xmind / create / payload / mindmap IPC /
   catalog targeted tests 通过；全量门禁 195 files / 1847 passed / 3 skipped
   退出码 0。
+- 阶段③第二十批（2026-10-10）：Chat session 服务与 Skill service / Skill IPC
+  校验错误成文。覆盖会话路径 / id / 损坏校验、默认标题、导出文件名冲突和
+  Skill 查找 / 服务缺失；会话标题、用户正文、Skill 名称和插件内容保留边界。
+  新增 9 key，zh/en 各 1364 key。chat / chat-format / skill / IPC registrar /
+  catalog targeted tests 通过；全量门禁 195 files / 1847 passed /
+  3 skipped 退出码 0。

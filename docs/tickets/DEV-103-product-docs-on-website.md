@@ -96,6 +96,7 @@
 - [x] 阶段③第十七批（2026-10-10）：Agent builtin tools / ToolRegistry / Skill IPC 校验与拒绝错误成文；工具 description 保留模型指令边界。新增 13 key，消息目录 zh/en 各 1325 key；门禁 195 files / 1846 passed / 3 skipped。
 - [x] 阶段③第十八批（2026-10-10）：置信度因子标签 / 明细 / frontmatter 同步摘要成文；因子 key、分数与 Git 数据保留边界。新增 13 key，消息目录 zh/en 各 1338 key；门禁 195 files / 1847 passed / 3 skipped。
 - [x] 阶段③第十九批（2026-10-10）：binary / xlsx / mindmap 服务状态与校验错误成文；文档数据、路径和底层解析错误保留边界。新增 17 key，消息目录 zh/en 各 1355 key；门禁 195 files / 1847 passed / 3 skipped。
+- [x] 阶段③第二十批（2026-10-10）：Chat session 与 Skill 服务校验错误成文；会话正文 / Skill 名称 / 插件内容保留边界。新增 9 key，消息目录 zh/en 各 1364 key；门禁 195 files / 1847 passed / 3 skipped。
 - [ ] 阶段③剩余：Agent gateway / builtin tools / skill / confidence / binary / chat / preload 等主进程用户可读状态与校验错误错误码化；GitService / vault / doctor / DOCX / FS / AI service / plugin manifest / settings IPC 服务状态已完成
 - [ ] 阶段④既有测试中文断言迁移
 - [ ] **NOT_RUN / 未达门槛**：按 ADR「en-US 全 UI 无中文残留」，当前不声称桌面端双语完成
