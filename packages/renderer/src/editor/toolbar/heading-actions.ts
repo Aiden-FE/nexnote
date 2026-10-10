@@ -4,12 +4,11 @@ import { syntaxTree } from '@codemirror/language';
 import { isolateHistory } from '@codemirror/commands';
 import { PARAGRAPH_ID, type HeadingLevel } from './entries';
 
-export const COMPLEX_HEADING_SELECTION_REASON = '跨复杂结构的多块选区不能转换标题';
-export const UNSAFE_MARKDOWN_HEADING_CONTEXT_REASON =
-  '代码围栏、表格或其他复杂 Markdown 结构不能转换标题';
-export const LIST_OR_QUOTE_HEADING_CONTEXT_REASON =
-  '列表或引用行不能转换标题，请先解除列表或引用结构';
-export const READ_ONLY_HEADING_CONTEXT_REASON = '只读视图不能转换标题';
+export const COMPLEX_HEADING_SELECTION_REASON = 'toolbar.heading.disabled.complexSelection';
+export const UNSAFE_MARKDOWN_HEADING_CONTEXT_REASON = 'toolbar.heading.disabled.unsafeMarkdown';
+export const LIST_OR_QUOTE_HEADING_CONTEXT_REASON = 'toolbar.heading.disabled.listOrQuote';
+export const READ_ONLY_HEADING_CONTEXT_REASON = 'toolbar.heading.disabled.readOnly';
+export const HEADING_EDITOR_NOT_READY_REASON = 'toolbar.heading.disabled.notReady';
 
 /** Setext 下划线（`===` H1 / `---` H2）；与水平线、表格分隔行的歧义由配对规则消解。 */
 const SETEXT_UNDERLINE = /^ {0,3}(=+|-+)\s*$/;
@@ -63,7 +62,7 @@ export function blockHeadingCapability(kernel: EditorKernelInstance | null): {
   enabled: boolean;
   reason?: string;
 } {
-  if (!kernel) return { enabled: false, reason: '编辑器尚未就绪' };
+  if (!kernel) return { enabled: false, reason: HEADING_EDITOR_NOT_READY_REASON };
   const { selection } = kernel.editor.state;
   const node =
     selection.$from.depth >= 1 && selection.$to.depth >= 1 ? selection.$from.node(1) : null;
@@ -128,7 +127,7 @@ export function sourceHeadingCapability(view: EditorView | null): {
   enabled: boolean;
   reason?: string;
 } {
-  if (!view) return { enabled: false, reason: '编辑器尚未就绪' };
+  if (!view) return { enabled: false, reason: HEADING_EDITOR_NOT_READY_REASON };
   if (view.state.readOnly) return { enabled: false, reason: READ_ONLY_HEADING_CONTEXT_REASON };
   const selection = view.state.selection.main;
   if (view.state.doc.lineAt(selection.from).number !== view.state.doc.lineAt(selection.to).number) {

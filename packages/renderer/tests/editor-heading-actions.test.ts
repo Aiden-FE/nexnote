@@ -17,8 +17,17 @@ import {
   READ_ONLY_HEADING_CONTEXT_REASON,
   UNSAFE_MARKDOWN_HEADING_CONTEXT_REASON,
 } from '../src/editor/toolbar/heading-actions';
+import { t } from '../src/lib/i18n';
 
 describe('DEV-050 TipTap 标题/段落转换', () => {
+  it('禁用原因是消息目录 key，并在默认语言下成文', () => {
+    expect(COMPLEX_HEADING_SELECTION_REASON).toMatch(/^toolbar\.heading\.disabled\./);
+    expect(t(COMPLEX_HEADING_SELECTION_REASON)).not.toBe(COMPLEX_HEADING_SELECTION_REASON);
+    expect(t('toolbar.heading.disabled.notReady')).not.toBe(
+      'toolbar.heading.disabled.notReady',
+    );
+  });
+
   it('H1-H6 与正文保留文字且可撤销/重做', () => {
     for (let level = 1; level <= 6; level += 1) {
       const host = document.createElement('div');

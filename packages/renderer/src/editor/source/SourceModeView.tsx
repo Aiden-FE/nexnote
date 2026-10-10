@@ -8,7 +8,7 @@ import { useTabStore } from '../../stores/tab-store';
 import { usePageTreeStore } from '../../stores/page-tree-store';
 import { useSettingsStore } from '../../stores/settings-store';
 import { invoke, onEvent } from '../../lib/ipc';
-import { useI18n } from '../../lib/i18n';
+import { t, useI18n } from '../../lib/i18n';
 import { sanitizePageTitle, titleFromPath } from '../title-sync';
 import { registerAppSaveListener } from '../app-save';
 import { openDocumentTab } from '../../lib/open-document';
@@ -942,7 +942,10 @@ export function SourceModeView({ tab }: { tab: TabDescriptor }) {
   const sourceHeadingState = useMemo(
     () => ({
       disabled: () => !sourceHeadingCapability(getActiveSourceEditor()?.view ?? null).enabled,
-      disabledReason: () => sourceHeadingCapability(getActiveSourceEditor()?.view ?? null).reason,
+      disabledReason: () => {
+        const reason = sourceHeadingCapability(getActiveSourceEditor()?.view ?? null).reason;
+        return reason ? t(reason) : undefined;
+      },
     }),
     [],
   );

@@ -61,7 +61,7 @@ import {
 } from '@nexnote/kernel';
 import { withUncreated, filterTagCandidates } from './interactions/suggestions';
 import { createRedlinkPage, currentPageCandidates } from './wikilink-page-ops';
-import { useI18n } from '../lib/i18n';
+import { t, useI18n } from '../lib/i18n';
 import {
   buildBlockMenuItems,
   runBlockMenuAction,
@@ -936,7 +936,10 @@ export function EditorView({ tab }: EditorViewProps) {
   const blockHeadingState = useMemo(
     () => ({
       disabled: () => !blockHeadingCapability(getActiveEditor()).enabled,
-      disabledReason: () => blockHeadingCapability(getActiveEditor()).reason,
+      disabledReason: () => {
+        const reason = blockHeadingCapability(getActiveEditor()).reason;
+        return reason ? t(reason) : undefined;
+      },
     }),
     [],
   );
