@@ -135,3 +135,13 @@ status: in_progress
   新增 37 key，消息目录 zh/en 各 778 key。`updater.test.ts` 锁定 en-US 状态
   成文，`settings-ui.test.tsx` 锁定更新界面 en-US 渲染无 CJK 残留；门禁
   195 files / 1835 passed / 3 skipped。
+- 阶段②第十四批（2026-10-10）：AI 供应商设置分区与配置向导迁移，覆盖 Profile
+  列表、连通状态、导入导出提示、分功能指定、模型候选控件、向导步骤、供应商
+  预设、连接字段、连通测试结果和模型参数。Profile 名称、模型名、Base URL 与
+  服务端 / IPC 错误保留数据或上游消息边界；`chat` / `streaming` /
+  `embeddings` / `tools` 能力徽标改用独立语义 key，不再复用功能标签或显示
+  原始枚举；导入跳过列表的分隔符与测试按钮加载态也改用应用自有 key。
+  新增 107 key，消息目录 zh/en 各 1025 key。
+  新增 `ai-settings-i18n.test.tsx`，在 en-US 下真实渲染设置分区与向导，
+  锁定核心文案、能力徽标、加载/导入分隔符并做 CJK 残留检查；门禁
+  195 files / 1840 passed / 3 skipped 退出码 0。

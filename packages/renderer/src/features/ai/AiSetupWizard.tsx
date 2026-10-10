@@ -18,52 +18,53 @@ import {
   Server,
   X,
 } from 'lucide-react';
+import { t, useI18n } from '../../lib/i18n';
 
 /** provider 预设：向导第一步的选择项。 */
 const PROVIDER_PRESETS: Array<{
   id: string;
-  title: string;
-  desc: string;
+  titleKey: string;
+  descKey: string;
   kind: AiProviderKind;
   baseUrl: string;
   icon: typeof Cloud;
 }> = [
   {
     id: 'openai',
-    title: 'OpenAI 官方',
-    desc: 'api.openai.com，需要官方 API Key',
+    titleKey: 'ai.wizard.presets.openai.title',
+    descKey: 'ai.wizard.presets.openai.description',
     kind: 'openai-compatible',
     baseUrl: 'https://api.openai.com/v1',
     icon: Cloud,
   },
   {
     id: 'azure',
-    title: 'Azure OpenAI',
-    desc: '企业级部署，模型名 = deployment 名',
+    titleKey: 'ai.wizard.presets.azure.title',
+    descKey: 'ai.wizard.presets.azure.description',
     kind: 'azure-openai',
     baseUrl: 'https://YOUR-RESOURCE.openai.azure.com',
     icon: CloudCog,
   },
   {
     id: 'ollama',
-    title: '本地 Ollama',
-    desc: '本地推理，无需密钥',
+    titleKey: 'ai.wizard.presets.ollama.title',
+    descKey: 'ai.wizard.presets.ollama.description',
     kind: 'openai-compatible',
     baseUrl: 'http://127.0.0.1:11434/v1',
     icon: Server,
   },
   {
     id: 'compatible',
-    title: '其他 OpenAI 兼容',
-    desc: '中转站 / 自建网关 / vLLM 等',
+    titleKey: 'ai.wizard.presets.compatible.title',
+    descKey: 'ai.wizard.presets.compatible.description',
     kind: 'openai-compatible',
     baseUrl: '',
     icon: Bot,
   },
   {
     id: 'local-embedding',
-    title: '本地词法 Embedding',
-    desc: '本地 lexical hashing，不是语义模型；无需密钥',
+    titleKey: 'ai.wizard.presets.localEmbedding.title',
+    descKey: 'ai.wizard.presets.localEmbedding.description',
     kind: 'local-embedding',
     baseUrl: 'local://embedding',
     icon: Server,
@@ -72,12 +73,12 @@ const PROVIDER_PRESETS: Array<{
 
 type Step = 'provider' | 'connection' | 'test' | 'model';
 
-const CAPABILITY_LABELS: Array<{ key: keyof ConnectionTestResult['capabilities']; label: string }> =
+const CAPABILITY_KEYS: Array<{ key: keyof ConnectionTestResult['capabilities']; keyName: string }> =
   [
-    { key: 'chat', label: '对话' },
-    { key: 'streaming', label: '流式' },
-    { key: 'embeddings', label: 'Embedding' },
-    { key: 'tools', label: '工具调用' },
+    { key: 'chat', keyName: 'ai.wizard.capability.chat' },
+    { key: 'streaming', keyName: 'ai.wizard.capability.streaming' },
+    { key: 'embeddings', keyName: 'ai.wizard.capability.embeddings' },
+    { key: 'tools', keyName: 'ai.wizard.capability.tools' },
   ];
 
 /**
@@ -97,6 +98,7 @@ function WizardBody({
   editProfileId: string | null;
   onClose: () => void;
 }) {
+  const tr = useI18n();
   const editing = useAiConfig((s) => s.state?.profiles.find((p) => p.id === editProfileId) ?? null);
   const apply = useAiConfig((s) => s.apply);
 
@@ -141,7 +143,7 @@ function WizardBody({
     setKind(p.kind);
     if (!isEdit) {
       setBaseUrl(p.baseUrl);
-      if (!name) setName(p.title);
+      if (!name) setName(t(p.titleKey));
       if (id === 'local-embedding') setModel('local-hash-384');
     }
     invalidateTest();
@@ -212,7 +214,7 @@ function WizardBody({
     const finalTest = await runTest(true);
     if (!finalTest?.reachable) {
       setSaving(false);
-      setSaveError('最终模型连通性测试失败，请修正目标后重试');
+      setSaveError(t('ai.wizard.finalTestFailed'));
       setStep('test');
       return;
     }
@@ -283,10 +285,10 @@ function WizardBody({
   }, []);
 
   const steps: Array<{ id: Step; label: string }> = [
-    { id: 'provider', label: '选择服务' },
-    { id: 'connection', label: '连接信息' },
-    { id: 'test', label: '连通测试' },
-    { id: 'model', label: '默认模型' },
+    { id: 'provider', label: tr('ai.wizard.steps.provider') },
+    { id: 'connection', label: tr('ai.wizard.steps.connection') },
+    { id: 'test', label: tr('ai.wizard.steps.test') },
+    { id: 'model', label: tr('ai.wizard.steps.model') },
   ];
   const stepIndex = steps.findIndex((s) => s.id === step);
   const canNext =
@@ -305,17 +307,19 @@ function WizardBody({
       data-testid="ai-wizard"
       role="dialog"
       aria-modal="true"
-      aria-label="AI 配置向导"
+      aria-label={tr('ai.wizard.title')}
       className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-6"
     >
       <div className="flex max-h-full w-full max-w-lg flex-col overflow-hidden rounded-xl border bg-card text-card-foreground shadow-2xl">
         {/* 标题栏 */}
         <div className="flex items-center gap-2 border-b px-5 py-3.5">
           <Bot className="size-4 text-primary" />
-          <h2 className="text-sm font-semibold">{isEdit ? '编辑 AI Profile' : '配置 AI 供应商'}</h2>
+          <h2 className="text-sm font-semibold">
+            {isEdit ? tr('ai.wizard.editTitle') : tr('ai.wizard.newTitle')}
+          </h2>
           <button
             type="button"
-            aria-label="关闭向导"
+            aria-label={tr('ai.wizard.close')}
             onClick={onClose}
             className="ml-auto rounded p-1 text-muted-foreground hover:bg-accent hover:text-foreground"
           >
@@ -346,7 +350,7 @@ function WizardBody({
           {step === 'provider' && (
             <div data-testid="ai-wizard-provider" className="space-y-2">
               <p className="mb-3 text-muted-foreground">
-                选择 AI 供应商类型。NexNote 兼容一切 OpenAI 协议端点，密钥只保存在本机系统钥匙串。
+                {tr('ai.wizard.providerDescription')}
               </p>
               {PROVIDER_PRESETS.map((p) => (
                 <button
@@ -358,8 +362,8 @@ function WizardBody({
                 >
                   <p.icon className="mt-0.5 size-4.5 shrink-0 text-primary" />
                   <span>
-                    <span className="block font-medium">{p.title}</span>
-                    <span className="block text-xs text-muted-foreground">{p.desc}</span>
+                    <span className="block font-medium">{t(p.titleKey)}</span>
+                    <span className="block text-xs text-muted-foreground">{t(p.descKey)}</span>
                   </span>
                 </button>
               ))}
@@ -370,30 +374,31 @@ function WizardBody({
             <div data-testid="ai-wizard-connection" className="space-y-3.5">
               {!isEdit && (
                 <p className="text-xs text-muted-foreground">
-                  当前选择：<span className="font-medium text-foreground">{preset.title}</span>
+                  {tr('ai.wizard.currentPreset')}
+                  <span className="font-medium text-foreground">{t(preset.titleKey)}</span>
                   <button
                     type="button"
                     className="ml-2 underline"
                     onClick={() => setStep('provider')}
                   >
-                    重选
+                    {tr('ai.wizard.reselect')}
                   </button>
                 </p>
               )}
-              <Field label="Profile 名称">
+              <Field label={tr('ai.wizard.nameLabel')}>
                 <Input
                   data-testid="ai-wizard-name"
                   value={name}
                   onChange={(e) => setName(e.target.value)}
-                  placeholder="如：OpenAI 官方 / 本地 Ollama"
+                  placeholder={tr('ai.wizard.namePlaceholder')}
                 />
               </Field>
               <Field
-                label="Base URL"
+                label={tr('ai.wizard.baseUrlLabel')}
                 hint={
                   kind === 'azure-openai'
-                    ? '形如 https://资源名.openai.azure.com'
-                    : '通常以 /v1 结尾'
+                    ? tr('ai.wizard.baseUrl.azureHint')
+                    : tr('ai.wizard.baseUrl.hint')
                 }
               >
                 <Input
@@ -409,8 +414,8 @@ function WizardBody({
               </Field>
               {kind === 'azure-openai' && (
                 <Field
-                  label="Deployment 名称"
-                  hint="Azure 中部署名可能不同于基础模型名；用于首次连接测试"
+                  label={tr('ai.wizard.deploymentLabel')}
+                  hint={tr('ai.wizard.deploymentHint')}
                 >
                   <Input
                     data-testid="ai-wizard-azure-deployment"
@@ -419,21 +424,21 @@ function WizardBody({
                       setModel(e.target.value);
                       invalidateTest();
                     }}
-                    placeholder="如：gpt-4o-mini-deployment"
+                    placeholder={tr('ai.wizard.deploymentPlaceholder')}
                     spellCheck={false}
                   />
                 </Field>
               )}
               <Field
-                label="API Key"
+                label={tr('ai.wizard.apiKeyLabel')}
                 hint={
                   editing
-                    ? '留空 = 保留已保存密钥'
+                    ? tr('ai.wizard.apiKey.editHint')
                     : kind === 'local-embedding'
-                      ? '本地 lexical hashing，不是语义模型；无需密钥'
+                      ? tr('ai.wizard.apiKey.localEmbeddingHint')
                       : kind === 'openai-compatible' && presetId === 'ollama'
-                        ? '本地服务可留空'
-                        : '仅存本机系统钥匙串，不会上传'
+                        ? tr('ai.wizard.apiKey.ollamaHint')
+                        : tr('ai.wizard.apiKey.hint')
                 }
               >
                 <Input
@@ -444,7 +449,7 @@ function WizardBody({
                     setCredentialRevision((revision) => revision + 1);
                     invalidateTest();
                   }}
-                  placeholder={editing?.hasApiKey ? '••••••（已保存）' : 'sk-…'}
+                  placeholder={editing?.hasApiKey ? tr('ai.wizard.apiKey.savedPlaceholder') : 'sk-…'}
                   autoComplete="off"
                 />
               </Field>
@@ -454,7 +459,7 @@ function WizardBody({
           {step === 'test' && (
             <div data-testid="ai-wizard-test" className="space-y-3">
               <p className="text-muted-foreground">
-                向供应商发送最小探测请求（列模型 + 对话 + SSE 流式 + 工具调用 + 向量）。
+                {tr('ai.wizard.testDescription')}
               </p>
               <Button
                 data-testid="ai-wizard-test-btn"
@@ -468,7 +473,11 @@ function WizardBody({
                 ) : (
                   <RefreshCw className="size-3.5" />
                 )}
-                {testing ? '测试中…' : testResult ? '重新测试' : '测试连通性'}
+                {testing
+                  ? tr('ai.wizard.testing')
+                  : testResult
+                    ? tr('ai.wizard.testRetest')
+                    : tr('ai.wizard.testNow')}
               </Button>
 
               {testError && (
@@ -477,7 +486,7 @@ function WizardBody({
                   className="rounded-md border border-destructive/40 bg-destructive/10 p-3 text-xs text-destructive"
                 >
                   {testError}
-                  <p className="mt-1 opacity-80">请检查 base-url / 密钥后重试。</p>
+                  <p className="mt-1 opacity-80">{tr('ai.wizard.testRetryHint')}</p>
                 </div>
               )}
 
@@ -489,18 +498,19 @@ function WizardBody({
                   <div className="flex items-center gap-2 font-medium">
                     {testResult.reachable ? (
                       <>
-                        <Check className="size-4 text-green-600" /> 连接成功 ·{' '}
-                        {testResult.latencyMs}ms
+                        <Check className="size-4 text-green-600" />{' '}
+                        {tr('ai.wizard.connected', { latency: testResult.latencyMs })}
                       </>
                     ) : (
                       <>
-                        <X className="size-4 text-destructive" /> {testResult.error ?? '连接失败'}
+                        <X className="size-4 text-destructive" />{' '}
+                        {testResult.error ?? tr('ai.wizard.unreachable')}
                       </>
                     )}
                   </div>
                   {testResult.reachable && (
                     <div className="flex flex-wrap gap-1.5">
-                      {CAPABILITY_LABELS.map(({ key, label }) => (
+                      {CAPABILITY_KEYS.map(({ key, keyName }) => (
                         <span
                           key={key}
                           data-testid={`ai-wizard-cap-${key}`}
@@ -511,7 +521,7 @@ function WizardBody({
                               : 'border-border text-muted-foreground line-through',
                           )}
                         >
-                          {label}
+                          {t(keyName)}
                         </span>
                       ))}
                     </div>
@@ -524,11 +534,11 @@ function WizardBody({
           {step === 'model' && (
             <div data-testid="ai-wizard-model" className="space-y-3">
               <Field
-                label="默认对话模型"
+                label={tr('ai.wizard.modelLabel')}
                 hint={
                   models.length > 0
-                    ? `来自供应商模型列表（共 ${models.length} 个）`
-                    : '供应商未返回列表，可手动输入'
+                    ? tr('ai.wizard.modelFromProvider', { count: models.length })
+                    : tr('ai.wizard.modelManual')
                 }
               >
                 <Input
@@ -549,7 +559,7 @@ function WizardBody({
                 </datalist>
               </Field>
               <div className="grid grid-cols-2 gap-3">
-                <Field label="Temperature" hint="留空使用供应商默认">
+                <Field label={tr('ai.wizard.temperature')} hint={tr('ai.wizard.temperatureHint')}>
                   <Input
                     data-testid="ai-wizard-temperature"
                     type="number"
@@ -558,10 +568,10 @@ function WizardBody({
                     step="0.1"
                     value={temperature}
                     onChange={(e) => setTemperature(e.target.value)}
-                    placeholder="默认"
+                    placeholder={tr('ai.wizard.temperaturePlaceholder')}
                   />
                 </Field>
-                <Field label="最大输出 Token" hint="留空使用供应商默认">
+                <Field label={tr('ai.wizard.maxTokens')} hint={tr('ai.wizard.maxTokensHint')}>
                   <Input
                     data-testid="ai-wizard-max-tokens"
                     type="number"
@@ -569,7 +579,7 @@ function WizardBody({
                     step="1"
                     value={maxTokens}
                     onChange={(e) => setMaxTokens(e.target.value)}
-                    placeholder="默认"
+                    placeholder={tr('ai.wizard.maxTokensPlaceholder')}
                   />
                 </Field>
               </div>
@@ -614,7 +624,7 @@ function WizardBody({
             }}
           >
             <ArrowLeft className="size-3.5" />
-            上一步
+            {tr('ai.wizard.previous')}
           </Button>
           <div className="flex gap-2">
             {step === 'connection' && (
@@ -624,7 +634,7 @@ function WizardBody({
                 disabled={!canNext}
                 onClick={() => void leaveConnection()}
               >
-                下一步
+                {tr('ai.wizard.next')}
                 <ArrowRight className="size-3.5" />
               </Button>
             )}
@@ -635,7 +645,7 @@ function WizardBody({
                 disabled={!testResult?.reachable}
                 onClick={() => setStep('model')}
               >
-                下一步
+                {tr('ai.wizard.next')}
                 <ArrowRight className="size-3.5" />
               </Button>
             )}
@@ -651,7 +661,7 @@ function WizardBody({
                 ) : (
                   <Check className="size-3.5" />
                 )}
-                {isEdit ? '保存' : '完成配置'}
+                {isEdit ? tr('ai.wizard.save') : tr('ai.wizard.finish')}
               </Button>
             )}
           </div>

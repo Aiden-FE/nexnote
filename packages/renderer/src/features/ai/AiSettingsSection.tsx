@@ -9,6 +9,7 @@ import {
 } from './model-candidates';
 import { Button } from '../../components/ui/button';
 import { cn } from '../../lib/utils';
+import { t, useI18n } from '../../lib/i18n';
 import {
   Bot,
   Check,
@@ -26,24 +27,47 @@ import {
   X,
 } from 'lucide-react';
 
-const FEATURE_LABELS: Array<{ key: AiFeatureKey; label: string; hint: string; icon: typeof Bot }> =
+const FEATURE_KEYS: Array<{ key: AiFeatureKey; labelKey: string; hintKey: string; icon: typeof Bot }> =
   [
     {
       key: 'writing',
-      label: '写作辅助',
-      hint: '改写 / 扩写 / 润色',
+      labelKey: 'ai.feature.writing.label',
+      hintKey: 'ai.feature.writing.hint',
       icon: PenLine,
     },
-    { key: 'translation', label: '翻译', hint: '划词 / 全文 / 工作台', icon: Bot },
-    { key: 'chat', label: '对话', hint: '对话与上下文注入', icon: MessageSquareText },
-    { key: 'embedding', label: 'Embedding', hint: '向量索引与召回', icon: Bot },
+    {
+      key: 'translation',
+      labelKey: 'ai.feature.translation.label',
+      hintKey: 'ai.feature.translation.hint',
+      icon: Bot,
+    },
+    {
+      key: 'chat',
+      labelKey: 'ai.feature.chat.label',
+      hintKey: 'ai.feature.chat.hint',
+      icon: MessageSquareText,
+    },
+    {
+      key: 'embedding',
+      labelKey: 'ai.feature.embedding.label',
+      hintKey: 'ai.feature.embedding.hint',
+      icon: Bot,
+    },
   ];
+
+const CAPABILITY_LABELS: Record<keyof ConnectionTestResult['capabilities'], string> = {
+  chat: 'ai.wizard.capability.chat',
+  streaming: 'ai.wizard.capability.streaming',
+  embeddings: 'ai.wizard.capability.embeddings',
+  tools: 'ai.wizard.capability.tools',
+};
 
 /**
  * 设置页 · AI 供应商分区：Profile 管理（增删改/默认/测试）、
  * 分功能指定模型与导入导出（不含密钥）。
  */
 export function AiSettingsSection() {
+  const tr = useI18n();
   const state = useAiConfig((s) => s.state);
   const apply = useAiConfig((s) => s.apply);
   const showWizard = useAiWizard((s) => s.show);
@@ -62,14 +86,14 @@ export function AiSettingsSection() {
       const result = await invoke('ai:testConnection', { profileId: p.id });
       setTestResults((prev) => ({ ...prev, [p.id]: result }));
     } catch (e) {
-      setNotice(`测试失败：${e instanceof Error ? e.message : String(e)}`);
+      setNotice(t('ai.settings.testFailed', { message: e instanceof Error ? e.message : String(e) }));
     } finally {
       setBusyId(null);
     }
   };
 
   const removeProfile = async (p: AiProfileView) => {
-    if (!window.confirm(`删除 Profile「${p.name}」？相关分功能指定将被清除。`)) return;
+    if (!window.confirm(t('ai.settings.deleteConfirm', { name: p.name }))) return;
     const { state: next } = await invoke('ai:profile:delete', { id: p.id });
     apply(next);
   };
@@ -96,7 +120,7 @@ export function AiSettingsSection() {
     a.download = `nexnote-ai-profiles-${new Date().toISOString().slice(0, 10)}.json`;
     a.click();
     URL.revokeObjectURL(url);
-    setNotice(`已导出 ${count} 个 Profile（不含密钥）。导入后需重新填写 API Key。`);
+    setNotice(t('ai.settings.exported', { count }));
   };
 
   const importProfiles = async (file: File) => {
@@ -105,21 +129,28 @@ export function AiSettingsSection() {
       const result = await invoke('ai:import', { json });
       apply(result.state);
       setNotice(
-        `导入完成：${result.imported} 个 Profile${result.skipped.length > 0 ? `，跳过 ${result.skipped.length} 个（${result.skipped.join('、')}）` : ''}。密钥需重新填写。`,
+        t('ai.settings.imported', {
+          imported: result.imported,
+          skipped: result.skipped.length
+            ? t('ai.settings.importSkipped', {
+                count: result.skipped.length,
+              items: result.skipped.join(t('ai.settings.importSkippedSeparator')),
+              })
+            : '',
+        }),
       );
     } catch (e) {
-      setNotice(`导入失败：${e instanceof Error ? e.message : String(e)}`);
+      setNotice(t('ai.settings.importFailed', { message: e instanceof Error ? e.message : String(e) }));
     }
   };
 
   return (
     <div data-testid="ai-settings" className="space-y-6 text-sm">
       <header className="space-y-1">
-        <h3 className="text-base font-medium">AI 供应商</h3>
+        <h3 className="text-base font-medium">{tr('ai.settings.title')}</h3>
         <p className="flex items-center gap-1.5 text-xs text-muted-foreground">
           <KeyRound className="size-3.5" />
-          密钥仅保存在本机系统钥匙串（macOS Keychain / Windows 凭据管理器 / Linux
-          libsecret），任何页面与导出文件都不含明文。
+          {tr('ai.settings.keyNotice')}
         </p>
       </header>
 
@@ -131,7 +162,7 @@ export function AiSettingsSection() {
           <span>{notice}</span>
           <button
             type="button"
-            aria-label="关闭提示"
+            aria-label={tr('ai.settings.closeNotice')}
             onClick={() => setNotice(null)}
             className="text-muted-foreground hover:text-foreground"
           >
@@ -144,7 +175,7 @@ export function AiSettingsSection() {
       <section className="space-y-2" data-testid="ai-profile-list">
         {profiles.length === 0 && (
           <div className="rounded-lg border border-dashed p-4 text-center text-xs text-muted-foreground">
-            还没有 AI Profile。
+            {tr('ai.settings.empty')}
             <Button
               data-testid="ai-add-profile-empty"
               variant="link"
@@ -152,7 +183,7 @@ export function AiSettingsSection() {
               className="h-auto p-0 text-xs"
               onClick={() => showWizard()}
             >
-              立即配置
+              {tr('ai.settings.configureNow')}
             </Button>
           </div>
         )}
@@ -168,7 +199,7 @@ export function AiSettingsSection() {
               <div className="flex flex-wrap items-center gap-2">
                 <span className="font-medium">{p.name}</span>
                 <span className="rounded-full border px-1.5 py-0.5 text-[10px] text-muted-foreground">
-                  {p.kind === 'azure-openai' ? 'Azure' : 'OpenAI 协议'}
+                  {p.kind === 'azure-openai' ? 'Azure' : t('ai.profile.kind.openai')}
                 </span>
                 {isDefault && (
                   <span
@@ -176,7 +207,7 @@ export function AiSettingsSection() {
                     className="flex items-center gap-0.5 rounded-full bg-primary/10 px-1.5 py-0.5 text-[10px] text-primary"
                   >
                     <Star className="size-2.5" />
-                    默认
+                    {tr('ai.settings.default')}
                   </span>
                 )}
                 <span className="ml-auto flex items-center gap-1">
@@ -193,16 +224,16 @@ export function AiSettingsSection() {
                     ) : (
                       <RefreshCw className="size-3" />
                     )}
-                    测试
+                    {tr('ai.settings.test')}
                   </Button>
                   <Button
                     variant="ghost"
                     size="sm"
                     className="h-7 px-2 text-xs"
                     onClick={() => showWizard(p.id)}
-                    aria-label={`编辑 ${p.name}`}
+                    aria-label={tr('ai.settings.editAria', { name: p.name })}
                   >
-                    编辑
+                    {tr('ai.settings.edit')}
                   </Button>
                   {!isDefault && (
                     <Button
@@ -211,7 +242,7 @@ export function AiSettingsSection() {
                       className="h-7 px-2 text-xs"
                       onClick={() => void setDefault(p)}
                     >
-                      设为默认
+                      {tr('ai.settings.setAsDefault')}
                     </Button>
                   )}
                   <Button
@@ -219,7 +250,7 @@ export function AiSettingsSection() {
                     size="sm"
                     className="h-7 px-2 text-xs text-destructive hover:text-destructive"
                     onClick={() => void removeProfile(p)}
-                    aria-label={`删除 ${p.name}`}
+                    aria-label={tr('ai.settings.deleteAria', { name: p.name })}
                   >
                     <Trash2 className="size-3" />
                   </Button>
@@ -227,8 +258,8 @@ export function AiSettingsSection() {
               </div>
               <div className="mt-1.5 flex flex-wrap gap-x-4 gap-y-0.5 text-[11px] text-muted-foreground">
                 <span className="font-mono">{p.baseUrl}</span>
-                <span>模型 {p.defaultModel}</span>
-                <span>{p.hasApiKey ? '🔑 已配置密钥' : '无密钥（本地方服务）'}</span>
+                <span>{t('ai.settings.model', { model: p.defaultModel })}</span>
+                <span>{p.hasApiKey ? t('ai.profile.hasKey') : t('ai.profile.noKey')}</span>
               </div>
               {test && (
                 <div
@@ -237,10 +268,12 @@ export function AiSettingsSection() {
                 >
                   {test.reachable ? (
                     <span className="flex items-center gap-1 text-green-600">
-                      <Check className="size-3" /> 连通 · {test.latencyMs}ms
+                      <Check className="size-3" /> {t('ai.settings.reachable', { latency: test.latencyMs })}
                     </span>
                   ) : (
-                    <span className="text-destructive">不可达 · {test.error}</span>
+                    <span className="text-destructive">
+                      {t('ai.settings.unreachable', { error: test.error ?? '' })}
+                    </span>
                   )}
                   {(['chat', 'streaming', 'embeddings', 'tools'] as const).map((cap) => (
                     <span
@@ -252,7 +285,7 @@ export function AiSettingsSection() {
                           : 'text-muted-foreground line-through',
                       )}
                     >
-                      {cap}
+                      {t(CAPABILITY_LABELS[cap])}
                     </span>
                   ))}
                 </div>
@@ -268,7 +301,7 @@ export function AiSettingsSection() {
             onClick={() => showWizard()}
           >
             <Plus className="size-3.5" />
-            新增 Profile
+            {tr('ai.settings.add')}
           </Button>
           <Button
             data-testid="ai-export-profiles"
@@ -278,7 +311,7 @@ export function AiSettingsSection() {
             onClick={() => void exportProfiles()}
           >
             <Download className="size-3.5" />
-            导出
+            {tr('ai.settings.export')}
           </Button>
           <Button
             data-testid="ai-import-profiles"
@@ -287,7 +320,7 @@ export function AiSettingsSection() {
             onClick={() => importRef.current?.click()}
           >
             <Upload className="size-3.5" />
-            导入
+            {tr('ai.settings.import')}
           </Button>
           <input
             ref={importRef}
@@ -306,11 +339,11 @@ export function AiSettingsSection() {
 
       {/* 分功能指定 */}
       <section className="space-y-2.5" data-testid="ai-feature-assignments">
-        <h4 className="text-[13px] font-medium">分功能指定模型</h4>
+        <h4 className="text-[13px] font-medium">{tr('ai.featureAssignments')}</h4>
         <p className="text-xs text-muted-foreground">
-          未指定时回退到全局默认 Profile；embedding 模型变更会触发向量索引重建标记。
+          {tr('ai.featureAssignments.description')}
         </p>
-        {FEATURE_LABELS.map(({ key, label, hint, icon: Icon }) => {
+        {FEATURE_KEYS.map(({ key, labelKey, hintKey, icon: Icon }) => {
           const assignment = state?.features[key] ?? null;
           return (
             <div
@@ -319,7 +352,7 @@ export function AiSettingsSection() {
               className="flex flex-wrap items-center gap-2 rounded-lg border p-2.5"
             >
               <Icon className="size-4 shrink-0 text-muted-foreground" />
-              <span className="w-20 shrink-0 text-[13px] font-medium">{label}</span>
+              <span className="w-20 shrink-0 text-[13px] font-medium">{t(labelKey)}</span>
               <select
                 data-testid={`ai-feature-profile-${key}`}
                 value={assignment?.profileId ?? ''}
@@ -332,7 +365,7 @@ export function AiSettingsSection() {
                 }
                 className="h-8 rounded-md border bg-transparent px-2 text-xs"
               >
-                <option value="">（跟随默认）</option>
+                <option value={''}>{tr('ai.feature.followDefault')}</option>
                 {profiles.map((p) => (
                   <option key={p.id} value={p.id}>
                     {p.name}
@@ -350,12 +383,15 @@ export function AiSettingsSection() {
                   />
                   {key === 'embedding' && assignment.dimensions != null && (
                     <span className="rounded-full border px-1.5 py-0.5 text-[10px] text-muted-foreground">
-                      {assignment.dimensions} 维 · gen {state?.embeddingGeneration}
+                      {t('ai.assignment.dimensions', {
+                        dimensions: assignment.dimensions,
+                        generation: state?.embeddingGeneration ?? 0,
+                      })}
                     </span>
                   )}
                   <button
                     type="button"
-                    aria-label={`清除 ${label} 指定`}
+                    aria-label={t('ai.assignment.clearAria', { label: t(labelKey) })}
                     onClick={() => void setFeature(key, '', '')}
                     className="text-muted-foreground hover:text-foreground"
                   >
@@ -364,7 +400,7 @@ export function AiSettingsSection() {
                 </>
               )}
               <span className="ml-auto hidden text-[11px] text-muted-foreground sm:block">
-                {hint}
+                {t(hintKey)}
               </span>
             </div>
           );
@@ -402,6 +438,7 @@ function ModelPicker({
   initialValue: string;
   onCommit(model: string): void;
 } & Omit<React.InputHTMLAttributes<HTMLInputElement>, 'onChange' | 'value'>) {
+  const tr = useI18n();
   const profile = useAiConfig((s) => s.state?.profiles.find((p) => p.id === profileId));
   const cacheKey = modelCandidateCacheKey(profileId, profile);
 
@@ -511,14 +548,14 @@ function ModelPicker({
               if (allCandidates.length === 0) void loadCandidates();
             }
           }}
-          placeholder="模型名（可自由输入）"
+          placeholder={tr('ai.model.placeholder')}
           className="h-8 w-52 rounded-md border bg-transparent px-2 pr-7 font-mono text-xs"
           spellCheck={false}
         />
         <button
           type="button"
           tabIndex={-1}
-          aria-label="展开模型列表"
+          aria-label={tr('ai.model.expand')}
           onClick={() => {
             setOpen((prev) => !prev);
             setUserTyped(false);
@@ -536,11 +573,11 @@ function ModelPicker({
         >
           {fetching && allCandidates.length === 0 ? (
             <div className="flex items-center gap-1.5 px-2 py-1.5 text-xs text-muted-foreground">
-              <Loader2 className="size-3 animate-spin" /> 加载模型列表…
+              <Loader2 className="size-3 animate-spin" /> {tr('ai.model.loading')}
             </div>
           ) : filtered.length === 0 ? (
             <div className="px-2 py-1.5 text-xs text-muted-foreground">
-              {allCandidates.length === 0 ? '暂无候选，可自由输入模型名' : '无匹配模型'}
+              {allCandidates.length === 0 ? tr('ai.model.noCandidates') : tr('ai.model.noMatch')}
             </div>
           ) : (
             filtered.map((c) => (
@@ -563,11 +600,11 @@ function ModelPicker({
       )}
       <button
         type="button"
-        aria-label="刷新模型候选"
+        aria-label={tr('ai.model.refresh')}
         title={
           fetched?.cacheKey === cacheKey && fetched.error
-            ? `拉取失败：${fetched.error}`
-            : '刷新模型候选'
+            ? tr('ai.model.refreshFailed', { error: fetched.error })
+            : tr('ai.model.refresh')
         }
         onClick={() => void loadCandidates(true)}
         className={`rounded p-1 hover:bg-accent ${
