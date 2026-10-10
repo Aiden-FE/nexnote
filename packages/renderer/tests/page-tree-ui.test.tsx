@@ -2,13 +2,17 @@
 import { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { CATALOGS, translate } from '@nexnote/shared';
 import '../src/features/sidebar/page-tree';
 import { sidebarPanelRegistry } from '../src/registries';
 import { usePageTreeStore } from '../src/stores/page-tree-store';
 import { useTabStore } from '../src/stores/tab-store';
 import { useUiStore } from '../src/stores/ui-store';
+import { setLanguage } from '../src/lib/i18n';
 
 globalThis.IS_REACT_ACT_ENVIRONMENT = true;
+const text = (language: 'zh-CN' | 'en-US', key: string): string =>
+  translate(CATALOGS[language], key, language);
 
 type Handler = (payload: Record<string, unknown>) => unknown;
 
@@ -91,6 +95,7 @@ afterEach(async () => {
   root = null;
   container = null;
   delete (window as unknown as { nexnote?: unknown }).nexnote;
+  setLanguage('zh-CN');
 });
 
 describe('页面树 GUI 回归', () => {
@@ -109,7 +114,7 @@ describe('页面树 GUI 回归', () => {
     expect(view.querySelector('[data-path="研究/外部笔记.md"]')).not.toBeNull();
 
     const chevron = view.querySelector<HTMLButtonElement>(
-      '[data-path="研究"] button[aria-label="折叠"]',
+      `[data-path="研究"] button[aria-label="${text('zh-CN', 'sidebar.pageTree.collapse')}"]`,
     );
     expect(chevron).not.toBeNull();
     act(() => chevron!.click());
@@ -184,7 +189,7 @@ describe('页面树 GUI 回归', () => {
       );
     });
     const renameMenuItem = [...view.querySelectorAll<HTMLButtonElement>('[role="menuitem"]')].find(
-      (item) => item.textContent?.includes('重命名'),
+      (item) => item.textContent?.includes(text('zh-CN', 'sidebar.pageTree.rename')),
     );
     expect(renameMenuItem).toBeDefined();
 
@@ -213,5 +218,31 @@ describe('页面树 GUI 回归', () => {
       kind: 'file',
     });
     expect(view.querySelector('[data-testid="tree-rename-input"]')).toBeNull();
+  });
+
+  it('目录折叠与上下文菜单按 en-US 词典成文，文件名仍作为内容数据（ADR-0023）', async () => {
+    setLanguage('en-US');
+    const view = await mountPageTree();
+    const chevron = view.querySelector<HTMLButtonElement>(
+      `[data-path="研究"] button[aria-label="${text('en-US', 'sidebar.pageTree.collapse')}"]`,
+    );
+    expect(chevron).not.toBeNull();
+
+    const row = view.querySelector<HTMLElement>('[data-path="研究/外部笔记.md"]')!;
+    act(() =>
+      row.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, cancelable: true })),
+    );
+    const renameMenuItem = [...view.querySelectorAll<HTMLButtonElement>('[role="menuitem"]')].find(
+      (item) => item.textContent?.includes(text('en-US', 'sidebar.pageTree.rename')),
+    );
+    expect(renameMenuItem).toBeDefined();
+
+    // 断言的是控件本身；中文路径/文件名是测试内容数据，不纳入 UI 残留判断。
+    const controls = [
+      chevron?.getAttribute('aria-label') ?? '',
+      renameMenuItem?.textContent ?? '',
+      view.querySelector('[data-testid="tree-new-note-menu"]')?.getAttribute('title') ?? '',
+    ].join('\n');
+    expect(controls).not.toMatch(/[一-鿿]/);
   });
 });

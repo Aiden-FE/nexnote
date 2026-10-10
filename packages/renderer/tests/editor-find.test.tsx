@@ -2,15 +2,20 @@
 import { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import { CATALOGS, translate } from '@nexnote/shared';
 import { createEditor } from '@nexnote/kernel';
 import { EditorFindBar } from '../src/editor/EditorFindBar';
 import { findInBlockView, findInSourceView, textMatches } from '../src/editor/find';
 import { createSourceEditor } from '../src/editor/source/codemirror-host';
 import { sourceFoldState } from '../src/editor/source/heading-fold';
 import { useTabStore } from '../src/stores/tab-store';
+import { setLanguage } from '../src/lib/i18n';
 
 // The real find bar is mounted beside a real editor, not a mocked onFind callback.
 globalThis.IS_REACT_ACT_ENVIRONMENT = true;
+const text = (language: 'zh-CN' | 'en-US', key: string): string =>
+  translate(CATALOGS[language], key, language);
+
 const originalStore = useTabStore.getState();
 const cleanups: Array<() => void | Promise<void>> = [];
 
@@ -50,6 +55,7 @@ afterEach(async () => {
   for (const cleanup of cleanups.splice(0).reverse()) await cleanup();
   useTabStore.setState({ activeTabId: originalStore.activeTabId, tabs: originalStore.tabs });
   document.body.innerHTML = '';
+  setLanguage('zh-CN');
 });
 
 describe('DEV-056 Unicode 查找 offsets', () => {
@@ -237,5 +243,29 @@ describe('DEV-056 页内查找栏集成（⌘/Ctrl+F；⌘⇧F 保留全局 Sear
     expect(foreground.querySelector('[data-testid="editor-find-bar"]')).toBeNull();
     await openAndType(foreground, 'a');
     expect(background.querySelector('[data-testid="editor-find-bar"]')).toBeNull();
+  });
+
+  it('en-US 查找栏控件与无结果状态按词典成文（ADR-0023）', async () => {
+    setLanguage('en-US');
+    const bar = await mountFindBar('english-find', () => ({ current: 0, total: 0 }));
+
+    const input = await openAndType(bar, 'zzz');
+    expect(input.getAttribute('aria-label')).toBe(text('en-US', 'find.inputLabel'));
+    expect(input.getAttribute('placeholder')).toBe(text('en-US', 'find.placeholder'));
+    expect(bar.querySelector('[data-testid="editor-find-status"]')?.textContent).toBe(
+      text('en-US', 'find.noResults'),
+    );
+
+    const labelledControls = [
+      bar.querySelector('[role="search"]')?.getAttribute('aria-label') ?? '',
+      ...[...bar.querySelectorAll('button[aria-label]')].map(
+        (button) => button.getAttribute('aria-label') ?? '',
+      ),
+    ];
+    expect(labelledControls).toContain(text('en-US', 'find.barLabel'));
+    expect(labelledControls).toContain(text('en-US', 'find.previous'));
+    expect(labelledControls).toContain(text('en-US', 'find.next'));
+    expect(labelledControls).toContain(text('en-US', 'find.close'));
+    expect(labelledControls.join('\n')).not.toMatch(/[一-鿿]/);
   });
 });

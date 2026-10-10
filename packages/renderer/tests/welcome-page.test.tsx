@@ -2,9 +2,21 @@
 import { act } from 'react';
 import { createRoot } from 'react-dom/client';
 import { afterEach, describe, expect, it } from 'vitest';
+import { CATALOGS, translate } from '@nexnote/shared';
 import { WelcomePage } from '../src/pages/WelcomePage';
+import { setLanguage } from '../src/lib/i18n';
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
+const text = (language: 'zh-CN' | 'en-US', key: string): string =>
+  translate(CATALOGS[language], key, language);
+
+function renderWelcome(): HTMLDivElement {
+  const host = document.createElement('div');
+  document.body.append(host);
+  const reactRoot = createRoot(host);
+  act(() => reactRoot.render(<WelcomePage />));
+  return host;
+}
 
 describe('WelcomePage 产品能力文案', () => {
   let root: ReturnType<typeof createRoot> | null = null;
@@ -15,6 +27,7 @@ describe('WelcomePage 产品能力文案', () => {
     container?.remove();
     root = null;
     container = null;
+    setLanguage('zh-CN');
   });
 
   it('不展示过期票据文案并包含核心能力要点', () => {
@@ -46,5 +59,30 @@ describe('WelcomePage 产品能力文案', () => {
       (b) => b.textContent?.trim() ?? '',
     );
     expect(buttons, buttons.join('|')).not.toContain('浏览 Vault 文件');
+  });
+
+  it('en-US 整页无中文残留，所有按钮与能力要点按词典成文（ADR-0023）', () => {
+    setLanguage('en-US');
+    container = renderWelcome();
+
+    const copy = container.textContent ?? '';
+    for (const key of [
+      'welcome.title',
+      'welcome.subtitle',
+      'welcome.gettingStarted',
+      'welcome.commandPalette',
+      'welcome.theme',
+      'welcome.toggleDock',
+      'welcome.highlight.views',
+      'welcome.highlight.ai',
+      'welcome.highlight.wikilinks',
+      'welcome.capabilityLine',
+    ]) {
+      expect(copy, key).toContain(text('en-US', key));
+    }
+    expect(
+      container.querySelector('button[aria-label]')?.getAttribute('aria-label'),
+    ).toBe(text('en-US', 'welcome.toggleTheme'));
+    expect(copy).not.toMatch(/[一-鿿]/);
   });
 });

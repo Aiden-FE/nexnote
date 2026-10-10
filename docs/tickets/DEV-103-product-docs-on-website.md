@@ -103,6 +103,7 @@
 - [x] 阶段③第二十四批（2026-10-10）：binary-host 独立编辑器宿主双语 + 跨 WebContentsView 语言同步。宿主加载页、丢弃本地修改确认、保存/冲突/加载状态、思维导图工具栏/抽屉、结构/主题/标记/形状枚举全部改走消息目录；结构/主题/标记/形状目录改为稳定 key，由宿主按当前语言成文；`BinaryEditorCommand` 新增 `language`，ack pull 模型首命令总是返回当前语言，设置变更时 `applyLanguage` 广播；主进程残留门禁扩展为 main 棘轮 + binary-host 源码零 CJK。新增 77 key，消息目录 zh/en 各 1551 key；binary-host 剥离注释后 UI CJK 为 0；门禁 196 files / 1861 passed / 3 skipped。
 - [x] 阶段④第一批（2026-10-11）：标题折叠 aria-live 反馈与新建菜单测试迁移。补上 `use-heading-fold-announcement.ts` 漏网中文（新增 `heading.foldsExpanded` / `heading.noFoldedHeadings`），`expand-all` 测试改为词典断言并补 en-US 分支；`new-note-menu` 补 en-US 渲染断言并做 CJK 残留检查。新增 2 key，消息目录 zh/en 各 1553 key；门禁 196 files / 1863 passed / 3 skipped。
 - [x] 阶段④第二批（2026-10-11）：OutlinePanel / 内置命令 / 新手引导测试迁移。OutlinePanel 空态与悬浮目录展开控件改为词典断言并补 en-US CJK 检查；内置命令标题与分类补 en-US 全注册表检查；GuidedTour 文案检查扩展到 zh/en 双语言并补 en-US 卡片真实渲染。新增 0 key，消息目录 zh/en 保持 1553 key；门禁 196 files / 1866 passed / 3 skipped。
+- [x] 阶段④第三批（2026-10-11）：欢迎页 / 页面树 / 页内查找栏测试迁移。WelcomePage 补整页 en-US 词典内容与 CJK 残留检查；页面树目录折叠 aria-label 与右键重命名菜单改为词典断言，中文路径继续作为内容数据；EditorFindBar 补 en-US search role、输入框、无结果、上一/下一匹配与关闭控件断言。新增 0 key，消息目录 zh/en 保持 1553 key；门禁 196 files / 1869 passed / 3 skipped。
 - [ ] 阶段③剩余：主进程用户可读状态与校验错误残留继续按棘轮基线收敛；GitService / vault / doctor / DOCX / FS / AI service / plugin manifest / settings IPC / agent gateway/tools / confidence / binary / chat / skill / preload / IPC validation 服务状态已完成
 - [ ] 阶段④剩余：继续按「真实 UI 断言 + 内容/服务消息边界」分批迁移既有测试
 - [ ] **NOT_RUN / 未达门槛**：按 ADR「en-US 全 UI 无中文残留」，当前不声称桌面端双语完成

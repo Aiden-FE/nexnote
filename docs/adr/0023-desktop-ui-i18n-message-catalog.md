@@ -307,3 +307,10 @@ status: in_progress
   双语言，并新增 en-US 真实卡片渲染断言。本批只改测试，不新增消息 key，
   zh/en 保持 1553 key；OutlinePanel / commands-builtin / guided-tour
   targeted tests 通过；全量门禁 196 files / 1866 passed / 3 skipped 退出码 0。
+- 阶段④第三批（2026-10-11）：欢迎页、页面树与页内查找栏测试迁移。WelcomePage
+  整页 en-US 渲染断言覆盖标题、副标题、按钮、三个能力要点与能力总结行，并检查
+  CJK 残留；页面树测试只迁移控件（折叠 aria-label、右键重命名菜单项），中文
+  文件/目录名继续作为内容数据，不纳入 UI 文案边界；EditorFindBar 测试覆盖 en-US
+  search role、输入标签/占位符、无结果、上一/下一匹配与关闭按钮。本批只改测试，
+  不新增消息 key，zh/en 保持 1553 key；welcome-page / page-tree-ui / editor-find
+  targeted tests 通过；全量门禁 196 files / 1869 passed / 3 skipped 退出码 0。
