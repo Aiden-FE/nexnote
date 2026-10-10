@@ -6,6 +6,7 @@ import { renameFrontmatterKey } from './frontmatter-utils';
 import { Button } from '../../components/ui/button';
 import { FieldEditor } from './FieldEditor';
 import { tokenizeYaml, type YamlTokenKind } from './frontmatter-utils';
+import { useI18n } from '../../lib/i18n';
 
 export type FrontmatterMode = 'table' | 'yaml';
 
@@ -39,6 +40,7 @@ export function FrontmatterPanel({
   onChange,
   onYamlChange,
 }: FrontmatterPanelProps) {
+  const tr = useI18n();
   const [mode, setMode] = useState<FrontmatterMode>(locked ? 'yaml' : 'table');
   const [yaml, setYaml] = useState(source);
   const [yamlError, setYamlError] = useState<string | null>(parseError);
@@ -126,13 +128,13 @@ export function FrontmatterPanel({
     >
       <header className="flex min-h-9 items-center gap-1 border-b bg-muted/35 px-2">
         <ClipboardList className="ml-1 size-3.5 text-muted-foreground" />
-        <span className="mr-auto text-xs font-medium">文档属性</span>
+        <span className="mr-auto text-xs font-medium">{tr('frontmatter.documentProperties')}</span>
         {locked && (
           <span
             className="mr-1 inline-flex items-center gap-1 text-[10px] text-destructive"
-            title="修复 YAML 后可切回表格"
+            title={tr('frontmatter.lockedTitle')}
           >
-            <LockKeyhole className="size-3" /> 源码锁定
+            <LockKeyhole className="size-3" /> {tr('frontmatter.locked')}
           </span>
         )}
         <Button
@@ -142,9 +144,9 @@ export function FrontmatterPanel({
           onClick={() => {
             if (activeMode === 'yaml') switchToTable();
           }}
-          title={locked ? 'YAML 无法解析，修复后才能切换表格' : '属性表格'}
+          title={locked ? tr('frontmatter.lockedTitle') : tr('frontmatter.tableTitle')}
         >
-          <Braces className="size-3.5" /> 表格
+          <Braces className="size-3.5" /> {tr('frontmatter.table')}
         </Button>
         <Button
           size="sm"
@@ -152,7 +154,7 @@ export function FrontmatterPanel({
           onClick={() => {
             if (activeMode === 'table') switchToYaml();
           }}
-          title="YAML 源码"
+          title={tr('frontmatter.yamlSource')}
         >
           <Code2 className="size-3.5" /> YAML
         </Button>
@@ -187,7 +189,7 @@ export function FrontmatterPanel({
             </pre>
             <textarea
               data-testid="frontmatter-yaml-editor"
-              aria-label="Frontmatter YAML 源码"
+              aria-label={tr('frontmatter.yamlEditor')}
               spellCheck={false}
               wrap="off"
               value={effectiveYaml}
@@ -205,7 +207,7 @@ export function FrontmatterPanel({
               <AlertCircle className="mt-0.5 size-3 shrink-0 text-destructive" />
             ) : null}
             <span className={activeError ? 'text-destructive' : ''}>
-              {activeError ?? `${lineCount} 行 · 语法有效，300ms 后保存；切回表格会保留当前数据`}
+              {activeError ?? tr('frontmatter.yamlValid', { lineCount })}
             </span>
           </div>
         </div>

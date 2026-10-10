@@ -5,6 +5,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { FrontmatterData } from '@nexnote/kernel';
 import { STANDARD_FIELD_CATALOG } from '@nexnote/kernel';
 import { FieldEditor } from '../src/features/frontmatter/FieldEditor';
+import { setLanguage } from '../src/lib/i18n';
 
 globalThis.IS_REACT_ACT_ENVIRONMENT = true;
 
@@ -229,5 +230,28 @@ describe('派生字段只读展示（DEV-077 / DEV-093）', () => {
       updatedRow?.querySelector('[data-testid="frontmatter-readonly-updated"]'),
     ).not.toBeNull();
     expect(updatedRow?.querySelector('input')).toBeNull();
+  });
+});
+
+describe('ADR-0023 FieldEditor en-US 残留检查', () => {
+  it('目录、字段行与编辑器本应用 UI 无中文残留；字段名/值为数据边界', async () => {
+    act(() => {
+      setLanguage('en-US');
+    });
+    const { container, onChange, openCatalog } = renderFieldEditor({
+      title: 'Target',
+      tags: ['work'],
+      category: 'note',
+    });
+    expect(container.textContent).toContain('Add field');
+    expect(container.querySelector('[aria-label="Delete field"]')).not.toBeNull();
+    expect(container.textContent).not.toMatch(/[一-鿿]/);
+    openCatalog();
+    expect(container.textContent).toContain('Field directory');
+    expect(container.textContent).not.toMatch(/[一-鿿]/);
+    expect(onChange).not.toHaveBeenCalled();
+    act(() => {
+      setLanguage('zh-CN');
+    });
   });
 });

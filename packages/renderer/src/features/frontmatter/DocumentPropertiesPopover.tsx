@@ -4,6 +4,7 @@ import { ClipboardList } from 'lucide-react';
 import type { FrontmatterData } from '@nexnote/kernel';
 import { FrontmatterPanel } from './FrontmatterPanel';
 import { ToolbarTooltip } from '../../editor/toolbar/Tooltip';
+import { useI18n } from '../../lib/i18n';
 
 export interface DocumentPropertiesPopoverProps {
   data: FrontmatterData;
@@ -28,6 +29,7 @@ export function DocumentPropertiesPopover({
   onChange,
   onYamlChange,
 }: DocumentPropertiesPopoverProps) {
+  const tr = useI18n();
   const [open, setOpen] = useState(false);
   const triggerRef = useRef<HTMLButtonElement>(null);
   const popoverRef = useRef<HTMLDivElement>(null);
@@ -75,19 +77,19 @@ export function DocumentPropertiesPopover({
 
   return (
     <>
-      <ToolbarTooltip text="编辑文档属性">
+      <ToolbarTooltip text={tr('frontmatter.editTooltip')}>
         <button
           ref={triggerRef}
           type="button"
           data-testid="document-properties-trigger"
-          aria-label="属性"
+          aria-label={tr('frontmatter.properties')}
           aria-expanded={open}
           aria-controls={popoverId}
           className="flex shrink-0 items-center gap-1 rounded px-1.5 py-0.5 hover:bg-accent focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-ring"
           onClick={() => setOpen((current) => !current)}
         >
           <ClipboardList className="size-3" aria-hidden="true" />
-          属性
+          {tr('frontmatter.properties')}
         </button>
       </ToolbarTooltip>
       {open &&
@@ -97,7 +99,7 @@ export function DocumentPropertiesPopover({
             id={popoverId}
             data-testid="document-properties-popover"
             role="dialog"
-            aria-label="文档属性"
+            aria-label={tr('frontmatter.propertiesDialogTitle')}
             style={{
               top: position.top,
               left: position.left,

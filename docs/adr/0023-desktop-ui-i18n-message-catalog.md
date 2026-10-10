@@ -103,3 +103,11 @@ status: in_progress
   Skill 名称保留 runtime 或插件内容边界。新增 73 key，消息目录 zh/en 各 640 key。
   `chat-approval.test.tsx` 新增 en-US ChatDock 空态残留检查；门禁
   193 files / 1828 passed / 3 skipped。
+- 阶段②第十批（2026-10-10）：frontmatter 属性面板迁移完成，包括右侧 Dock
+  空态、属性行、格式标签、置信度空态、字段目录、标准字段说明、字段行、
+  值编辑器、表格/YAML 切换与源码锁定提示。字段名 / 字段值 / YAML 解析错误 /
+  置信度因子明细保留数据或服务消息边界；kernel `STANDARD_FIELD_CATALOG`
+  的中文 description 保留为领域定义，UI 经 `frontmatter.field.<key>.description`
+  词典成文。新增 85 key，消息目录 zh/en 各 725 key。
+  `properties-confidence` / `field-catalog` / `source-mode-markdown-panel`
+  新增 en-US 渲染残留检查；门禁 193 files / 1831 passed / 3 skipped。

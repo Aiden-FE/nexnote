@@ -28,6 +28,8 @@ describe('用户可见文案清理', () => {
 
   it('设置和属性提示使用正式产品文案', () => {
     expect(src('features/settings/index.tsx')).toContain('实验性功能，当前版本尚未启用');
-    expect(src('features/frontmatter/PropertiesPanel.tsx')).toContain('置信度尚未计算');
+    expect(src('features/frontmatter/PropertiesPanel.tsx')).toContain(
+      "t('frontmatter.confidenceNotComputed')",
+    );
   });
 });

@@ -4,6 +4,7 @@ import { PropertiesPanel } from './PropertiesPanel';
 import { useDocumentPropertiesStore } from './document-properties-store';
 import { useLinkCounts } from './use-link-counts';
 import { useConfidence } from './use-confidence';
+import { t } from '../../lib/i18n';
 
 /** DEV-005：右侧 Dock 的文档属性页签。 */
 dockPanelRegistry.register({
@@ -28,7 +29,7 @@ function DocumentPropertiesDockPanel() {
         data-testid="properties-panel-empty"
         className="flex h-full items-center justify-center text-center text-xs text-muted-foreground"
       >
-        打开一个 Markdown 页面以查看文档属性
+        {t('frontmatter.emptyVault')}
       </div>
     );
   }

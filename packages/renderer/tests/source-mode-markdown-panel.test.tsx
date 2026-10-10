@@ -6,6 +6,7 @@ import { defaultVaultSettings } from '@nexnote/shared';
 import { SourceModeView } from '../src/editor/source/SourceModeView';
 import { useSettingsStore } from '../src/stores/settings-store';
 import type { TabDescriptor } from '../src/stores/tab-store';
+import { setLanguage } from '../src/lib/i18n';
 
 globalThis.IS_REACT_ACT_ENVIRONMENT = true;
 
@@ -48,6 +49,7 @@ const tab: TabDescriptor = {
 const WITH_YAML = '---\ntitle: 原值\ncustom: "keep me"\n---\n\n# 正文\n\n段落   \n';
 const WITHOUT_YAML = '# 无头文档\n\n正文\n';
 const BROKEN_YAML = '---\ntitle: ok\n  bad indent: value\n---\n\n正文\n';
+const EN_YAML = '---\ntitle: Target\ncustom: "note"\n---\n\n# Body\n\nParagraph\n';
 
 interface Bridge {
   readonly writes: string[];
@@ -291,5 +293,40 @@ describe('Markdown 文档属性面板（DEV-025）', () => {
     });
     await unmount(root);
     expect(bridge.writes).toEqual([]);
+  });
+});
+
+describe('ADR-0023 FrontmatterPanel en-US 残留检查', () => {
+  it('入口、表格、字段目录与状态文字无中文残留', async () => {
+    setLanguage('en-US');
+    const { root, bridge } = await renderView(EN_YAML);
+    const trigger = document.querySelector<HTMLButtonElement>(
+      '[data-testid="document-properties-trigger"]',
+    );
+    expect(trigger?.textContent).toContain('Properties');
+    act(() => {
+      trigger?.dispatchEvent(new PointerEvent('pointerover', { bubbles: true }));
+    });
+    expect(
+      document.querySelector('[data-testid="toolbar-tooltip"]:not([hidden])')?.textContent,
+    ).toBe('Edit document properties');
+    act(() => trigger?.click());
+    const panel = document.querySelector('[data-testid="frontmatter-panel"]');
+    expect(panel?.textContent).toContain('Document properties');
+    expect(panel?.textContent).not.toMatch(/[一-鿿]/);
+    await act(async () => {
+      document
+        .querySelector<HTMLButtonElement>('button[data-testid="add-field-trigger"]')
+        ?.click();
+    });
+    expect(document.querySelector('[data-testid="field-catalog"]')?.textContent).not.toMatch(
+      /[一-鿿]/,
+    );
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(1000);
+    });
+    await unmount(root);
+    expect(bridge.writes).toEqual([]);
+    setLanguage('zh-CN');
   });
 });

@@ -4,6 +4,7 @@ import { createRoot } from 'react-dom/client';
 import { act } from 'react';
 import type { ConfidenceResult } from '@nexnote/shared';
 import { PropertiesPanel } from '../src/features/frontmatter/PropertiesPanel';
+import { setLanguage } from '../src/lib/i18n';
 
 const confidence: ConfidenceResult = {
   pageId: 12,
@@ -113,5 +114,39 @@ describe('PropertiesPanel 类型行（DEV-080）', () => {
     expect(container.textContent).toContain('块文档');
     root.unmount();
     container.remove();
+  });
+});
+
+describe('ADR-0023 PropertiesPanel en-US 残留检查', () => {
+  it('本应用 UI 无中文残留；置信度因子与其明细为服务数据边界', async () => {
+    setLanguage('en-US');
+    const enConfidence: ConfidenceResult = {
+      ...confidence,
+      factors: confidence.factors.map((factor, index) => ({
+        ...factor,
+        label: `factor ${index}`,
+        detail: `detail ${index}`,
+      })),
+    };
+    const container = document.createElement('div');
+    document.body.appendChild(container);
+    const root = createRoot(container);
+    await act(async () => {
+      root.render(
+        <PropertiesPanel
+          markdown="# Target"
+          data={{ title: 'Target', tags: ['work'] }}
+          filePath="target.md"
+          confidence={enConfidence}
+          format="markdown"
+        />,
+      );
+    });
+    expect(container.textContent).toContain('Basic information');
+    expect(container.textContent).toContain('Markdown source');
+    expect(container.textContent).not.toMatch(/[一-鿿]/);
+    root.unmount();
+    container.remove();
+    setLanguage('zh-CN');
   });
 });

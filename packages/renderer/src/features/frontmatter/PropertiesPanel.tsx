@@ -10,6 +10,7 @@ import {
   type FrontmatterValue,
 } from '@nexnote/kernel';
 import { invoke } from '../../lib/ipc';
+import { t, useI18n } from '../../lib/i18n';
 import { pageStatistics } from './frontmatter-utils';
 
 export interface PropertiesPanelProps {
@@ -24,21 +25,16 @@ export interface PropertiesPanelProps {
 }
 
 /** DEV-080：DocumentFormat → 用户可读标签的映射，集中一处便于扩展。 */
+const FORMAT_KEY: Record<string, string> = {
+  'native-block': 'frontmatter.format.native-block',
+  markdown: 'frontmatter.format.markdown',
+  docx: 'frontmatter.format.docx',
+  xlsx: 'frontmatter.format.xlsx',
+  mindmap: 'frontmatter.format.mindmap',
+};
+
 function formatLabel(format: string | null | undefined): string {
-  switch (format) {
-    case 'native-block':
-      return '块文档';
-    case 'markdown':
-      return 'Markdown 源码';
-    case 'docx':
-      return 'DOCX 文档';
-    case 'xlsx':
-      return 'Excel 工作簿';
-    case 'mindmap':
-      return 'XMind 思维导图';
-    default:
-      return '普通文档';
-  }
+  return t(FORMAT_KEY[format ?? ''] ?? 'frontmatter.format.ordinary');
 }
 
 /** 右侧「文档属性」面板。 */
@@ -50,6 +46,7 @@ export function PropertiesPanel({
   confidence = null,
   format = null,
 }: PropertiesPanelProps) {
+  const tr = useI18n();
   const stats = useMemo(() => pageStatistics(markdown), [markdown]);
   const tags = getList(data, 'tags');
   const aliases = getList(data, 'aliases');
@@ -64,26 +61,28 @@ export function PropertiesPanel({
   return (
     <div data-testid="properties-panel" className="space-y-4 text-xs">
       <section>
-        <SectionHeader icon={<FileText className="size-3.5" />} title="基本信息" />
-        <InfoRow label="文件路径">
+        <SectionHeader icon={<FileText className="size-3.5" />} title={tr('frontmatter.basicInformation')} />
+        <InfoRow label={tr('frontmatter.filePath')}>
           <button
             type="button"
             onClick={showInFinder}
             className="max-w-full truncate text-left font-mono text-[11px] text-muted-foreground hover:text-foreground"
-            title={`${filePath}（在 Finder/资源管理器中显示）`}
+            title={tr('frontmatter.showInFinderTitle', { path: filePath })}
           >
             {filePath}
           </button>
         </InfoRow>
-        <InfoRow label="标题">
-          <span className="truncate">{getString(data, 'title') || '（未设置）'}</span>
+        <InfoRow label={tr('frontmatter.title')}>
+          <span className="truncate">
+            {getString(data, 'title') || tr('frontmatter.unset')}
+          </span>
         </InfoRow>
-        <InfoRow label="类型">
+        <InfoRow label={tr('frontmatter.type')}>
           <span className="truncate">{formatLabel(format)}</span>
         </InfoRow>
-        <InfoRow label="别名">
+        <InfoRow label={tr('frontmatter.aliases')}>
           {aliases.length === 0 ? (
-            <span className="text-muted-foreground">无</span>
+            <span className="text-muted-foreground">{tr('frontmatter.none')}</span>
           ) : (
             <div className="flex flex-wrap gap-1">
               {aliases.map((a) => (
@@ -94,9 +93,9 @@ export function PropertiesPanel({
             </div>
           )}
         </InfoRow>
-        <InfoRow label="标签">
+        <InfoRow label={tr('frontmatter.tags')}>
           {tags.length === 0 ? (
-            <span className="text-muted-foreground">无</span>
+            <span className="text-muted-foreground">{tr('frontmatter.none')}</span>
           ) : (
             <div className="flex flex-wrap gap-1">
               {tags.map((t) => (
@@ -113,9 +112,11 @@ export function PropertiesPanel({
       </section>
 
       <section>
-        <SectionHeader icon={<Braces className="size-3.5" />} title="自定义字段" />
+        <SectionHeader icon={<Braces className="size-3.5" />} title={tr('frontmatter.customFields')} />
         {customFields.length === 0 ? (
-          <p className="py-1 text-[11px] text-muted-foreground">无自定义字段</p>
+          <p className="py-1 text-[11px] text-muted-foreground">
+            {tr('frontmatter.noCustomFields')}
+          </p>
         ) : (
           customFields.map(([key, value]) => (
             <InfoRow key={key} label={key}>
@@ -126,48 +127,48 @@ export function PropertiesPanel({
       </section>
 
       <section>
-        <SectionHeader icon={<Gauge className="size-3.5" />} title="置信度" />
+        <SectionHeader icon={<Gauge className="size-3.5" />} title={tr('frontmatter.confidence')} />
         <ConfidenceDisplay value={confidence} />
       </section>
 
       <section>
-        <SectionHeader icon={<Link2 className="size-3.5" />} title="链接" />
-        <InfoRow label="入链">
+        <SectionHeader icon={<Link2 className="size-3.5" />} title={tr('frontmatter.link')} />
+        <InfoRow label={tr('frontmatter.inboundLinks')}>
           <span>{linkCounts.in}</span>
         </InfoRow>
-        <InfoRow label="出链">
+        <InfoRow label={tr('frontmatter.outboundLinks')}>
           <span>{linkCounts.out}</span>
         </InfoRow>
       </section>
 
       <section>
-        <SectionHeader icon={<ListOrdered className="size-3.5" />} title="统计" />
-        <InfoRow label="词数">
+        <SectionHeader icon={<ListOrdered className="size-3.5" />} title={tr('frontmatter.statistics')} />
+        <InfoRow label={tr('frontmatter.words')}>
           <span>{stats.words}</span>
         </InfoRow>
-        <InfoRow label="块数">
+        <InfoRow label={tr('frontmatter.blocks')}>
           <span>{stats.blocks}</span>
         </InfoRow>
       </section>
 
       <section>
-        <SectionHeader icon={<Calendar className="size-3.5" />} title="时间" />
-        <InfoRow label="创建时间">
+        <SectionHeader icon={<Calendar className="size-3.5" />} title={tr('frontmatter.time')} />
+        <InfoRow label={tr('frontmatter.createdAt')}>
           <span className="font-mono text-[11px] text-muted-foreground">{stats.created}</span>
         </InfoRow>
-        <InfoRow label="更新时间">
+        <InfoRow label={tr('frontmatter.updatedAt')}>
           <span className="font-mono text-[11px] text-muted-foreground">{stats.updated}</span>
         </InfoRow>
       </section>
 
       <section>
-        <SectionHeader icon={<FolderOpen className="size-3.5" />} title="操作" />
+        <SectionHeader icon={<FolderOpen className="size-3.5" />} title={tr('frontmatter.actions')} />
         <button
           type="button"
           onClick={showInFinder}
           className="rounded border px-2 py-1 text-[11px] hover:bg-accent"
         >
-          在 Finder 中显示
+          {tr('frontmatter.showInFinder')}
         </button>
       </section>
     </div>
@@ -217,7 +218,7 @@ function ConfidenceDisplay({ value }: { value: ConfidenceResult | null }) {
   if (!value) {
     return (
       <div className="rounded-md border border-dashed px-3 py-2 text-center text-[11px] text-muted-foreground">
-        置信度尚未计算
+        {t('frontmatter.confidenceNotComputed')}
       </div>
     );
   }
@@ -237,7 +238,10 @@ function ConfidenceDisplay({ value }: { value: ConfidenceResult | null }) {
         {value.factors.map((item) => (
           <li
             key={item.key}
-            title={`${item.label}：${item.detail}`}
+            title={t('frontmatter.confidenceFactorTitle', {
+              label: item.label,
+              detail: item.detail,
+            })}
             data-testid={`confidence-factor-${item.key}`}
           >
             <div className="flex justify-between">

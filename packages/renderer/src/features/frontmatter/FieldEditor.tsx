@@ -12,6 +12,7 @@ import {
 } from '@nexnote/kernel';
 import { Input } from '../../components/ui/input';
 import { Button } from '../../components/ui/button';
+import { t, useI18n } from '../../lib/i18n';
 
 export interface FieldEditorProps {
   data: FrontmatterData;
@@ -50,6 +51,7 @@ function sortedKeys(data: FrontmatterData): string[] {
 }
 
 export function FieldEditor({ data, onChange, knownTags, onRename }: FieldEditorProps) {
+  const tr = useI18n();
   const [draftKey, setDraftKey] = useState('');
   const [showCatalog, setShowCatalog] = useState(false);
   const [showCustom, setShowCustom] = useState(false);
@@ -135,7 +137,9 @@ export function FieldEditor({ data, onChange, knownTags, onRename }: FieldEditor
           data-testid="field-catalog"
           className="rounded-md border bg-popover p-2 text-xs shadow-md"
         >
-          <div className="mb-1 px-1 text-[11px] font-medium text-muted-foreground">字段目录</div>
+          <div className="mb-1 px-1 text-[11px] font-medium text-muted-foreground">
+            {tr('frontmatter.fieldCatalog')}
+          </div>
           <ul className="max-h-64 space-y-0.5 overflow-auto">
             {STANDARD_FIELD_CATALOG.map((field) => {
               const added = Object.prototype.hasOwnProperty.call(data, field.key);
@@ -146,7 +150,7 @@ export function FieldEditor({ data, onChange, knownTags, onRename }: FieldEditor
                     data-testid="field-catalog-item"
                     data-field={field.key}
                     disabled={added}
-                    title={field.description}
+                    title={t(`frontmatter.field.${field.key}.description`)}
                     onClick={() => addStandardField(field)}
                     className={cn(
                       'flex w-full items-center gap-2 rounded px-2 py-1.5 text-left',
@@ -156,11 +160,11 @@ export function FieldEditor({ data, onChange, knownTags, onRename }: FieldEditor
                     <span className="font-medium text-foreground">{field.key}</span>
                     <TypeBadge type={field.type} />
                     <span className="min-w-0 flex-1 truncate text-muted-foreground">
-                      {field.description}
+                      {t(`frontmatter.field.${field.key}.description`)}
                     </span>
                     {added && (
                       <span className="shrink-0 rounded bg-muted px-1.5 py-0.5 text-[10px] text-muted-foreground">
-                        已添加
+                        {tr('frontmatter.added')}
                       </span>
                     )}
                   </button>
@@ -175,7 +179,7 @@ export function FieldEditor({ data, onChange, knownTags, onRename }: FieldEditor
                   autoFocus
                   data-testid="field-catalog-custom-input"
                   value={draftKey}
-                  placeholder="自定义字段名（如 category）"
+                  placeholder={tr('frontmatter.customFieldName')}
                   onChange={(e) => setDraftKey(e.target.value)}
                   onKeyDown={(e) => {
                     if (e.key === 'Enter') addCustomField();
@@ -183,7 +187,7 @@ export function FieldEditor({ data, onChange, knownTags, onRename }: FieldEditor
                   }}
                 />
                 <Button size="sm" variant="secondary" onClick={addCustomField}>
-                  添加
+                  {tr('frontmatter.add')}
                 </Button>
               </div>
             ) : (
@@ -193,7 +197,7 @@ export function FieldEditor({ data, onChange, knownTags, onRename }: FieldEditor
                 className="flex w-full items-center gap-2 rounded px-2 py-1.5 text-left text-muted-foreground hover:bg-accent"
                 onClick={() => setShowCustom(true)}
               >
-                <Plus className="size-3.5" /> 自定义字段…
+                <Plus className="size-3.5" /> {tr('frontmatter.customField')}
               </button>
             )}
           </div>
@@ -205,7 +209,7 @@ export function FieldEditor({ data, onChange, knownTags, onRename }: FieldEditor
           data-testid="add-field-trigger"
           onClick={() => setShowCatalog(true)}
         >
-          <Plus className="size-3.5" /> 添加字段
+          <Plus className="size-3.5" /> {tr('frontmatter.addField')}
         </Button>
       )}
     </div>
@@ -222,6 +226,7 @@ interface FieldRowProps {
 }
 
 function FieldRow({ name, value, onChange, onRemove, onRename, knownTags }: FieldRowProps) {
+  const tr = useI18n();
   const standard = isStandardField(name);
   // DEV-077: readonly 标准字段（updated）由应用维护，禁用输入与类型切换。
   const readonly = isReadonlyStandardField(name);
@@ -248,7 +253,7 @@ function FieldRow({ name, value, onChange, onRemove, onRename, knownTags }: Fiel
           type="button"
           onClick={toggle}
           className="rounded p-0.5 text-muted-foreground hover:bg-accent"
-          aria-label={collapsed ? '展开' : '折叠'}
+          aria-label={collapsed ? tr('frontmatter.expand') : tr('frontmatter.collapse')}
         >
           <Chevron className="size-3.5" />
         </button>
@@ -285,10 +290,18 @@ function FieldRow({ name, value, onChange, onRemove, onRename, knownTags }: Fiel
                 setEditingKey(true);
               }
             }}
-            title={standard ? (STANDARD_DESCRIPTIONS.get(name) ?? '标准字段') : '双击重命名'}
+            title={
+              STANDARD_DESCRIPTIONS.has(name)
+                ? t(`frontmatter.field.${name}.description`)
+                : tr('frontmatter.standardField')
+            }
           >
             {name}
-            {standard && <span className="ml-1 text-[10px] text-muted-foreground">标准</span>}
+            {standard && (
+              <span className="ml-1 text-[10px] text-muted-foreground">
+                {tr('frontmatter.standardBadge')}
+              </span>
+            )}
           </span>
         )}
         <TypeBadge type={type} />
@@ -297,7 +310,9 @@ function FieldRow({ name, value, onChange, onRemove, onRename, knownTags }: Fiel
             data-testid={`field-remove-confirm-${name}`}
             className="flex shrink-0 items-center gap-1 text-[10px]"
           >
-            <span className="text-muted-foreground">删除 {name}？</span>
+            <span className="text-muted-foreground">
+              {tr('frontmatter.removeConfirm', { name })}
+            </span>
             <Button
               size="sm"
               variant="destructive"
@@ -306,10 +321,10 @@ function FieldRow({ name, value, onChange, onRemove, onRename, knownTags }: Fiel
                 setConfirmRemove(false);
               }}
             >
-              删除
+              {tr('frontmatter.delete')}
             </Button>
             <Button size="sm" variant="ghost" onClick={() => setConfirmRemove(false)}>
-              取消
+              {tr('frontmatter.cancel')}
             </Button>
           </span>
         ) : (
@@ -322,8 +337,12 @@ function FieldRow({ name, value, onChange, onRemove, onRename, knownTags }: Fiel
             className={cn(
               'rounded p-1 text-muted-foreground hover:bg-destructive/10 hover:text-destructive',
             )}
-            aria-label="删除字段"
-            title={standard ? '删除标准字段（需确认）' : '删除字段'}
+            aria-label={tr('frontmatter.removeField')}
+            title={
+              standard
+                ? tr('frontmatter.removeStandardField')
+                : tr('frontmatter.removeField')
+            }
           >
             <Trash2 className="size-3.5" />
           </button>
@@ -334,7 +353,7 @@ function FieldRow({ name, value, onChange, onRemove, onRename, knownTags }: Fiel
           {readonly ? (
             <div data-testid={`frontmatter-readonly-${name}`} className="text-xs text-muted-foreground">
               <span className="font-mono">{readonlyDisplayValue(value)}</span>
-              <span className="ml-2">由 NexNote 自动维护</span>
+              <span className="ml-2">{tr('frontmatter.managedByApp')}</span>
             </div>
           ) : (
             <ValueEditor name={name} value={value} onChange={onChange} knownTags={knownTags} />
@@ -354,17 +373,17 @@ function readonlyDisplayValue(value: FrontmatterValue): string {
 }
 
 function TypeBadge({ type }: { type: FieldType }) {
-  const label: Record<FieldType, string> = {
-    string: '文本',
-    number: '数字',
-    boolean: '布尔',
-    date: '日期',
-    list: '列表',
-    null: '空',
+  const key: Record<FieldType, string> = {
+    string: 'frontmatter.type.string',
+    number: 'frontmatter.type.number',
+    boolean: 'frontmatter.type.boolean',
+    date: 'frontmatter.type.date',
+    list: 'frontmatter.type.list',
+    null: 'frontmatter.type.null',
   };
   return (
     <span className="rounded bg-muted px-1.5 py-0.5 text-[10px] text-muted-foreground">
-      {label[type]}
+      {t(key[type])}
     </span>
   );
 }
@@ -380,22 +399,23 @@ function ValueEditor({
   onChange: (v: FrontmatterValue) => void;
   knownTags: string[];
 }) {
+  const tr = useI18n();
   if (value === null) {
     return (
       <div className="text-xs text-muted-foreground">
-        值为空。
+        {tr('frontmatter.emptyValue')}
         <div className="mt-2 flex gap-1">
           <Button size="sm" variant="secondary" onClick={() => onChange('')}>
-            设为文本
+            {tr('frontmatter.setString')}
           </Button>
           <Button size="sm" variant="secondary" onClick={() => onChange(0)}>
-            设为数字
+            {tr('frontmatter.setNumber')}
           </Button>
           <Button size="sm" variant="secondary" onClick={() => onChange(false)}>
-            设为布尔
+            {tr('frontmatter.setBoolean')}
           </Button>
           <Button size="sm" variant="secondary" onClick={() => onChange([])}>
-            设为列表
+            {tr('frontmatter.setList')}
           </Button>
         </div>
       </div>
@@ -409,7 +429,7 @@ function ValueEditor({
         values={value}
         onChange={onChange}
         autocomplete={isTags ? knownTags : []}
-        label={isTags ? '标签' : '列表项'}
+        label={isTags ? tr('frontmatter.tagsItem') : tr('frontmatter.listItem')}
       />
     );
   }
@@ -423,7 +443,7 @@ function ValueEditor({
           onChange={(e) => onChange(e.target.checked)}
           className="size-3.5"
         />
-        {value ? '开启' : '关闭'}
+        {value ? tr('frontmatter.on') : tr('frontmatter.off')}
       </label>
     );
   }
@@ -461,7 +481,11 @@ function ValueEditor({
 
   // string
   return (
-    <Input value={value} onChange={(e) => onChange(e.target.value)} placeholder={`${name} 的值`} />
+    <Input
+      value={value}
+      onChange={(e) => onChange(e.target.value)}
+      placeholder={tr('frontmatter.valuePlaceholder', { name })}
+    />
   );
 }
 
@@ -476,6 +500,7 @@ function ListEditor({
   autocomplete: string[];
   label: string;
 }) {
+  const tr = useI18n();
   const [draft, setDraft] = useState('');
   const [showSuggest, setShowSuggest] = useState(false);
   const candidates = autocomplete.filter(
@@ -503,7 +528,11 @@ function ListEditor({
   return (
     <div className="space-y-2">
       <div className="flex flex-wrap gap-1">
-        {values.length === 0 && <span className="text-xs text-muted-foreground">暂无 {label}</span>}
+        {values.length === 0 && (
+          <span className="text-xs text-muted-foreground">
+            {tr('frontmatter.noItems', { label })}
+          </span>
+        )}
         {values.map((v, i) => (
           <span
             key={`${v}-${i}`}
@@ -514,7 +543,7 @@ function ListEditor({
               type="button"
               onClick={() => removeItem(i)}
               className="rounded-full text-muted-foreground hover:text-destructive"
-              aria-label={`移除 ${v}`}
+              aria-label={tr('frontmatter.removeItem', { value: v })}
             >
               ×
             </button>
@@ -525,7 +554,7 @@ function ListEditor({
         <div className="flex gap-1">
           <Input
             value={draft}
-            placeholder={`新增${label}…`}
+            placeholder={tr('frontmatter.newItem', { label })}
             onChange={(e) => {
               setDraft(e.target.value);
               setShowSuggest(e.target.value.length > 0);
@@ -543,7 +572,7 @@ function ListEditor({
             }}
           />
           <Button size="sm" variant="secondary" onClick={() => addItem()}>
-            添加
+            {tr('frontmatter.add')}
           </Button>
         </div>
         {showSuggest && candidates.length > 0 && (
