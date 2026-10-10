@@ -17,6 +17,7 @@ import type {
   VaultLayout,
   VaultStartupState,
 } from '@nexnote/shared';
+import { tCurrent } from '@nexnote/shared';
 
 /** 启动恢复共享同一个 in-flight Promise；guard 成功前 session 不可见。 */
 let restoreAttempted = false;
@@ -51,7 +52,7 @@ function resolveCloneTarget(
   | { ok: false; reason: string; code: string } {
   const targetName = sanitizeVaultName(name?.trim() || fallbackVaultName(url));
   if (!targetName.ok) {
-    return { ok: false, reason: `克隆目录名称不合法：${targetName.reason}`, code: 'INVALID_NAME' };
+    return { ok: false, reason: tCurrent('vault.error.clone.INVALID_NAME', { reason: targetName.reason }), code: 'INVALID_NAME' };
   }
   const targetDir = pathUtil.join(parentDir, targetName.value);
   return { ok: true, targetDir, targetName: targetName.value };
@@ -145,7 +146,7 @@ export function registerVaultHandlers(registrar: IpcRegistrar): void {
         } else {
           return {
             ok: false,
-            error: '此文件夹尚未初始化 Git。请确认后使用”初始化 Git”操作。',
+            error: tCurrent('vault.error.GIT_INITIALIZATION_REQUIRED'),
             code: 'GIT_INITIALIZATION_REQUIRED',
           };
         }
@@ -183,12 +184,12 @@ export function registerVaultHandlers(registrar: IpcRegistrar): void {
           targetDir,
         );
         if (!consume.ok) {
-          return err(`克隆授权无效：${consume.reason}`, 'CLONE_TOKEN_INVALID');
+          return err(tCurrent(`vault.error.cloneToken.${consume.reason}`), 'CLONE_TOKEN_INVALID');
         }
 
         // 若用户已取消，直接拒绝
         if (signal?.aborted) {
-          return err('操作已取消', 'OPERATION_CANCELLED');
+          return err(tCurrent('vault.error.OPERATION_CANCELLED'), 'OPERATION_CANCELLED');
         }
 
         // 原子克隆：先到 exclusively-owned 临时目录，成功后 move（no-replace）
@@ -269,7 +270,7 @@ export function registerVaultHandlers(registrar: IpcRegistrar): void {
         // 错误信息可能包含 URL 凭据（user:token@host），必须脱敏后再返回给 renderer
         const raw = e instanceof Error ? e.message : String(e);
         const safe = sanitizeRemoteText(raw);
-        return ok({ reachable: false, error: safe || '远端不可达' });
+        return ok({ reachable: false, error: safe || tCurrent('vault.error.clone.DISTANT_UNREACHABLE') });
       }
       const token = services.vaultClones.createToken(context.senderId, url, resolved.targetDir);
       return ok({ reachable: true, preflightToken: token });
@@ -281,7 +282,7 @@ export function registerVaultHandlers(registrar: IpcRegistrar): void {
     async ({ operationId }, services, context): Promise<Result<void>> => {
       const cancelled = services.vaultOperations.cancel(context.senderId, operationId);
       if (!cancelled) {
-        return err('找不到该操作或操作已完成', 'OPERATION_NOT_FOUND');
+        return err(tCurrent('vault.error.OPERATION_NOT_FOUND'), 'OPERATION_NOT_FOUND');
       }
       return ok(undefined);
     },
@@ -342,7 +343,8 @@ export function registerVaultHandlers(registrar: IpcRegistrar): void {
 
   registrar.register('vault:saveLayout', async ({ layout }, services): Promise<Result<void>> => {
     const current = services.vaultSession.getCurrent();
-    if (!current) return { ok: false, error: '尚未打开任何知识库', code: 'NO_VAULT' };
+    if (!current)
+      return { ok: false, error: tCurrent('vault.error.NO_VAULT'), code: 'NO_VAULT' };
     await saveVaultLayout(current.root, layout);
     // DEV-083/ADR-0016：layout 仅在本设备保留（`.nexnote/layout.json` 已脱离 git），
     // 因此不再 scheduleAutoCommit，也不再推送 layout 相关的状态变更事件。

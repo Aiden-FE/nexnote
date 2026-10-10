@@ -153,3 +153,10 @@ status: in_progress
   消息目录 zh/en 各 1075 key。`git-sync-doctor` 新增 en-US 语言权威测试，
   `git-status-item` 新增 en-US doctor 对话框词典成文与未知 code 回退测试；
   门禁 195 files / 1842 passed / 3 skipped 退出码 0。
+- 阶段③第四批（2026-10-10）：vault 生命周期与 clone 校验服务消息错误码化。
+  覆盖新建/打开/克隆路径校验、名称校验、Git 初始化要求、clone 一次性票据、
+  取消/未找到操作与无 vault 状态；安全路径校验拒绝原因继续保留绝对路径等
+  数据参数，凭据仍经 `sanitizeRemoteText`。新增 `VaultErrorCode`，目录内
+  新增 26 key，zh/en 各 1101 key。`vault-manager` / IPC registrar /
+  doctor / catalog targeted tests 通过；门禁 195 files / 1842 passed /
+  3 skipped 退出码 0。

@@ -8,6 +8,14 @@ export interface VaultInfo {
   configPath: string;
 }
 
+/** Vault 名称校验失败原因的稳定错误码（错误文案由 shared 消息目录成文）。 */
+export type VaultErrorCode =
+  | 'NAME_EMPTY'
+  | 'NAME_TOO_LONG'
+  | 'NAME_RESERVED'
+  | 'NAME_DOT_PREFIX'
+  | 'NAME_INVALID_CHARACTERS';
+
 import { defaultVaultSettings, type VaultSettings } from './settings';
 
 /** vault 内配置文件 .nexnote/config.json 的结构。 */

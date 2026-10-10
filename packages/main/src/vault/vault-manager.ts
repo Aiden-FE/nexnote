@@ -5,7 +5,9 @@ import {
   defaultVaultConfig,
   defaultVaultSettings,
   mergeVaultPatch,
+  tCurrent,
   type VaultConfig,
+  type VaultErrorCode,
   type VaultInfo,
   type VaultLayout,
   type VaultSettings,
@@ -28,16 +30,20 @@ export const CONFIG_FILENAME = 'config.json';
 /** 校验用户新建 vault 时输入的名称。 */
 export function sanitizeVaultName(
   raw: string,
-): { ok: true; value: string } | { ok: false; reason: string } {
+): { ok: true; value: string } | { ok: false; reason: string; code: VaultErrorCode } {
   const value = raw.trim();
-  if (value.length === 0) return { ok: false, reason: '名称不能为空' };
-  if (value.length > 64) return { ok: false, reason: '名称过长（≤64 字符）' };
-  if (value === '.' || value === '..') return { ok: false, reason: '非法名称' };
-  if (value.startsWith('.')) return { ok: false, reason: '名称不能以 . 开头' };
+  if (value.length === 0)
+    return { ok: false, reason: tCurrent('vault.error.name.EMPTY'), code: 'NAME_EMPTY' };
+  if (value.length > 64)
+    return { ok: false, reason: tCurrent('vault.error.name.TOO_LONG'), code: 'NAME_TOO_LONG' };
+  if (value === '.' || value === '..')
+    return { ok: false, reason: tCurrent('vault.error.name.RESERVED'), code: 'NAME_RESERVED' };
+  if (value.startsWith('.'))
+    return { ok: false, reason: tCurrent('vault.error.name.DOT_PREFIX'), code: 'NAME_DOT_PREFIX' };
   // 文件名中的控制字符一律拒绝（eslint no-control-regex 对此合法用途放行）
   // eslint-disable-next-line no-control-regex
   if (/[\\/:*?"<>|\u0000-\u001f]/.test(value)) {
-    return { ok: false, reason: '名称包含非法字符 / \\ : * ? " < > |' };
+    return { ok: false, reason: tCurrent('vault.error.name.INVALID_CHARACTERS'), code: 'NAME_INVALID_CHARACTERS' };
   }
   return { ok: true, value };
 }
@@ -57,10 +63,10 @@ export async function validateVaultRoot(root: string): Promise<string> {
   try {
     stat = await fsp.stat(safe);
   } catch {
-    throw new VaultError(`目录不存在: ${root}`, 'NOT_FOUND');
+    throw new VaultError(tCurrent('vault.error.PATH_NOT_FOUND', { path: root }), 'NOT_FOUND');
   }
   if (!stat.isDirectory()) {
-    throw new VaultError(`路径不是目录: ${root}`, 'NOT_DIRECTORY');
+    throw new VaultError(tCurrent('vault.error.PATH_NOT_DIRECTORY', { path: root }), 'NOT_DIRECTORY');
   }
   return safe;
 }
@@ -159,7 +165,7 @@ export async function createVault(parentDir: string, name: string): Promise<Vaul
   // 且 root 本身绝不能是符号链接（防止被替换为指向外部目录的链接）。
   const rel = path.relative(safeParent, root);
   if (rel === '' || rel.startsWith('..') || path.isAbsolute(rel)) {
-    throw new VaultError(`知识库名称必须为 ${parentDir} 的直接子目录`, 'INVALID_NAME');
+    throw new VaultError(tCurrent('vault.error.name.NOT_DIRECT_CHILD', { parent: parentDir }), 'INVALID_NAME');
   }
   let exists = false;
   try {
@@ -171,16 +177,16 @@ export async function createVault(parentDir: string, name: string): Promise<Vaul
   if (exists) {
     // lstat 而非 stat：拒绝通过符号链接指向外部目录的写入目标，防止被替换为外部空目录后写入。
     const stat = await fsp.lstat(root).catch(() => null);
-    if (!stat) throw new VaultError(`无法访问: ${root}`, 'VAULT_EXISTS_FILE');
+    if (!stat) throw new VaultError(tCurrent('vault.error.CREATE_ACCESS_FAILED', { path: root }), 'VAULT_EXISTS_FILE');
     if (stat.isSymbolicLink()) {
-      throw new VaultError(`目标位置是符号链接，拒绝创建知识库: ${root}`, 'VAULT_TARGET_SYMLINK');
+      throw new VaultError(tCurrent('vault.error.CREATE_TARGET_SYMLINK', { path: root }), 'VAULT_TARGET_SYMLINK');
     }
     if (!stat.isDirectory()) {
-      throw new VaultError(`目标位置存在同名文件: ${root}`, 'VAULT_EXISTS_FILE');
+      throw new VaultError(tCurrent('vault.error.CREATE_TARGET_FILE', { path: root }), 'VAULT_EXISTS_FILE');
     }
     const entries = await fsp.readdir(root);
     if (entries.length > 0) {
-      throw new VaultError(`目录已存在且非空: ${root}`, 'VAULT_EXISTS_NON_EMPTY');
+      throw new VaultError(tCurrent('vault.error.CREATE_TARGET_NON_EMPTY', { path: root }), 'VAULT_EXISTS_NON_EMPTY');
     }
     // 空目录已存在 → 直接原地初始化，不重复 mkdir
     return ensureVault(root);
@@ -193,7 +199,7 @@ export async function createVault(parentDir: string, name: string): Promise<Vaul
 export function assertNoDotDotSegments(absolute: string): void {
   const segments = absolute.split(/[\\/]/).filter(Boolean);
   if (segments.includes('..') || segments.includes('.')) {
-    throw new VaultError(`知识库路径不能包含 .. 或 . 段: ${absolute}`, 'INVALID_PATH');
+    throw new VaultError(tCurrent('vault.error.INVALID_PATH_SEGMENTS', { path: absolute }), 'INVALID_PATH');
   }
 }
 
@@ -215,7 +221,7 @@ export async function safeVaultPath(absPath: string): Promise<string> {
     current = path.join(current, segment);
     const stat = await fsp.lstat(current).catch(() => null);
     if (stat?.isSymbolicLink()) {
-      throw new VaultError(`路径经过符号链接，拒绝操作: ${current}`, 'SYMLINK_COMPONENT');
+      throw new VaultError(tCurrent('vault.error.SYMLINK_COMPONENT', { path: current }), 'SYMLINK_COMPONENT');
     }
   }
   return absolute;
