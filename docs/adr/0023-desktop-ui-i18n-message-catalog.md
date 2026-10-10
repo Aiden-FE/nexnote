@@ -145,3 +145,11 @@ status: in_progress
   新增 `ai-settings-i18n.test.tsx`，在 en-US 下真实渲染设置分区与向导，
   锁定核心文案、能力徽标、加载/导入分隔符并做 CJK 残留检查；门禁
   195 files / 1840 passed / 3 skipped 退出码 0。
+- 阶段③第三批（2026-10-10）：Git 同步 doctor 服务状态错误码化成文。已知
+  `issue.code` / `GitSyncDoctorError.code` / 修复动作 / 人工指引 / 规则解释
+  迁移到 shared 词典，主进程 `tCurrent()` 按当前语言成文；renderer 对稳定
+  doctor 错误与 issue code 按词典还原，未知 code 保留服务脱敏原文边界。
+  AI 解释 prompt 与模型输出、Profile / 模型 / 路径类数据不翻译。新增 50 key，
+  消息目录 zh/en 各 1075 key。`git-sync-doctor` 新增 en-US 语言权威测试，
+  `git-status-item` 新增 en-US doctor 对话框词典成文与未知 code 回退测试；
+  门禁 195 files / 1842 passed / 3 skipped 退出码 0。

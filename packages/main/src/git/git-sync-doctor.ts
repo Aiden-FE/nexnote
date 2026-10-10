@@ -12,6 +12,7 @@ import type {
 import type { GitService } from './git-service';
 import { GitServiceError, SELF_RESOLVABLE_CONFLICT_FILES, sanitizeRemoteText } from './git-service';
 import type { AiService } from '../ai/ai-service';
+import { tCurrent } from '@nexnote/shared';
 
 /** 修复票据 TTL：预览到显式确认执行之间的最大窗口。 */
 export const GIT_DOCTOR_TICKET_TTL_MS = 5 * 60_000;
@@ -25,42 +26,49 @@ export const GIT_REPAIR_ACTIONS: readonly GitRepairAction[] = [
   'force-abort-rebase-or-merge',
 ];
 
-/**
- * 白名单：doctor 只可能执行这六条等价操作（经 GitService 既有安全路径）。
- * 任何破坏性命令（reset --hard / clean / checkout -- . / push --force）都没有入口。
- */
-const COMMAND_PREVIEW: Record<GitRepairAction, string> = {
-  // Keep this wording aligned with GitService.commitManual: it stages the vault
-  // with `git add .` and adds the manual-message prefix itself.
-  commit: 'git add . && git commit（手动提交，消息由应用生成）',
-  pull: 'git pull --no-rebase（拒绝脏工作区）',
-  push: 'git push（普通推送，从不 force）',
-  // DEV-082: rebase/merge --abort is read-mostly: it restores HEAD and the
-  // pre-operation index without touching worktree files. Safe to expose.
-  'abort-rebase-or-merge': 'git rebase --abort（或 git merge --abort，按当前状态选择）',
-  // DEV-090: completes the rebase instead of rewinding it. Conflicts are resolved
-  // by regenerating app-owned files (see GitService.SELF_RESOLVABLE_CONFLICT_FILES);
-  // any other conflicted file aborts the action without touching the worktree.
-  'resolve-conflict-and-continue':
-    '规范化应用自有文件（.gitignore）→ git rebase --continue → git push',
-  'preserve-local-and-abort':
-    '备份原始本地提交到 .nexnote/.rebase-recovery/ → git rebase --abort（恢复原分支）',
-  // DEV-083: explicit user-confirmed destructive variant of abort-rebase-or-merge.
-  // Drops ahead commits without backup. Surfaced only when the user opts in.
-  'force-abort-rebase-or-merge': 'git rebase --abort（丢弃 ahead commits，不备份）',
+const ISSUE_MESSAGE_KEYS: Record<string, string> = {
+  NOT_A_REPOSITORY: 'git.doctor.issue.NOT_A_REPOSITORY',
+  REBASE_IN_PROGRESS: 'git.doctor.issue.REBASE_IN_PROGRESS',
+  MERGE_CONFLICT: 'git.doctor.issue.MERGE_CONFLICT',
+  WORKTREE_DIRTY: 'git.doctor.issue.WORKTREE_DIRTY',
+  NO_REMOTE: 'git.doctor.issue.NO_REMOTE',
+  DIVERGED: 'git.doctor.issue.DIVERGED',
+  AHEAD_REMOTE: 'git.doctor.issue.AHEAD_REMOTE',
+  BEHIND_REMOTE: 'git.doctor.issue.BEHIND_REMOTE',
+  SYNC_OK: 'git.doctor.issue.SYNC_OK',
+  NO_VAULT: 'git.doctor.issue.NO_VAULT',
+  GIT_BINARY_MISSING: 'git.doctor.issue.GIT_BINARY_MISSING',
+  AUTH_FAILED: 'git.doctor.issue.AUTH_FAILED',
+  NETWORK_ERROR: 'git.doctor.issue.NETWORK_ERROR',
+  PUSH_REJECTED: 'git.doctor.issue.PUSH_REJECTED',
 };
 
-const MANUAL_GUIDANCE: Record<GitSyncIssueCategory, string> = {
-  conflict:
-    '存在未完成的 rebase 或合并冲突：AI 不会覆盖冲突文件。若冲突只涉及应用自有文件（如 .gitignore），默认推荐「让 Agent 修复」——它会规范化该文件并继续完成 rebase 与推送；若涉及你的笔记，则改推荐「保留笔记并中止 rebase」；也可以点击「让 Agent 帮助解决」获取步骤指引；如需手动干预，请前往仓库目录操作。',
-  dirty: '工作区有未提交变更：可以让 Agent 帮你提交保存，或一键暂存后继续同步。',
-  auth: '远程认证失败：请在设置中更新 HTTPS 凭证或 SSH key（应用不会代填密钥）。',
-  network: '网络不可达：请检查网络连接或远程地址后重试，或在设置中配置代理。',
-  'non-fast-forward': '本地与远程历史不一致：可以让 Agent 帮你拉取合并，或选择以本地为准覆盖远程。',
-  'no-remote': '当前分支未配置远程仓库：请在设置中添加远程地址。',
-  'git-missing': '应用内捆绑 Git 不可用：请重新安装应用，或在设置中启用「使用系统 Git」。',
-  unknown: '未能识别该同步问题：可以让 Agent 协助诊断，或在仓库目录查看 git status。',
+const MANUAL_GUIDANCE_KEYS: Record<GitSyncIssueCategory, string> = {
+  conflict: 'git.doctor.manual.conflict',
+  dirty: 'git.doctor.manual.dirty',
+  auth: 'git.doctor.manual.auth',
+  network: 'git.doctor.manual.network',
+  'non-fast-forward': 'git.doctor.manual.non-fast-forward',
+  'no-remote': 'git.doctor.manual.no-remote',
+  'git-missing': 'git.doctor.manual.git-missing',
+  unknown: 'git.doctor.manual.unknown',
 };
+
+const REPAIR_ACTION_KEYS: Record<GitRepairAction, string> = {
+  commit: 'git.doctor.action.commit',
+  pull: 'git.doctor.action.pull',
+  push: 'git.doctor.action.push',
+  'abort-rebase-or-merge': 'git.doctor.action.abort-rebase-or-merge',
+  'resolve-conflict-and-continue': 'git.doctor.action.resolve-conflict-and-continue',
+  'preserve-local-and-abort': 'git.doctor.action.preserve-local-and-abort',
+  'force-abort-rebase-or-merge': 'git.doctor.action.force-abort-rebase-or-merge',
+};
+
+/** 分类 / 修复命令预览这类用户可读服务状态在主进程按当前语言成文。 */
+function issueMessage(code: string, fallback: string): string {
+  const key = ISSUE_MESSAGE_KEYS[code];
+  return key ? tCurrent(key) : fallback;
+}
 
 export class GitSyncDoctorError extends Error {
   constructor(
@@ -171,7 +179,11 @@ export function classifySyncIssue(input: {
   remote: string | null;
 }): { category: GitSyncIssueCategory; code: string; message: string } {
   if (!input.repository)
-    return { category: 'git-missing', code: 'NOT_A_REPOSITORY', message: '当前目录不是 Git 仓库' };
+    return {
+      category: 'git-missing',
+      code: 'NOT_A_REPOSITORY',
+      message: issueMessage('NOT_A_REPOSITORY', '当前目录不是 Git 仓库'),
+    };
   // DEV-082: rebase/merge paused state surfaces before unmerged-index conflicts
   // because it covers the wider window where the user is locked out of
   // committing even though git status may not yet report unmerged entries.
@@ -179,31 +191,47 @@ export function classifySyncIssue(input: {
     return {
       category: 'conflict',
       code: 'REBASE_IN_PROGRESS',
-      message: '存在未完成的 rebase/merge',
+      message: issueMessage('REBASE_IN_PROGRESS', '存在未完成的 rebase/merge'),
     };
   }
   if (input.conflict)
-    return { category: 'conflict', code: 'MERGE_CONFLICT', message: '存在未解决的合并冲突' };
+    return {
+      category: 'conflict',
+      code: 'MERGE_CONFLICT',
+      message: issueMessage('MERGE_CONFLICT', '存在未解决的合并冲突'),
+    };
   if (input.changed > 0)
     return {
       category: 'dirty',
       code: 'WORKTREE_DIRTY',
-      message: `工作区有 ${input.changed} 个未提交变更`,
+      message: tCurrent('git.doctor.issue.WORKTREE_DIRTY', { count: input.changed }),
     };
   if (!input.remote)
-    return { category: 'no-remote', code: 'NO_REMOTE', message: '当前分支未配置远程仓库' };
+    return {
+      category: 'no-remote',
+      code: 'NO_REMOTE',
+      message: issueMessage('NO_REMOTE', '当前分支未配置远程仓库'),
+    };
   if (input.ahead > 0 && input.behind > 0)
-    return { category: 'non-fast-forward', code: 'DIVERGED', message: '本地与远程分支已分叉' };
+    return {
+      category: 'non-fast-forward',
+      code: 'DIVERGED',
+      message: issueMessage('DIVERGED', '本地与远程分支已分叉'),
+    };
   if (input.behind > 0 || input.ahead > 0)
     return {
       category: 'non-fast-forward',
       code: input.behind > 0 ? 'BEHIND_REMOTE' : 'AHEAD_REMOTE',
       message:
         input.behind > 0
-          ? `远程有 ${input.behind} 个提交待拉取`
-          : `本地有 ${input.ahead} 个提交待推送`,
+          ? tCurrent('git.doctor.issue.BEHIND_REMOTE', { count: input.behind })
+          : tCurrent('git.doctor.issue.AHEAD_REMOTE', { count: input.ahead }),
     };
-  return { category: 'unknown', code: 'SYNC_OK', message: '本地与远程同步正常' };
+  return {
+    category: 'unknown',
+    code: 'SYNC_OK',
+    message: issueMessage('SYNC_OK', '本地与远程同步正常'),
+  };
 }
 
 /** 从异常文本/错误码分类（statusFor 抛出时的兜底路径）。 */
@@ -217,27 +245,43 @@ export function classifySyncError(error: unknown): {
   );
   const code = (error as { code?: string } | null)?.code;
   if (code === 'GIT_BINARY_MISSING' || /bundled Git|GIT_BINARY_MISSING|git binary/i.test(text))
-    return { category: 'git-missing', code: 'GIT_BINARY_MISSING', message: 'Git 可执行文件不可用' };
+    return {
+      category: 'git-missing',
+      code: 'GIT_BINARY_MISSING',
+      message: issueMessage('GIT_BINARY_MISSING', 'Git 可执行文件不可用'),
+    };
   if (
     /Authentication failed|auth|credential|permission denied|403|could not read from remote/i.test(
       text,
     )
   )
-    return { category: 'auth', code: 'AUTH_FAILED', message: '远程认证失败' };
+    return {
+      category: 'auth',
+      code: 'AUTH_FAILED',
+      message: issueMessage('AUTH_FAILED', '远程认证失败'),
+    };
   if (
     /network|timed? ?out|timeout|ENOTFOUND|EAI_AGAIN|could not resolve|connection refused|offline/i.test(
       text,
     )
   )
-    return { category: 'network', code: 'NETWORK_ERROR', message: '网络不可达或远程超时' };
+    return {
+      category: 'network',
+      code: 'NETWORK_ERROR',
+      message: issueMessage('NETWORK_ERROR', '网络不可达或远程超时'),
+    };
   if (/non-fast-forward|fetch first|rejected|divergent/i.test(text))
     return {
       category: 'non-fast-forward',
       code: 'PUSH_REJECTED',
-      message: '推送被拒绝：远程包含本地没有的提交',
+      message: issueMessage('PUSH_REJECTED', '推送被拒绝：远程包含本地没有的提交'),
     };
   if (/CONFLICT|unmerged/i.test(text))
-    return { category: 'conflict', code: 'MERGE_CONFLICT', message: '存在未解决的合并冲突' };
+    return {
+      category: 'conflict',
+      code: 'MERGE_CONFLICT',
+      message: issueMessage('MERGE_CONFLICT', '存在未解决的合并冲突'),
+    };
   return { category: 'unknown', code: code ?? 'UNKNOWN', message: text };
 }
 
@@ -260,7 +304,7 @@ function planFor(
   const manual = {
     requiresConfirmation: false,
     safe: false,
-    manualGuidance: MANUAL_GUIDANCE[category],
+    manualGuidance: tCurrent(MANUAL_GUIDANCE_KEYS[category]),
   };
   switch (category) {
     case 'conflict':
@@ -279,7 +323,7 @@ function planFor(
             ...manual,
             requiresConfirmation: true,
             safe: true,
-            commandPreview: COMMAND_PREVIEW['resolve-conflict-and-continue'],
+            commandPreview: tCurrent(REPAIR_ACTION_KEYS['resolve-conflict-and-continue']),
           },
         };
       }
@@ -295,7 +339,7 @@ function planFor(
             ...manual,
             requiresConfirmation: true,
             safe: true,
-            commandPreview: COMMAND_PREVIEW['preserve-local-and-abort'],
+            commandPreview: tCurrent(REPAIR_ACTION_KEYS['preserve-local-and-abort']),
           },
         };
       }
@@ -308,7 +352,7 @@ function planFor(
           ...manual,
           requiresConfirmation: true,
           safe: true,
-          commandPreview: COMMAND_PREVIEW.commit,
+          commandPreview: tCurrent(REPAIR_ACTION_KEYS.commit),
         },
       };
     case 'non-fast-forward':
@@ -322,7 +366,7 @@ function planFor(
             ...manual,
             requiresConfirmation: true,
             safe: true,
-            commandPreview: COMMAND_PREVIEW.pull,
+            commandPreview: tCurrent(REPAIR_ACTION_KEYS.pull),
           },
         };
       if (status.remote && status.ahead > 0 && status.behind === 0)
@@ -333,7 +377,7 @@ function planFor(
             ...manual,
             requiresConfirmation: true,
             safe: true,
-            commandPreview: COMMAND_PREVIEW.push,
+            commandPreview: tCurrent(REPAIR_ACTION_KEYS.push),
           },
         };
       return { action: null, allowedAction: null, plan: { ...manual, commandPreview: null } };
@@ -344,13 +388,21 @@ function planFor(
 
 /** 规则解释（AI 不可用时的降级文案）。 */
 function ruleExplanation(issue: GitSyncIssue, snapshot: GitDoctorStatusSnapshot): string {
-  const detail: string[] = [issue.message];
-  if (snapshot.branch) detail.push(`当前分支 ${snapshot.branch}`);
-  if (snapshot.changed > 0) detail.push(`${snapshot.changed} 个未提交文件`);
-  if (snapshot.ahead > 0) detail.push(`领先远程 ${snapshot.ahead} 个提交`);
-  if (snapshot.behind > 0) detail.push(`落后远程 ${snapshot.behind} 个提交`);
-  if (!snapshot.remote && snapshot.branch) detail.push('未配置远程');
-  return detail.join('；') + '。';
+  const detail: string[] = [
+    issueMessage(issue.code, issue.message),
+    ...(snapshot.branch ? [tCurrent('git.doctor.status.branch', { branch: snapshot.branch })] : []),
+    ...(snapshot.changed > 0
+      ? [tCurrent('git.doctor.status.changed', { count: snapshot.changed })]
+      : []),
+    ...(snapshot.ahead > 0
+      ? [tCurrent('git.doctor.status.ahead', { count: snapshot.ahead })]
+      : []),
+    ...(snapshot.behind > 0
+      ? [tCurrent('git.doctor.status.behind', { count: snapshot.behind })]
+      : []),
+    ...(!snapshot.remote && snapshot.branch ? [tCurrent('git.doctor.status.noRemote')] : []),
+  ];
+  return detail.join(tCurrent('git.doctor.status.separator'));
 }
 
 /**
@@ -384,7 +436,7 @@ export class GitSyncDoctor {
       const issue: GitSyncIssue = {
         category: 'git-missing',
         code: 'NO_VAULT',
-        message: '尚未打开任何知识库',
+        message: issueMessage('NO_VAULT', '尚未打开任何知识库'),
       };
       return {
         issue,
@@ -393,7 +445,7 @@ export class GitSyncDoctor {
           commandPreview: null,
           requiresConfirmation: false,
           safe: false,
-          manualGuidance: MANUAL_GUIDANCE.unknown,
+          manualGuidance: tCurrent(MANUAL_GUIDANCE_KEYS.unknown),
         },
         conflictFiles: [],
         explanation: issue.message,
@@ -444,7 +496,10 @@ export class GitSyncDoctor {
    */
   async prepare(action: GitRepairAction): Promise<GitDoctorRepairPrepareResult> {
     if (!GIT_REPAIR_ACTIONS.includes(action))
-      throw new GitSyncDoctorError(`不支持的修复操作: ${String(action)}`, 'INVALID_ACTION');
+      throw new GitSyncDoctorError(
+        tCurrent('git.doctor.error.INVALID_ACTION', { action: String(action) }),
+        'INVALID_ACTION',
+      );
     const diagnosis = await this.diagnose();
     const { category, code } = diagnosis.issue;
     // DEV-082: REBASE_IN_PROGRESS keeps the user inside the conflict category
@@ -452,7 +507,7 @@ export class GitSyncDoctor {
     // ticket pipeline can show the action button in the dialog.
     if (category === 'conflict' && code !== 'REBASE_IN_PROGRESS')
       throw new GitSyncDoctorError(
-        '存在未解决的冲突：自动修复不会覆盖冲突文件，请人工解决后重新诊断',
+        tCurrent('git.doctor.error.CONFLICT_PRESENT'),
         'CONFLICT_PRESENT',
       );
     const { allowedAction } = planFor(category, diagnosis.status, diagnosis.conflictFiles);
@@ -471,11 +526,16 @@ export class GitSyncDoctor {
       allowedAction === action || (code === 'REBASE_IN_PROGRESS' && abortFamily.includes(action));
     if (!actionAllowed)
       throw new GitSyncDoctorError(
-        `当前问题（${category}）不允许执行 ${action}；${diagnosis.plan.manualGuidance}`,
+        tCurrent('git.doctor.error.ACTION_NOT_ALLOWED', {
+          category,
+          action,
+          guidance: diagnosis.plan.manualGuidance,
+        }),
         'ACTION_NOT_ALLOWED',
       );
     const root = this.deps.getRoot();
-    if (!root) throw new GitSyncDoctorError('尚未打开任何知识库', 'NO_VAULT');
+    if (!root)
+      throw new GitSyncDoctorError(issueMessage('NO_VAULT', '尚未打开任何知识库'), 'NO_VAULT');
     const fingerprint = fingerprintFromSnapshot(diagnosis.status);
     this.sweepExpired();
     const ticket = randomUUID();
@@ -495,19 +555,20 @@ export class GitSyncDoctor {
    */
   async execute(ticket: string): Promise<GitDoctorRepairExecuteResult> {
     const entry = this.tickets.get(ticket);
-    if (!entry) throw new GitSyncDoctorError('修复票据无效或已被使用', 'INVALID_TICKET');
+    if (!entry)
+      throw new GitSyncDoctorError(tCurrent('git.doctor.error.INVALID_TICKET'), 'INVALID_TICKET');
     this.tickets.delete(ticket); // 一次性：无论成败都消费
     if (entry.expiresAt <= this.now())
-      throw new GitSyncDoctorError('修复票据已过期，请重新诊断并确认', 'TICKET_EXPIRED');
+      throw new GitSyncDoctorError(tCurrent('git.doctor.error.TICKET_EXPIRED'), 'TICKET_EXPIRED');
     if (this.deps.getRoot() !== entry.root)
-      throw new GitSyncDoctorError('知识库已切换，请重新诊断后重试', 'ROOT_CHANGED');
+      throw new GitSyncDoctorError(tCurrent('git.doctor.error.ROOT_CHANGED'), 'ROOT_CHANGED');
     // TOCTOU：execute 前重新取完整快照（含内容指纹），与 prepare 时不一致即拒绝。
     // statusFor 失败时以稳定错误码返回，避免原始异常消息经 IPC 暴露。
     let status;
     try {
       status = await this.deps.git.statusFor(entry.root);
     } catch {
-      throw new GitSyncDoctorError('无法读取当前仓库状态，请重试', 'STATUS_FAILED');
+      throw new GitSyncDoctorError(tCurrent('git.doctor.error.STATUS_FAILED'), 'STATUS_FAILED');
     }
     const [snapshot, fingerprint] = await this.captureSnapshot(entry.root, status);
     const sameRootState =
@@ -535,9 +596,9 @@ export class GitSyncDoctor {
         entry.action === 'resolve-conflict-and-continue') &&
       !(snapshot.rebaseInProgress ?? false)
     )
-      throw new GitSyncDoctorError('当前已经没有进行中的 rebase/merge，无需中止', 'NO_OPERATION');
+      throw new GitSyncDoctorError(tCurrent('git.doctor.error.NO_OPERATION'), 'NO_OPERATION');
     if (!sameRootState || !sameContent)
-      throw new GitSyncDoctorError('仓库状态在确认后发生了变化，请重新诊断', 'STATE_DRIFT');
+      throw new GitSyncDoctorError(tCurrent('git.doctor.error.STATE_DRIFT'), 'STATE_DRIFT');
     // DEV-082: a true unmerged-index conflict still aborts even for the abort
     // action — `git rebase --abort` may refuse to run when the user has staged
     // partial resolutions that diverge from the original HEAD, so refuse early.
@@ -552,19 +613,19 @@ export class GitSyncDoctor {
       entry.action !== 'force-abort-rebase-or-merge' &&
       entry.action !== 'resolve-conflict-and-continue'
     )
-      throw new GitSyncDoctorError('检测到未解决冲突，拒绝执行', 'CONFLICT_PRESENT');
+      throw new GitSyncDoctorError(tCurrent('git.doctor.error.CONFLICT_PRESENT'), 'CONFLICT_PRESENT');
 
     let message: string;
     let preserve: GitDoctorRepairExecuteResult['preserve'] | undefined;
     if (entry.action === 'commit') {
       await this.deps.git.commitManual('nexnote:doctor: 同步前保存本地变更');
-      message = '已提交本地变更';
+      message = tCurrent('git.doctor.result.commit');
     } else if (entry.action === 'pull') {
       await this.deps.git.pull();
-      message = '已拉取远程更新';
+      message = tCurrent('git.doctor.result.pull');
     } else if (entry.action === 'abort-rebase-or-merge') {
       await this.deps.git.abortInProgressRebaseOrMerge();
-      message = '已中止未完成的 rebase/merge';
+      message = tCurrent('git.doctor.result.abort');
     } else if (entry.action === 'resolve-conflict-and-continue') {
       try {
         message = (await this.deps.git.resolveConflictAndContinue()).message;
@@ -604,16 +665,19 @@ export class GitSyncDoctor {
       message = result.message;
     } else if (entry.action === 'force-abort-rebase-or-merge') {
       await this.deps.git.abortInProgressRebaseOrMerge();
-      message = '已丢弃本地 ahead commits 并中止 rebase';
+      message = tCurrent('git.doctor.result.forceAbort');
     } else {
       await this.deps.git.push();
-      message = '已推送本地提交';
+      message = tCurrent('git.doctor.result.push');
     }
     let after;
     try {
       after = await this.deps.git.statusFor(entry.root);
     } catch {
-      throw new GitSyncDoctorError('修复已执行，但读取最新状态失败，请手动刷新', 'STATUS_FAILED');
+      throw new GitSyncDoctorError(
+        tCurrent('git.doctor.error.STATUS_AFTER_REPAIR_FAILED'),
+        'STATUS_FAILED',
+      );
     }
     const [afterSnapshot] = await this.captureSnapshot(entry.root, after);
     return { message, status: afterSnapshot, ...(preserve ? { preserve } : {}) };

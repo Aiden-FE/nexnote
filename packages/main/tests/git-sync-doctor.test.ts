@@ -1,4 +1,5 @@
-import { describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { setCurrentLanguage } from '@nexnote/shared';
 import {
   GIT_DOCTOR_TICKET_TTL_MS,
   GIT_REPAIR_ACTIONS,
@@ -104,6 +105,28 @@ describe('classifySyncIssue（规则优先分类）', () => {
     const r = classifySyncIssue(ok);
     expect(r.category).toBe('unknown');
     expect(r.code).toBe('SYNC_OK');
+  });
+});
+
+describe('ADR-0023 doctor service text language authority', () => {
+  const ok = {
+    repository: true,
+    conflict: false,
+    changed: 0,
+    ahead: 0,
+    behind: 0,
+    remote: 'origin',
+  };
+  beforeEach(() => setCurrentLanguage('en-US'));
+  afterEach(() => setCurrentLanguage('zh-CN'));
+
+  it('classifies known issue codes and stable errors in English', () => {
+    expect(classifySyncIssue({ ...ok, changed: 2 }).message).toBe(
+      'The worktree has 2 uncommitted changes',
+    );
+    expect(classifySyncError(new Error('Authentication failed')).message).toBe(
+      'Remote authentication failed',
+    );
   });
 });
 

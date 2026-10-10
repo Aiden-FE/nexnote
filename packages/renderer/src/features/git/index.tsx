@@ -49,6 +49,28 @@ export {
   isBusyPhase,
 } from './state-machine';
 
+/** doctor 服务返回稳定 code；用户可读文案由词典成文，未知 code 保留脱敏原文。 */
+function doctorErrorText(error: unknown): string {
+  const code = (error as { code?: string } | null)?.code;
+  const key = code ? `git.doctor.error.${code}` : null;
+  const text = key ? t(key) : '';
+  return text === key ? (error instanceof Error ? error.message : String(error)) : text;
+}
+
+/** 已知 issue code 直接成文；服务端新 code / 测试注入 message 保留原文边界。 */
+function doctorIssueText(issue: { code: string; message: string }): string {
+  const key = `git.doctor.issue.${issue.code}`;
+  const text = t(key);
+  return text === key ? issue.message : text;
+}
+
+/** manual guidance 按 issue category 成文；未知 category 回退 unknown 指引。 */
+function doctorManualGuidance(category: string): string {
+  const key = `git.doctor.manual.${category}`;
+  const text = t(key);
+  return text === key ? t('git.doctor.manual.unknown') : text;
+}
+
 function useGitStatus(): [GitStatus | null, () => Promise<void>] {
   const vault = useVault();
   const [status, setStatus] = useState<GitStatus | null>(null);
@@ -117,8 +139,10 @@ function GitStatusItem() {
       const diagnosis = await invoke('git:doctor:diagnose');
       setDoctor(diagnosis);
       return diagnosis;
-    } catch {
+    } catch (caught) {
       // doctor 不可用时保留错误信息即可，不强制弹窗
+      const text = doctorErrorText(caught);
+      if (text) setError(text);
       setDoctor(null);
       return null;
     }
@@ -650,6 +674,7 @@ function DoctorDialog({
     diagnosis.plan.action === 'abort-rebase-or-merge';
   // DEV-090：应用自有文件冲突可自动收敛并继续同步——这是「真正解决」，作为首选。
   const isContinueRepair = diagnosis.plan.action === 'resolve-conflict-and-continue';
+  const issueText = doctorIssueText(diagnosis.issue);
   return (
     <div
       role="dialog"
@@ -657,7 +682,7 @@ function DoctorDialog({
       className="fixed bottom-10 left-4 z-20 w-80 rounded border bg-card p-3 shadow"
     >
       <p className="font-medium">
-        {tr('git.doctor.heading', { message: diagnosis.issue.message })}
+        {tr('git.doctor.heading', { message: issueText })}
       </p>
       <p className="mt-1 text-xs">{diagnosis.explanation}</p>
       {diagnosis.conflictFiles.length > 0 && (
@@ -667,7 +692,9 @@ function DoctorDialog({
           })}
         </p>
       )}
-      <p className="mt-1 text-[10px] text-muted-foreground">{diagnosis.plan.manualGuidance}</p>
+      <p className="mt-1 text-[10px] text-muted-foreground">
+        {doctorManualGuidance(diagnosis.issue.category)}
+      </p>
       {error && <p className="mt-1 text-[10px] text-destructive">{error}</p>}
       <div className="mt-2 flex flex-wrap gap-2">
         {isContinueRepair ? (

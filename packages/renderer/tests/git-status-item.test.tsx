@@ -174,8 +174,8 @@ describe('DEV-076 GitStatusItem 真实组件行为', () => {
     // DoctorDialog 应出现（含「让 Agent 帮助解决」按钮）
     const dialog = document.querySelector('[role="dialog"][aria-label="Git 同步诊断"]');
     expect(dialog, 'DoctorDialog 应弹出').not.toBeNull();
-    // 对话框展示 issue.message（而非 issue.code），与 GitStatusItem 中 DoctorDialog 的实际渲染一致
-    expect(dialog!.textContent).toContain('有冲突文件');
+    // 已知稳定 issue.code 按词典成文；未知 code / 测试注入 message 保留服务原文。
+    expect(dialog!.textContent).toContain('存在未解决的合并冲突');
     expect(dialog!.textContent).toContain('a.md');
     expect(dialog!.textContent).toContain('Agent');
   });
@@ -381,5 +381,48 @@ describe('ADR-0023 Git 面板 en-US 残留检查', () => {
       timelineReactRoot.unmount();
     });
     timelineRoot.remove();
+  });
+
+  it('Git doctor service text uses dictionary phrases in en-US and falls back for unknown data', async () => {
+    setLanguage('en-US');
+    const enDiagnosis = {
+      ...diagnosis,
+      issue: { category: 'conflict', message: 'Service phrase', code: 'MERGE_CONFLICT' },
+      explanation: 'Plain diagnostic explanation.',
+    };
+    installBridge({
+      gitStatus: { ...baseStatus, conflict: true },
+      gitDiagnose: enDiagnosis,
+    });
+    renderGitStatusItem();
+    await flushAsync();
+    const conflictBtn = document.querySelector<HTMLButtonElement>(
+      '[data-testid="status-git-conflict"]',
+    )!;
+    act(() => conflictBtn.click());
+    await flushAsync();
+
+    const dialog = document.querySelector('[role="dialog"][aria-label="Git sync diagnosis"]');
+    expect(dialog).not.toBeNull();
+    expect(dialog?.textContent).toContain('There are unresolved merge conflicts');
+    expect(dialog?.textContent).not.toContain('Service phrase');
+    expect(dialog?.textContent).not.toMatch(/[一-鿿]/);
+
+    installBridge({
+      gitStatus: { ...baseStatus, conflict: true },
+      gitDiagnose: {
+        ...enDiagnosis,
+        issue: { category: 'custom', message: 'Stable upstream text', code: 'CUSTOM' },
+      },
+    });
+    act(() => root?.unmount());
+    renderGitStatusItem();
+    await flushAsync();
+    act(() =>
+      document.querySelector<HTMLButtonElement>('[data-testid="status-git-conflict"]')!.click(),
+    );
+    await flushAsync();
+    const fallbackDialog = document.querySelector('[role="dialog"][aria-label="Git sync diagnosis"]');
+    expect(fallbackDialog?.textContent).toContain('Stable upstream text');
   });
 });
