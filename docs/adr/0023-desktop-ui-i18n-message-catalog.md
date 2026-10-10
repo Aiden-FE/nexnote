@@ -218,3 +218,10 @@ status: in_progress
   IO 错误复用 shared 成文；导入 JSON 结构校验保持无错误文案的宽容降级语义。
   新增 2 key，zh/en 各 1297 key。settings IPC / service / catalog targeted
   tests 通过；门禁 195 files / 1845 passed / 3 skipped 退出码 0。
+- 阶段③第十六批（2026-10-10）：Agent gateway 应用自有运行错误与审批摘要
+  成文。覆盖 translation payload / Skill service / Skill retrieval / 工具授权、
+  会话作用域护栏、对话 / full 权限模式与审批拒绝；AI system prompt、工具
+  description、模型输出和 Doctor action 标识保留边界。新增 15 key，
+  zh/en 各 1312 key。`agent-gateway-e2e` / `agent-tool-loop` /
+  `agent-runtime-blockers` / translation / catalog targeted tests 通过；
+  门禁 195 files / 1846 passed / 3 skipped 退出码 0。

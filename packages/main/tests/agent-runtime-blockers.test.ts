@@ -1,10 +1,10 @@
-import { describe, expect, it, vi } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { ApprovalStore } from '../src/agent/approval-store';
 import { AuditStore } from '../src/agent/audit-store';
 import { ToolRegistry, type AgentTool } from '../src/agent/tool-registry';
 import { validatePayload } from '../src/ipc/validation';
 import { createBuiltinTools } from '../src/agent/builtin-tools';
-import type { GitRepairAction } from '@nexnote/shared';
+import { setCurrentLanguage, type GitRepairAction } from '@nexnote/shared';
 
 const readTool = (name = 'search_notes'): AgentTool => ({
   definition: { name, description: name, access: 'read', requiresApproval: false, inputSchema: {} },
@@ -12,6 +12,23 @@ const readTool = (name = 'search_notes'): AgentTool => ({
 });
 
 describe('agent runtime blocker contracts', () => {
+  afterEach(() => setCurrentLanguage('zh-CN'));
+
+  it('Agent gateway user-facing errors follow the current UI language', () => {
+    setCurrentLanguage('en-US');
+    return import('../src/agent/gateway').then(({ AgentGateway }) => {
+      const events: unknown[] = [];
+      const gateway = new AgentGateway({
+        ai: {
+          getState: () => ({ profiles: [], defaultProfileId: null, features: {} }),
+        } as never,
+        sendEvent: (_channel: never, payload: never) => events.push(payload),
+        piAvailable: false,
+      });
+      void gateway.run('translation', {});
+      expect(events.some((event) => JSON.stringify(event).includes('missing the translation field'))).toBe(true);
+    });
+  });
   it('approval request returns bounded expiry', () => {
     const s = new ApprovalStore();
     expect(s.request('a', 't', 'r')).toBeGreaterThan(Date.now());

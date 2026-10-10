@@ -21,6 +21,7 @@ import {
   TRANSLATION_SYSTEM_PROMPT,
   withTranslationParams,
 } from './translation';
+import { tCurrent } from '@nexnote/shared';
 
 const TTL_MS = 10 * 60_000;
 export const AGENT_SCENARIO_PROFILES: Record<AgentScenario, { system: string; tools: string[] }> = {
@@ -164,7 +165,7 @@ export class AgentGateway {
     if (scenario === 'translation' && !request.translation) {
       this.finishError(
         runId,
-        Object.assign(new Error('翻译请求缺少 translation 字段'), {
+        Object.assign(new Error(tCurrent('agent.error.BAD_TRANSLATION_REQUEST')), {
           code: 'BAD_TRANSLATION_REQUEST',
         }),
         emit,
@@ -202,7 +203,9 @@ export class AgentGateway {
     if (request.skillIds && !this.deps.skills) {
       this.finishError(
         runId,
-        Object.assign(new Error('SkillService 不可用'), { code: 'SKILL_SERVICE_UNAVAILABLE' }),
+        Object.assign(new Error(tCurrent('agent.error.SKILL_SERVICE_UNAVAILABLE')), {
+          code: 'SKILL_SERVICE_UNAVAILABLE',
+        }),
         emit,
       );
       return { runId };
@@ -219,9 +222,14 @@ export class AgentGateway {
       } catch (error) {
         this.finishError(
           runId,
-          Object.assign(error instanceof Error ? error : new Error('Skill 检索失败'), {
+          Object.assign(
+            error instanceof Error
+              ? error
+              : new Error(tCurrent('agent.error.SKILL_RETRIEVE_FAILED')),
+            {
             code: 'SKILL_RETRIEVE_FAILED',
-          }),
+            },
+          ),
           emit,
         );
         return { runId };
@@ -232,7 +240,7 @@ export class AgentGateway {
       ) {
         this.finishError(
           runId,
-          Object.assign(new Error('skillIds 含未启用或不存在的 Skill'), {
+          Object.assign(new Error(tCurrent('agent.error.SKILL_NOT_ALLOWED')), {
             code: 'SKILL_NOT_ALLOWED',
           }),
           emit,
@@ -371,7 +379,7 @@ export class AgentGateway {
     });
     messages.push({
       role: 'system',
-      content: '当前模型不支持工具调用；请直接基于已有上下文回答，并明确说明无法实时检索。',
+      content: tCurrent('agent.error.TOOLS_UNSUPPORTED_SYSTEM'),
     });
   }
   /** 单注册表 → SDK 原生 tools：仅暴露本场景 allowlist 内条目，执行统一经 executeTool。 */
@@ -402,7 +410,7 @@ export class AgentGateway {
   }
   async executeTool(runId: string, name: string, input: unknown): Promise<unknown> {
     const state = this.active.get(runId);
-    if (!state) throw new Error('RUN_NOT_ACTIVE');
+    if (!state) throw new Error(tCurrent('agent.error.RUN_NOT_ACTIVE'));
     const scenario = state.scenario;
     const emit = (event: AgentRunEvent) =>
       this.deps.sendEvent('agent:runEvent', { runId, scenario, event });
@@ -420,7 +428,9 @@ export class AgentGateway {
         code: 'TOOL_NOT_ALLOWED',
         at: Date.now(),
       });
-      throw Object.assign(new Error('工具未获准执行'), { code: 'TOOL_NOT_ALLOWED' });
+      throw Object.assign(new Error(tCurrent('agent.error.TOOL_NOT_ALLOWED')), {
+        code: 'TOOL_NOT_ALLOWED',
+      });
     }
     const doctorRepair = name === 'git_doctor_repair';
     if (tool.access === 'write' || tool.requiresApproval) {
@@ -448,9 +458,9 @@ export class AgentGateway {
             type: 'tool',
             tool: name,
             status: 'denied',
-            summary: '护栏拒绝：仅允许当前会话上下文中的文档编辑。',
+            summary: tCurrent('agent.error.SCOPE_DENIED_SUMMARY'),
           });
-          throw Object.assign(new Error('写操作超出当前会话文档作用域'), { code });
+          throw Object.assign(new Error(tCurrent('agent.error.SCOPE_DENIED')), { code });
         }
       }
       if (tool.access === 'write' && state.permissionMode === 'conversation') {
@@ -467,9 +477,9 @@ export class AgentGateway {
           type: 'tool',
           tool: name,
           status: 'denied',
-          summary: '对话模式禁止写工具；请切换到编辑模式并逐项审批。',
+          summary: tCurrent('agent.error.WRITE_REQUIRES_EDIT_MODE_SUMMARY'),
         });
-        throw Object.assign(new Error('对话模式禁止写工具，请切换到编辑模式审批'), {
+        throw Object.assign(new Error(tCurrent('agent.error.WRITE_REQUIRES_EDIT_MODE')), {
           code: 'WRITE_REQUIRES_EDIT_MODE',
         });
       }
@@ -501,9 +511,9 @@ export class AgentGateway {
             type: 'tool',
             tool: name,
             status: 'denied',
-            summary: '完全权限护栏拒绝：仅允许当前上下文文档的文档编辑。',
+            summary: tCurrent('agent.error.FULL_MODE_DENIED_SUMMARY'),
           });
-          throw Object.assign(new Error('完全权限护栏拒绝该写操作'), {
+          throw Object.assign(new Error(tCurrent('agent.error.FULL_MODE_DENIED')), {
             code: forbidden ? 'FULL_MODE_TOOL_FORBIDDEN' : 'FULL_MODE_SCOPE_DENIED',
           });
         }
@@ -517,7 +527,7 @@ export class AgentGateway {
           tool: name,
           expiresAt,
           ...(doctorRepair && typeof input === 'object' && input !== null && 'action' in input
-            ? { summary: `Git Doctor 修复操作：${String(input.action)}` }
+            ? { summary: tCurrent('agent.approval.GIT_DOCTOR_REPAIR', { action: String(input.action) }) }
             : {}),
         });
         this.audit.append({
@@ -540,7 +550,9 @@ export class AgentGateway {
         });
         if (!approved) {
           emit({ type: 'tool', tool: name, status: 'denied' });
-          throw Object.assign(new Error('工具审批被拒绝'), { code: 'APPROVAL_DENIED' });
+          throw Object.assign(new Error(tCurrent('agent.error.APPROVAL_DENIED')), {
+            code: 'APPROVAL_DENIED',
+          });
         }
         approvedApprovalId = approvalId;
       }
