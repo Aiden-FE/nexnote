@@ -5,6 +5,7 @@ import {
   type IndexStatus,
   type Result,
 } from '@nexnote/shared';
+import { tCurrent } from '@nexnote/shared';
 import type { IpcRegistrar } from './registrar';
 import { readVaultConfig, writeVaultConfig } from '../vault/vault-manager';
 
@@ -45,11 +46,12 @@ export function registerIndexHandlers(registrar: IpcRegistrar): void {
   });
   registrar.register('index:setConfidenceFrontmatter', async ({ enabled }, services) => {
     const current = services.vaultSession.getCurrent();
-    if (!current) return { ok: false, error: '尚未打开任何知识库', code: 'NO_VAULT' };
+    if (!current)
+      return { ok: false, error: tCurrent('vault.error.NO_VAULT'), code: 'NO_VAULT' };
     const config = await readVaultConfig(current.root);
     config.features.confidenceFrontmatter = enabled === true;
     await writeVaultConfig(current.root, config);
-    services.git.scheduleAutoCommit('保存置信度设置');
+    services.git.scheduleAutoCommit(tCurrent('index.autosummary.confidenceSettings'));
     await services.confidence?.refresh();
     return ok({ writeFrontmatter: config.features.confidenceFrontmatter });
   });

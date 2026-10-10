@@ -180,3 +180,7 @@ status: in_progress
   zh/en 各 1198 key。`fs-service` / `page-ops` / IPC registrar /
   rename-index / catalog targeted tests 通过；门禁 195 files /
   1843 passed / 3 skipped 退出码 0。
+- 阶段③第八批（2026-10-10）：indexer / index IPC 无 vault 状态与置信度设置
+  自动提交摘要成文。服务数据、搜索内容和索引错误保留边界。新增 1 key，
+  zh/en 各 1199 key。index / confidence / IPC registrar / catalog targeted
+  tests 通过；门禁 195 files / 1843 passed / 3 skipped 退出码 0。

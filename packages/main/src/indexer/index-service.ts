@@ -12,6 +12,7 @@ import type {
   SearchHit,
   TagIndexEntry,
 } from '@nexnote/shared';
+import { tCurrent } from '@nexnote/shared';
 import {
   formatForPath,
   isDocumentPath,
@@ -197,7 +198,8 @@ export class LinkIndexService {
     this._status = emptyStatus();
   }
   private requireRoot(): string {
-    if (!this.root) throw Object.assign(new Error('尚未打开任何知识库'), { code: 'NO_VAULT' });
+    if (!this.root)
+      throw Object.assign(new Error(tCurrent('vault.error.NO_VAULT')), { code: 'NO_VAULT' });
     return this.root;
   }
   private openDatabase(root: string): Db {
