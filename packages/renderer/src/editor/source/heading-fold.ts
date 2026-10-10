@@ -19,6 +19,7 @@ import {
   type DecorationSet,
   type ViewUpdate,
 } from '@codemirror/view';
+import { t } from '../../lib/i18n';
 
 /**
  * Markdown 标题章节折叠（DEV-055，ADR-0013；DEV-064 ghost preview + 可点击省略号）。
@@ -214,8 +215,8 @@ class FoldPlaceholder extends WidgetType {
     button.type = 'button';
     button.className = 'cm-heading-fold-placeholder';
     button.textContent = '…';
-    button.title = '展开章节';
-    button.setAttribute('aria-label', '展开章节');
+    button.title = t('heading.unfold');
+    button.setAttribute('aria-label', t('heading.unfold'));
     button.setAttribute('data-fold-ellipsis', String(this.id));
     button.tabIndex = -1;
     const onPress = (event: Event) => {
@@ -261,7 +262,7 @@ function decorationsFor(
       const ghostText =
         heading && hovered === id && folded.has(id) ? previewFor(state, heading) : '';
       return Decoration.replace({
-        widget: new FoldPlaceholder(id, ghostText, '展开章节'),
+        widget: new FoldPlaceholder(id, ghostText, t('heading.unfold')),
       }).range(from, to);
     }),
     true,
@@ -523,7 +524,7 @@ function createAccessibleDisclosure(
   folded: boolean,
 ): HTMLButtonElement {
   const button = document.createElement('button');
-  const action = folded ? '展开章节' : '折叠章节';
+  const action = folded ? t('heading.unfold') : t('heading.fold');
   button.type = 'button';
   button.className = 'cm-heading-fold-toggle';
   button.textContent = '›';
@@ -555,7 +556,7 @@ function createAccessibleDisclosure(
 }
 
 function updateAccessibleDisclosure(button: HTMLButtonElement, folded: boolean): void {
-  const action = folded ? '展开章节' : '折叠章节';
+  const action = folded ? t('heading.unfold') : t('heading.fold');
   button.title = action;
   button.setAttribute('aria-label', action);
   button.setAttribute('aria-expanded', String(!folded));

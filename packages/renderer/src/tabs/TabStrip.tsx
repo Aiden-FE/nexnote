@@ -13,6 +13,7 @@ import { useTabStore, type TabKind } from '../stores/tab-store';
 import { ContextMenu, type ContextMenuItem } from '../components/ContextMenu';
 import { invoke } from '../lib/ipc';
 import { useVault } from '../shell/vault-context';
+import { useI18n } from '../lib/i18n';
 import { cn } from '../lib/utils';
 
 const kindIcon: Record<TabKind, typeof Home> = {
@@ -32,6 +33,7 @@ interface DropHint {
 
 /** 单 tab 栈的标签栏：打开/关闭/激活/中键关闭/新建 + 右键菜单（DEV-003）+ 拖拽排序（DEV-022）。 */
 export function TabStrip() {
+  const t = useI18n();
   const tabs = useTabStore((s) => s.tabs);
   const activeTabId = useTabStore((s) => s.activeTabId);
   const binaryTabCloseError = useTabStore((s) => s.binaryTabCloseError);
@@ -106,14 +108,14 @@ export function TabStrip() {
     const pagePath = tab.pagePath ?? null;
     const absPath = pagePath && vault ? `${vault.root}/${pagePath}` : null;
     const items: ContextMenuItem[] = [
-      { label: '关闭', hint: '⌘W', onSelect: () => store.closeTab(tabId) },
+      { label: t('tabs.close'), hint: '⌘W', onSelect: () => store.closeTab(tabId) },
       {
-        label: '关闭其他',
+        label: t('tabs.closeOthers'),
         disabled: tabs.length <= 1,
         onSelect: () => store.closeOtherTabs(tabId),
       },
       {
-        label: '关闭右侧',
+        label: t('tabs.closeRight'),
         disabled: idx >= tabs.length - 1,
         onSelect: () => store.closeTabsToRight(tabId),
       },
@@ -122,13 +124,13 @@ export function TabStrip() {
       items.push(
         { kind: 'separator' },
         {
-          label: '在 Finder 中显示',
+          label: t('tabs.reveal'),
           onSelect: () =>
             void invoke('fs:revealInFinder', { path: pagePath }).catch(() => undefined),
         },
         {
-          label: '复制路径',
-          hint: '绝对路径',
+          label: t('tabs.copyPath'),
+          hint: t('tabs.absolutePath'),
           onSelect: () => {
             if (absPath) void navigator.clipboard.writeText(absPath).catch(() => undefined);
           },
@@ -143,7 +145,7 @@ export function TabStrip() {
       ref={stripRef}
       data-testid="tabstrip"
       role="tablist"
-      aria-label="页面标签"
+      aria-label={t('tabs.tablistLabel')}
       onDragOver={onStripDragOver}
       onDrop={(e) => {
         if (draggingTabId) {
@@ -203,7 +205,7 @@ export function TabStrip() {
             </span>
             <button
               type="button"
-              aria-label={`关闭 ${tab.title}`}
+              aria-label={t('tabs.closeWithTitle', { title: tab.title })}
               draggable={false}
               onClick={(e) => {
                 e.stopPropagation();
@@ -225,7 +227,7 @@ export function TabStrip() {
           <span>{binaryTabCloseError}</span>
           <button
             type="button"
-            aria-label="关闭保存错误提示"
+            aria-label={t('tabs.closeSaveError')}
             className="rounded px-1 hover:bg-accent"
             onClick={() => useTabStore.getState().setBinaryTabCloseError(null)}
           >
@@ -239,7 +241,7 @@ export function TabStrip() {
           <span>{docxNotice}</span>
           <button
             type="button"
-            aria-label="关闭提示"
+            aria-label={t('tabs.closeNotice')}
             className="rounded px-1 hover:bg-accent"
             onClick={() => useTabStore.getState().setDocxNotice(null)}
           >
@@ -251,10 +253,10 @@ export function TabStrip() {
       <button
         type="button"
         data-testid="new-tab"
-        aria-label="新建标签页"
-        title="新建标签页"
+        aria-label={t('tabs.newTab')}
+        title={t('tabs.newTab')}
         draggable={false}
-        onClick={() => openTab({ kind: 'page', title: '未命名页面' })}
+        onClick={() => openTab({ kind: 'page', title: t('tabs.untitledPage') })}
         className="my-auto ml-1 flex size-6 shrink-0 items-center justify-center rounded text-muted-foreground hover:bg-accent hover:text-foreground"
       >
         <Plus className="size-3.5" />

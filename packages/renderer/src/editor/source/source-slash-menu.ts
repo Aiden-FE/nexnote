@@ -9,6 +9,7 @@ import {
   scrollActiveMenuItemIntoView,
 } from '@nexnote/kernel';
 import { filterQuickInsertCandidates, quickInsertCatalog } from '@nexnote/shared';
+import { t } from '../../lib/i18n';
 import type {
   EditorActionCatalogEntry,
   EditorActionIconKey,
@@ -290,7 +291,7 @@ export function sourceSlashMenu(options: SourceSlashMenuOptions): Extension {
       const empty = document.createElement('div');
       empty.dataset.slashEmpty = '';
       empty.className = 'nexnote-slash-menu__empty';
-      empty.textContent = '没有匹配的快捷动作';
+      empty.textContent = t('source.slash.empty');
       menu.append(empty);
     }
     menu.style.display = 'block';
@@ -444,7 +445,10 @@ export function sourceSlashMenu(options: SourceSlashMenuOptions): Extension {
       return;
     }
     if (quick.execution === 'explicit-ai') {
-      const instruction = window.prompt('AI 插入指令', '请基于当前上下文补充内容');
+      const instruction = window.prompt(
+        t('source.slash.aiPrompt'),
+        t('source.slash.aiPromptDefault'),
+      );
       if (!instruction?.trim()) return;
       if (
         !view.dom.isConnected ||
@@ -672,7 +676,7 @@ export function sourceSlashMenu(options: SourceSlashMenuOptions): Extension {
           menu.dataset.slashMenu = '';
           menu.dataset.testid = 'source-slash-menu';
           menu.setAttribute('role', 'listbox');
-          menu.setAttribute('aria-label', '快捷插入动作');
+          menu.setAttribute('aria-label', t('source.slash.ariaLabel'));
           menu.style.cssText = 'display:none;position:absolute;z-index:40';
           const activate = (event: MouseEvent) => {
             if (event.type === 'mousedown') event.preventDefault();

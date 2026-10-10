@@ -3,6 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { defaultGlobalSettings, type VaultInfo } from '@nexnote/shared';
+import { CATALOGS, translate } from '@nexnote/shared';
 import { GuidedTour } from '../src/tour/GuidedTour';
 import { TOUR_STEPS } from '../src/tour/tour-steps';
 import { useUiStore } from '../src/stores/ui-store';
@@ -19,6 +20,9 @@ const vault: VaultInfo = {
   name: 'guide-vault',
   configPath: '/tmp/nexnote-guide-vault/.nexnote/config.json',
 };
+
+/** 引导步骤文案存消息目录 key，按语言成文（ADR-0023）。 */
+const zh = (key: string) => translate(CATALOGS['zh-CN'], key, 'zh-CN');
 
 let container: HTMLDivElement;
 let root: Root | null = null;
@@ -87,17 +91,17 @@ describe('GuidedTour 分步导航', () => {
     act(() => useUiStore.getState().setTourOpen(true));
 
     const title = () => document.querySelector('[data-testid="tour-title"]')?.textContent ?? '';
-    expect(title()).toBe(TOUR_STEPS[0].title);
+    expect(title()).toBe(zh(TOUR_STEPS[0].titleKey));
 
     act(() => {
       document.querySelector<HTMLButtonElement>('[data-testid="tour-next"]')?.click();
     });
-    expect(title()).toBe(TOUR_STEPS[1].title);
+    expect(title()).toBe(zh(TOUR_STEPS[1].titleKey));
 
     act(() => {
       document.querySelector<HTMLButtonElement>('[data-testid="tour-prev"]')?.click();
     });
-    expect(title()).toBe(TOUR_STEPS[0].title);
+    expect(title()).toBe(zh(TOUR_STEPS[0].titleKey));
 
     for (let i = 0; i < TOUR_STEPS.length - 1; i += 1) {
       act(() => {
@@ -105,7 +109,7 @@ describe('GuidedTour 分步导航', () => {
       });
     }
     const nextButton = document.querySelector<HTMLButtonElement>('[data-testid="tour-next"]');
-    expect(nextButton?.textContent).toBe('完成');
+    expect(nextButton?.textContent).toBe(zh('tour.done'));
 
     act(() => nextButton?.click());
     const state = useUiStore.getState();
@@ -143,11 +147,11 @@ describe('GuidedTour 分步导航', () => {
 
     const title = () => document.querySelector('[data-testid="tour-title"]')?.textContent ?? '';
     pressKey('ArrowRight');
-    expect(title()).toBe(TOUR_STEPS[1].title);
+    expect(title()).toBe(zh(TOUR_STEPS[1].titleKey));
     pressKey('ArrowLeft');
-    expect(title()).toBe(TOUR_STEPS[0].title);
+    expect(title()).toBe(zh(TOUR_STEPS[0].titleKey));
     pressKey('Enter');
-    expect(title()).toBe(TOUR_STEPS[1].title);
+    expect(title()).toBe(zh(TOUR_STEPS[1].titleKey));
   });
 
   it('重播时从第一步开始', async () => {
@@ -163,7 +167,7 @@ describe('GuidedTour 分步导航', () => {
     });
     act(() => useUiStore.getState().setTourOpen(true));
     const title = document.querySelector('[data-testid="tour-title"]')?.textContent ?? '';
-    expect(title).toBe(TOUR_STEPS[0].title);
+    expect(title).toBe(zh(TOUR_STEPS[0].titleKey));
   });
 });
 
@@ -197,9 +201,11 @@ describe('GuidedTour 目标定位与降级', () => {
 
   it('文案面向用户，不含票据或开发词汇', () => {
     for (const step of TOUR_STEPS) {
-      expect(`${step.title}${step.description}`).not.toMatch(/DEV-\d+/);
-      expect(`${step.title}${step.description}`).not.toContain('票据');
-      expect(step.description.split('。').filter(Boolean).length).toBeLessThanOrEqual(2);
+      const title = zh(step.titleKey);
+      const description = zh(step.descriptionKey);
+      expect(`${title}${description}`).not.toMatch(/DEV-\d+/);
+      expect(`${title}${description}`).not.toContain('票据');
+      expect(description.split('。').filter(Boolean).length).toBeLessThanOrEqual(2);
     }
   });
 });

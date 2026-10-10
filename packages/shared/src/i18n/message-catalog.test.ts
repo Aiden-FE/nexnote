@@ -1,4 +1,6 @@
 import { describe, expect, it } from 'vitest';
+import { readFileSync, readdirSync, statSync } from 'node:fs';
+import { join, resolve } from 'node:path';
 import {
   CATALOGS,
   DEFAULT_UI_LANGUAGE,
@@ -68,5 +70,41 @@ describe('message catalog（ADR-0023）', () => {
       .filter(([, value]) => cjk.test(value as string))
       .map(([key]) => key);
     expect(offenders).toEqual([]);
+  });
+
+  it('renderer 经 t()/tr() 引用的 key 都存在于两份词典', () => {
+    // 缺 key 时 translate() 回退为 key 本身（界面上直接显示 key 文本），
+    // 而 tsc 不会报错（MessageCatalog 是宽松 index signature）。
+    // 这里做可执行残留检查，防止迁移过程中漏建词典条目。
+    const rendererRoot = resolve(import.meta.dirname, '../../../../packages/renderer/src');
+    const known = new Set(Object.keys(MESSAGES_ZH_CN));
+    const referenced = new Map<string, Set<string>>();
+
+    const walk = (dir: string): void => {
+      for (const entry of readdirSync(dir)) {
+        const full = join(dir, entry);
+        if (statSync(full).isDirectory()) {
+          walk(full);
+          continue;
+        }
+        if (!/\.(ts|tsx)$/.test(entry)) continue;
+        const source = readFileSync(full, 'utf8');
+        for (const match of source.matchAll(
+          /(?:^|[^\w.])(?:t|tr|translate)\(\s*'([A-Za-z][\w.]*)'/g,
+        )) {
+          const key = match[1] ?? '';
+          if (!key.includes('.')) continue; // 排除事件名等误匹配
+          const file = full.slice(rendererRoot.length + 1);
+          referenced.set(key, (referenced.get(key) ?? new Set()).add(file));
+        }
+      }
+    };
+    walk(rendererRoot);
+
+    const missing = [...referenced.entries()]
+      .filter(([key]) => !known.has(key))
+      .map(([key, files]) => `${key}（${[...files].join(', ')}）`)
+      .sort();
+    expect(missing, `缺少消息目录条目：\n${missing.join('\n')}`).toEqual([]);
   });
 });

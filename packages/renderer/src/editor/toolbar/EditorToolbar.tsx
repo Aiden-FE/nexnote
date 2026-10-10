@@ -10,6 +10,7 @@ import {
 import { ChevronDown, MoreHorizontal } from 'lucide-react';
 import { ToolbarTooltip } from './Tooltip';
 import { cn } from '../../lib/utils';
+import { useI18n } from '../../lib/i18n';
 import { AI_ENTRY_ID, type ToolbarEntrySpec, type ToolbarSubItemSpec } from './entries';
 import { resolveToolbarLayout } from './overflow';
 
@@ -64,6 +65,7 @@ interface PanelState {
  * 宽度为 0）时退回「全部平铺」，保证任何情况下动作都可达。
  */
 export function EditorToolbar({ label, entries, onCommand, tools, status }: EditorToolbarProps) {
+  const t = useI18n();
   const rowRef = useRef<HTMLDivElement>(null);
   const refs = useRef(new Map<string, HTMLButtonElement>());
   const widths = useRef(new Map<string, number>());
@@ -339,14 +341,14 @@ export function EditorToolbar({ label, entries, onCommand, tools, status }: Edit
       >
         {visible.map((entry, index) => trigger(entry, index))}
         {hidden.length > 0 && (
-          <ToolbarTooltip key={TOOLBAR_MORE_ID} text="更多">
+          <ToolbarTooltip key={TOOLBAR_MORE_ID} text={t('toolbar.more')}>
             <button
               ref={(el) => register(TOOLBAR_MORE_ID, el)}
               type="button"
               data-toolbar-item="true"
               data-item-id={TOOLBAR_MORE_ID}
               data-testid="toolbar-more"
-              aria-label="更多"
+              aria-label={t('toolbar.more')}
               aria-haspopup="menu"
               aria-expanded={panel?.entryId === TOOLBAR_MORE_ID}
               tabIndex={focusId === TOOLBAR_MORE_ID || (!focusId && visible.length === 0) ? 0 : -1}
@@ -378,7 +380,7 @@ export function EditorToolbar({ label, entries, onCommand, tools, status }: Edit
         <div
           ref={panelRef}
           role="menu"
-          aria-label={active?.label ?? '更多'}
+          aria-label={active?.label ?? t('toolbar.moreMenu')}
           data-testid={panel.entryId === TOOLBAR_MORE_ID ? 'toolbar-more-menu' : 'toolbar-menu'}
           onKeyDown={onPanelKeyDown}
           style={{

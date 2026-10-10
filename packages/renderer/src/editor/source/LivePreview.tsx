@@ -10,6 +10,7 @@ import {
 } from '../../features/plugins/builtin/builtin-extensions';
 import { usePluginStore } from '../../features/plugins/plugin-store';
 import { createPreviewScheduler, type PreviewScheduler } from './preview-scheduler';
+import { useI18n } from '../../lib/i18n';
 
 export interface InternalLinkNavigation {
   /** 普通链接：vault 相对目标 stem（无 .md）；Wikilink：原始目标名 */
@@ -45,6 +46,7 @@ export function LivePreview({
   className,
   fillContent = false,
 }: LivePreviewProps) {
+  const tr = useI18n();
   const hostRef = useRef<HTMLDivElement>(null);
   const kernelRef = useRef<EditorKernelInstance | null>(null);
   const schedulerRef = useRef<PreviewScheduler | null>(null);
@@ -146,7 +148,7 @@ export function LivePreview({
         >
           <AlertTriangle className="mt-0.5 size-3.5 shrink-0" />
           <span data-testid="preview-stale">
-            预览更新失败（整页解析失败）：{renderError} · 下方内容已过期
+            {tr('preview.updateFailed', { error: renderError })}
           </span>
         </div>
       )}

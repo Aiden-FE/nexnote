@@ -7,6 +7,7 @@ import {
 import type { Extension } from '@codemirror/state';
 import type { EditorView } from '@codemirror/view';
 import type { SuggestionItem } from '@nexnote/kernel';
+import { t } from '../../lib/i18n';
 import { withUncreated, type PageCandidate } from '../interactions/suggestions';
 
 /**
@@ -47,7 +48,7 @@ export function wikilinkInsertText(item: SuggestionItem): string {
 function toCompletion(item: SuggestionItem, deps: WikilinkCompletionDeps): Completion {
   return {
     label: item.title,
-    detail: item.meta === 'uncreated' ? '创建新页面' : item.hint,
+    detail: item.meta === 'uncreated' ? t('suggest.createNewPage') : item.hint,
     apply: (view: EditorView, _completion, from, to) => {
       // 光标后紧跟手输的 `]]` 时一并吞掉，避免产生三连闭合 `]]]`。
       const trailing = view.state.doc.sliceString(to, to + 2) === ']]' ? 2 : 0;

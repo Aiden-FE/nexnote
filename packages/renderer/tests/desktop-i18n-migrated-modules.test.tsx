@@ -211,8 +211,8 @@ describe('ADR-0023 阶段②：已迁移模块真实渲染为 en-US', () => {
     const text = container.textContent ?? '';
     // DockHost 头部标题来自 dockPanelRegistry 的 titleIsKey → 消息目录
     expect(text).toContain('AI chat');
-    expect(
-      container.querySelector('[data-testid="right-dock"] > div')?.textContent,
-    ).not.toMatch(/[一-鿿]/);
+    expect(container.querySelector('[data-testid="right-dock"] > div')?.textContent).not.toMatch(
+      /[一-鿿]/,
+    );
   });
 });

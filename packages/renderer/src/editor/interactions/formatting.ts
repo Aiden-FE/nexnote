@@ -1,4 +1,5 @@
 import type { EditorKernelInstance } from '@nexnote/kernel';
+import { t } from '../../lib/i18n';
 import { selectionFormatBubbleActions } from '../toolbar/selection-actions';
 import {
   FORMAT_BOLD,
@@ -23,8 +24,8 @@ export {
  * AI 按钮由 DEV-010 注入；本模块只承担格式化，onAction 分发到内核 TipTap 命令。
  */
 
-/** 链接动作的 URL 输入提示语（块编辑与源码模式共用同一交互）。 */
-export const LINK_URL_PROMPT = '链接地址（http(s):// 或 obsidian:// 或相对页面路径）：';
+/** 链接动作的 URL 输入提示语 key（块编辑与源码模式共用同一交互，运行时按界面语言成文）。 */
+export const LINK_URL_PROMPT = 'editor.linkUrlPrompt';
 
 /** 从 DEV-050 共享动作模型投影的划词格式动作。 */
 export function formatBubbleActions() {
@@ -74,7 +75,7 @@ export function runFormatAction(
       chain.toggleCode();
       break;
     case FORMAT_LINK: {
-      const href = window.prompt(LINK_URL_PROMPT);
+      const href = window.prompt(t(LINK_URL_PROMPT));
       if (!href) return true;
       chain.setLink({ href });
       break;

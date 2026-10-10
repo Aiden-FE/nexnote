@@ -59,6 +59,7 @@ describe('binary tab close failure (DEV-074)', () => {
 
     expect(useTabStore.getState().tabs).toHaveLength(1);
     expect(useTabStore.getState().tabs[0]?.pagePath).toBe('docs/report.xlsx');
+    // 错误在写入 tab store 前已由 t() 成文（ADR-0023）。
     expect(useTabStore.getState().binaryTabCloseError).toContain('标签页已保留');
     expect(container.textContent).toContain('编辑器加载中');
 

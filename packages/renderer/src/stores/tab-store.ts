@@ -1,4 +1,5 @@
 import { create } from 'zustand';
+import { t } from '../lib/i18n';
 import {
   bindH1ToTitle,
   firstH1,
@@ -123,7 +124,7 @@ function initialTabs(): { tabs: TabDescriptor[]; activeTabId: string } {
   const welcome: TabDescriptor = {
     id: nextTabId(),
     kind: 'welcome',
-    title: '欢迎',
+    title: t('tabs.welcome'),
     createdAt: Date.now(),
   };
   return { tabs: [welcome], activeTabId: welcome.id };

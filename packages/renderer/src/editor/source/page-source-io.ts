@@ -1,4 +1,5 @@
 import type { FileInfo } from '@nexnote/shared';
+import { t } from '../../lib/i18n';
 import { firstH1, pagePathForTitle, sanitizePageTitle } from '../title-sync';
 import { stampUpdated } from '../../features/frontmatter/frontmatter-utils';
 
@@ -80,7 +81,8 @@ export async function saveSourceText(params: {
     const desiredPath = pagePathForTitle(path, desiredTitle);
     // 仅大小写不同视为同一文件：大小写不敏感的文件系统上改名会与自身「碰撞」。
     if (desiredPath.toLowerCase() !== path.toLowerCase()) {
-      if (await io.exists(desiredPath)) throw new Error(`无法重命名：${desiredPath} 已存在`);
+      if (await io.exists(desiredPath))
+        throw new Error(t('source.rename.targetExists', { path: desiredPath }));
       await io.renameLinked(path, desiredPath);
       targetPath = desiredPath;
       title = desiredTitle;

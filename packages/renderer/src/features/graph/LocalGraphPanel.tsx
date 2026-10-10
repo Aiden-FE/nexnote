@@ -12,6 +12,7 @@ import '@xyflow/react/dist/style.css';
 import { sidebarPanelRegistry } from '../../registries';
 import { useIndexStore } from '../../stores/index-store';
 import { useTabStore } from '../../stores/tab-store';
+import { useI18n } from '../../lib/i18n';
 import { graphElements, layoutGraph, localGraph } from './model';
 import { graphNodeTypes } from './GraphPageNode';
 
@@ -24,6 +25,7 @@ sidebarPanelRegistry.register({
 });
 
 function LocalGraphPanel() {
+  const t = useI18n();
   const graph = useIndexStore((state) => state.graph);
   const status = useIndexStore((state) => state.graphStatus);
   const loadGraph = useIndexStore((state) => state.loadGraph);
@@ -58,7 +60,9 @@ function LocalGraphPanel() {
   return (
     <div data-testid="sidebar-panel-graph" className="flex h-full min-h-0 flex-col">
       <div className="mb-2 flex shrink-0 items-center gap-1 text-[10px] text-muted-foreground">
-        <span className="mr-auto truncate">局部图谱 · {local.pages.length} 页面</span>
+        <span className="mr-auto truncate">
+          {t('sidebar.graph.localSummary', { count: local.pages.length })}
+        </span>
         {[1, 2].map((depth) => (
           <button
             key={depth}
@@ -67,7 +71,7 @@ function LocalGraphPanel() {
             onClick={() => setHops(depth as 1 | 2)}
             className={`rounded border px-1.5 py-0.5 ${hops === depth ? 'border-primary bg-primary/15 text-primary' : 'hover:bg-accent'}`}
           >
-            {depth} 跳
+            {t('sidebar.graph.hops', { count: depth })}
           </button>
         ))}
       </div>
@@ -93,7 +97,7 @@ function LocalGraphPanel() {
           </ReactFlow>
         ) : (
           <p className="p-3 text-xs leading-relaxed text-muted-foreground">
-            打开一个页面后显示 1-2 跳邻居。
+            {t('sidebar.graph.noCenter')}
           </p>
         )}
       </div>

@@ -34,6 +34,7 @@ import {
 import * as ops from './ops';
 import { NewNoteMenu } from './NewNoteMenu';
 import { sidebarPanelRegistry } from '../../../registries';
+import { useI18n } from '../../../lib/i18n';
 
 /** DEV-074：可在页面树显示 / 点击打开的文档（Markdown 与三类二进制）。 */
 const isOpenableDocument = (name: string): boolean =>
@@ -59,6 +60,7 @@ interface RenamingState {
 }
 
 function PageTreePanel() {
+  const t = useI18n();
   const entries = usePageTreeStore((s) => s.entries);
   const status = usePageTreeStore((s) => s.status);
   const loadError = usePageTreeStore((s) => s.error);
@@ -120,16 +122,16 @@ function PageTreePanel() {
     const items: ContextMenuItem[] = node
       ? [
           {
-            label: '新建笔记',
+            label: t('sidebar.pageTree.newPage'),
             onSelect: () => run(() => ops.createNoteIn(parentDir)),
           },
           {
-            label: '新建文件夹',
+            label: t('sidebar.pageTree.newFolder'),
             onSelect: () => run(async () => void (await ops.createFolderIn(parentDir, entries))),
           },
           { kind: 'separator' },
           {
-            label: '重命名',
+            label: t('sidebar.pageTree.rename'),
             hint: 'Enter',
             onSelect: () =>
               setRenaming({
@@ -139,50 +141,50 @@ function PageTreePanel() {
               }),
           },
           {
-            label: '删除',
-            hint: '回收站',
+            label: t('sidebar.pageTree.delete'),
+            hint: t('sidebar.pageTree.trash'),
             danger: true,
             onSelect: () => run(() => ops.deleteEntry(node.path, node.name)),
           },
           { kind: 'separator' },
           {
-            label: '在 Finder 中显示',
+            label: t('sidebar.pageTree.reveal'),
             onSelect: () => run(() => ops.revealInFinder(node.path)),
           },
           { kind: 'separator' },
           {
-            label: '导入 DOCX',
+            label: t('sidebar.pageTree.importDocx'),
             onSelect: () => run(() => ops.importDocxIn(parentDir)),
           },
           {
-            label: '导入 XLSX',
+            label: t('sidebar.pageTree.importXlsx'),
             onSelect: () => run(() => ops.importBinaryIn('xlsx', parentDir)),
           },
           {
-            label: '导入 XMIND',
+            label: t('sidebar.pageTree.importXmind'),
             onSelect: () => run(() => ops.importBinaryIn('mindmap', parentDir)),
           },
         ]
       : [
           {
-            label: '新建笔记',
+            label: t('sidebar.pageTree.newPage'),
             onSelect: () => run(() => ops.createNoteIn('')),
           },
           {
-            label: '新建文件夹',
+            label: t('sidebar.pageTree.newFolder'),
             onSelect: () => run(async () => void (await ops.createFolderIn('', entries))),
           },
           { kind: 'separator' },
           {
-            label: '导入 DOCX',
+            label: t('sidebar.pageTree.importDocx'),
             onSelect: () => run(() => ops.importDocxIn('')),
           },
           {
-            label: '导入 XLSX',
+            label: t('sidebar.pageTree.importXlsx'),
             onSelect: () => run(() => ops.importBinaryIn('xlsx', '')),
           },
           {
-            label: '导入 XMIND',
+            label: t('sidebar.pageTree.importXmind'),
             onSelect: () => run(() => ops.importBinaryIn('mindmap', '')),
           },
         ];
@@ -262,7 +264,7 @@ function PageTreePanel() {
         data-testid="tree-tag-filter-chip"
         onClick={() => usePageTreeStore.getState().setTagFilter(null, null)}
         className="flex shrink-0 items-center gap-1 rounded-full bg-primary/15 px-2 py-0.5 text-[10px] text-primary hover:bg-primary/25"
-        title="清除标签过滤"
+        title={t('sidebar.pageTree.clearTagFilter')}
       >
         #{tagFilter}
         <X className="size-3" />
@@ -283,7 +285,7 @@ function PageTreePanel() {
             data-testid="tree-search-input"
             value={query}
             onChange={(e) => usePageTreeStore.getState().setQuery(e.target.value)}
-            placeholder="搜索页面…"
+            placeholder={t('sidebar.pageTree.searchPlaceholder')}
             className="h-7 w-full rounded-md border bg-background/60 pl-7 pr-2 text-xs outline-none placeholder:text-muted-foreground/60 focus-visible:ring-1 focus-visible:ring-ring"
           />
         </div>
@@ -304,7 +306,7 @@ function PageTreePanel() {
         <button
           type="button"
           data-testid="tree-new-folder"
-          title="新建文件夹"
+          title={t('sidebar.pageTree.newFolder')}
           onClick={() => run(async () => void (await ops.createFolderIn('', entries)))}
           className="rounded p-1 text-muted-foreground hover:bg-accent hover:text-foreground"
         >
@@ -316,17 +318,19 @@ function PageTreePanel() {
         <button
           type="button"
           data-testid="tree-toggle-all-files"
-          title={showAllFiles ? '仅显示 .md 页面' : '显示全部文件（含非 .md）'}
+          title={
+            showAllFiles ? t('sidebar.pageTree.showOnlyPages') : t('sidebar.pageTree.showAllFiles')
+          }
           onClick={() => useUiStore.getState().setTreeShowAllFiles(!showAllFiles)}
           className="flex items-center gap-1 rounded px-1 py-0.5 hover:bg-accent hover:text-foreground"
         >
           {showAllFiles ? <Eye className="size-3" /> : <EyeOff className="size-3" />}
-          {showAllFiles ? '全部文件' : '仅页面'}
+          {showAllFiles ? t('sidebar.pageTree.allFiles') : t('sidebar.pageTree.pagesOnly')}
         </button>
         <button
           type="button"
           data-testid="tree-toggle-extensions"
-          title="显示文件后缀"
+          title={t('sidebar.pageTree.showExtensions')}
           aria-pressed={showExtensions}
           onClick={() => useUiStore.getState().setTreeShowExtensions(!showExtensions)}
           className="rounded p-1 text-muted-foreground hover:bg-accent hover:text-foreground"
@@ -335,7 +339,7 @@ function PageTreePanel() {
         </button>
         <button
           type="button"
-          title="刷新"
+          title={t('sidebar.pageTree.refresh')}
           onClick={() => run(() => usePageTreeStore.getState().load())}
           className="ml-auto rounded p-0.5 hover:bg-accent hover:text-foreground"
         >
@@ -372,24 +376,24 @@ function PageTreePanel() {
           if (file) run(() => ops.importDroppedFile(file, ''));
         }}
       >
-        {status === 'loading' && <p className="p-2 text-xs text-muted-foreground">加载中…</p>}
+        {status === 'loading' && (
+          <p className="p-2 text-xs text-muted-foreground">{t('sidebar.pageTree.loading')}</p>
+        )}
         {status === 'error' && (
           <p className="m-2 rounded border border-destructive/40 bg-destructive/10 p-2 text-xs text-destructive">
-            加载失败：{loadError}
+            {t('sidebar.pageTree.loadFailed', { error: loadError ?? '' })}
             <button
               type="button"
               className="ml-2 underline"
               onClick={() => run(() => usePageTreeStore.getState().load())}
             >
-              重试
+              {t('sidebar.pageTree.retry')}
             </button>
           </p>
         )}
         {status === 'ready' && rows.length === 0 && (
           <p className="p-3 text-xs leading-relaxed text-muted-foreground">
-            {filtering
-              ? '没有匹配的页面'
-              : '此知识库还没有页面。点击上方按钮或右键新建第一篇笔记。'}
+            {filtering ? t('sidebar.pageTree.noMatches') : t('sidebar.pageTree.empty')}
           </p>
         )}
         {rows}
@@ -437,6 +441,7 @@ interface TreeRowProps {
 }
 
 function TreeRow(p: TreeRowProps) {
+  const t = useI18n();
   const inputRef = useRef<HTMLInputElement>(null);
   const isDir = p.node.kind === 'directory';
   // 只在进入重命名那一刻全选一次；依赖 value 会在每次输入后重新全选，导致下一个按键覆盖全部输入。
@@ -471,8 +476,8 @@ function TreeRow(p: TreeRowProps) {
         isDir
           ? p.node.path
           : p.node.format === 'markdown'
-            ? `${p.node.path} · Markdown 源码文档`
-            : `${p.node.path} · 块编辑文档`
+            ? `${p.node.path} · ${t('sidebar.pageTree.markdownFile')}`
+            : `${p.node.path} · ${t('sidebar.pageTree.blockFile')}`
       }
       data-format={!isDir ? (p.node.format ?? 'native-block') : undefined}
     >
@@ -486,7 +491,7 @@ function TreeRow(p: TreeRowProps) {
               p.onToggleDir();
             }}
             className="shrink-0 rounded p-0.5 text-muted-foreground hover:bg-accent"
-            aria-label={p.expanded ? '折叠' : '展开'}
+            aria-label={p.expanded ? t('sidebar.pageTree.collapse') : t('sidebar.pageTree.expand')}
           >
             <ChevronRight
               className={cn('size-3 transition-transform', p.expanded && 'rotate-90')}
@@ -498,19 +503,34 @@ function TreeRow(p: TreeRowProps) {
         <span className="w-[17px] shrink-0" />
       )}
       {!isDir && isMarkdown(p.node.name) && p.node.format !== 'markdown' && (
-        <FileText className="size-3.5 shrink-0 text-muted-foreground" aria-label="块编辑文档" />
+        <FileText
+          className="size-3.5 shrink-0 text-muted-foreground"
+          aria-label={t('sidebar.pageTree.blockFile')}
+        />
       )}
       {!isDir && isMarkdown(p.node.name) && p.node.format === 'markdown' && (
-        <FileCode2 className="size-3.5 shrink-0 text-primary" aria-label="Markdown 源码文档" />
+        <FileCode2
+          className="size-3.5 shrink-0 text-primary"
+          aria-label={t('sidebar.pageTree.markdownFile')}
+        />
       )}
       {!isDir && isDocx(p.node.name) && (
-        <FileType2 className="size-3.5 shrink-0 text-primary/80" aria-label="DOCX 文档" />
+        <FileType2
+          className="size-3.5 shrink-0 text-primary/80"
+          aria-label={t('sidebar.pageTree.docxFile')}
+        />
       )}
       {!isDir && isXlsx(p.node.name) && (
-        <FileSpreadsheet className="size-3.5 shrink-0 text-primary/80" aria-label="XLSX 文档" />
+        <FileSpreadsheet
+          className="size-3.5 shrink-0 text-primary/80"
+          aria-label={t('sidebar.pageTree.xlsxFile')}
+        />
       )}
       {!isDir && isXmind(p.node.name) && (
-        <GitBranch className="size-3.5 shrink-0 text-primary/80" aria-label="XMIND 文档" />
+        <GitBranch
+          className="size-3.5 shrink-0 text-primary/80"
+          aria-label={t('sidebar.pageTree.xmindFile')}
+        />
       )}
       {!isDir && !isOpenableDocument(p.node.name) && (
         <FileText className="size-3.5 shrink-0 text-muted-foreground/50" />
@@ -535,7 +555,7 @@ function TreeRow(p: TreeRowProps) {
           {displayName(p.node, { showExtensions: p.showExtensions })}
           {!isDir && isMarkdown(p.node.name) && (
             <span className="ml-1 text-[9px] uppercase text-muted-foreground">
-              {p.node.format === 'markdown' ? 'MD' : '块'}
+              {p.node.format === 'markdown' ? 'MD' : t('sidebar.pageTree.blockBadge')}
             </span>
           )}
         </span>

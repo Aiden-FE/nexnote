@@ -53,9 +53,19 @@ status: in_progress
 - 可执行残留检查：`desktop-i18n-migrated-modules.test.tsx` 对已迁移模块做**真实渲染**
   （含 store → bootstrap effect、输入事件 → query 更新链路），在 en-US 下对已迁移
   子树做 CJK 扫描；未迁移子树（命令条目、面板内部）显式排除并在票据登记。
-- 门禁：`pnpm lint` 0；`pnpm typecheck` 5/5；`pnpm test` 1822 passed / 3 skipped。
+- 门禁：`pnpm lint` 0；`pnpm typecheck` 5/5；`pnpm test` 1823 passed / 3 skipped。
 - 阶段②第三批：命令面板的**全部命令条目与分类**迁移到消息目录
   （`features/commands/builtin.ts`、`features/search/commands.ts`、`features/ai/index.tsx`
   共 33 个命令 + 9 个分类），命令面板渲染与检索均经 `t()` 成文；检索按
   ADR-0023 架构决策③保留中英关键词互通，英文界面下仍能搜到中文命令名。
   顺带迁移图谱 tab 标题与「检查更新」弹窗文案。
+- 阶段②第四批：编辑器与外围高频界面迁移——查找栏、块菜单、补全建议、标题折叠、
+  悬浮目录、工具栏溢出菜单、源码模式（保存状态/外部修改冲突/模式切换/加载失败）、
+  快捷插入与实时预览错误、链接与图片提示；侧栏四面板内部文案、页面树右键菜单与
+  状态区、新建菜单、标签条、引导浮层、克隆向导步骤、二进制与占位页。
+- 可执行残留检查（二）：`message-catalog.test.ts` 扫描 renderer 源码中经
+  `t()` / `tr()` / `translate()` 引用的 key，断言两份词典均存在——缺 key 时
+  `translate()` 会回退成 key 文本（界面上直接显示 key），而 tsc 不会报错。
+- 阶段②剩余（已登记，未完成）：编辑器工具栏动作目录
+  `EDITOR_ACTION_CATALOG`（跨 shared/kernel/renderer 单一事实源，571 行）、
+  标题转换禁用原因、AI 对话面板、Git 面板内容、frontmatter 属性面板。

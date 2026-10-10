@@ -1,5 +1,6 @@
 import { useEffect, useRef } from 'react';
 import { invoke } from '../lib/ipc';
+import { t } from '../lib/i18n';
 import { useTabStore, isBinaryKind, type TabDescriptor } from '../stores/tab-store';
 import { useThemeStore } from '../theme/theme-store';
 
@@ -73,7 +74,10 @@ export function BinaryTabView({ tab }: { tab: TabDescriptor }): React.JSX.Elemen
         const restored = store.openBinaryTab(path, tab.title, kind);
         store.setActiveTab(restored.id);
         store.setBinaryTabCloseError(
-          `无法保存 ${tab.title}，标签页已保留。请重试关闭。${error instanceof Error ? ` ${error.message}` : ''}`,
+          t('binary.saveError', {
+            title: tab.title,
+            detail: error instanceof Error ? ` ${error.message}` : '',
+          }),
         );
       });
     };
@@ -113,7 +117,8 @@ export function BinaryTabView({ tab }: { tab: TabDescriptor }): React.JSX.Elemen
     installThemeBridge();
   }, []);
 
-  if (!kind) return <div className="p-4 text-sm text-muted-foreground">未知二进制类型</div>;
+  if (!kind)
+    return <div className="p-4 text-sm text-muted-foreground">{t('binary.unknownType')}</div>;
 
   return (
     <div
@@ -122,7 +127,7 @@ export function BinaryTabView({ tab }: { tab: TabDescriptor }): React.JSX.Elemen
       className="flex h-full min-h-0 flex-col items-center justify-center bg-background text-sm text-muted-foreground"
     >
       <p className="mt-2">{tab.title}</p>
-      <p className="text-xs">编辑器加载中…</p>
+      <p className="text-xs">{t('binary.editorLoading')}</p>
     </div>
   );
 }

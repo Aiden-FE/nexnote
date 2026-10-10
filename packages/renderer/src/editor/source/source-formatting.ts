@@ -1,6 +1,7 @@
 import type { EditorView } from '@codemirror/view';
 import { isolateHistory } from '@codemirror/commands';
 import type { ChangeSpec } from '@codemirror/state';
+import { t } from '../../lib/i18n';
 import type { SourceBubbleAction } from './source-bubble';
 import { selectionFormatBubbleActions } from '../toolbar/selection-actions';
 import {
@@ -290,7 +291,7 @@ export function sourceFormatBubbleActions(): SourceBubbleAction[] {
 
 /** 链接动作取 URL：沿用块编辑链接交互（window.prompt 轻量输入）。 */
 function promptLinkUrl(): string | null {
-  return window.prompt(LINK_URL_PROMPT);
+  return window.prompt(t(LINK_URL_PROMPT));
 }
 
 /**

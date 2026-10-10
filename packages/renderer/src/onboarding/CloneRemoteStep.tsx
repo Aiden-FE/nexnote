@@ -5,6 +5,7 @@
 import { useRef, useState } from 'react';
 import { ArrowLeft, CloudDownload, Loader2 } from 'lucide-react';
 import { invoke } from '../lib/ipc';
+import { useI18n } from '../lib/i18n';
 
 interface CloneStepProps {
   onSuccess(): void;
@@ -12,6 +13,7 @@ interface CloneStepProps {
 }
 
 export function CloneRemoteStep({ onSuccess, onBack }: CloneStepProps) {
+  const t = useI18n();
   const [url, setUrl] = useState('https://github.com/');
   const [target, setTarget] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -42,7 +44,7 @@ export function CloneRemoteStep({ onSuccess, onBack }: CloneStepProps) {
       });
       if (gen !== runGen.current) return;
       if (!preflight.reachable || !preflight.preflightToken) {
-        throw new Error(preflight.error ?? '远端不可达');
+        throw new Error(preflight.error ?? t('clone.remoteUnreachable'));
       }
       await invoke('vault:clone', {
         url: url.trim(),
@@ -67,15 +69,15 @@ export function CloneRemoteStep({ onSuccess, onBack }: CloneStepProps) {
             onBack();
           }}
           className="rounded p-1 text-muted-foreground hover:bg-accent hover:text-foreground"
-          aria-label="返回"
+          aria-label={t('clone.back')}
         >
           <ArrowLeft className="size-4" />
         </button>
         <CloudDownload className="size-4 text-muted-foreground" />
-        <h2 className="text-sm font-semibold">克隆远程仓库</h2>
+        <h2 className="text-sm font-semibold">{t('clone.title')}</h2>
       </div>
       <label className="mb-1.5 block text-xs font-medium text-muted-foreground">
-        远程地址（HTTPS 或 SSH）
+        {t('clone.urlLabel')}
       </label>
       <input
         value={url}
@@ -83,17 +85,19 @@ export function CloneRemoteStep({ onSuccess, onBack }: CloneStepProps) {
         placeholder="https://github.com/owner/repo.git"
         className="mb-4 h-9 w-full rounded-md border bg-background px-3 text-sm outline-none focus:ring-2 focus:ring-ring/40"
       />
-      <label className="mb-1.5 block text-xs font-medium text-muted-foreground">克隆到…</label>
+      <label className="mb-1.5 block text-xs font-medium text-muted-foreground">
+        {t('clone.targetLabel')}
+      </label>
       <div className="mb-5 flex items-center gap-2">
         <span className="flex h-9 min-w-0 flex-1 items-center truncate rounded-md border bg-muted/50 px-3 text-xs text-muted-foreground">
-          {target ?? '未选择'}
+          {target ?? t('clone.unselected')}
         </span>
         <button
           type="button"
           onClick={() => void pickTarget()}
           className="h-9 shrink-0 rounded-md border bg-background px-3 text-xs font-medium hover:bg-accent"
         >
-          选择位置…
+          {t('clone.pickLocation')}
         </button>
       </div>
       {error && (
@@ -111,11 +115,12 @@ export function CloneRemoteStep({ onSuccess, onBack }: CloneStepProps) {
         className="flex h-9 w-full items-center justify-center gap-2 rounded-md bg-primary text-sm font-medium text-primary-foreground hover:bg-primary/90 disabled:cursor-not-allowed disabled:opacity-50"
       >
         {busy && <Loader2 className="size-4 animate-spin" />}
-        {busy ? '克隆中…' : '克隆并打开'}
+        {busy ? t('clone.working') : t('clone.submit')}
       </button>
       <p className="mt-3 text-[11px] leading-relaxed text-muted-foreground">
-        首次绑定远程时会执行 <code className="rounded bg-muted px-1">git ls-remote</code> 授权预检；
-        请确保 SSH key / HTTPS 凭证已就绪。
+        {t('clone.hint.before')}{' '}
+        <code className="rounded bg-muted px-1">{t('clone.hint.command')}</code>{' '}
+        {t('clone.hint.after')}
       </p>
     </div>
   );

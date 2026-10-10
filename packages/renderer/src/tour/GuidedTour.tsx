@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { useUiStore } from '../stores/ui-store';
 import { cn } from '../lib/utils';
+import { useI18n } from '../lib/i18n';
 import { TOUR_STEPS, type TourStep } from './tour-steps';
 
 /**
@@ -40,6 +41,7 @@ function getStep(index: number): TourStep {
 }
 
 export function GuidedTour() {
+  const t = useI18n();
   const tourOpen = useUiStore((s) => s.tourOpen);
   const completeTour = useUiStore((s) => s.completeTour);
   const [stepIndex, setStepIndex] = useState(0);
@@ -153,7 +155,7 @@ export function GuidedTour() {
       data-testid="guided-tour"
       role="dialog"
       aria-modal="true"
-      aria-label="新手引导"
+      aria-label={t('tour.ariaLabel')}
       className="fixed inset-0 z-[60]"
     >
       {/* 阻断底层交互；有 spotlight 时由其 box-shadow 负责变暗，否则整层变暗 */}
@@ -184,14 +186,14 @@ export function GuidedTour() {
       >
         <div className="mb-1 flex items-center justify-between gap-2">
           <h2 data-testid="tour-title" className="text-sm font-semibold">
-            {step.title}
+            {t(step.titleKey)}
           </h2>
           <span className="text-[11px] text-muted-foreground">
             {stepIndex + 1} / {TOUR_STEPS.length}
           </span>
         </div>
         <p data-testid="tour-description" className="text-xs leading-relaxed text-muted-foreground">
-          {step.description}
+          {t(step.descriptionKey)}
         </p>
         <div className="mt-3 flex items-center gap-2">
           <button
@@ -200,7 +202,7 @@ export function GuidedTour() {
             onClick={finish}
             className="rounded px-2 py-1 text-xs text-muted-foreground hover:bg-accent hover:text-foreground"
           >
-            跳过引导
+            {t('tour.skip')}
           </button>
           <div className="ml-auto flex items-center gap-2">
             <button
@@ -210,7 +212,7 @@ export function GuidedTour() {
               onClick={prev}
               className="rounded border px-2.5 py-1 text-xs font-medium disabled:cursor-not-allowed disabled:opacity-40 hover:bg-accent"
             >
-              上一步
+              {t('tour.previous')}
             </button>
             <button
               type="button"
@@ -218,7 +220,7 @@ export function GuidedTour() {
               onClick={next}
               className="rounded bg-primary px-2.5 py-1 text-xs font-medium text-primary-foreground hover:bg-primary/90"
             >
-              {isLast ? '完成' : '下一步'}
+              {isLast ? t('tour.done') : t('tour.next')}
             </button>
           </div>
         </div>

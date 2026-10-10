@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { ChevronsDown, ListTree, X } from 'lucide-react';
 import { cn } from '../lib/utils';
+import { useI18n } from '../lib/i18n';
 import type { OutlineEntry } from './outline';
 
 export interface OutlinePanelProps {
@@ -23,6 +24,7 @@ export function OutlinePanel({
   onClose,
   className,
 }: OutlinePanelProps) {
+  const t = useI18n();
   const [activeId, setActiveId] = useState<string | null>(null);
   const [collapsed, setCollapsed] = useState(false);
   const toggleRef = useRef<HTMLButtonElement | null>(null);
@@ -44,16 +46,16 @@ export function OutlinePanel({
       <aside
         data-testid="outline-panel"
         data-collapsed="true"
-        aria-label="悬浮目录"
+        aria-label={t('outline.title')}
         className={cn('rounded-lg border bg-popover/95 shadow-lg backdrop-blur', className)}
       >
         <button
           ref={expandRef}
           type="button"
           data-testid="outline-expand"
-          aria-label="展开悬浮目录"
+          aria-label={t('outline.expand')}
           aria-expanded="false"
-          title="展开悬浮目录"
+          title={t('outline.expand')}
           onClick={() => toggleCollapsed(false)}
           className="flex size-8 items-center justify-center rounded text-muted-foreground hover:bg-accent hover:text-foreground"
         >
@@ -66,7 +68,7 @@ export function OutlinePanel({
   return (
     <aside
       data-testid="outline-panel"
-      aria-label="悬浮目录"
+      aria-label={t('outline.title')}
       className={cn(
         'w-60 overflow-hidden rounded-lg border bg-popover/95 text-popover-foreground shadow-lg backdrop-blur',
         className,
@@ -77,19 +79,19 @@ export function OutlinePanel({
           ref={toggleRef}
           type="button"
           data-testid="outline-toggle"
-          aria-label="收起悬浮目录"
+          aria-label={t('outline.collapse')}
           aria-expanded="true"
-          title="收起悬浮目录"
+          title={t('outline.collapse')}
           onClick={() => toggleCollapsed(true)}
           className="rounded p-1 text-muted-foreground hover:bg-accent hover:text-foreground"
         >
           <ListTree className="size-3.5" aria-hidden="true" />
         </button>
-        <span className="min-w-0 flex-1">悬浮目录</span>
+        <span className="min-w-0 flex-1">{t('outline.title')}</span>
         <button
           type="button"
-          aria-label="全部展开章节"
-          title="全部展开章节"
+          aria-label={t('outline.expandAll')}
+          title={t('outline.expandAll')}
           data-testid="outline-expand-all"
           onClick={onExpandAll}
           className="rounded p-1 text-muted-foreground hover:bg-accent hover:text-foreground"
@@ -98,7 +100,7 @@ export function OutlinePanel({
         </button>
         <button
           type="button"
-          aria-label="关闭悬浮目录"
+          aria-label={t('outline.close')}
           data-testid="outline-close"
           onClick={onClose}
           className="rounded p-1 text-muted-foreground hover:bg-accent hover:text-foreground"
@@ -106,13 +108,16 @@ export function OutlinePanel({
           <X className="size-3.5" aria-hidden="true" />
         </button>
       </div>
-      <nav className="max-h-[min(60vh,32rem)] overflow-auto p-1.5" aria-label="标题列表">
+      <nav
+        className="max-h-[min(60vh,32rem)] overflow-auto p-1.5"
+        aria-label={t('outline.headingList')}
+      >
         {entries.length === 0 ? (
           <p
             data-testid="outline-empty"
             className="px-2 py-6 text-center text-xs text-muted-foreground"
           >
-            暂无标题
+            {t('outline.empty')}
           </p>
         ) : (
           entries.map((entry) => {
@@ -123,7 +128,7 @@ export function OutlinePanel({
                 type="button"
                 data-testid={`outline-entry-${entry.id}`}
                 data-active={active ? 'true' : undefined}
-                title={entry.text || '未命名标题'}
+                title={entry.text || t('outline.untitled')}
                 style={{ paddingLeft: `${8 + (entry.level - 1) * 12}px` }}
                 onClick={() => {
                   setActiveId(entry.id);
@@ -135,7 +140,7 @@ export function OutlinePanel({
                   active && 'bg-accent font-medium text-foreground',
                 )}
               >
-                {entry.text || '未命名标题'}
+                {entry.text || t('outline.untitled')}
               </button>
             );
           })

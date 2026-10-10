@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { ChevronDown, FilePlus2 } from 'lucide-react';
 import { cn } from '../../../lib/utils';
+import { useI18n } from '../../../lib/i18n';
 
 /** DEV-084（DEV-098 撤销 docx 新建后仅 xlsx / xmind）。 */
 type NewNoteKind =
@@ -21,6 +22,7 @@ interface NewNoteMenuProps {
  * - 键盘：↑/↓ 打开并在项间移动，Enter 选中，Esc/Tab 关闭。
  */
 export function NewNoteMenu({ onPick }: NewNoteMenuProps) {
+  const t = useI18n();
   const [open, setOpen] = useState(false);
   const [anchor, setAnchor] = useState({ x: 0, y: 0 });
   const wrapRef = useRef<HTMLDivElement>(null);
@@ -93,8 +95,8 @@ export function NewNoteMenu({ onPick }: NewNoteMenuProps) {
       <button
         type="button"
         data-testid="tree-new-note"
-        title="新建文档（块编辑）"
-        aria-label="新建文档（块编辑）"
+        title={t('sidebar.newMenu.newBlockShort')}
+        aria-label={t('sidebar.newMenu.newBlockShort')}
         onClick={() => onPick({ kind: 'note', format: 'native-block' })}
         className="rounded p-1 text-muted-foreground hover:bg-accent hover:text-foreground"
       >
@@ -104,8 +106,8 @@ export function NewNoteMenu({ onPick }: NewNoteMenuProps) {
         ref={triggerRef}
         type="button"
         data-testid="tree-new-note-menu"
-        title="选择文档格式"
-        aria-label="选择文档格式"
+        title={t('sidebar.newMenu.chooseFormat')}
+        aria-label={t('sidebar.newMenu.chooseFormat')}
         aria-haspopup="menu"
         aria-expanded={open}
         onClick={() => (open ? close(false) : openMenu())}
@@ -122,45 +124,53 @@ export function NewNoteMenu({ onPick }: NewNoteMenuProps) {
       {open && (
         <div
           role="menu"
-          aria-label="新建文档格式"
+          aria-label={t('sidebar.newMenu.menuLabel')}
           data-testid="new-note-menu"
           style={{ left: Math.min(anchor.x, Math.max(8, window.innerWidth - 240)), top: anchor.y }}
           onKeyDown={onMenuKeyDown}
           className="fixed z-50 w-60 rounded-md border bg-popover p-1 text-popover-foreground shadow-lg"
         >
-          {ITEMS.map((item, i) => (
-            <button
-              key={item.label}
-              ref={(el) => {
-                itemRefs.current[i] = el;
-              }}
-              type="button"
-              role="menuitem"
-              data-testid={item.testId}
-              title={`${item.label}——${item.description}`}
-              onClick={() => {
-                onPick(item.value);
-                close(true);
-              }}
-              className="flex w-full items-start gap-2 rounded-sm px-2 py-1.5 text-left hover:bg-accent"
-            >
-              <span
-                aria-hidden="true"
-                className={cn(
-                  'mt-0.5 inline-flex w-7 shrink-0 items-center justify-center rounded px-1 py-0.5 text-[10px] font-medium',
-                  item.badgeClass,
-                )}
+          {ITEMS.map((item, i) => {
+            const label = t(item.labelKey);
+            const description = t(item.descriptionKey);
+            const badge =
+              item.badge === 'MD' || item.badge === 'XLSX' || item.badge === 'XMIND'
+                ? item.badge
+                : t('sidebar.pageTree.blockBadge');
+            return (
+              <button
+                key={item.labelKey}
+                ref={(el) => {
+                  itemRefs.current[i] = el;
+                }}
+                type="button"
+                role="menuitem"
+                data-testid={item.testId}
+                title={`${label} — ${description}`}
+                onClick={() => {
+                  onPick(item.value);
+                  close(true);
+                }}
+                className="flex w-full items-start gap-2 rounded-sm px-2 py-1.5 text-left hover:bg-accent"
               >
-                {item.badge}
-              </span>
-              <span className="min-w-0 flex-1">
-                <span className="block truncate text-xs">{item.label}</span>
-                <span className="mt-0.5 block text-[10px] leading-4 text-muted-foreground">
-                  {item.description}
+                <span
+                  aria-hidden="true"
+                  className={cn(
+                    'mt-0.5 inline-flex w-7 shrink-0 items-center justify-center rounded px-1 py-0.5 text-[10px] font-medium',
+                    item.badgeClass,
+                  )}
+                >
+                  {badge}
                 </span>
-              </span>
-            </button>
-          ))}
+                <span className="min-w-0 flex-1">
+                  <span className="block truncate text-xs">{label}</span>
+                  <span className="mt-0.5 block text-[10px] leading-4 text-muted-foreground">
+                    {description}
+                  </span>
+                </span>
+              </button>
+            );
+          })}
         </div>
       )}
     </div>
@@ -170,42 +180,42 @@ export function NewNoteMenu({ onPick }: NewNoteMenuProps) {
 interface MenuItem {
   badge: string;
   badgeClass: string;
-  label: string;
-  description: string;
+  labelKey: string;
+  descriptionKey: string;
   testId: string;
   value: NewNoteKind;
 }
 
 const ITEMS: MenuItem[] = [
   {
-    badge: '块',
+    badge: 'sidebar.newMenu.newBlockBadge',
     badgeClass: 'bg-primary/15 text-primary',
-    label: '新建文档（块编辑）',
-    description: '所见即所得的块编辑体验（默认）',
+    labelKey: 'sidebar.newMenu.newBlock',
+    descriptionKey: 'sidebar.newMenu.newBlock.description',
     testId: 'new-note-native-block',
     value: { kind: 'note', format: 'native-block' },
   },
   {
     badge: 'MD',
     badgeClass: 'bg-muted text-muted-foreground',
-    label: '新建 Markdown（源码模式）',
-    description: '编辑 Markdown 源码，右侧实时预览',
+    labelKey: 'sidebar.newMenu.newMarkdown',
+    descriptionKey: 'sidebar.newMenu.newMarkdown.description',
     testId: 'new-note-markdown',
     value: { kind: 'note', format: 'markdown' },
   },
   {
     badge: 'XLSX',
     badgeClass: 'bg-muted text-muted-foreground',
-    label: '新建空白 XLSX',
-    description: '在 vault 内创建空白 .xlsx 并打开表格编辑器',
+    labelKey: 'sidebar.newMenu.newXlsx',
+    descriptionKey: 'sidebar.newMenu.newXlsx.description',
     testId: 'new-note-xlsx',
     value: { kind: 'binary', binary: 'xlsx' },
   },
   {
     badge: 'XMIND',
     badgeClass: 'bg-muted text-muted-foreground',
-    label: '新建空白 XMind',
-    description: '在 vault 内创建空白 .xmind 并打开思维导图',
+    labelKey: 'sidebar.newMenu.newXmind',
+    descriptionKey: 'sidebar.newMenu.newXmind.description',
     testId: 'new-note-xmind',
     value: { kind: 'binary', binary: 'xmind' },
   },

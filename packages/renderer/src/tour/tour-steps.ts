@@ -8,8 +8,8 @@ export interface TourStep {
   id: string;
   /** 目标区域选择器：`[data-tour="<id>"]` */
   targetSelector: string;
-  title: string;
-  description: string;
+  titleKey: string;
+  descriptionKey: string;
   /**
    * DEV-081：进入该步前的前置动作。返回值会传给同一步的 cleanup。
    * 不在这里直接调用 ui-store —— 实际执行由 GuidedTour 在 React effect 中触发，
@@ -27,23 +27,20 @@ export const TOUR_STEPS: TourStep[] = [
   {
     id: 'page-tree',
     targetSelector: '[data-tour="page-tree"]',
-    title: '页面树与新建',
-    description:
-      '左侧页面树展示知识库中的所有页面与文件夹。点击「新建」可选择块编辑、Markdown 格式，或从 DOCX 文档导入。',
+    titleKey: 'tour.step.pageTree.title',
+    descriptionKey: 'tour.step.pageTree.description',
   },
   {
     id: 'editor',
     targetSelector: '[data-tour="editor"]',
-    title: '两种编辑模式',
-    description:
-      '块编辑文档使用所见即所得的块编辑器；Markdown 文档支持源码模式与实时预览。内容会自动防抖保存，无需手动操作。',
+    titleKey: 'tour.step.editor.title',
+    descriptionKey: 'tour.step.editor.description',
   },
   {
     id: 'ai-dock',
     targetSelector: '[data-tour="ai-dock"]',
-    title: 'AI 对话与写作',
-    description:
-      '右侧 Dock 提供 AI 对话与写作辅助，可边写边获得建议。通过欢迎页或命令面板都能随时展开与收起 Dock。',
+    titleKey: 'tour.step.aiDock.title',
+    descriptionKey: 'tour.step.aiDock.description',
     // DEV-081：进入该步前快照 dockVisible，由 GuidedTour 决定展开动作。
     prepare: () => null,
     cleanup: () => undefined,
@@ -51,15 +48,13 @@ export const TOUR_STEPS: TourStep[] = [
   {
     id: 'git-timeline',
     targetSelector: '[data-tour="git-timeline"]',
-    title: '版本时间线与同步修复',
-    description:
-      '底部状态栏显示当前分支与未提交变更。版本时间线记录每次提交，遇到同步异常时可按提示一键诊断修复。',
+    titleKey: 'tour.step.gitTimeline.title',
+    descriptionKey: 'tour.step.gitTimeline.description',
   },
   {
     id: 'settings',
     targetSelector: '[data-tour="settings"]',
-    title: '设置',
-    description:
-      '设置页可调整自动保存防抖间隔、文件后缀显示、主题与快捷键等。现在开始你的第一页笔记吧！',
+    titleKey: 'tour.step.settings.title',
+    descriptionKey: 'tour.step.settings.description',
   },
 ];

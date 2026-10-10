@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { CATALOGS, translate } from '@nexnote/shared';
 import {
   filterPageCandidates,
   filterTagCandidates,
@@ -10,6 +11,10 @@ import {
   BLOCK_MENU_PREFIX,
   BLOCK_MENU_CONVERT_PREFIX,
 } from '../src/editor/interactions/block-menu';
+
+/** 块菜单文案经消息目录成文，默认语言 zh-CN（ADR-0023）。 */
+const zh = (key: string, params?: Record<string, string | number>) =>
+  translate(CATALOGS['zh-CN'], key, 'zh-CN', params);
 import {
   formatBubbleActions,
   FORMAT_BOLD,
@@ -178,7 +183,7 @@ describe('DEV-017 块菜单构建', () => {
       isFolded: () => true,
     });
     const foldItem = foldedItems.find((i) => i.id === `${BLOCK_MENU_PREFIX}fold`);
-    expect(foldItem?.title).toBe('展开章节');
+    expect(foldItem?.title).toBe(zh('blockMenu.unfoldSection'));
     expect(foldItem?.disabled).toBeFalsy();
     const disabledItems = buildBlockMenuItems(ctx, { getKernel: () => null, canFold: () => false });
     expect(disabledItems.find((i) => i.id === `${BLOCK_MENU_PREFIX}fold`)?.disabled).toBe(true);

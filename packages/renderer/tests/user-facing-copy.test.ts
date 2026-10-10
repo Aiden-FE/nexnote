@@ -21,7 +21,9 @@ describe('用户可见文案清理', () => {
   it('活跃的占位视图不包含内核版本或票据说明', () => {
     const source = src('pages/PlaceholderPage.tsx');
     expect(source).not.toMatch(/DEV-\d{3}|KERNEL_VERSION|占位页面/);
-    expect(source).toContain('此文档格式暂不支持直接编辑或预览');
+    // 文案经消息目录成文（ADR-0023）：源码引用 key，不含硬编码面向用户文案。
+    expect(source).toContain("t('placeholder.body')");
+    expect(source).not.toContain('此文档格式暂不支持');
   });
 
   it('设置和属性提示使用正式产品文案', () => {

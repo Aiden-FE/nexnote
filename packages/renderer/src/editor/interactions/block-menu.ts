@@ -1,6 +1,7 @@
 import type { ContextMenuItem } from '@nexnote/kernel';
 import type { BlockMenuContext } from '@nexnote/kernel';
 import type { EditorKernelInstance } from '@nexnote/kernel';
+import { t } from '../../lib/i18n';
 
 /**
  * DEV-017 块菜单（渲染层构建）：
@@ -44,37 +45,35 @@ export type BlockMenuEntry = ContextMenuItem;
 export function buildBlockMenuItems(ctx: BlockMenuContext, deps: BlockMenuDeps): BlockMenuEntry[] {
   const ai = deps.buildAiSubmenu?.(ctx) ?? [];
   const items: BlockMenuEntry[] = [
-    { id: blockMenuActionId('copy'), title: '复制' },
-    { id: blockMenuActionId('cut'), title: '剪切' },
-    { id: blockMenuActionId('delete'), title: '删除' },
-    { id: blockMenuActionId('copy-id'), title: '复制块 ID' },
+    { id: blockMenuActionId('copy'), title: t('blockMenu.copy') },
+    { id: blockMenuActionId('cut'), title: t('blockMenu.cut') },
+    { id: blockMenuActionId('delete'), title: t('blockMenu.delete') },
+    { id: blockMenuActionId('copy-id'), title: t('blockMenu.copyId') },
     {
-      title: '转换为',
+      title: t('blockMenu.convertTo'),
       submenu: [
-        { id: `${BLOCK_MENU_CONVERT_PREFIX}paragraph`, title: '段落' },
-        { id: `${BLOCK_MENU_CONVERT_PREFIX}h1`, title: '标题 1' },
-        { id: `${BLOCK_MENU_CONVERT_PREFIX}h2`, title: '标题 2' },
-        { id: `${BLOCK_MENU_CONVERT_PREFIX}h3`, title: '标题 3' },
-        { id: `${BLOCK_MENU_CONVERT_PREFIX}h4`, title: '标题 4' },
-        { id: `${BLOCK_MENU_CONVERT_PREFIX}h5`, title: '标题 5' },
-        { id: `${BLOCK_MENU_CONVERT_PREFIX}h6`, title: '标题 6' },
-        { id: `${BLOCK_MENU_CONVERT_PREFIX}taskList`, title: '任务列表' },
-        { id: `${BLOCK_MENU_CONVERT_PREFIX}blockquote`, title: '引用' },
-        { id: `${BLOCK_MENU_CONVERT_PREFIX}callout`, title: '标注块' },
-        { id: `${BLOCK_MENU_CONVERT_PREFIX}codeBlock`, title: '代码块' },
+        { id: `${BLOCK_MENU_CONVERT_PREFIX}paragraph`, title: t('blockMenu.paragraph') },
+        ...([1, 2, 3, 4, 5, 6] as const).map((level) => ({
+          id: `${BLOCK_MENU_CONVERT_PREFIX}h${level}`,
+          title: t('blockMenu.heading', { level }),
+        })),
+        { id: `${BLOCK_MENU_CONVERT_PREFIX}taskList`, title: t('blockMenu.taskList') },
+        { id: `${BLOCK_MENU_CONVERT_PREFIX}blockquote`, title: t('blockMenu.blockquote') },
+        { id: `${BLOCK_MENU_CONVERT_PREFIX}callout`, title: t('blockMenu.callout') },
+        { id: `${BLOCK_MENU_CONVERT_PREFIX}codeBlock`, title: t('blockMenu.codeBlock') },
       ],
     },
     { separator: true, title: '' },
-    { id: blockMenuActionId('move-up'), title: '上移', hint: '⌥↑' },
-    { id: blockMenuActionId('move-down'), title: '下移', hint: '⌥↓' },
+    { id: blockMenuActionId('move-up'), title: t('blockMenu.moveUp'), hint: '⌥↑' },
+    { id: blockMenuActionId('move-down'), title: t('blockMenu.moveDown'), hint: '⌥↓' },
     {
       id: blockMenuActionId('fold'),
-      title: deps.isFolded?.(ctx) ? '展开章节' : '折叠章节',
+      title: deps.isFolded?.(ctx) ? t('blockMenu.unfoldSection') : t('blockMenu.foldSection'),
       disabled: !deps.canFold?.(ctx),
     },
     { separator: true, title: '' },
-    { id: blockMenuActionId('insert-before'), title: '在上方插入' },
-    { id: blockMenuActionId('insert-after'), title: '在下方插入' },
+    { id: blockMenuActionId('insert-before'), title: t('blockMenu.insertBefore') },
+    { id: blockMenuActionId('insert-after'), title: t('blockMenu.insertAfter') },
     ...(ai.length > 0 ? [{ separator: true as const, title: '' }, ...ai] : []),
     ...(deps.pluginItems?.length
       ? [{ separator: true as const, title: '' }, ...deps.pluginItems]

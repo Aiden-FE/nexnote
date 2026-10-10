@@ -50,6 +50,7 @@ export function BacklinksBadge() {
 }
 
 function BacklinksPanel() {
+  const t = useI18n();
   const backlinks = useIndexStore((s) => s.backlinks);
   const status = useIndexStore((s) => s.backlinksStatus);
   const forPath = useIndexStore((s) => s.backlinksFor);
@@ -70,18 +71,20 @@ function BacklinksPanel() {
   return (
     <div data-testid="sidebar-panel-backlinks" className="flex h-full min-h-0 flex-col">
       <p className="mb-2 shrink-0 text-[10px] text-muted-foreground">
-        当前页面的入链 · Link Index 实时数据
-        {status === 'loading' && '（更新中…）'}
-        {forPath && status === 'ready' && `（${backlinks.length} 条）`}
+        {t('sidebar.backlinks.subtitle')}
+        {status === 'loading' && t('sidebar.backlinks.updating')}
+        {forPath && status === 'ready' && t('sidebar.backlinks.count', { count: backlinks.length })}
       </p>
       <div className="min-h-0 flex-1 space-y-1.5 overflow-auto">
         {status === 'error' && (
           <p className="rounded border border-destructive/40 bg-destructive/10 p-2 text-xs text-destructive">
-            索引不可用（可能正在初始化）
+            {t('sidebar.backlinks.indexUnavailable')}
           </p>
         )}
         {status === 'ready' && backlinks.length === 0 && (
-          <p className="text-xs leading-relaxed text-muted-foreground">还没有页面链接到这里。</p>
+          <p className="text-xs leading-relaxed text-muted-foreground">
+            {t('sidebar.backlinks.empty')}
+          </p>
         )}
         {backlinks.map((b, i) => (
           <button

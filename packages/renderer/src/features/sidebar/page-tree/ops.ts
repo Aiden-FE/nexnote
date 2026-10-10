@@ -1,6 +1,7 @@
 import { sanitizeEntryName } from '@nexnote/shared';
 import type { DirEntry } from '@nexnote/shared';
 import { invoke } from '../../../lib/ipc';
+import { t } from '../../../lib/i18n';
 import { openDocumentTab } from '../../../lib/open-document';
 import { requestAppSave } from '../../../editor/app-save';
 import { getTabStore } from '../../../stores/tab-store';
@@ -41,11 +42,7 @@ export async function openDocument(path: string, knownFormat?: NewNoteFormat): P
 
 /** DEV-098：导入转换完成的一次性提示（Word 专属排版不保留；原件仍在外部原位置）。 */
 function notifyDocxConverted(path: string): void {
-  getTabStore()
-    .getState()
-    .setDocxNotice(
-      `已导入并转换为块文档 ${path}。Word 专属排版（页眉页脚、编号样式、上下标等）不保留；原件仍在外部原位置。`,
-    );
+  getTabStore().getState().setDocxNotice(t('sidebar.pageTree.docxConverted', { path }));
 }
 
 /** 经主进程文件选择器导入 DOCX，转换为块文档后打开可编辑 tab；取消选择返回 null。 */
@@ -173,7 +170,7 @@ export async function moveEntry(fromPath: string, targetDir: string): Promise<vo
   const toPath = targetDir === '' ? name : `${targetDir}/${name}`;
   if (toPath === fromPath) return;
   if (targetDir === fromPath || targetDir.startsWith(`${fromPath}/`)) {
-    throw new Error('不能移动到自身或其子目录内');
+    throw new Error(t('sidebar.pageTree.moveIntoSelf'));
   }
   await requestAppSave(window);
   const sourceEntry = usePageTreeStore.getState().entries.find((entry) => entry.path === fromPath);
@@ -189,7 +186,7 @@ export async function moveEntry(fromPath: string, targetDir: string): Promise<vo
 
 /** 删除（优先系统回收站；不可用时主进程回退 .trash/）。返回是否执行。 */
 export async function deleteEntry(path: string, name: string): Promise<boolean> {
-  const ok = window.confirm(`删除「${name}」？\n将移入系统回收站（不可用时移入 .trash/）。`);
+  const ok = window.confirm(t('sidebar.pageTree.deleteConfirm', { name }));
   if (!ok) return false;
   await requestAppSave(window);
   await invoke('fs:delete', { path, toTrash: true });

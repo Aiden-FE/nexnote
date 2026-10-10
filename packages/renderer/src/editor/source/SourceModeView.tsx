@@ -8,6 +8,7 @@ import { useTabStore } from '../../stores/tab-store';
 import { usePageTreeStore } from '../../stores/page-tree-store';
 import { useSettingsStore } from '../../stores/settings-store';
 import { invoke, onEvent } from '../../lib/ipc';
+import { useI18n } from '../../lib/i18n';
 import { sanitizePageTitle, titleFromPath } from '../title-sync';
 import { registerAppSaveListener } from '../app-save';
 import { openDocumentTab } from '../../lib/open-document';
@@ -158,6 +159,7 @@ function wikilinkPath(pageName: string): string {
  *   native-block 文档的临时源码模式保持原语义：面板隐藏、YAML 原文在编辑框中。
  */
 export function SourceModeView({ tab }: { tab: TabDescriptor }) {
+  const tr = useI18n();
   const initialPath = tab.pagePath ?? `${sanitizePageTitle(tab.title)}.md`;
   const isMarkdown = tab.format === 'markdown';
   const [load, setLoad] = useState<LoadState>({ phase: 'loading' });
@@ -334,8 +336,8 @@ export function SourceModeView({ tab }: { tab: TabDescriptor }) {
       }
       setConflict(result.diskVersion);
       setSaveState('error');
-      setSaveError('磁盘文件已被外部修改，已暂停自动保存');
-      throw new Error('外部修改冲突，等待用户选择');
+      setSaveError(tr('source.conflict.autoSavePaused'));
+      throw new Error(tr('source.conflict.internalError'));
     }
     baseVersionRef.current = result.version;
     // DEV-092：基线记**真正落盘**的文本（含被刷新后的 frontmatter.updated），
@@ -358,7 +360,7 @@ export function SourceModeView({ tab }: { tab: TabDescriptor }) {
         pagePath: result.path,
       });
     }
-  }, [tab.id, composeDocument]);
+  }, [tab.id, composeDocument, tr]);
 
   const runSaveTracked = useCallback(async (): Promise<void> => {
     setSaveState('saving');
@@ -742,11 +744,11 @@ export function SourceModeView({ tab }: { tab: TabDescriptor }) {
         }
         setConflict(result.version);
         setSaveState('error');
-        setSaveError('磁盘文件已被外部修改，已暂停自动保存');
+        setSaveError(tr('source.conflict.autoSavePaused'));
       })();
     });
     return unregister;
-  }, [reloadFromDisk, refreshBaselineFromDisk]);
+  }, [reloadFromDisk, refreshBaselineFromDisk, tr]);
 
   // ── 模式切换生命周期：flush → 整页解析守卫；失败停留源码模式 ──
   useEffect(() => {
@@ -754,18 +756,18 @@ export function SourceModeView({ tab }: { tab: TabDescriptor }) {
       try {
         await flush();
       } catch {
-        setSwitchError('保存失败，已停留源码模式');
+        setSwitchError(tr('source.switch.saveFailedSource'));
         return false;
       }
       const parsed = parseWholePage(composeDocument());
       if (!parsed.ok) {
-        setSwitchError(`整页解析失败，已停留源码模式：${parsed.message}`);
+        setSwitchError(tr('source.switch.parseFailed', { message: parsed.message }));
         return false;
       }
       setSwitchError(null);
       return true;
     });
-  }, [tab.id, flush, composeDocument]);
+  }, [tab.id, flush, composeDocument, tr]);
 
   // ── 进入预览视图前的 flush 守卫（编辑界面即将隐藏；失败停留当前视图）──
   useEffect(() => {
@@ -773,13 +775,13 @@ export function SourceModeView({ tab }: { tab: TabDescriptor }) {
       try {
         await flush();
       } catch {
-        setSwitchError('保存失败，已停留当前视图');
+        setSwitchError(tr('source.switch.saveFailedCurrent'));
         return false;
       }
       setSwitchError(null);
       return true;
     });
-  }, [tab.id, flush]);
+  }, [tab.id, flush, tr]);
 
   // ── 预览导航：先保存，成功后经统一入口按目标文档格式打开 ──
   const navigate = useCallback(
@@ -930,10 +932,10 @@ export function SourceModeView({ tab }: { tab: TabDescriptor }) {
 
   const status =
     saveState === 'saving'
-      ? { icon: LoaderCircle, text: '保存中…', className: 'animate-spin' }
+      ? { icon: LoaderCircle, text: tr('source.saveStatus.saving'), className: 'animate-spin' }
       : saveState === 'error'
-        ? { icon: AlertCircle, text: '保存失败', className: 'text-destructive' }
-        : { icon: Check, text: '已保存', className: '' };
+        ? { icon: AlertCircle, text: tr('source.saveStatus.error'), className: 'text-destructive' }
+        : { icon: Check, text: tr('source.saveStatus.saved'), className: '' };
   const StatusIcon = status.icon;
 
   // 同块编辑：能力在工具栏交互时惰性求值，避免渲染期读 ref。
@@ -1018,7 +1020,10 @@ export function SourceModeView({ tab }: { tab: TabDescriptor }) {
     if (id === AI_INSERT_ID) {
       const v = view();
       if (!v) return;
-      const instruction = window.prompt('AI 插入指令', '请基于当前上下文补充内容');
+      const instruction = window.prompt(
+        tr('source.slash.aiPrompt'),
+        tr('source.slash.aiPromptDefault'),
+      );
       if (instruction?.trim())
         openSourceCursorInsertSession(v, instruction, { getDocPath: () => pathRef.current });
       return;
@@ -1053,7 +1058,8 @@ export function SourceModeView({ tab }: { tab: TabDescriptor }) {
   if (load.phase === 'loading') {
     return (
       <div className="flex h-full items-center justify-center gap-2 text-sm text-muted-foreground">
-        <LoaderCircle className="size-4 animate-spin" /> 正在打开 {displayPath}…
+        <LoaderCircle className="size-4 animate-spin" />{' '}
+        {tr('source.loading', { path: displayPath })}
       </div>
     );
   }
@@ -1061,7 +1067,7 @@ export function SourceModeView({ tab }: { tab: TabDescriptor }) {
     return (
       <div className="mx-auto mt-12 max-w-lg rounded-lg border border-destructive/40 bg-destructive/10 p-4 text-sm text-destructive">
         <div className="mb-1 flex items-center gap-2 font-medium">
-          <AlertCircle className="size-4" /> 页面打开失败
+          <AlertCircle className="size-4" /> {tr('source.openFailed')}
         </div>
         <p className="text-xs">{load.message}</p>
       </div>
@@ -1089,7 +1095,7 @@ export function SourceModeView({ tab }: { tab: TabDescriptor }) {
       }}
     >
       <EditorToolbar
-        label="编辑器工具栏"
+        label={tr('source.toolbarLabel')}
         entries={sourceToolbarEntries({
           isMarkdown,
           markdownView,
@@ -1128,14 +1134,14 @@ export function SourceModeView({ tab }: { tab: TabDescriptor }) {
           className="flex shrink-0 items-center gap-2 border-b border-destructive/40 bg-destructive/10 px-3 py-1.5 text-xs text-destructive"
         >
           <AlertCircle className="size-3.5 shrink-0" />
-          <span className="min-w-0 flex-1">磁盘文件已被外部修改，本地还有未保存的修改。</span>
+          <span className="min-w-0 flex-1">{tr('source.conflict.banner')}</span>
           <button
             type="button"
             data-testid="conflict-keep-local"
             className="shrink-0 rounded border px-2 py-0.5 hover:bg-accent"
             onClick={keepLocal}
           >
-            保留本地
+            {tr('source.conflict.keepLocal')}
           </button>
           <button
             type="button"
@@ -1143,7 +1149,7 @@ export function SourceModeView({ tab }: { tab: TabDescriptor }) {
             className="shrink-0 rounded border px-2 py-0.5 hover:bg-accent"
             onClick={takeDisk}
           >
-            读取磁盘并重载
+            {tr('source.conflict.takeDisk')}
           </button>
         </div>
       )}

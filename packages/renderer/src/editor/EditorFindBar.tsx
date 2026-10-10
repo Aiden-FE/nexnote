@@ -1,5 +1,6 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { ChevronDown, ChevronUp, Search, X } from 'lucide-react';
+import { useI18n } from '../lib/i18n';
 import { useTabStore } from '../stores/tab-store';
 
 import type { EditorFindResult } from './find';
@@ -12,6 +13,7 @@ interface EditorFindBarProps {
 
 /** 当前编辑视图的轻量查找栏。命中定位由宿主编辑器完成，并同步显现折叠正文。 */
 export function EditorFindBar({ onFind, onClose, tabId }: EditorFindBarProps) {
+  const tr = useI18n();
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState('');
   const [result, setResult] = useState<EditorFindResult>({ current: 0, total: 0 });
@@ -63,7 +65,7 @@ export function EditorFindBar({ onFind, onClose, tabId }: EditorFindBarProps) {
     <div
       data-testid="editor-find-bar"
       role="search"
-      aria-label="在当前页面中查找"
+      aria-label={tr('find.barLabel')}
       className="absolute right-4 top-11 z-30 flex items-center gap-1 rounded-md border bg-popover p-1 shadow-lg"
     >
       <Search className="ml-1 size-3.5 text-muted-foreground" aria-hidden="true" />
@@ -71,8 +73,8 @@ export function EditorFindBar({ onFind, onClose, tabId }: EditorFindBarProps) {
         ref={inputRef}
         data-testid="editor-find-input"
         value={query}
-        aria-label="查找文本"
-        placeholder="在当前页面中查找"
+        aria-label={tr('find.inputLabel')}
+        placeholder={tr('find.placeholder')}
         className="h-7 w-48 bg-transparent px-1 text-xs outline-none"
         onChange={(event) => {
           const next = event.target.value;
@@ -94,12 +96,12 @@ export function EditorFindBar({ onFind, onClose, tabId }: EditorFindBarProps) {
         aria-live="polite"
         className="min-w-12 text-center text-[11px] text-muted-foreground"
       >
-        {query ? (result.total ? `${result.current}/${result.total}` : '无结果') : ''}
+        {query ? (result.total ? `${result.current}/${result.total}` : tr('find.noResults')) : ''}
       </span>
       <button
         type="button"
-        aria-label="上一个匹配"
-        title="上一个匹配"
+        aria-label={tr('find.previous')}
+        title={tr('find.previous')}
         onClick={() => find(-1)}
         className="rounded p-1 hover:bg-accent"
       >
@@ -107,8 +109,8 @@ export function EditorFindBar({ onFind, onClose, tabId }: EditorFindBarProps) {
       </button>
       <button
         type="button"
-        aria-label="下一个匹配"
-        title="下一个匹配"
+        aria-label={tr('find.next')}
+        title={tr('find.next')}
         onClick={() => find(1)}
         className="rounded p-1 hover:bg-accent"
       >
@@ -116,8 +118,8 @@ export function EditorFindBar({ onFind, onClose, tabId }: EditorFindBarProps) {
       </button>
       <button
         type="button"
-        aria-label="关闭查找"
-        title="关闭查找"
+        aria-label={tr('find.close')}
+        title={tr('find.close')}
         onClick={close}
         className="rounded p-1 hover:bg-accent"
       >

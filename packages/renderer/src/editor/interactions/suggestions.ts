@@ -1,4 +1,5 @@
 import type { SuggestionItem } from '@nexnote/kernel';
+import { t as translate } from '../../lib/i18n';
 
 /**
  * DEV-017 补全候选（纯逻辑，浏览器与单测共用）。
@@ -80,12 +81,13 @@ export function filterPageCandidates(pages: PageCandidate[], query: string): Sug
       const aliasPrefix = (p.aliases ?? []).some((a) => a.toLowerCase().startsWith(q));
       return { p, exact, prefix, aliasExact, aliasPrefix };
     })
-    .sort((a, b) =>
-      Number(b.exact) - Number(a.exact)
-      || Number(b.aliasExact) - Number(a.aliasExact)
-      || Number(b.prefix) - Number(a.prefix)
-      || Number(b.aliasPrefix) - Number(a.aliasPrefix)
-      || a.p.title.localeCompare(b.p.title),
+    .sort(
+      (a, b) =>
+        Number(b.exact) - Number(a.exact) ||
+        Number(b.aliasExact) - Number(a.aliasExact) ||
+        Number(b.prefix) - Number(a.prefix) ||
+        Number(b.aliasPrefix) - Number(a.aliasPrefix) ||
+        a.p.title.localeCompare(b.p.title),
     );
   return scored.map(({ p }) => {
     const aliases = p.aliases ?? [];
@@ -107,7 +109,7 @@ export function withUncreated(pages: PageCandidate[], query: string): Suggestion
     items.push({
       id: titlePart,
       title: titlePart,
-      hint: '创建新页面',
+      hint: translate('suggest.createNewPage'),
       meta: 'uncreated',
       insert: insertPayload(`${titlePart}.md`, parsed) ?? { target: titlePart },
     });
@@ -136,6 +138,6 @@ export function filterTagCandidates(tags: string[], query: string): SuggestionIt
     .map((t) => ({
       id: t,
       title: t,
-      hint: t.includes('/') ? '嵌套' : undefined,
+      hint: t.includes('/') ? translate('suggest.nested') : undefined,
     }));
 }
