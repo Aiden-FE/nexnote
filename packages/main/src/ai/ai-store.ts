@@ -10,6 +10,7 @@ import type {
   AiProviderKind,
   EmbeddingMetric,
 } from '@nexnote/shared';
+import { tCurrent } from '@nexnote/shared';
 import {
   decryptLegacySafeStorage,
   newSecretAccount,
@@ -337,24 +338,25 @@ export class AiStore {
   saveProfile(id: string | undefined, input: AiProfileWriteInput): AiStoredProfile {
     const now = Date.now();
     const existing = id ? this.getProfile(id) : undefined;
-    if (id && !existing) throw new Error(`Profile 不存在: ${id}`);
+    if (id && !existing) throw new Error(tCurrent('ai.error.PROFILE_NOT_FOUND', { id }));
 
     const name = input.name.trim();
     const defaultModel = input.defaultModel.trim();
     const rawBaseUrl = input.baseUrl.trim();
-    if (!name) throw new Error('Profile 名称不能为空');
-    if (!defaultModel) throw new Error('默认模型不能为空');
+    if (!name) throw new Error(tCurrent('ai.error.PROFILE_NAME_EMPTY'));
+    if (!defaultModel) throw new Error(tCurrent('ai.error.DEFAULT_MODEL_EMPTY'));
     if (input.kind === 'local-embedding') {
       if (rawBaseUrl !== 'local://embedding')
-        throw new Error('本地 embedding 地址必须为 local://embedding');
+        throw new Error(tCurrent('ai.error.LOCAL_EMBEDDING_URL'));
       if (typeof input.apiKey === 'string' && input.apiKey.length > 0) {
-        throw new Error('本地 embedding 不接受凭据');
+        throw new Error(tCurrent('ai.error.LOCAL_EMBEDDING_CREDENTIAL'));
       }
     } else {
-      if (!/^https?:\/\//i.test(rawBaseUrl)) throw new Error('base-url 必须以 http(s):// 开头');
+      if (!/^https?:\/\//i.test(rawBaseUrl))
+        throw new Error(tCurrent('ai.error.BASE_URL_PROTOCOL'));
       const u = new URL(rawBaseUrl);
       if (u.username || u.password) {
-        throw new Error('base-url 不得包含用户名/密码（请使用 API Key 字段）');
+        throw new Error(tCurrent('ai.error.BASE_URL_PASSWORD'));
       }
     }
 
@@ -428,9 +430,9 @@ export class AiStore {
 
   setDefaultProfile(id: string): void {
     const profile = this.getProfile(id);
-    if (!profile) throw new Error(`Profile 不存在: ${id}`);
+    if (!profile) throw new Error(tCurrent('ai.error.PROFILE_NOT_FOUND', { id }));
     if (!this.isChatCapable(profile))
-      throw new Error('本地 embedding Profile 不能作为全局聊天默认');
+      throw new Error(tCurrent('ai.error.LOCAL_EMBEDDING_DEFAULT_CHAT'));
     this.data = { ...this.data, defaultProfileId: id };
     this.persist();
     // 默认 Profile 变化 → embedding「跟随默认」的虚拟源变 → 指纹刷新
@@ -440,9 +442,9 @@ export class AiStore {
   setFeatureAssignment(feature: AiFeatureKey, assignment: AiFeatureAssignment | null): void {
     if (assignment) {
       if (!this.getProfile(assignment.profileId)) {
-        throw new Error(`Profile 不存在: ${assignment.profileId}`);
+        throw new Error(tCurrent('ai.error.PROFILE_NOT_FOUND', { id: assignment.profileId }));
       }
-      if (!assignment.model.trim()) throw new Error('模型不能为空');
+      if (!assignment.model.trim()) throw new Error(tCurrent('ai.error.DEFAULT_MODEL_EMPTY'));
     }
     this.data = {
       ...this.data,

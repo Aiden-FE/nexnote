@@ -194,3 +194,7 @@ status: in_progress
   zh/en 各 1228 key。`ai-service` / `ai-openai-adapter` / local embedding /
   catalog targeted tests 通过；门禁 195 files / 1843 passed / 3 skipped
   退出码 0。
+- 阶段③第十一批（2026-10-10）：AI store Profile / assignment 校验错误成文；
+  Profile 名、模型名、Base URL 和导入 skipped 名称保留数据边界。新增 5 key，
+  zh/en 各 1233 key。`ai-store` / `ai-service` / catalog targeted tests 通过；
+  门禁 195 files / 1843 passed / 3 skipped 退出码 0。
