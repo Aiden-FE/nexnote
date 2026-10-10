@@ -14,6 +14,7 @@ import type {
   GitRestorePreview,
   GitStatus,
 } from '@nexnote/shared';
+import { tCurrent } from '@nexnote/shared';
 
 const AUTO_PREFIX = 'nexnote:auto:';
 const MANUAL_PREFIX = 'nexnote:manual:';
@@ -342,7 +343,7 @@ export class GitService {
     await this.ensureSyncGuard(safe);
     await this.commit(safe, INITIAL_MESSAGE);
     const result = {
-      message: 'Git 仓库已初始化并创建初始提交',
+      message: tCurrent('git.service.initializeSuccess'),
       status: await this.statusFor(safe),
     };
     this.notifyStatus(result.status);
@@ -429,15 +430,15 @@ export class GitService {
   async commitManual(message: string): Promise<GitOperationResult> {
     const root = this.requireRoot();
     const text = cleanSummary(message);
-    if (!text) throw new GitServiceError('提交说明不能为空', 'EMPTY_MESSAGE');
+    if (!text) throw new GitServiceError(tCurrent('git.service.EMPTY_MESSAGE'), 'EMPTY_MESSAGE');
     if (await this.isRebaseOrMergeInProgress(root)) {
       throw new GitServiceError(
-        '存在未完成的 rebase/merge，请先在同步面板中止或继续后再提交',
+        tCurrent('git.service.REBASE_IN_PROGRESS_COMMIT'),
         'REBASE_IN_PROGRESS',
       );
     }
     await this.commit(root, `${MANUAL_PREFIX} ${text}`);
-    const result = { message: '已创建手动提交', status: await this.statusFor(root) };
+    const result = { message: tCurrent('git.service.manualCommitCreated'), status: await this.statusFor(root) };
     this.notifyStatus(result.status);
     return result;
   }
@@ -462,9 +463,9 @@ export class GitService {
     } else if (hasMerge) {
       await git.raw(['merge', '--abort']);
     } else {
-      throw new GitServiceError('当前没有进行中的 rebase 或 merge', 'NO_OPERATION');
+      throw new GitServiceError(tCurrent('git.service.NO_OPERATION_ABORT'), 'NO_OPERATION');
     }
-    return this.notified({ message: '已中止未完成的 rebase/merge', root });
+    return this.notified({ message: tCurrent('git.service.abortSuccess'), root });
   }
 
   /**
@@ -483,10 +484,10 @@ export class GitService {
       Boolean(await this.resolveGitDirEntry(root, 'rebase-apply'));
     const hasMerge = await this.hasGitDirEntry(root, 'MERGE_HEAD');
     if (!isRebase && !hasMerge)
-      throw new GitServiceError('当前没有进行中的 rebase/merge，无需解决', 'NO_OPERATION');
+      throw new GitServiceError(tCurrent('git.service.NO_OPERATION_RESOLVE'), 'NO_OPERATION');
     if (!isRebase)
       throw new GitServiceError(
-        '合并（merge）产生的冲突无法自动解决，请人工处理后重试',
+        tCurrent('git.service.MERGE_CONFLICT_NOT_SELF_RESOLVABLE'),
         'CONFLICT_NOT_SELF_RESOLVABLE',
       );
     // 逐个 commit 解决：一个 rebase 可能停多次（每个 commit 一次）。
@@ -501,14 +502,16 @@ export class GitService {
     for (let step = 0; step < 50; step += 1) {
       const conflicted = await this.rawStatusPorcelain(root);
       if (conflicted.length === 0) {
-        throw new GitServiceError('当前没有未解决的冲突文件', 'NO_OPERATION');
+        throw new GitServiceError(tCurrent('git.service.NO_CONFLICT_FILES'), 'NO_OPERATION');
       }
       const foreign = conflicted.filter(
         (file) => !GitService.SELF_RESOLVABLE_CONFLICT_FILES.includes(file),
       );
       if (foreign.length > 0) {
         throw new GitServiceError(
-          `冲突涉及非应用自有文件（${foreign.join('、')}），需要人工解决；已保留现场`,
+          tCurrent('git.service.CONFLICT_FOREIGN_FILES', {
+            files: foreign.join(tCurrent('git.service.fileSeparator')),
+          }),
           'CONFLICT_NOT_SELF_RESOLVABLE',
         );
       }
@@ -518,7 +521,7 @@ export class GitService {
         await continueGit.raw(['rebase', '--continue']);
       } catch (error) {
         throw new GitServiceError(
-          `继续 rebase 失败：${errorMessage(error)}`,
+          tCurrent('git.service.CONFLICT_CONTINUE_FAILED', { message: errorMessage(error) }),
           'CONFLICT_CONTINUE_FAILED',
         );
       }
@@ -527,11 +530,11 @@ export class GitService {
         !(await this.resolveGitDirEntry(root, 'rebase-apply'))
       ) {
         await this.pushAfterResolve(root);
-        return this.notified({ message: '已自动解决同步冲突并完成 rebase', root });
+        return this.notified({ message: tCurrent('git.service.resolveConflictSuccess'), root });
       }
     }
     throw new GitServiceError(
-      'rebase 步骤超出预期，请人工检查仓库状态',
+      tCurrent('git.service.REBASE_STEP_LIMIT'),
       'CONFLICT_CONTINUE_FAILED',
     );
   }
@@ -550,7 +553,7 @@ export class GitService {
     const target = path.join(safe, file);
     const stat = await fsp.lstat(target).catch(() => null);
     if (stat?.isSymbolicLink()) {
-      throw new GitServiceError('冲突文件不能是符号链接', 'INVALID_PATH');
+      throw new GitServiceError(tCurrent('git.service.CONFLICT_FILE_SYMLINK'), 'INVALID_PATH');
     }
     const git = this.git(root);
     const [ours, theirs] = await Promise.all([
@@ -609,7 +612,7 @@ export class GitService {
     const isRebase = Boolean(rebaseMergeDir) || Boolean(rebaseApplyDir);
     const hasMerge = await this.hasGitDirEntry(root, 'MERGE_HEAD');
     if (!isRebase && !hasMerge) {
-      throw new GitServiceError('当前没有进行中的 rebase 或 merge，无需保留', 'NO_OPERATION');
+      throw new GitServiceError(tCurrent('git.service.NO_OPERATION_PRESERVE'), 'NO_OPERATION');
     }
 
     let originalHead: string;
@@ -623,11 +626,11 @@ export class GitService {
       // 留给 doctor 用户在 doctor 之外通过 commit/push 自行处理。
       await git.raw(['merge', '--abort']);
       await this.notified({
-        message: '已中止 merge（merge 状态无法保留本地 commit）',
+        message: tCurrent('git.service.mergeAbortNoPreserve'),
         root,
       });
       return {
-        message: '已中止 merge（merge 状态无法保留本地 commit）',
+        message: tCurrent('git.service.mergeAbortNoPreserve'),
         root,
         aheadCount: 0,
         exported: 0,
@@ -645,7 +648,7 @@ export class GitService {
 
     if (aheadShas.length === 0) {
       await git.raw(['rebase', '--abort']);
-      throw new GitServiceError('没有本地未推送的提交需要保留', 'NO_AHEAD_TO_PRESERVE');
+      throw new GitServiceError(tCurrent('git.service.NO_AHEAD_TO_PRESERVE'), 'NO_AHEAD_TO_PRESERVE');
     }
 
     const safe = await safeVaultPath(root);
@@ -667,7 +670,7 @@ export class GitService {
           name.endsWith('.patch'),
         ).length;
         if (exported !== aheadShas.length) {
-          throw new Error('本地提交备份不完整，已取消中止 rebase');
+          throw new Error(tCurrent('git.service.preserveBackupIncomplete'));
         }
       } finally {
         await fsp.rm(tempIndex, { recursive: true, force: true });
@@ -676,17 +679,17 @@ export class GitService {
       await git.raw(['rebase', '--abort']);
       const restoredHead = (await git.raw(['rev-parse', 'HEAD'])).trim();
       if (restoredHead !== originalHead) {
-        throw new Error('rebase 已中止，但 HEAD 未恢复到原始本地提交');
+        throw new Error(tCurrent('git.service.preserveHeadNotRestored'));
       }
     } catch (error) {
       throw new GitServiceError(
-        `保留本地提交失败：${errorMessage(error)}`,
+        tCurrent('git.service.PRESERVE_LOCAL_FAILED', { message: errorMessage(error) }),
         'PRESERVE_LOCAL_FAILED',
       );
     }
 
     return {
-      message: `已中止 rebase，保留 ${aheadShas.length} 个本地提交（已备份）`,
+      message: tCurrent('git.service.preserveAbortSuccess', { count: aheadShas.length }),
       root,
       aheadCount: aheadShas.length,
       exported,
@@ -732,7 +735,7 @@ export class GitService {
    * committed state.
    */
   private async versionedConfigAlreadyAtHead(root: string, summary: string): Promise<boolean> {
-    if (summary !== '保存知识库布局') return false;
+    if (summary !== tCurrent('git.service.layoutSummary')) return false;
     const git = this.git(root);
     const hasHead = Boolean(
       (await git.raw(['rev-parse', '--verify', 'HEAD']).catch(() => '')).trim(),
@@ -923,8 +926,9 @@ export class GitService {
   async addRemote(name: string, url: string): Promise<GitOperationResult> {
     const root = this.requireRoot();
     if (!/^[A-Za-z][A-Za-z0-9._-]*$/.test(name))
-      throw new GitServiceError('远程名称不合法', 'INVALID_REMOTE');
-    if (!url.trim()) throw new GitServiceError('远程地址不能为空', 'INVALID_REMOTE');
+      throw new GitServiceError(tCurrent('git.service.INVALID_REMOTE_NAME'), 'INVALID_REMOTE');
+    if (!url.trim())
+      throw new GitServiceError(tCurrent('git.service.EMPTY_REMOTE_URL'), 'INVALID_REMOTE');
     const git = this.git(root);
     // Preflight against the URL before touching repository state: a failed
     // check must not leave a newly-added remote or an overwritten URL behind.
@@ -933,14 +937,19 @@ export class GitService {
     } catch (error) {
       await this.notifyCurrentStatus();
       throw new GitServiceError(
-        `远程未保存：授权预检失败。请检查网络、SSH key 或 HTTPS 凭证：${sanitizeRemoteText(errorMessage(error))}`,
+        tCurrent('git.service.REMOTE_AUTH_FAILED', {
+          message: sanitizeRemoteText(errorMessage(error)),
+        }),
         'REMOTE_AUTH_FAILED',
       );
     }
     const remotes = await git.getRemotes();
     if (remotes.some((remote) => remote.name === name)) await git.remote(['set-url', name, url]);
     else await git.addRemote(name, url);
-    const result = { message: `远程 ${name} 已验证`, status: await this.statusFor(root) };
+    const result = {
+      message: tCurrent('git.service.remoteVerified', { name }),
+      status: await this.statusFor(root),
+    };
     this.notifyStatus(result.status);
     return result;
   }
@@ -968,13 +977,13 @@ export class GitService {
       // uncommitted local edits; users must explicitly confirm to bypass.
       if (status.files.length > 0 && input.force !== true) {
         throw new GitServiceError(
-          `当前工作区有 ${status.files.length} 个未提交的变更；请先提交、暂存或显式确认后重试`,
+          tCurrent('git.service.WORKTREE_DIRTY', { count: status.files.length }),
           'WORKTREE_DIRTY',
         );
       }
       const remote = status.current ? await this.branchRemote(git, status.current) : null;
       if (!remote || !status.current)
-        throw new GitServiceError('尚未绑定可拉取的远程分支', 'NO_REMOTE');
+        throw new GitServiceError(tCurrent('git.service.NO_REMOTE_PULL'), 'NO_REMOTE');
       // --no-rebase pins the merge strategy: without it modern Git aborts divergent
       // pulls with "Need to specify how to reconcile divergent branches", which would
       // hide a genuine conflict behind a generic network/auth error.
@@ -983,9 +992,9 @@ export class GitService {
       // A failed pull can leave conflict markers and an unmerged index.
       await this.notifyCurrentStatus();
       if (error instanceof GitServiceError) throw error;
-      throw this.remoteOperationError('拉取', error);
+      throw this.remoteOperationError('pull', error);
     }
-    return this.notified({ message: '拉取完成', root });
+    return this.notified({ message: tCurrent('git.service.pullSuccess'), root });
   }
 
   async push(): Promise<GitOperationResult> {
@@ -995,14 +1004,14 @@ export class GitService {
       const status = await git.status();
       const remote = status.current ? await this.branchRemote(git, status.current) : null;
       if (!remote || !status.current)
-        throw new GitServiceError('尚未绑定可推送的远程分支', 'NO_REMOTE');
+        throw new GitServiceError(tCurrent('git.service.NO_REMOTE_PUSH'), 'NO_REMOTE');
       await this.git(root).push(['-u', remote, status.current]);
     } catch (error) {
       await this.notifyCurrentStatus();
       if (error instanceof GitServiceError) throw error;
-      throw this.remoteOperationError('推送', error);
+      throw this.remoteOperationError('push', error);
     }
-    return this.notified({ message: '推送完成', root });
+    return this.notified({ message: tCurrent('git.service.pushSuccess'), root });
   }
 
   /**
@@ -1026,11 +1035,11 @@ export class GitService {
     };
     // 同步前先落地待提交的自动写入：cancelAutoCommit() 单独使用会把它丢弃，
     // 本次同步随即被 WORKTREE_DIRTY 拦下，且没有任何机制会重新排队（历史缺陷之一）。
-    await this.flushPendingAutoCommit('同步前保存');
+    await this.flushPendingAutoCommit(tCurrent('git.service.autoSummaryBeforeSync'));
     this.cancelAutoCommit();
     const git = this.git(root);
     try {
-      emit({ phase: 'fetching', message: '正在拉取远程更新…' });
+      emit({ phase: 'fetching', message: tCurrent('git.service.progress.fetching') });
       const preStatus = await git.status();
       if (preStatus.files.length > 0) {
         // 仅 dirty 在 .gitignore（且其内容含两份 ADR-0016 模板块）时自动收敛；
@@ -1040,7 +1049,7 @@ export class GitService {
         const dirtyGitignore = dirtyOnly.includes('.gitignore');
         if (dirtyMeaningful.length > 0) {
           throw new GitServiceError(
-            `当前工作区有 ${dirtyMeaningful.length} 个未提交的变更；请先提交、暂存或显式确认后重试`,
+            tCurrent('git.service.WORKTREE_DIRTY', { count: dirtyMeaningful.length }),
             'WORKTREE_DIRTY',
           );
         }
@@ -1048,7 +1057,7 @@ export class GitService {
           const recovered = await this.recoverDuplicatedGitignore(root);
           if (!recovered) {
             throw new GitServiceError(
-              '.gitignore 存在未提交的修改，请先提交、暂存或显式确认后重试',
+              tCurrent('git.service.GITIGNORE_DIRTY'),
               'WORKTREE_DIRTY',
             );
           }
@@ -1056,14 +1065,17 @@ export class GitService {
       }
       const remote = preStatus.current ? await this.branchRemote(git, preStatus.current) : null;
       if (!remote || !preStatus.current)
-        throw new GitServiceError('尚未绑定可同步的远程分支', 'NO_REMOTE');
+        throw new GitServiceError(tCurrent('git.service.NO_REMOTE_SYNC'), 'NO_REMOTE');
       await git.fetch(remote);
       const afterFetch = await git.status();
       if (afterFetch.behind > 0) {
         const phase = options.strategy === 'rebase' ? 'rebasing' : 'merging';
         emit({
           phase,
-          message: options.strategy === 'rebase' ? '正在对齐远程提交…' : '正在合并远程变更…',
+          message:
+            options.strategy === 'rebase'
+              ? tCurrent('git.service.progress.rebasing')
+              : tCurrent('git.service.progress.merging'),
         });
         if (options.strategy === 'rebase') {
           await git.raw(['rebase', `${remote}/${preStatus.current}`]);
@@ -1073,42 +1085,42 @@ export class GitService {
       }
       const postMerge = await git.status();
       if (postMerge.ahead > 0) {
-        emit({ phase: 'pushing', message: '正在推送本地提交…' });
+        emit({ phase: 'pushing', message: tCurrent('git.service.progress.pushing') });
         await git.push(['-u', remote, preStatus.current]);
       }
       emit({ phase: 'done' });
       const final = await this.statusFor(root);
       this.notifyStatus(final);
-      return { message: '同步完成', status: final };
+      return { message: tCurrent('git.service.syncSuccess'), status: final };
     } catch (error) {
       emit({ phase: 'error', message: error instanceof Error ? error.message : String(error) });
       await this.notifyCurrentStatus();
       if (error instanceof GitServiceError) throw error;
-      throw this.remoteOperationError('同步', error);
+      throw this.remoteOperationError('sync', error);
     }
   }
 
   /** Clone only into a validated direct child name under a caller-validated parent. */
   async cloneInto(url: string, parentDir: string, name: string): Promise<GitOperationResult> {
     if (!path.isAbsolute(parentDir))
-      throw new GitServiceError('克隆父目录必须为绝对路径', 'INVALID_PATH');
+      throw new GitServiceError(tCurrent('git.service.clone.PARENT_NOT_ABSOLUTE'), 'INVALID_PATH');
     if (!name || name === '.' || name === '..' || path.basename(name) !== name) {
-      throw new GitServiceError('克隆目录名称不合法', 'INVALID_PATH');
+      throw new GitServiceError(tCurrent('git.service.clone.INVALID_NAME'), 'INVALID_PATH');
     }
     const targetDir = path.resolve(parentDir, name);
     if (path.dirname(targetDir) !== path.resolve(parentDir)) {
-      throw new GitServiceError('克隆目标必须是父目录的直接子目录', 'INVALID_PATH');
+      throw new GitServiceError(tCurrent('git.service.clone.NOT_DIRECT_CHILD'), 'INVALID_PATH');
     }
     const safeParent = await safeVaultPath(parentDir);
     const safeTarget = await safeVaultPath(path.join(safeParent, name));
     await this.git(safeParent).clone(url, safeTarget);
     this.setRoot(safeTarget);
-    return this.notified({ message: '克隆完成', root: safeTarget });
+    return this.notified({ message: tCurrent('git.service.cloneSuccess'), root: safeTarget });
   }
 
   /** 轻量探测：ls-remote --heads，仅验证远端可达（不下载仓库内容）。 */
   async lsRemote(url: string): Promise<void> {
-    if (!url.trim()) throw new GitServiceError('远程地址不能为空', 'INVALID_REMOTE');
+    if (!url.trim()) throw new GitServiceError(tCurrent('git.service.EMPTY_REMOTE_URL'), 'INVALID_REMOTE');
     // ls-remote 不需要本地仓库，但 simple-git 的 baseDir 必须存在。
     // 使用 Node 的跨平台临时目录，避免 Windows 上不存在 `/tmp` 导致预检恒失败。
     const baseDir = tmpdir();
@@ -1145,7 +1157,10 @@ export class GitService {
       relative,
     ]);
     this.lastCommitAt = Date.now();
-    return this.notified({ message: `已恢复 ${relative}，并创建新的恢复提交`, root });
+    return this.notified({
+      message: tCurrent('git.service.restoreSuccess', { path: relative }),
+      root,
+    });
   }
 
   private hasUnresolvedConflict(status: Awaited<ReturnType<SimpleGit['status']>>): boolean {
@@ -1311,7 +1326,7 @@ export class GitService {
       if (leaked.length > 0) {
         console.error('[git] sync guard blocked commit:', leaked.length);
         throw new GitServiceError(
-          '同步护栏检测到受保护路径即将进入提交，已中止',
+          tCurrent('git.service.SYNC_GUARD_VIOLATION'),
           'SYNC_GUARD_VIOLATION',
         );
       }
@@ -1415,14 +1430,14 @@ export class GitService {
       .open(filename, constants.O_RDWR | constants.O_CREAT | constants.O_NOFOLLOW, 0o666)
       .catch((error: NodeJS.ErrnoException) => {
         if (error.code === 'ELOOP') {
-          throw new GitServiceError('同步护栏要求 .gitignore 为普通文件', 'INVALID_PATH');
+          throw new GitServiceError(tCurrent('git.service.GITIGNORE_SYMLINK'), 'INVALID_PATH');
         }
         throw error;
       });
     try {
       const opened = await handle.stat();
       if (!opened.isFile() || opened.nlink > 1) {
-        throw new GitServiceError('同步护栏要求 .gitignore 为独立普通文件', 'INVALID_PATH');
+        throw new GitServiceError(tCurrent('git.service.GITIGNORE_NOT_REGULAR'), 'INVALID_PATH');
       }
       const existing = await handle.readFile();
       const bomBytes = Buffer.from([0xef, 0xbb, 0xbf]);
@@ -1591,7 +1606,7 @@ export class GitService {
   ): SimpleGit {
     if (runtime.source === 'missing') {
       throw new GitServiceError(
-        '应用内捆绑 Git 缺失（安装或打包异常），且未启用系统 Git 回退；请重新安装或到设置中启用「使用系统 Git」',
+        tCurrent('git.service.GIT_BINARY_MISSING'),
         'GIT_BINARY_MISSING',
       );
     }
@@ -1655,13 +1670,13 @@ export class GitService {
   }
 
   private requireRoot(): string {
-    if (!this.root) throw new GitServiceError('尚未打开任何知识库', 'NO_VAULT');
+    if (!this.root) throw new GitServiceError(tCurrent('vault.error.NO_VAULT'), 'NO_VAULT');
     return this.root;
   }
 
   private requireVaultPath(file: string): string {
     if (!file || path.isAbsolute(file) || file.split(/[\\/]/).includes('..')) {
-      throw new GitServiceError('文件路径必须位于当前知识库内', 'INVALID_PATH');
+      throw new GitServiceError(tCurrent('git.service.PATH_OUTSIDE_VAULT'), 'INVALID_PATH');
     }
     return file.replace(/\\/g, '/');
   }
@@ -1676,7 +1691,7 @@ export class GitService {
       relative.endsWith('/.') ||
       relative.split('/').some((segment) => segment === '.')
     ) {
-      throw new GitServiceError('恢复目标必须是知识库内的已跟踪文件', 'INVALID_PATH');
+      throw new GitServiceError(tCurrent('git.service.restoreMustBeTracked'), 'INVALID_PATH');
     }
 
     // lstat every existing component: neither preview nor restore may follow a vault
@@ -1686,25 +1701,25 @@ export class GitService {
       current = path.join(current, segment);
       const stat = await fsp.lstat(current).catch(() => null);
       if (stat?.isSymbolicLink()) {
-        throw new GitServiceError('恢复目标不能经过符号链接', 'INVALID_PATH');
+        throw new GitServiceError(tCurrent('git.service.restoreSymlinkRejected'), 'INVALID_PATH');
       }
     }
 
     const git = this.git(root);
     const tracked = await git.raw(['ls-tree', '-r', '--name-only', commit, '--', normalized]);
     if (!tracked.split(/\r?\n/).includes(normalized)) {
-      throw new GitServiceError('恢复目标必须是所选版本中的已跟踪文件', 'INVALID_PATH');
+      throw new GitServiceError(tCurrent('git.service.restoreNotInCommit'), 'INVALID_PATH');
     }
     return normalized;
   }
 
-  private remoteOperationError(action: string, error: unknown): GitServiceError {
+  private remoteOperationError(action: 'pull' | 'push' | 'sync', error: unknown): GitServiceError {
     const text = sanitizeRemoteText(errorMessage(error));
     const conflict = /CONFLICT|Automatic merge failed|UPDATE_NEEDED|unmerged/i.test(text);
     return new GitServiceError(
       conflict
-        ? `${action}遇到冲突，请在仓库目录中手动解决后再继续：${text}`
-        : `${action}失败。请检查远程地址、网络、SSH key 或 HTTPS 凭证：${text}`,
+        ? tCurrent(`git.service.remoteConflict.${action}`, { message: text })
+        : tCurrent(`git.service.remoteFailed.${action}`, { message: text }),
       conflict ? 'MERGE_CONFLICT' : 'REMOTE_OPERATION_FAILED',
     );
   }

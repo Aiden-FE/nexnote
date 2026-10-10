@@ -167,3 +167,10 @@ status: in_progress
   tests 通过；全量门禁 195 files / 1843 passed / 3 skipped 退出码 0
   （`list-dev069` 曾出现退出进程后的 ProseMirror DOM timer unhandled error，
   单独重跑通过，全量重跑干净退出 0）。
+- 阶段③第六批（2026-10-10）：GitService 用户可见操作状态与安全校验错误
+  迁移。覆盖初始化、手动提交、rebase/merge 中止与保留、冲突自动收敛、
+  远程保存/pull/push/sync 进度与结果、clone / restore / sync guard 校验；
+  Git commit message、用户文件路径、远端原始错误与凭据脱敏文本保留边界，
+  remote action 只作为稳定词典分段。新增 59 key，zh/en 各 1170 key。
+  `git-service` / catalog targeted tests 通过；门禁 195 files /
+  1843 passed / 3 skipped 退出码 0。
