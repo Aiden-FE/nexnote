@@ -8,6 +8,7 @@ import type {
 } from '@nexnote/shared';
 import { settingsSectionRegistry } from '../../registries';
 import { invoke, onEvent } from '../../lib/ipc';
+import { t, useI18n } from '../../lib/i18n';
 
 settingsSectionRegistry.register({
   id: 'updates',
@@ -24,6 +25,7 @@ settingsSectionRegistry.register({
  * 不在 renderer localStorage 做第二份真值；设置变更通过 IPC 写回主进程。
  */
 export function UpdateSettingsSection() {
+  const tr = useI18n();
   const [settings, setSettings] = useState<UpdateSettings>({
     channel: 'stable',
     autoDownload: true,
@@ -104,7 +106,7 @@ export function UpdateSettingsSection() {
       if (install.action === 'manual-download') {
         setStatus({
           status: 'downloaded',
-          message: `当前 Mac 架构 ${install.arch} 未满足自动安装条件；已打开 Releases，请下载对应架构。`,
+          message: t('updates.manualDownload', { arch: install.arch }),
           channel: settings.channel,
           action: 'manual-download',
           arch: install.arch,
@@ -125,13 +127,11 @@ export function UpdateSettingsSection() {
   return (
     <section className="space-y-4 text-sm" data-testid="update-settings">
       <div>
-        <h3 className="text-base font-medium">应用更新</h3>
-        <p className="text-muted-foreground">
-          按通道检查 GitHub Releases；所有更新设置保存在主进程，本地不做双份缓存。
-        </p>
+        <h3 className="text-base font-medium">{tr('updates.title')}</h3>
+        <p className="text-muted-foreground">{tr('updates.description')}</p>
       </div>
       <label className="flex items-center justify-between gap-4">
-        <span>更新通道</span>
+        <span>{tr('updates.channel')}</span>
         <select
           value={settings.channel}
           disabled={busy || !loaded}
@@ -147,9 +147,9 @@ export function UpdateSettingsSection() {
       </label>
       <label className="flex items-center justify-between gap-4">
         <span>
-          自动下载
+          {tr('updates.autoDownload')}
           <small className="block text-muted-foreground">
-            检测到新版本后后台下载，安装仍需确认
+            {tr('updates.autoDownloadDescription')}
           </small>
         </span>
         <input
@@ -161,8 +161,10 @@ export function UpdateSettingsSection() {
       </label>
       <label className="flex items-center justify-between gap-4">
         <span>
-          启动时检查更新
-          <small className="block text-muted-foreground">应用启动约 5 秒后在后台静默检查</small>
+          {tr('updates.checkOnLaunch')}
+          <small className="block text-muted-foreground">
+            {tr('updates.checkOnLaunchDescription')}
+          </small>
         </span>
         <input
           type="checkbox"
@@ -172,12 +174,16 @@ export function UpdateSettingsSection() {
         />
       </label>
       <div className="rounded border p-3">
-        <p className="font-medium">{status.message ?? '尚未检查更新'}</p>
-        {status.version && <p className="text-xs text-muted-foreground">版本 {status.version}</p>}
+        <p className="font-medium">{status.message ?? tr('updates.statusFallback')}</p>
+        {status.version && (
+          <p className="text-xs text-muted-foreground">
+            {tr('updates.versionLabel', { version: status.version })}
+          </p>
+        )}
         {progress !== null && (
           <div
             className="mt-2 h-2 overflow-hidden rounded bg-muted"
-            aria-label={`下载进度 ${Math.round(progress)}%`}
+            aria-label={tr('updates.downloadProgress', { percent: Math.round(progress) })}
           >
             <div
               className="h-full bg-primary transition-[width]"
@@ -194,7 +200,9 @@ export function UpdateSettingsSection() {
           className="inline-flex items-center gap-1 rounded border px-3 py-1.5 disabled:opacity-50"
         >
           <RefreshCw className="size-3.5" />{' '}
-          {status.status === 'error' && status.retry === 'check' ? '重新检查' : '检查更新'}
+          {status.status === 'error' && status.retry === 'check'
+            ? tr('updates.checkRetry')
+            : tr('updates.check')}
         </button>
         {(status.status === 'available' && !settings.autoDownload) ||
         (status.status === 'error' && status.retry === 'download') ? (
@@ -204,7 +212,8 @@ export function UpdateSettingsSection() {
             onClick={() => void action(() => invoke('app:downloadUpdate'))}
             className="inline-flex items-center gap-1 rounded bg-primary px-3 py-1.5 text-primary-foreground disabled:opacity-50"
           >
-            <Download className="size-3.5" /> {status.retry === 'download' ? '重试下载' : '下载'}
+            <Download className="size-3.5" />{' '}
+            {status.retry === 'download' ? tr('updates.downloadRetry') : tr('updates.download')}
           </button>
         ) : null}
         {(status.status === 'downloaded' || (status.status === 'error' && status.recoverable)) && (
@@ -214,30 +223,31 @@ export function UpdateSettingsSection() {
             onClick={() => void handleInstall()}
             className="inline-flex items-center gap-1 rounded bg-primary px-3 py-1.5 text-primary-foreground disabled:opacity-50"
           >
-            <Rocket className="size-3.5" /> 重启并安装
+            <Rocket className="size-3.5" /> {tr('updates.install')}
           </button>
         )}
         {status.action === 'manual-download' && (
           <p className="w-full text-xs text-muted-foreground" role="status">
-            Mac {status.arch ?? '当前'} 架构未满足自动安装条件。已打开 GitHub
-            Releases；如系统提示隔离，可在终端执行
+            {tr('updates.manualDownloadDetail', { arch: status.arch ?? 'current' })}
             <code className="mx-1 rounded bg-muted px-1">xattr -d com.apple.quarantine</code>
-            后重新打开下载的应用。
+            {tr('updates.manualDownloadAfterCommand')}
           </p>
         )}
         {status.status === 'error' && status.recoverable && (
           <p className="w-full text-xs text-muted-foreground" role="alert">
-            安装未完成，更新仍已保留；请重试“重启并安装”。
+            {tr('updates.installIncomplete')}
           </p>
         )}
         {status.status === 'error' && status.retry && (
           <p className="w-full text-xs text-muted-foreground" role="alert">
-            {status.retry === 'download' ? '下载失败，可重试下载。' : '检查失败，可重新检查更新。'}
+            {status.retry === 'download'
+              ? tr('updates.downloadFailedRetry')
+              : tr('updates.checkFailedRetry')}
           </p>
         )}
       </div>
       <p className="text-xs text-muted-foreground">
-        自动检查在应用启动 5 秒后执行（若已启用）；下载完成后始终需要你确认安装。
+        {tr('updates.scheduleNote')}
       </p>
     </section>
   );

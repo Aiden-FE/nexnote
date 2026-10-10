@@ -20,6 +20,7 @@ import {
   type UpdaterPlatformAdapter,
   type CommandOutput,
 } from '../src/updater';
+import { getCurrentLanguage, setCurrentLanguage } from '@nexnote/shared';
 
 function makeAdapter() {
   const listeners = new Map<string, (...args: unknown[]) => void>();
@@ -56,6 +57,7 @@ afterEach(() => {
   restore();
   restorePlatform();
   process.env = { ...envBackup };
+  setCurrentLanguage('zh-CN');
 });
 
 describe('channel resolution', () => {
@@ -157,6 +159,23 @@ describe('channel resolution', () => {
 });
 
 describe('updater policy', () => {
+  it('localizes app-owned status messages with the shared language authority', async () => {
+    delete process.env.NEXNOTE_UPDATE_CHANNEL;
+    envBackup = { ...process.env };
+    setCurrentLanguage('en-US');
+    const { adapter } = makeAdapter();
+    restore = setUpdaterAdapterForTests(adapter, { isPackaged: false, getVersion: () => '0.1.0' });
+    expect(await checkForUpdates()).toMatchObject({
+      status: 'not-configured',
+      message: 'Update channels are disabled in development mode',
+    });
+    expect(setUpdateChannel('beta')).toMatchObject({
+      status: 'channel-switched',
+      message: 'Switched to the beta update channel',
+    });
+    expect(getCurrentLanguage()).toBe('en-US');
+  });
+
   it('keeps development mode explicitly unconfigured', async () => {
     delete process.env.NEXNOTE_UPDATE_CHANNEL;
     envBackup = { ...process.env };

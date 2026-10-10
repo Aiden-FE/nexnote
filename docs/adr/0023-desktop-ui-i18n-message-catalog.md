@@ -117,3 +117,9 @@ status: in_progress
   新增 `window-menu.test.ts` 锁定 zh/en 菜单模板与菜单动作；门禁
   195 files / 1833 passed / 3 skipped。updater / Git / doctor 消息仍在阶段③
   剩余批次处理。
+- 阶段③第二批（2026-10-10）：自动更新状态消息与更新设置界面迁移，包括检查、
+  可用、下载、确认、安装、通道切换、开发模式禁用和 Mac 手动下载提示。主进程
+  `message` 为应用自有状态文案；adapter / IPC 原始错误保留上游文本边界。
+  新增 37 key，消息目录 zh/en 各 778 key。`updater.test.ts` 锁定 en-US 状态
+  成文，`settings-ui.test.tsx` 锁定更新界面 en-US 渲染无 CJK 残留；门禁
+  195 files / 1835 passed / 3 skipped。

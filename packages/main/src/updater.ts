@@ -8,6 +8,7 @@ import type {
   UpdateSettings,
   UpdateSettingsPatch,
 } from '@nexnote/shared';
+import { tCurrent } from '@nexnote/shared';
 
 type Log = (...args: unknown[]) => void;
 type SendStatus = (
@@ -127,7 +128,8 @@ function allowedUpdateBase(raw: string | undefined, packaged: boolean): string |
   }
 }
 function feedConfig(channel: UpdateChannel): UpdateFeedConfig {
-  if (!VALID_CHANNELS.includes(channel)) throw new Error(`非法更新通道: ${channel}`);
+  if (!VALID_CHANNELS.includes(channel))
+    throw new Error(tCurrent('updates.channelUnsupported', { channel }));
   const genericBase = allowedUpdateBase(testUpdateUrl, electronApp.isPackaged);
   if (genericBase)
     return {
@@ -188,7 +190,7 @@ export function createDefaultUpdaterPlatform(): UpdaterPlatformAdapter {
       const { shell } = require('electron') as {
         shell?: { openExternal(url: string): Promise<void> };
       };
-      if (!shell?.openExternal) throw new Error('系统浏览器不可用');
+      if (!shell?.openExternal) throw new Error('system browser unavailable');
       await shell.openExternal(url);
     },
   };
@@ -341,7 +343,7 @@ export function initAutoUpdater(
     );
   });
   a.on('checking-for-update', () => {
-    if (runGeneration === generation) emit('checking', '正在检查更新…');
+    if (runGeneration === generation) emit('checking', tCurrent('updates.checking'));
   });
   a.on('update-available', (...args) => {
     if (runGeneration !== generation) return;
@@ -353,19 +355,19 @@ export function initAutoUpdater(
     availableVersion = info.version;
     downloadedVersion = undefined;
     downloadInFlight = false;
-    emit('available', `发现新版本 ${info.version}`);
+    emit('available', tCurrent('updates.available', { version: info.version }));
   });
   a.on('update-not-available', () => {
     if (runGeneration !== generation) return;
     availableVersion = undefined;
     downloadedVersion = undefined;
     downloadInFlight = false;
-    emit('up-to-date', `当前 ${electronApp.getVersion()} 已是最新`);
+    emit('up-to-date', tCurrent('updates.upToDate', { version: electronApp.getVersion() }));
   });
   a.on('download-progress', (...args) => {
     if (runGeneration === generation) {
       const p = args[0] as { percent?: number } | undefined;
-      emit('downloading', '正在下载更新…', p?.percent ?? 0);
+      emit('downloading', tCurrent('updates.downloading'), p?.percent ?? 0);
     }
   });
   a.on('update-downloaded', (...args) => {
@@ -377,7 +379,7 @@ export function initAutoUpdater(
     if (!availableVersion) return;
     downloadedVersion = availableVersion;
     downloadInFlight = false;
-    emit('downloaded', '更新已下载，可重启安装');
+    emit('downloaded', tCurrent('updates.downloaded'));
   });
   if (checkOnLaunchSetting)
     setTimeout(() => {
@@ -387,7 +389,7 @@ export function initAutoUpdater(
 
 export function setUpdateChannel(channel: UpdateChannel): UpdateCheckResult {
   if (!VALID_CHANNELS.includes(channel))
-    return emit('error', `不支持的更新通道: ${channel}（必须是 stable/beta/alpha）`);
+    return emit('error', tCurrent('updates.channelUnsupported', { channel }));
   clearInstallTimer();
   generation += 1;
   activeChannel = channel;
@@ -400,7 +402,7 @@ export function setUpdateChannel(channel: UpdateChannel): UpdateCheckResult {
     a.allowDowngrade = false;
     if (testUpdateUrl && allowedUpdateBase(testUpdateUrl, true)) a.setFeedURL(feedConfig(channel));
   }
-  return emit('channel-switched', `已切换至 ${channel} 更新通道`);
+  return emit('channel-switched', tCurrent('updates.channelSwitched', { channel }));
 }
 export function getUpdateSettings(): UpdateSettings {
   return {
@@ -422,16 +424,16 @@ export async function checkForUpdates(expectedGeneration = generation): Promise<
   if (!electronApp.isPackaged)
     return {
       status: 'not-configured',
-      message: '开发模式下更新通道未启用',
+      message: tCurrent('updates.devCheckDisabled'),
       channel: activeChannel,
     };
   try {
-    emit('checking', '正在检查更新…');
+    emit('checking', tCurrent('updates.checking'));
     const result = await getAdapter().checkForUpdates();
     if (expectedGeneration !== generation)
       return {
         status: 'error',
-        message: '更新通道已切换',
+        message: tCurrent('updates.channelSwitched', { channel: activeChannel }),
         channel: activeChannel,
         retry: 'check',
       };
@@ -439,12 +441,12 @@ export async function checkForUpdates(expectedGeneration = generation): Promise<
     if (isStrictlyNewer(remoteVersion)) {
       if (remoteVersion !== availableVersion) downloadedVersion = undefined;
       availableVersion = remoteVersion;
-      return emit('available', `发现新版本 ${remoteVersion}`);
+      return emit('available', tCurrent('updates.available', { version: remoteVersion }));
     }
     availableVersion = undefined;
     downloadedVersion = undefined;
     downloadInFlight = false;
-    return emit('up-to-date', `当前 ${electronApp.getVersion()} 已是最新`);
+    return emit('up-to-date', tCurrent('updates.upToDate', { version: electronApp.getVersion() }));
   } catch (e) {
     downloadInFlight = false;
     return emit('error', e instanceof Error ? e.message : String(e), undefined, {
@@ -457,31 +459,42 @@ export async function downloadUpdate(): Promise<UpdateCheckResult> {
   if (!electronApp.isPackaged)
     return {
       status: 'not-configured',
-      message: '开发模式不能下载发布更新',
+      message: tCurrent('updates.devDownloadDisabled'),
       channel: activeChannel,
     };
   if (!availableVersion)
     return {
       status: 'error',
-      message: '没有可下载的更新，请先检查更新',
+      message: tCurrent('updates.noDownloadAvailable'),
       channel: activeChannel,
       retry: 'check',
     };
-  if (downloadedVersion === availableVersion) return emit('downloaded', '更新已下载，可重启安装');
-  if (downloadInFlight) return emit('downloading', '更新正在下载…');
+  if (downloadedVersion === availableVersion)
+    return emit('downloaded', tCurrent('updates.downloaded'));
+  if (downloadInFlight) return emit('downloading', tCurrent('updates.downloadingInFlight'));
   try {
     downloadInFlight = true;
-    emit('downloading', '正在下载更新…', 0);
+    emit('downloading', tCurrent('updates.downloading'), 0);
     await getAdapter().downloadUpdate();
     if (runGeneration !== generation)
-      return { status: 'error', message: '更新通道已切换', channel: activeChannel, retry: 'check' };
+      return {
+        status: 'error',
+        message: tCurrent('updates.channelSwitched', { channel: activeChannel }),
+        channel: activeChannel,
+        retry: 'check',
+      };
     downloadInFlight = false;
     return downloadedVersion === availableVersion
-      ? emit('downloaded', '更新已下载，可重启安装')
-      : emit('downloading', '正在等待下载确认…');
+      ? emit('downloaded', tCurrent('updates.downloaded'))
+      : emit('downloading', tCurrent('updates.waitingDownloadConfirmation'));
   } catch (e) {
     if (runGeneration !== generation)
-      return { status: 'error', message: '更新通道已切换', channel: activeChannel, retry: 'check' };
+      return {
+        status: 'error',
+        message: tCurrent('updates.channelSwitched', { channel: activeChannel }),
+        channel: activeChannel,
+        retry: 'check',
+      };
     downloadInFlight = false;
     return emit('error', e instanceof Error ? e.message : String(e), undefined, {
       retry: 'download',
@@ -495,7 +508,7 @@ export async function installUpdate(): Promise<UpdateInstallResult> {
     downloadedVersion !== availableVersion ||
     installing
   )
-    throw new Error('没有可安装的已下载更新');
+    throw new Error(tCurrent('updates.noDownloaded'));
   if (platformAdapter.platform === 'darwin') {
     const bundlePath = platformAdapter.getAppBundlePath();
     const signature = bundlePath
@@ -524,7 +537,7 @@ export async function installUpdate(): Promise<UpdateInstallResult> {
   }
   try {
     installing = true;
-    emit('installing', '正在重启并安装更新…', undefined, {
+    emit('installing', tCurrent('updates.installing'), undefined, {
       action: 'install-started',
       arch: platformAdapter.arch,
     });
@@ -532,7 +545,7 @@ export async function installUpdate(): Promise<UpdateInstallResult> {
     installTimer = setTimeout(() => {
       if (installing) {
         clearInstallTimer();
-        emit('error', '安装启动超时，更新仍已保留，请重试。', undefined, {
+        emit('error', tCurrent('updates.installTimeout'), undefined, {
           action: 'install-started',
           arch: platformAdapter.arch,
           recoverable: true,

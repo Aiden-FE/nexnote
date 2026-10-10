@@ -8,6 +8,7 @@ import { SettingsPage } from '../src/pages/SettingsPage';
 import { UpdateSettingsSection } from '../src/features/settings/update-section';
 import { useSettingsNav } from '../src/lib/open-settings';
 import { subscribeSettingsChanges, useSettingsStore } from '../src/stores/settings-store';
+import { setLanguage } from '../src/lib/i18n';
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
@@ -89,6 +90,7 @@ afterEach(() => {
   act(() => root.unmount());
   container.remove();
   vi.clearAllMocks();
+  setLanguage('zh-CN');
 });
 
 async function mountAndLoad(): Promise<void> {
@@ -99,6 +101,31 @@ async function mountAndLoad(): Promise<void> {
 }
 
 describe('更新设置', () => {
+  it('renders app-owned update UI in en-US without CJK residue', async () => {
+    setLanguage('en-US');
+    const { emit } = installBridge();
+    await act(async () => {
+      root.render(<UpdateSettingsSection />);
+      await tick(20);
+    });
+    await act(async () => {
+      emit('app:updateStatus', {
+        status: 'available',
+        message: 'New version 1.2.3 available',
+        version: '1.2.3',
+        channel: 'stable',
+        progress: 42,
+      });
+      await tick(0);
+    });
+    expect(container.textContent).toContain('App updates');
+    expect(container.textContent).toContain('Version 1.2.3');
+    expect(
+      container.querySelector('[aria-label="Download progress 42%"]'),
+    ).not.toBeNull();
+    expect(container.textContent).not.toMatch(/[一-鿿]/);
+  });
+
   it('错误状态显示区分检查与下载的恢复路径', async () => {
     const { emit } = installBridge();
     await act(async () => {
