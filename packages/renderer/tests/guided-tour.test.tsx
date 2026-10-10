@@ -12,6 +12,7 @@ import { useVaultLayoutPersistence } from '../src/shell/layout-persistence';
 import { WelcomePage } from '../src/pages/WelcomePage';
 import '../src/features/settings';
 import { SettingsPage } from '../src/pages/SettingsPage';
+import { setLanguage } from '../src/lib/i18n';
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
@@ -22,7 +23,9 @@ const vault: VaultInfo = {
 };
 
 /** 引导步骤文案存消息目录 key，按语言成文（ADR-0023）。 */
-const zh = (key: string) => translate(CATALOGS['zh-CN'], key, 'zh-CN');
+const text = (language: 'zh-CN' | 'en-US', key: string) =>
+  translate(CATALOGS[language], key, language);
+const zh = (key: string) => text('zh-CN', key);
 
 let container: HTMLDivElement;
 let root: Root | null = null;
@@ -82,6 +85,7 @@ afterEach(() => {
   root = null;
   container?.remove();
   document.querySelectorAll('[data-tour]').forEach((el) => el.remove());
+  setLanguage('zh-CN');
 });
 
 describe('GuidedTour 分步导航', () => {
@@ -200,13 +204,38 @@ describe('GuidedTour 目标定位与降级', () => {
   });
 
   it('文案面向用户，不含票据或开发词汇', () => {
-    for (const step of TOUR_STEPS) {
-      const title = zh(step.titleKey);
-      const description = zh(step.descriptionKey);
-      expect(`${title}${description}`).not.toMatch(/DEV-\d+/);
-      expect(`${title}${description}`).not.toContain('票据');
-      expect(description.split('。').filter(Boolean).length).toBeLessThanOrEqual(2);
+    for (const language of ['zh-CN', 'en-US'] as const) {
+      for (const step of TOUR_STEPS) {
+        const title = text(language, step.titleKey);
+        const description = text(language, step.descriptionKey);
+        expect(`${title}${description}`, `${language} ${step.id}`).not.toMatch(/DEV-\d+/);
+        if (language === 'en-US') {
+          expect(`${title}${description}`, `${language} ${step.id}`).not.toMatch(/[一-鿿]/u);
+        }
+        expect(description.split('。').filter(Boolean).length).toBeLessThanOrEqual(2);
+      }
     }
+  });
+
+  it('en-US 引导卡片与按钮按词典成文且无中文残留（ADR-0023）', () => {
+    setLanguage('en-US');
+    addTourTargets(['page-tree']);
+    mount(<GuidedTour />);
+    act(() => useUiStore.getState().setTourOpen(true));
+    const card = document.querySelector('[data-testid="tour-card"]')!;
+    expect(document.querySelector('[data-testid="tour-title"]')?.textContent).toBe(
+      text('en-US', TOUR_STEPS[0].titleKey),
+    );
+    expect(document.querySelector('[data-testid="tour-description"]')?.textContent).toBe(
+      text('en-US', TOUR_STEPS[0].descriptionKey),
+    );
+    expect(document.querySelector('[data-testid="tour-next"]')?.textContent).toBe(
+      text('en-US', 'tour.next'),
+    );
+    expect(document.querySelector('[data-testid="tour-skip"]')?.textContent).toBe(
+      text('en-US', 'tour.skip'),
+    );
+    expect(card.textContent ?? '').not.toMatch(/[一-鿿]/);
   });
 });
 

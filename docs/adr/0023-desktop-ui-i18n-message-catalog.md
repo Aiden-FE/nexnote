@@ -301,3 +301,9 @@ status: in_progress
   而是从 `translate(CATALOGS[language], …)` 取预期。新增 2 key，zh/en 各 1553 key；
   expand-all / new-note-menu / catalog targeted tests 通过；全量门禁 196 files /
   1863 passed / 3 skipped 退出码 0。
+- 阶段④第二批（2026-10-11）：OutlinePanel、内置命令注册表与新手引导测试迁移。
+  OutlinePanel 空态/展开控件改为词典断言并补 en-US CJK 检查；内置命令测试
+  覆盖所有命令的 en-US 标题与分类；GuidedTour 文案契约从仅中文扩展为 zh/en
+  双语言，并新增 en-US 真实卡片渲染断言。本批只改测试，不新增消息 key，
+  zh/en 保持 1553 key；OutlinePanel / commands-builtin / guided-tour
+  targeted tests 通过；全量门禁 196 files / 1866 passed / 3 skipped 退出码 0。

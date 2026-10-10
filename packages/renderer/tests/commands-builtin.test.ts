@@ -5,7 +5,9 @@ import { commandRegistry } from '../src/registries';
 import '../src/features/commands/builtin';
 
 /** 命令 title / category 存消息目录 key，按语言成文（ADR-0023）。 */
-const zh = (key: string) => translate(CATALOGS['zh-CN'], key, 'zh-CN');
+const text = (language: 'zh-CN' | 'en-US', key: string) =>
+  translate(CATALOGS[language], key, language);
+const zh = (key: string) => text('zh-CN', key);
 
 /**
  * DEV-021：删除文件浏览占位页后，⌘K 面板不应再有「打开 Vault 文件浏览」命令。
@@ -24,8 +26,8 @@ describe('内置命令（DEV-021 移除文件浏览占位）', () => {
   it('命令面板仅提供“全部展开章节”，不提供无差别全部折叠', () => {
     const expandAll = commandRegistry.get('editor.expandAllHeadings');
     expect(expandAll).toBeDefined();
-    expect(zh(expandAll!.title)).toBe('全部展开章节');
-    expect(zh(expandAll!.category)).toBe('编辑器');
+    expect(zh(expandAll!.title)).toBe(text('zh-CN', 'command.editor.expandAllHeadings'));
+    expect(zh(expandAll!.category)).toBe(text('zh-CN', 'command.category.editor'));
     expect(
       commandRegistry
         .all()
@@ -35,5 +37,20 @@ describe('内置命令（DEV-021 移除文件浏览占位）', () => {
           ),
         ),
     ).toEqual([]);
+  });
+
+  it('en-US 标题与分类按词典成文且无中文残留', () => {
+    const expandAll = commandRegistry.get('editor.expandAllHeadings');
+    expect(expandAll).toBeDefined();
+    const enTitle = text('en-US', expandAll!.title);
+    const enCategory = text('en-US', expandAll!.category);
+    expect(enTitle).not.toBe(zh(expandAll!.title));
+    expect(enCategory).not.toBe(zh(expandAll!.category));
+    expect(enTitle).not.toMatch(/[一-鿿]/);
+    expect(enCategory).not.toMatch(/[一-鿿]/);
+    for (const command of commandRegistry.all()) {
+      const rendered = `${text('en-US', command.title)} ${text('en-US', command.category)}`;
+      expect(rendered, command.id).not.toMatch(/[一-鿿]/);
+    }
   });
 });

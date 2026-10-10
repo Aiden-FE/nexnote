@@ -2,10 +2,14 @@
 import { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import { CATALOGS, translate } from '@nexnote/shared';
 import { OutlinePanel } from '../src/editor/OutlinePanel';
 import type { OutlineEntry } from '../src/editor/outline';
+import { setLanguage } from '../src/lib/i18n';
 
 globalThis.IS_REACT_ACT_ENVIRONMENT = true;
+const text = (language: 'zh-CN' | 'en-US', key: string): string =>
+  translate(CATALOGS[language], key, language);
 
 let root: Root | null = null;
 let container: HTMLDivElement | null = null;
@@ -25,13 +29,14 @@ afterEach(() => {
   root = null;
   container?.remove();
   container = null;
+  setLanguage('zh-CN');
 });
 
 describe('OutlinePanel', () => {
   it('显示空态且关闭按钮回调宿主', () => {
     const { onClose } = render([]);
     expect(document.querySelector('[data-testid="outline-empty"]')?.textContent).toContain(
-      '暂无标题',
+      text('zh-CN', 'outline.empty'),
     );
     act(() => document.querySelector<HTMLButtonElement>('[data-testid="outline-close"]')?.click());
     expect(onClose).toHaveBeenCalledTimes(1);
@@ -74,10 +79,26 @@ describe('OutlinePanel', () => {
     expect(document.querySelector('[data-testid="outline-close"]')).toBeNull();
     const expand = document.querySelector<HTMLButtonElement>('[data-testid="outline-expand"]')!;
     expect(expand.getAttribute('aria-expanded')).toBe('false');
-    expect(expand.getAttribute('aria-label')).toBe('展开悬浮目录');
+    expect(expand.getAttribute('aria-label')).toBe(text('zh-CN', 'outline.expand'));
 
     act(() => expand.click());
     expect(panel().hasAttribute('data-collapsed')).toBe(false);
     expect(document.querySelector('[data-testid="outline-entry-top"]')).not.toBeNull();
+  });
+
+  it('renders empty state and controls in English without CJK residue (ADR-0023)', () => {
+    setLanguage('en-US');
+    render([]);
+    expect(document.querySelector('[data-testid="outline-empty"]')?.textContent).toContain(
+      text('en-US', 'outline.empty'),
+    );
+
+    const toggle = document.querySelector<HTMLButtonElement>('[data-testid="outline-toggle"]')!;
+    act(() => toggle.click());
+    const expand = document.querySelector<HTMLButtonElement>('[data-testid="outline-expand"]')!;
+    expect(expand.getAttribute('aria-label')).toBe(text('en-US', 'outline.expand'));
+    expect(document.querySelector('[data-testid="outline-panel"]')?.textContent ?? '').not.toMatch(
+      /[一-鿿]/,
+    );
   });
 });
