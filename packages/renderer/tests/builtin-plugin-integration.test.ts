@@ -38,7 +38,7 @@ describe('内置插件分发（DEV-015）', () => {
   it('设置页隐藏内置插件卸载按钮并标注内置', () => {
     const page = readFileSync(join(here, '../src/features/plugins/PluginsSettingsPage.tsx'), 'utf8');
     expect(page).toMatch(/builtin/);
-    expect(page).toContain('内置');
+    expect(page).toContain("tr('plugins.builtinBadge')");
     // 卸载按钮仅非内置渲染。
     expect(page).toContain('!selected.builtin && (');
   });

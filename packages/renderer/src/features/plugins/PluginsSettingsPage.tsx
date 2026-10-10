@@ -8,6 +8,7 @@ import type {
 } from '@nexnote/shared';
 import { invoke } from '../../lib/ipc';
 import { cn } from '../../lib/utils';
+import { t, useI18n } from '../../lib/i18n';
 
 interface PendingInstall {
   ticket: PluginInstallTicket;
@@ -15,6 +16,7 @@ interface PendingInstall {
 }
 
 export function PluginsSettingsPage() {
+  const tr = useI18n();
   const [plugins, setPlugins] = useState<PluginView[] | null>(null);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [pending, setPending] = useState<PendingInstall | null>(null);
@@ -57,11 +59,11 @@ export function PluginsSettingsPage() {
   return (
     <div className="space-y-4 text-sm" data-testid="plugins-settings">
       <div className="flex items-center gap-2">
-        <h2 className="text-base font-semibold tracking-tight">插件</h2>
+        <h2 className="text-base font-semibold tracking-tight">{tr('plugins.title')}</h2>
         <button
           type="button"
           onClick={() => void refresh()}
-          title="刷新"
+          title={tr('plugins.refresh')}
           className="rounded p-1 text-muted-foreground hover:bg-accent hover:text-foreground"
         >
           <RefreshCw className="size-3.5" />
@@ -73,7 +75,7 @@ export function PluginsSettingsPage() {
           className="ml-auto flex items-center gap-1.5 rounded-md border px-2.5 py-1.5 text-xs hover:bg-accent"
         >
           <FolderOpen className="size-3.5" />
-          从文件夹安装…
+          {tr('plugins.installFromDirectory')}
         </button>
         <button
           type="button"
@@ -81,7 +83,8 @@ export function PluginsSettingsPage() {
           data-testid="plugin-install-zip"
           className="flex items-center gap-1.5 rounded-md border px-2.5 py-1.5 text-xs hover:bg-accent"
         >
-          <PackageOpen className="size-3.5" />从 zip 安装…
+          <PackageOpen className="size-3.5" />
+          {tr('plugins.installFromZip')}
         </button>
       </div>
 
@@ -94,13 +97,13 @@ export function PluginsSettingsPage() {
       {pending && (
         <div data-testid="plugin-install-preview" className="rounded-lg border bg-card p-3">
           <p className="font-medium">
-            安装确认：{pending.ticket.manifest.name}{' '}
+            {tr('plugins.installConfirm', { name: pending.ticket.manifest.name })}{' '}
             <span className="text-xs text-muted-foreground">
               v{pending.ticket.manifest.version} · {pending.ticket.manifest.id}
             </span>
           </p>
           <p className="mt-1 text-xs text-muted-foreground">
-            {pending.ticket.manifest.description ?? '（无描述）'}
+            {pending.ticket.manifest.description ?? tr('plugins.noDescription')}
           </p>
           <p className="mt-1 font-mono text-[10px] text-muted-foreground">
             sha256 {pending.ticket.artifactHash.slice(0, 16)}…
@@ -108,16 +111,16 @@ export function PluginsSettingsPage() {
           <div className="mt-2 flex items-start gap-1.5 text-xs">
             <ShieldAlert className="mt-0.5 size-3.5 shrink-0 text-amber-500" />
             <div>
-              <p className="font-medium">新增能力清单</p>
+              <p className="font-medium">{tr('plugins.newCapabilities')}</p>
               <p className="text-muted-foreground">
                 {pending.ticket.requestedPermissions.length
                   ? pending.ticket.requestedPermissions.join('、')
-                  : '无新增权限'}
+                  : tr('plugins.noNewPermissions')}
               </p>
             </div>
           </div>
           <p className="mt-2 text-[11px] text-muted-foreground">
-            签名：MVP 尚未启用验证（票据 sha256 已固化内容）
+            {tr('plugins.signatureNotice')}
           </p>
           <div className="mt-3 flex gap-2">
             <button
@@ -126,24 +129,24 @@ export function PluginsSettingsPage() {
               data-testid="plugin-install-confirm"
               className="rounded-md bg-primary px-3 py-1.5 text-xs text-primary-foreground"
             >
-              确认安装并激活
+              {tr('plugins.confirmInstall')}
             </button>
             <button
               type="button"
               onClick={() => void confirm(false)}
               className="rounded-md border px-3 py-1.5 text-xs"
             >
-              取消
+              {tr('common.cancel')}
             </button>
           </div>
         </div>
       )}
 
       {plugins === null ? (
-        <p className="text-muted-foreground">加载中…</p>
+        <p className="text-muted-foreground">{tr('plugins.loading')}</p>
       ) : plugins.length === 0 ? (
         <p className="rounded-lg border border-dashed p-6 text-center text-muted-foreground">
-          尚未安装插件。从本地文件夹或 zip 安装第一个插件。
+          {tr('plugins.empty')}
         </p>
       ) : (
         <div className="grid gap-3 md:grid-cols-[240px_1fr]">
@@ -165,7 +168,7 @@ export function PluginsSettingsPage() {
                         className="shrink-0 rounded bg-primary/10 px-1 py-0.5 text-[10px] text-primary"
                         data-testid="plugin-builtin-badge"
                       >
-                        内置
+                        {tr('plugins.builtinBadge')}
                       </span>
                     )}
                   </span>
@@ -183,7 +186,7 @@ export function PluginsSettingsPage() {
                 <span className="text-xs text-muted-foreground">v{selected.version}</span>
                 {selected.builtin && (
                   <span className="rounded bg-primary/10 px-1.5 py-0.5 text-[10px] text-primary">
-                    内置插件
+                    {tr('plugins.builtinPlugin')}
                   </span>
                 )}
                 <label className="ml-auto flex items-center gap-1.5 text-xs">
@@ -193,14 +196,14 @@ export function PluginsSettingsPage() {
                     onChange={(e) => void toggle(selected.id, e.target.checked)}
                     data-testid={`plugin-toggle-${selected.id}`}
                   />
-                  启用
+                  {tr('plugins.enabled')}
                 </label>
                 {!selected.builtin && (
                   <button
                     type="button"
                     onClick={() => void uninstall(selected.id)}
                     data-testid="plugin-uninstall"
-                    title="卸载"
+                    title={tr('plugins.uninstall')}
                     className="rounded p-1 text-muted-foreground hover:bg-accent hover:text-destructive"
                   >
                     <Trash2 className="size-3.5" />
@@ -209,22 +212,24 @@ export function PluginsSettingsPage() {
               </div>
               {selected.builtin && (
                 <p className="mt-1 text-[11px] text-muted-foreground">
-                  随应用内置的示范插件，可禁用但不可卸载；禁用后对应块类型从斜杠菜单移除，已有笔记内容保留为纯文本源码。
+                  {tr('plugins.builtinNotice')}
                 </p>
               )}
               <p className="mt-1 text-xs text-muted-foreground">
-                {selected.description ?? '（无描述）'}
+                {selected.description ?? tr('plugins.noDescription')}
               </p>
               {selected.lastError && (
-                <p className="mt-1 text-xs text-destructive">最近错误：{selected.lastError}</p>
+                <p className="mt-1 text-xs text-destructive">
+                  {tr('plugins.lastError', { error: selected.lastError })}
+                </p>
               )}
-              <p className="mt-3 text-xs font-medium">贡献点</p>
+              <p className="mt-3 text-xs font-medium">{tr('plugins.contributions')}</p>
               <p className="text-xs text-muted-foreground">
                 commands {selected.contributionCounts.commands} · menus{' '}
                 {selected.contributionCounts.menus} · views {selected.contributionCounts.views} ·
                 blockTypes {selected.contributionCounts.blockTypes}
               </p>
-              <p className="mt-3 text-xs font-medium">权限</p>
+              <p className="mt-3 text-xs font-medium">{tr('plugins.permissions')}</p>
               <ul className="mt-1 space-y-1">
                 {selected.grants.map((grant) => (
                   <li key={grant.permission} className="flex items-center gap-2 text-xs">
@@ -237,7 +242,11 @@ export function PluginsSettingsPage() {
                           : 'bg-muted text-muted-foreground',
                       )}
                     >
-                      {grant.granted ? (grant.alwaysAllow ? '始终允许' : '已允许') : '未授权'}
+                      {grant.granted
+                        ? grant.alwaysAllow
+                          ? tr('plugins.grant.alwaysAllow')
+                          : tr('plugins.grant.allowed')
+                        : tr('plugins.grant.denied')}
                     </span>
                     {!selected.builtin && (
                       <button
@@ -258,7 +267,7 @@ export function PluginsSettingsPage() {
                   data-testid="plugin-revoke-challenge"
                 >
                   <p>
-                    确认撤销 <code>{revokeChallenge.permission}</code> 授权？
+                    {tr('plugins.revokeConfirm', { permission: revokeChallenge.permission })}
                   </p>
                   <div className="mt-2 flex gap-2">
                     <button
@@ -266,19 +275,19 @@ export function PluginsSettingsPage() {
                       onClick={() => void doRevoke()}
                       className="rounded bg-destructive px-2 py-1 text-[11px] text-destructive-foreground"
                     >
-                      确认撤销
+                      {tr('plugins.revoke')}
                     </button>
                     <button
                       type="button"
                       onClick={() => setRevokeChallenge(null)}
                       className="rounded border px-2 py-1 text-[11px]"
                     >
-                      取消
+                      {tr('common.cancel')}
                     </button>
                   </div>
                 </div>
               )}
-              <p className="mt-3 text-xs font-medium">RPC 审计（最近 50 条）</p>
+              <p className="mt-3 text-xs font-medium">{tr('plugins.audit')}</p>
               <ul
                 className="mt-1 max-h-40 space-y-0.5 overflow-auto font-mono text-[10px] text-muted-foreground"
                 data-testid="plugin-audit"
@@ -289,7 +298,7 @@ export function PluginsSettingsPage() {
                     {record.permission ?? ''} {record.allowed ? '✓' : '✗'} {record.detail ?? ''}
                   </li>
                 ))}
-                {!audit.length && <li>（暂无记录）</li>}
+                {!audit.length && <li>{tr('plugins.auditEmpty')}</li>}
               </ul>
             </div>
           )}
@@ -358,11 +367,13 @@ export function PluginsSettingsPage() {
 }
 
 function stateLabel(state: PluginView['state']): string {
-  return state === 'active'
-    ? '已激活'
-    : state === 'loaded'
-      ? '已加载'
-      : state === 'disabled'
-        ? '已停用'
-        : '已崩溃';
+  const key =
+    state === 'active'
+      ? 'plugins.state.active'
+      : state === 'loaded'
+        ? 'plugins.state.loaded'
+        : state === 'disabled'
+          ? 'plugins.state.disabled'
+          : 'plugins.state.crashed';
+  return t(key);
 }

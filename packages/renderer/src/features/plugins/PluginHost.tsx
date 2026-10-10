@@ -16,6 +16,7 @@ import {
 } from './extension-points';
 import { getActiveEditor } from '../../editor/active-editor';
 import { usePluginStore } from './plugin-store';
+import { t } from '../../lib/i18n';
 
 export function PluginHost() {
   const [plugins, setPlugins] = useState<PluginView[]>([]);
@@ -62,7 +63,7 @@ export function PluginHost() {
       commandRegistry.register({
         id: def.id,
         title: def.title,
-        category: '插件',
+        category: t('command.category.plugins'),
         keywords: def.keywords,
         run: () =>
           invoke('plugins:runCommand', {
@@ -82,7 +83,7 @@ export function PluginHost() {
       commandRegistry.register({
         id: block.id,
         title: block.title,
-        category: '插件',
+        category: t('command.category.plugins'),
         keywords: block.keywords,
         run: () => {
           getActiveEditor()?.editor.commands.insertPluginBlock({
@@ -130,9 +131,12 @@ export function PluginHost() {
           data-testid="plugin-permission-dialog"
         >
           <div className="w-[420px] rounded-xl border bg-popover p-4 shadow-2xl">
-            <h2 className="font-semibold">插件权限请求</h2>
+            <h2 className="font-semibold">{t('plugins.permissionRequest')}</h2>
             <p className="mt-2 text-sm text-muted-foreground">
-              插件 <code>{prompt.pluginId}</code> 请求 <code>{prompt.permission}</code> 权限。
+              {t('plugins.permissionRequest.description', {
+                pluginId: prompt.pluginId,
+                permission: prompt.permission,
+              })}
             </p>
             <div className="mt-4 flex justify-end gap-2">
               <button
@@ -143,7 +147,7 @@ export function PluginHost() {
                 }}
                 className="rounded-md border px-3 py-1.5 text-xs"
               >
-                拒绝
+                {t('plugins.permissionDeny')}
               </button>
               <button
                 type="button"
@@ -153,7 +157,7 @@ export function PluginHost() {
                 }}
                 className="rounded-md border px-3 py-1.5 text-xs"
               >
-                允许
+                {t('plugins.permissionAllow')}
               </button>
               <button
                 type="button"
@@ -163,7 +167,7 @@ export function PluginHost() {
                 }}
                 className="rounded-md bg-primary px-3 py-1.5 text-xs text-primary-foreground"
               >
-                始终允许
+                {t('plugins.permissionAlwaysAllow')}
               </button>
             </div>
           </div>

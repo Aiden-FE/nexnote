@@ -6,6 +6,7 @@ import { createElement } from 'react';
 import type { PluginContributionView } from '@nexnote/shared';
 import { PluginHost } from '../src/features/plugins/PluginHost';
 import { commandRegistry, pluginContributionRegistry } from '../src/registries';
+import { setLanguage } from '../src/lib/i18n';
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
@@ -78,5 +79,20 @@ describe('PluginHost 贡献挂载', () => {
     expect(container.textContent ?? '').not.toContain('插入 卡片');
     expect(pluginContributionRegistry.get('com.demo:card')).toBeDefined();
     expect(commandRegistry.all().some((c) => c.title === '插入插件块：卡片')).toBe(true);
+  });
+
+  it('en-US 下插件扩展点分类与权限弹窗无 CJK 残留', async () => {
+    setLanguage('en-US');
+    await act(async () => {
+      root.render(createElement(PluginHost));
+      await Promise.resolve();
+    });
+    expect(
+      commandRegistry.all().some((command) => command.category === 'Plugins'),
+    ).toBe(true);
+    await act(async () => {
+      root.unmount();
+    });
+    setLanguage('zh-CN');
   });
 });
