@@ -69,6 +69,10 @@ status: in_progress
 - 阶段②剩余（已登记，未完成）：编辑器工具栏动作目录
   `EDITOR_ACTION_CATALOG`（跨 shared/kernel/renderer 单一事实源，571 行）、
   标题转换禁用原因、AI 对话面板、Git 面板内容、frontmatter 属性面板。
+- 阶段②第六批（2026-10-10）：标题转换禁用原因改为语言中性消息 key，涵盖
+  编辑器未就绪、跨复杂结构选区、不安全 Markdown 上下文、列表/引用与只读视图；
+  块编辑与源码模式工具栏在交互时按当前语言成文。本批新增 5 个 key，消息目录
+  zh/en 各 484 个 key。
 - 阶段②第五批（2026-10-10）：`EDITOR_ACTION_CATALOG` 从静态 `name` / `hint`
   迁移到语言无关的 `nameKey` / `hintKey`；快捷插入分组改为 `basic` / `insert` /
   `ai` / `plugin` 语义 key，并用 `quickInsertGroupName()` 成文。shared 现有
@@ -81,3 +85,5 @@ status: in_progress
   全部动作名 / hint key、快捷插入分组 key 在 zh/en 均可见，且 en-US 词典无中文。
 - 门禁：shared / kernel / renderer tsc 通过；`pnpm lint` 0；
   `pnpm test` 193 files / 1824 passed / 3 skipped 退出码 0。
+- 第六批门禁：shared / kernel / renderer tsc 通过；`pnpm lint` 0；
+  `pnpm test` 193 files / 1825 passed / 3 skipped 退出码 0。
