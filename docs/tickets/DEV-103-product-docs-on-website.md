@@ -86,6 +86,7 @@
 - [x] 阶段③第七批（2026-10-10）：VaultFsService / page-ops / fs IPC 错误码化成文；路径、文件名、底层 fs 错误和 Git 摘要参数保留边界。新增 28 key，消息目录 zh/en 各 1198 key；门禁 195 files / 1843 passed / 3 skipped。
 - [x] 阶段③第八批（2026-10-10）：indexer / index IPC 无 vault 状态与置信度设置自动提交摘要成文；搜索内容和索引数据保留边界。新增 1 key，消息目录 zh/en 各 1199 key；门禁 195 files / 1843 passed / 3 skipped。
 - [x] 阶段③第九批（2026-10-10）：retrieval 向量降级状态成文；召回来源与错误原文保留边界。新增 1 key，消息目录 zh/en 各 1200 key；门禁 195 files / 1843 passed / 3 skipped。
+- [x] 阶段③第十批（2026-10-10）：AI service / provider 校验与状态错误成文；供应商 body / 模型响应 / 名称数据保留边界。新增 28 key，消息目录 zh/en 各 1228 key；门禁 195 files / 1843 passed / 3 skipped。
 - [ ] 阶段③剩余：GitService、vault、DOCX 等主进程服务消息错误码化（doctor 服务状态已完成；这些剩余服务消息仍为中文）
 - [ ] 阶段④既有测试中文断言迁移
 - [ ] **NOT_RUN / 未达门槛**：按 ADR「en-US 全 UI 无中文残留」，当前不声称桌面端双语完成

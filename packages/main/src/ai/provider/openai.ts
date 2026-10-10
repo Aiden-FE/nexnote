@@ -11,6 +11,7 @@ import {
   type ProviderAdapter,
 } from './types';
 import { createProxyFetch } from './proxy-fetch';
+import { tCurrent } from '@nexnote/shared';
 
 const REQUEST_TIMEOUT_MS = 120_000;
 const CONNECT_TIMEOUT_MS = 15_000;
@@ -24,16 +25,16 @@ function normalizeBase(baseUrl: string): string {
   try {
     url = new URL(trimmed);
   } catch {
-    throw new ProviderError('Base URL 必须是有效的 http(s) URL', 'BAD_BASE_URL');
+    throw new ProviderError(tCurrent('ai.error.BAD_BASE_URL'), 'BAD_BASE_URL');
   }
   if (url.username || url.password) {
     throw new ProviderError(
-      'Base URL 不得包含用户名/密码（凭据应通过 API Key 字段传入）',
+      tCurrent('ai.error.BASE_URL_PASSWORD'),
       'BAD_BASE_URL',
     );
   }
   if (url.protocol !== 'http:' && url.protocol !== 'https:') {
-    throw new ProviderError('Base URL 必须使用 http(s) 协议', 'BAD_BASE_URL');
+    throw new ProviderError(tCurrent('ai.error.BASE_URL_PROTOCOL'), 'BAD_BASE_URL');
   }
   return trimmed;
 }
@@ -68,13 +69,13 @@ function logRedactedProviderError(res: Response, op: string): void {
 function safeMessageFromStatus(status: number): string {
   const hint =
     status === 401 || status === 403
-      ? '（密钥无效或无权限）'
+      ? tCurrent('ai.error.status.INVALID_KEY')
       : status === 404
-        ? '（路径不存在：请检查 base-url 是否包含 /v1、模型名是否正确）'
+        ? tCurrent('ai.error.status.NOT_FOUND')
         : status === 429
-          ? '（限流或额度不足）'
+          ? tCurrent('ai.error.status.RATE_LIMITED')
           : '';
-  return `供应商返回 HTTP ${status}${hint}`;
+  return tCurrent('ai.error.status.PROVIDER_HTTP', { status, hint });
 }
 
 /**
@@ -273,7 +274,7 @@ export class OpenAIProtocolAdapter implements ProviderAdapter {
       },
       models,
       latencyMs: Date.now() - started,
-      ...(reachable ? {} : { error: '无法连接供应商（模型列表与对话探测均失败）' }),
+      ...(reachable ? {} : { error: tCurrent('ai.error.CONNECTION_PROBE_FAILED') }),
     };
   }
 
@@ -421,7 +422,7 @@ export class OpenAIProtocolAdapter implements ProviderAdapter {
       } catch (error) {
         finish();
         if (abort.signal.aborted) {
-          onEvent({ type: 'error', message: '已取消', code: 'CANCELLED' });
+          onEvent({ type: 'error', message: tCurrent('ai.error.CANCELLED'), code: 'CANCELLED' });
         } else {
           const providerError = this.sdkError(error, hasTools);
           onEvent({ type: 'error', message: providerError.message, code: providerError.code });
@@ -459,7 +460,7 @@ export class OpenAIProtocolAdapter implements ProviderAdapter {
         onEvent({ type: 'error', ...this.sdkError(part.error, hasTools) });
         break;
       case 'abort':
-        onEvent({ type: 'error', message: '已取消', code: 'CANCELLED' });
+        onEvent({ type: 'error', message: tCurrent('ai.error.CANCELLED'), code: 'CANCELLED' });
         break;
     }
   }
@@ -471,7 +472,7 @@ export class OpenAIProtocolAdapter implements ProviderAdapter {
       // 带 tools 的请求被 400 拒绝：区分「工具不受支持」与一般 HTTP 错误，供网关走降级路径。
       if (hasTools && status === 400) {
         return {
-          message: '供应商不支持工具调用（function calling），已降级为无工具回答',
+          message: tCurrent('ai.error.PROVIDER_TOOLS_UNSUPPORTED'),
           code: 'PROVIDER_TOOLS_UNSUPPORTED',
         };
       }
@@ -479,12 +480,12 @@ export class OpenAIProtocolAdapter implements ProviderAdapter {
     }
     // SDK 校验「流结束但没有 finish_reason」的截断语义，对应内部 STREAM_TRUNCATED。
     if (error instanceof Error && error.name === 'AI_InvalidResponseDataError') {
-      return { message: '流式响应在收到完成标记前结束，请重试', code: 'STREAM_TRUNCATED' };
+      return { message: tCurrent('ai.error.STREAM_TRUNCATED'), code: 'STREAM_TRUNCATED' };
     }
     // Provider bodies are untrusted (may echo credentials or document content) and SDK error
     // messages can carry them; only the operation name enters logs, never the message.
     console.warn('[ai:chatStream] streaming failed before completion (details redacted)');
-    return { message: '供应商流式请求失败，请稍后重试', code: 'STREAM_READ' };
+    return { message: tCurrent('ai.error.STREAM_READ'), code: 'STREAM_READ' };
   }
 
   async embeddings(req: EmbedRequest): Promise<EmbedResponse> {
@@ -511,22 +512,25 @@ export class OpenAIProtocolAdapter implements ProviderAdapter {
     const items = [...(body.data ?? [])].sort((a, b) => (a.index ?? 0) - (b.index ?? 0));
     const vectors = items.map((d) => {
       if (!Array.isArray(d.embedding)) {
-        throw new ProviderError('embeddings 响应缺少向量数据', 'BAD_EMBEDDING');
+        throw new ProviderError(tCurrent('ai.error.EMBED_MISSING_DATA'), 'BAD_EMBEDDING');
       }
       if (d.embedding.length === 0) {
-        throw new ProviderError('embeddings 返回空向量', 'BAD_EMBEDDING');
+        throw new ProviderError(tCurrent('ai.error.EMBED_EMPTY_VECTOR'), 'BAD_EMBEDDING');
       }
       return d.embedding.map((value) => {
         const vector = typeof value === 'number' ? value : Number(value);
         if (!Number.isFinite(vector)) {
-          throw new ProviderError('embeddings 返回非有限数值', 'BAD_EMBEDDING');
+          throw new ProviderError(tCurrent('ai.error.EMBED_NON_FINITE'), 'BAD_EMBEDDING');
         }
         return vector;
       });
     });
     if (vectors.length !== req.inputs.length) {
       throw new ProviderError(
-        `embeddings 返回数量不匹配（期望 ${req.inputs.length}，收到 ${vectors.length}）`,
+        tCurrent('ai.error.EMBED_COUNT_MISMATCH', {
+          expected: req.inputs.length,
+          received: vectors.length,
+        }),
         'BAD_EMBEDDING',
       );
     }
@@ -534,6 +538,6 @@ export class OpenAIProtocolAdapter implements ProviderAdapter {
   }
 
   private networkError(): ProviderError {
-    return new ProviderError('网络请求失败，请检查代理设置与网络连接', 'NETWORK');
+    return new ProviderError(tCurrent('ai.error.NETWORK'), 'NETWORK');
   }
 }

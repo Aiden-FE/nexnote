@@ -17,6 +17,7 @@ import { LocalEmbeddingAdapter } from './provider/local-embedding';
 import type { ChatStreamHandle, ChatTool, ProviderAdapter } from './provider/types';
 import { ProviderError } from './provider/types';
 import type { AiStoredProfile, AiStore } from './ai-store';
+import { tCurrent } from '@nexnote/shared';
 
 /** embedding 分批默认：token 预算与每批条目上限（可用 tokenEstimator 覆盖）。 */
 export const EMBED_DEFAULT_MAX_TOKENS_PER_BATCH = 8_192;
@@ -32,13 +33,13 @@ function credentialOrigin(baseUrl: string): string {
   try {
     url = new URL(baseUrl.trim());
   } catch {
-    throw new ProviderError('Base URL 必须是有效的 http(s) URL', 'BAD_BASE_URL');
+    throw new ProviderError(tCurrent('ai.error.BAD_BASE_URL'), 'BAD_BASE_URL');
   }
   if (url.protocol !== 'http:' && url.protocol !== 'https:') {
-    throw new ProviderError('Base URL 必须使用 http(s) 协议', 'BAD_BASE_URL');
+    throw new ProviderError(tCurrent('ai.error.BASE_URL_PROTOCOL'), 'BAD_BASE_URL');
   }
   if (url.username || url.password)
-    throw new ProviderError('Base URL 不得包含凭据', 'BAD_BASE_URL');
+    throw new ProviderError(tCurrent('ai.error.BASE_URL_CREDENTIALS'), 'BAD_BASE_URL');
   return `${url.protocol}//${url.host}`;
 }
 
@@ -136,7 +137,7 @@ export class AiService {
     }
     if (!profile) {
       throw new ProviderError(
-        '未配置 AI Profile（或指定 Profile 不存在），请先完成 AI 引导',
+        tCurrent('ai.error.AI_NOT_CONFIGURED'),
         'AI_NOT_CONFIGURED',
       );
     }
@@ -158,7 +159,7 @@ export class AiService {
   // ── 配置 ────────────────────────────────────────────
 
   submitCredential(secret: string, baseUrl: string): string {
-    if (!secret.trim()) throw new ProviderError('凭据不能为空', 'BAD_REQUEST');
+    if (!secret.trim()) throw new ProviderError(tCurrent('ai.error.EMPTY_CREDENTIAL'), 'BAD_REQUEST');
     this.sweepCredentials();
     const token = randomUUID();
     this.pendingCredentials.set(token, {
@@ -176,9 +177,10 @@ export class AiService {
     if (!token) return undefined;
     this.sweepCredentials();
     const pending = this.pendingCredentials.get(token);
-    if (!pending) throw new ProviderError('凭据提交已过期，请重新输入', 'CREDENTIAL_EXPIRED');
+    if (!pending)
+      throw new ProviderError(tCurrent('ai.error.CREDENTIAL_EXPIRED'), 'CREDENTIAL_EXPIRED');
     if (pending.origin !== context.origin) {
-      throw new ProviderError('凭据目标不一致，请重新输入', 'CREDENTIAL_SCOPE_MISMATCH');
+      throw new ProviderError(tCurrent('ai.error.CREDENTIAL_SCOPE_MISMATCH'), 'CREDENTIAL_SCOPE_MISMATCH');
     }
     if (context.consume) this.pendingCredentials.delete(token);
     return pending.secret;
@@ -265,7 +267,10 @@ export class AiService {
   } {
     const saved = target.profileId ? this.deps.store.getProfile(target.profileId) : undefined;
     if (target.profileId && !saved) {
-      throw new ProviderError(`Profile 不存在: ${target.profileId}`, 'PROFILE_NOT_FOUND');
+      throw new ProviderError(
+        tCurrent('ai.error.PROFILE_NOT_FOUND', { id: target.profileId }),
+        'PROFILE_NOT_FOUND',
+      );
     }
     if (target.candidate) {
       const c = target.candidate;
@@ -295,7 +300,7 @@ export class AiService {
     if (saved) {
       return { adapter: this.createAdapter(saved), defaultModel: saved.defaultModel };
     }
-    throw new ProviderError('测试目标缺失（profileId 或 candidate）', 'BAD_REQUEST');
+    throw new ProviderError(tCurrent('ai.error.TEST_TARGET_MISSING'), 'BAD_REQUEST');
   }
 
   async listModels(target: AiConnectionTarget): Promise<string[]> {
@@ -427,7 +432,7 @@ export class AiService {
    */
   async embedWithMetadata(texts: string[]): Promise<EmbedResult> {
     if (texts.length === 0) {
-      throw new ProviderError('embed 输入不能为空', 'BAD_REQUEST');
+      throw new ProviderError(tCurrent('ai.error.EMBED_EMPTY_INPUT'), 'BAD_REQUEST');
     }
     const { profile, adapter, model } = this.resolve({ feature: 'embedding' });
 
@@ -444,9 +449,10 @@ export class AiService {
     }
 
     const dimensions = vectors[0]?.length ?? 0;
-    if (dimensions === 0) throw new ProviderError('embeddings 返回空向量', 'BAD_EMBEDDING');
+    if (dimensions === 0)
+      throw new ProviderError(tCurrent('ai.error.EMBED_EMPTY_VECTOR'), 'BAD_EMBEDDING');
     if (vectors.some((v) => v.length !== dimensions)) {
-      throw new ProviderError('embeddings 返回维度不一致', 'BAD_EMBEDDING');
+      throw new ProviderError(tCurrent('ai.error.EMBED_DIMENSION_MISMATCH'), 'BAD_EMBEDDING');
     }
 
     // 维度回写 → embedding 指纹/generation 变更检测（索引重建标记，DEV-011 消费）
@@ -469,7 +475,7 @@ export class AiService {
     try {
       bundle = JSON.parse(json);
     } catch {
-      throw new ProviderError('导入文件不是合法 JSON', 'BAD_IMPORT');
+      throw new ProviderError(tCurrent('ai.error.IMPORT_INVALID_JSON'), 'BAD_IMPORT');
     }
     if (
       typeof bundle !== 'object' ||
@@ -477,7 +483,7 @@ export class AiService {
       (bundle as { app?: string }).app !== 'nexnote' ||
       (bundle as { kind?: string }).kind !== 'ai-profiles'
     ) {
-      throw new ProviderError('导入文件不是 NexNote AI Profile 导出格式', 'BAD_IMPORT');
+      throw new ProviderError(tCurrent('ai.error.IMPORT_UNEXPECTED_FORMAT'), 'BAD_IMPORT');
     }
     const result = this.deps.store.importBundle(bundle as Parameters<AiStore['importBundle']>[0]);
     this.emitConfigChanged();

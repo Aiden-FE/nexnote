@@ -188,3 +188,9 @@ status: in_progress
   语言成文，错误原文与召回来源保留边界。新增 1 key，zh/en 各 1200 key。
   retrieval / bug-bash / e2e / catalog targeted tests 通过；全量门禁
   195 files / 1843 passed / 3 skipped 退出码 0。
+- 阶段③第十批（2026-10-10）：AI service / OpenAI provider 校验、状态映射、
+  流式终止与 embedding 结果错误成文。供应商 HTTP body、模型响应、模型/Profile
+  名称和上游网络细节保留边界；只保留状态与静态提示。新增 28 key，
+  zh/en 各 1228 key。`ai-service` / `ai-openai-adapter` / local embedding /
+  catalog targeted tests 通过；门禁 195 files / 1843 passed / 3 skipped
+  退出码 0。
