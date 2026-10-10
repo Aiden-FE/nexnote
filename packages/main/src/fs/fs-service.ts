@@ -3,6 +3,7 @@ import * as path from 'node:path';
 import type { DirEntry, FileInfo } from '@nexnote/shared';
 import { isDocumentPath } from '../document/document-domain';
 import { AppWriteTracker } from './app-write-tracker';
+import { tCurrent } from '@nexnote/shared';
 
 export class FsError extends Error {
   constructor(
@@ -45,13 +46,13 @@ export class VaultFsService {
 
   private async requireRoot(): Promise<string> {
     const root = this.getVaultRoot();
-    if (!root) throw new FsError('尚未打开任何知识库', 'NO_VAULT');
+    if (!root) throw new FsError(tCurrent('vault.error.NO_VAULT'), 'NO_VAULT');
     return root;
   }
 
   private assertNotVaultRoot(relPath: string): void {
     if (relPath.trim().length === 0 || relPath.trim() === '.') {
-      throw new FsError('不允许对知识库根目录执行此操作', 'VAULT_ROOT_OPERATION');
+      throw new FsError(tCurrent('fs.error.VAULT_ROOT_OPERATION'), 'VAULT_ROOT_OPERATION');
     }
   }
 
@@ -59,20 +60,20 @@ export class VaultFsService {
   async resolve(relPath: string): Promise<{ root: string; abs: string }> {
     const root = await this.requireRoot();
     if (typeof relPath !== 'string') {
-      throw new FsError('路径必须是字符串', 'INVALID_PATH');
+      throw new FsError(tCurrent('fs.error.INVALID_PATH_TYPE'), 'INVALID_PATH');
     }
     const normalized = relPath.trim();
     if (normalized.length === 0) return { root, abs: root };
     if (path.isAbsolute(normalized)) {
-      throw new FsError(`不允许绝对路径: ${normalized}`, 'ABSOLUTE_PATH');
+      throw new FsError(tCurrent('fs.error.ABSOLUTE_PATH', { path: normalized }), 'ABSOLUTE_PATH');
     }
     if (/^[a-zA-Z]:[\\/]/.test(normalized)) {
-      throw new FsError(`不允许绝对路径: ${normalized}`, 'ABSOLUTE_PATH');
+      throw new FsError(tCurrent('fs.error.ABSOLUTE_PATH', { path: normalized }), 'ABSOLUTE_PATH');
     }
     const abs = path.resolve(root, normalized);
     const relFromRoot = path.relative(root, abs);
     if (relFromRoot.startsWith('..') || path.isAbsolute(relFromRoot)) {
-      throw new FsError(`路径越出知识库范围: ${normalized}`, 'OUTSIDE_VAULT');
+      throw new FsError(tCurrent('fs.error.OUTSIDE_VAULT', { path: normalized }), 'OUTSIDE_VAULT');
     }
     // 符号链接逃逸：目标存在则校验 realpath，不存在则校验其父目录 realpath。
     // 注意 root 自身也需 realpath 规范化（如 macOS /var → /private/var）。
@@ -80,7 +81,7 @@ export class VaultFsService {
     const targetReal = await realpathOrNull(abs);
     const probe = targetReal ?? (await realpathOrNull(path.dirname(abs)));
     if (probe && !probe.startsWith(`${rootReal}${path.sep}`) && probe !== rootReal) {
-      throw new FsError(`路径解析后越出知识库范围: ${normalized}`, 'OUTSIDE_VAULT');
+      throw new FsError(tCurrent('fs.error.OUTSIDE_VAULT_AFTER_RESOLUTION', { path: normalized }), 'OUTSIDE_VAULT');
     }
     return { root, abs };
   }
@@ -104,7 +105,10 @@ export class VaultFsService {
     try {
       return await fsp.readFile(abs, 'utf8');
     } catch (e) {
-      throw new FsError(`读取失败: ${relPath}（${(e as Error).message}）`, 'READ_FAILED');
+      throw new FsError(
+        tCurrent('fs.error.READ_FAILED', { path: relPath, message: (e as Error).message }),
+        'READ_FAILED',
+      );
     }
   }
 
@@ -140,7 +144,10 @@ export class VaultFsService {
     try {
       await fsp.appendFile(abs, content, 'utf8');
     } catch (e) {
-      throw new FsError(`追加失败: ${relPath}（${(e as Error).message}）`, 'APPEND_FAILED');
+      throw new FsError(
+        tCurrent('fs.error.APPEND_FAILED', { path: relPath, message: (e as Error).message }),
+        'APPEND_FAILED',
+      );
     }
     this.appWrites.record(abs);
     const st = await fsp.stat(abs);
@@ -161,7 +168,10 @@ export class VaultFsService {
     } catch (e) {
       const code = (e as { code?: string }).code;
       if (code === 'EEXIST') return { file: await this.stat(relPath), created: false };
-      throw new FsError(`创建文件失败: ${relPath}（${(e as Error).message}）`, 'CREATE_FAILED');
+      throw new FsError(
+        tCurrent('fs.error.CREATE_FAILED', { path: relPath, message: (e as Error).message }),
+        'CREATE_FAILED',
+      );
     }
     try {
       await handle.writeFile(content, 'utf8');
@@ -202,7 +212,10 @@ export class VaultFsService {
         return target;
       } catch (e) {
         if ((e as { code?: string }).code === 'EEXIST') return '';
-        throw new FsError(`导入文件失败: ${target}（${(e as Error).message}）`, 'IMPORT_FAILED');
+        throw new FsError(
+          tCurrent('fs.error.IMPORT_FAILED', { path: target, message: (e as Error).message }),
+          'IMPORT_FAILED',
+        );
       }
     };
 
@@ -219,7 +232,10 @@ export class VaultFsService {
         } catch {
           /* 清理临时文件失败可忽略 */
         }
-        throw new FsError(`导入文件失败: ${relPath}（${(e as Error).message}）`, 'IMPORT_FAILED');
+        throw new FsError(
+          tCurrent('fs.error.IMPORT_FAILED', { path: relPath, message: (e as Error).message }),
+          'IMPORT_FAILED',
+        );
       }
       this.appWrites.record(abs);
       return relPath;
@@ -228,7 +244,8 @@ export class VaultFsService {
     // creates = first : overwrite denied
     let target = relPath;
     if (await this.exists(target)) {
-      if (!opts.createParentDirs) throw new FsError(`目标已存在: ${relPath}`, 'TARGET_EXISTS');
+      if (!opts.createParentDirs)
+        throw new FsError(tCurrent(' docx.error.TARGET_EXISTS', { path: relPath }), 'TARGET_EXISTS');
       // 碰撞去抖：`name.ext`、`name 2.ext`、`name 3.ext`…
       let seq = 2;
       for (;;) {
@@ -245,7 +262,7 @@ export class VaultFsService {
       const ok = await tryWrite(candidate);
       if (ok) return ok;
     }
-    throw new FsError(`无法为 ${path.basename(relPath)} 分配可用文件名`, 'IMPORT_FAILED');
+    throw new FsError(tCurrent('fs.error.noUniqueFilename', { name: path.basename(relPath) }), 'IMPORT_FAILED');
   }
 
   async listDir(relPath: string): Promise<DirEntry[]> {
@@ -254,7 +271,10 @@ export class VaultFsService {
     try {
       dirents = await fsp.readdir(abs, { withFileTypes: true });
     } catch (e) {
-      throw new FsError(`读取目录失败: ${relPath}（${(e as Error).message}）`, 'READ_DIR_FAILED');
+      throw new FsError(
+        tCurrent('fs.error.READ_DIR_FAILED', { path: relPath, message: (e as Error).message }),
+        'READ_DIR_FAILED',
+      );
     }
     return dirents
       .map((d) => ({
@@ -273,7 +293,10 @@ export class VaultFsService {
     try {
       await fsp.mkdir(abs, { recursive });
     } catch (e) {
-      throw new FsError(`创建目录失败: ${relPath}（${(e as Error).message}）`, 'MKDIR_FAILED');
+      throw new FsError(
+        tCurrent('fs.error.MKDIR_FAILED', { path: relPath, message: (e as Error).message }),
+        'MKDIR_FAILED',
+      );
     }
     const st = await fsp.stat(abs);
     return toFileInfo(relPath, st);
@@ -283,21 +306,25 @@ export class VaultFsService {
     const from = await this.resolve(fromRel);
     const to = await this.resolve(toRel);
     if (from.abs === to.abs) {
-      throw new FsError('源路径与目标路径相同', 'SAME_PATH');
+      throw new FsError(tCurrent('fs.error.SAME_PATH'), 'SAME_PATH');
     }
     if (!(await fsp.stat(from.abs).catch(() => null))) {
-      throw new FsError(`源路径不存在: ${fromRel}`, 'NOT_FOUND');
+      throw new FsError(tCurrent('fs.error.SOURCE_NOT_FOUND', { path: fromRel }), 'NOT_FOUND');
     }
     if (await fsp.stat(to.abs).catch(() => null)) {
       // POSIX rename 会静默覆盖同名文件，这里必须拒绝以免丢数据
-      throw new FsError(`目标已存在: ${toRel}`, 'TARGET_EXISTS');
+      throw new FsError(tCurrent('docx.error.TARGET_EXISTS', { path: toRel }), 'TARGET_EXISTS');
     }
     try {
       await fsp.mkdir(path.dirname(to.abs), { recursive: true });
       await fsp.rename(from.abs, to.abs);
     } catch (e) {
       throw new FsError(
-        `重命名失败: ${fromRel} → ${toRel}（${(e as Error).message}）`,
+        tCurrent('fs.error.RENAME_FAILED', {
+          from: fromRel,
+          to: toRel,
+          message: (e as Error).message,
+        }),
         'RENAME_FAILED',
       );
     }
@@ -347,7 +374,10 @@ export class VaultFsService {
     try {
       await fsp.rm(abs, { recursive: true, force: true });
     } catch (e) {
-      throw new FsError(`删除失败: ${relPath}（${(e as Error).message}）`, 'DELETE_FAILED');
+      throw new FsError(
+        tCurrent('fs.error.DELETE_FAILED', { path: relPath, message: (e as Error).message }),
+        'DELETE_FAILED',
+      );
     }
   }
 }

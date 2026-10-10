@@ -174,3 +174,9 @@ status: in_progress
   remote action 只作为稳定词典分段。新增 59 key，zh/en 各 1170 key。
   `git-service` / catalog targeted tests 通过；门禁 195 files /
   1843 passed / 3 skipped 退出码 0。
+- 阶段③第七批（2026-10-10）：VaultFsService / page-ops / fs IPC 错误码化成文。
+  覆盖沙箱路径校验、读写/目录/重命名/删除失败、新建笔记与 Git 自动提交摘要；
+  相对路径、文件名、底层 fs 错误与 Git/commit 摘要参数保留边界。新增 28 key，
+  zh/en 各 1198 key。`fs-service` / `page-ops` / IPC registrar /
+  rename-index / catalog targeted tests 通过；门禁 195 files /
+  1843 passed / 3 skipped 退出码 0。

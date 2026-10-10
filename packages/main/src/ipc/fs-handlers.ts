@@ -6,6 +6,7 @@ import { createNote, renameWithLinks, scanTags } from '../fs/page-ops';
 import { MetadataStore } from '../document/metadata-store';
 import { isDocumentPath } from '../document/document-domain';
 import type { IpcServices } from './services';
+import { tCurrent } from '@nexnote/shared';
 
 /** fs:* — vault 沙箱文件能力。 */
 export function registerFsHandlers(registrar: IpcRegistrar): void {
@@ -26,7 +27,7 @@ export function registerFsHandlers(registrar: IpcRegistrar): void {
     'fs:writeTextFile',
     async ({ path, content, createParentDirs }, services): Promise<Result<FileInfo>> => {
       const result = await services.fs.writeTextFile(path, content, createParentDirs ?? true);
-      await recordWrite(services, `保存 ${path}`);
+      await recordWrite(services, tCurrent('git.service.autosummary.save', { path }));
       return ok(result);
     },
   );
@@ -37,7 +38,7 @@ export function registerFsHandlers(registrar: IpcRegistrar): void {
       services,
     ): Promise<Result<{ file: FileInfo | null; created: boolean }>> => {
       const result = await services.fs.createTextFile(path, content, createParentDirs ?? true);
-      if (result.created) await recordWrite(services, `创建 ${path}`);
+      if (result.created) await recordWrite(services, tCurrent('git.service.autosummary.create', { path }));
       return ok(result);
     },
   );
@@ -50,7 +51,11 @@ export function registerFsHandlers(registrar: IpcRegistrar): void {
       // renderer 传 base64，这里解码成 Buffer 再交给 fs 服务；不接受 node Buffer 类型，
       // 避免类型穿越 IPC 边界。mime 仅校验语义，不用于写入。
       if (typeof data !== 'string' || data.length === 0) {
-        return { ok: false, error: 'data 不能为空', code: 'IPC_PAYLOAD_INVALID' };
+        return {
+          ok: false,
+          error: tCurrent('fs.error.PAYLOAD_DATA_EMPTY'),
+          code: 'IPC_PAYLOAD_INVALID',
+        };
       }
       let buffer;
       try {
@@ -58,7 +63,9 @@ export function registerFsHandlers(registrar: IpcRegistrar): void {
       } catch (e) {
         return {
           ok: false,
-          error: `data 不是合法 base64（${(e as Error).message}）`,
+          error: tCurrent('fs.error.PAYLOAD_DATA_INVALID_BASE64', {
+            message: (e as Error).message,
+          }),
           code: 'IPC_PAYLOAD_INVALID',
         };
       }
@@ -67,7 +74,7 @@ export function registerFsHandlers(registrar: IpcRegistrar): void {
         createParentDirs: createParentDirs ?? true,
         overwrite: overwrite ?? false,
       });
-      await recordWrite(services, `导入附件 ${result}`);
+      await recordWrite(services, tCurrent('git.service.autosummary.import', { path: result }));
       void mime;
       return ok({ path: result });
     },
@@ -85,7 +92,7 @@ export function registerFsHandlers(registrar: IpcRegistrar): void {
     'fs:mkdir',
     async ({ path, recursive }, services): Promise<Result<FileInfo>> => {
       const result = await services.fs.mkdir(path, recursive ?? false);
-      await recordWrite(services, `创建目录 ${path}`);
+      await recordWrite(services, tCurrent('git.service.autosummary.mkdir', { path }));
       return ok(result);
     },
   );
@@ -98,12 +105,12 @@ export function registerFsHandlers(registrar: IpcRegistrar): void {
       if (before?.kind === 'directory') await metadata.renameUnder(from, to);
       else if (isDocumentPath(from)) await metadata.rename(from, to);
     }
-    await recordWrite(services, `重命名 ${from} → ${to}`);
+    await recordWrite(services, tCurrent('git.service.autosummary.rename', { from, to }));
     return ok(result);
   });
   registrar.register('fs:delete', async ({ path, toTrash }, services): Promise<Result<void>> => {
     if (path.trim().length === 0 || path.trim() === '.')
-      return err('不允许删除知识库根目录', 'VAULT_ROOT_OPERATION');
+      return err(tCurrent('fs.error.VAULT_ROOT_OPERATION'), 'VAULT_ROOT_OPERATION');
     const before = await services.fs.stat(path);
     if (toTrash) {
       const { abs } = await services.fs.resolve(path);
@@ -127,7 +134,7 @@ export function registerFsHandlers(registrar: IpcRegistrar): void {
       if (before?.kind === 'directory') await metadata.removeUnder(path);
       else if (isDocumentPath(path)) await metadata.remove(path);
     }
-    await recordWrite(services, `删除 ${path}`);
+    await recordWrite(services, tCurrent('git.service.autosummary.delete', { path }));
     return ok(undefined);
   });
   registrar.register(
@@ -145,7 +152,7 @@ export function registerFsHandlers(registrar: IpcRegistrar): void {
         sidecar,
         format ?? 'native-block',
       );
-      await recordWrite(services, `创建笔记 ${result.path}`);
+      await recordWrite(services, tCurrent('git.service.autosummary.createNote', { path: result.path }));
       return ok(result);
     },
   );
@@ -153,7 +160,7 @@ export function registerFsHandlers(registrar: IpcRegistrar): void {
     'document:getMetadata',
     async ({ path }, services): Promise<Result<Record<string, unknown> | null>> => {
       const root = services.vaultSession.getCurrent()?.root;
-      if (!root) return err('尚未打开任何知识库', 'NO_VAULT');
+      if (!root) return err(tCurrent('vault.error.NO_VAULT'), 'NO_VAULT');
       if (!isDocumentPath(path)) return ok(null);
       return ok(await new MetadataStore(root).read(path));
     },
@@ -174,7 +181,7 @@ export function registerFsHandlers(registrar: IpcRegistrar): void {
         if (before?.kind === 'directory') await metadata.renameUnder(from, to);
         else if (isDocumentPath(from)) await metadata.rename(from, to);
       }
-      await recordWrite(services, `重命名并更新链接 ${from} → ${to}`);
+      await recordWrite(services, tCurrent('git.service.autosummary.renameLinked', { from, to }));
       return ok(result);
     },
   );

@@ -9,6 +9,7 @@ import {
 } from '@nexnote/shared';
 import { FsError, type VaultFsService } from './fs-service';
 import type { DocumentFormat, DocumentMetadata } from '../document/document-domain';
+import { tCurrent } from '@nexnote/shared';
 
 /**
  * 页面操作内核（DEV-003）：
@@ -47,7 +48,7 @@ export async function nextUntitledName(
     const candidate = `${base} ${i}`;
     if (!(await exists(candidate))) return candidate;
   }
-  throw new FsError('无法生成不冲突的笔记名', 'NAME_CONFLICT');
+  throw new FsError(tCurrent('fs.error.NAME_CONFLICT'), 'NAME_CONFLICT');
 }
 
 /**
@@ -80,7 +81,7 @@ export async function createNote(
   }
   const relPath = parentDir === '' ? `${sanitized.value}.md` : `${parentDir}/${sanitized.value}.md`;
   if (await fs.exists(relPath)) {
-    throw new FsError(`已存在同名笔记: ${relPath}`, 'TARGET_EXISTS');
+    throw new FsError(tCurrent('docx.error.TARGET_EXISTS', { path: relPath }), 'TARGET_EXISTS');
   }
   const body = content.length > 0 ? `${content}\n` : `# ${sanitized.value}\n`;
   const info = await fs.writeTextFile(
@@ -137,12 +138,13 @@ export async function renameWithLinks(
   toRel: string,
 ): Promise<{ info: FileInfo; updatedFiles: string[] }> {
   const fromStat = await fs.stat(fromRel);
-  if (!fromStat) throw new FsError(`源路径不存在: ${fromRel}`, 'NOT_FOUND');
+  if (!fromStat)
+    throw new FsError(tCurrent('fs.error.SOURCE_NOT_FOUND', { path: fromRel }), 'NOT_FOUND');
   const isDir = fromStat.kind === 'directory';
   const normalizedFrom = fromRel.replace(/\/+$/, '');
   const normalizedTo = toRel.replace(/\/+$/, '');
   if (isDir && (normalizedTo === normalizedFrom || normalizedTo.startsWith(`${normalizedFrom}/`))) {
-    throw new FsError('不能把文件夹移动到它自身或其子目录内', 'INVALID_MOVE');
+    throw new FsError(tCurrent('fs.error.INVALID_MOVE'), 'INVALID_MOVE');
   }
 
   const info = await fs.rename(normalizedFrom, normalizedTo);
