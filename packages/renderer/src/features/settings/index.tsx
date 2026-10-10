@@ -302,6 +302,7 @@ export function GeneralSection() {
 
 function NetworkSection() {
   const { global, setGlobal } = useGlobalSettings();
+  const tr = useI18n();
   const net = global?.network ?? null;
   const setNet = useCallback(
     (patch: Partial<NonNullable<typeof net>>) => {
@@ -309,29 +310,35 @@ function NetworkSection() {
     },
     [setGlobal],
   );
-  if (!net) return <div className="text-sm text-muted-foreground">加载中…</div>;
+  if (!net) return <div className="text-sm text-muted-foreground">{tr('settings.loading')}</div>;
   return (
     <div className="space-y-6">
       <SectionHeader
-        title="网络"
-        description="AI 请求与 Git 同步的网络代理。默认跟随系统代理；如无系统代理则直连。"
+        title={tr('settings.network.title')}
+        description={tr('settings.network.description')}
       />
-      <Row label="代理模式" description="system = 跟随系统；off = 不走代理；自定义 = 走指定代理">
+      <Row
+        label={tr('settings.network.mode')}
+        description={tr('settings.network.mode.description')}
+      >
         <Select
           value={net.mode}
           onChange={(v) => setNet({ mode: v as NetworkMode })}
           options={[
-            { value: 'system', label: '跟随系统' },
+            { value: 'system', label: tr('settings.network.mode.system') },
             { value: 'http', label: 'HTTP' },
             { value: 'https', label: 'HTTPS' },
             { value: 'socks5', label: 'SOCKS5' },
-            { value: 'off', label: '关闭代理' },
+            { value: 'off', label: tr('settings.network.mode.off') },
           ]}
         />
       </Row>
       {net.mode !== 'system' && net.mode !== 'off' && (
         <>
-          <Row label="主机" description="代理服务器地址（IP 或域名）">
+          <Row
+            label={tr('settings.network.host')}
+            description={tr('settings.network.host.description')}
+          >
             <input
               type="text"
               value={net.host ?? ''}
@@ -340,7 +347,7 @@ function NetworkSection() {
               className="h-8 w-48 rounded-md border bg-background px-2 text-sm"
             />
           </Row>
-          <Row label="端口" description="1–65535">
+          <Row label={tr('settings.network.port')} description={tr('settings.network.port.description')}>
             <input
               type="number"
               min={1}
@@ -354,7 +361,10 @@ function NetworkSection() {
               className="h-8 w-24 rounded-md border bg-background px-2 text-sm"
             />
           </Row>
-          <Row label="账号" description="（可选）需要认证时填写">
+          <Row
+            label={tr('settings.network.username')}
+            description={tr('settings.network.username.description')}
+          >
             <input
               type="text"
               value={net.username ?? ''}
@@ -362,7 +372,10 @@ function NetworkSection() {
               className="h-8 w-48 rounded-md border bg-background px-2 text-sm"
             />
           </Row>
-          <Row label="密码" description="（可选）仅保存在本机 settings 文件">
+          <Row
+            label={tr('settings.network.password')}
+            description={tr('settings.network.password.description')}
+          >
             <input
               type="password"
               value={net.password ?? ''}
@@ -372,7 +385,10 @@ function NetworkSection() {
           </Row>
         </>
       )}
-      <Row label="绕过主机" description="逗号分隔；匹配的目标将直连而不经代理">
+      <Row
+        label={tr('settings.network.bypass')}
+        description={tr('settings.network.bypass.description')}
+      >
         <input
           type="text"
           value={net.bypass.join(', ')}
@@ -388,15 +404,24 @@ function NetworkSection() {
           className="h-8 w-64 rounded-md border bg-background px-2 text-sm"
         />
       </Row>
-      <Row label="代理 AI 请求" description="为 AI provider 调用注入代理">
+      <Row
+        label={tr('settings.network.applyAi')}
+        description={tr('settings.network.applyAi.description')}
+      >
         <Toggle checked={net.applyToAi} onChange={(v) => setNet({ applyToAi: v })} />
       </Row>
-      <Row label="代理 Git 操作" description="为 Git 同步/推送注入代理">
+      <Row
+        label={tr('settings.network.applyGit')}
+        description={tr('settings.network.applyGit.description')}
+      >
         <Toggle checked={net.applyToGit} onChange={(v) => setNet({ applyToGit: v })} />
       </Row>
-      <Row label="AI 独立代理" description="启用后 AI 使用单独的代理配置">
+      <Row
+        label={tr('settings.network.aiProxy')}
+        description={tr('settings.network.aiProxy.description')}
+      >
         <Toggle
-          label="AI 独立代理"
+          label={tr('settings.network.aiProxy')}
           checked={net.aiProxy !== null}
           onChange={(enabled) => setNet({ aiProxy: enabled ? profileFromNetwork(net) : null })}
         />
@@ -408,9 +433,12 @@ function NetworkSection() {
           onChange={(aiProxy) => setNet({ aiProxy })}
         />
       )}
-      <Row label="Git 独立代理" description="启用后 Git 使用单独的代理配置">
+      <Row
+        label={tr('settings.network.gitProxy')}
+        description={tr('settings.network.gitProxy.description')}
+      >
         <Toggle
-          label="Git 独立代理"
+          label={tr('settings.network.gitProxy')}
           checked={net.gitProxy !== null}
           onChange={(enabled) => setNet({ gitProxy: enabled ? profileFromNetwork(net) : null })}
         />
@@ -446,25 +474,26 @@ function NetworkProxyEditor({
   value: NetworkProxyConfig;
   onChange: (next: NetworkProxyConfig) => void;
 }) {
+  const tr = useI18n();
   const set = (patch: Partial<NetworkProxyConfig>) => onChange({ ...value, ...patch });
   return (
     <div className="space-y-3 border-l-2 pl-3">
-      <Row label={`${label} 代理模式`}>
+      <Row label={tr('settings.network.proxyMode', { label })}>
         <Select
           value={value.mode}
           onChange={(mode) => set({ mode: mode as NetworkMode })}
           options={[
-            { value: 'system', label: '跟随系统' },
+            { value: 'system', label: tr('settings.network.mode.system') },
             { value: 'http', label: 'HTTP' },
             { value: 'https', label: 'HTTPS' },
             { value: 'socks5', label: 'SOCKS5' },
-            { value: 'off', label: '关闭代理' },
+            { value: 'off', label: tr('settings.network.mode.off') },
           ]}
         />
       </Row>
       {value.mode !== 'system' && value.mode !== 'off' && (
         <>
-          <Row label={`${label} 代理主机`}>
+          <Row label={tr('settings.network.proxyHost', { label })}>
             <input
               type="text"
               value={value.host ?? ''}
@@ -472,7 +501,7 @@ function NetworkProxyEditor({
               className="h-8 w-48 rounded-md border bg-background px-2 text-sm"
             />
           </Row>
-          <Row label={`${label} 代理端口`}>
+          <Row label={tr('settings.network.proxyPort', { label })}>
             <input
               type="number"
               min={1}
@@ -488,7 +517,7 @@ function NetworkProxyEditor({
               className="h-8 w-24 rounded-md border bg-background px-2 text-sm"
             />
           </Row>
-          <Row label={`${label} 代理账号`}>
+          <Row label={tr('settings.network.proxyUsername', { label })}>
             <input
               type="text"
               value={value.username ?? ''}
@@ -496,7 +525,7 @@ function NetworkProxyEditor({
               className="h-8 w-48 rounded-md border bg-background px-2 text-sm"
             />
           </Row>
-          <Row label={`${label} 代理密码`}>
+          <Row label={tr('settings.network.proxyPassword', { label })}>
             <input
               type="password"
               value={value.password ?? ''}
@@ -506,7 +535,7 @@ function NetworkProxyEditor({
           </Row>
         </>
       )}
-      <Row label={`${label} 绕过主机`}>
+      <Row label={tr('settings.network.proxyBypass', { label })}>
         <input
           type="text"
           value={value.bypass.join(', ')}
@@ -529,17 +558,21 @@ function NetworkProxyEditor({
 function EditorSection() {
   const { vault } = useVaultSettingsEffects();
   const setVault = useSettingsStore((s) => s.setVault);
+  const tr = useI18n();
 
   if (!vault) {
     return (
-      <div className="text-sm text-muted-foreground">尚未打开知识库，打开后可配置编辑器行为。</div>
+      <div className="text-sm text-muted-foreground">{tr('settings.editor.vaultRequired')}</div>
     );
   }
 
   return (
     <div className="space-y-6">
-      <SectionHeader title="编辑器" description="当前知识库的编辑器行为" />
-      <Row label="自动保存间隔" description={`${vault.editor.autoSaveMs}ms（100ms–10s）`}>
+      <SectionHeader title={tr('settings.editor.title')} description={tr('settings.editor.description')} />
+      <Row
+        label={tr('settings.editor.autoSaveMs')}
+        description={tr('settings.editor.autoSaveMs.description', { ms: vault.editor.autoSaveMs })}
+      >
         <input
           type="range"
           min={100}
@@ -550,13 +583,16 @@ function EditorSection() {
           className="w-32"
         />
       </Row>
-      <Row label="文件名与 H1 标题联动" description="修改标题自动重命名文件">
+      <Row
+        label={tr('settings.editor.bindFileNameToTitle')}
+        description={tr('settings.editor.bindFileNameToTitle.description')}
+      >
         <Toggle
           checked={vault.editor.bindFileNameToTitle}
           onChange={(v) => void setVault({ editor: { bindFileNameToTitle: v } })}
         />
       </Row>
-      <Row label="代码块主题">
+      <Row label={tr('settings.editor.codeTheme')}>
         <Select
           value={vault.editor.codeTheme}
           onChange={(v) => void setVault({ editor: { codeTheme: v as CodeTheme } })}
@@ -567,15 +603,17 @@ function EditorSection() {
           ]}
         />
       </Row>
-      <Row label="Vim 模式" description="实验性功能，当前版本尚未启用">
+      <Row label={tr('settings.editor.vimMode')} description={tr('settings.editor.vimMode.description')}>
         <Toggle
           checked={vault.editor.vimMode}
           onChange={(v) => void setVault({ editor: { vimMode: v } })}
         />
       </Row>
       <Row
-        label="二进制文档编辑器并发上限"
-        description={`xlsx / xmind tab 最多同时打开 ${vault.binary.maxConcurrentTabs} 个，超出自动关闭最早打开的（1–8）`}
+        label={tr('settings.editor.binaryMax')}
+        description={tr('settings.editor.binaryMax.description', {
+          count: vault.binary.maxConcurrentTabs,
+        })}
       >
         <input
           type="range"
@@ -595,6 +633,7 @@ function GitSection() {
   const { global, setGlobal } = useGlobalSettings();
   const { vault } = useVaultSettingsEffects();
   const setVault = useSettingsStore((s) => s.setVault);
+  const tr = useI18n();
   const [message, setMessage] = useState<string | null>(null);
   const [binaryUntracked, setBinaryUntracked] = useState<boolean | null>(null);
 
@@ -618,9 +657,9 @@ function GitSection() {
       setMessage(
         untrack
           ? r.removedFromIndex > 0
-            ? `已停止跟踪 ${r.removedFromIndex} 个二进制文档，文件仍保留在本地`
-            : '新建的二进制文档将不再随 Git 跟踪'
-          : '二进制文档恢复 Git 跟踪（仅对之后新增的文件生效）',
+            ? tr('settings.git.binaryUntrackedCount', { count: r.removedFromIndex })
+            : tr('settings.git.binaryUntrackedNew')
+          : tr('settings.git.binaryTrackingRestored'),
       );
       setTimeout(() => setMessage(null), 3000);
     } catch (error) {
@@ -631,7 +670,7 @@ function GitSection() {
   const saveInterval = async (ms: number): Promise<void> => {
     try {
       await setVault({ git: { autoCommitIntervalMs: ms } });
-      setMessage(`已保存：自动提交防抖 ${ms}ms`);
+      setMessage(tr('settings.git.intervalSaved', { ms }));
       setTimeout(() => setMessage(null), 3000);
     } catch (error) {
       setMessage(error instanceof Error ? error.message : String(error));
@@ -640,31 +679,36 @@ function GitSection() {
 
   return (
     <div className="space-y-6">
-      <SectionHeader title="Git" description="全局 Git 行为与当前知识库的版本控制行为" />
-      <Row label="使用系统 Git" description="全局设置；关闭时使用 NexNote 内置 Git">
+      <SectionHeader title="Git" description={tr('settings.git.description')} />
+      <Row label={tr('settings.git.system')} description={tr('settings.git.system.description')}>
         <Toggle
-          label="使用系统 Git"
+          label={tr('settings.git.system')}
           checked={global?.git.useSystemGit ?? false}
           onChange={(v) => void setGlobal({ git: { useSystemGit: v } })}
         />
       </Row>
       <div className="border-t pt-6">
-        <SectionHeader title="当前知识库" description="以下设置仅对已打开的知识库生效" />
+        <SectionHeader
+          title={tr('settings.git.currentVault')}
+          description={tr('settings.git.currentVault.description')}
+        />
         {!vault ? (
           <div className="text-sm text-muted-foreground">
-            尚未打开知识库，打开后可配置 Git 行为。
+            {tr('settings.git.vaultRequired')}
           </div>
         ) : (
           <>
-            <Row label="自动提交">
+            <Row label={tr('settings.git.autoCommit')}>
               <Toggle
                 checked={vault.git.autoCommit}
                 onChange={(v) => void setVault({ git: { autoCommit: v } })}
               />
             </Row>
             <Row
-              label="自动提交间隔"
-              description={`${vault.git.autoCommitIntervalMs}ms（2s–10min）`}
+              label={tr('settings.git.interval')}
+              description={tr('settings.git.interval.description', {
+                ms: vault.git.autoCommitIntervalMs,
+              })}
             >
               <input
                 type="range"
@@ -678,7 +722,10 @@ function GitSection() {
                 className="w-32"
               />
             </Row>
-            <Row label="提交消息模板" description="{summary} 会被替换为变更摘要">
+            <Row
+              label={tr('settings.git.commitTemplate')}
+              description={tr('settings.git.commitTemplate.description', { summary: '{summary}' })}
+            >
               <input
                 type="text"
                 value={vault.git.commitMessageTemplate}
@@ -686,7 +733,10 @@ function GitSection() {
                 className="h-8 w-56 rounded-md border bg-background px-2 text-sm"
               />
             </Row>
-            <Row label="默认分支名" description="新建知识库时使用">
+            <Row
+              label={tr('settings.git.defaultBranch')}
+              description={tr('settings.git.defaultBranch.description')}
+            >
               <input
                 type="text"
                 value={vault.git.defaultBranch}
@@ -696,8 +746,8 @@ function GitSection() {
             </Row>
             {binaryUntracked !== null && (
               <Row
-                label="二进制文档不随 Git 跟踪"
-                description="xlsx / xmind 默认随知识库版本化；开启后写入 .gitignore 不再跟踪"
+                label={tr('settings.git.binaryUntrack')}
+                description={tr('settings.git.binaryUntrack.description')}
               >
                 <Toggle checked={binaryUntracked} onChange={(v) => void setBinaryUntrack(v)} />
               </Row>
@@ -712,6 +762,7 @@ function GitSection() {
 function ShortcutsSection() {
   const { global } = useGlobalSettings();
   const setShortcuts = useSettingsStore((s) => s.setShortcuts);
+  const tr = useI18n();
   const shortcuts = useMemo(() => global?.shortcuts ?? [], [global?.shortcuts]);
   const [drafts, setDrafts] = useState<Record<string, string>>({});
   const [message, setMessage] = useState<string | null>(null);
@@ -720,18 +771,18 @@ function ShortcutsSection() {
     async (next: ShortcutOverride[]) => {
       try {
         await setShortcuts(next);
-        setMessage('快捷键已保存');
+        setMessage(tr('settings.shortcuts.saved'));
       } catch (error) {
         setMessage(error instanceof Error ? error.message : String(error));
       }
     },
-    [setShortcuts],
+    [setShortcuts, tr],
   );
 
   const saveBinding = async (shortcut: ShortcutOverride): Promise<void> => {
     const canonical = normalizeShortcut(drafts[shortcut.commandId] ?? shortcut.key);
     if (!canonical) {
-      setMessage('请输入有效快捷键，例如 Mod+Shift+F');
+      setMessage(tr('settings.shortcuts.invalid'));
       return;
     }
     const collision = shortcuts.find(
@@ -741,7 +792,7 @@ function ShortcutsSection() {
         candidate.key === canonical,
     );
     if (collision) {
-      setMessage(`快捷键与 ${collision.commandId} 冲突`);
+      setMessage(tr('settings.shortcuts.conflict', { commandId: collision.commandId }));
       return;
     }
     await persist(
@@ -756,7 +807,7 @@ function ShortcutsSection() {
   const toggleBinding = async (shortcut: ShortcutOverride): Promise<void> => {
     const key = normalizeShortcut(drafts[shortcut.commandId] ?? shortcut.key);
     if (shortcut.disabled && !key) {
-      setMessage('启用前请先输入有效快捷键');
+      setMessage(tr('settings.shortcuts.enableRequiresKey'));
       return;
     }
     await persist(
@@ -768,14 +819,14 @@ function ShortcutsSection() {
     );
   };
 
-  if (!global) return <div className="text-sm text-muted-foreground">加载中…</div>;
+  if (!global) return <div className="text-sm text-muted-foreground">{tr('settings.loading')}</div>;
 
   const handleImport = async (): Promise<void> => {
     try {
       const result = await invoke('settings:pickImportFile');
       if (result) {
         const { imported } = await invoke('settings:importShortcuts', { json: result });
-        setMessage(`已导入 ${imported} 条快捷键`);
+        setMessage(tr('settings.shortcuts.imported', { count: imported }));
       }
     } catch (e) {
       setMessage(e instanceof Error ? e.message : String(e));
@@ -789,7 +840,7 @@ function ShortcutsSection() {
         suggestedName: 'nexnote-shortcuts.json',
         contents: result.json,
       });
-      setMessage('快捷键已导出');
+      setMessage(tr('settings.shortcuts.exported'));
     } catch (e) {
       setMessage(e instanceof Error ? e.message : String(e));
     }
@@ -797,21 +848,24 @@ function ShortcutsSection() {
 
   return (
     <div className="space-y-4">
-      <SectionHeader title="快捷键" description="直接编辑快捷键，或单独启用、禁用每个绑定。" />
+      <SectionHeader
+        title={tr('settings.section.shortcuts')}
+        description={tr('settings.shortcuts.description')}
+      />
       <div className="mb-3 flex gap-2">
         <button
           type="button"
           onClick={() => void handleImport()}
           className="h-7 rounded-md border px-3 text-xs hover:bg-accent"
         >
-          导入…
+          {tr('settings.shortcuts.import')}
         </button>
         <button
           type="button"
           onClick={() => void handleExport()}
           className="h-7 rounded-md border px-3 text-xs hover:bg-accent"
         >
-          导出…
+          {tr('settings.shortcuts.export')}
         </button>
       </div>
       {message && (
@@ -833,7 +887,7 @@ function ShortcutsSection() {
             </label>
             <input
               id={`shortcut-${shortcut.commandId}`}
-              aria-label={`${shortcut.commandId} 快捷键`}
+              aria-label={tr('settings.shortcuts.aria', { commandId: shortcut.commandId })}
               value={drafts[shortcut.commandId] ?? shortcut.key}
               disabled={shortcut.disabled}
               onChange={(event) =>
@@ -859,6 +913,7 @@ function ShortcutsSection() {
 }
 
 function AboutSection() {
+  const tr = useI18n();
   const [info, setInfo] = useState<{
     version: string;
     platform: string;
@@ -872,18 +927,18 @@ function AboutSection() {
 
   return (
     <div className="space-y-4">
-      <SectionHeader title="关于 NexNote" />
+      <SectionHeader title={tr('settings.about.title')} />
       <div className="space-y-2 text-sm">
         <div className="flex justify-between">
-          <span className="text-muted-foreground">版本</span>
+          <span className="text-muted-foreground">{tr('settings.about.version')}</span>
           <span className="font-mono">{info?.version ?? '…'}</span>
         </div>
         <div className="flex justify-between">
-          <span className="text-muted-foreground">平台</span>
+          <span className="text-muted-foreground">{tr('settings.about.platform')}</span>
           <span className="font-mono">{info?.platform ?? '…'}</span>
         </div>
         <div className="flex justify-between">
-          <span className="text-muted-foreground">架构</span>
+          <span className="text-muted-foreground">{tr('settings.about.architecture')}</span>
           <span className="font-mono">{info?.arch ?? '…'}</span>
         </div>
         <div className="flex justify-between">
@@ -892,8 +947,8 @@ function AboutSection() {
         </div>
       </div>
       <div className="pt-4 text-xs text-muted-foreground">
-        <p>NexNote — 面向 AI 原生工作流的本地知识库。</p>
-        <p className="mt-2">所有数据保存在本地知识库目录中。</p>
+        <p>{tr('settings.about.description')}</p>
+        <p className="mt-2">{tr('settings.about.localData')}</p>
       </div>
     </div>
   );

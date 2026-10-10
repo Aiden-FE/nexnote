@@ -169,6 +169,39 @@ describe('更新设置', () => {
 });
 
 describe('DEV-072 独立代理设置', () => {
+  it('renders settings core sections in en-US without CJK residue', async () => {
+    setLanguage('en-US');
+    installBridge();
+    await mountAndLoad();
+    await act(async () => {
+      container.querySelector<HTMLButtonElement>('[data-testid="settings-nav-network"]')?.click();
+      await tick(10);
+    });
+    expect(container.textContent).toContain('Network');
+    expect(container.textContent).not.toMatch(/[一-鿿]/);
+    await act(async () => {
+      container.querySelector<HTMLButtonElement>('[data-testid="settings-nav-editor"]')?.click();
+      await tick(10);
+    });
+    expect(container.textContent).not.toMatch(/[一-鿿]/);
+    await act(async () => {
+      container.querySelector<HTMLButtonElement>('[data-testid="settings-nav-git"]')?.click();
+      await tick(10);
+    });
+    expect(container.textContent).not.toMatch(/[一-鿿]/);
+    await act(async () => {
+      container.querySelector<HTMLButtonElement>('[data-testid="settings-nav-shortcuts"]')?.click();
+      await tick(10);
+    });
+    expect(container.textContent).toContain('Shortcuts');
+    expect(container.textContent).not.toMatch(/[一-鿿]/);
+    await act(async () => {
+      container.querySelector<HTMLButtonElement>('[data-testid="settings-nav-about"]')?.click();
+      await tick(10);
+    });
+    expect(container.textContent).not.toMatch(/[一-鿿]/);
+  });
+
   it('保存网络代理绕过主机列表', async () => {
     const { invokeSpy } = installBridge();
     await mountAndLoad();
