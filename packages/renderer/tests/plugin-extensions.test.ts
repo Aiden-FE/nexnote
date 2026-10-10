@@ -100,8 +100,8 @@ describe('插件扩展点宿主派生（DEV-014）', () => {
     expect(ids).toContain(`${PLUGIN_CMD_SLASH_PREFIX}com.demo:runtime-cmd`);
     // 运行时优先级（同 id 去重保留 runtime 的标题）
     const hello = items.find((i) => i.id === `${PLUGIN_CMD_SLASH_PREFIX}com.demo:hello`);
-    expect(hello?.title).toBe('Hello Runtime');
-    expect(hello?.group).toBe('插件');
+    expect(hello?.titleText).toBe('Hello Runtime');
+    expect(hello?.group).toBe('plugin');
     await expect(hello?.action({ view: {} as never } as never)).resolves.toBe(true);
     expect(runCalls).toEqual([{ pluginId: 'com.demo', commandId: 'hello' }]);
   });

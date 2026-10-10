@@ -472,6 +472,103 @@ export const MESSAGES_ZH_CN = {
   'toolbar.more': '更多',
   'toolbar.moreMenu': '更多工具栏动作',
   'toolbar.aiMenu': 'AI 动作',
+  'toolbar.ai.ask': '询问 AI（送入对话）',
+  'toolbar.ai.insert': 'AI 插入（光标处）',
+  'toolbar.ai.translateDocument': '翻译全文（临时视图）',
+  'toolbar.heading.paragraph': '正文',
+  'toolbar.heading.pageTitle': '页面标题 H1 · 首个正文 H1 与文件名同步',
+  'toolbar.heading.level': '标题 H{level}',
+  'toolbar.menu.format': '格式',
+  'toolbar.menu.formatHint': '更多格式动作',
+  'toolbar.menu.insert': '插入',
+  'toolbar.menu.insertHint': '插入结构或媒体',
+  'toolbar.table.title': '表格',
+  'toolbar.table.hint': '表格内行/列操作',
+  'toolbar.table.rowBelow': '在下方插入行',
+  'toolbar.table.columnRight': '在右侧插入列',
+  'toolbar.table.rowDelete': '删除行',
+  'toolbar.table.columnDelete': '删除列',
+  'toolbar.view.source': '源码',
+  'toolbar.view.sourceHint': '打开源码模式（⌘/Ctrl+E）',
+  'toolbar.view.sourceOnly': '仅显示 Markdown 源码',
+  'toolbar.view.block': '块编辑',
+  'toolbar.view.blockHint': '切回块编辑模式（⌘/Ctrl+E）',
+  'toolbar.view.split': '分栏',
+  'toolbar.view.splitHint': '源码与实时预览',
+  'toolbar.view.preview': '预览',
+  'toolbar.view.previewHint': '仅显示只读预览',
+  'editorAction.edit:undo.name': '撤销',
+  'editorAction.edit:undo.hint': '撤销（⌘Z）',
+  'editorAction.edit:redo.name': '重做',
+  'editorAction.edit:redo.hint': '重做（⌘⇧Z）',
+  'editorAction.group.basic.name': '基础块',
+  'editorAction.group.insert.name': '插入',
+  'editorAction.group.ai.name': 'AI',
+  'editorAction.group.plugin.name': '插件',
+  'editorAction.block:heading:1.name': '页面标题 H1',
+  'editorAction.block:heading:2.name': '标题 H2',
+  'editorAction.block:heading:3.name': '标题 H3',
+  'editorAction.block:heading:4.name': '标题 H4',
+  'editorAction.block:heading:5.name': '标题 H5',
+  'editorAction.block:heading:6.name': '标题 H6',
+  'editorAction.block:type.name': '标题/段落',
+  'editorAction.block:paragraph.name': '正文',
+  'editorAction.block:bullet-list.name': '无序列表',
+  'editorAction.block:ordered-list.name': '有序列表',
+  'editorAction.block:task-list.name': '任务列表',
+  'editorAction.block:blockquote.name': '引用',
+  'editorAction.block:code.name': '代码块',
+  'editorAction.format:bold.name': '粗体',
+  'editorAction.format:bold.hint': '粗体（⌘B）',
+  'editorAction.format:italic.name': '斜体',
+  'editorAction.format:italic.hint': '斜体（⌘I）',
+  'editorAction.format:wikilink.name': '双链',
+  'editorAction.format:wikilink.hint': '双链 [[页面名]]',
+  'editorAction.format:strike.name': '删除线',
+  'editorAction.format:strike.hint': '删除线（⌘⇧X）',
+  'editorAction.format:code.name': '行内代码',
+  'editorAction.format:code.hint': '行内代码（⌘E）',
+  'editorAction.format:link.name': '外链',
+  'editorAction.format:link.hint': '外链（⌘K）',
+  'editorAction.format:selection.name': '格式化选区',
+  'editorAction.format:document.name': '格式化全文',
+  'editorAction.insert:horizontal-rule.name': '分隔线',
+  'editorAction.insert:horizontal-rule.hint': '在当前块后插入分隔线',
+  'editorAction.insert:table.name': '表格',
+  'editorAction.insert:table.hint': '插入 2×2 Markdown 表格',
+  'editorAction.table:row-below.name': '表格 · 下方插入行',
+  'editorAction.table:row-below.hint': '在当前行下方插入一行（光标需位于表格内）',
+  'editorAction.table:column-right.name': '表格 · 右侧插入列',
+  'editorAction.table:column-right.hint': '在当前列右侧插入一列（光标需位于表格内）',
+  'editorAction.table:row-delete.name': '表格 · 删除当前行',
+  'editorAction.table:row-delete.hint': '删除光标所在行（光标需位于表格内）',
+  'editorAction.table:column-delete.name': '表格 · 删除当前列',
+  'editorAction.table:column-delete.hint': '删除光标所在列（光标需位于表格内）',
+  'editorAction.insert:image.name': '图片',
+  'editorAction.insert:image.hint': '导入图片并插入安全块边界',
+  'editorAction.insert:attachment.name': '附件',
+  'editorAction.insert:attachment.hint': '导入附件并插入安全块边界',
+  'editorAction.insert:mermaid-flowchart.name': '流程图',
+  'editorAction.insert:mermaid-flowchart.hint': '插入 Mermaid 流程图',
+  'editorAction.insert:mermaid-gantt.name': '甘特图',
+  'editorAction.insert:mermaid-gantt.hint': '插入 Mermaid 甘特图',
+  'editorAction.insert:toc.name': '正文目录',
+  'editorAction.insert:toc.hint': '在正文中插入目录',
+  'editorAction.ai:insert.name': 'AI 插入',
+  'editorAction.ai:insert.hint': '指令…',
+  'editorAction.ai.writing:rewrite.name': 'AI · 改写',
+  'editorAction.ai.writing:polish.name': 'AI · 润色',
+  'editorAction.ai.writing:condense.name': 'AI · 缩写',
+  'editorAction.ai.writing:expand.name': 'AI · 扩写',
+  'editorAction.ai.writing:fillgaps.name': 'AI · 查漏补缺',
+  'editorAction.ai.writing:evidence.name': 'AI · 补充论据',
+  'editorAction.ai.writing.slashHint': '/ai',
+  'editorAction.builtin:math-block.name': '公式（块级）',
+  'editorAction.builtin:math-block.hint': '$$',
+  'editorAction.builtin:math-inline.name': '公式（行内）',
+  'editorAction.builtin:math-inline.hint': '$',
+  'editorAction.ai.name': 'AI',
+  'editorAction.view:outline.name': '悬浮目录',
 } as const satisfies MessageCatalog;
 
 /** English catalog. */
@@ -904,6 +1001,108 @@ export const MESSAGES_EN_US = {
   'toolbar.more': 'More',
   'toolbar.moreMenu': 'More toolbar actions',
   'toolbar.aiMenu': 'AI actions',
+  'toolbar.ai.ask': 'Ask AI (send to chat)',
+  'toolbar.ai.insert': 'AI insert (at cursor)',
+  'toolbar.ai.translateDocument': 'Translate document (temporary view)',
+  'toolbar.heading.paragraph': 'Paragraph',
+  'toolbar.heading.pageTitle': 'Page title H1 · first H1 syncs with file name',
+  'toolbar.heading.level': 'Heading H{level}',
+  'toolbar.menu.format': 'Format',
+  'toolbar.menu.formatHint': 'More formatting actions',
+  'toolbar.menu.insert': 'Insert',
+  'toolbar.menu.insertHint': 'Insert structures or media',
+  'toolbar.table.title': 'Table',
+  'toolbar.table.hint': 'Row and column actions inside a table',
+  'toolbar.table.rowBelow': 'Insert row below',
+  'toolbar.table.columnRight': 'Insert column right',
+  'toolbar.table.rowDelete': 'Delete row',
+  'toolbar.table.columnDelete': 'Delete column',
+  'toolbar.view.source': 'Source',
+  'toolbar.view.sourceHint': 'Open source mode (⌘/Ctrl+E)',
+  'toolbar.view.sourceOnly': 'Markdown source only',
+  'toolbar.view.block': 'Block editor',
+  'toolbar.view.blockHint': 'Switch back to block editing (⌘/Ctrl+E)',
+  'toolbar.view.split': 'Split',
+  'toolbar.view.splitHint': 'Source and live preview',
+  'toolbar.view.preview': 'Preview',
+  'toolbar.view.previewHint': 'Read-only preview only',
+  'editorAction.edit:undo.name': 'Undo',
+  'editorAction.edit:undo.hint': 'Undo (⌘Z)',
+  'editorAction.edit:redo.name': 'Redo',
+  'editorAction.edit:redo.hint': 'Redo (⌘⇧Z)',
+  'editorAction.group.basic.name': 'Blocks',
+  'editorAction.group.insert.name': 'Insert',
+  'editorAction.group.ai.name': 'AI',
+  'editorAction.group.plugin.name': 'Plugins',
+  'editorAction.block:heading:1.name': 'Page title H1',
+  'editorAction.block:heading:2.name': 'Heading H2',
+  'editorAction.block:heading:3.name': 'Heading H3',
+  'editorAction.block:heading:4.name': 'Heading H4',
+  'editorAction.block:heading:5.name': 'Heading H5',
+  'editorAction.block:heading:6.name': 'Heading H6',
+  'editorAction.block:type.name': 'Heading/paragraph',
+  'editorAction.block:paragraph.name': 'Paragraph',
+  'editorAction.block:bullet-list.name': 'Bulleted list',
+  'editorAction.block:ordered-list.name': 'Numbered list',
+  'editorAction.block:task-list.name': 'Task list',
+  'editorAction.block:blockquote.name': 'Quote',
+  'editorAction.block:code.name': 'Code block',
+  'editorAction.format:bold.name': 'Bold',
+  'editorAction.format:bold.hint': 'Bold (⌘B)',
+  'editorAction.format:italic.name': 'Italic',
+  'editorAction.format:italic.hint': 'Italic (⌘I)',
+  'editorAction.format:wikilink.name': 'Wikilink',
+  'editorAction.format:wikilink.hint': 'Wikilink [[page name]]',
+  'editorAction.format:strike.name': 'Strikethrough',
+  'editorAction.format:strike.hint': 'Strikethrough (⌘⇧X)',
+  'editorAction.format:code.name': 'Inline code',
+  'editorAction.format:code.hint': 'Inline code (⌘E)',
+  'editorAction.format:link.name': 'External link',
+  'editorAction.format:link.hint': 'External link (⌘K)',
+  'editorAction.format:selection.name': 'Format selection',
+  'editorAction.format:document.name': 'Format document',
+  'editorAction.insert:horizontal-rule.name': 'Horizontal rule',
+  'editorAction.insert:horizontal-rule.hint': 'Insert a horizontal rule after the current block',
+  'editorAction.insert:table.name': 'Table',
+  'editorAction.insert:table.hint': 'Insert a 2×2 Markdown table',
+  'editorAction.table:row-below.name': 'Table · insert row below',
+  'editorAction.table:row-below.hint':
+    'Insert one row below the current row (cursor must be inside a table)',
+  'editorAction.table:column-right.name': 'Table · insert column right',
+  'editorAction.table:column-right.hint':
+    'Insert one column to the right (cursor must be inside a table)',
+  'editorAction.table:row-delete.name': 'Table · delete current row',
+  'editorAction.table:row-delete.hint':
+    'Delete the row containing the cursor (cursor must be inside a table)',
+  'editorAction.table:column-delete.name': 'Table · delete current column',
+  'editorAction.table:column-delete.hint':
+    'Delete the column containing the cursor (cursor must be inside a table)',
+  'editorAction.insert:image.name': 'Image',
+  'editorAction.insert:image.hint': 'Import an image and insert it at a safe block boundary',
+  'editorAction.insert:attachment.name': 'Attachment',
+  'editorAction.insert:attachment.hint':
+    'Import an attachment and insert it at a safe block boundary',
+  'editorAction.insert:mermaid-flowchart.name': 'Flowchart',
+  'editorAction.insert:mermaid-flowchart.hint': 'Insert a Mermaid flowchart',
+  'editorAction.insert:mermaid-gantt.name': 'Gantt chart',
+  'editorAction.insert:mermaid-gantt.hint': 'Insert a Mermaid Gantt chart',
+  'editorAction.insert:toc.name': 'Table of contents',
+  'editorAction.insert:toc.hint': 'Insert a table of contents into the body',
+  'editorAction.ai:insert.name': 'AI insert',
+  'editorAction.ai:insert.hint': 'Instruction…',
+  'editorAction.ai.writing:rewrite.name': 'AI · Rewrite',
+  'editorAction.ai.writing:polish.name': 'AI · Polish',
+  'editorAction.ai.writing:condense.name': 'AI · Condense',
+  'editorAction.ai.writing:expand.name': 'AI · Expand',
+  'editorAction.ai.writing:fillgaps.name': 'AI · Fill gaps',
+  'editorAction.ai.writing:evidence.name': 'AI · Add evidence',
+  'editorAction.ai.writing.slashHint': '/ai',
+  'editorAction.builtin:math-block.name': 'Math block',
+  'editorAction.builtin:math-block.hint': '$$',
+  'editorAction.builtin:math-inline.name': 'Inline math',
+  'editorAction.builtin:math-inline.hint': '$',
+  'editorAction.ai.name': 'AI',
+  'editorAction.view:outline.name': 'Floating outline',
 } as const satisfies MessageCatalog;
 
 export const CATALOGS: Readonly<Record<UiLanguage, MessageCatalog>> = {
@@ -916,4 +1115,38 @@ export function missingKeys(language: UiLanguage): string[] {
   const baseline = Object.keys(MESSAGES_ZH_CN);
   const catalog = CATALOGS[language];
   return baseline.filter((key) => catalog[key] === undefined);
+}
+
+// ── 当前界面语言（ADR-0023 阶段②：renderer 与 kernel 共享同一权威）──
+// 语言权威仍来自设置 store；这里只保存「当前生效语言」并通知订阅者，
+// 让非 React 的 kernel 菜单也能在语言切换后重新成文。
+let currentLanguage: UiLanguage = DEFAULT_UI_LANGUAGE;
+const languageListeners = new Set<() => void>();
+
+/** 订阅当前界面语言；返回 unsubscribe。 */
+export function subscribeCurrentLanguage(listener: () => void): () => void {
+  languageListeners.add(listener);
+  return () => languageListeners.delete(listener);
+}
+
+/** 读取当前界面语言。 */
+export function getCurrentLanguage(): UiLanguage {
+  return currentLanguage;
+}
+
+/** 设置当前界面语言；非法值回退默认。返回生效语言。 */
+export function setCurrentLanguage(language: unknown): UiLanguage {
+  const next = isUiLanguage(language) ? language : DEFAULT_UI_LANGUAGE;
+  if (next === currentLanguage) return next;
+  currentLanguage = next;
+  for (const listener of languageListeners) listener();
+  return next;
+}
+
+/** 命令式按当前语言取文案（供 kernel 等非 React 代码使用）。 */
+export function tCurrent(
+  key: string,
+  params?: Readonly<Record<string, string | number>>,
+): string {
+  return translate(CATALOGS[currentLanguage], key, currentLanguage, params);
 }

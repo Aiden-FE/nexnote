@@ -494,10 +494,10 @@ describe('Markdown CodeMirror / 快捷输入（DEV-053）', () => {
       pluginActions: () => [
         {
           id: 'plugin:fail',
-          name: '失败插件',
+          titleText: '失败插件',
           icon: meta.icon,
           semantic: 'insert',
-          group: 'insert',
+          group: 'plugin',
           modes: ['source'],
           quickInsert: meta.quickInsert,
           run: async () => {
@@ -612,7 +612,7 @@ describe('Markdown CodeMirror / 快捷输入（DEV-053）', () => {
       pluginActions: () => [
         {
           id: 'plugin:demo',
-          name: '插件示例',
+          titleText: '插件示例',
           icon: meta.icon,
           semantic: 'insert',
           group: 'insert',

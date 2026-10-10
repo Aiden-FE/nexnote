@@ -2,6 +2,7 @@
  * 渲染层 i18n 入口（ADR-0023 阶段①）。
  *
  * - 语言权威来自设置 store 的 `appearance.language`；本模块只负责让消息目录随语言生效。
+ * - 当前语言状态保存在 shared 的 `message-catalog`，kernel 菜单等非 React 代码也能读取。
  * - `t()` 可命令式调用（非组件代码、回调、事件处理器）。
  * - `useI18n()` 订阅语言变化，切到 English 后所有用它的组件重渲染。
  * - 界面语言不改变页面正文、提交历史与 AI 提示词。
@@ -9,44 +10,29 @@
 import { useCallback, useSyncExternalStore } from 'react';
 import {
   CATALOGS,
-  DEFAULT_UI_LANGUAGE,
-  isUiLanguage,
+  getCurrentLanguage,
+  setCurrentLanguage,
+  subscribeCurrentLanguage,
   translate,
   type UiLanguage,
 } from '@nexnote/shared';
 
-let currentLanguage: UiLanguage = DEFAULT_UI_LANGUAGE;
-const listeners = new Set<() => void>();
+/** 兼容既有 renderer 调用点：代理 shared 的当前语言订阅。 */
+export const subscribeLanguage = subscribeCurrentLanguage;
 
-function emit(): void {
-  for (const listener of listeners) listener();
-}
-
-/** 订阅界面语言；返回 unsubscribe。 */
-export function subscribeLanguage(listener: () => void): () => void {
-  listeners.add(listener);
-  return () => listeners.delete(listener);
-}
-
-export function getLanguage(): UiLanguage {
-  return currentLanguage;
-}
+/** 兼容既有 renderer 调用点：读取 shared 中的当前语言。 */
+export const getLanguage = getCurrentLanguage;
 
 /** 设置当前界面语言；非法值回退默认。仅更新内存中的语言与订阅者。 */
-export function setLanguage(language: unknown): UiLanguage {
-  const next = isUiLanguage(language) ? language : DEFAULT_UI_LANGUAGE;
-  if (next === currentLanguage) return next;
-  currentLanguage = next;
-  emit();
-  return next;
-}
+export const setLanguage = setCurrentLanguage;
 
 /** 命令式取当前语言文案。 */
 export function t(
   key: string,
   params?: Readonly<Record<string, string | number>>,
 ): string {
-  return translate(CATALOGS[currentLanguage], key, currentLanguage, params);
+  const language = getCurrentLanguage();
+  return translate(CATALOGS[language], key, language, params);
 }
 
 /**

@@ -102,8 +102,8 @@ export function buildPluginCommandSlashItems(
   const meta = pluginQuickInsertMetadata('command');
   return defs.map((def) => ({
     id: pluginCmdSlashId(def.id),
-    title: def.title,
-    hint: def.pluginId,
+    titleText: def.title,
+    hintText: def.pluginId,
     icon: meta.icon,
     keywords: [...meta.quickInsert.aliases, ...(def.keywords ?? [])],
     group: meta.quickInsert.group,

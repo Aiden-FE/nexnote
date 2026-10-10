@@ -53,8 +53,8 @@ export function writingSlashItems(controller: WritingController): SlashMenuItem[
   if (!canonical?.quickInsert) throw new Error('Missing canonical AI insert action');
   const aiInsert: SlashMenuItem = {
     id: canonical.id,
-    title: canonical.name,
-    hint: canonical.hint,
+    titleKey: canonical.nameKey,
+    hintKey: canonical.hintKey,
     icon: canonical.icon,
     group: canonical.quickInsert.group,
     kind: canonical.quickInsert.kind,
@@ -77,10 +77,10 @@ export function writingSlashItems(controller: WritingController): SlashMenuItem[
     aiInsert,
     ...WRITING_ACTIONS.map((action): SlashMenuItem => ({
       id: `ai-${action.id}`,
-      title: `AI · ${action.label}`,
-      hint: '/ai',
+      titleKey: `editorAction.ai.writing:${action.id}.name`,
+      hintKey: 'editorAction.ai.writing.slashHint',
       icon: 'sparkles',
-      group: 'AI',
+      group: 'ai',
       kind: 'ai',
       contract: { execution: 'explicit-ai', capability: 'explicit-ai' },
       keywords: ['ai', '✨', ...action.keywords],

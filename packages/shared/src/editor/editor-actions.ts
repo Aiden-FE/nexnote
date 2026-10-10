@@ -1,3 +1,9 @@
+import {
+  CATALOGS,
+  translate as translateMessage,
+  type UiLanguage,
+} from '../i18n/message-catalog';
+
 export type EditorActionMode = 'block' | 'source' | 'preview';
 export type EditorActionGroup = 'primary' | 'format' | 'insert' | 'ai' | 'view' | 'navigation';
 export type EditorActionSemantic =
@@ -27,7 +33,7 @@ export type EditorActionIconKey =
   | 'task'
   | 'sparkles'
   | 'plugin';
-export type QuickInsertGroup = '基础块' | '插入' | 'AI' | '插件';
+export type QuickInsertGroup = 'basic' | 'insert' | 'ai' | 'plugin';
 export type QuickInsertKind = 'block-type' | 'structure' | 'inline' | 'ai' | 'plugin';
 export type QuickInsertExecution =
   | 'convert-empty-block'
@@ -39,10 +45,10 @@ export type QuickInsertCapability =
   'empty-block' | 'editable-line' | 'explicit-ai' | 'plugin-defined' | 'table-cursor';
 
 export const SLASH_ACTION_GROUP_ORDER: readonly QuickInsertGroup[] = [
-  '基础块',
-  '插入',
-  'AI',
-  '插件',
+  'basic',
+  'insert',
+  'ai',
+  'plugin',
 ];
 
 export interface QuickInsertMetadata {
@@ -59,12 +65,12 @@ export interface QuickInsertMetadata {
  */
 export interface EditorActionCatalogEntry {
   id: string;
-  name: string;
+  nameKey: string;
   icon: EditorActionIconKey;
   semantic: EditorActionSemantic;
   group: EditorActionGroup;
   modes: readonly EditorActionMode[];
-  hint?: string;
+  hintKey?: string;
   shortcut?: string;
   quickInsert?: QuickInsertMetadata;
 }
@@ -80,27 +86,27 @@ const quick = (
 export const EDITOR_ACTION_CATALOG: readonly EditorActionCatalogEntry[] = [
   {
     id: 'edit:undo',
-    name: '撤销',
+    nameKey: 'editorAction.edit:undo.name',
     icon: 'undo',
     semantic: 'history',
-    hint: '撤销（⌘Z）',
+    hintKey: 'editorAction.edit:undo.hint',
     shortcut: '⌘Z',
     group: 'primary',
     modes: ['block', 'source'],
   },
   {
     id: 'edit:redo',
-    name: '重做',
+    nameKey: 'editorAction.edit:redo.name',
     icon: 'redo',
     semantic: 'history',
-    hint: '重做（⌘⇧Z）',
+    hintKey: 'editorAction.edit:redo.hint',
     shortcut: '⌘⇧Z',
     group: 'primary',
     modes: ['block', 'source'],
   },
   {
     id: 'block:type',
-    name: '标题/段落',
+    nameKey: 'editorAction.block:type.name',
     icon: 'heading',
     semantic: 'block-type',
     group: 'primary',
@@ -108,12 +114,12 @@ export const EDITOR_ACTION_CATALOG: readonly EditorActionCatalogEntry[] = [
   },
   {
     id: 'block:paragraph',
-    name: '正文',
+    nameKey: 'editorAction.block:paragraph.name',
     icon: 'paragraph',
     semantic: 'block-type',
     group: 'primary',
     modes: ['block', 'source'],
-    quickInsert: quick('基础块', 'block-type', 'convert-empty-block', 'empty-block', [
+    quickInsert: quick('basic', 'block-type', 'convert-empty-block', 'empty-block', [
       'paragraph',
       'text',
       'p',
@@ -123,12 +129,14 @@ export const EDITOR_ACTION_CATALOG: readonly EditorActionCatalogEntry[] = [
   },
   ...([1, 2, 3, 4, 5, 6] as const).map((level): EditorActionCatalogEntry => ({
     id: `block:heading:${level}`,
-    name: level === 1 ? '页面标题 H1' : `标题 H${level}`,
+    nameKey: level === 1
+      ? 'editorAction.block:heading:1.name'
+      : `editorAction.block:heading:${level}.name`,
     icon: 'heading',
     semantic: 'block-type',
     group: 'primary',
     modes: ['block', 'source'],
-    quickInsert: quick('基础块', 'block-type', 'convert-empty-block', 'empty-block', [
+    quickInsert: quick('basic', 'block-type', 'convert-empty-block', 'empty-block', [
       ...(level === 1 ? ['heading'] : []),
       `heading ${level}`,
       `h${level}`,
@@ -139,12 +147,12 @@ export const EDITOR_ACTION_CATALOG: readonly EditorActionCatalogEntry[] = [
   })),
   {
     id: 'block:bullet-list',
-    name: '无序列表',
+    nameKey: 'editorAction.block:bullet-list.name',
     icon: 'list',
     semantic: 'block-type',
     group: 'primary',
     modes: ['block', 'source'],
-    quickInsert: quick('基础块', 'block-type', 'convert-empty-block', 'empty-block', [
+    quickInsert: quick('basic', 'block-type', 'convert-empty-block', 'empty-block', [
       'list',
       'bullet',
       'ul',
@@ -155,12 +163,12 @@ export const EDITOR_ACTION_CATALOG: readonly EditorActionCatalogEntry[] = [
   },
   {
     id: 'block:ordered-list',
-    name: '有序列表',
+    nameKey: 'editorAction.block:ordered-list.name',
     icon: 'list',
     semantic: 'block-type',
     group: 'primary',
     modes: ['block', 'source'],
-    quickInsert: quick('基础块', 'block-type', 'convert-empty-block', 'empty-block', [
+    quickInsert: quick('basic', 'block-type', 'convert-empty-block', 'empty-block', [
       'list',
       'ordered',
       'ol',
@@ -170,12 +178,12 @@ export const EDITOR_ACTION_CATALOG: readonly EditorActionCatalogEntry[] = [
   },
   {
     id: 'block:task-list',
-    name: '任务列表',
+    nameKey: 'editorAction.block:task-list.name',
     icon: 'task',
     semantic: 'block-type',
     group: 'primary',
     modes: ['block', 'source'],
-    quickInsert: quick('基础块', 'block-type', 'convert-empty-block', 'empty-block', [
+    quickInsert: quick('basic', 'block-type', 'convert-empty-block', 'empty-block', [
       'task',
       'todo',
       'checkbox',
@@ -186,12 +194,12 @@ export const EDITOR_ACTION_CATALOG: readonly EditorActionCatalogEntry[] = [
   },
   {
     id: 'block:blockquote',
-    name: '引用',
+    nameKey: 'editorAction.block:blockquote.name',
     icon: 'quote',
     semantic: 'block-type',
     group: 'primary',
     modes: ['block', 'source'],
-    quickInsert: quick('基础块', 'block-type', 'convert-empty-block', 'empty-block', [
+    quickInsert: quick('basic', 'block-type', 'convert-empty-block', 'empty-block', [
       'quote',
       'blockquote',
       '>',
@@ -200,12 +208,12 @@ export const EDITOR_ACTION_CATALOG: readonly EditorActionCatalogEntry[] = [
   },
   {
     id: 'block:code',
-    name: '代码块',
+    nameKey: 'editorAction.block:code.name',
     icon: 'code',
     semantic: 'block-type',
     group: 'primary',
     modes: ['block', 'source'],
-    quickInsert: quick('基础块', 'block-type', 'convert-empty-block', 'empty-block', [
+    quickInsert: quick('basic', 'block-type', 'convert-empty-block', 'empty-block', [
       'code',
       'code block',
       '```',
@@ -214,33 +222,33 @@ export const EDITOR_ACTION_CATALOG: readonly EditorActionCatalogEntry[] = [
   },
   {
     id: 'format:bold',
-    name: '粗体',
+    nameKey: 'editorAction.format:bold.name',
     icon: 'bold',
     semantic: 'format',
-    hint: '粗体（⌘B）',
+    hintKey: 'editorAction.format:bold.hint',
     shortcut: '⌘B',
     group: 'primary',
     modes: ['block', 'source'],
   },
   {
     id: 'format:italic',
-    name: '斜体',
+    nameKey: 'editorAction.format:italic.name',
     icon: 'italic',
     semantic: 'format',
-    hint: '斜体（⌘I）',
+    hintKey: 'editorAction.format:italic.hint',
     shortcut: '⌘I',
     group: 'primary',
     modes: ['block', 'source'],
   },
   {
     id: 'format:wikilink',
-    name: '双链',
+    nameKey: 'editorAction.format:wikilink.name',
     icon: 'wikilink',
     semantic: 'format',
-    hint: '双链 [[页面名]]',
+    hintKey: 'editorAction.format:wikilink.hint',
     group: 'primary',
     modes: ['block', 'source'],
-    quickInsert: quick('插入', 'inline', 'insert-at-cursor', 'editable-line', [
+    quickInsert: quick('insert', 'inline', 'insert-at-cursor', 'editable-line', [
       'wikilink',
       'link',
       '[[',
@@ -249,37 +257,37 @@ export const EDITOR_ACTION_CATALOG: readonly EditorActionCatalogEntry[] = [
   },
   {
     id: 'format:strike',
-    name: '删除线',
+    nameKey: 'editorAction.format:strike.name',
     icon: 'strike',
     semantic: 'format',
-    hint: '删除线（⌘⇧X）',
+    hintKey: 'editorAction.format:strike.hint',
     shortcut: '⌘⇧X',
     group: 'format',
     modes: ['block', 'source'],
   },
   {
     id: 'format:code',
-    name: '行内代码',
+    nameKey: 'editorAction.format:code.name',
     icon: 'code',
     semantic: 'format',
-    hint: '行内代码（⌘E）',
+    hintKey: 'editorAction.format:code.hint',
     shortcut: '⌘E',
     group: 'format',
     modes: ['block', 'source'],
   },
   {
     id: 'format:link',
-    name: '外链',
+    nameKey: 'editorAction.format:link.name',
     icon: 'link',
     semantic: 'format',
-    hint: '外链（⌘K）',
+    hintKey: 'editorAction.format:link.hint',
     shortcut: '⌘K',
     group: 'format',
     modes: ['block', 'source'],
   },
   {
     id: 'format:selection',
-    name: '格式化选区',
+    nameKey: 'editorAction.format:selection.name',
     icon: 'selection',
     semantic: 'format',
     group: 'format',
@@ -287,7 +295,7 @@ export const EDITOR_ACTION_CATALOG: readonly EditorActionCatalogEntry[] = [
   },
   {
     id: 'format:document',
-    name: '格式化全文',
+    nameKey: 'editorAction.format:document.name',
     icon: 'wand',
     semantic: 'format',
     group: 'format',
@@ -295,13 +303,13 @@ export const EDITOR_ACTION_CATALOG: readonly EditorActionCatalogEntry[] = [
   },
   {
     id: 'insert:horizontal-rule',
-    name: '分隔线',
-    hint: '在当前块后插入分隔线',
+    nameKey: 'editorAction.insert:horizontal-rule.name',
+    hintKey: 'editorAction.insert:horizontal-rule.hint',
     icon: 'rule',
     semantic: 'insert',
     group: 'insert',
     modes: ['block', 'source'],
-    quickInsert: quick('插入', 'structure', 'insert-safe-block', 'editable-line', [
+    quickInsert: quick('insert', 'structure', 'insert-safe-block', 'editable-line', [
       'hr',
       'rule',
       '---',
@@ -310,13 +318,13 @@ export const EDITOR_ACTION_CATALOG: readonly EditorActionCatalogEntry[] = [
   },
   {
     id: 'insert:table',
-    name: '表格',
-    hint: '插入 2×2 Markdown 表格',
+    nameKey: 'editorAction.insert:table.name',
+    hintKey: 'editorAction.insert:table.hint',
     icon: 'table',
     semantic: 'insert',
     group: 'insert',
     modes: ['block', 'source'],
-    quickInsert: quick('插入', 'structure', 'insert-safe-block', 'editable-line', [
+    quickInsert: quick('insert', 'structure', 'insert-safe-block', 'editable-line', [
       'table',
       'grid',
       '|',
@@ -325,13 +333,13 @@ export const EDITOR_ACTION_CATALOG: readonly EditorActionCatalogEntry[] = [
   },
   {
     id: 'table:row-below',
-    name: '表格 · 下方插入行',
-    hint: '在当前行下方插入一行（光标需位于表格内）',
+    nameKey: 'editorAction.table:row-below.name',
+    hintKey: 'editorAction.table:row-below.hint',
     icon: 'table',
     semantic: 'insert',
     group: 'insert',
     modes: ['block'],
-    quickInsert: quick('插入', 'structure', 'insert-at-cursor', 'table-cursor', [
+    quickInsert: quick('insert', 'structure', 'insert-at-cursor', 'table-cursor', [
       'row',
       '行',
       '插入行',
@@ -339,13 +347,13 @@ export const EDITOR_ACTION_CATALOG: readonly EditorActionCatalogEntry[] = [
   },
   {
     id: 'table:column-right',
-    name: '表格 · 右侧插入列',
-    hint: '在当前列右侧插入一列（光标需位于表格内）',
+    nameKey: 'editorAction.table:column-right.name',
+    hintKey: 'editorAction.table:column-right.hint',
     icon: 'table',
     semantic: 'insert',
     group: 'insert',
     modes: ['block'],
-    quickInsert: quick('插入', 'structure', 'insert-at-cursor', 'table-cursor', [
+    quickInsert: quick('insert', 'structure', 'insert-at-cursor', 'table-cursor', [
       'column',
       '列',
       '插入列',
@@ -353,39 +361,39 @@ export const EDITOR_ACTION_CATALOG: readonly EditorActionCatalogEntry[] = [
   },
   {
     id: 'table:row-delete',
-    name: '表格 · 删除当前行',
-    hint: '删除光标所在行（光标需位于表格内）',
+    nameKey: 'editorAction.table:row-delete.name',
+    hintKey: 'editorAction.table:row-delete.hint',
     icon: 'table',
     semantic: 'insert',
     group: 'insert',
     modes: ['block'],
-    quickInsert: quick('插入', 'structure', 'insert-at-cursor', 'table-cursor', [
+    quickInsert: quick('insert', 'structure', 'insert-at-cursor', 'table-cursor', [
       '删除行',
       'delete row',
     ]),
   },
   {
     id: 'table:column-delete',
-    name: '表格 · 删除当前列',
-    hint: '删除光标所在列（光标需位于表格内）',
+    nameKey: 'editorAction.table:column-delete.name',
+    hintKey: 'editorAction.table:column-delete.hint',
     icon: 'table',
     semantic: 'insert',
     group: 'insert',
     modes: ['block'],
-    quickInsert: quick('插入', 'structure', 'insert-at-cursor', 'table-cursor', [
+    quickInsert: quick('insert', 'structure', 'insert-at-cursor', 'table-cursor', [
       '删除列',
       'delete column',
     ]),
   },
   {
     id: 'insert:image',
-    name: '图片',
-    hint: '导入图片并插入安全块边界',
+    nameKey: 'editorAction.insert:image.name',
+    hintKey: 'editorAction.insert:image.hint',
     icon: 'image',
     semantic: 'insert',
     group: 'insert',
     modes: ['block', 'source'],
-    quickInsert: quick('插入', 'structure', 'insert-safe-block', 'editable-line', [
+    quickInsert: quick('insert', 'structure', 'insert-safe-block', 'editable-line', [
       'image',
       'img',
       'picture',
@@ -394,13 +402,13 @@ export const EDITOR_ACTION_CATALOG: readonly EditorActionCatalogEntry[] = [
   },
   {
     id: 'insert:attachment',
-    name: '附件',
-    hint: '导入附件并插入安全块边界',
+    nameKey: 'editorAction.insert:attachment.name',
+    hintKey: 'editorAction.insert:attachment.hint',
     icon: 'attachment',
     semantic: 'insert',
     group: 'insert',
     modes: ['block', 'source'],
-    quickInsert: quick('插入', 'structure', 'insert-safe-block', 'editable-line', [
+    quickInsert: quick('insert', 'structure', 'insert-safe-block', 'editable-line', [
       'attachment',
       'file',
       '附件',
@@ -408,13 +416,13 @@ export const EDITOR_ACTION_CATALOG: readonly EditorActionCatalogEntry[] = [
   },
   {
     id: 'insert:mermaid-flowchart',
-    name: '流程图',
-    hint: '插入 Mermaid 流程图',
+    nameKey: 'editorAction.insert:mermaid-flowchart.name',
+    hintKey: 'editorAction.insert:mermaid-flowchart.hint',
     icon: 'flowchart',
     semantic: 'insert',
     group: 'insert',
     modes: ['block', 'source'],
-    quickInsert: quick('插入', 'structure', 'insert-safe-block', 'editable-line', [
+    quickInsert: quick('insert', 'structure', 'insert-safe-block', 'editable-line', [
       'mermaid',
       '流程',
       'flow',
@@ -424,13 +432,13 @@ export const EDITOR_ACTION_CATALOG: readonly EditorActionCatalogEntry[] = [
   },
   {
     id: 'insert:mermaid-gantt',
-    name: '甘特图',
-    hint: '插入 Mermaid 甘特图',
+    nameKey: 'editorAction.insert:mermaid-gantt.name',
+    hintKey: 'editorAction.insert:mermaid-gantt.hint',
     icon: 'gantt',
     semantic: 'insert',
     group: 'insert',
     modes: ['block', 'source'],
-    quickInsert: quick('插入', 'structure', 'insert-safe-block', 'editable-line', [
+    quickInsert: quick('insert', 'structure', 'insert-safe-block', 'editable-line', [
       'mermaid',
       '甘特',
       'gantt',
@@ -438,13 +446,13 @@ export const EDITOR_ACTION_CATALOG: readonly EditorActionCatalogEntry[] = [
   },
   {
     id: 'insert:toc',
-    name: '正文目录',
-    hint: '在正文中插入目录',
+    nameKey: 'editorAction.insert:toc.name',
+    hintKey: 'editorAction.insert:toc.hint',
     icon: 'outline',
     semantic: 'insert',
     group: 'insert',
     modes: ['block', 'source'],
-    quickInsert: quick('插入', 'structure', 'insert-safe-block', 'editable-line', [
+    quickInsert: quick('insert', 'structure', 'insert-safe-block', 'editable-line', [
       'toc',
       'table of contents',
       '目录',
@@ -453,13 +461,13 @@ export const EDITOR_ACTION_CATALOG: readonly EditorActionCatalogEntry[] = [
   },
   {
     id: 'ai:insert',
-    name: 'AI 插入',
-    hint: '指令…',
+    nameKey: 'editorAction.ai:insert.name',
+    hintKey: 'editorAction.ai:insert.hint',
     icon: 'sparkles',
     semantic: 'ai',
     group: 'ai',
     modes: ['block', 'source'],
-    quickInsert: quick('AI', 'ai', 'explicit-ai', 'explicit-ai', [
+    quickInsert: quick('ai', 'ai', 'explicit-ai', 'explicit-ai', [
       'ai',
       'insert',
       'prompt',
@@ -469,7 +477,7 @@ export const EDITOR_ACTION_CATALOG: readonly EditorActionCatalogEntry[] = [
   },
   {
     id: 'ai',
-    name: 'AI',
+    nameKey: 'editorAction.ai.name',
     icon: 'sparkles',
     semantic: 'ai',
     group: 'ai',
@@ -477,7 +485,7 @@ export const EDITOR_ACTION_CATALOG: readonly EditorActionCatalogEntry[] = [
   },
   {
     id: 'view:outline',
-    name: '悬浮目录',
+    nameKey: 'editorAction.view:outline.name',
     icon: 'outline',
     semantic: 'navigation',
     group: 'navigation',
@@ -494,7 +502,7 @@ export function pluginQuickInsertMetadata(
   return {
     icon: 'plugin',
     quickInsert: quick(
-      '插件',
+      'plugin',
       'plugin',
       kind === 'block' ? 'insert-safe-block' : 'external-command',
       'plugin-defined',
@@ -505,6 +513,33 @@ export function pluginQuickInsertMetadata(
 
 export function editorActionCatalogEntry(id: string): EditorActionCatalogEntry | undefined {
   return catalogById.get(id);
+}
+
+/** 按界面语言取快捷插入分组标题（ADR-0023）。 */
+export function quickInsertGroupName(
+  group: QuickInsertGroup,
+  language: UiLanguage,
+): string {
+  return translateMessage(CATALOGS[language], `editorAction.group.${group}.name`, language);
+}
+
+/** 按界面语言取动作显示名（ADR-0023）。key 缺失时回退动作 id，保证可见。 */
+export function editorActionName(
+  entry: EditorActionCatalogEntry,
+  language: UiLanguage,
+): string {
+  const text = translateMessage(CATALOGS[language], entry.nameKey, language);
+  return text === entry.nameKey ? entry.id : text;
+}
+
+/** 按界面语言取动作提示；无 hintKey 时返回 undefined。 */
+export function editorActionHint(
+  entry: EditorActionCatalogEntry,
+  language: UiLanguage,
+): string | undefined {
+  if (!entry.hintKey) return undefined;
+  const text = translateMessage(CATALOGS[language], entry.hintKey, language);
+  return text === entry.hintKey ? undefined : text;
 }
 
 export interface QuickInsertCandidate<T> {

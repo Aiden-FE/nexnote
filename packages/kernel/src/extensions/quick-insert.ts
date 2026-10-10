@@ -3,8 +3,8 @@ import type { Editor } from '@tiptap/core';
 import { Plugin, PluginKey } from '@tiptap/pm/state';
 import { closeHistory } from '@tiptap/pm/history';
 import type { EditorView } from '@tiptap/pm/view';
-import { SLASH_ACTION_GROUP_ORDER, filterQuickInsertCandidates } from '@nexnote/shared';
-import type { EditorActionIconKey, QuickInsertKind } from '@nexnote/shared';
+import { SLASH_ACTION_GROUP_ORDER, filterQuickInsertCandidates, tCurrent } from '@nexnote/shared';
+import type { EditorActionIconKey, QuickInsertGroup, QuickInsertKind } from '@nexnote/shared';
 import { defaultQuickInsertItems } from './quick-insert-catalog';
 import {
   canExecuteSlashAction,
@@ -30,12 +30,16 @@ export function getEditorForView(view: EditorView): Editor | undefined {
 }
 export interface QuickInsertItem {
   id: string;
-  title: string;
-  hint?: string;
+  /** App-owned items use catalog keys; plugin contributions may provide source text. */
+  titleKey?: string;
+  /** Plugin-defined titles are content contributed by the plugin, not app UI copy. */
+  titleText?: string;
+  hintKey?: string;
+  hintText?: string;
   icon?: EditorActionIconKey;
   keywords?: string[];
   aliases?: string[];
-  group?: string;
+  group?: QuickInsertGroup;
   kind?: QuickInsertKind;
   contract?: SlashExecutionContract;
   available?: (context: SlashExecutionContext) => boolean;
@@ -77,7 +81,7 @@ export function filterQuickInsertItems(
     items.map((item) => ({
       item,
       id: item.id,
-      title: item.title,
+      title: item.titleText ?? (item.titleKey ? tCurrent(item.titleKey) : item.id),
       aliases: item.aliases,
       keywords: item.keywords,
       group: item.group,

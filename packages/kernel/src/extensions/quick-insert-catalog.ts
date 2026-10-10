@@ -13,8 +13,8 @@ function item(id: string, action: QuickInsertItem['action']): QuickInsertItem {
   if (!definition || !quick) throw new Error(`Unknown quick insert action: ${id}`);
   return {
     id,
-    title: definition.name,
-    hint: definition.hint,
+    titleKey: definition.nameKey,
+    hintKey: definition.hintKey,
     icon: definition.icon,
     aliases: [...quick.aliases],
     keywords: [...quick.aliases],

@@ -8,6 +8,7 @@ import {
   BUILTIN_PLUGIN_IDS,
 } from '@nexnote/shared';
 import { TextSelection } from '@tiptap/pm/state';
+import { t } from '../src/lib/i18n';
 import { EditorView } from '../src/editor/EditorView';
 import { SourceModeView } from '../src/editor/source/SourceModeView';
 import { getActiveEditor } from '../src/editor/active-editor';
@@ -201,7 +202,11 @@ describe('DEV-050 共享动作模型单一数据源', () => {
       'insert:toc',
     ]) {
       expect(editorAction(id).hint, id).toBeTruthy();
-      expect(editorAction(id).hint, id).toBe(editorActionCatalogEntry(id)?.hint);
+      expect(editorAction(id).hint, id).toBe(
+        editorActionCatalogEntry(id)?.hintKey
+          ? t(editorActionCatalogEntry(id)!.hintKey!)
+          : undefined,
+      );
     }
     // DEV-053：Markdown 源码的 `/` 菜单与顶部插入菜单均可安全导入媒体。
     expect(editorActionsForMode('source').some((action) => action.id === 'insert:image')).toBe(
@@ -265,7 +270,7 @@ describe('块编辑工具栏（DEV-035）', () => {
     const item = document.querySelector<HTMLElement>(
       '[data-slash-item="insert:mermaid-flowchart"]',
     );
-    expect(item?.textContent).toContain(action.name);
+    expect(item?.textContent).toContain(t(action.nameKey));
     expect(editorAction('insert:mermaid-flowchart').icon).toBeTruthy();
     dom.dispatchEvent(
       new KeyboardEvent('keydown', { key: 'Enter', bubbles: true, cancelable: true }),

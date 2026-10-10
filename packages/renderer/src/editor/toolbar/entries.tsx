@@ -1,6 +1,7 @@
 import type { ReactNode } from 'react';
 import type { BubbleIconName } from '@nexnote/kernel';
 import { EDITOR_ACTION_CATALOG } from '@nexnote/shared';
+import { t } from '../../lib/i18n';
 import {
   Bold,
   ChartGantt,
@@ -78,6 +79,21 @@ export interface EditorActionDefinition {
   selectionOrder?: number;
 }
 
+/** Catalog entries keep language-independent keys; label text is materialized on demand. */
+interface EditorActionCatalogModel {
+  id: string;
+  labelKey: string;
+  hintKey?: string;
+  shortcut?: string;
+  icon: ReactNode;
+  group: EditorActionGroup;
+  semantic: EditorActionSemantic;
+  modes: readonly EditorActionMode[];
+  selectionIcon?: BubbleIconName;
+  selectionOrder?: number;
+  priority: ToolbarPriority;
+}
+
 /** 唯一共享动作定义：名称、图标、分组、模式能力、优先级和执行语义均在此声明。 */
 const ICONS: Record<string, ReactNode> = {
   undo: <Undo2 className="size-3.5" />,
@@ -112,7 +128,7 @@ const SELECTION_ACTIONS: Readonly<Record<string, { icon: BubbleIconName; order: 
 };
 
 /** Renderer 只把 shared catalog 的 icon semantic key 映射为 React component。 */
-export const EDITOR_ACTION_MODEL: readonly EditorActionDefinition[] = EDITOR_ACTION_CATALOG.filter(
+export const EDITOR_ACTION_MODEL: readonly EditorActionCatalogModel[] = EDITOR_ACTION_CATALOG.filter(
   (action) =>
     !action.id.startsWith('block:heading:') &&
     ![
@@ -126,8 +142,8 @@ export const EDITOR_ACTION_MODEL: readonly EditorActionDefinition[] = EDITOR_ACT
     ].includes(action.id),
 ).map((action) => ({
   id: action.id,
-  label: action.name,
-  hint: action.hint,
+  labelKey: action.nameKey,
+  hintKey: action.hintKey,
   shortcut: action.shortcut,
   icon: ICONS[action.icon] ?? <Sparkles className="size-3.5" />,
   group: action.group,
@@ -145,12 +161,14 @@ export const EDITOR_ACTION_MODEL: readonly EditorActionDefinition[] = EDITOR_ACT
 
 const actionById = new Map(EDITOR_ACTION_MODEL.map((action) => [action.id, action]));
 export function editorAction(id: string): EditorActionDefinition {
-  const action = actionById.get(id);
-  if (!action) throw new Error(`Unknown editor action: ${id}`);
-  return action;
+  const model = actionById.get(id);
+  if (!model) throw new Error(`Unknown editor action: ${id}`);
+  const { labelKey, hintKey, ...rest } = model;
+  return { ...rest, label: t(labelKey), hint: hintKey ? t(hintKey) : undefined };
 }
 export function editorActionsForMode(mode: EditorActionMode): EditorActionDefinition[] {
-  return EDITOR_ACTION_MODEL.filter((action) => action.modes.includes(mode));
+  return EDITOR_ACTION_MODEL.filter((action) => action.modes.includes(mode))
+    .map((action) => editorAction(action.id));
 }
 
 export interface ToolbarSubItemSpec {
@@ -197,15 +215,15 @@ function subItem(id: string): ToolbarSubItemSpec {
 export function aiSubItems(): ToolbarSubItemSpec[] {
   const icon = editorAction(AI_ENTRY_ID).icon;
   return [
-    { id: AI_ASK_ID, label: '询问 AI（送入对话）', icon },
-    { id: AI_INSERT_ID, label: 'AI 插入（光标处）', icon },
+    { id: AI_ASK_ID, label: t('toolbar.ai.ask'), icon },
+    { id: AI_INSERT_ID, label: t('toolbar.ai.insert'), icon },
     ...WRITING_ACTIONS.map((action) => ({
       id: toAiActionId(action.id),
-      label: `AI · ${action.label}`,
+      label: t(`editorAction.ai.writing:${action.id}.name`),
       icon,
       shortcut: `⌘⌥${action.modKey.toUpperCase()}`,
     })),
-    { id: TRANSLATE_DOCUMENT_ID, label: '翻译全文（临时视图）', icon },
+    { id: TRANSLATE_DOCUMENT_ID, label: t('toolbar.ai.translateDocument'), icon },
   ];
 }
 export function aiSubActionIds(): string[] {
@@ -222,10 +240,12 @@ function headingEntry(state: HeadingActionState = {}): ToolbarMenuSpec {
     kind: 'menu',
     ...editorAction(BLOCK_TYPE_MENU_ID),
     items: [
-      { id: PARAGRAPH_ID, label: '正文', icon: <Pilcrow className="size-3.5" />, ...common },
+      { id: PARAGRAPH_ID, label: t('toolbar.heading.paragraph'), icon: <Pilcrow className="size-3.5" />, ...common },
       ...([1, 2, 3, 4, 5, 6] as const).map((level) => ({
         id: headingId(level),
-        label: level === 1 ? '页面标题 H1 · 首个正文 H1 与文件名同步' : `标题 H${level}`,
+        label: level === 1
+          ? t('toolbar.heading.pageTitle')
+          : t('toolbar.heading.level', { level }),
         icon: <span className="w-3.5 text-center text-[10px] font-semibold">H{level}</span>,
         ...common,
       })),
@@ -237,15 +257,15 @@ function menuFor(mode: 'block' | 'source', group: 'format' | 'insert'): ToolbarM
     group === 'format'
       ? {
           id: FORMAT_MENU_ID,
-          label: '格式',
+          label: t('toolbar.menu.format'),
           icon: <TextSelect className="size-3.5" />,
-          hint: '更多格式动作',
+          hint: t('toolbar.menu.formatHint'),
         }
       : {
           id: INSERT_MENU_ID,
-          label: '插入',
+          label: t('toolbar.menu.insert'),
           icon: <Table className="size-3.5" />,
-          hint: '插入结构或媒体',
+          hint: t('toolbar.menu.insertHint'),
         };
   return {
     kind: 'menu',
@@ -298,16 +318,16 @@ export function blockToolbarEntries(options: {
     const tableMenu: ToolbarMenuSpec = {
       kind: 'menu',
       id: 'toolbar-table-menu',
-      label: '表格',
+      label: t('toolbar.table.title'),
       icon: <Table className="size-3.5" />,
-      hint: '表格内行/列操作',
+      hint: t('toolbar.table.hint'),
       priority: 'secondary',
       overflowGroup: 'table-ops',
       items: [
-        { id: 'table:row-below', label: '在下方插入行', icon: subItemIcon() },
-        { id: 'table:column-right', label: '在右侧插入列', icon: subItemIcon() },
-        { id: 'table:row-delete', label: '删除行', icon: subItemIcon() },
-        { id: 'table:column-delete', label: '删除列', icon: subItemIcon() },
+        { id: 'table:row-below', label: t('toolbar.table.rowBelow'), icon: subItemIcon() },
+        { id: 'table:column-right', label: t('toolbar.table.columnRight'), icon: subItemIcon() },
+        { id: 'table:row-delete', label: t('toolbar.table.rowDelete'), icon: subItemIcon() },
+        { id: 'table:column-delete', label: t('toolbar.table.columnDelete'), icon: subItemIcon() },
       ],
     };
     const insertMenuIdx = entries.findIndex((e) => e.id === INSERT_MENU_ID);
@@ -317,8 +337,8 @@ export function blockToolbarEntries(options: {
     entries.push(
       viewEntry(
         VIEW_SOURCE_ID,
-        '源码',
-        '打开源码模式（⌘/Ctrl+E）',
+        t('toolbar.view.source'),
+        t('toolbar.view.sourceHint'),
         <FileCode2 className="size-3.5" />,
       ),
     );
@@ -345,19 +365,19 @@ export function sourceToolbarEntries(options: {
     entries.push(
       viewEntry(
         VIEW_BLOCK_ID,
-        '块编辑',
-        '切回块编辑模式（⌘/Ctrl+E）',
+        t('toolbar.view.block'),
+        t('toolbar.view.blockHint'),
         <Code className="size-3.5" />,
       ),
     );
   if (options.isMarkdown)
     entries.push(
-      viewEntry(VIEW_SOURCE_ID, '源码', '仅显示 Markdown 源码', <FileCode2 className="size-3.5" />),
-      viewEntry(VIEW_SPLIT_ID, '分栏', '源码与实时预览', <Columns2 className="size-3.5" />),
+      viewEntry(VIEW_SOURCE_ID, t('toolbar.view.source'), t('toolbar.view.sourceOnly'), <FileCode2 className="size-3.5" />),
+      viewEntry(VIEW_SPLIT_ID, t('toolbar.view.split'), t('toolbar.view.splitHint'), <Columns2 className="size-3.5" />),
       viewEntry(
         VIEW_PREVIEW_ID,
-        '预览',
-        '仅显示只读预览',
+        t('toolbar.view.preview'),
+        t('toolbar.view.previewHint'),
         view === 'preview' ? <EyeOff className="size-3.5" /> : <Eye className="size-3.5" />,
       ),
     );

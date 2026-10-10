@@ -13,6 +13,7 @@ import { t } from '../../lib/i18n';
 import type {
   EditorActionCatalogEntry,
   EditorActionIconKey,
+  QuickInsertGroup,
   QuickInsertCapability,
   QuickInsertMetadata,
 } from '@nexnote/shared';
@@ -34,7 +35,16 @@ interface SlashSession {
   epoch: number;
 }
 
-interface SourceSlashAction extends Omit<EditorActionCatalogEntry, 'quickInsert'> {
+interface SourceSlashAction
+  extends Omit<
+    EditorActionCatalogEntry,
+    'nameKey' | 'hintKey' | 'group' | 'quickInsert'
+  > {
+  group: QuickInsertGroup;
+  nameKey?: string;
+  hintKey?: string;
+  titleText?: string;
+  hintText?: string;
   quickInsert: QuickInsertMetadata;
   /** Host capability gate. A disabled plugin must not leak into source quick insert. */
   available?: () => boolean;
@@ -122,13 +132,22 @@ function menuItems(
     ...(emptyBlock ? (['empty-block'] as QuickInsertCapability[]) : []),
   ]);
   return filterQuickInsertCandidates(
-    [...quickInsertCatalog('source'), ...plugins].flatMap((action) =>
+    [
+      ...quickInsertCatalog('source').map(
+        (action): SourceSlashAction => ({
+          ...action,
+          group: action.quickInsert!.group,
+          quickInsert: action.quickInsert!,
+        }),
+      ),
+      ...plugins,
+    ].flatMap((action) =>
       action.quickInsert
         ? [
             {
               item: action as SourceSlashAction,
               id: action.id,
-              title: action.name,
+              title: action.titleText ?? (action.nameKey ? t(action.nameKey) : ''),
               aliases: action.quickInsert.aliases,
               group: action.quickInsert.group,
               contract: action.quickInsert,
@@ -257,7 +276,7 @@ export function sourceSlashMenu(options: SourceSlashMenuOptions): Extension {
         previousGroup = quick.group;
         const group = document.createElement('div');
         group.className = 'nexnote-slash-menu__group';
-        group.textContent = quick.group;
+        group.textContent = t(`editorAction.group.${quick.group}.name`);
         menu.append(group);
       }
       const row = document.createElement('button');
@@ -272,11 +291,13 @@ export function sourceSlashMenu(options: SourceSlashMenuOptions): Extension {
       icon.dataset.slashIcon = action.icon;
       icon.setAttribute('aria-hidden', 'true');
       icon.textContent = icons[action.icon];
-      row.append(icon, document.createTextNode(action.name));
-      if (action.hint) {
+      const title = action.titleText ?? (action.nameKey ? t(action.nameKey) : '');
+      const hint = action.hintText ?? (action.hintKey ? t(action.hintKey) : undefined);
+      row.append(icon, document.createTextNode(title));
+      if (hint) {
         const hint = document.createElement('span');
         hint.className = 'nexnote-slash-menu__hint';
-        hint.textContent = ` ${action.hint}`;
+        hint.textContent = ` ${hint}`;
         row.append(hint);
       }
       menu.append(row);

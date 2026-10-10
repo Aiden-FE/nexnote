@@ -1,4 +1,5 @@
 import type { EditorView } from '@tiptap/pm/view';
+import { tCurrent } from '@nexnote/shared';
 import type { SlashMenuState } from './quick-insert';
 import {
   applyMenuViewportPlacement,
@@ -24,19 +25,20 @@ export function createQuickInsertView(className: string): QuickInsertView {
   dom.dataset.slashMenu = '';
   dom.dataset.testid = 'block-slash-menu';
   dom.setAttribute('role', 'listbox');
-  dom.setAttribute('aria-label', '快捷插入动作');
+  dom.setAttribute('aria-label', tCurrent('source.slash.ariaLabel'));
   dom.style.cssText = 'display:none;position:absolute;z-index:40;overflow-y:auto';
   return {
     dom,
     render(state, coords) {
       dom.innerHTML = '';
+      dom.setAttribute('aria-label', tCurrent('source.slash.ariaLabel'));
       let lastGroup: string | undefined;
       for (const [index, item] of state.items.entries()) {
         if (item.group && item.group !== lastGroup) {
           lastGroup = item.group;
           const header = document.createElement('div');
           header.className = `${className}__group`;
-          header.textContent = item.group;
+          header.textContent = tCurrent(`editorAction.group.${item.group}.name`);
           dom.append(header);
         }
         const row = document.createElement('div');
@@ -79,12 +81,14 @@ export function createQuickInsertView(className: string): QuickInsertView {
           row.append(icon);
         }
         const label = document.createElement('span');
-        label.textContent = item.title;
+        label.textContent =
+          item.titleText ?? (item.titleKey ? tCurrent(item.titleKey) : item.id);
         row.append(label);
-        if (item.hint) {
+        const hintText = item.hintText ?? (item.hintKey ? tCurrent(item.hintKey) : undefined);
+        if (hintText) {
           const hint = document.createElement('span');
           hint.className = `${className}__hint`;
-          hint.textContent = ` ${item.hint}`;
+          hint.textContent = ` ${hintText}`;
           row.append(hint);
         }
         dom.append(row);
@@ -93,7 +97,7 @@ export function createQuickInsertView(className: string): QuickInsertView {
         const empty = document.createElement('div');
         empty.className = `${className}__empty`;
         empty.dataset.slashEmpty = '';
-        empty.textContent = '没有匹配的快捷动作';
+        empty.textContent = tCurrent('source.slash.empty');
         dom.append(empty);
       }
       if (state.items.length)

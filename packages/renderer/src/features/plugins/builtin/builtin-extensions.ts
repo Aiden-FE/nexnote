@@ -70,8 +70,8 @@ function mermaidSlashItem(id: string, source: string): SlashMenuItem {
   if (!catalog?.quickInsert) throw new Error(`Missing canonical slash action: ${id}`);
   return {
     id: catalog.id,
-    title: catalog.name,
-    hint: catalog.hint,
+    titleKey: catalog.nameKey,
+    hintKey: catalog.hintKey,
     icon: catalog.icon,
     group: catalog.quickInsert.group,
     kind: catalog.quickInsert.kind,
@@ -102,10 +102,10 @@ export function buildBuiltinSlashItems(flags: BuiltinBlockFlags): SlashMenuItem[
     items.push(
       {
         id: 'builtin:math-block',
-        title: '公式（块级）',
-        hint: '$$',
+        titleKey: 'editorAction.builtin:math-block.name',
+        hintKey: 'editorAction.builtin:math-block.hint',
         icon: 'outline',
-        group: '插入',
+        group: 'insert',
         kind: 'structure',
         contract: { execution: 'insert-safe-block', capability: 'editable-line' },
         keywords: ['math', '公式', 'latex', 'katex', '块级'],
@@ -118,10 +118,10 @@ export function buildBuiltinSlashItems(flags: BuiltinBlockFlags): SlashMenuItem[
       },
       {
         id: 'builtin:math-inline',
-        title: '公式（行内）',
-        hint: '$',
+        titleKey: 'editorAction.builtin:math-inline.name',
+        hintKey: 'editorAction.builtin:math-inline.hint',
         icon: 'outline',
-        group: '插入',
+        group: 'insert',
         kind: 'inline',
         contract: { execution: 'insert-at-cursor', capability: 'editable-line' },
         keywords: ['math', '公式', 'latex', 'katex', '行内', 'inline'],

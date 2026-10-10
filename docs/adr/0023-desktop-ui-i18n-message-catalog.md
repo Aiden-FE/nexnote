@@ -69,3 +69,15 @@ status: in_progress
 - 阶段②剩余（已登记，未完成）：编辑器工具栏动作目录
   `EDITOR_ACTION_CATALOG`（跨 shared/kernel/renderer 单一事实源，571 行）、
   标题转换禁用原因、AI 对话面板、Git 面板内容、frontmatter 属性面板。
+- 阶段②第五批（2026-10-10）：`EDITOR_ACTION_CATALOG` 从静态 `name` / `hint`
+  迁移到语言无关的 `nameKey` / `hintKey`；快捷插入分组改为 `basic` / `insert` /
+  `ai` / `plugin` 语义 key，并用 `quickInsertGroupName()` 成文。shared 现有
+  zh/en 各 479 个 key，且两份词典逐 key 对齐；本批新增 97 个 key。
+  kernel 块编辑 slash 菜单、renderer 源码 slash 菜单、顶部工具栏动作、AI 写作
+  slash 子项、内置 Mermaid/公式项与媒体插入项均按当前语言成文；插件贡献标题 /
+  hint 保留原文（`titleText` / `hintText` 边界）。命令式 kernel UI 通过共享
+  当前语言单例在语言切换后重建或重渲染时更新。
+- 可执行残留检查（三）：`slash-actions.test.ts` 断言 `EDITOR_ACTION_CATALOG`
+  全部动作名 / hint key、快捷插入分组 key 在 zh/en 均可见，且 en-US 词典无中文。
+- 门禁：shared / kernel / renderer tsc 通过；`pnpm lint` 0；
+  `pnpm test` 193 files / 1824 passed / 3 skipped 退出码 0。

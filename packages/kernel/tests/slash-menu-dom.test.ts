@@ -418,8 +418,8 @@ describe('斜杠快捷输入真实 TipTap DOM 链路（DEV-052）', () => {
     const failed = mount('\u00a0', () => [
       {
         id: 'plugin:fail',
-        title: '失败动作',
-        group: '插件',
+        titleText: '失败动作',
+        group: 'plugin',
         kind: 'plugin',
         contract: { execution: 'insert-at-cursor', capability: 'plugin-defined' },
         action: () => false,
@@ -437,8 +437,8 @@ describe('斜杠快捷输入真实 TipTap DOM 链路（DEV-052）', () => {
       const failed = mount('正文 ', () => [
         {
           id: `plugin:${outcome}`,
-          title: '拒绝动作',
-          group: '插件',
+          titleText: '拒绝动作',
+          group: 'plugin',
           kind: 'plugin',
           contract: { execution: 'insert-safe-block', capability: 'plugin-defined' },
           action: ({ view, tr }) => {
@@ -469,8 +469,8 @@ describe('斜杠快捷输入真实 TipTap DOM 链路（DEV-052）', () => {
     const ai = mount('正文 ', () => [
       {
         id: 'ai:delayed',
-        title: 'AI 意图测试',
-        group: 'AI',
+        titleText: 'AI 意图测试',
+        group: 'ai',
         kind: 'ai',
         contract: { execution: 'explicit-ai', capability: 'explicit-ai' },
         action: () =>
@@ -502,8 +502,8 @@ describe('斜杠快捷输入真实 TipTap DOM 链路（DEV-052）', () => {
       const ai = mount('正文 ', () => [
         {
           id: 'ai:pending',
-          title: 'AI 等待',
-          group: 'AI',
+          titleText: 'AI 等待',
+          group: 'ai',
           kind: 'ai',
           contract: { execution: 'explicit-ai', capability: 'explicit-ai' },
           action: () =>
@@ -541,8 +541,8 @@ describe('斜杠快捷输入真实 TipTap DOM 链路（DEV-052）', () => {
     const { kernel, dom, host } = mount('\u00a0', () => [
       {
         id: 'plugin:hidden',
-        title: '隐藏插件动作',
-        group: '插件',
+        titleText: '隐藏插件动作',
+        group: 'plugin',
         kind: 'plugin',
         contract: { execution: 'insert-at-cursor', capability: 'plugin-defined' },
         available: () => false,

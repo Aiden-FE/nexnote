@@ -597,10 +597,10 @@ export function SourceModeView({ tab }: { tab: TabDescriptor }) {
                   return [
                     ...buildDispatchableBlockCommands(contributions).map((def) => ({
                       id: def.id,
-                      name: def.title,
+                      titleText: def.title,
                       icon: blockMeta.icon,
                       semantic: 'insert' as const,
-                      group: 'insert' as const,
+                      group: blockMeta.quickInsert.group,
                       modes: ['source' as const],
                       quickInsert: {
                         ...blockMeta.quickInsert,
@@ -611,10 +611,10 @@ export function SourceModeView({ tab }: { tab: TabDescriptor }) {
                     })),
                     ...buildPluginCommandDefs(contributions, commands).map((def) => ({
                       id: pluginCmdSlashId(def.id),
-                      name: def.title,
+                      titleText: def.title,
                       icon: commandMeta.icon,
                       semantic: 'insert' as const,
-                      group: 'insert' as const,
+                      group: commandMeta.quickInsert.group,
                       modes: ['source' as const],
                       quickInsert: {
                         ...commandMeta.quickInsert,

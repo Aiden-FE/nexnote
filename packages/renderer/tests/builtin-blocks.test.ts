@@ -2,6 +2,7 @@
 import { describe, expect, it } from 'vitest';
 import type { PluginView } from '@nexnote/shared';
 import { BUILTIN_PLUGIN_IDS } from '@nexnote/shared';
+import { tCurrent } from '@nexnote/shared';
 import {
   buildBuiltinSlashItems,
   buildBuiltinViewExtensions,
@@ -46,10 +47,11 @@ describe('内置插件渲染派生（DEV-015）', () => {
       'insert:mermaid-flowchart',
       'insert:mermaid-gantt',
     ]);
-    expect(items.filter((i) => i.id.startsWith('insert:mermaid')).map((i) => i.title)).toEqual([
-      '流程图',
-      '甘特图',
-    ]);
+    expect(
+      items
+        .filter((i) => i.id.startsWith('insert:mermaid'))
+        .map((i) => tCurrent(i.titleKey!)),
+    ).toEqual(['流程图', '甘特图']);
     expect(items.every((i) => typeof i.action === 'function')).toBe(true);
   });
 

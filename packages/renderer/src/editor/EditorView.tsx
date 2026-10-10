@@ -61,6 +61,7 @@ import {
 } from '@nexnote/kernel';
 import { withUncreated, filterTagCandidates } from './interactions/suggestions';
 import { createRedlinkPage, currentPageCandidates } from './wikilink-page-ops';
+import { useI18n } from '../lib/i18n';
 import {
   buildBlockMenuItems,
   runBlockMenuAction,
@@ -212,8 +213,8 @@ function createMediaInsertSlashItems(options: MediaInsertOptions): SlashMenuItem
     if (!action?.quickInsert) throw new Error(`Missing canonical slash action: ${id}`);
     return {
       id: action.id,
-      title: action.name,
-      hint: action.hint,
+      titleKey: action.nameKey,
+      hintKey: action.hintKey,
       icon: action.icon,
       keywords: [...action.quickInsert.aliases],
       group: action.quickInsert.group,
@@ -259,8 +260,8 @@ function buildPluginBlockSlashItems(_kernel: EditorKernelInstance): SlashMenuIte
   const meta = pluginQuickInsertMetadata('block');
   return defs.map((d) => ({
     id: d.id,
-    title: d.title,
-    hint: d.blockType,
+    titleText: d.title,
+    hintText: d.blockType,
     icon: meta.icon,
     keywords: [...meta.quickInsert.aliases, ...(d.keywords ?? []).map((k) => String(k))],
     group: meta.quickInsert.group,
@@ -301,6 +302,7 @@ function neighborsFor(kernel: EditorKernelInstance, blockId: string): BlockNeigh
  */
 export function EditorView({ tab }: EditorViewProps) {
   const path = tab.pagePath ?? `${sanitizePageTitle(tab.title)}.md`;
+  const uiText = useI18n();
   const [load, setLoad] = useState<LoadState>({ phase: 'loading' });
   const [saveState, setSaveState] = useState<SaveState>('saved');
   const saveStateRef = useRef<SaveState>('saved');
@@ -1063,7 +1065,7 @@ export function EditorView({ tab }: EditorViewProps) {
   if (load.phase === 'loading') {
     return (
       <div className="flex h-full items-center justify-center gap-2 text-sm text-muted-foreground">
-        <LoaderCircle className="size-4 animate-spin" /> 正在打开 {path}…
+        <LoaderCircle className="size-4 animate-spin" /> {uiText('source.loading', { path })}
       </div>
     );
   }
@@ -1072,7 +1074,7 @@ export function EditorView({ tab }: EditorViewProps) {
     return (
       <div className="mx-auto mt-12 max-w-lg rounded-lg border border-destructive/40 bg-destructive/10 p-4 text-sm text-destructive">
         <div className="mb-1 flex items-center gap-2 font-medium">
-          <AlertCircle className="size-4" /> 页面打开失败
+          <AlertCircle className="size-4" /> {uiText('source.openFailed')}
         </div>
         <p className="text-xs">{load.message}</p>
       </div>
@@ -1100,7 +1102,7 @@ export function EditorView({ tab }: EditorViewProps) {
       }}
     >
       <EditorToolbar
-        label="编辑器工具栏"
+        label={uiText('source.toolbarLabel')}
         entries={blockToolbarEntries({
           sourceModeToggle: tab.format === 'markdown',
           headingState: blockHeadingState,
