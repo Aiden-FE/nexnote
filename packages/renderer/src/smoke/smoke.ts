@@ -18,7 +18,7 @@ import { redo, undo } from '@codemirror/commands';
 import { sourceFoldState } from '../editor/source/heading-fold';
 import { openSettings } from '../lib/open-settings';
 import { deleteEntry, moveEntry } from '../features/sidebar/page-tree/ops';
-import { BUILTIN_PLUGIN_IDS, type ChatSession } from '@nexnote/shared';
+import { BUILTIN_PLUGIN_IDS, tCurrent, type ChatSession } from '@nexnote/shared';
 import { useChatStore } from '../features/ai/chat/chat-store';
 
 interface SmokeCaptureResult {
@@ -1011,7 +1011,7 @@ export async function runSmokeIfEnabled(): Promise<void> {
       check(
         'DEV-033 导出产物与会话脱钩（正文为普通 markdown）',
         exportedText.includes('DEV-033 回答') &&
-          exportedText.includes('> 提问：') &&
+          exportedText.includes(`> ${tCurrent('chat.export.userQuestion')}`) &&
           !exportedText.includes('"type":"snapshot"'),
       );
       const treeAfterExport = (await invoke('fs:listTree', { showAllFiles: true })) as Array<{

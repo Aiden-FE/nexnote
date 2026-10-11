@@ -165,9 +165,14 @@ export class ChatService {
       if (turn.role === 'assistant') {
         blocks.push(content);
       } else if (userAsQuote) {
-        blocks.push(['> 提问：', ...content.split('\n').map((line) => `> ${line}`)].join('\n'));
+        blocks.push(
+          [
+            '> ' + tCurrent('chat.export.userQuestion'),
+            ...content.split('\n').map((line) => `> ${line}`),
+          ].join('\n'),
+        );
       } else {
-        blocks.push(`<!-- 用户提问\n${content}\n-->`);
+        blocks.push(`<!-- ${tCurrent('chat.export.userQuestionComment')}\n${content}\n-->`);
       }
     }
     return blocks.join('\n\n');

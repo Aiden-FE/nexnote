@@ -232,6 +232,14 @@ status: in_progress
   新增 2 key，消息目录 zh/en 各 1626 key、零差集；main 残留棘轮基线从
   125 收敛至 121（Git 类剩 2 条均为 stable 语义字符串）。门禁：四套 tsc
   通过、`pnpm lint` 0、204 files / 1922 passed / 3 skipped 退出码 0。
+- 阶段③第二十七批（2026-10-12）：Chat 导出标签与注释标记词典化。
+  `chat-service.ts` 的 `renderDocumentBody` 中「> 提问：」与
+  `<!-- 用户提问` 改走 `chat.export.userQuestion` /
+  `chat.export.userQuestionComment`，导出文档中的标记随界面语言生成；
+  smoke 检查同步改为 `tCurrent()` 断言而非硬编码中文。新增 2 key，
+  消息目录 zh/en 各 1628 key、零差集；main 残留棘轮基线从 121 收敛至
+  119。门禁：四套 tsc 通过、`pnpm lint` 0、204 files /
+  1922 passed / 3 skipped 退出码 0。
 - 阶段③第五批（2026-10-10）：DOCX 导入/导出服务状态与旧版打开提示迁移。
   DocxService 应用自有校验/写入/导出错误按 code 对应词典成文；底层 ZIP /
   XML / 上游解压细节与路径数据保留原文边界。新增 10 key，zh/en 各 1111 key。

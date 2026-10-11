@@ -6,7 +6,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { VaultFsService } from '../src/fs/fs-service';
 import { ChatService, SESSION_DIR } from '../src/chat/chat-service';
 import { GitService } from '../src/git/git-service';
-import { defaultVaultConfig } from '@nexnote/shared';
+import { defaultVaultConfig, setCurrentLanguage } from '@nexnote/shared';
 import { readVaultConfig } from '../src/vault/vault-manager';
 import { LinkIndexService } from '../src/indexer/index-service';
 import { MetadataStore } from '../src/document/metadata-store';
@@ -26,6 +26,7 @@ beforeEach(async () => {
 });
 
 afterEach(async () => {
+  setCurrentLanguage('zh-CN');
   await rm(tmp, { recursive: true, force: true });
 });
 
@@ -278,7 +279,10 @@ describe('ChatService 会话内部 JSONL 存储（ADR-0007）', () => {
     const doc = await chats.saveAsDocument(draft.path, false);
     const text = await fs.readTextFile(doc.path);
     expect(text).toContain('公开回答');
-    expect(text).toContain('<!-- 用户提问');
+    setCurrentLanguage('en-US');
+    const doc2 = await chats.saveAsDocument(draft.path, false);
+    const text2 = await fs.readTextFile(doc2.path);
+    expect(text2).toContain('<!-- User question');
     expect(text).toContain('秘密提问');
     expect(text).not.toContain('> 秘密提问');
   });
