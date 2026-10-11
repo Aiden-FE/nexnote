@@ -346,3 +346,9 @@ status: in_progress
   文件名继续作为内容数据。本批只改测试，不新增消息 key，zh/en 保持 1553 key；
   editor-toolbar-entries targeted tests 通过；全量门禁 196 files /
   1875 passed / 3 skipped 退出码 0。
+- 阶段④第八批（2026-10-11）：反向链接角标 title 测试迁移。
+  `backlinks-badge` 的计数角标改为 `sidebar.backlinks.badge` 词典断言，
+  并新增 en-US 真实渲染断言（tooltip 无 CJK）；反链来源标题与 snippet 继续
+  作为内容数据。本批只改测试，不新增消息 key，zh/en 保持 1553 key；
+  backlinks-badge targeted tests 通过；全量门禁 196 files /
+  1876 passed / 3 skipped 退出码 0。

@@ -2,13 +2,20 @@
 import { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import type { Backlink } from '@nexnote/shared';
+import { CATALOGS, translate, type Backlink } from '@nexnote/shared';
 import { BacklinksBadge } from '../src/features/sidebar/backlinks';
 import { sidebarPanelRegistry } from '../src/registries';
 import { useIndexStore } from '../src/stores/index-store';
 import { useTabStore, type TabDescriptor } from '../src/stores/tab-store';
+import { setLanguage } from '../src/lib/i18n';
 
 globalThis.IS_REACT_ACT_ENVIRONMENT = true;
+
+const text = (
+  language: 'zh-CN' | 'en-US',
+  key: string,
+  params?: Record<string, string | number>,
+): string => translate(CATALOGS[language], key, language, params);
 
 type BridgeResult =
   { ok: true; data: unknown } | { ok: false; error: { code: string; message: string } };
@@ -73,6 +80,7 @@ afterEach(() => {
   consoleError?.mockRestore();
   consoleError = null;
   document.body.innerHTML = '';
+  setLanguage('zh-CN');
 });
 
 describe('反向链接面板计数角标（DEV-024）', () => {
@@ -103,6 +111,9 @@ describe('反向链接面板计数角标（DEV-024）', () => {
     render(<BacklinksBadge />);
     await flushAsync();
     expect(badgeEl()?.textContent).toBe('2');
+    expect(badgeEl()?.getAttribute('title')).toBe(
+      text('zh-CN', 'sidebar.backlinks.badge', { count: 2 }),
+    );
     // 角标与面板列表同源（同一 store 切片）：计数 === 列表条目数
     expect(useIndexStore.getState().backlinks.length).toBe(2);
     expect(useIndexStore.getState().backlinksFor).toBe('目标.md');
@@ -137,6 +148,9 @@ describe('反向链接面板计数角标（DEV-024）', () => {
     render(<BacklinksBadge />);
     await flushAsync();
     expect(badgeEl()?.textContent).toBe('1');
+    expect(badgeEl()?.getAttribute('title')).toBe(
+      text('zh-CN', 'sidebar.backlinks.badge', { count: 1 }),
+    );
     act(() => {
       useTabStore.getState().setActiveTab(tabB.id);
     });
@@ -175,5 +189,29 @@ describe('反向链接面板计数角标（DEV-024）', () => {
     await flushAsync();
     expect(badgeEl()).toBeNull();
     expect(useIndexStore.getState().backlinksFor).toBeNull();
+  });
+
+  it('en-US 反链角标 title 按词典成文且无 CJK（ADR-0023）', async () => {
+    setLanguage('en-US');
+    installBridge({
+      '目标.md': [
+        {
+          fromPath: 'source.md',
+          fromTitle: 'Source',
+          snippet: '',
+          sourceBlock: 0,
+          sourceText: '[[目标]]',
+        },
+      ],
+    });
+    const tab = pageTab('目标.md');
+    useTabStore.setState({ tabs: [tab], activeTabId: tab.id });
+    render(<BacklinksBadge />);
+    await flushAsync();
+
+    expect(badgeEl()?.textContent).toBe('1');
+    const title = badgeEl()?.getAttribute('title') ?? '';
+    expect(title).toBe(text('en-US', 'sidebar.backlinks.badge', { count: 1 }));
+    expect(title).not.toMatch(/[\u4e00-\u9fff]/);
   });
 });
