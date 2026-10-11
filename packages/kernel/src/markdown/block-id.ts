@@ -402,11 +402,20 @@ function stripIds(node: JSONContent): JSONContent {
   return { ...node, content: node.content?.map(stripIds) };
 }
 
+/**
+ * 内联末尾追加锚点占位符。
+ *
+ * DEV-108：末位文本节点带 mark（bold/italic/strike/code/link…）时，占位符不能
+ * 并入该节点——@tiptap/markdown 会把占位符连同 mark 一起包裹（落盘
+ * `**加粗尾 ^id**`），parse 侧的行末锚点正则不命中，锚点泄漏为可见文本。
+ * 此时占位符作为独立的无 mark 文本节点插入，落盘形态 `**加粗尾** ^id`，
+ * 恰好满足 parse 侧的行末匹配并被回收。
+ */
 function appendInlinePlaceholder(node: JSONContent, blockId: string): JSONContent {
   const text = `${ANCHOR_OPEN}${blockId}${ANCHOR_CLOSE}`;
   const content = [...(node.content ?? [])];
   const last = content[content.length - 1];
-  if (isText(last)) {
+  if (isText(last) && (!last.marks || last.marks.length === 0)) {
     content[content.length - 1] = { ...last, text: `${last.text} ${text}` };
   } else {
     content.push({ type: 'text', text: ` ${text}` });
