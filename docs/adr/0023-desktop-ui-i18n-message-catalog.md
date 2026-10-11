@@ -393,3 +393,35 @@ status: in_progress
   kernel 转交 `onSaveError` 后把「等待用户选择」写成磁盘错误文案；现在
   `onSaveError` 在 `conflictRef` 已置位时早退，提示交回冲突横幅。
   全量门禁 197 files / 1884 passed / 3 skipped 退出码 0。
+- 阶段④第十二批（2026-10-11）：划词 AI 下拉与右键 AI 子菜单整层双语收敛，
+  并给内核补上「语言无关 key」能力。
+  `BubbleAction` / `ContextMenuItem` 新增可选 `titleKey` / `titleText`，对齐
+  斜杠菜单 `QuickInsertItem` 的既有约定：应用自有文案给 key、插件贡献原文给
+  `titleText`。二者由新增的 `menu-title.ts` 统一解析（`resolveMenuTitle`）：
+  `titleKey` 命中目录时按**当前**界面语言成文；key 缺失时回退 `titleText`
+  而不是把裸 key 上屏——这既保住插件贡献标题的 MUST-NOT-translate 边界，
+  也避免误配 key 时把 `plugin.foo.bar` 直接暴露给用户。旧 `title` 字段保留
+  为 deprecated 过渡别名（块菜单 / 插件菜单等既有调用点尚未迁移），
+  新代码不再使用。
+  气泡动作的 tooltip、aria-label 与菜单项文案统一走同一个解析函数，保证
+  「共享可访问名称」契约在两种语言下都成立；AI 菜单重开时由同一次
+  `refreshBubbleButton` 调用同时刷新 aria 与可见文案，两条路径不会分叉。
+  AI 下拉的触发器 aria-label、菜单 aria-label、触发器 Tooltip 改走
+  `bubble.aiMenu.trigger` / `menuLabel` / `tooltip`；九个动作（六写作 +
+  询问 AI + 翻译选区 + 翻译工作台）改为携带 `bubble.aiMenu.<id>` key。
+  **语言切换**是本批的关键回归点：内核在工具栏存活期间不会重建，故
+  `open()` 重开菜单时按当前语言刷新 chrome 与全部动作文案，切语言后无需
+  重新挂载编辑器即可看到新语言。可见 label 节点在构造时缓存进数组，
+  不再用 `${className}__label` 拼选择器（className 含空格/冒号会抛
+  SyntaxError 并中断整个 open）。
+  右键 AI 子菜单标题改走 `ai.contextMenu.title` + `scopeSelection` /
+  `scopeBlock`（打开时才 build，用命令式 `t()`）；AI 插入 prompt 复用既有
+  `source.slash.aiPrompt*`。共删除 10 行含 CJK 字面量；`WRITING_ACTIONS`
+  的中文 `label` 保留为缺 key 回退，不删除既有测试与内容数据。
+  新增 15 key，zh/en 各 1601 key、零差集。
+  测试：`source-selection-bubble` 新增 en-US 整菜单 CJK 检查与「切语言后
+  重开菜单重算」用例；kernel `writing-surfaces` 新增 `titleKey` 成文 +
+  **插件误带缺失 key 时回退原文而非裸 key** 的边界用例。三条新路径均用
+  变异测试（改回旧实现即失败）证明断言
+  有效。门禁：四套 tsc 通过、`pnpm lint` 0、197 files / 1887 passed /
+  3 skipped 退出码 0。

@@ -1,6 +1,7 @@
 // @vitest-environment happy-dom
-import { describe, expect, it, vi } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { TextSelection } from '@tiptap/pm/state';
+import { CATALOGS, setCurrentLanguage, translate } from '@nexnote/shared';
 import { buildKernelExtensions, createEditor, computeEditorActionContext } from '../src';
 
 function mount(markdown: string, options?: Parameters<typeof createEditor>[1]) {
@@ -632,8 +633,8 @@ describe('DEV-034 划词工具栏 AI 下拉（块编辑）', () => {
     });
     const { container, kernel } = mount('第一段示例文字', {
       selectionBubble: {
-        actions: [{ id: 'format:bold', title: 'B' }],
-        aiMenu: { label: 'AI', actions: [{ id: 'ai:rewrite', title: '改写' }] },
+        actions: [{ id: 'format:bold', titleText: 'B' }],
+        aiMenu: { label: 'AI', actions: [{ id: 'ai:rewrite', titleText: '改写' }] },
         extraControl: { dom: extra },
         onAction,
       },
@@ -655,6 +656,35 @@ describe('DEV-034 划词工具栏 AI 下拉（块编辑）', () => {
 });
 
 describe('右键上下文菜单（ContextMenu）', () => {
+  it('titleKey 按当前界面语言成文，缺 key 时回退原文而非裸 key（ADR-0023）', () => {
+    const language = 'en-US';
+    setCurrentLanguage(language);
+    const { kernel } = mount('第一段的文字', {
+      contextMenu: {
+        build: () => [
+          { id: 'ai-rewrite', title: '改写', titleKey: 'bubble.aiMenu.ai:rewrite' },
+          // 插件贡献可能误带缺失 key：MUST-NOT-translate 边界要求回退原文，
+          // 绝不能把裸 key 上屏。
+          { id: 'plugin', title: '插件提供的标题' },
+          { id: 'plugin-missing-key', title: '插件原文', titleKey: 'plugin.missing.contribution' },
+        ],
+        onAction: () => undefined,
+      },
+    });
+    kernel.editor.view.dom.dispatchEvent(
+      new MouseEvent('contextmenu', { bubbles: true, cancelable: true, clientX: 10, clientY: 10 }),
+    );
+    const rows = [...document.querySelectorAll<HTMLElement>('[data-context-menu-item]')];
+    expect(rows[0]?.textContent).toBe(
+      translate(CATALOGS[language], 'bubble.aiMenu.ai:rewrite', language),
+    );
+    expect(rows[1]?.textContent).toBe('插件提供的标题');
+    expect(rows[2]?.textContent).toBe('插件原文');
+    kernel.destroy();
+  });
+
+  afterEach(() => setCurrentLanguage('zh-CN'));
+
   it('选中右键构建子菜单并触发动作', () => {
     const onAction = vi.fn();
     const { kernel } = mount('第一段的文字\n\n第二段', {

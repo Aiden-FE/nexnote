@@ -39,7 +39,7 @@ export function buildPluginMenuItems<
   if (menus.length === 0) return [];
   const submenu: ContextMenuItem[] = menus.map((item) => ({
     id: pluginMenuActionId(item.scopedId ?? item.id),
-    title: item.title,
+    titleText: item.title,
   }));
   return [{ title: '插件', submenu }];
 }

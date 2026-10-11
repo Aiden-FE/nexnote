@@ -53,7 +53,8 @@ describe('插件扩展点宿主派生（DEV-014）', () => {
     expect(items[0]!.title).toBe('插件');
     expect(items[0]!.submenu?.[0]).toMatchObject({
       id: `${PLUGIN_MENU_ACTION_PREFIX}com.demo:tools`,
-      title: 'Tools',
+      // 插件贡献标题属内容边界（ADR-0023 MUST-NOT-translate），走 titleText。
+      titleText: 'Tools',
     });
     expect(buildPluginMenuItems([])).toEqual([]);
   });

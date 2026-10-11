@@ -1,7 +1,7 @@
 import { Extension } from '@tiptap/core';
 import { Plugin, PluginKey } from '@tiptap/pm/state';
-
 import { computeEditorActionContext, type EditorActionContext } from './action-context';
+import { resolveMenuTitle } from './menu-title';
 
 /**
  * 编辑器右键菜单（框架无关 DOM 实现）。
@@ -14,7 +14,12 @@ import { computeEditorActionContext, type EditorActionContext } from './action-c
 
 export interface ContextMenuItem {
   id?: string;
-  title: string;
+  /** App-owned items use catalog keys; plugin contributions may provide source text. */
+  titleKey?: string;
+  /** Plugin-defined titles are content contributed by the plugin, not app UI copy. */
+  titleText?: string;
+  /** @deprecated use `titleText` (source text) or `titleKey` (app copy). */
+  title?: string;
   hint?: string;
   disabled?: boolean;
   separator?: boolean;
@@ -76,7 +81,7 @@ export function buildMenuDom(
       row.disabled = item.disabled ?? false;
       const label = document.createElement('span');
       label.className = `${className}__label`;
-      label.textContent = item.title;
+      label.textContent = resolveMenuTitle(item);
       row.append(label);
       if (item.hint) {
         const hint = document.createElement('code');

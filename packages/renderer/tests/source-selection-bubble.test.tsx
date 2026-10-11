@@ -381,6 +381,57 @@ describe('源码模式划词工具栏（CodeMirror selection bubble）', () => {
     expect(bubble.querySelector('[data-ai-dropdown]')).not.toBeNull();
     editor.destroy();
   });
+
+  it('en-US：AI 下拉触发器、菜单无障碍名与全部动作按词典成文且无 CJK 残留', () => {
+    setLanguage('en-US');
+    const { parent, editor } = mount('第一句原文。第二句。');
+    selectWithCoords(editor, parent, 0, 6, { top: 300, left: 100, right: 120, bottom: 320 });
+    const bubble = bubbleOf();
+
+    const trigger = bubble.querySelector<HTMLButtonElement>('[data-bubble-action="ai:menu"]')!;
+    expect(trigger.getAttribute('aria-label')).toBe(text('en-US', 'bubble.aiMenu.trigger'));
+    expect(trigger.querySelector('[role="tooltip"]')?.textContent).toBe(
+      text('en-US', 'bubble.aiMenu.tooltip'),
+    );
+
+    const menu = bubble.querySelector<HTMLElement>('[data-ai-menu]')!;
+    expect(menu.getAttribute('aria-label')).toBe(text('en-US', 'bubble.aiMenu.menuLabel'));
+
+    const items = [...menu.querySelectorAll<HTMLElement>('[data-ai-menu-action]')];
+    const expectedTitles = [
+      ...writingAiMenuActions().map((action) => text('en-US', `bubble.aiMenu.${action.id}`)),
+    ];
+    expect(items.map((item) => item.querySelector('.nexnote-selection-bubble__label')?.textContent))
+      .toEqual(expectedTitles);
+    // aria-label 与菜单项共享同一份文案（共享可访问名称契约）。
+    expect(items.map((item) => item.getAttribute('aria-label'))).toEqual(expectedTitles);
+
+    const chrome = `${trigger.getAttribute('aria-label')} ${menu.textContent ?? ''}`;
+    expect(chrome).not.toMatch(/[\u4e00-\u9fff]/);
+    editor.destroy();
+  });
+
+  it('切换界面语言后重新打开菜单按新语言重算文案', () => {
+    const { parent, editor } = mount('第一句原文。第二句。');
+    selectWithCoords(editor, parent, 0, 6, { top: 300, left: 100, right: 120, bottom: 320 });
+    const bubble = bubbleOf();
+    const trigger = bubble.querySelector<HTMLButtonElement>('[data-bubble-action="ai:menu"]')!;
+    const menu = bubble.querySelector<HTMLElement>('[data-ai-menu]')!;
+    const rewrite = menu.querySelector<HTMLElement>('[data-ai-menu-action="ai:rewrite"]')!;
+    expect(rewrite.querySelector('.nexnote-selection-bubble__label')?.textContent).toBe(
+      text('zh-CN', 'bubble.aiMenu.ai:rewrite'),
+    );
+
+    setLanguage('en-US');
+    trigger.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
+    expect(menu.hidden).toBe(false);
+    expect(rewrite.querySelector('.nexnote-selection-bubble__label')?.textContent).toBe(
+      text('en-US', 'bubble.aiMenu.ai:rewrite'),
+    );
+    expect(trigger.getAttribute('aria-label')).toBe(text('en-US', 'bubble.aiMenu.trigger'));
+    expect(menu.textContent).not.toMatch(/[\u4e00-\u9fff]/);
+    editor.destroy();
+  });
 });
 
 describe('DEV-023 源码模式划词格式化（Markdown 包裹写回）', () => {

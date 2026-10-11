@@ -1,6 +1,7 @@
 import { computeEditorActionContext } from '@nexnote/kernel';
 import { editorActionCatalogEntry } from '@nexnote/shared';
 import type { BubbleAction, ContextMenuItem, SlashMenuItem } from '@nexnote/kernel';
+import { t } from '../../../lib/i18n';
 import { toAiActionId, WRITING_ACTIONS } from './actions';
 import { CHAT_ASK_ACTION } from '../chat/ask-ai';
 import {
@@ -13,7 +14,7 @@ import type { WritingController } from './controller';
 export function writingBubbleActions(): BubbleAction[] {
   return WRITING_ACTIONS.map((action) => ({
     id: toAiActionId(action.id),
-    title: action.label,
+    titleKey: `bubble.aiMenu.${toAiActionId(action.id)}`,
     shortcut: { mod: true, alt: true, key: action.modKey },
     shortcutLabel: `⌘⌥${action.modKey.toUpperCase()}`,
   }));
@@ -27,21 +28,33 @@ export function writingBubbleActions(): BubbleAction[] {
 export function writingAiMenuActions(): BubbleAction[] {
   return [
     ...writingBubbleActions(),
-    { id: CHAT_ASK_ACTION, title: '询问 AI' },
-    { id: TRANSLATE_SELECTION_ACTION_ID, title: '翻译选区' },
-    { id: OPEN_TRANSLATION_WORKBENCH_ID, title: '翻译工作台' },
+    {
+      id: CHAT_ASK_ACTION,
+      titleKey: `bubble.aiMenu.${CHAT_ASK_ACTION}`,
+    },
+    {
+      id: TRANSLATE_SELECTION_ACTION_ID,
+      titleKey: `bubble.aiMenu.${TRANSLATE_SELECTION_ACTION_ID}`,
+    },
+    {
+      id: OPEN_TRANSLATION_WORKBENCH_ID,
+      titleKey: `bubble.aiMenu.${OPEN_TRANSLATION_WORKBENCH_ID}`,
+    },
   ];
 }
 
 /** 右键菜单：AI 写作子菜单（选区作用于选区，折叠/块作用于整块）。 */
 export function writingContextMenu(ctx: { target: string }): ContextMenuItem[] {
-  const scope = ctx.target === 'selection' ? '选区' : '本块';
+  // 右键菜单在内核打开时才 build：用命令式 t() 保证每次打开按当前语言成文。
+  const scope = t(
+    ctx.target === 'selection' ? 'ai.contextMenu.scopeSelection' : 'ai.contextMenu.scopeBlock',
+  );
   return [
     {
-      title: `✨ AI 写作（${scope}）`,
+      titleText: t('ai.contextMenu.title', { scope }),
       submenu: WRITING_ACTIONS.map((action) => ({
         id: toAiActionId(action.id),
-        title: action.label,
+        titleKey: `bubble.aiMenu.${toAiActionId(action.id)}`,
       })),
     },
   ];
@@ -64,7 +77,10 @@ export function writingSlashItems(controller: WritingController): SlashMenuItem[
     },
     keywords: [...canonical.quickInsert.aliases],
     action: ({ view, afterSlashCommit }) => {
-      const instruction = window.prompt('AI 插入指令', '请基于当前上下文补充内容');
+      const instruction = window.prompt(
+        t('source.slash.aiPrompt'),
+        t('source.slash.aiPromptDefault'),
+      );
       if (!instruction?.trim()) return false;
       return controller.triggerSlash(
         'ai:expand',

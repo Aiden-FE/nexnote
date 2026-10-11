@@ -8,6 +8,7 @@
 
 import type { BubbleIconName, BubbleIconRenderer } from './selection-bubble-icons';
 import { tCurrent } from '@nexnote/shared';
+import { resolveMenuTitle } from './menu-title';
 
 export type { BubbleIconRenderer } from './selection-bubble-icons';
 
@@ -18,8 +19,12 @@ export interface BubbleAiMenuOptions {
 
 export interface BubbleAction {
   id: string;
-  /** 共享可访问名称；菜单项也使用此文字。 */
-  title: string;
+  /** App-owned items use catalog keys; plugin contributions may provide source text. */
+  titleKey?: string;
+  /** Plugin-defined titles are content contributed by the plugin, not app UI copy. */
+  titleText?: string;
+  /** @deprecated use `titleText` (source text) or `titleKey` (app copy). */
+  title?: string;
   /** 纯图标动作的稳定图标语义，由 DOM/CSS 渲染，避免绑定 UI framework。 */
   icon?: BubbleIconName;
   hint?: string;
@@ -35,14 +40,18 @@ const resolveBoolean = (value: boolean | (() => boolean) | undefined): boolean =
 const resolveText = (value: string | (() => string | undefined) | undefined): string | undefined =>
   typeof value === 'function' ? value() : value;
 
+/** 动作显示名：与应用自有 key / 插件原文共用同一解析规则（ADR-0023）。 */
+const bubbleActionTitle = (action: BubbleAction): string => resolveMenuTitle(action);
+
 export function bubbleTooltipText(action: BubbleAction): string {
   const reason = resolveText(action.disabledReason);
+  const title = bubbleActionTitle(action);
   const label = action.shortcutLabel
     ? tCurrent('common.withParenthetical', {
-        text: action.title,
+        text: title,
         detail: action.shortcutLabel,
       })
-    : (action.hint ?? action.title);
+    : (action.hint ?? title);
   return reason ? `${label} — ${reason}` : label;
 }
 
@@ -111,9 +120,10 @@ export function attachBubbleTooltip(
 export function refreshBubbleButton(button: HTMLButtonElement, action: BubbleAction): void {
   const disabled = resolveBoolean(action.disabled);
   const reason = resolveText(action.disabledReason);
+  const title = bubbleActionTitle(action);
   button.setAttribute(
     'aria-label',
-    reason ? tCurrent('common.withParenthetical', { text: action.title, detail: reason }) : action.title,
+    reason ? tCurrent('common.withParenthetical', { text: title, detail: reason }) : title,
   );
   button.setAttribute('aria-disabled', disabled ? 'true' : 'false');
 }
@@ -130,7 +140,8 @@ export function decorateBubbleButton(
   if (!action.icon || options.menuItem) {
     const label = document.createElement('span');
     label.className = `${className}__label`;
-    label.textContent = action.title;
+    label.dataset.bubbleAiLabel = '';
+    label.textContent = bubbleActionTitle(action);
     button.append(label);
   }
   if (options.tooltip !== false)
@@ -161,7 +172,7 @@ export function createBubbleAiMenu(
   trigger.dataset.bubbleAction = 'ai:menu';
   trigger.setAttribute('aria-haspopup', 'menu');
   trigger.setAttribute('aria-expanded', 'false');
-  trigger.setAttribute('aria-label', 'AI 菜单');
+  trigger.setAttribute('aria-label', tCurrent('bubble.aiMenu.trigger'));
   trigger.append(createBubbleIcon(className, 'sparkles', renderer));
   const triggerLabel = document.createElement('span');
   triggerLabel.className = `${className}__ai-label`;
@@ -169,18 +180,22 @@ export function createBubbleAiMenu(
   const chevron = createBubbleIcon(className, 'chevron-down', renderer);
   chevron.classList.add(`${className}__chevron`);
   trigger.append(triggerLabel, chevron);
-  const triggerTooltip = attachBubbleTooltip(trigger, className, () => 'AI 写作、询问与翻译');
+  const triggerTooltip = attachBubbleTooltip(trigger, className, () =>
+    tCurrent('bubble.aiMenu.tooltip'),
+  );
 
   const menu = document.createElement('div');
   menu.className = `${className}__ai-menu`;
   menu.dataset.aiMenu = '';
   menu.setAttribute('role', 'menu');
-  menu.setAttribute('aria-label', 'AI 操作');
+  menu.setAttribute('aria-label', tCurrent('bubble.aiMenu.menuLabel'));
   menu.hidden = true;
   menu.style.bottom = 'calc(100% + 4px)';
   menu.style.left = '0px';
 
   const items: HTMLButtonElement[] = [];
+  /** 与 items 同序缓存可见 label 节点：重开菜单时按当前语言重算，不做选择器拼接。 */
+  const labels: (HTMLSpanElement | null)[] = [];
   for (const action of options.actions) {
     const item = document.createElement('button');
     item.type = 'button';
@@ -188,6 +203,7 @@ export function createBubbleAiMenu(
     item.dataset.aiMenuAction = action.id;
     item.setAttribute('role', 'menuitem');
     decorateBubbleButton(item, className, action, renderer, { menuItem: true, tooltip: false });
+    labels.push(item.querySelector<HTMLSpanElement>('[data-bubble-ai-label]'));
     item.tabIndex = -1;
     const hint = action.shortcutLabel ?? action.hint;
     if (hint) {
@@ -220,7 +236,14 @@ export function createBubbleAiMenu(
     enabled[(index + enabled.length) % enabled.length]?.focus();
   };
   const open = (focus: 'first' | 'last' = 'first') => {
-    items.forEach((item, index) => refreshBubbleButton(item, options.actions[index]!));
+    // 语言可能在工具栏存活期间切换：重开时按当前语言重算菜单 chrome 与动作文案。
+    trigger.setAttribute('aria-label', tCurrent('bubble.aiMenu.trigger'));
+    menu.setAttribute('aria-label', tCurrent('bubble.aiMenu.menuLabel'));
+    labels.forEach((label, index) => {
+      const action = options.actions[index]!;
+      refreshBubbleButton(items[index]!, action);
+      if (label) label.textContent = bubbleActionTitle(action);
+    });
     const enabled = enabledItems();
     if (enabled.length === 0) return;
     menu.hidden = false;
