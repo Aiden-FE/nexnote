@@ -1,6 +1,6 @@
 # DEV-107 xmind 编辑器按删除键连带删除相邻兄弟节点（删除命令双重分发）
 
-- 状态：ready-for-agent
+- 状态：done（2026-10-11；dev/DEV-107-108-109 → master，真实库管线 5 用例 × 3 轮稳定）
 - 分类：bug
 - 优先级：**P1**（用户数据被误删，但撤销（Ctrl+Z）可恢复）
 - 工作量：S
@@ -54,11 +54,17 @@
 
 ## 验收标准
 
-- [ ] 集成测试：构造 3 个兄弟节点的思维导图，激活末尾节点，派发一次 Delete/Backspace keydown → 仅末尾节点被删除，`data_change` 后子节点数为 2；多次派发不放大。
-- [ ] 同上场景按 Ctrl/Cmd+Z 一次 → 被删节点恢复（撤销一步到位，不出现"按两次才撤销干净"或一次跳两步）。
-- [ ] Ctrl/Cmd+S 立即保存行为不回归（既有 DEV-099 语义）。
-- [ ] 文本输入/节点编辑态（INPUT/TEXTAREA/contenteditable）内按键不受拦截（既有守卫的回归测试）。
-- [ ] `pnpm typecheck` / `pnpm lint` / 相关 Vitest 全绿。
+- [x] 集成测试：构造 3 个兄弟节点的思维导图，激活末尾节点，派发一次 Delete/Backspace keydown → 仅末尾节点被删除，`data_change` 后子节点数为 2；多次派发不放大。
+- [x] 同上场景按 Ctrl/Cmd+Z 一次 → 被删节点恢复（撤销一步到位，不出现"按两次才撤销干净"或一次跳两步）。
+- [x] Ctrl/Cmd+S 立即保存行为不回归（既有 DEV-099 语义）。
+- [x] 文本输入/节点编辑态（INPUT/TEXTAREA/contenteditable）内按键不受拦截（既有守卫的回归测试）。
+- [x] `pnpm typecheck` / `pnpm lint` / 相关 Vitest 全绿。
+
+## 修复与验收证据（2026-10-11）
+
+- 修复：应用层 keydown 撤下与库重复的 Delete/Backspace、Ctrl/Cmd+Z、Ctrl/Cmd+Y 分发（删除键链路全权交给库），保留 Ctrl+S；补库缺失的 Cmd/Ctrl+Shift+Z 重做（库只注册 Control+y）。
+- 组件在宿主容器暴露 `__mindMap` 观测口供集成测试取实例。
+- 新增 `packages/renderer/tests/mindmap-delete-key.test.tsx`：真实 simple-mind-map 管线（DEV-102 约定不 mock 库），断言一次按键只删一个节点、撤销/重做各一步、画布外按键不触发；3 轮运行稳定。
 
 ## Out of scope
 

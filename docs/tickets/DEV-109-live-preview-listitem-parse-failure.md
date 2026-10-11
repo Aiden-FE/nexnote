@@ -1,6 +1,6 @@
 # DEV-109 实时预览对含空正文有序列表项的文档确定性解析失败，错误横幅无恢复手段
 
-- 状态：ready-for-agent
+- 状态：done（2026-10-11；kernel 管线兜底 + 横幅重试入口，触发输入全链路不抛错）
 - 分类：bug
 - 优先级：**P1**（预览功能对特定合法-ish 源码完全失效，用户无手段恢复，且错误文案指向的修复方式不可发现）
 - 工作量：M
@@ -64,11 +64,17 @@
 
 ## 验收标准
 
-- [ ] kernel 单测：`1. \n   - a\n` 与 `1. \n   | t |\n   | - |\n` 两个输入经 parseMarkdown 产出 schema 合法 JSON（用真实 schema 逐节点 `validContent` 断言），setMarkdown 全流程不抛错。
-- [ ] round-trip：上述输入 parse → serialize 后列表/表格结构保留、不产生可见垃圾字符；非空正文有序项（含嵌套）既有用例零回归。
-- [ ] renderer 测试：构造触发文档挂载 LivePreview → 修复后不出现 `preview-error`；另保留一条"注入确实不可解析的文本 → 横幅出现 → 点击重试 → 内容修正后横幅消失"的交互测试。
-- [ ] i18n：横幅新词条 zh-CN / en-US 双语齐全。
-- [ ] `pnpm typecheck` / `pnpm lint` / 相关 Vitest 全绿。
+- [x] kernel 单测：`1. \n   - a\n` 与 `1. \n   | t |\n   | - |\n` 两个输入经 parseMarkdown 产出 schema 合法 JSON（用真实 schema 逐节点 `validContent` 断言），setMarkdown 全流程不抛错。
+- [x] round-trip：上述输入 parse → serialize 后列表/表格结构保留、不产生可见垃圾字符；非空正文有序项（含嵌套）既有用例零回归。
+- [x] renderer 测试：构造触发文档挂载 LivePreview → 修复后不出现 `preview-error`；另保留一条"注入确实不可解析的文本 → 横幅出现 → 点击重试 → 内容修正后横幅消失"的交互测试。
+- [x] i18n：横幅新词条 zh-CN / en-US 双语齐全。
+- [x] `pnpm typecheck` / `pnpm lint` / 相关 Vitest 全绿。
+
+## 修复与验收证据（2026-10-11）
+
+- 根因修复：`parseMarkdown` 管线新增 `normalizeListItemContent`（packages/kernel/src/markdown/pipeline.ts）——首子块不是 paragraph 的 listItem/taskItem 补一个空 paragraph，JSON 对 schema 合法。预览/块编辑/replaceRangeWithMarkdown 等全部宿主共享该管线，一处修复全覆盖。
+- 防线补强：LivePreview 错误横幅新增「重试」按钮（`data-testid="preview-retry"`），用最新文本立即重走渲染，成功清横幅、失败刷新错误；自动恢复路径（后续文本可解析时防抖渲染清横幅）保留。
+- 验证：挂载即触发形态（initialMarkdown 为 `1. \n   - a\n`）成功解析；真实 schema `validContent` 全文档断言。
 
 ## Out of scope
 

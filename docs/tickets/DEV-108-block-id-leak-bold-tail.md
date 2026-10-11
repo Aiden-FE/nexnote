@@ -1,6 +1,6 @@
 # DEV-108 行末带格式（加粗等）文本的块 ID 锚点序列化后无法回收，切回文档泄漏为可见文本 `^xxxxxxxxx`
 
-- 状态：ready-for-agent
+- 状态：done（2026-10-11；serialize 侧感知 marks，五种 mark + heading/listItem + 三轮重开循环全绿）
 - 分类：bug
 - 优先级：**P1**（正文被写入垃圾字符，且每次切换往返追加一个新的泄漏 ID、逐次增长；用户可手动删除，不丢正文）
 - 工作量：M
@@ -56,11 +56,16 @@
 
 ## 验收标准
 
-- [ ] round-trip 矩阵新增用例：`段落 **行末加粗**` + blockId → parse/serialize 多轮后锚点始终可回收、行内无可见 `^id`；italic/strike/inlineCode/link 至少各一例。
-- [ ] "blockId + 末位带 mark 文本"的 serialize 用例：落盘 markdown 中锚点在 `**…**` 之外（`**加粗尾** ^id` 或等价可回收形态）。
-- [ ] 真实 createEditor 重开循环（模拟切换文档往返）：带行末加粗 + blockId 的文档循环 ≥ 2 轮，正文无 `^` 泄漏、blockId 不变。
-- [ ] 既有防御不回归：DEV-044 泄漏防御、DEV-071 表格单元格、手写 `^aonubg8xf` 字样保留、round-trip 矩阵既有用例全绿。
-- [ ] `pnpm typecheck` / `pnpm lint` / 相关 Vitest 全绿。
+- [x] round-trip 矩阵新增用例：`段落 **行末加粗**` + blockId → parse/serialize 多轮后锚点始终可回收、行内无可见 `^id`；italic/strike/inlineCode/link 至少各一例。
+- [x] "blockId + 末位带 mark 文本"的 serialize 用例：落盘 markdown 中锚点在 `**…**` 之外（`**加粗尾** ^id` 或等价可回收形态）。
+- [x] 真实 createEditor 重开循环（模拟切换文档往返）：带行末加粗 + blockId 的文档循环 ≥ 2 轮，正文无 `^` 泄漏、blockId 不变。
+- [x] 既有防御不回归：DEV-044 泄漏防御、DEV-071 表格单元格、手写 `^aonubg8xf` 字样保留、round-trip 矩阵既有用例全绿。
+- [x] `pnpm typecheck` / `pnpm lint` / 相关 Vitest 全绿。
+
+## 修复与验收证据（2026-10-11）
+
+- 修复：`appendInlinePlaceholder`（packages/kernel/src/markdown/block-id.ts）感知末位文本节点的 marks——带 mark 时占位符作为独立的无 mark 文本节点插入，落盘形态 `**加粗尾** ^id`（parse 侧行末锚点正则可回收）。采用票面两方案中的 serialize 侧方案，parse 侧正则未动，手写 `^xxx` 字面量语义零改动。
+- 覆盖：bold/italic/strike/code/link 五种 mark、heading 与 bulletList 宿主、末位无 mark 的既有形态回归、链接 URL 含 `^` 的字面量不受影响。
 
 ## Out of scope
 
