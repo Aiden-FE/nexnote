@@ -32,7 +32,7 @@ function makeEntries(overrides: { disabledStrike?: boolean } = {}): ToolbarEntry
   const action = (id: string, width: number): ToolbarEntrySpec => ({
     kind: 'action',
     id,
-    label: `动作 ${id} ${'名'.repeat(width)}`,
+    label: `Action ${id} ${'x'.repeat(width)}`,
     icon: <span>{id}</span>,
     disabled: id === 'strike' && overrides.disabledStrike,
   });
@@ -46,8 +46,8 @@ function makeEntries(overrides: { disabledStrike?: boolean } = {}): ToolbarEntry
       label: 'AI',
       icon: <span>AI</span>,
       items: [
-        { id: 'ai:ask', label: '询问 AI' },
-        { id: 'ai:rewrite', label: 'AI 改写', shortcut: '⌘⌥R' },
+        { id: 'ai:ask', label: 'Ask AI' },
+        { id: 'ai:rewrite', label: 'AI rewrite', shortcut: '⌘⌥R' },
       ],
     },
   ];
@@ -264,7 +264,7 @@ describe('Icon-first 与统一 Tooltip（DEV-050）', () => {
     const tip = () => document.body.querySelector<HTMLElement>('[data-testid="toolbar-tooltip"]');
     act(() => bold.dispatchEvent(new PointerEvent('pointerover', { bubbles: true })));
     await tick(0);
-    expect(tip()?.textContent).toContain('动作 bold');
+    expect(tip()?.textContent).toContain('Action bold');
     act(() => bold.dispatchEvent(new PointerEvent('pointerout', { bubbles: true })));
     await tick(0);
     expect(tip()).toBeNull();

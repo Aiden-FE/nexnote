@@ -5,6 +5,8 @@ import { createRoot } from 'react-dom/client';
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { undo } from '@codemirror/commands';
+import { CATALOGS, translate } from '@nexnote/shared';
+import { setLanguage } from '../src/lib/i18n';
 import { createSourceEditor, type SourceEditorHandle } from '../src/editor/source/codemirror-host';
 import { sourceSelectionBubble } from '../src/editor/source/source-bubble';
 import {
@@ -34,6 +36,12 @@ import { getActiveSourceEditor } from '../src/editor/source/active-source-editor
 import type { TabDescriptor } from '../src/stores/tab-store';
 
 globalThis.IS_REACT_ACT_ENVIRONMENT = true;
+
+const text = (
+  language: 'zh-CN' | 'en-US',
+  key: string,
+  params?: Record<string, string | number>,
+): string => translate(CATALOGS[language], key, language, params);
 
 interface StreamListener {
   (payload: unknown): void;
@@ -163,6 +171,7 @@ beforeEach(() => {
 afterEach(() => {
   useWritingStore.getState().closeSession();
   document.body.innerHTML = '';
+  setLanguage('zh-CN');
 });
 
 describe('源码模式划词工具栏（CodeMirror selection bubble）', () => {
@@ -459,12 +468,45 @@ describe('DEV-023 源码模式划词格式化（Markdown 包裹写回）', () =>
     const wiki = bubble.querySelector<HTMLElement>('[data-bubble-action="format:wikilink"]');
     expect(link?.querySelector('[data-icon]')?.getAttribute('data-icon')).toBe('link');
     expect(wiki?.querySelector('[data-icon]')?.getAttribute('data-icon')).toBe('wikilink');
-    expect(link?.getAttribute('aria-label')).toBe('外链');
-    expect(wiki?.getAttribute('aria-label')).toBe('双链');
+    expect(link?.getAttribute('aria-label')).toBe(text('zh-CN', 'editorAction.format:link.name'));
+    expect(wiki?.getAttribute('aria-label')).toBe(
+      text('zh-CN', 'editorAction.format:wikilink.name'),
+    );
     expect(link?.hasAttribute('title')).toBe(false);
     expect(wiki?.hasAttribute('title')).toBe(false);
     expect(link?.querySelector('[role="tooltip"]')?.textContent).toContain('⌘K');
-    expect(wiki?.querySelector('[role="tooltip"]')?.textContent).toContain('双链');
+    expect(wiki?.querySelector('[role="tooltip"]')?.textContent).toContain(
+      text('zh-CN', 'editorAction.format:wikilink.name'),
+    );
+    editor.destroy();
+  });
+
+  it('en-US 划词工具栏动作标签、tooltip 与停止控件按词典成文（ADR-0023）', () => {
+    setLanguage('en-US');
+    const { parent, editor } = mount('First sentence. Second sentence.');
+    selectWithCoords(editor, parent, 0, 6, { top: 300, left: 100, right: 120, bottom: 320 });
+    const bubble = bubbleOf();
+
+    const bold = bubble.querySelector<HTMLButtonElement>('[data-bubble-action="format:bold"]')!;
+    const link = bubble.querySelector<HTMLButtonElement>('[data-bubble-action="format:link"]')!;
+    const wiki = bubble.querySelector<HTMLButtonElement>('[data-bubble-action="format:wikilink"]')!;
+    const stop = bubble.querySelector<HTMLButtonElement>('[data-testid="bubble-stop"]')!;
+
+    expect(bold.getAttribute('aria-label')).toBe(text('en-US', 'editorAction.format:bold.name'));
+    expect(bold.querySelector('[role="tooltip"]')?.textContent).toBe(
+      text('en-US', 'editorAction.format:bold.hint'),
+    );
+    expect(link.getAttribute('aria-label')).toBe(text('en-US', 'editorAction.format:link.name'));
+    expect(wiki.getAttribute('aria-label')).toBe(text('en-US', 'editorAction.format:wikilink.name'));
+    expect(stop.getAttribute('aria-label')).toBe(text('en-US', 'ai.writing.stop'));
+
+    const chrome = [
+      bold.getAttribute('aria-label') ?? '',
+      link.getAttribute('aria-label') ?? '',
+      wiki.getAttribute('aria-label') ?? '',
+      stop.getAttribute('aria-label') ?? '',
+    ].join('\n');
+    expect(chrome).not.toMatch(/[\u4e00-\u9fff]/);
     editor.destroy();
   });
 
@@ -589,10 +631,12 @@ describe('DEV-034 划词工具栏 AI 下拉（源码模式）', () => {
     const bold = bubble.querySelector<HTMLButtonElement>('[data-bubble-action="format:bold"]')!;
     const italic = bubble.querySelector<HTMLButtonElement>('[data-bubble-action="format:italic"]')!;
     const ai = triggerOf();
-    expect(bold.textContent).toBe('粗体（⌘B）');
+    expect(bold.textContent).toBe(text('zh-CN', 'editorAction.format:bold.hint'));
     expect(bold.querySelector('[data-icon="bold"]')).toBeTruthy();
-    expect(bold.getAttribute('aria-label')).toBe('粗体');
-    expect(bold.querySelector('[role="tooltip"]')?.textContent).toBe('粗体（⌘B）');
+    expect(bold.getAttribute('aria-label')).toBe(text('zh-CN', 'editorAction.format:bold.name'));
+    expect(bold.querySelector('[role="tooltip"]')?.textContent).toBe(
+      text('zh-CN', 'editorAction.format:bold.hint'),
+    );
     expect(ai.querySelector('[data-icon="sparkles"]')).toBeTruthy();
     expect(ai.querySelector('.nexnote-selection-bubble__ai-label')?.textContent).toBe('AI');
     expect(ai.querySelector('.nexnote-selection-bubble__chevron')).toBeTruthy();
@@ -853,7 +897,7 @@ describe('DEV-034 划词工具栏 AI 下拉（源码模式）', () => {
     expect(stop!.disabled).toBe(true);
     // 原生 button：Tab 可达、Enter/Space 触发，无需自定义 keydown
     expect(stop!.tagName).toBe('BUTTON');
-    expect(stop!.getAttribute('aria-label')).toBe('停止生成');
+    expect(stop!.getAttribute('aria-label')).toBe(text('zh-CN', 'ai.writing.stop'));
 
     const item = bubbleOf().querySelector<HTMLButtonElement>('[data-ai-menu-action="ai:rewrite"]');
     item?.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));

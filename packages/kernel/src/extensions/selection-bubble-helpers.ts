@@ -7,6 +7,7 @@
  */
 
 import type { BubbleIconName, BubbleIconRenderer } from './selection-bubble-icons';
+import { tCurrent } from '@nexnote/shared';
 
 export type { BubbleIconRenderer } from './selection-bubble-icons';
 
@@ -37,7 +38,10 @@ const resolveText = (value: string | (() => string | undefined) | undefined): st
 export function bubbleTooltipText(action: BubbleAction): string {
   const reason = resolveText(action.disabledReason);
   const label = action.shortcutLabel
-    ? `${action.title}（${action.shortcutLabel}）`
+    ? tCurrent('common.withParenthetical', {
+        text: action.title,
+        detail: action.shortcutLabel,
+      })
     : (action.hint ?? action.title);
   return reason ? `${label} — ${reason}` : label;
 }
@@ -107,7 +111,10 @@ export function attachBubbleTooltip(
 export function refreshBubbleButton(button: HTMLButtonElement, action: BubbleAction): void {
   const disabled = resolveBoolean(action.disabled);
   const reason = resolveText(action.disabledReason);
-  button.setAttribute('aria-label', reason ? `${action.title}（${reason}）` : action.title);
+  button.setAttribute(
+    'aria-label',
+    reason ? tCurrent('common.withParenthetical', { text: action.title, detail: reason }) : action.title,
+  );
   button.setAttribute('aria-disabled', disabled ? 'true' : 'false');
 }
 

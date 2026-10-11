@@ -352,3 +352,12 @@ status: in_progress
   作为内容数据。本批只改测试，不新增消息 key，zh/en 保持 1553 key；
   backlinks-badge targeted tests 通过；全量门禁 196 files /
   1876 passed / 3 skipped 退出码 0。
+- 阶段④第九批（2026-10-11）：划词工具栏与工具栏溢出测试迁移，并修正
+  「英文界面仍使用中文全角括号」的真实缺陷。新增 `common.withParenthetical`
+  词典模板（zh `{text}（{detail}）` / en `{text} ({detail})`），kernel
+  `bubbleTooltipText` / 禁用按钮 aria-label 与 renderer `EditorToolbar`
+  Tooltip / 菜单项 aria-label 均改走模板；`source-selection-bubble` 将粗体、
+  外链、双链、停止生成等真实产品文案改为词典断言并补 en-US 渲染用例，
+  `editor-toolbar-overflow` 的中文测试夹具改为中性英文避免自造文案干扰。
+  新增 2 key，zh/en 各 1554 key；source-selection-bubble / editor-toolbar-overflow
+  targeted tests 通过；全量门禁 196 files / 1877 passed / 3 skipped 退出码 0。

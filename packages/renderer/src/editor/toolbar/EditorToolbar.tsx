@@ -248,7 +248,9 @@ export function EditorToolbar({ label, entries, onCommand, tools, status }: Edit
     const reason = resolveDisabledReason(
       entry.kind === 'action' ? entry.disabledReason : undefined,
     );
-    const tooltipLabel = entry.shortcut ? `${entry.label}（${entry.shortcut}）` : entry.label;
+    const tooltipLabel = entry.shortcut
+      ? t('common.withParenthetical', { text: entry.label, detail: entry.shortcut })
+      : entry.label;
     const tooltipText = reason ? `${tooltipLabel} — ${reason}` : (entry.hint ?? tooltipLabel);
     const labeled = entry.id === AI_ENTRY_ID;
     return (
@@ -259,7 +261,9 @@ export function EditorToolbar({ label, entries, onCommand, tools, status }: Edit
           data-toolbar-item="true"
           data-item-id={entry.id}
           data-testid={`toolbar-entry-${entry.id}`}
-          aria-label={reason ? `${entry.label}（${reason}）` : entry.label}
+          aria-label={
+            reason ? t('common.withParenthetical', { text: entry.label, detail: reason }) : entry.label
+          }
           aria-disabled={disabled || undefined}
           aria-haspopup={isMenu ? 'menu' : undefined}
           aria-expanded={isMenu ? expanded : undefined}
@@ -302,7 +306,9 @@ export function EditorToolbar({ label, entries, onCommand, tools, status }: Edit
         type="button"
         role="menuitem"
         data-testid={`toolbar-menu-item-${item.id}`}
-        aria-label={reason ? `${item.label}（${reason}）` : item.label}
+        aria-label={
+          reason ? t('common.withParenthetical', { text: item.label, detail: reason }) : item.label
+        }
         aria-disabled={disabled || undefined}
         onClick={() => {
           if (disabled) return;
