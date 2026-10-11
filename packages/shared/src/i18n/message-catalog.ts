@@ -383,6 +383,7 @@ export const MESSAGES_ZH_CN = {
 
   // —— 实时预览
   'preview.updateFailed': '预览更新失败（整页解析失败）：{error} · 下方内容已过期',
+  'preview.retry': '重试',
 
   // —— 侧栏扩展
   'sidebar.backlinks.subtitle': '当前页面的入链 · 关系索引实时数据',
@@ -2052,6 +2053,7 @@ export const MESSAGES_EN_US = {
   // —— Live preview
   'preview.updateFailed':
     'Preview update failed (whole-page parse failed): {error} · content below is stale',
+  'preview.retry': 'Retry',
 
   // —— Sidebar extensions
   'sidebar.backlinks.subtitle': 'Incoming links for the current page · Live relation index',

@@ -51,7 +51,8 @@ export function parseMarkdown(manager: MarkdownManager, markdown: string): JSONC
   const { yaml, body } = splitFrontmatter(markdown);
   const prepped = replaceAnchorsWithPlaceholders(body);
   const doc = manager.parse(prepped);
-  const lifted = liftPlaceholdersToBlockIds(doc);
+  const normalized = normalizeListItemContent(doc);
+  const lifted = liftPlaceholdersToBlockIds(normalized);
   if (yaml !== null) {
     const fm: JSONContent = {
       type: Frontmatter.name,
@@ -60,6 +61,32 @@ export function parseMarkdown(manager: MarkdownManager, markdown: string): JSONC
     return { type: 'doc', content: [fm, ...(lifted.content ?? [])] };
   }
   return lifted;
+}
+
+/**
+ * DEV-109：列表项内容规范化。
+ *
+ * 有序列表自定义分词器在「项正文为空 + 后跟缩进块」（如 `1. \n   - a`）时，
+ * 产出的 listItem/taskItem 内容以 list/table 等 block token 开头、没有前置
+ * paragraph——违反 schema 的 `paragraph block*` 约束。JSON 不经 schema 校验
+ * 直接入库（enableContentCheck 关闭），随后 UniqueID 补块 ID 的
+ * setNodeMarkup 做 validContent 校验时抛
+ * `RangeError: Invalid content for node type listItem`，整页渲染失败。
+ *
+ * 这里在管线内兜底：首子块不是 paragraph 的列表项补一个空 paragraph，
+ * 使 JSON 对 schema 合法（空段落对用户呈现为列表项占位行，与编辑器里
+ * 手动产生同类结构的结果一致）。
+ */
+export function normalizeListItemContent(node: JSONContent): JSONContent {
+  if (!Array.isArray(node.content) || node.content.length === 0) return node;
+  const content = node.content.map(normalizeListItemContent);
+  if (node.type === 'listItem' || node.type === 'taskItem') {
+    const first = content[0];
+    if (first && first.type !== 'paragraph') {
+      content.unshift({ type: 'paragraph', content: [] });
+    }
+  }
+  return { ...node, content };
 }
 
 /** 收集文档中带 code 标记且包含反引号的文本。 */

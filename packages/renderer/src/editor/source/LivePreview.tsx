@@ -53,6 +53,8 @@ export function LivePreview({
   const [renderError, setRenderError] = useState<string | null>(null);
   // 首帧必须同步渲染：进入源码模式时右侧不得先空白再等防抖。
   const initialMarkdownRef = useRef(markdown);
+  // 最新文本快照：错误横幅的「重试」用它立即重走一次渲染（DEV-109）。
+  const latestMarkdownRef = useRef(markdown);
 
   // 内核只建一次（复用实例）；插件启停影响的是后续重挂（与块编辑模式同语义）。
   useEffect(() => {
@@ -101,8 +103,15 @@ export function LivePreview({
   }, []);
 
   useEffect(() => {
+    latestMarkdownRef.current = markdown;
     schedulerRef.current?.schedule(markdown);
   }, [markdown]);
+
+  // DEV-109：错误横幅的显式重试——用最新文本立即重走一次渲染，
+  // 成功则清横幅，失败则刷新错误信息（自动恢复路径之外的用户出口）。
+  const handleRetry = (): void => {
+    schedulerRef.current?.schedule(latestMarkdownRef.current);
+  };
 
   // 容器级点击委托：Wikilink span（无 href）+ 普通链接 <a>。
   // 外链不 preventDefault：Electron setWindowOpenHandler 统一按 http(s) → shell.openExternal 处理。
@@ -150,6 +159,14 @@ export function LivePreview({
           <span data-testid="preview-stale">
             {tr('preview.updateFailed', { error: renderError })}
           </span>
+          <button
+            type="button"
+            data-testid="preview-retry"
+            onClick={handleRetry}
+            className="ml-auto shrink-0 rounded border border-destructive/40 px-2 py-0.5 text-xs text-destructive hover:bg-destructive/10"
+          >
+            {tr('preview.retry')}
+          </button>
         </div>
       )}
       <div

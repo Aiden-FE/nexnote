@@ -170,6 +170,7 @@ export {
   parseMarkdown,
   serializeMarkdown,
   normalizeForCompare,
+  normalizeListItemContent,
 } from './markdown/pipeline';
 export {
   BLOCK_ID_TYPES,
