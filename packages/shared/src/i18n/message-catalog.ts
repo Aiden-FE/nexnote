@@ -62,6 +62,7 @@ export const MESSAGES_ZH_CN = {
   'common.close': '关闭',
   'common.save': '保存',
   'common.withParenthetical': '{text}（{detail}）',
+  'common.withColon': '{text}：{detail}',
   'outline.bodyTocTitle': '目录',
   'outline.bodyTocEmpty': '暂无标题',
   'translation.documentViewLabel': '临时翻译视图',
@@ -91,6 +92,13 @@ export const MESSAGES_ZH_CN = {
   'common.rename': '重命名',
   'common.copy': '复制',
   'common.search': '搜索',
+  'app.startup.loading': '正在启动 NexNote…',
+  'workspace.empty.noPage': '没有打开的页面',
+  'ai.dock.welcome': '欢迎使用 AI',
+  'ai.dock.description':
+    '连接 OpenAI、Azure 或本地模型，解锁写作辅助、对话与语义检索。密钥仅保存在本机系统钥匙串。',
+  'ai.dock.configure': '前往设置配置 AI',
+  'editor.askAi': '💬 询问 AI（送入对话）',
 
   // —— 设置：外观
   'settings.appearance.title': '外观',
@@ -1690,6 +1698,7 @@ export const MESSAGES_EN_US = {
   'common.close': 'Close',
   'common.save': 'Save',
   'common.withParenthetical': '{text} ({detail})',
+  'common.withColon': '{text}: {detail}',
   'outline.bodyTocTitle': 'Contents',
   'outline.bodyTocEmpty': 'No headings yet',
   'translation.documentViewLabel': 'Temporary translation view',
@@ -1719,6 +1728,13 @@ export const MESSAGES_EN_US = {
   'common.rename': 'Rename',
   'common.copy': 'Copy',
   'common.search': 'Search',
+  'app.startup.loading': 'Starting NexNote…',
+  'workspace.empty.noPage': 'No page open',
+  'ai.dock.welcome': 'Welcome to AI',
+  'ai.dock.description':
+    'Connect OpenAI, Azure, or a local model to unlock writing assistance, chat, and semantic retrieval. Keys are stored only in your system keychain.',
+  'ai.dock.configure': 'Configure AI in settings',
+  'editor.askAi': '💬 Ask AI (send to chat)',
 
   // —— Settings: appearance
   'settings.appearance.title': 'Appearance',

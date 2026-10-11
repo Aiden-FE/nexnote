@@ -453,7 +453,9 @@ export function EditorView({ tab }: EditorViewProps) {
   const save = useCallback(
     async (markdown: string) => {
       if (unmountedRef.current) return;
-      if (conflictRef.current) throw new Error('外部修改冲突，等待用户选择');
+      // 保存回调可能被旧 closure 捕获，不能依赖 useI18n 的重渲；
+      // 命令式 t() 每次调用都读取当前语言。
+      if (conflictRef.current) throw new Error(t('source.conflict.internalError'));
       saveStateRef.current = 'saving';
       setSaveState('saving');
       setSaveError(null);
@@ -479,8 +481,8 @@ export function EditorView({ tab }: EditorViewProps) {
           conflictRef.current = result.diskVersion;
           setConflict(result.diskVersion);
           setSaveState('error');
-          setSaveError('磁盘文件已被外部修改，已暂停自动保存');
-          throw new Error('外部修改冲突，等待用户选择');
+          setSaveError(t('source.conflict.autoSavePaused'));
+          throw new Error(t('source.conflict.internalError'));
         }
         // DEV-092：基线必须是**真正落盘**的文本。saveSourceText 会刷新
         // frontmatter.updated，故落盘文本与编辑器 buffer 不同；若基线仍记 buffer，
@@ -547,6 +549,9 @@ export function EditorView({ tab }: EditorViewProps) {
       onContentChange: (markdown) => save(markdown),
       onSaveError: (e) => {
         if (!unmountedRef.current) {
+          // 内部冲突由 conflictRef 驱动的横幅接管；kernel 重抛的「等待用户选择」
+          // 属内部信号，不能覆盖成磁盘错误文案。
+          if (conflictRef.current) return;
           saveStateRef.current = 'error';
           setSaveState('error');
           setSaveError(e instanceof Error ? e.message : String(e));
@@ -591,7 +596,7 @@ export function EditorView({ tab }: EditorViewProps) {
           ...writingContextMenu(ctx),
           {
             id: CHAT_ASK_ACTION,
-            title: '💬 询问 AI（送入对话）',
+            title: t('editor.askAi'),
             disabled: !ctx.text.trim(),
           },
           // DEV-014：插件菜单扩展点（每次右键读取最新注册表）。
@@ -924,11 +929,19 @@ export function EditorView({ tab }: EditorViewProps) {
 
   const status = useMemo(() => {
     if (saveState === 'saving')
-      return { icon: LoaderCircle, text: '保存中…', className: 'animate-spin' };
+      return {
+        icon: LoaderCircle,
+        text: uiText('source.saveStatus.saving'),
+        className: 'animate-spin',
+      };
     if (saveState === 'error')
-      return { icon: AlertCircle, text: '保存失败', className: 'text-destructive' };
-    return { icon: Check, text: '已保存', className: '' };
-  }, [saveState]);
+      return {
+        icon: AlertCircle,
+        text: uiText('source.saveStatus.error'),
+        className: 'text-destructive',
+      };
+    return { icon: Check, text: uiText('source.saveStatus.saved'), className: '' };
+  }, [saveState, uiText]);
   const StatusIcon = status.icon;
 
   // 标题工具能力随选区实时变化：以惰性 getter 交给工具栏在交互时求值，
@@ -1040,7 +1053,10 @@ export function EditorView({ tab }: EditorViewProps) {
       case AI_INSERT_ID: {
         const v = view();
         if (!v) return;
-        const instruction = window.prompt('AI 插入指令', '请基于当前上下文补充内容');
+        const instruction = window.prompt(
+          uiText('source.slash.aiPrompt'),
+          uiText('source.slash.aiPromptDefault'),
+        );
         if (!instruction?.trim()) return;
         const ctx = computeEditorActionContext(v, 'cursor');
         writingControllerRef.current?.trigger('ai:expand', {
@@ -1127,7 +1143,11 @@ export function EditorView({ tab }: EditorViewProps) {
           <span
             data-testid="editor-save-status"
             className="flex shrink-0 items-center gap-1"
-            aria-label={saveError ? `${status.text}：${saveError}` : status.text}
+            aria-label={
+              saveError
+                ? uiText('common.withColon', { text: status.text, detail: saveError })
+                : status.text
+            }
           >
             <StatusIcon className={`size-3 ${status.className}`} />
             {status.text}
@@ -1142,7 +1162,7 @@ export function EditorView({ tab }: EditorViewProps) {
               className="flex shrink-0 items-center gap-2 border-b border-destructive/40 bg-destructive/10 px-3 py-1.5 text-xs text-destructive"
             >
               <AlertCircle className="size-3.5" />
-              <span className="flex-1">磁盘文件已被外部修改，本地还有未保存的修改。</span>
+              <span className="flex-1">{uiText('source.conflict.banner')}</span>
               <button
                 type="button"
                 data-testid="conflict-keep-local"
@@ -1157,7 +1177,7 @@ export function EditorView({ tab }: EditorViewProps) {
                   })();
                 }}
               >
-                保留本地
+                {uiText('source.conflict.keepLocal')}
               </button>
               <button
                 type="button"
@@ -1175,7 +1195,7 @@ export function EditorView({ tab }: EditorViewProps) {
                   })
                 }
               >
-                读取磁盘并重载
+                {uiText('source.conflict.takeDisk')}
               </button>
             </div>
           )}

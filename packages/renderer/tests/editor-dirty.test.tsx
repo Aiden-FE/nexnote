@@ -2,9 +2,10 @@
 import { act } from 'react';
 import { createRoot } from 'react-dom/client';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { defaultVaultSettings } from '@nexnote/shared';
+import { CATALOGS, defaultVaultSettings, translate } from '@nexnote/shared';
 import { EditorView } from '../src/editor/EditorView';
 import { getActiveEditor } from '../src/editor/active-editor';
+import { setLanguage } from '../src/lib/i18n';
 import { useSettingsStore } from '../src/stores/settings-store';
 import type { TabDescriptor } from '../src/stores/tab-store';
 
@@ -125,6 +126,7 @@ beforeEach(() => {
 
 afterEach(() => {
   delete (window as unknown as { nexnote?: unknown }).nexnote;
+  setLanguage('zh-CN');
 });
 
 describe('EditorView dirty 生命周期', () => {
@@ -185,6 +187,100 @@ describe('EditorView dirty 生命周期', () => {
     await vi.waitFor(() => {
       expect(container.querySelector('[data-testid="editor-conflict-banner"]')).toBeNull();
     });
+
+    await act(async () => root.unmount());
+  });
+});
+
+describe('EditorView 冲突与保存状态双语（ADR-0023 阶段④第十一批）', () => {
+  it('冲突横幅、操作按钮与保存失败状态按词典成文，en-US 无中文残留', async () => {
+    setLanguage('en-US');
+    const bridge = installBridge({ autoSaveMs: 30 });
+    const { container, root } = await mountEditor();
+
+    await act(async () => {
+      expect(typeAtEnd('external change')).toBe(true);
+      bridge.emitExternalChange('# External version\n');
+    });
+
+    await vi.waitFor(() => {
+      expect(container.querySelector('[data-testid="editor-conflict-banner"]')).not.toBeNull();
+    });
+
+    const banner = container.querySelector('[data-testid="editor-conflict-banner"]');
+    expect(banner?.textContent).toContain(
+      translate(CATALOGS['en-US'], 'source.conflict.banner', 'en-US'),
+    );
+    // 冲突横幅接管提示；kernel 重抛的内部「等待用户选择」不得上屏
+    // （EditorView.onSaveError 的 conflictRef 分支）。
+    expect(container.innerHTML).not.toContain(
+      translate(CATALOGS['en-US'], 'source.conflict.internalError', 'en-US'),
+    );
+
+    // 冲突期间继续输入 → save() 提前抛出内部信号 → kernel 转交 onSaveError。
+    // 该分支必须早退，否则内部信号会覆盖成「保存失败：…」的 aria-label。
+    await act(async () => {
+      expect(typeAtEnd('typed while conflicted')).toBe(true);
+    });
+    // 冲突状态下 save() 会提前 throw，不落盘；等防抖窗口过去，确认无写入。
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 120));
+    });
+    expect(bridge.writes).toBe(0);
+    const afterTyping = container.querySelector('[data-testid="editor-save-status"]');
+    expect(afterTyping?.getAttribute('aria-label') ?? '').not.toContain(
+      translate(CATALOGS['en-US'], 'source.conflict.internalError', 'en-US'),
+    );
+    const buttons = [...(banner?.querySelectorAll('button') ?? [])].map(
+      (button) => button.textContent?.trim() ?? '',
+    );
+    expect(buttons).toContain(translate(CATALOGS['en-US'], 'source.conflict.keepLocal', 'en-US'));
+    expect(buttons).toContain(translate(CATALOGS['en-US'], 'source.conflict.takeDisk', 'en-US'));
+    expect(banner?.textContent).not.toMatch(/[\u4e00-\u9fff]/);
+
+    const status = container.querySelector('[data-testid="editor-save-status"]');
+    expect(status?.textContent).toContain(
+      translate(CATALOGS['en-US'], 'source.saveStatus.saved', 'en-US'),
+    );
+    expect(status?.textContent).not.toMatch(/[\u4e00-\u9fff]/);
+
+    await act(async () => root.unmount());
+  });
+
+  it('保存失败状态按词典成文，en-US 无中文残留', async () => {
+    setLanguage('en-US');
+    const bridge = installBridge({
+      autoSaveMs: 50,
+      onWrite: () => Promise.reject(new Error('disk unavailable')),
+    });
+    const { container, root } = await mountEditor();
+
+    await act(async () => {
+      expect(typeAtEnd('failing save')).toBe(true);
+    });
+    await vi.waitFor(() => {
+      expect(bridge.writes).toBeGreaterThan(0);
+    });
+    await vi.waitFor(() => {
+      const status = container.querySelector('[data-testid="editor-save-status"]');
+      expect(status?.textContent).toContain(
+        translate(CATALOGS['en-US'], 'source.saveStatus.error', 'en-US'),
+      );
+    });
+
+    const status = container.querySelector('[data-testid="editor-save-status"]');
+    expect(status?.textContent).not.toMatch(/[\u4e00-\u9fff]/);
+    const label = status?.getAttribute('aria-label') ?? '';
+    expect(label).toContain(translate(CATALOGS['en-US'], 'source.saveStatus.error', 'en-US'));
+    expect(label).toContain('disk unavailable');
+    // 拼接分隔符必须随界面语言成文：英文界面不得残留中文全角冒号（ADR-0023）。
+    expect(label).toBe(
+      translate(CATALOGS['en-US'], 'common.withColon', 'en-US', {
+        text: translate(CATALOGS['en-US'], 'source.saveStatus.error', 'en-US'),
+        detail: 'disk unavailable',
+      }),
+    );
+    expect(label).not.toMatch(/[\u4e00-\u9fff]/);
 
     await act(async () => root.unmount());
   });

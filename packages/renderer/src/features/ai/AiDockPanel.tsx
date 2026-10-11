@@ -4,6 +4,7 @@ import { useAiConfig, needsOnboarding } from './ai-config';
 import { ChatDock } from './chat/ChatDock';
 import { Button } from '../../components/ui/button';
 import { openSettings } from '../../lib/open-settings';
+import { useI18n } from '../../lib/i18n';
 
 /**
  * 对话 dock 面板：
@@ -11,6 +12,7 @@ import { openSettings } from '../../lib/open-settings';
  * - 已配置 → 正式对话 dock（DEV-012：流式回答 / 上下文注入 / 会话即页面 / 参考来源）
  */
 export function AiDockPanel() {
+  const t = useI18n();
   const state = useAiConfig((s) => s.state);
   const load = useAiConfig((s) => s.load);
 
@@ -28,14 +30,14 @@ export function AiDockPanel() {
           <Sparkles className="size-5 text-primary" />
         </div>
         <p data-testid="ai-dock-welcome" className="text-sm font-medium text-foreground">
-          欢迎使用 AI
+          {t('ai.dock.welcome')}
         </p>
         <p className="max-w-56 text-xs leading-relaxed text-muted-foreground">
-          连接 OpenAI、Azure 或本地模型，解锁写作辅助、对话与语义检索。密钥仅保存在本机系统钥匙串。
+          {t('ai.dock.description')}
         </p>
         <Button data-testid="ai-dock-configure" size="sm" onClick={() => openSettings('ai')}>
           <Bot className="size-3.5" />
-          前往设置配置 AI
+          {t('ai.dock.configure')}
         </Button>
       </div>
     );

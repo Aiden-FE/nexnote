@@ -369,3 +369,27 @@ status: in_progress
   `outline.bodyTocEmpty`。新增 25 key，zh/en 各 1579 key；
   live-preview-mount / ephemeral-translation targeted tests 通过；
   全量门禁 196 files / 1879 passed / 3 skipped 退出码 0。
+- 阶段④第十一批（2026-10-11）：应用壳与编辑器保存/冲突路径的真实 UI 漏网修复。
+  全 renderer 源码扫描（剥离注释、排除 binary-host 与 smoke）后逐项判定，
+  共迁移 16 行含 CJK 的用户可见字面量（16 个唯一串），分布为：
+  `App.tsx` 启动占位、`SplitView` 无页面空态、`AiDockPanel` 未配置三句空态、
+  `EditorView` 冲突横幅 + 两个操作按钮 + 保存状态三态 + 右键「询问 AI」+
+  AI 插入 prompt（标题与默认值）+ 冲突抛错两处 + 暂停自动保存提示。
+  新增 7 key（`app.startup.loading`、`workspace.empty.noPage`、
+  `ai.dock.welcome`、`ai.dock.description`、`ai.dock.configure`、
+  `editor.askAi`、`common.withColon`），复用既有 `source.saveStatus.*` /
+  `source.conflict.*` / `source.slash.aiPrompt*`，zh/en 各 1586 key。
+  `common.withColon` 与 `common.withParenthetical`（第九批）同型：修复英文
+  界面残留中文全角冒号，`EditorView` 与 `SourceModeView` 的保存状态
+  aria-label 均改走该模板。
+  `EditorView` 保存回调刻意使用命令式 `t()` 而非 `useI18n()`：防抖与 flush
+  路径会捕获旧 closure，若把 `uiText` 放进依赖数组会在每次切语言时重建整个
+  kernel（丢弃编辑器状态）。`status` useMemo 仍用 `uiText` 并保留依赖，
+  因为它只产出渲染值、切语言必须重算。新增 `app-shell-i18n.test.tsx`
+  （启动占位/无页面空态/AI 空态三条 zh + en-US 断言）与
+  `editor-dirty.test.tsx` 的两条新用例（冲突横幅 + 按钮 + 保存成功态 +
+  冲突期间继续输入不得把内部信号上屏、写入失败 → 保存失败态含 aria-label）。
+  同批修正一处真实缺陷：冲突期间再次输入会让 `save()` 提前抛出内部信号，
+  kernel 转交 `onSaveError` 后把「等待用户选择」写成磁盘错误文案；现在
+  `onSaveError` 在 `conflictRef` 已置位时早退，提示交回冲突横幅。
+  全量门禁 197 files / 1884 passed / 3 skipped 退出码 0。

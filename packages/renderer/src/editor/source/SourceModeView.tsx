@@ -1124,7 +1124,11 @@ export function SourceModeView({ tab }: { tab: TabDescriptor }) {
           <span
             data-testid="editor-save-status"
             className="flex shrink-0 items-center gap-1"
-            aria-label={saveError ? `${status.text}：${saveError}` : status.text}
+            aria-label={
+              saveError
+                ? tr('common.withColon', { text: status.text, detail: saveError })
+                : status.text
+            }
           >
             <StatusIcon className={`size-3 ${status.className}`} />
             {status.text}

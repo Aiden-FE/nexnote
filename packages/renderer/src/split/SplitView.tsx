@@ -9,6 +9,7 @@ import { BinaryTabView } from '../pages/BinaryTabView';
 import { EditorView } from '../editor/EditorView';
 import { SourceModeView } from '../editor/source/SourceModeView';
 import { GlobalGraphView } from '../features/graph/GlobalGraphView';
+import { useI18n } from '../lib/i18n';
 
 /** 页面 tab：持久格式决定编辑器；Markdown 永远不挂载 TipTap。 */
 function PageEditorHost({ tab }: { tab: TabDescriptor }) {
@@ -41,6 +42,7 @@ function TabContent({ tab }: { tab: TabDescriptor }) {
 
 /** 主内容区只有一个 tab 栈。源码模式的双列布局在页面 tab 内部实现。 */
 export function SplitView() {
+  const t = useI18n();
   const tabs = useTabStore((state) => state.tabs);
   const activeTabId = useTabStore((state) => state.activeTabId);
   const activeTab = tabs.find((tab) => tab.id === activeTabId) ?? null;
@@ -68,8 +70,11 @@ export function SplitView() {
         {activeTab && !isBinaryKind(activeTab.kind) ? (
           <TabContent tab={activeTab} />
         ) : !activeTab ? (
-          <div className="flex h-full items-center justify-center text-sm text-muted-foreground">
-            没有打开的页面
+          <div
+            data-testid="workspace-empty"
+            className="flex h-full items-center justify-center text-sm text-muted-foreground"
+          >
+            {t('workspace.empty.noPage')}
           </div>
         ) : null}
         {openBinaryTabs.map((tab) => (

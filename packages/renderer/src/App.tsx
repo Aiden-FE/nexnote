@@ -15,6 +15,7 @@ import {
 import { SearchPanel, useJumpToInjection } from './features/search';
 import { useSettingsBootstrap } from './hooks/use-settings-effects';
 import { useShortcutRuntime } from './shortcuts/use-shortcut-runtime';
+import { useI18n } from './lib/i18n';
 
 type StartupState =
   | { phase: 'loading' }
@@ -22,6 +23,7 @@ type StartupState =
   | { phase: 'ready'; vault: VaultInfo };
 
 function App() {
+  const t = useI18n();
   const [state, setState] = useState<StartupState>({ phase: 'loading' });
 
   const refresh = useCallback(async (): Promise<void> => {
@@ -61,7 +63,7 @@ function App() {
       <VaultContext.Provider value={state.phase === 'ready' ? state.vault : null}>
         {state.phase === 'loading' && (
           <div className="flex h-full w-full items-center justify-center bg-background text-sm text-muted-foreground">
-            正在启动 NexNote…
+            {t('app.startup.loading')}
           </div>
         )}
         {state.phase === 'onboarding' && (
