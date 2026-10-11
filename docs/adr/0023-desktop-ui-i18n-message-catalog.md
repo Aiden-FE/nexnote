@@ -212,6 +212,18 @@ status: in_progress
   `error=PLUGIN_HEARTBEAT_TIMEOUT`，并单独锁定非 heartbeat 转发串不带 code。
   门禁：四套 tsc 通过、`pnpm lint` 0、204 files /
   1921 passed / 3 skipped 退出码 0。
+- 阶段③第二十五批（2026-10-12）：原生菜单 Edit / View 标签与 Git 自动提交
+  摘要词典化。`window-menu.ts` 的 language 三元分支改走 `app.menu.edit` /
+  `app.menu.view`；`git-service.ts` 三个方法的默认 summary 参数改为
+  `tCurrent('git.service.autoSummarySavePage')`，「拉取前保存」改用
+  `git.service.autoSummaryBeforeSync`；`index.ts` 的退出前保存、
+  `ipc/git-handlers.ts` 的 IPC 默认 summary、`ipc/chat-handlers.ts` 的导出
+  会话摘要与 `ipc/docx-handlers.ts` 的导入 / 导出摘要全部改走词典模板。
+  commit message 作为数据不本地化的边界不变：模板成文结果是 commit
+  message 的一部分，仅在生成时读取当前界面语言。新增 7 key，
+  消息目录 zh/en 各 1624 key、零差集。`window-menu` 新增 en-US Edit /
+  View 断言；main 残留棘轮基线从 134 收敛至 125。门禁：四套 tsc 通过、
+  `pnpm lint` 0、204 files / 1922 passed / 3 skipped 退出码 0。
 - 阶段③第五批（2026-10-10）：DOCX 导入/导出服务状态与旧版打开提示迁移。
   DocxService 应用自有校验/写入/导出错误按 code 对应词典成文；底层 ZIP /
   XML / 上游解压细节与路径数据保留原文边界。新增 10 key，zh/en 各 1111 key。

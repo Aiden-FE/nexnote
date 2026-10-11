@@ -52,7 +52,10 @@ export function registerGitHandlers(registrar: IpcRegistrar): void {
   registrar.register(
     'git:recordAutoCommit',
     async ({ summary, debounceMs }, services): Promise<Result<void>> => {
-      services.git.scheduleAutoCommit(summary ?? '保存页面', debounceMs);
+      services.git.scheduleAutoCommit(
+        summary ?? tCurrent('git.service.autoSummarySavePage'),
+        debounceMs,
+      );
       return ok(undefined);
     },
   );

@@ -416,9 +416,11 @@ async function bootstrap(): Promise<void> {
     event.preventDefault();
     // 自动提交失败不阻止退出（内容已在磁盘上，工作区 dirty 会走 doctor 引导），
     // 二进制编辑器写盘失败才拦住关窗，避免丢未保存的编辑。
-    const flushCommit = git.flushPendingAutoCommit('退出前保存').catch((error: unknown) => {
-      log('pending auto commit flush failed', error);
-    });
+    const flushCommit = git
+      .flushPendingAutoCommit(tCurrent('git.service.autoSummaryBeforeExit'))
+      .catch((error: unknown) => {
+        log('pending auto commit flush failed', error);
+      });
     void Promise.all([binaryEditors.flushAll(), flushCommit])
       .then(() => {
         binaryEditors.destroyAll();

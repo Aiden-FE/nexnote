@@ -1,4 +1,4 @@
-import { ok, type Result } from '@nexnote/shared';
+import { ok, tCurrent, type Result } from '@nexnote/shared';
 import type { ChatSession, ChatSessionStatus, ChatSummary, FileInfo } from '@nexnote/shared';
 import type { IpcRegistrar } from './registrar';
 import type { IpcServices } from './services';
@@ -37,7 +37,9 @@ export function registerChatHandlers(registrar: IpcRegistrar): void {
     'chat:saveAsDoc',
     async ({ path, userAsQuote }, services): Promise<Result<FileInfo>> => {
       const result = await service(services).saveAsDocument(path, userAsQuote ?? true);
-      services.git.scheduleAutoCommit(`导出会话为文档 ${result.path}`);
+      services.git.scheduleAutoCommit(
+        tCurrent('git.service.autoSummaryExportChat', { path: result.path }),
+      );
       try {
         services.windows.sendToMainWindow('git:statusChanged', await services.git.status());
       } catch {

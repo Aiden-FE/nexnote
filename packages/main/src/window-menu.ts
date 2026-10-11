@@ -50,7 +50,7 @@ export function buildApplicationMenuTemplate(
       ],
     },
     {
-      label: language === 'en-US' ? 'Edit' : '编辑',
+      label: t('app.menu.edit'),
       submenu: [
         { role: 'undo' },
         { role: 'redo' },
@@ -62,7 +62,7 @@ export function buildApplicationMenuTemplate(
       ],
     },
     {
-      label: language === 'en-US' ? 'View' : '视图',
+      label: t('app.menu.view'),
       submenu: [
         { role: 'reload' },
         { role: 'forceReload' },

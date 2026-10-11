@@ -351,7 +351,10 @@ export class GitService {
   }
 
   /** fs write path calls this; it never commits synchronously on the editor hot path. */
-  scheduleAutoCommit(summary = '保存页面', debounceMs?: number): void {
+  scheduleAutoCommit(
+    summary = tCurrent('git.service.autoSummarySavePage'),
+    debounceMs?: number,
+  ): void {
     // Per-call overrides are subject to the same safety floor as persisted settings.
     const ms = debounceMs === undefined ? this.debounceMs : normalizeDebounceMs(debounceMs);
     this.cancelAutoCommit();
@@ -378,7 +381,9 @@ export class GitService {
    * 没有待提交计时器时保持 no-op：工作区里其它来源的 dirty 仍由调用方按
    * WORKTREE_DIRTY 守卫处理，不在这里擅自替用户提交。
    */
-  async flushPendingAutoCommit(summary = '保存页面'): Promise<void> {
+  async flushPendingAutoCommit(
+    summary = tCurrent('git.service.autoSummarySavePage'),
+  ): Promise<void> {
     if (!this.autoTimer) return;
     this.cancelAutoCommit();
     await this.commitAuto(summary, { skipThrottle: true });
@@ -391,7 +396,10 @@ export class GitService {
     return this.isRebaseOrMergeInProgress(root);
   }
 
-  async commitAuto(summary = '保存页面', options: { skipThrottle?: boolean } = {}): Promise<void> {
+  async commitAuto(
+    summary = tCurrent('git.service.autoSummarySavePage'),
+    options: { skipThrottle?: boolean } = {},
+  ): Promise<void> {
     this.autoTimer = null;
     const root = this.requireRoot();
     // A paused rebase/merge must never receive another layout commit: doing so
@@ -438,7 +446,10 @@ export class GitService {
       );
     }
     await this.commit(root, `${MANUAL_PREFIX} ${text}`);
-    const result = { message: tCurrent('git.service.manualCommitCreated'), status: await this.statusFor(root) };
+    const result = {
+      message: tCurrent('git.service.manualCommitCreated'),
+      status: await this.statusFor(root),
+    };
     this.notifyStatus(result.status);
     return result;
   }
@@ -648,7 +659,10 @@ export class GitService {
 
     if (aheadShas.length === 0) {
       await git.raw(['rebase', '--abort']);
-      throw new GitServiceError(tCurrent('git.service.NO_AHEAD_TO_PRESERVE'), 'NO_AHEAD_TO_PRESERVE');
+      throw new GitServiceError(
+        tCurrent('git.service.NO_AHEAD_TO_PRESERVE'),
+        'NO_AHEAD_TO_PRESERVE',
+      );
     }
 
     const safe = await safeVaultPath(root);
@@ -967,7 +981,7 @@ export class GitService {
     const root = this.requireRoot();
     // 待提交的自动写入必须先落地：直接 cancelAutoCommit() 等于把它丢掉，
     // 留下 dirty 工作区让本次拉取必然失败（历史缺陷之一）。
-    await this.flushPendingAutoCommit('拉取前保存');
+    await this.flushPendingAutoCommit(tCurrent('git.service.autoSummaryBeforeSync'));
     // Never allow a pre-pull debounce to race with merge/conflict handling.
     this.cancelAutoCommit();
     try {
@@ -1056,10 +1070,7 @@ export class GitService {
         if (dirtyGitignore) {
           const recovered = await this.recoverDuplicatedGitignore(root);
           if (!recovered) {
-            throw new GitServiceError(
-              tCurrent('git.service.GITIGNORE_DIRTY'),
-              'WORKTREE_DIRTY',
-            );
+            throw new GitServiceError(tCurrent('git.service.GITIGNORE_DIRTY'), 'WORKTREE_DIRTY');
           }
         }
       }
@@ -1120,7 +1131,8 @@ export class GitService {
 
   /** 轻量探测：ls-remote --heads，仅验证远端可达（不下载仓库内容）。 */
   async lsRemote(url: string): Promise<void> {
-    if (!url.trim()) throw new GitServiceError(tCurrent('git.service.EMPTY_REMOTE_URL'), 'INVALID_REMOTE');
+    if (!url.trim())
+      throw new GitServiceError(tCurrent('git.service.EMPTY_REMOTE_URL'), 'INVALID_REMOTE');
     // ls-remote 不需要本地仓库，但 simple-git 的 baseDir 必须存在。
     // 使用 Node 的跨平台临时目录，避免 Windows 上不存在 `/tmp` 导致预检恒失败。
     const baseDir = tmpdir();
@@ -1605,10 +1617,7 @@ export class GitService {
     options: { unsafeEditor?: boolean } = {},
   ): SimpleGit {
     if (runtime.source === 'missing') {
-      throw new GitServiceError(
-        tCurrent('git.service.GIT_BINARY_MISSING'),
-        'GIT_BINARY_MISSING',
-      );
+      throw new GitServiceError(tCurrent('git.service.GIT_BINARY_MISSING'), 'GIT_BINARY_MISSING');
     }
     if (runtime.source === 'system' && !this.useSystemGit && !this.systemFallbackWarned) {
       this.systemFallbackWarned = true;

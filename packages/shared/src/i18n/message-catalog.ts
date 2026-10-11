@@ -530,8 +530,7 @@ export const MESSAGES_ZH_CN = {
   'toolbar.heading.level': '标题 H{level}',
   'toolbar.heading.disabled.notReady': '编辑器尚未就绪',
   'toolbar.heading.disabled.complexSelection': '跨复杂结构的多块选区不能转换标题',
-  'toolbar.heading.disabled.unsafeMarkdown':
-    '代码围栏、表格或其他复杂 Markdown 结构不能转换标题',
+  'toolbar.heading.disabled.unsafeMarkdown': '代码围栏、表格或其他复杂 Markdown 结构不能转换标题',
   'toolbar.heading.disabled.listOrQuote': '列表或引用行不能转换标题，请先解除列表或引用结构',
   'toolbar.heading.disabled.readOnly': '只读视图不能转换标题',
   'ai.writing.stop': '停止生成',
@@ -598,7 +597,8 @@ export const MESSAGES_ZH_CN = {
   'git.timeline.remoteUrl': '远程地址',
   'git.timeline.remoteUrlPlaceholder': 'HTTPS 或 SSH 地址',
   'git.timeline.addOrUpdate': '添加/更新',
-  'git.timeline.remotePreflight': '保存时执行 git ls-remote 授权预检；失败请检查网络、SSH key 或 HTTPS 凭证。',
+  'git.timeline.remotePreflight':
+    '保存时执行 git ls-remote 授权预检；失败请检查网络、SSH key 或 HTTPS 凭证。',
   'git.timeline.editRemote': '（编辑）',
   'git.timeline.useSystemGit': '使用系统 Git（默认使用捆绑 Git）',
   'git.timeline.autoGroup': '自动提交 · {count} 条 · {action}',
@@ -642,20 +642,29 @@ export const MESSAGES_ZH_CN = {
   'git.doctor.issue.PUSH_REJECTED': '推送被拒绝：远程包含本地没有的提交',
   'git.doctor.manual.conflict':
     '存在未完成的 rebase 或合并冲突：AI 不会覆盖冲突文件。若冲突只涉及应用自有文件（如 .gitignore），默认推荐「让 Agent 修复」——它会规范化该文件并继续完成 rebase 与推送；若涉及你的笔记，则改推荐「保留笔记并中止 rebase」；也可以点击「让 Agent 帮助解决」获取步骤指引；如需手动干预，请前往仓库目录操作。',
-  'git.doctor.manual.dirty': '工作区有未提交变更：可以让 Agent 帮你提交保存，或一键暂存后继续同步。',
-  'git.doctor.manual.auth': '远程认证失败：请在设置中更新 HTTPS 凭证或 SSH key（应用不会代填密钥）。',
+  'git.doctor.manual.dirty':
+    '工作区有未提交变更：可以让 Agent 帮你提交保存，或一键暂存后继续同步。',
+  'git.doctor.manual.auth':
+    '远程认证失败：请在设置中更新 HTTPS 凭证或 SSH key（应用不会代填密钥）。',
   'git.doctor.manual.network': '网络不可达：请检查网络连接或远程地址后重试，或在设置中配置代理。',
-  'git.doctor.manual.non-fast-forward': '本地与远程历史不一致：可以让 Agent 帮你拉取合并，或选择以本地为准覆盖远程。',
+  'git.doctor.manual.non-fast-forward':
+    '本地与远程历史不一致：可以让 Agent 帮你拉取合并，或选择以本地为准覆盖远程。',
   'git.doctor.manual.no-remote': '当前分支未配置远程仓库：请在设置中添加远程地址。',
-  'git.doctor.manual.git-missing': '应用内捆绑 Git 不可用：请重新安装应用，或在设置中启用「使用系统 Git」。',
-  'git.doctor.manual.unknown': '未能识别该同步问题：可以让 Agent 协助诊断，或在仓库目录查看 git status。',
+  'git.doctor.manual.git-missing':
+    '应用内捆绑 Git 不可用：请重新安装应用，或在设置中启用「使用系统 Git」。',
+  'git.doctor.manual.unknown':
+    '未能识别该同步问题：可以让 Agent 协助诊断，或在仓库目录查看 git status。',
   'git.doctor.action.commit': 'git add . && git commit（手动提交，消息由应用生成）',
   'git.doctor.action.pull': 'git pull --no-rebase（拒绝脏工作区）',
   'git.doctor.action.push': 'git push（普通推送，从不 force）',
-  'git.doctor.action.abort-rebase-or-merge': 'git rebase --abort（或 git merge --abort，按当前状态选择）',
-  'git.doctor.action.resolve-conflict-and-continue': '规范化应用自有文件（.gitignore）→ git rebase --continue → git push',
-  'git.doctor.action.preserve-local-and-abort': '备份原始本地提交到 .nexnote/.rebase-recovery/ → git rebase --abort（恢复原分支）',
-  'git.doctor.action.force-abort-rebase-or-merge': 'git rebase --abort（丢弃 ahead commits，不备份）',
+  'git.doctor.action.abort-rebase-or-merge':
+    'git rebase --abort（或 git merge --abort，按当前状态选择）',
+  'git.doctor.action.resolve-conflict-and-continue':
+    '规范化应用自有文件（.gitignore）→ git rebase --continue → git push',
+  'git.doctor.action.preserve-local-and-abort':
+    '备份原始本地提交到 .nexnote/.rebase-recovery/ → git rebase --abort（恢复原分支）',
+  'git.doctor.action.force-abort-rebase-or-merge':
+    'git rebase --abort（丢弃 ahead commits，不备份）',
   'git.doctor.status.branch': '当前分支 {branch}',
   'git.doctor.status.changed': '{count} 个未提交文件',
   'git.doctor.status.ahead': '领先远程 {count} 个提交',
@@ -668,7 +677,8 @@ export const MESSAGES_ZH_CN = {
   'git.doctor.error.TICKET_EXPIRED': '修复票据已过期，请重新诊断并确认',
   'git.doctor.error.ROOT_CHANGED': '知识库已切换，请重新诊断后重试',
   'git.doctor.error.STATE_DRIFT': '仓库状态在确认后发生了变化，请重新诊断',
-  'git.doctor.error.CONFLICT_PRESENT': '存在未解决的冲突：自动修复不会覆盖冲突文件，请人工解决后重新诊断',
+  'git.doctor.error.CONFLICT_PRESENT':
+    '存在未解决的冲突：自动修复不会覆盖冲突文件，请人工解决后重新诊断',
   'git.doctor.error.NO_OPERATION': '当前已经没有进行中的 rebase/merge，无需中止',
   'git.doctor.error.STATUS_FAILED': '无法读取当前仓库状态，请重试',
   'git.doctor.error.STATUS_AFTER_REPAIR_FAILED': '修复已执行，但读取最新状态失败，请手动刷新',
@@ -693,7 +703,8 @@ export const MESSAGES_ZH_CN = {
   'vault.error.CREATE_TARGET_SYMLINK': '目标位置是符号链接，拒绝创建知识库: {path}',
   'vault.error.CREATE_TARGET_FILE': '目标位置存在同名文件: {path}',
   'vault.error.CREATE_TARGET_NON_EMPTY': '目录已存在且非空: {path}',
-  'vault.error.GIT_INITIALIZATION_REQUIRED': '此文件夹尚未初始化 Git。请确认后使用“初始化 Git”操作。',
+  'vault.error.GIT_INITIALIZATION_REQUIRED':
+    '此文件夹尚未初始化 Git。请确认后使用“初始化 Git”操作。',
   'vault.error.clone.INVALID_NAME': '克隆目录名称不合法：{reason}',
   'vault.error.clone.DISTANT_UNREACHABLE': '远端不可达',
   'vault.error.cloneToken.INVALID_TOKEN': '克隆授权无效：令牌不存在或已被使用',
@@ -714,7 +725,8 @@ export const MESSAGES_ZH_CN = {
   'docx.error.DOCX_EXPORT_SOURCE': '导出源必须是 Markdown: {path}',
   'docx.error.DOCX_EXPORT_TARGET': '导出目标必须是 .docx',
   'docx.error.TARGET_EXISTS': '目标已存在: {path}',
-  'docx.notice.legacyOpenUnsupported': 'DOCX 不再支持在知识库内打开。请用「文件 → 导入 Word 文档（转为块文档）」重新导入。',
+  'docx.notice.legacyOpenUnsupported':
+    'DOCX 不再支持在知识库内打开。请用「文件 → 导入 Word 文档（转为块文档）」重新导入。',
   'docx.zip.invalid': 'zip 结构非法',
   'docx.zip.invalidDetail': 'zip 结构非法：{message}',
   'docx.zip.unsupportedZip64': '不支持 ZIP64 包',
@@ -728,14 +740,17 @@ export const MESSAGES_ZH_CN = {
   'docx.error.INVALID_XML_DETAIL': 'document.xml 根元素异常: {message}',
   'git.service.initializeSuccess': 'Git 仓库已初始化并创建初始提交',
   'git.service.EMPTY_MESSAGE': '提交说明不能为空',
-  'git.service.REBASE_IN_PROGRESS_COMMIT': '存在未完成的 rebase/merge，请先在同步面板中止或继续后再提交',
+  'git.service.REBASE_IN_PROGRESS_COMMIT':
+    '存在未完成的 rebase/merge，请先在同步面板中止或继续后再提交',
   'git.service.manualCommitCreated': '已创建手动提交',
   'git.service.NO_OPERATION_ABORT': '当前没有进行中的 rebase 或 merge',
   'git.service.abortSuccess': '已中止未完成的 rebase/merge',
   'git.service.NO_OPERATION_RESOLVE': '当前没有进行中的 rebase/merge，无需解决',
-  'git.service.MERGE_CONFLICT_NOT_SELF_RESOLVABLE': '合并（merge）产生的冲突无法自动解决，请人工处理后重试',
+  'git.service.MERGE_CONFLICT_NOT_SELF_RESOLVABLE':
+    '合并（merge）产生的冲突无法自动解决，请人工处理后重试',
   'git.service.NO_CONFLICT_FILES': '当前没有未解决的冲突文件',
-  'git.service.CONFLICT_FOREIGN_FILES': '冲突涉及非应用自有文件（{files}），需要人工解决；已保留现场',
+  'git.service.CONFLICT_FOREIGN_FILES':
+    '冲突涉及非应用自有文件（{files}），需要人工解决；已保留现场',
   'git.service.fileSeparator': '、',
   'git.service.CONFLICT_CONTINUE_FAILED': '继续 rebase 失败：{message}',
   'git.service.resolveConflictSuccess': '已自动解决同步冲突并完成 rebase',
@@ -749,12 +764,18 @@ export const MESSAGES_ZH_CN = {
   'git.service.PRESERVE_LOCAL_FAILED': '保留本地提交失败：{message}',
   'git.service.preserveAbortSuccess': '已中止 rebase，保留 {count} 个本地提交（已备份）',
   'git.service.remoteVerified': '远程 {name} 已验证',
-  'git.service.WORKTREE_DIRTY': '当前工作区有 {count} 个未提交的变更；请先提交、暂存或显式确认后重试',
+  'git.service.WORKTREE_DIRTY':
+    '当前工作区有 {count} 个未提交的变更；请先提交、暂存或显式确认后重试',
   'git.service.NO_REMOTE_PULL': '尚未绑定可拉取的远程分支',
   'git.service.pullSuccess': '拉取完成',
   'git.service.NO_REMOTE_PUSH': '尚未绑定可推送的远程分支',
   'git.service.pushSuccess': '推送完成',
   'git.service.autoSummaryBeforeSync': '同步前保存',
+  'git.service.autoSummarySavePage': '保存页面',
+  'git.service.autoSummaryBeforeExit': '退出前保存',
+  'git.service.autoSummaryExportChat': '导出会话为文档 {path}',
+  'git.service.autoSummaryDocxImport': '导入 DOCX 转块文档 {path}',
+  'git.service.autoSummaryDocxExport': '导出 DOCX {path}',
   'git.service.progress.fetching': '正在拉取远程更新…',
   'git.service.progress.rebasing': '正在对齐远程提交…',
   'git.service.progress.merging': '正在合并远程变更…',
@@ -771,16 +792,21 @@ export const MESSAGES_ZH_CN = {
   'git.service.remoteConflict.pull': '拉取遇到冲突，请在仓库目录中手动解决后再继续：{message}',
   'git.service.remoteConflict.push': '推送遇到冲突，请在仓库目录中手动解决后再继续：{message}',
   'git.service.remoteConflict.sync': '同步遇到冲突，请在仓库目录中手动解决后再继续：{message}',
-  'git.service.remoteFailed.pull': '拉取失败。请检查远程地址、网络、SSH key 或 HTTPS 凭证：{message}',
-  'git.service.remoteFailed.push': '推送失败。请检查远程地址、网络、SSH key 或 HTTPS 凭证：{message}',
-  'git.service.remoteFailed.sync': '同步失败。请检查远程地址、网络、SSH key 或 HTTPS 凭证：{message}',
+  'git.service.remoteFailed.pull':
+    '拉取失败。请检查远程地址、网络、SSH key 或 HTTPS 凭证：{message}',
+  'git.service.remoteFailed.push':
+    '推送失败。请检查远程地址、网络、SSH key 或 HTTPS 凭证：{message}',
+  'git.service.remoteFailed.sync':
+    '同步失败。请检查远程地址、网络、SSH key 或 HTTPS 凭证：{message}',
   'git.service.layoutSummary': '保存知识库布局',
   'git.service.INVALID_REMOTE_NAME': '远程名称不合法',
-  'git.service.REMOTE_AUTH_FAILED': '远程未保存：授权预检失败。请检查网络、SSH key 或 HTTPS 凭证：{message}',
+  'git.service.REMOTE_AUTH_FAILED':
+    '远程未保存：授权预检失败。请检查网络、SSH key 或 HTTPS 凭证：{message}',
   'git.service.SYNC_GUARD_VIOLATION': '同步护栏检测到受保护路径即将进入提交，已中止',
   'git.service.GITIGNORE_SYMLINK': '同步护栏要求 .gitignore 为普通文件',
   'git.service.GITIGNORE_NOT_REGULAR': '同步护栏要求 .gitignore 为独立普通文件',
-  'git.service.GIT_BINARY_MISSING': '应用内捆绑 Git 缺失（安装或打包异常），且未启用系统 Git 回退；请重新安装或到设置中启用「使用系统 Git」',
+  'git.service.GIT_BINARY_MISSING':
+    '应用内捆绑 Git 缺失（安装或打包异常），且未启用系统 Git 回退；请重新安装或到设置中启用「使用系统 Git」',
   'git.service.PATH_OUTSIDE_VAULT': '文件路径必须位于当前知识库内',
   'git.service.restoreMustBeTracked': '恢复目标必须是知识库内的已跟踪文件',
   'git.service.restoreSymlinkRejected': '恢复目标不能经过符号链接',
@@ -837,7 +863,8 @@ export const MESSAGES_ZH_CN = {
   'ai.error.status.PROVIDER_HTTP': '供应商返回 HTTP {status}{hint}',
   'ai.error.CONNECTION_PROBE_FAILED': '无法连接供应商（模型列表与对话探测均失败）',
   'ai.error.CANCELLED': '已取消',
-  'ai.error.PROVIDER_TOOLS_UNSUPPORTED': '供应商不支持工具调用（function calling），已降级为无工具回答',
+  'ai.error.PROVIDER_TOOLS_UNSUPPORTED':
+    '供应商不支持工具调用（function calling），已降级为无工具回答',
   'ai.error.STREAM_TRUNCATED': '流式响应在收到完成标记前结束，请重试',
   'ai.error.STREAM_READ': '供应商流式请求失败，请稍后重试',
   'ai.error.EMBED_MISSING_DATA': 'embeddings 响应缺少向量数据',
@@ -922,12 +949,14 @@ export const MESSAGES_ZH_CN = {
   'agent.error.SKILL_SERVICE_UNAVAILABLE': 'SkillService 不可用',
   'agent.error.SKILL_RETRIEVE_FAILED': 'Skill 检索失败',
   'agent.error.SKILL_NOT_ALLOWED': 'skillIds 含未启用或不存在的 Skill',
-  'agent.error.TOOLS_UNSUPPORTED_SYSTEM': '当前模型不支持工具调用；请直接基于已有上下文回答，并明确说明无法实时检索。',
+  'agent.error.TOOLS_UNSUPPORTED_SYSTEM':
+    '当前模型不支持工具调用；请直接基于已有上下文回答，并明确说明无法实时检索。',
   'agent.error.RUN_NOT_ACTIVE': 'RUN_NOT_ACTIVE',
   'agent.error.TOOL_NOT_ALLOWED': '工具未获准执行',
   'agent.error.SCOPE_DENIED_SUMMARY': '护栏拒绝：仅允许当前会话上下文中的文档编辑。',
   'agent.error.SCOPE_DENIED': '写操作超出当前会话文档作用域',
-  'agent.error.WRITE_REQUIRES_EDIT_MODE_SUMMARY': '对话模式禁止写工具；请切换到编辑模式并逐项审批。',
+  'agent.error.WRITE_REQUIRES_EDIT_MODE_SUMMARY':
+    '对话模式禁止写工具；请切换到编辑模式并逐项审批。',
   'agent.error.WRITE_REQUIRES_EDIT_MODE': '对话模式禁止写工具，请切换到编辑模式审批',
   'agent.error.FULL_MODE_DENIED_SUMMARY': '完全权限护栏拒绝：仅允许当前上下文文档的文档编辑。',
   'agent.error.FULL_MODE_DENIED': '完全权限护栏拒绝该写操作',
@@ -942,7 +971,8 @@ export const MESSAGES_ZH_CN = {
   'agent.error.DOCTOR_REQUIRES_APPROVAL': 'git_doctor_repair 必须在审批通过后调用',
   'agent.error.INVALID_DOCTOR_ACTION': 'git_doctor_repair action 无效: {action}',
   'agent.error.noAutoRepair': '无自动修复',
-  'agent.error.DOCTOR_ACTION_MISMATCH': 'Git Doctor 当前推荐的操作是 {recommended}，拒绝执行 {action}',
+  'agent.error.DOCTOR_ACTION_MISMATCH':
+    'Git Doctor 当前推荐的操作是 {recommended}，拒绝执行 {action}',
   'agent.error.TOOL_DUPLICATE': '工具重复注册: {name}',
   'agent.error.TOOL_NOT_FOUND': '工具不存在: {name}',
   'agent.error.TOOL_WRITE_DISABLED': '写工具已禁用: {name}',
@@ -981,8 +1011,7 @@ export const MESSAGES_ZH_CN = {
   'binary.status.saveConflict': '保存冲突：本地编辑尚未保存，请复制内容或重新加载外部版本。',
   'binary.status.externalModifiedConflict':
     '副本已被外部修改；本地编辑仍保留在此窗口，未覆盖磁盘内容。',
-  'binary.status.externalModifiedDirty':
-    '外部版本已变化；本地编辑仍保留在此窗口，未覆盖磁盘内容。',
+  'binary.status.externalModifiedDirty': '外部版本已变化；本地编辑仍保留在此窗口，未覆盖磁盘内容。',
   'binary.status.saveFailed': '保存失败（将自动重试）：{message}',
   'binary.status.reloadStateChanged': '重新加载期间文档状态已变化；本地编辑仍保留。',
   'binary.status.loadFailed': '加载失败：{message}',
@@ -1060,7 +1089,8 @@ export const MESSAGES_ZH_CN = {
   'binary.error.XMIND_PARSE_FAILED': 'xmind 解析失败：{message}',
   'binary.error.CONFLICT': '副本已被外部修改',
   'binary.error.INVALID_DATA': 'xmind 数据缺失',
-  'binary.error.SAVE_BLOCKED_REBASE': '存在未完成的 rebase/merge，暂不写入文档；解决冲突后会自动重试保存',
+  'binary.error.SAVE_BLOCKED_REBASE':
+    '存在未完成的 rebase/merge，暂不写入文档；解决冲突后会自动重试保存',
   'binary.dialog.xlsx': 'Excel 工作簿',
   'binary.dialog.mindmap': 'XMind 思维导图',
   'binary.autosummary.import': '导入 {kind} {path}',
@@ -1183,7 +1213,8 @@ export const MESSAGES_ZH_CN = {
   'chat.export.label': '导出为页面',
   'chat.aiSettings': 'AI 设置',
   'chat.empty.title': 'AI 对话',
-  'chat.empty.description': '提问会自动附带当前笔记上下文与知识库召回；会话保存在知识库内部存储（不进入文档树、不参与双链），可从「历史」续聊或「导出为页面」转为普通文档。',
+  'chat.empty.description':
+    '提问会自动附带当前笔记上下文与知识库召回；会话保存在知识库内部存储（不进入文档树、不参与双链），可从「历史」续聊或「导出为页面」转为普通文档。',
   'chat.empty.start': '开始新对话',
   'chat.empty.connected': '已连接 {model}，开始提问吧。',
   'chat.empty.prompt': '输入问题开始对话。',
@@ -1324,17 +1355,19 @@ export const MESSAGES_ZH_CN = {
   'app.menu.file.importDocx': '导入 Word 文档（转为块文档）…',
   'app.menu.file.importXlsx': '导入 XLSX…',
   'app.menu.file.importXmind': '导入 XMind…',
+  'app.menu.edit': '编辑',
+  'app.menu.view': '视图',
   'app.dialog.pickDirectory': '选择文件夹',
   'app.dialog.pickFile': '选择文件',
   'app.dialog.binaryFlush.title': '无法关闭 NexNote',
-  'app.dialog.binaryFlush.message':
-    '有二进制文档未能保存。编辑器仍保持打开，请重试保存后再关闭。',
+  'app.dialog.binaryFlush.message': '有二进制文档未能保存。编辑器仍保持打开，请重试保存后再关闭。',
   'app.dialog.binaryFlush.button': '返回',
   'settings.dialog.exportShortcuts': '导出快捷键',
   'settings.dialog.shortcutsFilter': 'NexNote 快捷键',
   'settings.dialog.allFilesFilter': '所有文件',
   'settings.network.title': '网络',
-  'settings.network.description': 'AI 请求与 Git 同步的网络代理。默认跟随系统代理；如无系统代理则直连。',
+  'settings.network.description':
+    'AI 请求与 Git 同步的网络代理。默认跟随系统代理；如无系统代理则直连。',
   'settings.network.mode': '代理模式',
   'settings.network.mode.description': 'system = 跟随系统；off = 不走代理；自定义 = 走指定代理',
   'settings.network.mode.system': '跟随系统',
@@ -1374,7 +1407,8 @@ export const MESSAGES_ZH_CN = {
   'settings.editor.vimMode': 'Vim 模式',
   'settings.editor.vimMode.description': '实验性功能，当前版本尚未启用',
   'settings.editor.binaryMax': '二进制文档编辑器并发上限',
-  'settings.editor.binaryMax.description': 'xlsx / xmind tab 最多同时打开 {count} 个，超出自动关闭最早打开的（1–8）',
+  'settings.editor.binaryMax.description':
+    'xlsx / xmind tab 最多同时打开 {count} 个，超出自动关闭最早打开的（1–8）',
   'settings.git.description': '全局 Git 行为与当前知识库的版本控制行为',
   'settings.git.system': '使用系统 Git',
   'settings.git.system.description': '全局设置；关闭时使用 NexNote 内置 Git',
@@ -1389,7 +1423,8 @@ export const MESSAGES_ZH_CN = {
   'settings.git.defaultBranch': '默认分支名',
   'settings.git.defaultBranch.description': '新建知识库时使用',
   'settings.git.binaryUntrack': '二进制文档不随 Git 跟踪',
-  'settings.git.binaryUntrack.description': 'xlsx / xmind 默认随知识库版本化；开启后写入 .gitignore 不再跟踪',
+  'settings.git.binaryUntrack.description':
+    'xlsx / xmind 默认随知识库版本化；开启后写入 .gitignore 不再跟踪',
   'settings.git.binaryUntrackedCount': '已停止跟踪 {count} 个二进制文档，文件仍保留在本地',
   'settings.git.binaryUntrackedNew': '新建的二进制文档将不再随 Git 跟踪',
   'settings.git.binaryTrackingRestored': '二进制文档恢复 Git 跟踪（仅对之后新增的文件生效）',
@@ -1429,7 +1464,8 @@ export const MESSAGES_ZH_CN = {
   'search.tier.content': '正文',
   'search.hint': '↑↵ 打开第一条 · esc 关闭 · 标题 > 标签 > 别名 > 正文排序',
   'skills.title': '检索 Skill',
-  'skills.description': '启用的 Skill 在对话召回时各自检索、合并去重并跨源重排；排序决定组合与展示顺序。',
+  'skills.description':
+    '启用的 Skill 在对话召回时各自检索、合并去重并跨源重排；排序决定组合与展示顺序。',
   'skills.enabled': '启用',
   'skills.source.builtin': '内置',
   'skills.source.plugin': '插件',
@@ -1455,7 +1491,8 @@ export const MESSAGES_ZH_CN = {
   'plugins.builtinPlugin': '内置插件',
   'plugins.enabled': '启用',
   'plugins.uninstall': '卸载',
-  'plugins.builtinNotice': '随应用内置的示范插件，可禁用但不可卸载；禁用后对应块类型从斜杠菜单移除，已有笔记内容保留为纯文本源码。',
+  'plugins.builtinNotice':
+    '随应用内置的示范插件，可禁用但不可卸载；禁用后对应块类型从斜杠菜单移除，已有笔记内容保留为纯文本源码。',
   'plugins.lastError': '最近错误：{error}',
   'plugins.contributions': '贡献点',
   'plugins.permissions': '权限',
@@ -1561,7 +1598,8 @@ export const MESSAGES_ZH_CN = {
   'ai.wizard.apiKey.ollamaHint': '本地服务可留空',
   'ai.wizard.apiKey.hint': '仅存本机系统钥匙串，不会上传',
   'ai.wizard.apiKey.savedPlaceholder': '••••••（已保存）',
-  'ai.wizard.testDescription': '向供应商发送最小探测请求（列模型 + 对话 + SSE 流式 + 工具调用 + 向量）。',
+  'ai.wizard.testDescription':
+    '向供应商发送最小探测请求（列模型 + 对话 + SSE 流式 + 工具调用 + 向量）。',
   'ai.wizard.testing': '测试中…',
   'ai.wizard.testNow': '测试连通性',
   'ai.wizard.testRetest': '重新测试',
@@ -1621,13 +1659,16 @@ export const MESSAGES_ZH_CN = {
   'updates.download': '下载',
   'updates.downloadRetry': '重试下载',
   'updates.install': '重启并安装',
-  'updates.manualDownload': '当前 Mac 架构 {arch} 未满足自动安装条件；已打开 Releases，请下载对应架构。',
-  'updates.manualDownloadDetail': 'Mac {arch} 架构未满足自动安装条件。已打开 GitHub Releases；如系统提示隔离，可在终端执行',
+  'updates.manualDownload':
+    '当前 Mac 架构 {arch} 未满足自动安装条件；已打开 Releases，请下载对应架构。',
+  'updates.manualDownloadDetail':
+    'Mac {arch} 架构未满足自动安装条件。已打开 GitHub Releases；如系统提示隔离，可在终端执行',
   'updates.manualDownloadAfterCommand': '后重新打开下载的应用。',
   'updates.installIncomplete': '安装未完成，更新仍已保留；请重试“重启并安装”。',
   'updates.downloadFailedRetry': '下载失败，可重试下载。',
   'updates.checkFailedRetry': '检查失败，可重新检查更新。',
-  'updates.scheduleNote': '自动检查在应用启动 5 秒后执行（若已启用）；下载完成后始终需要你确认安装。',
+  'updates.scheduleNote':
+    '自动检查在应用启动 5 秒后执行（若已启用）；下载完成后始终需要你确认安装。',
   'toolbar.menu.format': '格式',
   'toolbar.menu.formatHint': '更多格式动作',
   'toolbar.menu.insert': '插入',
@@ -1751,10 +1792,12 @@ export const MESSAGES_EN_US = {
   'translation.workbenchLabel': 'Translation workbench',
   'translation.sourceLabel': 'Source text',
   'translation.sourcePlaceholder': 'Enter or paste the text to translate',
-  'translation.overLimit': 'Over the limit by {count} characters; shorten the text before submitting',
+  'translation.overLimit':
+    'Over the limit by {count} characters; shorten the text before submitting',
   'translation.remaining': '{count} characters remaining',
   'translation.outputLabel': 'Translation · read-only',
-  'translation.submitHint': '⌘/Ctrl + Enter to submit · typing, pasting, and opening never send requests',
+  'translation.submitHint':
+    '⌘/Ctrl + Enter to submit · typing, pasting, and opening never send requests',
   'common.delete': 'Delete',
   'common.rename': 'Rename',
   'common.copy': 'Copy',
@@ -2208,10 +2251,12 @@ export const MESSAGES_EN_US = {
   'toolbar.heading.pageTitle': 'Page title H1 · first H1 syncs with file name',
   'toolbar.heading.level': 'Heading H{level}',
   'toolbar.heading.disabled.notReady': 'The editor is not ready yet',
-  'toolbar.heading.disabled.complexSelection': 'Multi-block selections across complex structures cannot be converted to headings',
+  'toolbar.heading.disabled.complexSelection':
+    'Multi-block selections across complex structures cannot be converted to headings',
   'toolbar.heading.disabled.unsafeMarkdown':
     'Code fences, tables, and other complex Markdown structures cannot be converted to headings',
-  'toolbar.heading.disabled.listOrQuote': 'List or quote lines cannot be converted to headings; remove the list or quote structure first',
+  'toolbar.heading.disabled.listOrQuote':
+    'List or quote lines cannot be converted to headings; remove the list or quote structure first',
   'toolbar.heading.disabled.readOnly': 'Read-only views cannot be converted to headings',
   'ai.writing.stop': 'Stop generation',
   'ai.writing.generating': 'Generating…',
@@ -2232,15 +2277,18 @@ export const MESSAGES_EN_US = {
   'ai.contextMenu.title': '✨ AI writing ({scope})',
   'ai.contextMenu.scopeSelection': 'selection',
   'ai.contextMenu.scopeBlock': 'block',
-  'builtinBlock.mermaid.hint': 'Mermaid source · double-click to preview · apply on blur or ⌘/Ctrl+Enter · Esc to cancel',
+  'builtinBlock.mermaid.hint':
+    'Mermaid source · double-click to preview · apply on blur or ⌘/Ctrl+Enter · Esc to cancel',
   'builtinBlock.mermaid.rendering': 'Rendering diagram…',
   'builtinBlock.mermaid.error': 'Diagram syntax error: {message} (double-click to edit)',
   'builtinBlock.math.title': 'Double-click to edit the LaTeX formula',
-  'builtinBlock.math.hintBlock': 'Block LaTeX formula · apply on blur or ⌘/Ctrl+Enter · Esc to cancel',
+  'builtinBlock.math.hintBlock':
+    'Block LaTeX formula · apply on blur or ⌘/Ctrl+Enter · Esc to cancel',
   'builtinBlock.math.hintInline': 'Inline LaTeX formula · apply on blur or Enter · Esc to cancel',
   'builtinBlock.math.rendering': 'Rendering formula…',
   'builtinBlock.math.error': 'Formula error: {message}',
-  'translation.overLimitSource': 'The source exceeds the {count}-character limit; shorten it and try again',
+  'translation.overLimitSource':
+    'The source exceeds the {count}-character limit; shorten it and try again',
   'chat.error.autoSaveFailed': 'Failed to save the conversation automatically: {message}',
   'chat.error.lastTurnFailed': 'The previous reply failed: {message}',
   'git.status.loading': 'Git…',
@@ -2277,7 +2325,8 @@ export const MESSAGES_EN_US = {
   'git.timeline.remoteUrl': 'Remote URL',
   'git.timeline.remoteUrlPlaceholder': 'HTTPS or SSH URL',
   'git.timeline.addOrUpdate': 'Add/update',
-  'git.timeline.remotePreflight': 'Saving runs a git ls-remote authorization preflight; on failure check your network, SSH key, or HTTPS credentials.',
+  'git.timeline.remotePreflight':
+    'Saving runs a git ls-remote authorization preflight; on failure check your network, SSH key, or HTTPS credentials.',
   'git.timeline.editRemote': ' (edit)',
   'git.timeline.useSystemGit': 'Use system Git (bundled Git is the default)',
   'git.timeline.autoGroup': 'Auto commits · {count} entries · {action}',
@@ -2303,8 +2352,10 @@ export const MESSAGES_EN_US = {
   'git.doctor.busy.preserving': 'Preserving…',
   'git.doctor.busy.aborting': 'Aborting…',
   'git.doctor.busy.repairing': 'Repairing…',
-  'git.doctor.title.continueRepair': 'Back up local commits and abort the rebase instead (sync will not complete)',
-  'git.doctor.title.discardLocal': 'This discards unpushed note commits—use only when you want to abandon local changes',
+  'git.doctor.title.continueRepair':
+    'Back up local commits and abort the rebase instead (sync will not complete)',
+  'git.doctor.title.discardLocal':
+    'This discards unpushed note commits—use only when you want to abandon local changes',
   'git.doctor.issue.NOT_A_REPOSITORY': 'The current directory is not a Git repository',
   'git.doctor.issue.REBASE_IN_PROGRESS': 'A rebase/merge is unfinished',
   'git.doctor.issue.MERGE_CONFLICT': 'There are unresolved merge conflicts',
@@ -2318,23 +2369,36 @@ export const MESSAGES_EN_US = {
   'git.doctor.issue.GIT_BINARY_MISSING': 'The Git executable is unavailable',
   'git.doctor.issue.AUTH_FAILED': 'Remote authentication failed',
   'git.doctor.issue.NETWORK_ERROR': 'The network is unreachable or the remote timed out',
-  'git.doctor.issue.PUSH_REJECTED': 'The push was rejected: the remote contains commits that are absent locally',
+  'git.doctor.issue.PUSH_REJECTED':
+    'The push was rejected: the remote contains commits that are absent locally',
   'git.doctor.manual.conflict':
     'A rebase or merge conflict is unfinished: AI will not overwrite conflict files. If the conflict affects only app-owned files (such as .gitignore), “Let Agent repair” is recommended by default—it normalizes those files, completes the rebase, and pushes; if your notes are involved, use “Keep notes and abort rebase”. You can also click “Ask Agent for help” for guidance; for manual intervention, work in the repository directory.',
-  'git.doctor.manual.dirty': 'The worktree has uncommitted changes: let Agent commit and save them, or stash them in one click before syncing.',
-  'git.doctor.manual.auth': 'Remote authentication failed: update HTTPS credentials or the SSH key in settings (the app will not enter keys for you).',
-  'git.doctor.manual.network': 'The network is unreachable: check your connection or remote URL, retry, or configure a proxy in settings.',
-  'git.doctor.manual.non-fast-forward': 'Local and remote histories differ: let Agent pull and merge, or choose to overwrite the remote with local history.',
-  'git.doctor.manual.no-remote': 'The current branch has no remote configured: add a remote URL in settings.',
-  'git.doctor.manual.git-missing': 'The bundled Git is unavailable: reinstall the app, or enable “Use system Git” in settings.',
-  'git.doctor.manual.unknown': 'This sync issue could not be identified: ask Agent to help diagnose, or check git status in the repository directory.',
-  'git.doctor.action.commit': 'git add . && git commit (manual commit; the app generates the message)',
+  'git.doctor.manual.dirty':
+    'The worktree has uncommitted changes: let Agent commit and save them, or stash them in one click before syncing.',
+  'git.doctor.manual.auth':
+    'Remote authentication failed: update HTTPS credentials or the SSH key in settings (the app will not enter keys for you).',
+  'git.doctor.manual.network':
+    'The network is unreachable: check your connection or remote URL, retry, or configure a proxy in settings.',
+  'git.doctor.manual.non-fast-forward':
+    'Local and remote histories differ: let Agent pull and merge, or choose to overwrite the remote with local history.',
+  'git.doctor.manual.no-remote':
+    'The current branch has no remote configured: add a remote URL in settings.',
+  'git.doctor.manual.git-missing':
+    'The bundled Git is unavailable: reinstall the app, or enable “Use system Git” in settings.',
+  'git.doctor.manual.unknown':
+    'This sync issue could not be identified: ask Agent to help diagnose, or check git status in the repository directory.',
+  'git.doctor.action.commit':
+    'git add . && git commit (manual commit; the app generates the message)',
   'git.doctor.action.pull': 'git pull --no-rebase (rejects a dirty worktree)',
   'git.doctor.action.push': 'git push (ordinary push; never force)',
-  'git.doctor.action.abort-rebase-or-merge': 'git rebase --abort (or git merge --abort, based on the current state)',
-  'git.doctor.action.resolve-conflict-and-continue': 'Normalize app-owned files (.gitignore) → git rebase --continue → git push',
-  'git.doctor.action.preserve-local-and-abort': 'Back up original local commits to .nexnote/.rebase-recovery/ → git rebase --abort (restore original branch)',
-  'git.doctor.action.force-abort-rebase-or-merge': 'git rebase --abort (discards ahead commits without backup)',
+  'git.doctor.action.abort-rebase-or-merge':
+    'git rebase --abort (or git merge --abort, based on the current state)',
+  'git.doctor.action.resolve-conflict-and-continue':
+    'Normalize app-owned files (.gitignore) → git rebase --continue → git push',
+  'git.doctor.action.preserve-local-and-abort':
+    'Back up original local commits to .nexnote/.rebase-recovery/ → git rebase --abort (restore original branch)',
+  'git.doctor.action.force-abort-rebase-or-merge':
+    'git rebase --abort (discards ahead commits without backup)',
   'git.doctor.status.branch': 'Current branch {branch}',
   'git.doctor.status.changed': '{count} uncommitted files',
   'git.doctor.status.ahead': '{count} commits ahead of remote',
@@ -2342,15 +2406,18 @@ export const MESSAGES_EN_US = {
   'git.doctor.status.noRemote': 'No remote configured',
   'git.doctor.status.separator': '; ',
   'git.doctor.error.INVALID_ACTION': 'Unsupported repair action: {action}',
-  'git.doctor.error.ACTION_NOT_ALLOWED': 'The current issue ({category}) does not allow {action}; {guidance}',
+  'git.doctor.error.ACTION_NOT_ALLOWED':
+    'The current issue ({category}) does not allow {action}; {guidance}',
   'git.doctor.error.INVALID_TICKET': 'The repair ticket is invalid or has already been used',
   'git.doctor.error.TICKET_EXPIRED': 'The repair ticket expired; diagnose and confirm again',
   'git.doctor.error.ROOT_CHANGED': 'The vault has changed; diagnose again and retry',
   'git.doctor.error.STATE_DRIFT': 'The repository state changed after confirmation; diagnose again',
-  'git.doctor.error.CONFLICT_PRESENT': 'There are unresolved conflicts: automatic repair will not overwrite conflict files; resolve them manually and diagnose again',
+  'git.doctor.error.CONFLICT_PRESENT':
+    'There are unresolved conflicts: automatic repair will not overwrite conflict files; resolve them manually and diagnose again',
   'git.doctor.error.NO_OPERATION': 'No rebase/merge is currently in progress; no need to abort',
   'git.doctor.error.STATUS_FAILED': 'Could not read the current repository state; try again',
-  'git.doctor.error.STATUS_AFTER_REPAIR_FAILED': 'The repair ran, but reading the latest state failed; refresh manually',
+  'git.doctor.error.STATUS_AFTER_REPAIR_FAILED':
+    'The repair ran, but reading the latest state failed; refresh manually',
   'git.doctor.error.DOCTOR_UNAVAILABLE': 'The Git doctor is not initialized',
   'git.doctor.result.commit': 'Local changes committed',
   'git.doctor.result.pull': 'Remote updates pulled',
@@ -2369,18 +2436,23 @@ export const MESSAGES_EN_US = {
   'vault.error.INVALID_PATH_SEGMENTS': 'The vault path cannot contain .. or . segments: {path}',
   'vault.error.SYMLINK_COMPONENT': 'The path crosses a symbolic link; operation rejected: {path}',
   'vault.error.CREATE_ACCESS_FAILED': 'Could not access: {path}',
-  'vault.error.CREATE_TARGET_SYMLINK': 'The target is a symbolic link; vault creation rejected: {path}',
+  'vault.error.CREATE_TARGET_SYMLINK':
+    'The target is a symbolic link; vault creation rejected: {path}',
   'vault.error.CREATE_TARGET_FILE': 'A file with the same name exists: {path}',
   'vault.error.CREATE_TARGET_NON_EMPTY': 'The directory already exists and is not empty: {path}',
   'vault.error.GIT_INITIALIZATION_REQUIRED':
     'This folder has not initialized Git yet. Confirm and use the “Initialize Git” action.',
   'vault.error.clone.INVALID_NAME': 'The clone directory name is invalid: {reason}',
   'vault.error.clone.DISTANT_UNREACHABLE': 'The remote is unreachable',
-  'vault.error.cloneToken.INVALID_TOKEN': 'The clone authorization is invalid: token missing or already used',
-  'vault.error.cloneToken.SENDER_MISMATCH': 'The clone authorization is invalid: originating window mismatch',
-  'vault.error.cloneToken.ALREADY_CONSUMED': 'The clone authorization is invalid: authorization already used',
+  'vault.error.cloneToken.INVALID_TOKEN':
+    'The clone authorization is invalid: token missing or already used',
+  'vault.error.cloneToken.SENDER_MISMATCH':
+    'The clone authorization is invalid: originating window mismatch',
+  'vault.error.cloneToken.ALREADY_CONSUMED':
+    'The clone authorization is invalid: authorization already used',
   'vault.error.cloneToken.EXPIRED': 'The clone authorization is invalid: authorization expired',
-  'vault.error.cloneToken.PARAM_MISMATCH': 'The clone authorization is invalid: URL or target changed',
+  'vault.error.cloneToken.PARAM_MISMATCH':
+    'The clone authorization is invalid: URL or target changed',
   'vault.error.OPERATION_CANCELLED': 'Operation cancelled',
   'vault.error.OPERATION_NOT_FOUND': 'The operation was not found or has already completed',
   'vault.error.NO_VAULT': 'No vault is open yet',
@@ -2407,65 +2479,96 @@ export const MESSAGES_EN_US = {
   'docx.zip.writeFailed': 'The zip file list is invalid',
   'docx.error.INVALID_XML': 'Corrupt document.xml structure: {message}',
   'docx.error.INVALID_XML_DETAIL': 'Unexpected document.xml root element: {message}',
-  'git.service.initializeSuccess': 'The Git repository was initialized and its initial commit created',
+  'git.service.initializeSuccess':
+    'The Git repository was initialized and its initial commit created',
   'git.service.EMPTY_MESSAGE': 'The commit message cannot be empty',
-  'git.service.REBASE_IN_PROGRESS_COMMIT': 'A rebase/merge is unfinished; abort or continue it in the sync panel before committing',
+  'git.service.REBASE_IN_PROGRESS_COMMIT':
+    'A rebase/merge is unfinished; abort or continue it in the sync panel before committing',
   'git.service.manualCommitCreated': 'Manual commit created',
   'git.service.NO_OPERATION_ABORT': 'No rebase or merge is currently in progress',
   'git.service.abortSuccess': 'Unfinished rebase/merge aborted',
-  'git.service.NO_OPERATION_RESOLVE': 'No rebase/merge is currently in progress; nothing to resolve',
-  'git.service.MERGE_CONFLICT_NOT_SELF_RESOLVABLE': 'Conflicts from a merge cannot be resolved automatically; resolve them manually and retry',
+  'git.service.NO_OPERATION_RESOLVE':
+    'No rebase/merge is currently in progress; nothing to resolve',
+  'git.service.MERGE_CONFLICT_NOT_SELF_RESOLVABLE':
+    'Conflicts from a merge cannot be resolved automatically; resolve them manually and retry',
   'git.service.NO_CONFLICT_FILES': 'There are no unresolved conflict files',
-  'git.service.CONFLICT_FOREIGN_FILES': 'The conflict affects non-app-owned files ({files}); manual resolution is required and the site is preserved',
+  'git.service.CONFLICT_FOREIGN_FILES':
+    'The conflict affects non-app-owned files ({files}); manual resolution is required and the site is preserved',
   'git.service.fileSeparator': ', ',
   'git.service.CONFLICT_CONTINUE_FAILED': 'Continuing the rebase failed: {message}',
-  'git.service.resolveConflictSuccess': 'The sync conflict was resolved automatically and the rebase completed',
-  'git.service.REBASE_STEP_LIMIT': 'The rebase exceeded the expected step limit; inspect the repository manually',
+  'git.service.resolveConflictSuccess':
+    'The sync conflict was resolved automatically and the rebase completed',
+  'git.service.REBASE_STEP_LIMIT':
+    'The rebase exceeded the expected step limit; inspect the repository manually',
   'git.service.CONFLICT_FILE_SYMLINK': 'A conflict file cannot be a symbolic link',
-  'git.service.NO_OPERATION_PRESERVE': 'No rebase or merge is currently in progress; nothing to preserve',
-  'git.service.mergeAbortNoPreserve': 'Merge aborted (local commits cannot be preserved in merge state)',
+  'git.service.NO_OPERATION_PRESERVE':
+    'No rebase or merge is currently in progress; nothing to preserve',
+  'git.service.mergeAbortNoPreserve':
+    'Merge aborted (local commits cannot be preserved in merge state)',
   'git.service.NO_AHEAD_TO_PRESERVE': 'There are no unpushed local commits to preserve',
-  'git.service.preserveBackupIncomplete': 'The local commit backup is incomplete; aborting the rebase was cancelled',
-  'git.service.preserveHeadNotRestored': 'The rebase aborted, but HEAD was not restored to the original local commit',
+  'git.service.preserveBackupIncomplete':
+    'The local commit backup is incomplete; aborting the rebase was cancelled',
+  'git.service.preserveHeadNotRestored':
+    'The rebase aborted, but HEAD was not restored to the original local commit',
   'git.service.PRESERVE_LOCAL_FAILED': 'Preserving local commits failed: {message}',
-  'git.service.preserveAbortSuccess': 'Rebase aborted; {count} local commits preserved and backed up',
+  'git.service.preserveAbortSuccess':
+    'Rebase aborted; {count} local commits preserved and backed up',
   'git.service.remoteVerified': 'Remote {name} verified',
-  'git.service.WORKTREE_DIRTY': 'The worktree has {count} uncommitted changes; commit, stash, or explicitly confirm before retrying',
+  'git.service.WORKTREE_DIRTY':
+    'The worktree has {count} uncommitted changes; commit, stash, or explicitly confirm before retrying',
   'git.service.NO_REMOTE_PULL': 'No remote branch is bound for pulling',
   'git.service.pullSuccess': 'Pull complete',
   'git.service.NO_REMOTE_PUSH': 'No remote branch is bound for pushing',
   'git.service.pushSuccess': 'Push complete',
   'git.service.autoSummaryBeforeSync': 'Save before sync',
+  'git.service.autoSummarySavePage': 'Save page',
+  'git.service.autoSummaryBeforeExit': 'Save before quit',
+  'git.service.autoSummaryExportChat': 'Export chat to document {path}',
+  'git.service.autoSummaryDocxImport': 'Import DOCX as block document {path}',
+  'git.service.autoSummaryDocxExport': 'Export DOCX {path}',
   'git.service.progress.fetching': 'Fetching remote updates…',
   'git.service.progress.rebasing': 'Aligning remote commits…',
   'git.service.progress.merging': 'Merging remote changes…',
   'git.service.progress.pushing': 'Pushing local commits…',
-  'git.service.GITIGNORE_DIRTY': '.gitignore has uncommitted changes; commit, stash, or explicitly confirm before retrying',
+  'git.service.GITIGNORE_DIRTY':
+    '.gitignore has uncommitted changes; commit, stash, or explicitly confirm before retrying',
   'git.service.NO_REMOTE_SYNC': 'No remote branch is bound for syncing',
   'git.service.syncSuccess': 'Sync complete',
   'git.service.clone.PARENT_NOT_ABSOLUTE': 'The clone parent directory must be absolute',
   'git.service.clone.INVALID_NAME': 'The clone directory name is invalid',
-  'git.service.clone.NOT_DIRECT_CHILD': 'The clone target must be a direct child of the parent directory',
+  'git.service.clone.NOT_DIRECT_CHILD':
+    'The clone target must be a direct child of the parent directory',
   'git.service.cloneSuccess': 'Clone complete',
   'git.service.EMPTY_REMOTE_URL': 'The remote URL cannot be empty',
   'git.service.restoreSuccess': 'Restored {path} and created a new restore commit',
-  'git.service.remoteConflict.pull': 'Pull encountered a conflict; resolve it manually in the repository directory before continuing: {message}',
-  'git.service.remoteConflict.push': 'Push encountered a conflict; resolve it manually in the repository directory before continuing: {message}',
-  'git.service.remoteConflict.sync': 'Sync encountered a conflict; resolve it manually in the repository directory before continuing: {message}',
-  'git.service.remoteFailed.pull': 'Pull failed. Check the remote URL, network, SSH key, or HTTPS credentials: {message}',
-  'git.service.remoteFailed.push': 'Push failed. Check the remote URL, network, SSH key, or HTTPS credentials: {message}',
-  'git.service.remoteFailed.sync': 'Sync failed. Check the remote URL, network, SSH key, or HTTPS credentials: {message}',
+  'git.service.remoteConflict.pull':
+    'Pull encountered a conflict; resolve it manually in the repository directory before continuing: {message}',
+  'git.service.remoteConflict.push':
+    'Push encountered a conflict; resolve it manually in the repository directory before continuing: {message}',
+  'git.service.remoteConflict.sync':
+    'Sync encountered a conflict; resolve it manually in the repository directory before continuing: {message}',
+  'git.service.remoteFailed.pull':
+    'Pull failed. Check the remote URL, network, SSH key, or HTTPS credentials: {message}',
+  'git.service.remoteFailed.push':
+    'Push failed. Check the remote URL, network, SSH key, or HTTPS credentials: {message}',
+  'git.service.remoteFailed.sync':
+    'Sync failed. Check the remote URL, network, SSH key, or HTTPS credentials: {message}',
   'git.service.layoutSummary': 'Save vault layout',
   'git.service.INVALID_REMOTE_NAME': 'The remote name is invalid',
-  'git.service.REMOTE_AUTH_FAILED': 'Remote not saved: authorization preflight failed. Check the network, SSH key, or HTTPS credentials: {message}',
-  'git.service.SYNC_GUARD_VIOLATION': 'The sync guard detected a protected path entering the commit and aborted it',
+  'git.service.REMOTE_AUTH_FAILED':
+    'Remote not saved: authorization preflight failed. Check the network, SSH key, or HTTPS credentials: {message}',
+  'git.service.SYNC_GUARD_VIOLATION':
+    'The sync guard detected a protected path entering the commit and aborted it',
   'git.service.GITIGNORE_SYMLINK': 'The sync guard requires .gitignore to be a regular file',
-  'git.service.GITIGNORE_NOT_REGULAR': 'The sync guard requires .gitignore to be a standalone regular file',
-  'git.service.GIT_BINARY_MISSING': 'The bundled Git is missing (installation or packaging error), and system-Git fallback is not enabled; reinstall the app or enable “Use system Git” in settings',
+  'git.service.GITIGNORE_NOT_REGULAR':
+    'The sync guard requires .gitignore to be a standalone regular file',
+  'git.service.GIT_BINARY_MISSING':
+    'The bundled Git is missing (installation or packaging error), and system-Git fallback is not enabled; reinstall the app or enable “Use system Git” in settings',
   'git.service.PATH_OUTSIDE_VAULT': 'The file path must be inside the current vault',
   'git.service.restoreMustBeTracked': 'The restore target must be a tracked file inside the vault',
   'git.service.restoreSymlinkRejected': 'The restore target cannot cross a symbolic link',
-  'git.service.restoreNotInCommit': 'The restore target must be a tracked file in the selected commit',
+  'git.service.restoreNotInCommit':
+    'The restore target must be a tracked file in the selected commit',
   'fs.error.VAULT_ROOT_OPERATION': 'This operation is not allowed on the vault root',
   'fs.error.INVALID_PATH_TYPE': 'The path must be a string',
   'fs.error.ABSOLUTE_PATH': 'Absolute paths are not allowed: {path}',
@@ -2500,7 +2603,8 @@ export const MESSAGES_EN_US = {
   'ai.error.BAD_BASE_URL': 'The base URL must be a valid http(s) URL',
   'ai.error.BASE_URL_PROTOCOL': 'The base URL must use the http(s) protocol',
   'ai.error.BASE_URL_CREDENTIALS': 'The base URL cannot contain credentials',
-  'ai.error.AI_NOT_CONFIGURED': 'No AI Profile is configured (or the requested profile does not exist); complete AI setup first',
+  'ai.error.AI_NOT_CONFIGURED':
+    'No AI Profile is configured (or the requested profile does not exist); complete AI setup first',
   'ai.error.EMPTY_CREDENTIAL': 'The credential cannot be empty',
   'ai.error.CREDENTIAL_EXPIRED': 'The credential submission expired; enter it again',
   'ai.error.CREDENTIAL_SCOPE_MISMATCH': 'The credential target changed; enter it again',
@@ -2511,25 +2615,32 @@ export const MESSAGES_EN_US = {
   'ai.error.EMBED_DIMENSION_MISMATCH': 'Embeddings returned inconsistent dimensions',
   'ai.error.IMPORT_INVALID_JSON': 'The import file is not valid JSON',
   'ai.error.IMPORT_UNEXPECTED_FORMAT': 'The import file is not a NexNote AI Profile export',
-  'ai.error.BASE_URL_PASSWORD': 'The base URL cannot contain a username/password; pass credentials through the API key field',
+  'ai.error.BASE_URL_PASSWORD':
+    'The base URL cannot contain a username/password; pass credentials through the API key field',
   'ai.error.status.INVALID_KEY': ' (the key is invalid or lacks permission)',
-  'ai.error.status.NOT_FOUND': ' (path not found: check whether the base URL includes /v1 and whether the model name is correct)',
+  'ai.error.status.NOT_FOUND':
+    ' (path not found: check whether the base URL includes /v1 and whether the model name is correct)',
   'ai.error.status.RATE_LIMITED': ' (rate limited or quota exhausted)',
   'ai.error.status.PROVIDER_HTTP': 'The provider returned HTTP {status}{hint}',
-  'ai.error.CONNECTION_PROBE_FAILED': 'Could not reach the provider (model listing and chat probe both failed)',
+  'ai.error.CONNECTION_PROBE_FAILED':
+    'Could not reach the provider (model listing and chat probe both failed)',
   'ai.error.CANCELLED': 'Cancelled',
-  'ai.error.PROVIDER_TOOLS_UNSUPPORTED': 'The provider does not support tool calling (function calling); falling back to a no-tool response',
-  'ai.error.STREAM_TRUNCATED': 'The streaming response ended before the completion marker; try again',
+  'ai.error.PROVIDER_TOOLS_UNSUPPORTED':
+    'The provider does not support tool calling (function calling); falling back to a no-tool response',
+  'ai.error.STREAM_TRUNCATED':
+    'The streaming response ended before the completion marker; try again',
   'ai.error.STREAM_READ': 'The provider streaming request failed; try again later',
   'ai.error.EMBED_MISSING_DATA': 'The embeddings response is missing vector data',
   'ai.error.EMBED_NON_FINITE': 'Embeddings returned a non-finite value',
-  'ai.error.EMBED_COUNT_MISMATCH': 'Embeddings count mismatch (expected {expected}, received {received})',
+  'ai.error.EMBED_COUNT_MISMATCH':
+    'Embeddings count mismatch (expected {expected}, received {received})',
   'ai.error.NETWORK': 'The network request failed; check proxy settings and network connectivity',
   'ai.error.PROFILE_NAME_EMPTY': 'The profile name cannot be empty',
   'ai.error.DEFAULT_MODEL_EMPTY': 'The default model cannot be empty',
   'ai.error.LOCAL_EMBEDDING_URL': 'The local embedding URL must be local://embedding',
   'ai.error.LOCAL_EMBEDDING_CREDENTIAL': 'The local embedding profile does not accept credentials',
-  'ai.error.LOCAL_EMBEDDING_DEFAULT_CHAT': 'A local embedding profile cannot be the global chat default',
+  'ai.error.LOCAL_EMBEDDING_DEFAULT_CHAT':
+    'A local embedding profile cannot be the global chat default',
   'ai.error.LOCAL_EMBEDDING_NO_CHAT': 'The local embedding backend does not provide chat',
   'ai.error.LOCAL_EMBEDDING_UNKNOWN_MODEL': 'Unknown local embedding model: {model}',
   'ai.error.SECRET_STORAGE_UNAVAILABLE':
@@ -2538,12 +2649,15 @@ export const MESSAGES_EN_US = {
   'plugin.error.NO_ROOT': 'The plugins root is missing; cannot run preview',
   'plugin.error.TICKET_NOT_FOUND': 'The install ticket has expired or does not exist',
   'plugin.error.INSTALL_NOT_ACCEPTED': 'The user did not confirm the installation',
-  'plugin.error.BUILTIN_NOT_UNINSTALLABLE': 'Built-in plugins cannot be uninstalled (they can be disabled in settings)',
-  'plugin.error.PLUGIN_CRASHED_REINSTALL': 'A crashed plugin must be uninstalled and reinstalled first',
+  'plugin.error.BUILTIN_NOT_UNINSTALLABLE':
+    'Built-in plugins cannot be uninstalled (they can be disabled in settings)',
+  'plugin.error.PLUGIN_CRASHED_REINSTALL':
+    'A crashed plugin must be uninstalled and reinstalled first',
   'plugin.error.PLUGIN_DISABLED': 'The plugin is not enabled',
   'plugin.error.PLUGIN_NOT_ACTIVE': 'The plugin is not active',
   'plugin.error.PERMISSION_UNDECLARED': 'The permission is not declared in the manifest',
-  'plugin.error.API_VERSION_MISMATCH': 'The plugin API version is incompatible (requires {version})',
+  'plugin.error.API_VERSION_MISMATCH':
+    'The plugin API version is incompatible (requires {version})',
   'plugin.error.BAD_COMMAND_PARAMS': 'The command.register parameters are invalid',
   'plugin.error.BAD_TRANSACT_PARAMS': 'The transact parameters are invalid',
   'plugin.error.REVISION_CONFLICT': 'The document revision changed; read it again and retry',
@@ -2553,7 +2667,8 @@ export const MESSAGES_EN_US = {
   'plugin.error.PERMISSION_REQUIRED': 'User authorization is required for {permission}',
   'plugin.error.UNKNOWN_METHOD': 'Unknown RPC method: {method}',
   'plugin.error.PLUGIN_NOT_FOUND': 'Plugin does not exist: {id}',
-  'plugin.error.PERMISSION_UNDECLARED_WITH_NAME': 'The permission is not declared in the manifest: {permission}',
+  'plugin.error.PERMISSION_UNDECLARED_WITH_NAME':
+    'The permission is not declared in the manifest: {permission}',
   'plugin.error.PLUGIN_RESOURCE_LIMIT': 'The plugin entry exceeds the 1 MiB resource limit',
   'plugin.intake.MANIFEST_MISSING': 'manifest.json is missing',
   'plugin.intake.MANIFEST_TOO_LARGE': 'The manifest exceeds the 1 MiB limit',
@@ -2588,29 +2703,39 @@ export const MESSAGES_EN_US = {
   'plugin.manifest.NOT_OBJECT': 'The manifest must be a JSON object',
   'plugin.manifest.EMPTY_REQUIRED_FIELD': 'manifest.{field} must be a non-empty string',
   'plugin.manifest.INVALID_VERSION': 'manifest.version must be valid semver',
-  'plugin.manifest.INVALID_MIN_APP_VERSION': 'manifest.minAppVersion must be valid semver: {version}',
+  'plugin.manifest.INVALID_MIN_APP_VERSION':
+    'manifest.minAppVersion must be valid semver: {version}',
   'plugin.manifest.INVALID_ID': 'The plugin ID must use reverse-domain namespace syntax',
-  'plugin.manifest.MAIN_NOT_RELATIVE': 'manifest.main must be a relative path inside the plugin directory',
+  'plugin.manifest.MAIN_NOT_RELATIVE':
+    'manifest.main must be a relative path inside the plugin directory',
   'plugin.manifest.UNKNOWN_PERMISSION': 'Unknown permission: {permission}',
   'plugin.manifest.CONTRIBUTIONS_NOT_OBJECT': 'manifest.contributions must be an object',
   'plugin.manifest.INVALID_CONTRIBUTIONS': 'The manifest.contributions.{kind} format is invalid',
-  'plugin.manifest.INVALID_SKILLS': 'The manifest.skills format is invalid (requires an array of {id,...})',
+  'plugin.manifest.INVALID_SKILLS':
+    'The manifest.skills format is invalid (requires an array of {id,...})',
   'plugin.manifest.INVALID_HOST_VERSION': 'The host version is not valid semver: {version}',
-  'plugin.manifest.HOST_VERSION_TOO_OLD': 'The plugin requires NexNote >= {required}; current version is {current}',
+  'plugin.manifest.HOST_VERSION_TOO_OLD':
+    'The plugin requires NexNote >= {required}; current version is {current}',
   'settings.error.FILE_READ_FAILED': 'The file could not be read',
   'settings.error.FILE_WRITE_FAILED': 'The file could not be written',
   'agent.error.BAD_TRANSLATION_REQUEST': 'The translation request is missing the translation field',
   'agent.error.SKILL_SERVICE_UNAVAILABLE': 'The SkillService is unavailable',
   'agent.error.SKILL_RETRIEVE_FAILED': 'Skill retrieval failed',
   'agent.error.SKILL_NOT_ALLOWED': 'skillIds contains a disabled or unknown Skill',
-  'agent.error.TOOLS_UNSUPPORTED_SYSTEM': 'The current model does not support tool calls; answer from the supplied context and clearly state that live retrieval is unavailable.',
+  'agent.error.TOOLS_UNSUPPORTED_SYSTEM':
+    'The current model does not support tool calls; answer from the supplied context and clearly state that live retrieval is unavailable.',
   'agent.error.RUN_NOT_ACTIVE': 'RUN_NOT_ACTIVE',
   'agent.error.TOOL_NOT_ALLOWED': 'The tool is not authorized to run',
-  'agent.error.SCOPE_DENIED_SUMMARY': 'Guardrail denied: only document edits in the current conversation context are allowed.',
-  'agent.error.SCOPE_DENIED': 'The write operation is outside the current conversation document scope',
-  'agent.error.WRITE_REQUIRES_EDIT_MODE_SUMMARY': 'Write tools are disabled in conversation mode; switch to edit mode and approve each action.',
-  'agent.error.WRITE_REQUIRES_EDIT_MODE': 'Write tools are disabled in conversation mode; switch to edit mode for approval',
-  'agent.error.FULL_MODE_DENIED_SUMMARY': 'Full-permission guardrail denied: only document edits for the current context document are allowed.',
+  'agent.error.SCOPE_DENIED_SUMMARY':
+    'Guardrail denied: only document edits in the current conversation context are allowed.',
+  'agent.error.SCOPE_DENIED':
+    'The write operation is outside the current conversation document scope',
+  'agent.error.WRITE_REQUIRES_EDIT_MODE_SUMMARY':
+    'Write tools are disabled in conversation mode; switch to edit mode and approve each action.',
+  'agent.error.WRITE_REQUIRES_EDIT_MODE':
+    'Write tools are disabled in conversation mode; switch to edit mode for approval',
+  'agent.error.FULL_MODE_DENIED_SUMMARY':
+    'Full-permission guardrail denied: only document edits for the current context document are allowed.',
   'agent.error.FULL_MODE_DENIED': 'The full-permission guardrail rejected this write operation',
   'agent.approval.GIT_DOCTOR_REPAIR': 'Git Doctor repair action: {action}',
   'agent.error.APPROVAL_DENIED': 'The tool approval was denied',
@@ -2619,24 +2744,29 @@ export const MESSAGES_EN_US = {
   'agent.error.INVALID_EDIT_INPUT': 'The edit_current_selection input is invalid',
   'agent.error.STALE_SELECTION': 'The selection has changed or is not unique',
   'agent.error.INVALID_APPEND_INPUT': 'The append_to_document input is invalid',
-  'agent.error.INVALID_DOCTOR_INPUT': 'The git_doctor_repair input must be { action: GitRepairAction }',
+  'agent.error.INVALID_DOCTOR_INPUT':
+    'The git_doctor_repair input must be { action: GitRepairAction }',
   'agent.error.DOCTOR_REQUIRES_APPROVAL': 'git_doctor_repair must be called after approval',
   'agent.error.INVALID_DOCTOR_ACTION': 'Invalid git_doctor_repair action: {action}',
   'agent.error.noAutoRepair': 'no automatic repair',
-  'agent.error.DOCTOR_ACTION_MISMATCH': 'Git Doctor currently recommends {recommended}; rejected {action}',
+  'agent.error.DOCTOR_ACTION_MISMATCH':
+    'Git Doctor currently recommends {recommended}; rejected {action}',
   'agent.error.TOOL_DUPLICATE': 'Tool registered more than once: {name}',
   'agent.error.TOOL_NOT_FOUND': 'Tool does not exist: {name}',
   'agent.error.TOOL_WRITE_DISABLED': 'Write tool is disabled: {name}',
   'confidence.factor.stability.label': 'Content stability',
-  'confidence.factor.stability.detail': '{count} historical changes are aggregated with recency weighting; smaller changes are more stable',
+  'confidence.factor.stability.detail':
+    '{count} historical changes are aggregated with recency weighting; smaller changes are more stable',
   'confidence.factor.review_count.label': 'Revision count',
   'confidence.factor.review_count.detail': '{count} commits; saturates after 20',
   'confidence.factor.author_count.label': 'Author count',
   'confidence.factor.author_count.detail': '{count} authors; a single author keeps the base score',
   'confidence.factor.age.label': 'Document age',
-  'confidence.factor.age.detail': 'The document has existed for {count} days; grows logarithmically',
+  'confidence.factor.age.detail':
+    'The document has existed for {count} days; grows logarithmically',
   'confidence.factor.link_authority.label': 'Link authority',
-  'confidence.factor.link_authority.detail': 'Normalized by simplified PageRank over the deduplicated inbound-link graph',
+  'confidence.factor.link_authority.detail':
+    'Normalized by simplified PageRank over the deduplicated inbound-link graph',
   'confidence.factor.manual_boost.label': 'Manual boost',
   'confidence.factor.manual_boost.detail': 'System-neutral score; not affected by user input',
   'confidence.autosummary.sync': 'Sync confidence to frontmatter',
@@ -2652,7 +2782,8 @@ export const MESSAGES_EN_US = {
   'binary.readonly.tag.CHART': 'Charts (read-only)',
   'binary.readonly.tag.PIVOT_TABLE': 'Pivot tables (read-only)',
   'binary.readonly.tag.BORDER_OR_RELATION': 'Borders / relation lines (read-only)',
-  'binary.readonly.banner': 'Read-only preserved region (original bytes kept; not editable here): {tags}',
+  'binary.readonly.banner':
+    'Read-only preserved region (original bytes kept; not editable here): {tags}',
   'binary.host.waiting': 'Waiting for the document to load…',
   'binary.host.confirmDiscard': 'Local edits are unsaved. Reloading will discard them. Continue?',
   'binary.host.reloading': 'Reloading…',
@@ -2666,7 +2797,8 @@ export const MESSAGES_EN_US = {
   'binary.status.externalModifiedDirty':
     'The external version changed; local edits remain in this window and disk content was not overwritten.',
   'binary.status.saveFailed': 'Save failed (will retry automatically): {message}',
-  'binary.status.reloadStateChanged': 'The document state changed while reloading; local edits remain.',
+  'binary.status.reloadStateChanged':
+    'The document state changed while reloading; local edits remain.',
   'binary.status.loadFailed': 'Load failed: {message}',
   'binary.structure.right': 'Right branch',
   'binary.structure.left': 'Left branch',
@@ -2742,7 +2874,8 @@ export const MESSAGES_EN_US = {
   'binary.error.XMIND_PARSE_FAILED': 'Failed to parse the xmind file: {message}',
   'binary.error.CONFLICT': 'The local copy was modified externally',
   'binary.error.INVALID_DATA': 'The xmind data is missing',
-  'binary.error.SAVE_BLOCKED_REBASE': 'A rebase/merge is unfinished; the document was not written. Saving will retry automatically after conflicts are resolved',
+  'binary.error.SAVE_BLOCKED_REBASE':
+    'A rebase/merge is unfinished; the document was not written. Saving will retry automatically after conflicts are resolved',
   'binary.dialog.xlsx': 'Excel workbook',
   'binary.dialog.mindmap': 'XMind mind map',
   'binary.autosummary.import': 'Import {kind} {path}',
@@ -2762,9 +2895,11 @@ export const MESSAGES_EN_US = {
   'ipc.error.UNKNOWN_CHANNEL': 'The channel is not declared in the IPC contract: {channel}',
   'ipc.error.UNKNOWN_EVENT_CHANNEL': 'The event channel is not declared in the contract: {channel}',
   'ipc.error.INTERNAL': 'Internal error',
-  'ipc.error.REGISTRAR_UNKNOWN_CHANNEL': 'The IPC channel is not declared in the shared contract: {channel}',
+  'ipc.error.REGISTRAR_UNKNOWN_CHANNEL':
+    'The IPC channel is not declared in the shared contract: {channel}',
   'ipc.error.DUPLICATE_CHANNEL': 'The IPC channel is registered more than once: {channel}',
-  'document.error.FORMAT_NOT_DIRECT_WRITABLE': 'The document format cannot be written directly: {format}',
+  'document.error.FORMAT_NOT_DIRECT_WRITABLE':
+    'The document format cannot be written directly: {format}',
   'document.error.PATH_OUTSIDE_VAULT': 'The document path is outside the vault',
   'document.error.METADATA_READ_FAILED': 'Failed to read the document metadata: {path}',
   'validation.error.FIELD_STRING': '{key} must be a string',
@@ -2808,7 +2943,8 @@ export const MESSAGES_EN_US = {
   'validation.error.TRANSLATION_TARGET_LANGUAGE': 'Invalid translation.targetLanguage',
   'validation.error.TRANSLATION_TEXT_REQUIRED': 'translation.text cannot be empty',
   'validation.error.TRANSLATION_TEXT_TOO_LONG': 'translation.text is too long',
-  'validation.error.TRANSLATION_REASONING_UNSUPPORTED': 'params.reasoningEffort is not supported for translation',
+  'validation.error.TRANSLATION_REASONING_UNSUPPORTED':
+    'params.reasoningEffort is not supported for translation',
   'validation.error.DECISION': 'Invalid decision',
   'validation.error.LIMIT': 'limit must be an integer from 1 to 500',
   'validation.error.PAGE_ID_POSITIVE_INTEGER': 'pageId must be a positive integer',
@@ -2861,11 +2997,13 @@ export const MESSAGES_EN_US = {
   'chat.permission.conversation': 'Conversation (read-only)',
   'chat.permission.edit': 'Edit (approve each tool)',
   'chat.permission.full': 'Full permission (auto write-back)',
-  'chat.export.title': 'Export this session as a normal document and open it in the current tab (it becomes detached from the session)',
+  'chat.export.title':
+    'Export this session as a normal document and open it in the current tab (it becomes detached from the session)',
   'chat.export.label': 'Export as page',
   'chat.aiSettings': 'AI settings',
   'chat.empty.title': 'AI chat',
-  'chat.empty.description': 'Asking automatically includes the current note context and knowledge-base recall; sessions are stored in vault-internal storage (not in the document tree, not in links). Continue from History or export to a page as a normal document.',
+  'chat.empty.description':
+    'Asking automatically includes the current note context and knowledge-base recall; sessions are stored in vault-internal storage (not in the document tree, not in links). Continue from History or export to a page as a normal document.',
   'chat.empty.start': 'Start a chat',
   'chat.empty.connected': 'Connected to {model}; start asking.',
   'chat.empty.prompt': 'Type a question to start chatting.',
@@ -2876,7 +3014,8 @@ export const MESSAGES_EN_US = {
   'chat.send': 'Send',
   'chat.approval.title': 'Agent tool approval',
   'chat.approval.heading': 'Agent requests execution: {tool}',
-  'chat.approval.expiresIn': 'This approval expires in {seconds} seconds; re-run diagnostics after expiry',
+  'chat.approval.expiresIn':
+    'This approval expires in {seconds} seconds; re-run diagnostics after expiry',
   'chat.approval.expired': 'Expired—waiting for the main process to revoke it',
   'chat.approval.deny': 'Deny',
   'chat.approval.approve': 'Approve',
@@ -2908,7 +3047,8 @@ export const MESSAGES_EN_US = {
   'retrieval.confidence': 'Confidence {score}',
   'retrieval.empty': 'No relevant blocks were recalled.',
   'skills.chatPicker.title': 'Choose retrieval Skills used for recall (combined and reranked)',
-  'skills.chatPicker.hint': 'Check the retrieval Skills to combine; if none are checked, all enabled Skills are used.',
+  'skills.chatPicker.hint':
+    'Check the retrieval Skills to combine; if none are checked, all enabled Skills are used.',
   'skills.chatPicker.empty': 'No enabled Skills',
   'skills.chatPicker.builtin': 'Built-in',
   'skills.chatPicker.plugin': 'Plugin',
@@ -2943,12 +3083,18 @@ export const MESSAGES_EN_US = {
   'frontmatter.showInFinder': 'Show in Finder',
   'frontmatter.confidenceNotComputed': 'Confidence has not been computed',
   'frontmatter.confidenceFactorTitle': '{label}: {detail}',
-  'frontmatter.field.title.description': 'Document title: display name used by wikilinks and search; can bind to the file name',
-  'frontmatter.field.tags.description': 'Tag list: participates in relationship indexing, tree filtering, and AI recall',
-  'frontmatter.field.aliases.description': 'Alias list: wikilinks can point to the same page through an alias',
-  'frontmatter.field.created.description': 'Created datetime (ISO 8601): used for version timeline and statistics',
-  'frontmatter.field.updated.description': 'Last updated datetime (ISO 8601): maintained automatically by NexNote on save; no manual editing required',
-  'frontmatter.field.confidence.description': 'Confidence score calculated from Git history (0-100)',
+  'frontmatter.field.title.description':
+    'Document title: display name used by wikilinks and search; can bind to the file name',
+  'frontmatter.field.tags.description':
+    'Tag list: participates in relationship indexing, tree filtering, and AI recall',
+  'frontmatter.field.aliases.description':
+    'Alias list: wikilinks can point to the same page through an alias',
+  'frontmatter.field.created.description':
+    'Created datetime (ISO 8601): used for version timeline and statistics',
+  'frontmatter.field.updated.description':
+    'Last updated datetime (ISO 8601): maintained automatically by NexNote on save; no manual editing required',
+  'frontmatter.field.confidence.description':
+    'Confidence score calculated from Git history (0-100)',
   'frontmatter.fieldCatalog': 'Field directory',
   'frontmatter.standardBadge': 'Standard',
   'frontmatter.added': 'Added',
@@ -2992,7 +3138,8 @@ export const MESSAGES_EN_US = {
   'frontmatter.tableTitle': 'Property table',
   'frontmatter.yamlSource': 'YAML source',
   'frontmatter.yamlEditor': 'Frontmatter YAML source',
-  'frontmatter.yamlValid': '{lineCount} lines · syntax valid; saving after 300ms; switching to table keeps the current data',
+  'frontmatter.yamlValid':
+    '{lineCount} lines · syntax valid; saving after 300ms; switching to table keeps the current data',
   'frontmatter.editTooltip': 'Edit document properties',
   'frontmatter.properties': 'Properties',
   'frontmatter.propertiesDialogTitle': 'Document properties',
@@ -3005,6 +3152,8 @@ export const MESSAGES_EN_US = {
   'app.menu.file.importDocx': 'Import Word document (convert to block document)…',
   'app.menu.file.importXlsx': 'Import XLSX…',
   'app.menu.file.importXmind': 'Import XMind…',
+  'app.menu.edit': 'Edit',
+  'app.menu.view': 'View',
   'app.dialog.pickDirectory': 'Choose folder',
   'app.dialog.pickFile': 'Choose file',
   'app.dialog.binaryFlush.title': 'NexNote cannot close',
@@ -3015,9 +3164,11 @@ export const MESSAGES_EN_US = {
   'settings.dialog.shortcutsFilter': 'NexNote shortcuts',
   'settings.dialog.allFilesFilter': 'All files',
   'settings.network.title': 'Network',
-  'settings.network.description': 'Proxies AI requests and Git sync. Defaults to the system proxy; connects directly when none is available.',
+  'settings.network.description':
+    'Proxies AI requests and Git sync. Defaults to the system proxy; connects directly when none is available.',
   'settings.network.mode': 'Proxy mode',
-  'settings.network.mode.description': 'system = follow system; off = no proxy; custom = use the specified proxy',
+  'settings.network.mode.description':
+    'system = follow system; off = no proxy; custom = use the specified proxy',
   'settings.network.mode.system': 'Follow system',
   'settings.network.mode.off': 'No proxy',
   'settings.network.host': 'Host',
@@ -3050,12 +3201,14 @@ export const MESSAGES_EN_US = {
   'settings.editor.autoSaveMs': 'Auto-save interval',
   'settings.editor.autoSaveMs.description': '{ms}ms (100ms–10s)',
   'settings.editor.bindFileNameToTitle': 'Bind file name to H1 title',
-  'settings.editor.bindFileNameToTitle.description': 'Rename the file automatically when the title changes',
+  'settings.editor.bindFileNameToTitle.description':
+    'Rename the file automatically when the title changes',
   'settings.editor.codeTheme': 'Code block theme',
   'settings.editor.vimMode': 'Vim mode',
   'settings.editor.vimMode.description': 'Experimental; not enabled in the current version',
   'settings.editor.binaryMax': 'Concurrent binary document editors',
-  'settings.editor.binaryMax.description': 'At most {count} xlsx / xmind tabs open at once; the oldest closes automatically beyond that (1–8)',
+  'settings.editor.binaryMax.description':
+    'At most {count} xlsx / xmind tabs open at once; the oldest closes automatically beyond that (1–8)',
   'settings.git.description': 'Global Git behavior and version control for the current vault',
   'settings.git.system': 'Use system Git',
   'settings.git.system.description': 'Global setting; when off, NexNote uses bundled Git',
@@ -3070,10 +3223,13 @@ export const MESSAGES_EN_US = {
   'settings.git.defaultBranch': 'Default branch',
   'settings.git.defaultBranch.description': 'Used when creating a vault',
   'settings.git.binaryUntrack': 'Keep binary documents out of Git',
-  'settings.git.binaryUntrack.description': 'xlsx / xmind are versioned by default; enabling writes them to .gitignore',
-  'settings.git.binaryUntrackedCount': 'Stopped tracking {count} binary documents; files remain local',
+  'settings.git.binaryUntrack.description':
+    'xlsx / xmind are versioned by default; enabling writes them to .gitignore',
+  'settings.git.binaryUntrackedCount':
+    'Stopped tracking {count} binary documents; files remain local',
   'settings.git.binaryUntrackedNew': 'New binary documents will no longer be tracked by Git',
-  'settings.git.binaryTrackingRestored': 'Binary documents restored to Git tracking (applies to files added later)',
+  'settings.git.binaryTrackingRestored':
+    'Binary documents restored to Git tracking (applies to files added later)',
   'settings.git.intervalSaved': 'Saved: auto-commit debounce {ms}ms',
   'settings.shortcuts.saved': 'Shortcuts saved',
   'settings.shortcuts.invalid': 'Enter a valid shortcut, for example Mod+Shift+F',
@@ -3177,7 +3333,8 @@ export const MESSAGES_EN_US = {
   'ai.wizard.deploymentPlaceholder': 'For example: gpt-4o-mini-deployment',
   'ai.wizard.apiKeyLabel': 'API Key',
   'ai.wizard.apiKey.editHint': 'Leave blank to keep the saved key',
-  'ai.wizard.apiKey.localEmbeddingHint': 'Local lexical hashing, not a semantic model; no key required',
+  'ai.wizard.apiKey.localEmbeddingHint':
+    'Local lexical hashing, not a semantic model; no key required',
   'ai.wizard.apiKey.ollamaHint': 'Optional for local services',
   'ai.wizard.apiKey.hint': 'Stored only in the OS keychain; never uploaded',
   'ai.wizard.apiKey.savedPlaceholder': '•••••• (saved)',
@@ -3206,7 +3363,8 @@ export const MESSAGES_EN_US = {
   'ai.wizard.next': 'Next',
   'ai.wizard.save': 'Save',
   'ai.wizard.finish': 'Finish setup',
-  'ai.wizard.finalTestFailed': 'Final connectivity test for the model failed; fix the target and retry',
+  'ai.wizard.finalTestFailed':
+    'Final connectivity test for the model failed; fix the target and retry',
   'graph.title': 'Knowledge graph',
   'graph.loading': 'Index updating…',
   'graph.summary': '{pages} pages · {links} links',
@@ -3226,7 +3384,8 @@ export const MESSAGES_EN_US = {
   'search.tier.content': 'Body',
   'search.hint': '↑↵ open the first result · esc close · title > tag > alias > body ordering',
   'skills.title': 'Retrieval skills',
-  'skills.description': 'Enabled skills search independently during chat recall, merge, deduplicate, and rerank across sources; ordering controls composition and display order.',
+  'skills.description':
+    'Enabled skills search independently during chat recall, merge, deduplicate, and rerank across sources; ordering controls composition and display order.',
   'skills.enabled': 'Enabled',
   'skills.source.builtin': 'Built-in',
   'skills.source.plugin': 'Plugin',
@@ -3237,14 +3396,16 @@ export const MESSAGES_EN_US = {
   'plugins.refresh': 'Refresh',
   'plugins.menu.title': 'Plugins',
   'plugins.blockCommand.title': 'Insert plugin block: {title}',
-  'plugins.error.PLUGIN_HEARTBEAT_TIMEOUT': 'The plugin script is not responding (heartbeat timeout).',
+  'plugins.error.PLUGIN_HEARTBEAT_TIMEOUT':
+    'The plugin script is not responding (heartbeat timeout).',
   'plugins.installFromDirectory': 'Install from folder…',
   'plugins.installFromZip': 'Install from zip…',
   'plugins.installConfirm': 'Install confirmation: {name}',
   'plugins.noDescription': '(no description)',
   'plugins.newCapabilities': 'New capabilities',
   'plugins.noNewPermissions': 'No new permissions',
-  'plugins.signatureNotice': 'Signature: MVP verification is not enabled yet (ticket sha256 pins content)',
+  'plugins.signatureNotice':
+    'Signature: MVP verification is not enabled yet (ticket sha256 pins content)',
   'plugins.confirmInstall': 'Install and activate',
   'plugins.loading': 'Loading…',
   'plugins.empty': 'No plugins installed. Install your first plugin from a local folder or zip.',
@@ -3252,7 +3413,8 @@ export const MESSAGES_EN_US = {
   'plugins.builtinPlugin': 'Built-in plugin',
   'plugins.enabled': 'Enabled',
   'plugins.uninstall': 'Uninstall',
-  'plugins.builtinNotice': 'This demonstration plugin ships with the app. It can be disabled but not uninstalled; disabling removes its block type from the slash menu while existing note content remains plain-text source.',
+  'plugins.builtinNotice':
+    'This demonstration plugin ships with the app. It can be disabled but not uninstalled; disabling removes its block type from the slash menu while existing note content remains plain-text source.',
   'plugins.lastError': 'Last error: {error}',
   'plugins.contributions': 'Contributions',
   'plugins.permissions': 'Permissions',
@@ -3268,7 +3430,8 @@ export const MESSAGES_EN_US = {
   'plugins.state.disabled': 'Disabled',
   'plugins.state.crashed': 'Crashed',
   'plugins.permissionRequest': 'Plugin permission request',
-  'plugins.permissionRequest.description': 'Plugin {pluginId} requests the {permission} permission.',
+  'plugins.permissionRequest.description':
+    'Plugin {pluginId} requests the {permission} permission.',
   'plugins.permissionDeny': 'Deny',
   'plugins.permissionAllow': 'Allow',
   'plugins.permissionAlwaysAllow': 'Always allow',
@@ -3287,17 +3450,20 @@ export const MESSAGES_EN_US = {
   'updates.noDownloadAvailable': 'No downloadable update; check for updates first',
   'updates.noDownloaded': 'No downloaded update is available to install',
   'updates.macSignatureAdhoc': 'Ad hoc signature (not notarized)',
-  'updates.macSignatureInvalid': 'Unsigned or an invalid signature (you may need to clear the xattr quarantine flag)',
+  'updates.macSignatureInvalid':
+    'Unsigned or an invalid signature (you may need to clear the xattr quarantine flag)',
   'updates.macAppBundleNotFound': 'Could not locate the .app bundle',
   'updates.macManualDownloadRequired':
     'Current Mac architecture {arch}: {reason}. Releases has been opened; please download manually.',
   'updates.installing': 'Restarting to install the update…',
   'updates.installTimeout': 'Install startup timed out; the update is retained. Try again.',
   'updates.title': 'App updates',
-  'updates.description': 'Check GitHub Releases by channel; all update settings are stored in the main process with no local duplicate cache.',
+  'updates.description':
+    'Check GitHub Releases by channel; all update settings are stored in the main process with no local duplicate cache.',
   'updates.channel': 'Update channel',
   'updates.autoDownload': 'Auto-download',
-  'updates.autoDownloadDescription': 'Download in the background when a new version is detected; installation still requires confirmation',
+  'updates.autoDownloadDescription':
+    'Download in the background when a new version is detected; installation still requires confirmation',
   'updates.checkOnLaunch': 'Check for updates on launch',
   'updates.checkOnLaunchDescription': 'Silently check about 5 seconds after the app starts',
   'updates.statusFallback': 'No update check yet',
@@ -3308,13 +3474,17 @@ export const MESSAGES_EN_US = {
   'updates.download': 'Download',
   'updates.downloadRetry': 'Retry download',
   'updates.install': 'Restart and install',
-  'updates.manualDownload': 'Current Mac architecture {arch} does not support automatic installation; Releases is open—download the matching build.',
-  'updates.manualDownloadDetail': 'Mac architecture {arch} does not support automatic installation. GitHub Releases is open; if the system flags quarantine, run this in Terminal',
+  'updates.manualDownload':
+    'Current Mac architecture {arch} does not support automatic installation; Releases is open—download the matching build.',
+  'updates.manualDownloadDetail':
+    'Mac architecture {arch} does not support automatic installation. GitHub Releases is open; if the system flags quarantine, run this in Terminal',
   'updates.manualDownloadAfterCommand': 'and reopen the downloaded app.',
-  'updates.installIncomplete': 'Installation did not finish; the update is retained. Try “Restart and install” again.',
+  'updates.installIncomplete':
+    'Installation did not finish; the update is retained. Try “Restart and install” again.',
   'updates.downloadFailedRetry': 'Download failed; you can retry.',
   'updates.checkFailedRetry': 'Check failed; you can check again.',
-  'updates.scheduleNote': 'Automatic checks run about 5 seconds after launch (if enabled); downloaded updates always require your confirmation before installation.',
+  'updates.scheduleNote':
+    'Automatic checks run about 5 seconds after launch (if enabled); downloaded updates always require your confirmation before installation.',
   'toolbar.menu.format': 'Format',
   'toolbar.menu.formatHint': 'More formatting actions',
   'toolbar.menu.insert': 'Insert',
@@ -3452,9 +3622,6 @@ export function setCurrentLanguage(language: unknown): UiLanguage {
 }
 
 /** 命令式按当前语言取文案（供 kernel 等非 React 代码使用）。 */
-export function tCurrent(
-  key: string,
-  params?: Readonly<Record<string, string | number>>,
-): string {
+export function tCurrent(key: string, params?: Readonly<Record<string, string | number>>): string {
   return translate(CATALOGS[currentLanguage], key, currentLanguage, params);
 }

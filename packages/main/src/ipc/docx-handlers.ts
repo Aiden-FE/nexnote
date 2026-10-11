@@ -46,11 +46,17 @@ export function registerDocxHandlers(registrar: IpcRegistrar): void {
           { base64: bytes.toString('base64'), name: path.basename(picked) },
           targetDir ?? '',
         );
-        await recordWrite(services, `导入 DOCX 转块文档 ${result.path}`);
+        await recordWrite(
+          services,
+          tCurrent('git.service.autoSummaryDocxImport', { path: result.path }),
+        );
         return ok(result);
       }
       const result = await service(services).importDocx({ base64: data, name }, targetDir ?? '');
-      await recordWrite(services, `导入 DOCX 转块文档 ${result.path}`);
+      await recordWrite(
+        services,
+        tCurrent('git.service.autoSummaryDocxImport', { path: result.path }),
+      );
       return ok(result);
     },
   );
@@ -59,7 +65,10 @@ export function registerDocxHandlers(registrar: IpcRegistrar): void {
     'docx:export',
     async ({ path, targetPath }, services): Promise<Result<{ path: string }>> => {
       const result = await service(services).exportDocx(path, targetPath);
-      await recordWrite(services, `导出 DOCX ${result.path}`);
+      await recordWrite(
+        services,
+        tCurrent('git.service.autoSummaryDocxExport', { path: result.path }),
+      );
       return ok(result);
     },
   );

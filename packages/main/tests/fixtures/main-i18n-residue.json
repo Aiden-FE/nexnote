@@ -321,27 +321,7 @@
   },
   {
     "file": "git/git-service.ts",
-    "text": "async commitAuto(summary = '保存页面', options: { skipThrottle?: boolean } = {}): Promise<void> {",
-    "reason": "Git commit message 与自动提交摘要：不随界面语言本地化"
-  },
-  {
-    "file": "git/git-service.ts",
-    "text": "async flushPendingAutoCommit(summary = '保存页面'): Promise<void> {",
-    "reason": "Git commit message 与自动提交摘要：不随界面语言本地化"
-  },
-  {
-    "file": "git/git-service.ts",
-    "text": "await this.flushPendingAutoCommit('拉取前保存');",
-    "reason": "Git commit message 与自动提交摘要：不随界面语言本地化"
-  },
-  {
-    "file": "git/git-service.ts",
     "text": "const INITIAL_MESSAGE = 'nexnote:init: 知识库初始化';",
-    "reason": "Git commit message 与自动提交摘要：不随界面语言本地化"
-  },
-  {
-    "file": "git/git-service.ts",
-    "text": "scheduleAutoCommit(summary = '保存页面', debounceMs?: number): void {",
     "reason": "Git commit message 与自动提交摘要：不随界面语言本地化"
   },
   {
@@ -362,31 +342,6 @@
   {
     "file": "git/git-sync-doctor.ts",
     "text": "await this.deps.git.commitManual('nexnote:doctor: 同步前保存本地变更');",
-    "reason": "Git commit message 与自动提交摘要：不随界面语言本地化"
-  },
-  {
-    "file": "index.ts",
-    "text": "const flushCommit = git.flushPendingAutoCommit('退出前保存').catch((error: unknown) => {",
-    "reason": "Git commit message 与自动提交摘要：不随界面语言本地化"
-  },
-  {
-    "file": "ipc/chat-handlers.ts",
-    "text": "services.git.scheduleAutoCommit(`导出会话为文档 ${result.path}`);",
-    "reason": "Git commit message 与自动提交摘要：不随界面语言本地化"
-  },
-  {
-    "file": "ipc/docx-handlers.ts",
-    "text": "await recordWrite(services, `导入 DOCX 转块文档 ${result.path}`);",
-    "reason": "Git commit message 与自动提交摘要：不随界面语言本地化"
-  },
-  {
-    "file": "ipc/docx-handlers.ts",
-    "text": "await recordWrite(services, `导出 DOCX ${result.path}`);",
-    "reason": "Git commit message 与自动提交摘要：不随界面语言本地化"
-  },
-  {
-    "file": "ipc/git-handlers.ts",
-    "text": "services.git.scheduleAutoCommit(summary ?? '保存页面', debounceMs);",
     "reason": "Git commit message 与自动提交摘要：不随界面语言本地化"
   },
   {

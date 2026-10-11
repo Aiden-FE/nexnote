@@ -1,6 +1,11 @@
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it } from 'vitest';
 import type { MenuAction } from '@nexnote/shared';
+import { setCurrentLanguage } from '@nexnote/shared';
 import { buildApplicationMenuTemplate } from '../src/window-menu';
+
+afterEach(() => {
+  setCurrentLanguage('zh-CN');
+});
 
 describe('native application menu localization (ADR-0023 stage 3)', () => {
   it('materializes custom labels and actions in English', () => {
@@ -37,5 +42,12 @@ describe('native application menu localization (ADR-0023 stage 3)', () => {
     expect(items[0]?.label).toBe('新建文档（块编辑）');
     expect(items[0]?.accelerator).toBe('CmdOrCtrl+N');
     expect(items[1]?.accelerator).toBe('CmdOrCtrl+Shift+N');
+  });
+
+  it('materializes Edit / View role submenu labels from the message catalog in en-US', () => {
+    setCurrentLanguage('en-US');
+    const [, edit, view] = buildApplicationMenuTemplate('en-US', () => undefined);
+    expect(edit?.label).toBe('Edit');
+    expect(view?.label).toBe('View');
   });
 });
