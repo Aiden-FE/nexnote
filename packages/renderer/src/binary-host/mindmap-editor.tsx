@@ -122,6 +122,11 @@ export function MindmapEditor({ path, model, onChange }: MindmapEditorProps): Re
       quickCreateChildBtnIcon: { icon: MINDMAP_NODE_BTN_ICONS.addChild, style: {} },
     } as unknown as MindMapOptions) as unknown as MindMapWithInternals;
     mapRef.current = mindMap;
+    // 观测口：键盘/布局/结构等集成测试从宿主容器取实例（DEV-102/107 测试约定）。
+    hostRef.current.dataset.mindMapInstance = 'attached';
+    (
+      hostRef.current as unknown as { __mindMap?: MindMapWithInternals }
+    ).__mindMap = mindMap;
     setMapInstance(mindMap);
     baseThemeRef.current = JSON.parse(JSON.stringify(mindMap.themeConfig)) as Record<
       string,
@@ -142,7 +147,13 @@ export function MindmapEditor({ path, model, onChange }: MindmapEditorProps): Re
     mindMap.on('scale', onScale);
     mindMap.on('node_active', onNodeActive);
 
-    // DEV-099 快捷键：Delete 删除选中、Ctrl/Cmd+Z 撤销、Ctrl/Cmd+Shift+Z 与 Ctrl+Y 重做、Ctrl/Cmd+S 立即保存。
+    // DEV-099 快捷键：Ctrl/Cmd+S 立即保存（库没有的能力）+ Cmd+Shift+Z 重做
+    // （库只注册了 Control+y 重做，缺 macOS 惯用的 Cmd+Shift+Z）。
+    // DEV-107：Delete/Backspace 与 Ctrl/Cmd+Z / Ctrl/Cmd+Y 不得在此分发——库的
+    // KeyCommand 在同一个 window 上已注册同样的快捷键（'Del|Backspace' → REMOVE_NODE、
+    // 'Control+z' → BACK、'Control+y' → FORWARD），此处再执行一次会形成双重分发：
+    // 单选删除末尾节点后库自动激活相邻兄弟（deleteNodeActive 默认开），第二次
+    // REMOVE_NODE 立即把它连带删掉。删除键链路全权交给库。
     const onKeyDown = (e: KeyboardEvent): void => {
       const target = e.target as HTMLElement | null;
       // 文本输入/节点编辑中不拦截（节点双击编辑是 contenteditable）。
@@ -158,19 +169,10 @@ export function MindmapEditor({ path, model, onChange }: MindmapEditorProps): Re
         void flushPending();
         return;
       }
-      if (mod && e.key.toLowerCase() === 'z') {
-        e.preventDefault();
-        mindMap.execCommand(e.shiftKey ? 'FORWARD' : 'BACK');
-        return;
-      }
-      if (mod && e.key.toLowerCase() === 'y') {
+      if (mod && e.shiftKey && e.key.toLowerCase() === 'z') {
         e.preventDefault();
         mindMap.execCommand('FORWARD');
         return;
-      }
-      if ((e.key === 'Delete' || e.key === 'Backspace') && !mod) {
-        e.preventDefault();
-        mindMap.execCommand('REMOVE_NODE');
       }
     };
     window.addEventListener('keydown', onKeyDown);
