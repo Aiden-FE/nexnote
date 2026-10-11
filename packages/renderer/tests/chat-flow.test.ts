@@ -1,6 +1,12 @@
 // @vitest-environment happy-dom
-import { describe, expect, it, vi } from 'vitest';
-import type { ChatSession, ChatSummary, RetrievalResponse } from '@nexnote/shared';
+import { afterEach, describe, expect, it, vi } from 'vitest';
+import {
+  CATALOGS,
+  translate,
+  type ChatSession,
+  type ChatSummary,
+  type RetrievalResponse,
+} from '@nexnote/shared';
 
 interface StreamListener {
   (payload: unknown): void;
@@ -47,7 +53,7 @@ const retrieval: RetrievalResponse = {
   ],
 };
 
-function installBridge() {
+function installBridge(options: { failSave?: boolean } = {}) {
   const listeners: Record<string, Set<StreamListener>> = {};
   const saveCalls: Array<{ session: ChatSession; status?: string; error?: string }> = [];
   const listQueries: Array<string | undefined> = [];
@@ -71,6 +77,7 @@ function installBridge() {
       if (channel === 'chat:save') {
         const call = payload as { session: ChatSession; status?: string; error?: string };
         saveCalls.push(call);
+        if (options.failSave) return { ok: false, error: 'EACCES: disk full' };
         return {
           ok: true,
           data: {
@@ -161,6 +168,12 @@ async function loadModules() {
   return { runtime, store };
 }
 
+afterEach(async () => {
+  // loadModules() calls vi.resetModules(), so reset language on the active module instance.
+  const { setLanguage } = await import('../src/lib/i18n');
+  setLanguage('zh-CN');
+});
+
 describe('对话 dock 运行时（JSONL 会话：流式 → 来源 → 自动保存 → 续聊）', () => {
   it('发送消息：流式回答追加、召回来源附着、会话自动保存到 sessions 路径', async () => {
     const bridge = installBridge();
@@ -247,5 +260,26 @@ describe('对话 dock 运行时（JSONL 会话：流式 → 来源 → 自动保
     expect(payload?.selectionText).toBe('选中的这段文字');
     expect(payload?.docTitle).toBe('当前笔记');
     expect(payload?.docPath).toBe('当前笔记.md');
+  });
+
+  it('en-US：会话自动保存失败按词典成文并进入 chat store error', async () => {
+    const bridge = installBridge({ failSave: true });
+    const { runtime, store } = await loadModules();
+    // loadModules 内的 resetModules 会重建 i18n 模块实例：必须在加载后设置语言，
+    // 否则 setLanguage 改的是另一个模块实例的当前语言。
+    const { setLanguage } = await import('../src/lib/i18n');
+    setLanguage('en-US');
+    runtime.initChatRuntime();
+    await runtime.startNewSession();
+    await runtime.sendMessage('问题');
+    await bridge.flush();
+    await bridge.flush();
+
+    const error = store.useChatStore.getState().error;
+    const expected = translate(CATALOGS['en-US'], 'chat.error.autoSaveFailed', 'en-US', {
+      message: 'EACCES: disk full',
+    });
+    expect(error).toBe(expected);
+    expect(error).not.toMatch(/[\u4e00-\u9fff]/);
   });
 });

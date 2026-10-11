@@ -1,4 +1,5 @@
 import { TRANSLATION_MAX_TEXT_CHARS } from '@nexnote/shared';
+import { getLanguage, t } from '../../../lib/i18n';
 import { useAiConfig } from '../ai-config';
 import { resolveInitialTargetLanguage } from './languages';
 import { startTranslationStream, type TranslationStreamHandle } from './translate-stream';
@@ -11,6 +12,11 @@ import {
 
 function currentTranslationTargetLanguage(): string | undefined {
   return useAiConfig.getState().state?.translationTargetLanguage;
+}
+
+/** 超限提示里的字符上限：按**界面语言**格式化，而非跟随操作系统 locale。 */
+function maxCharsLabel(): string {
+  return TRANSLATION_MAX_TEXT_CHARS.toLocaleString(getLanguage());
 }
 
 /**
@@ -66,7 +72,7 @@ export function createTranslationController(
       language,
       status: overLimit ? 'error' : 'streaming',
       output: '',
-      error: overLimit ? '原文超过 200,000 字符限制，请缩短后重试' : null,
+      error: overLimit ? t('translation.overLimitSource', { count: maxCharsLabel() }) : null,
       sourceText,
       coords,
       onChangeLanguage: (next) => {
@@ -125,7 +131,7 @@ export function createTranslationController(
       language,
       status: overLimit ? 'error' : 'streaming',
       output: '',
-      error: overLimit ? '原文超过 200,000 字符限制，请缩短后重试' : null,
+      error: overLimit ? t('translation.overLimitSource', { count: maxCharsLabel() }) : null,
       sourceText,
       path: meta.path,
       title: meta.title,

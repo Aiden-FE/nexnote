@@ -1,6 +1,8 @@
 // @vitest-environment happy-dom
-import { beforeAll, describe, expect, it } from 'vitest';
+import { afterEach, beforeAll, describe, expect, it } from 'vitest';
+import { CATALOGS, translate } from '@nexnote/shared';
 import { createEditor } from '@nexnote/kernel';
+import { setLanguage } from '../src/lib/i18n';
 import {
   buildBuiltinSlashItems,
   buildBuiltinViewExtensions,
@@ -22,10 +24,15 @@ function flush(): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, 20));
 }
 
+const text = (language: 'zh-CN' | 'en-US', key: string): string =>
+  translate(CATALOGS[language], key, language);
+
 beforeAll(() => {
   // happy-dom 默认 quirks mode，KaTeX 拒绝渲染；注入标准模式标记。
   Object.defineProperty(document, 'compatMode', { configurable: true, value: 'CSS1Compat' });
 });
+
+afterEach(() => setLanguage('zh-CN'));
 
 describe('内置块 NodeView（DEV-015）', () => {
   it('Mermaid 块挂载预览容器；双击进入编辑，失焦提交新源码', async () => {
@@ -143,5 +150,55 @@ describe('内置块 NodeView（DEV-015）', () => {
     container.remove();
     gantt.kernel.destroy();
     gantt.container.remove();
+  });
+
+  it('en-US：Mermaid / LaTeX NodeView 的提示、title 与渲染中状态按词典成文', async () => {
+    setLanguage('en-US');
+
+    const mermaid = makeEditor('段落\n\n', { mermaid: true, katex: false });
+    mermaid.kernel.editor.commands.insertMermaidBlock({ source: 'graph TD\n  A --> B' });
+    await flush();
+    const mermaidView = mermaid.container.querySelector('[data-mermaid-view]')!;
+    // 编辑态提示语（进入编辑后可见）与 title 均按词典成文。
+    mermaidView.dispatchEvent(new MouseEvent('dblclick', { bubbles: true }));
+    const mermaidHint = mermaid.container.querySelector('.nexnote-builtin-hint');
+    expect(mermaidHint?.textContent).toBe(text('en-US', 'builtinBlock.mermaid.hint'));
+    expect(mermaidView.textContent).not.toMatch(/[\u4e00-\u9fff]/);
+    mermaid.kernel.destroy();
+    mermaid.container.remove();
+
+    const math = makeEditor('$$\nE = mc^2\n$$\n', { mermaid: false, katex: true });
+    await flush();
+    const mathView = math.container.querySelector('[data-math-view="block"]') as HTMLElement;
+    expect(mathView.getAttribute('title')).toBe(text('en-US', 'builtinBlock.math.title'));
+    mathView.dispatchEvent(new MouseEvent('dblclick', { bubbles: true }));
+    expect(math.container.querySelector('.nexnote-builtin-hint')?.textContent).toBe(
+      text('en-US', 'builtinBlock.math.hintBlock'),
+    );
+    expect(mathView.textContent).not.toMatch(/[\u4e00-\u9fff]/);
+    math.kernel.destroy();
+    math.container.remove();
+  });
+
+  it('切语言后已挂载的 NodeView 文案立即重算，无需重新挂载编辑器（ADR-0023）', async () => {
+    const { kernel, container } = makeEditor('段落\n\n', { mermaid: true, katex: false });
+    kernel.editor.commands.insertMermaidBlock({ source: 'graph TD\n  A --> B' });
+    await flush();
+    const view = container.querySelector<HTMLElement>('[data-mermaid-view]')!;
+    view.dispatchEvent(new MouseEvent('dblclick', { bubbles: true }));
+    expect(container.querySelector('.nexnote-builtin-hint')?.textContent).toBe(
+      text('zh-CN', 'builtinBlock.mermaid.hint'),
+    );
+
+    setLanguage('en-US');
+    expect(container.querySelector('.nexnote-builtin-hint')?.textContent).toBe(
+      text('en-US', 'builtinBlock.mermaid.hint'),
+    );
+    // 页面正文（“段落”）是内容数据；本处检查的 UI chrome 是 NodeView 提示。
+    expect(container.querySelector('.nexnote-builtin-hint')?.textContent ?? '').not.toMatch(
+      /[\u4e00-\u9fff]/,
+    );
+    kernel.destroy();
+    container.remove();
   });
 });

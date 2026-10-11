@@ -7,6 +7,7 @@ import type {
   ChatTurnMeta,
 } from '@nexnote/shared';
 import { invoke, onEvent } from '../../../lib/ipc';
+import { t } from '../../../lib/i18n';
 import { getSelectedSkillIds } from '../../skills/chat-skill-store';
 import { useChatStore } from './chat-store';
 import { activePageRef } from './chat-context-bridge';
@@ -51,7 +52,7 @@ async function persist(
     sync();
     await searchSessions();
   } catch (e) {
-    useChatStore.getState().setError(`会话自动保存失败：${errorMessage(e)}`);
+    useChatStore.getState().setError(t('chat.error.autoSaveFailed', { message: errorMessage(e) }));
   }
 }
 
@@ -155,7 +156,11 @@ export async function openSession(path: string): Promise<void> {
   lastError = session.error;
   useChatStore
     .getState()
-    .setError(status === 'failed' && session.error ? `上次回复失败：${session.error}` : null);
+    .setError(
+      status === 'failed' && session.error
+        ? t('chat.error.lastTurnFailed', { message: session.error })
+        : null,
+    );
   useChatStore.getState().setModelLabel(working.meta.model ?? null);
   sync();
 }
@@ -191,7 +196,7 @@ export async function sendMessage(rawText: string): Promise<void> {
   }
   const session = working;
   if (session.turns.length === 0) {
-    session.meta.title = content.slice(0, 24) || '新对话';
+    session.meta.title = content.slice(0, 24) || t('chat.default.title');
   }
   session.meta.updatedAt = new Date().toISOString();
   session.turns.push({ role: 'user', content });

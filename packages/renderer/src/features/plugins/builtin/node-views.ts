@@ -2,6 +2,7 @@ import type { Node as ProseMirrorNode } from '@tiptap/pm/model';
 import type { Editor } from '@tiptap/core';
 import { MERMAID_BLOCK_NAME, MATH_BLOCK_NAME, MATH_INLINE_NAME } from '@nexnote/kernel';
 import { renderKatexInto, renderMermaidSvg } from './render-lib';
+import { subscribeLanguage, t } from '../../../lib/i18n';
 
 /**
  * DEV-015 内置块的富预览 NodeView（框架无关 DOM，与内核 nodeview 同风格）。
@@ -53,11 +54,22 @@ export function createMermaidView() {
 
     const hint = document.createElement('div');
     hint.className = 'nexnote-builtin-hint';
-    hint.textContent = 'Mermaid 源码 · 双击预览 · 失焦或 ⌘/Ctrl+Enter 应用 · Esc 取消';
+    hint.textContent = t('builtinBlock.mermaid.hint');
 
     let current = node;
     let editing = false;
     let renderSeq = 0;
+    let lastErrorMessage: string | null = null;
+    let destroyed = false;
+
+    const refreshMermaidTexts = () => {
+      hint.textContent = t('builtinBlock.mermaid.hint');
+      if (preview.classList.contains('is-loading')) {
+        preview.textContent = t('builtinBlock.mermaid.rendering');
+      } else if (preview.classList.contains('is-error') && lastErrorMessage !== null) {
+        preview.textContent = t('builtinBlock.mermaid.error', { message: lastErrorMessage });
+      }
+    };
 
     const showPreview = () => {
       editing = false;
@@ -70,19 +82,24 @@ export function createMermaidView() {
         return;
       }
       const seq = ++renderSeq;
+      lastErrorMessage = null;
       preview.classList.add('is-loading');
-      preview.textContent = '图表渲染中…';
+      preview.textContent = t('builtinBlock.mermaid.rendering');
       renderMermaidSvg(source)
         .then((svg) => {
-          if (seq !== renderSeq) return;
+          if (destroyed || seq !== renderSeq) return;
+          lastErrorMessage = null;
           preview.classList.remove('is-loading', 'is-error');
           preview.innerHTML = svg;
         })
         .catch((error: unknown) => {
-          if (seq !== renderSeq) return;
+          if (destroyed || seq !== renderSeq) return;
+          lastErrorMessage = error instanceof Error ? error.message : String(error);
           preview.classList.remove('is-loading');
           preview.classList.add('is-error');
-          preview.textContent = `图表语法错误：${error instanceof Error ? error.message : String(error)}（双击编辑）`;
+          preview.textContent = t('builtinBlock.mermaid.error', {
+            message: error instanceof Error ? error.message : String(error),
+          });
         });
     };
 
@@ -120,6 +137,7 @@ export function createMermaidView() {
 
     if (String(node.attrs.source ?? '').trim()) showPreview();
     else showEdit();
+    const unsubscribeLanguage = subscribeLanguage(refreshMermaidTexts);
 
     return {
       dom: wrapper,
@@ -131,6 +149,12 @@ export function createMermaidView() {
       },
       stopEvent: () => editing,
       ignoreMutation: () => true,
+      destroy: () => {
+        destroyed = true;
+        // 让已发出的异步渲染失效，避免 resolve 后再写 detached DOM。
+        renderSeq += 1;
+        unsubscribeLanguage();
+      },
     };
   };
 }
@@ -141,7 +165,7 @@ function createMathEdit(displayMode: boolean) {
     wrapper.className = displayMode ? 'nexnote-math-view' : 'nexnote-math-inline-view';
     wrapper.setAttribute('data-math-view', displayMode ? 'block' : 'inline');
     wrapper.contentEditable = 'false';
-    wrapper.title = '双击编辑 LaTeX 公式';
+    wrapper.title = t('builtinBlock.math.title');
 
     const preview = document.createElement(displayMode ? 'div' : 'span');
     preview.className = 'nexnote-math-preview';
@@ -153,13 +177,27 @@ function createMathEdit(displayMode: boolean) {
 
     const hint = document.createElement('div');
     hint.className = 'nexnote-builtin-hint';
-    hint.textContent = displayMode
-      ? 'LaTeX 块级公式 · 失焦或 ⌘/Ctrl+Enter 应用 · Esc 取消'
-      : 'LaTeX 行内公式 · 失焦或 Enter 应用 · Esc 取消';
+    hint.textContent = t(
+      displayMode ? 'builtinBlock.math.hintBlock' : 'builtinBlock.math.hintInline',
+    );
 
     let current = node;
     let editing = false;
     let renderSeq = 0;
+    let lastErrorMessage: string | null = null;
+    let destroyed = false;
+
+    const refreshMathTexts = () => {
+      wrapper.title = t('builtinBlock.math.title');
+      hint.textContent = t(
+        displayMode ? 'builtinBlock.math.hintBlock' : 'builtinBlock.math.hintInline',
+      );
+      if (preview.classList.contains('is-loading')) {
+        preview.textContent = t('builtinBlock.math.rendering');
+      } else if (preview.classList.contains('is-error') && lastErrorMessage !== null) {
+        preview.textContent = t('builtinBlock.math.error', { message: lastErrorMessage });
+      }
+    };
 
     const showPreview = () => {
       editing = false;
@@ -172,15 +210,23 @@ function createMathEdit(displayMode: boolean) {
         return;
       }
       const seq = ++renderSeq;
-      preview.textContent = '公式渲染中…';
+      lastErrorMessage = null;
+      preview.classList.add('is-loading');
+      preview.textContent = t('builtinBlock.math.rendering');
       renderKatexInto(preview, source, displayMode)
         .then(() => {
           // katex.render 已同步填充 preview；过期渲染被后续 render 覆盖。
-          void seq;
+          if (destroyed || seq !== renderSeq) return;
+          preview.classList.remove('is-loading', 'is-error');
         })
         .catch((error: unknown) => {
-          if (seq !== renderSeq) return;
-          preview.textContent = `公式错误：${error instanceof Error ? error.message : String(error)}`;
+          if (destroyed || seq !== renderSeq) return;
+          lastErrorMessage = error instanceof Error ? error.message : String(error);
+          preview.classList.remove('is-loading');
+          preview.classList.add('is-error');
+          preview.textContent = t('builtinBlock.math.error', {
+            message: error instanceof Error ? error.message : String(error),
+          });
         });
     };
 
@@ -219,6 +265,7 @@ function createMathEdit(displayMode: boolean) {
 
     if (String(node.attrs.source ?? '').trim()) showPreview();
     else showEdit();
+    const unsubscribeLanguage = subscribeLanguage(refreshMathTexts);
 
     return {
       dom: wrapper,
@@ -230,6 +277,11 @@ function createMathEdit(displayMode: boolean) {
       },
       stopEvent: () => editing,
       ignoreMutation: () => true,
+      destroy: () => {
+        destroyed = true;
+        renderSeq += 1;
+        unsubscribeLanguage();
+      },
     };
   };
 }

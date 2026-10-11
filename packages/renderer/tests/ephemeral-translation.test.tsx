@@ -648,6 +648,23 @@ describe('DEV-041 翻译请求与流式状态', () => {
     expect(bridge.calls('agent:run:translation')).toHaveLength(0);
   });
 
+  it('en-US：超限错误按词典成文且无中文残留（ADR-0023）', () => {
+    setLanguage('en-US');
+    const oversized = 'x'.repeat(TRANSLATION_MAX_TEXT_CHARS + 1);
+    const c = controller(() => oversized);
+    c.translateSelection({ text: oversized, coords: { top: 0, left: 0 } });
+    const error = useTranslationStore.getState().selection?.error ?? '';
+    const en = (key: string, params?: Record<string, string | number>) =>
+      translate(CATALOGS['en-US'], key, 'en-US', params);
+    expect(error).toBe(
+      en('translation.overLimitSource', {
+        count: TRANSLATION_MAX_TEXT_CHARS.toLocaleString('en-US'),
+      }),
+    );
+    expect(error).not.toMatch(/[\u4e00-\u9fff]/);
+    closeTranslationWorkbench();
+  });
+
   it('全文翻译为内存态：不写盘、不进文档树、关闭即弃', async () => {
     const bridge = installBridge('# 页\n\n正文原文');
     const c = controller();

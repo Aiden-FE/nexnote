@@ -160,6 +160,35 @@ status: in_progress
   新增 26 key，zh/en 各 1101 key。`vault-manager` / IPC registrar /
   doctor / catalog targeted tests 通过；门禁 195 files / 1842 passed /
   3 skipped 退出码 0。
+- 阶段④第十三批（2026-10-11）：内置块 NodeView、翻译超限与对话运行时
+  错误文案双语收敛。
+  `features/plugins/builtin/node-views.ts` 是框架无关 DOM NodeView，此前完全
+  脱离 React，因此「像 i18n」的通知机制对它无效——8 处 Mermaid / LaTeX
+  提示语、渲染中占位、错误文案与 title 全部硬编码中文。现改用命令式
+  `t()`（NodeView 在用户交互时构造 DOM，每次求值都读取当前语言）。
+  翻译 controller 的两处超限错误改走 `translation.overLimitSource`
+  （`{count}` 复用 `TRANSLATION_MAX_TEXT_CHARS`，不再写死 "200,000" 字面量）。
+  对话运行时的三条上屏文案改走词典：自动保存失败 `chat.error.autoSaveFailed`、
+  打开失败会话 `chat.error.lastTurnFailed`，以及空内容首条消息的默认标题——
+  最后一处复用了主进程 `chat-service` 早已在用的 `chat.default.title`，
+  消除跨进程同一语义的重复硬编码。
+  共删除 13 行含 CJK 字面量（12 个唯一字符串，其中翻译超限错误在划词与
+  全文两个路径重复出现）；新增 11 key（8 个 `builtinBlock.*` +
+  1 个 `translation.overLimitSource` + 2 个 `chat.error.*`），zh/en 各
+  1612 key、零差集。
+  NodeView 不是 React 组件，且实例会在语言切换后继续存活；两个工厂均
+  订阅 `subscribeLanguage`，已挂载块在切语言时立即重算 hint / title /
+  loading / error 文案（渲染成功的 SVG / KaTeX 输出不受影响），destroy 时
+  反订阅并递增 renderSeq，令已发出的异步渲染失效，不得再写 detached DOM。
+  测试：`builtin-nodeviews` 新增 en-US 真实挂载断言（编辑提示、LaTeX
+  title、块级 hint 且无 CJK）与「先挂载、后切语言」断言；
+  新增 `builtin-nodeviews-i18n-states` 用 mock 渲染库锁定 Mermaid /
+  LaTeX 的 loading / error 状态随语言重算、上游错误原文保留、销毁后
+  late resolve 不写 DOM；`ephemeral-translation` 新增超限错误 en-US 精确
+  断言；`chat-flow` 的 bridge 新增 `failSave` 分支并断言自动保存失败文案。
+  三条路径均用「回退三个实现即失败」的变异测试证明断言有效。
+  门禁：四套 tsc 通过、`pnpm lint` 0、197 files / 1890 passed /
+  3 skipped 退出码 0。
 - 阶段③第五批（2026-10-10）：DOCX 导入/导出服务状态与旧版打开提示迁移。
   DocxService 应用自有校验/写入/导出错误按 code 对应词典成文；底层 ZIP /
   XML / 上游解压细节与路径数据保留原文边界。新增 10 key，zh/en 各 1111 key。
@@ -423,5 +452,5 @@ status: in_progress
   重开菜单重算」用例；kernel `writing-surfaces` 新增 `titleKey` 成文 +
   **插件误带缺失 key 时回退原文而非裸 key** 的边界用例。三条新路径均用
   变异测试（改回旧实现即失败）证明断言
-  有效。门禁：四套 tsc 通过、`pnpm lint` 0、197 files / 1887 passed /
+  有效。门禁：四套 tsc 通过、`pnpm lint` 0、198 files / 1895 passed /
   3 skipped 退出码 0。
