@@ -3,6 +3,7 @@ import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vite
 import { createRoot, type Root } from 'react-dom/client';
 import { act } from 'react';
 import type { EditorKernelInstance } from '@nexnote/kernel';
+import type * as KernelModuleType from '@nexnote/kernel';
 
 /**
  * DEV-109：预览解析失败横幅的重试交互。
@@ -13,6 +14,10 @@ import type { EditorKernelInstance } from '@nexnote/kernel';
  * kernel 模块边界注入「可控失败」的 setMarkdown，锁定 UI 交互闭环本身。
  */
 
+
+
+type KernelModule = KernelModuleType;
+
 const setMarkdownBehavior = vi.hoisted(() => ({
   /** 抛出的错误；null = 正常成功。 */
   throwMessage: null as string | null,
@@ -21,10 +26,10 @@ const setMarkdownBehavior = vi.hoisted(() => ({
 }));
 
 vi.mock('@nexnote/kernel', async (importOriginal) => {
-  const actual = await importOriginal<typeof import('@nexnote/kernel')>();
+  const actual = (await importOriginal()) as KernelModule;
   return {
     ...actual,
-    createEditor: (...args: Parameters<typeof actual.createEditor>) => {
+    createEditor: (...args: Parameters<KernelModule['createEditor']>) => {
       const kernel = actual.createEditor(...args);
       const real = kernel.setMarkdown.bind(kernel);
       const stub: EditorKernelInstance = Object.assign({}, kernel, {

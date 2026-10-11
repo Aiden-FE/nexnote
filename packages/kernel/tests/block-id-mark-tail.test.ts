@@ -21,12 +21,6 @@ import {
  * 落盘 `**加粗尾** ^id`（parse 侧认识的行末形态）。
  */
 
-interface MarkCase {
-  mark: string;
-  /** 文档 JSON 中末位文本节点的 marks。 */
-  marks: JSONContent['content'] extends (infer _T)[] | null ? never : never;
-}
-
 /** 各 inline mark 的落盘包裹形态（与 @tiptap/markdown 序列化器一致）。 */
 const MARK_WRAPPERS: Array<{ label: string; marks: Array<Record<string, unknown>>; wrap: (t: string) => string }> = [
   { label: '加粗', marks: [{ type: 'bold' }], wrap: (t) => `**${t}**` },
