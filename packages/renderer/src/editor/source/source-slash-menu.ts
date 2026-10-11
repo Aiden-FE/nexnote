@@ -35,15 +35,15 @@ interface SlashSession {
   epoch: number;
 }
 
-interface SourceSlashAction
-  extends Omit<
-    EditorActionCatalogEntry,
-    'nameKey' | 'hintKey' | 'group' | 'quickInsert'
-  > {
+interface SourceSlashAction extends Omit<
+  EditorActionCatalogEntry,
+  'nameKey' | 'hintKey' | 'group' | 'quickInsert'
+> {
   group: QuickInsertGroup;
   nameKey?: string;
   hintKey?: string;
   titleText?: string;
+  titleParams?: Readonly<Record<string, string | number>>;
   hintText?: string;
   quickInsert: QuickInsertMetadata;
   /** Host capability gate. A disabled plugin must not leak into source quick insert. */
@@ -133,13 +133,11 @@ function menuItems(
   ]);
   return filterQuickInsertCandidates(
     [
-      ...quickInsertCatalog('source').map(
-        (action): SourceSlashAction => ({
-          ...action,
-          group: action.quickInsert!.group,
-          quickInsert: action.quickInsert!,
-        }),
-      ),
+      ...quickInsertCatalog('source').map((action): SourceSlashAction => ({
+        ...action,
+        group: action.quickInsert!.group,
+        quickInsert: action.quickInsert!,
+      })),
       ...plugins,
     ].flatMap((action) =>
       action.quickInsert
@@ -147,7 +145,8 @@ function menuItems(
             {
               item: action as SourceSlashAction,
               id: action.id,
-              title: action.titleText ?? (action.nameKey ? t(action.nameKey) : ''),
+              title:
+                action.titleText ?? (action.nameKey ? t(action.nameKey, action.titleParams) : ''),
               aliases: action.quickInsert.aliases,
               group: action.quickInsert.group,
               contract: action.quickInsert,
@@ -291,7 +290,8 @@ export function sourceSlashMenu(options: SourceSlashMenuOptions): Extension {
       icon.dataset.slashIcon = action.icon;
       icon.setAttribute('aria-hidden', 'true');
       icon.textContent = icons[action.icon];
-      const title = action.titleText ?? (action.nameKey ? t(action.nameKey) : '');
+      const title =
+        action.titleText ?? (action.nameKey ? t(action.nameKey, action.titleParams) : '');
       const hint = action.hintText ?? (action.hintKey ? t(action.hintKey) : undefined);
       row.append(icon, document.createTextNode(title));
       if (hint) {

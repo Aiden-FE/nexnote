@@ -1,5 +1,10 @@
 import { describe, expect, it } from 'vitest';
-import type { PluginCommandView, PluginContributionView } from '@nexnote/shared';
+import {
+  CATALOGS,
+  translate,
+  type PluginCommandView,
+  type PluginContributionView,
+} from '@nexnote/shared';
 import {
   buildPluginBlockCommands,
   buildPluginBlockCommands as blocks,
@@ -50,7 +55,7 @@ describe('插件扩展点宿主派生（DEV-014）', () => {
   it('菜单项进入「插件」右键子菜单并带 scopedId 动作', () => {
     const items = buildPluginMenuItems(contributions);
     expect(items).toHaveLength(1);
-    expect(items[0]!.title).toBe('插件');
+    expect(items[0]!.titleKey).toBe('plugins.menu.title');
     expect(items[0]!.submenu?.[0]).toMatchObject({
       id: `${PLUGIN_MENU_ACTION_PREFIX}com.demo:tools`,
       // 插件贡献标题属内容边界（ADR-0023 MUST-NOT-translate），走 titleText。
@@ -64,12 +69,18 @@ describe('插件扩展点宿主派生（DEV-014）', () => {
     expect(defs).toEqual([
       {
         id: 'plugin-block:com.demo:card',
-        title: '插入插件块：Card',
-        keywords: expect.arrayContaining(['插件', 'plugin', 'block']),
+        titleKey: 'plugins.blockCommand.title',
+        titleText: 'Card',
+        keywords: expect.arrayContaining(['插件', 'plugin', 'block', 'Card']),
         pluginId: 'com.demo',
         blockType: 'card',
       },
     ]);
+    expect(
+      translate(CATALOGS['en-US'], 'plugins.blockCommand.title', 'en-US', {
+        title: defs[0]!.titleText,
+      }),
+    ).toBe('Insert plugin block: Card');
     void blocks;
   });
 

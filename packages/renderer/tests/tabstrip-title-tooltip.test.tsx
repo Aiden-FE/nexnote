@@ -108,4 +108,21 @@ describe('Tab 标题截断与 tooltip（DEV-035）', () => {
     expect(closeLabel.startsWith(text('en-US', 'common.close'))).toBe(true);
     expect(tablist?.getAttribute('aria-label')).not.toMatch(/[\u4e00-\u9fff]/);
   });
+
+  it('设置页签标题在 en-US 下重算且关闭按钮不含 CJK（ADR-0023）', () => {
+    useTabStore.getState().openTab({ kind: 'settings', title: '设置' });
+    setLanguage('en-US');
+    mount();
+    const settingsTab = document.querySelector(
+      '[data-testid="tab"][data-tab-identity="kind:settings"]',
+    );
+    const title = settingsTab?.querySelector<HTMLElement>('[data-testid="tab-title"]');
+    expect(title?.textContent).toBe(text('en-US', 'tabs.settings'));
+    expect(title?.getAttribute('title')).toBe(text('en-US', 'tabs.settings'));
+    const close = settingsTab?.querySelector<HTMLButtonElement>('button[aria-label]');
+    expect(close?.getAttribute('aria-label')).toBe(
+      text('en-US', 'tabs.closeWithTitle', { title: text('en-US', 'tabs.settings') }),
+    );
+    expect(close?.getAttribute('aria-label')).not.toMatch(/[\u4e00-\u9fff]/);
+  });
 });

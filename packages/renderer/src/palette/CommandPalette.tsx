@@ -24,9 +24,12 @@ export function useCommandPaletteHotkey(): void {
 }
 
 /** 命令的可检索文本：title/category 在两种语言下的成文 + 中英关键词（ADR-0023 双语索引）。 */
-function haystackFor(cmd: CommandDef, t: (key: string) => string): string {
+function haystackFor(
+  cmd: CommandDef,
+  t: (key: string, params?: Readonly<Record<string, string | number>>) => string,
+): string {
   return [
-    t(cmd.title),
+    t(cmd.title, cmd.titleParams),
     t(cmd.category),
     cmd.keywords?.join(' ') ?? '',
     // 同步保留另一语言成文：传入 zh/en 两套 t 更复杂，这里关键词已含双语，
@@ -36,7 +39,11 @@ function haystackFor(cmd: CommandDef, t: (key: string) => string): string {
     .toLowerCase();
 }
 
-function score(cmd: CommandDef, query: string, t: (key: string) => string): number {
+function score(
+  cmd: CommandDef,
+  query: string,
+  t: (key: string, params?: Readonly<Record<string, string | number>>) => string,
+): number {
   if (!query) return 1;
   const haystack = haystackFor(cmd, t);
   const idx = haystack.indexOf(query);
@@ -164,7 +171,9 @@ function PaletteInner() {
 
         <div ref={listRef} className="max-h-80 overflow-auto p-1.5">
           {filtered.length === 0 && (
-            <p className="px-3 py-8 text-center text-sm text-muted-foreground">{t('palette.noResults')}</p>
+            <p className="px-3 py-8 text-center text-sm text-muted-foreground">
+              {t('palette.noResults')}
+            </p>
           )}
           {filtered.map((cmd, index) => (
             <button
@@ -179,7 +188,7 @@ function PaletteInner() {
                 index === safeIndex ? 'bg-accent text-accent-foreground' : 'hover:bg-accent/60',
               )}
             >
-              <span className="flex-1 truncate">{t(cmd.title)}</span>
+              <span className="flex-1 truncate">{t(cmd.title, cmd.titleParams)}</span>
               <span className="text-[11px] text-muted-foreground">{t(cmd.category)}</span>
               {cmd.shortcut && (
                 <kbd className="rounded border bg-muted px-1.5 py-0.5 text-[10px] text-muted-foreground">

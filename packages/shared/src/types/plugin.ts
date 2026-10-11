@@ -1,6 +1,13 @@
 /** 插件 API 的首个稳定协议版本；破坏性变更必须提升 major。 */
 export const PLUGIN_API_VERSION = '1.0.0' as const;
 
+/** Stable plugin validation failure identifiers; renderer message keys must cover each code. */
+export const PLUGIN_CRASH_ERROR_CODES = {
+  PLUGIN_HEARTBEAT_TIMEOUT: 'PLUGIN_HEARTBEAT_TIMEOUT',
+} as const;
+
+export type PluginCrashErrorCode = keyof typeof PLUGIN_CRASH_ERROR_CODES;
+
 export type PluginPermission =
   'read' | 'edit' | 'filesystem' | 'network' | 'external-command' | 'desktop-privileged';
 

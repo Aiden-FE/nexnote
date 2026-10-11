@@ -82,7 +82,8 @@ export function PluginHost() {
     const unregisters = blocks.map((block) =>
       commandRegistry.register({
         id: block.id,
-        title: block.title,
+        title: block.titleKey,
+        titleParams: { title: block.titleText },
         category: t('command.category.plugins'),
         keywords: block.keywords,
         run: () => {

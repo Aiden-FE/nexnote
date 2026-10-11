@@ -597,7 +597,9 @@ export function SourceModeView({ tab }: { tab: TabDescriptor }) {
                   return [
                     ...buildDispatchableBlockCommands(contributions).map((def) => ({
                       id: def.id,
-                      titleText: def.title,
+                      nameKey: def.titleKey,
+                      titleText: def.titleText,
+                      titleParams: { title: def.titleText },
                       icon: blockMeta.icon,
                       semantic: 'insert' as const,
                       group: blockMeta.quickInsert.group,

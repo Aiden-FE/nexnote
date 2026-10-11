@@ -9,6 +9,7 @@ import type {
 import { invoke } from '../../lib/ipc';
 import { cn } from '../../lib/utils';
 import { t, useI18n } from '../../lib/i18n';
+import { PLUGIN_HEARTBEAT_TIMEOUT_CODE } from './sandbox-watchdog';
 
 interface PendingInstall {
   ticket: PluginInstallTicket;
@@ -55,6 +56,14 @@ export function PluginsSettingsPage() {
   }, [selectedId, loadAudit]);
 
   const selected = plugins?.find((plugin) => plugin.id === selectedId) ?? null;
+
+  /** 插件贡献崩溃保留原文边界；应用生成的稳定错误码按当前语言成文。 */
+  const pluginCrashDetail = (detail: string | undefined, rawFallback: string): string =>
+    detail === PLUGIN_HEARTBEAT_TIMEOUT_CODE
+      ? tr('plugins.error.PLUGIN_HEARTBEAT_TIMEOUT')
+      : (detail ?? rawFallback);
+  const pluginErrorText = (error: string): string => pluginCrashDetail(error, error);
+  const pluginAuditDetail = (detail: string | undefined): string => pluginCrashDetail(detail, '');
 
   return (
     <div className="space-y-4 text-sm" data-testid="plugins-settings">
@@ -119,9 +128,7 @@ export function PluginsSettingsPage() {
               </p>
             </div>
           </div>
-          <p className="mt-2 text-[11px] text-muted-foreground">
-            {tr('plugins.signatureNotice')}
-          </p>
+          <p className="mt-2 text-[11px] text-muted-foreground">{tr('plugins.signatureNotice')}</p>
           <div className="mt-3 flex gap-2">
             <button
               type="button"
@@ -220,7 +227,9 @@ export function PluginsSettingsPage() {
               </p>
               {selected.lastError && (
                 <p className="mt-1 text-xs text-destructive">
-                  {tr('plugins.lastError', { error: selected.lastError })}
+                  <span data-testid="plugin-last-error">
+                    {tr('plugins.lastError', { error: pluginErrorText(selected.lastError) })}
+                  </span>
                 </p>
               )}
               <p className="mt-3 text-xs font-medium">{tr('plugins.contributions')}</p>
@@ -266,9 +275,7 @@ export function PluginsSettingsPage() {
                   className="mt-3 rounded border border-amber-500/30 bg-amber-500/10 p-2 text-xs"
                   data-testid="plugin-revoke-challenge"
                 >
-                  <p>
-                    {tr('plugins.revokeConfirm', { permission: revokeChallenge.permission })}
-                  </p>
+                  <p>{tr('plugins.revokeConfirm', { permission: revokeChallenge.permission })}</p>
                   <div className="mt-2 flex gap-2">
                     <button
                       type="button"
@@ -295,7 +302,8 @@ export function PluginsSettingsPage() {
                 {audit.map((record) => (
                   <li key={record.id} className={record.allowed ? '' : 'text-destructive'}>
                     {new Date(record.at).toLocaleTimeString()} {record.operation}{' '}
-                    {record.permission ?? ''} {record.allowed ? '✓' : '✗'} {record.detail ?? ''}
+                    {record.permission ?? ''} {record.allowed ? '✓' : '✗'}{' '}
+                    {pluginAuditDetail(record.detail)}
                   </li>
                 ))}
                 {!audit.length && <li>{tr('plugins.auditEmpty')}</li>}

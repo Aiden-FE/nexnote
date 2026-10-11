@@ -13,6 +13,7 @@ import type {
   PluginRpcRequest,
   PluginRpcResponse,
   PluginSessionToken,
+  PluginCrashErrorCode,
   PluginView,
   PluginSkillContribution,
   SkillParams,
@@ -197,7 +198,8 @@ export class PluginService {
   confirmInstall(ticket: string, accept: boolean): PluginView {
     const stage = this.tickets.get(ticket);
     this.tickets.delete(ticket);
-    if (!stage) throw new PluginError(tCurrent('plugin.error.TICKET_NOT_FOUND'), 'TICKET_NOT_FOUND');
+    if (!stage)
+      throw new PluginError(tCurrent('plugin.error.TICKET_NOT_FOUND'), 'TICKET_NOT_FOUND');
     if (!accept) {
       this.record(stage.manifest.id, 'install.reject', false, undefined, 'user declined');
       rmSync(stage.stagingPath, { recursive: true, force: true });
@@ -246,7 +248,8 @@ export class PluginService {
   ): PluginAuthChallenge {
     const session = this.auth.verifySession(sessionId, token);
     const plugin = this.require(session.pluginId);
-    if (!plugin.enabled) throw new PluginError(tCurrent('plugin.error.PLUGIN_DISABLED'), 'PLUGIN_DISABLED');
+    if (!plugin.enabled)
+      throw new PluginError(tCurrent('plugin.error.PLUGIN_DISABLED'), 'PLUGIN_DISABLED');
     if (plugin.state !== 'active')
       throw new PluginError(tCurrent('plugin.error.PLUGIN_NOT_ACTIVE'), 'PLUGIN_NOT_ACTIVE');
     return this.auth.beginChallenge(sessionId, token, session.pluginId, request);
@@ -280,7 +283,10 @@ export class PluginService {
   revokePermission(pluginId: string, permission: PluginPermission): PluginView {
     const plugin = this.require(pluginId);
     if (!plugin.manifest.permissions.includes(permission)) {
-      throw new PluginError(tCurrent('plugin.error.PERMISSION_UNDECLARED'), 'PERMISSION_UNDECLARED');
+      throw new PluginError(
+        tCurrent('plugin.error.PERMISSION_UNDECLARED'),
+        'PERMISSION_UNDECLARED',
+      );
     }
     plugin.grants.set(permission, { granted: false, alwaysAllow: false });
     this.record(plugin.manifest.id, 'permission.revoke', true, permission);
@@ -295,7 +301,8 @@ export class PluginService {
 
   beginSession(pluginId: string, nonce: string, origin: string): PluginSessionToken {
     const plugin = this.require(pluginId);
-    if (!plugin.enabled) throw new PluginError(tCurrent('plugin.error.PLUGIN_DISABLED'), 'PLUGIN_DISABLED');
+    if (!plugin.enabled)
+      throw new PluginError(tCurrent('plugin.error.PLUGIN_DISABLED'), 'PLUGIN_DISABLED');
     if (plugin.state !== 'active')
       throw new PluginError(tCurrent('plugin.error.PLUGIN_NOT_ACTIVE'), 'PLUGIN_NOT_ACTIVE');
     return this.auth.beginSession(pluginId, nonce, origin);
@@ -323,12 +330,13 @@ export class PluginService {
     token: string,
     pluginId: string,
     message: string,
+    error?: PluginCrashErrorCode,
   ): PluginView {
     const session = this.auth.verifySession(sessionId, token, pluginId);
     const plugin = this.require(pluginId);
     plugin.state = 'crashed';
     plugin.enabled = false;
-    plugin.lastError = message.slice(0, 500);
+    plugin.lastError = (error ?? message).slice(0, 500);
     this.deactivate(plugin);
     this.record(pluginId, 'runtime.crash', false, undefined, plugin.lastError);
     this.auth.revokeSession(session.sessionId);
@@ -420,7 +428,10 @@ export class PluginService {
             permission,
             tCurrent('plugin.error.PERMISSION_UNDECLARED'),
           );
-          throw new PluginError(tCurrent('plugin.error.PERMISSION_UNDECLARED'), 'PERMISSION_UNDECLARED');
+          throw new PluginError(
+            tCurrent('plugin.error.PERMISSION_UNDECLARED'),
+            'PERMISSION_UNDECLARED',
+          );
         }
         const state = plugin.grants.get(permission);
         this.record(plugin.manifest.id, 'permission.request', state?.granted === true, permission);
@@ -488,7 +499,11 @@ export class PluginService {
 
   private require(pluginId: string): InstalledPlugin {
     const plugin = this.plugins.get(pluginId);
-    if (!plugin) throw new PluginError(tCurrent('plugin.error.PLUGIN_NOT_FOUND', { id: pluginId }), 'PLUGIN_NOT_FOUND');
+    if (!plugin)
+      throw new PluginError(
+        tCurrent('plugin.error.PLUGIN_NOT_FOUND', { id: pluginId }),
+        'PLUGIN_NOT_FOUND',
+      );
     return plugin;
   }
 
@@ -569,7 +584,10 @@ export class PluginService {
     const source =
       plugin.approvedSource ?? readFileSync(join(plugin.source.path, plugin.manifest.main), 'utf8');
     if (source.length > MAX_PLUGIN_SOURCE_BYTES) {
-      throw new PluginError(tCurrent('plugin.error.PLUGIN_RESOURCE_LIMIT'), 'PLUGIN_RESOURCE_LIMIT');
+      throw new PluginError(
+        tCurrent('plugin.error.PLUGIN_RESOURCE_LIMIT'),
+        'PLUGIN_RESOURCE_LIMIT',
+      );
     }
     return source;
   }

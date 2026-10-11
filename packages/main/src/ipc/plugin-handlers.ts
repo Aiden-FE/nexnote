@@ -13,20 +13,25 @@ export function registerPluginHandlers(registrar: IpcRegistrar): void {
   registrar.register('plugins:listCommands', (_p, s) => ok(s.plugins.listCommands()));
   registrar.register('plugins:listContributions', (_p, s) => ok(s.plugins.listContributions()));
 
-  registrar.register('plugins:pickSource', async (payload, s): Promise<Result<{ path: string | null }>> => {
-    const path =
-      payload.source === 'zip'
-        ? await s.dialogs.pickFile([{ name: 'Plugin ZIP', extensions: ['zip'] }])
-        : await s.dialogs.pickDirectory();
-    return ok({ path });
-  });
+  registrar.register(
+    'plugins:pickSource',
+    async (payload, s): Promise<Result<{ path: string | null }>> => {
+      const path =
+        payload.source === 'zip'
+          ? await s.dialogs.pickFile([{ name: 'Plugin ZIP', extensions: ['zip'] }])
+          : await s.dialogs.pickDirectory();
+      return ok({ path });
+    },
+  );
 
   registrar.register('plugins:installPreview', (payload, s) =>
     ok(s.plugins.previewInstall(payload.source, payload.path)),
   );
   registrar.register('plugins:confirmInstall', (payload, s): Result<PluginView> => {
     const view = s.plugins.confirmInstall(payload.ticket, payload.accept);
-    s.windows.sendToMainWindow('plugins:changed', { reason: payload.accept ? 'install' : 'install-declined' });
+    s.windows.sendToMainWindow('plugins:changed', {
+      reason: payload.accept ? 'install' : 'install-declined',
+    });
     return ok(view);
   });
   registrar.register('plugins:uninstall', (payload, s) => {
@@ -36,7 +41,9 @@ export function registerPluginHandlers(registrar: IpcRegistrar): void {
   });
   registrar.register('plugins:setEnabled', (payload, s): Result<PluginView> => {
     const view = s.plugins.setEnabled(payload.pluginId, payload.enabled);
-    s.windows.sendToMainWindow('plugins:changed', { reason: payload.enabled ? 'enabled' : 'disabled' });
+    s.windows.sendToMainWindow('plugins:changed', {
+      reason: payload.enabled ? 'enabled' : 'disabled',
+    });
     return ok(view);
   });
 
@@ -61,9 +68,7 @@ export function registerPluginHandlers(registrar: IpcRegistrar): void {
     return ok(undefined);
   });
   registrar.register('plugins:getRuntimeSource', (payload, s) =>
-    ok(
-      s.plugins.runtimeSourceForSession(payload.sessionId, payload.token, payload.pluginId),
-    ),
+    ok(s.plugins.runtimeSourceForSession(payload.sessionId, payload.token, payload.pluginId)),
   );
   registrar.register('plugins:reportCrash', (payload, s): Result<PluginView> => {
     const view = s.plugins.reportCrashForSession(
@@ -71,6 +76,7 @@ export function registerPluginHandlers(registrar: IpcRegistrar): void {
       payload.token,
       payload.pluginId,
       payload.message,
+      payload.error,
     );
     s.windows.sendToMainWindow('plugins:changed', { reason: 'crashed' });
     return ok(view);

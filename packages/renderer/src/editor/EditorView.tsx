@@ -260,7 +260,9 @@ function buildPluginBlockSlashItems(_kernel: EditorKernelInstance): SlashMenuIte
   const meta = pluginQuickInsertMetadata('block');
   return defs.map((d) => ({
     id: d.id,
-    titleText: d.title,
+    titleKey: d.titleKey,
+    titleText: d.titleText,
+    titleParams: { title: d.titleText },
     hintText: d.blockType,
     icon: meta.icon,
     keywords: [...meta.quickInsert.aliases, ...(d.keywords ?? []).map((k) => String(k))],

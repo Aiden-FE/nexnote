@@ -37,6 +37,8 @@ export interface DockPanelDef {
 export interface CommandDef {
   id: string;
   title: string;
+  /** 用于 `title` 中的 `{placeholder}` 参数（如插件贡献标题）。 */
+  titleParams?: Readonly<Record<string, string | number>>;
   category: string;
   keywords?: string[];
   shortcut?: string;

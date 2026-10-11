@@ -159,6 +159,8 @@ export function TabStrip() {
       {tabs.map((tab) => {
         const Icon = kindIcon[tab.kind] ?? FileText;
         const isActive = activeTabId === tab.id;
+        // settings 标题是应用 chrome；tab.title 仅是持久化数据，语言切换后由 kind 重算。
+        const displayTitle = tab.kind === 'settings' ? t('tabs.settings') : tab.title;
         const hintForTab = dropHint?.tabId === tab.id ? dropHint : null;
         return (
           <div
@@ -197,15 +199,15 @@ export function TabStrip() {
               hintForTab?.side === 'before' && 'border-l-2 border-l-primary',
               hintForTab?.side === 'after' && 'border-r-2 border-r-primary',
             )}
-            title={tab.title}
+            title={displayTitle}
           >
             <Icon className="size-3.5 shrink-0" />
-            <span data-testid="tab-title" className="truncate" title={tab.title}>
-              {tab.title}
+            <span data-testid="tab-title" className="truncate" title={displayTitle}>
+              {displayTitle}
             </span>
             <button
               type="button"
-              aria-label={t('tabs.closeWithTitle', { title: tab.title })}
+              aria-label={t('tabs.closeWithTitle', { title: displayTitle })}
               draggable={false}
               onClick={(e) => {
                 e.stopPropagation();

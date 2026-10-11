@@ -34,6 +34,8 @@ export interface QuickInsertItem {
   titleKey?: string;
   /** Plugin-defined titles are content contributed by the plugin, not app UI copy. */
   titleText?: string;
+  /** Placeholder values for `titleKey`; never a substitute for `titleText`. */
+  titleParams?: Readonly<Record<string, string | number>>;
   hintKey?: string;
   hintText?: string;
   icon?: EditorActionIconKey;
@@ -81,7 +83,8 @@ export function filterQuickInsertItems(
     items.map((item) => ({
       item,
       id: item.id,
-      title: item.titleText ?? (item.titleKey ? tCurrent(item.titleKey) : item.id),
+      title:
+        item.titleText ?? (item.titleKey ? tCurrent(item.titleKey, item.titleParams) : item.id),
       aliases: item.aliases,
       keywords: item.keywords,
       group: item.group,

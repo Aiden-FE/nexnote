@@ -55,4 +55,4 @@ export {
 } from './ipc/reexports';
 
 export { TRANSLATION_MAX_TEXT_CHARS } from './types/agent';
-export { PLUGIN_API_VERSION, BUILTIN_PLUGIN_IDS } from './types/plugin';
+export { PLUGIN_API_VERSION, BUILTIN_PLUGIN_IDS, PLUGIN_CRASH_ERROR_CODES } from './types/plugin';

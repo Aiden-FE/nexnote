@@ -189,6 +189,29 @@ status: in_progress
   三条路径均用「回退三个实现即失败」的变异测试证明断言有效。
   门禁：四套 tsc 通过、`pnpm lint` 0、197 files / 1890 passed /
   3 skipped 退出码 0。
+- 阶段④第十四批（2026-10-11）：插件 UI 框架文案、贡献标题契约与心跳超时
+  错误码化双语收敛。
+  设置页签标题属于应用 UI chrome，不再误用插件或持久化 title 数据：
+  `TabStrip` 为 settings 页签统一改读 `tabs.settings`，en-US 真实渲染测试
+  锁定 tooltip 无 CJK。插件右键父级菜单由硬编码「插件」改为
+  `plugins.menu.title`；插件块插入模板改为 `plugins.blockCommand.title`，
+  并新增 `CommandDef.titleParams`、`PluginBlockCommandDef.titleText` 以及
+  slash 菜单 `titleParams`，命令面板和富文本 / 源码 slash 菜单都只把插件
+  贡献标题作为模板参数，绝不翻译插件内容。
+  heartbeat 超时不再把中文句子持久化进插件 `lastError` / 审计 detail；
+  `plugins:reportCrash` 新增可选 `error` 字段并在 IPC 校验器中限制为已知
+  app code；`PluginSandboxFrame` 为 heartbeat 同时发送带命名空间的 message
+  与 `error`，主进程优先持久化 `error`，`PluginsSettingsPage` 展示时映射
+  `plugins.error.PLUGIN_HEARTBEAT_TIMEOUT`；第三方崩溃不带 code，原始
+  字符串继续保留原文。
+  新增 4 key（`tabs.settings`、`plugins.menu.title`、
+  `plugins.blockCommand.title`、`plugins.error.PLUGIN_HEARTBEAT_TIMEOUT`），
+  zh/en 各 1617 key、零差集。新增 `plugins-settings-page` en-US 真实渲染
+  测试：稳定 heartbeat code 在 last error 与审计明细成文，第三方 `boom`
+  保持原文；`plugin-host` 用 fake timers 锁定 heartbeat 持久化
+  `error=PLUGIN_HEARTBEAT_TIMEOUT`，并单独锁定非 heartbeat 转发串不带 code。
+  门禁：四套 tsc 通过、`pnpm lint` 0、204 files /
+  1921 passed / 3 skipped 退出码 0。
 - 阶段③第五批（2026-10-10）：DOCX 导入/导出服务状态与旧版打开提示迁移。
   DocxService 应用自有校验/写入/导出错误按 code 对应词典成文；底层 ZIP /
   XML / 上游解压细节与路径数据保留原文边界。新增 10 key，zh/en 各 1111 key。

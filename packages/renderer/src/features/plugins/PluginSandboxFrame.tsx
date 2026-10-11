@@ -1,9 +1,20 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { PLUGIN_API_VERSION, type PluginView } from '@nexnote/shared';
+import {
+  PLUGIN_API_VERSION,
+  PLUGIN_CRASH_ERROR_CODES,
+  type PluginCrashErrorCode,
+  type PluginView,
+} from '@nexnote/shared';
 import { invoke } from '../../lib/ipc';
 import { invokeWithPermissionRetry } from './permission-flow';
 import type { PermissionPrompt, SandboxMessage } from './sandbox-protocol';
 import { PLUGIN_HEARTBEAT_TIMEOUT_MS } from './sandbox-watchdog';
+
+/** App-generated crash codes are namespaced before persistence. */
+const APP_CRASH_SOURCE = 'APP';
+
+const typedCrash = (code: keyof typeof PLUGIN_CRASH_ERROR_CODES): string =>
+  `${APP_CRASH_SOURCE}:${PLUGIN_CRASH_ERROR_CODES[code]}`;
 
 export function PluginSandboxFrame({
   plugin,
@@ -102,13 +113,14 @@ export function PluginSandboxFrame({
     let cancelled = false;
     let heartbeatTimer: number | null = null;
 
-    const isolateCrash = (message: string): void => {
+    const isolateCrash = (message: string, error?: PluginCrashErrorCode): void => {
       // Revoke the main-process session first; only then remove executable frame state.
       void invoke('plugins:reportCrash', {
         sessionId: session.sessionId,
         token: session.token,
         pluginId: pluginRef.current,
         message,
+        error,
       }).finally(() => {
         portRef.current?.close();
         portRef.current = null;
@@ -123,7 +135,10 @@ export function PluginSandboxFrame({
       if (cancelled) return;
       if (performance.now() - lastBeat > PLUGIN_HEARTBEAT_TIMEOUT_MS) {
         cancelled = true;
-        isolateCrash('插件脚本无响应（heartbeat 超时）');
+        isolateCrash(
+          typedCrash('PLUGIN_HEARTBEAT_TIMEOUT'),
+          PLUGIN_CRASH_ERROR_CODES.PLUGIN_HEARTBEAT_TIMEOUT,
+        );
         return;
       }
       heartbeatTimer = window.setTimeout(tick, 500);
@@ -218,9 +233,7 @@ export function PluginSandboxFrame({
       sandbox="allow-scripts"
       src={runtimeUrl}
       className={
-        visible
-          ? 'h-full min-h-[180px] w-full rounded border bg-card'
-          : 'hidden h-0 w-0 border-0'
+        visible ? 'h-full min-h-[180px] w-full rounded border bg-card' : 'hidden h-0 w-0 border-0'
       }
     />
   );

@@ -82,7 +82,7 @@ export function createQuickInsertView(className: string): QuickInsertView {
         }
         const label = document.createElement('span');
         label.textContent =
-          item.titleText ?? (item.titleKey ? tCurrent(item.titleKey) : item.id);
+          item.titleText ?? (item.titleKey ? tCurrent(item.titleKey, item.titleParams) : item.id);
         row.append(label);
         const hintText = item.hintText ?? (item.hintKey ? tCurrent(item.hintKey) : undefined);
         if (hintText) {

@@ -1,5 +1,5 @@
 import type { IpcChannel, ChannelRequest } from '@nexnote/shared';
-import { isMindmapStructureId, tCurrent } from '@nexnote/shared';
+import { isMindmapStructureId, PLUGIN_CRASH_ERROR_CODES, tCurrent } from '@nexnote/shared';
 import { TARGET_LANGUAGE_PATTERN, TRANSLATION_MAX_TEXT_CHARS } from '../agent/translation';
 
 /** Stable error returned when renderer-controlled IPC input does not match its contract. */
@@ -60,7 +60,8 @@ const validateObject =
   (payload) => {
     if (!isPlainObject(payload)) return invalid(tCurrent('validation.error.PAYLOAD_OBJECT'));
     for (const key of Object.keys(payload)) {
-      if (!allowed.includes(key)) return invalid(tCurrent('validation.error.UNKNOWN_FIELD', { key }));
+      if (!allowed.includes(key))
+        return invalid(tCurrent('validation.error.UNKNOWN_FIELD', { key }));
     }
     for (const validate of fields) {
       const error = validate(payload);
@@ -212,7 +213,9 @@ const binaryHostSetBounds: PayloadValidator = (payload) => {
   for (const key of ['x', 'y', 'width', 'height'] as const) {
     const value = (bounds as Record<string, unknown>)[key];
     if (typeof value !== 'number' || !Number.isFinite(value) || value < 0) {
-      return invalid(tCurrent('validation.error.BOUNDS_FIELD_NONNEGATIVE', { key: `bounds.${key}` }));
+      return invalid(
+        tCurrent('validation.error.BOUNDS_FIELD_NONNEGATIVE', { key: `bounds.${key}` }),
+      );
     }
   }
   return null;
@@ -329,7 +332,8 @@ const aiConnectionTarget: PayloadValidator = (payload) => {
       (p) => {
         const candidate = (p as Record<string, unknown>).candidate;
         if (candidate === undefined) return null;
-        if (!isPlainObject(candidate)) return invalid(tCurrent('validation.error.CANDIDATE_OBJECT'));
+        if (!isPlainObject(candidate))
+          return invalid(tCurrent('validation.error.CANDIDATE_OBJECT'));
         return object(
           ['kind', 'baseUrl', 'credentialToken', 'defaultModel'],
           [
@@ -623,16 +627,22 @@ const saveLayout: PayloadValidator = (payload) => {
     // DEV-003 layouts may predate newer tree fields; missing fields are defaulted on read.
     if (value === undefined) continue;
     if (type === 'number' && (typeof value !== 'number' || !Number.isFinite(value)))
-      return invalid(tCurrent('validation.error.LAYOUT_FIELD_FINITE_NUMBER', { key: `layout.${key}` }));
+      return invalid(
+        tCurrent('validation.error.LAYOUT_FIELD_FINITE_NUMBER', { key: `layout.${key}` }),
+      );
     if (type === 'boolean' && typeof value !== 'boolean')
       return invalid(tCurrent('validation.error.LAYOUT_FIELD_BOOLEAN', { key: `layout.${key}` }));
     if (type === 'nullable-string' && value !== null && typeof value !== 'string')
-      return invalid(tCurrent('validation.error.LAYOUT_FIELD_STRING_OR_NULL', { key: `layout.${key}` }));
+      return invalid(
+        tCurrent('validation.error.LAYOUT_FIELD_STRING_OR_NULL', { key: `layout.${key}` }),
+      );
     if (
       type === 'string-array' &&
       (!Array.isArray(value) || value.some((item) => typeof item !== 'string'))
     )
-      return invalid(tCurrent('validation.error.LAYOUT_FIELD_STRING_ARRAY', { key: `layout.${key}` }));
+      return invalid(
+        tCurrent('validation.error.LAYOUT_FIELD_STRING_ARRAY', { key: `layout.${key}` }),
+      );
   }
   return null;
 };
@@ -683,6 +693,18 @@ const pluginObjectChannels = [
 ] as const;
 const pluginObject: PayloadValidator = (payload) =>
   isPlainObject(payload) ? null : invalid(tCurrent('validation.error.PAYLOAD_OBJECT'));
+
+const pluginCrashErrorCodes = [...Object.values(PLUGIN_CRASH_ERROR_CODES)] as const;
+
+const pluginCrashReport: PayloadValidator = (payload) => {
+  const objectCheck = pluginObject(payload);
+  if (objectCheck) return objectCheck;
+  const error = (payload as Record<string, unknown>).error;
+  if (error === undefined) return null;
+  if (!pluginCrashErrorCodes.includes(error as (typeof pluginCrashErrorCodes)[number]))
+    return invalid(tCurrent('validation.error.PAYLOAD_OBJECT'));
+  return null;
+};
 
 const skillsObjectChannels = [
   'skills:setEnabled',
@@ -748,6 +770,7 @@ const VALIDATORS: Partial<Record<IpcChannel, PayloadValidator>> = {
   ...(Object.fromEntries(pluginObjectChannels.map((c) => [c, pluginObject])) as Partial<
     Record<IpcChannel, PayloadValidator>
   >),
+  'plugins:reportCrash': pluginCrashReport,
   ...(Object.fromEntries(skillsObjectChannels.map((c) => [c, pluginObject])) as Partial<
     Record<IpcChannel, PayloadValidator>
   >),

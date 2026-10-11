@@ -41,13 +41,16 @@ export function buildPluginMenuItems<
     id: pluginMenuActionId(item.scopedId ?? item.id),
     titleText: item.title,
   }));
-  return [{ title: '插件', submenu }];
+  return [{ titleKey: 'plugins.menu.title', submenu }];
 }
 
 /** 由插件块类型贡献派生需要登记的插入块命令描述。 */
 export interface PluginBlockCommandDef {
   id: string;
-  title: string;
+  /** 应用自有模板 key；`{title}` 参数由插件贡献标题填充。 */
+  titleKey: string;
+  /** 插件贡献标题：MUST-NOT-translate 边界，只作为模板参数。 */
+  titleText: string;
   keywords: string[];
   pluginId: string;
   blockType: string;
@@ -60,8 +63,9 @@ export function buildPluginBlockCommands(
     .filter((item) => item.kind === 'blockTypes')
     .map((item) => ({
       id: pluginBlockCommandId(item.pluginId, item.blockType ?? item.id),
-      title: `插入插件块：${item.title}`,
-      keywords: ['插件', 'plugin', 'block', ...(item.keywords ?? [])],
+      titleKey: 'plugins.blockCommand.title',
+      titleText: item.title,
+      keywords: ['插件', 'plugin', 'block', item.title, ...(item.keywords ?? [])],
       pluginId: item.pluginId,
       blockType: item.blockType ?? item.id,
     }));

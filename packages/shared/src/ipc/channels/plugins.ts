@@ -3,6 +3,7 @@ import type {
   PluginAuditRecord,
   PluginAuthChallenge,
   PluginCommandView,
+  PluginCrashErrorCode,
   PluginContributionView,
   PluginInstallTicket,
   PluginPermission,
@@ -95,7 +96,13 @@ export interface PluginsChannelMap {
     response: Result<{ pluginId: string; source: string }>;
   };
   'plugins:reportCrash': {
-    request: { sessionId: string; token: string; pluginId: string; message: string };
+    request: {
+      sessionId: string;
+      token: string;
+      pluginId: string;
+      message: string;
+      error?: PluginCrashErrorCode;
+    };
     response: Result<PluginView>;
   };
   'plugins:beginAuthChallenge': {
