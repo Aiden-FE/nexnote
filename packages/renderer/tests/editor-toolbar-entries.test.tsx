@@ -3,12 +3,14 @@ import { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
+  CATALOGS,
   defaultVaultSettings,
   editorActionCatalogEntry,
   BUILTIN_PLUGIN_IDS,
+  translate,
 } from '@nexnote/shared';
 import { TextSelection } from '@tiptap/pm/state';
-import { t } from '../src/lib/i18n';
+import { setLanguage, t } from '../src/lib/i18n';
 import { EditorView } from '../src/editor/EditorView';
 import { SourceModeView } from '../src/editor/source/SourceModeView';
 import { getActiveEditor } from '../src/editor/active-editor';
@@ -29,6 +31,12 @@ import { useTabStore, type TabDescriptor } from '../src/stores/tab-store';
  */
 
 globalThis.IS_REACT_ACT_ENVIRONMENT = true;
+
+const text = (
+  language: 'zh-CN' | 'en-US',
+  key: string,
+  params?: Record<string, string | number>,
+): string => translate(CATALOGS[language], key, language, params);
 
 const sourceCommands = vi.hoisted(() => ({
   insertBlock: vi.fn(),
@@ -174,6 +182,7 @@ afterEach(async () => {
   delete (window as unknown as { nexnote?: unknown }).nexnote;
   useTabStore.setState({ tabs: [], activeTabId: null });
   usePluginStore.setState({ plugins: [], contributions: [], commands: [] });
+  setLanguage('zh-CN');
 });
 
 describe('DEV-050 共享动作模型单一数据源', () => {
@@ -186,8 +195,10 @@ describe('DEV-050 共享动作模型单一数据源', () => {
       expect(entry.label, entry.id).toBe(action.label);
       expect(entry.icon, entry.id).toBe(action.icon);
     }
-    expect(editorAction('format:code').label).toBe('行内代码');
-    expect(editorAction('format:link').label).toBe('外链');
+    expect(editorAction('format:code').label).toBe(
+      text('zh-CN', 'editorAction.format:code.name'),
+    );
+    expect(editorAction('format:link').label).toBe(text('zh-CN', 'editorAction.format:link.name'));
     for (const id of ['edit:undo', 'edit:redo', 'format:bold', 'format:italic', 'format:link']) {
       const action = editorAction(id);
       expect(action.hint, id).toBeTruthy();
@@ -379,8 +390,12 @@ describe('块编辑工具栏（DEV-035）', () => {
     for (let level = 1; level <= 6; level += 1) {
       expect(menuItem(`block:heading:${level}`), `h${level}`).not.toBeNull();
     }
-    expect(menuItem('block:heading:1')?.textContent).toContain('页面标题 H1');
-    expect(menuItem('block:heading:1')?.textContent).toContain('首个正文 H1 与文件名同步');
+    expect(menuItem('block:heading:1')?.textContent).toContain(
+      text('zh-CN', 'editorAction.block:heading:1.name'),
+    );
+    expect(menuItem('block:heading:1')?.textContent).toContain(
+      text('zh-CN', 'toolbar.heading.pageTitle'),
+    );
   });
 
   it('复杂跨块标题转换项保持可聚焦并以 aria-label 解释禁用原因', async () => {
@@ -402,9 +417,46 @@ describe('块编辑工具栏（DEV-035）', () => {
     press(entry('block:type')!, 'ArrowDown');
     const h2 = menuItem('block:heading:2');
     expect(h2?.getAttribute('aria-disabled')).toBe('true');
-    expect(h2?.getAttribute('aria-label')).toContain('跨复杂结构');
+    expect(h2?.getAttribute('aria-label')).toContain(
+      text('zh-CN', 'toolbar.heading.disabled.complexSelection'),
+    );
     h2?.focus();
     expect(document.activeElement).toBe(h2);
+  });
+
+  it('en-US 工具栏按钮与菜单项按词典成文且无 CJK 残留（ADR-0023）', async () => {
+    setLanguage('en-US');
+    installBridge('# Test page\n\nBody\n');
+    await mount(<EditorView tab={blockTab} />);
+    await vi.waitFor(() => expect(getActiveEditor()).not.toBeNull());
+
+    const persistentIds = [
+      'edit:undo',
+      'edit:redo',
+      'format:bold',
+      'format:italic',
+      'format:wikilink',
+    ] as const;
+    for (const id of persistentIds) {
+      const nameKey = editorActionCatalogEntry(id)!.nameKey;
+      expect(entry(id)?.getAttribute('aria-label'), id).toBe(text('en-US', nameKey));
+    }
+
+    press(entry('menu:format')!, 'ArrowDown');
+    for (const id of ['format:strike', 'format:code', 'format:link'] as const) {
+      const nameKey = editorActionCatalogEntry(id)!.nameKey;
+      expect(menuItem(id)?.textContent, id).toContain(text('en-US', nameKey));
+    }
+
+    const labels = [
+      ...[...container.querySelectorAll('[data-toolbar-item="true"]')].map(
+        (node) => node.getAttribute('aria-label') ?? '',
+      ),
+      ...[...container.querySelectorAll('[data-testid="editor-toolbar"] button')].map(
+        (node) => node.textContent ?? '',
+      ),
+    ];
+    expect(labels.join('\n')).not.toMatch(/[\u4e00-\u9fff]/);
   });
 
   it('工具栏格式化动作真实作用于内核选区', async () => {

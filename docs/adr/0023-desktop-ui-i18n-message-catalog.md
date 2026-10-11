@@ -338,3 +338,11 @@ status: in_progress
   渲染断言（菜单文本无 CJK）。本批只改测试，不新增消息 key，zh/en 保持
   1553 key；retrieval-sources / source-slash-menu targeted tests 通过；
   全量门禁 196 files / 1874 passed / 3 skipped 退出码 0。
+- 阶段④第七批（2026-10-11）：编辑器工具栏动作模型与菜单文案测试迁移。
+  `editor-toolbar-entries` 的动作标签断言从硬编码中文改为
+  `editorActionCatalogEntry().nameKey` / `toolbar.heading.pageTitle` /
+  `toolbar.heading.disabled.complexSelection` 词典取值，并新增 en-US 真实渲染
+  断言（常驻动作 aria-label、格式菜单项文案、工具栏整体无 CJK）；页面标题与
+  文件名继续作为内容数据。本批只改测试，不新增消息 key，zh/en 保持 1553 key；
+  editor-toolbar-entries targeted tests 通过；全量门禁 196 files /
+  1875 passed / 3 skipped 退出码 0。
