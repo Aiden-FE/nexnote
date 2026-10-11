@@ -282,12 +282,12 @@
   {
     "file": "chat/chat-service.ts",
     "text": "blocks.push(['> 提问：', ...content.split('\\n').map((line) => `> ${line}`)].join('\\n'));",
-    "reason": "数据值 / 默认文件名 / 导出内容标记：属于内容数据，不随界面语言切换"
+    "reason": "Git commit message 与自动提交摘要：不随界面语言本地化"
   },
   {
     "file": "chat/chat-service.ts",
     "text": "blocks.push(`<!-- 用户提问\\n${content}\\n-->`);",
-    "reason": "数据值 / 默认文件名 / 导出内容标记：属于内容数据，不随界面语言切换"
+    "reason": "Git commit message 与自动提交摘要：不随界面语言本地化"
   },
   {
     "file": "docx/docx-service.ts",
@@ -320,11 +320,6 @@
     "reason": "开发日志：开发者诊断输出，不上屏"
   },
   {
-    "file": "git/git-service.ts",
-    "text": "const INITIAL_MESSAGE = 'nexnote:init: 知识库初始化';",
-    "reason": "Git commit message 与自动提交摘要：不随界面语言本地化"
-  },
-  {
     "file": "git/git-sync-doctor.ts",
     "text": "`不要请求或猜测任何凭据。问题：${issue.category}（${issue.code}）；状态：${base}`,",
     "reason": "AI system prompt / 用户消息模板：模型指令，不是 UI 文案"
@@ -338,11 +333,6 @@
     "file": "git/git-sync-doctor.ts",
     "text": "`并给出安全的下一步建议。只输出解释文字；不要输出任何命令、代码或 JSON；` +",
     "reason": "AI system prompt / 用户消息模板：模型指令，不是 UI 文案"
-  },
-  {
-    "file": "git/git-sync-doctor.ts",
-    "text": "await this.deps.git.commitManual('nexnote:doctor: 同步前保存本地变更');",
-    "reason": "Git commit message 与自动提交摘要：不随界面语言本地化"
   },
   {
     "file": "plugins/builtin/builtin-manifests.ts",
@@ -613,15 +603,5 @@
     "file": "updater.ts",
     "text": "logger(`[updater] Mac ${reason}，改用手动下载 (${platformAdapter.arch})`);",
     "reason": "开发日志：开发者诊断输出，不上屏"
-  },
-  {
-    "file": "window-menu.ts",
-    "text": "label: language === 'en-US' ? 'Edit' : '编辑',",
-    "reason": "语言三元分支中的 zh-CN 分支文案：同一字面量同时服务中英界面"
-  },
-  {
-    "file": "window-menu.ts",
-    "text": "label: language === 'en-US' ? 'View' : '视图',",
-    "reason": "语言三元分支中的 zh-CN 分支文案：同一字面量同时服务中英界面"
   }
 ]

@@ -400,9 +400,7 @@ function ruleExplanation(issue: GitSyncIssue, snapshot: GitDoctorStatusSnapshot)
     ...(snapshot.changed > 0
       ? [tCurrent('git.doctor.status.changed', { count: snapshot.changed })]
       : []),
-    ...(snapshot.ahead > 0
-      ? [tCurrent('git.doctor.status.ahead', { count: snapshot.ahead })]
-      : []),
+    ...(snapshot.ahead > 0 ? [tCurrent('git.doctor.status.ahead', { count: snapshot.ahead })] : []),
     ...(snapshot.behind > 0
       ? [tCurrent('git.doctor.status.behind', { count: snapshot.behind })]
       : []),
@@ -540,8 +538,7 @@ export class GitSyncDoctor {
         'ACTION_NOT_ALLOWED',
       );
     const root = this.deps.getRoot();
-    if (!root)
-      throw new GitSyncDoctorError(issueText('NO_VAULT'), 'NO_VAULT');
+    if (!root) throw new GitSyncDoctorError(issueText('NO_VAULT'), 'NO_VAULT');
     const fingerprint = fingerprintFromSnapshot(diagnosis.status);
     this.sweepExpired();
     const ticket = randomUUID();
@@ -619,12 +616,15 @@ export class GitSyncDoctor {
       entry.action !== 'force-abort-rebase-or-merge' &&
       entry.action !== 'resolve-conflict-and-continue'
     )
-      throw new GitSyncDoctorError(tCurrent('git.doctor.error.CONFLICT_PRESENT'), 'CONFLICT_PRESENT');
+      throw new GitSyncDoctorError(
+        tCurrent('git.doctor.error.CONFLICT_PRESENT'),
+        'CONFLICT_PRESENT',
+      );
 
     let message: string;
     let preserve: GitDoctorRepairExecuteResult['preserve'] | undefined;
     if (entry.action === 'commit') {
-      await this.deps.git.commitManual('nexnote:doctor: 同步前保存本地变更');
+      await this.deps.git.commitManual(tCurrent('git.service.doctorPreSyncMessage'));
       message = tCurrent('git.doctor.result.commit');
     } else if (entry.action === 'pull') {
       await this.deps.git.pull();

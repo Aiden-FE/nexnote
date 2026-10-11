@@ -19,7 +19,7 @@ import { tCurrent } from '@nexnote/shared';
 const AUTO_PREFIX = 'nexnote:auto:';
 const MANUAL_PREFIX = 'nexnote:manual:';
 const RESTORE_PREFIX = 'nexnote:restore:';
-const INITIAL_MESSAGE = 'nexnote:init: 知识库初始化';
+const INITIAL_MESSAGE = () => tCurrent('git.service.initialMessage');
 export const DEFAULT_DEBOUNCE_MS = 30_000;
 export const MIN_COMMIT_INTERVAL_MS = 2_000;
 /** 编辑器防抖窗口允许的最小/最大范围（用户配置受此约束）。 */
@@ -341,7 +341,7 @@ export class GitService {
     const git = this.git(safe);
     if (!(await this.isRepository(safe))) await git.init();
     await this.ensureSyncGuard(safe);
-    await this.commit(safe, INITIAL_MESSAGE);
+    await this.commit(safe, INITIAL_MESSAGE());
     const result = {
       message: tCurrent('git.service.initializeSuccess'),
       status: await this.statusFor(safe),
@@ -1804,7 +1804,7 @@ function normalizeNumstatPath(rawPath: string): string {
 }
 
 function commitKind(message: string): GitCommit['kind'] {
-  if (message.startsWith(INITIAL_MESSAGE)) return 'initial';
+  if (message.startsWith(INITIAL_MESSAGE())) return 'initial';
   if (message.startsWith(AUTO_PREFIX)) return 'auto';
   if (message.startsWith(MANUAL_PREFIX)) return 'manual';
   if (message.startsWith(RESTORE_PREFIX)) return 'restore';

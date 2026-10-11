@@ -224,6 +224,14 @@ status: in_progress
   消息目录 zh/en 各 1624 key、零差集。`window-menu` 新增 en-US Edit /
   View 断言；main 残留棘轮基线从 134 收敛至 125。门禁：四套 tsc 通过、
   `pnpm lint` 0、204 files / 1922 passed / 3 skipped 退出码 0。
+- 阶段③第二十六批（2026-10-12）：Git 初始化与 doctor 同步前保存摘要词典化。
+  `INITIAL_MESSAGE` 从模块级常量改为 `git.service.initialMessage` 词典函数，
+  `commitKind` 判定同步改用同一 key，避免重复字面量漂移；doctor 的
+  「同步前保存本地变更」改走 `git.service.doctorPreSyncMessage`。commit
+  message 仍为数据边界：词典只在生成时读取当前语言，落盘文本不回译。
+  新增 2 key，消息目录 zh/en 各 1626 key、零差集；main 残留棘轮基线从
+  125 收敛至 121（Git 类剩 2 条均为 stable 语义字符串）。门禁：四套 tsc
+  通过、`pnpm lint` 0、204 files / 1922 passed / 3 skipped 退出码 0。
 - 阶段③第五批（2026-10-10）：DOCX 导入/导出服务状态与旧版打开提示迁移。
   DocxService 应用自有校验/写入/导出错误按 code 对应词典成文；底层 ZIP /
   XML / 上游解压细节与路径数据保留原文边界。新增 10 key，zh/en 各 1111 key。
