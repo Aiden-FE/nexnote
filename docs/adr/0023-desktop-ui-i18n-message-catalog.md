@@ -361,3 +361,11 @@ status: in_progress
   `editor-toolbar-overflow` 的中文测试夹具改为中性英文避免自造文案干扰。
   新增 2 key，zh/en 各 1554 key；source-selection-bubble / editor-toolbar-overflow
   targeted tests 通过；全量门禁 196 files / 1877 passed / 3 skipped 退出码 0。
+- 阶段④第十批（2026-10-11）：翻译层与正文目录块整层双语收敛。
+  `TranslationLayer` 的状态（draft/streaming/cancelled/error/done）、标题模板、
+  目标语言与关闭 aria-label、空态/失败提示、复制/重翻/停止按钮、工作台
+  dialog 标签、原文/译文栏、字数余量/超限、提交说明全部改走消息目录；
+  kernel 正文目录块的标题与空态改为 `outline.bodyTocTitle` /
+  `outline.bodyTocEmpty`。新增 25 key，zh/en 各 1579 key；
+  live-preview-mount / ephemeral-translation targeted tests 通过；
+  全量门禁 196 files / 1879 passed / 3 skipped 退出码 0。

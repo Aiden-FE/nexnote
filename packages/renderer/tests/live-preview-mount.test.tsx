@@ -1,8 +1,10 @@
 // @vitest-environment happy-dom
 import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
+import { CATALOGS, translate } from '@nexnote/shared';
 import { createRoot, type Root } from 'react-dom/client';
 import { act } from 'react';
 import { LivePreview } from '../src/editor/source/LivePreview';
+import { setLanguage } from '../src/lib/i18n';
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
@@ -18,6 +20,7 @@ afterEach(() => {
   act(() => root?.unmount());
   root = null;
   vi.useRealTimers();
+  setLanguage('zh-CN');
 });
 
 function mount(markdown: string): void {
@@ -73,7 +76,9 @@ describe('Live Preview 首帧（DEV-020 GUI 反馈：初次进入右侧不得空
     mount('# 一级标题\n\n<!-- nexnote:toc -->\n\n## 二级标题\n');
 
     const toc = container.querySelector('[data-testid="live-preview"] [data-table-of-contents]');
-    expect(toc?.querySelector('.nexnote-table-of-contents-title')?.textContent).toBe('目录');
+    expect(toc?.querySelector('.nexnote-table-of-contents-title')?.textContent).toBe(
+      translate(CATALOGS['zh-CN'], 'outline.bodyTocTitle', 'zh-CN'),
+    );
     expect(
       [...(toc?.querySelectorAll('[data-table-of-contents-item]') ?? [])].map(
         (item) => item.textContent,
@@ -99,5 +104,17 @@ describe('Live Preview 首帧（DEV-020 GUI 反馈：初次进入右侧不得空
         ...container.querySelectorAll('[data-testid="live-preview"] [data-table-of-contents-item]'),
       ].map((item) => item.textContent),
     ).toEqual(['更新后的一级标题', '更新后的二级标题']);
+  });
+
+  it('正文目录标题与空态在 en-US 下按词典成文（ADR-0023）', () => {
+    setLanguage('en-US');
+    mount('<!-- nexnote:toc -->\n');
+    const toc = container.querySelector('[data-testid="live-preview"] [data-table-of-contents]');
+    expect(toc?.querySelector('.nexnote-table-of-contents-title')?.textContent).toBe(
+      translate(CATALOGS['en-US'], 'outline.bodyTocTitle', 'en-US'),
+    );
+    expect(toc?.querySelector('[data-table-of-contents-empty]')?.textContent).toBe(
+      translate(CATALOGS['en-US'], 'outline.bodyTocEmpty', 'en-US'),
+    );
   });
 });

@@ -4,10 +4,13 @@ import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { TextSelection } from '@tiptap/pm/state';
 import {
+  CATALOGS,
   defaultVaultSettings,
+  translate,
   TRANSLATION_MAX_TEXT_CHARS,
   type AiConfigState,
 } from '@nexnote/shared';
+import { setLanguage } from '../src/lib/i18n';
 import { EditorView } from '../src/editor/EditorView';
 import { getActiveEditor } from '../src/editor/active-editor';
 import { createSourceEditor } from '../src/editor/source/codemirror-host';
@@ -161,6 +164,7 @@ afterEach(async () => {
   document.body.innerHTML = '';
   delete (window as unknown as { nexnote?: unknown }).nexnote;
   useTranslationStore.setState({ selection: null, document: null, input: null });
+  setLanguage('zh-CN');
 });
 
 describe('DEV-059 runId 建立前的流式事件缓冲', () => {
@@ -296,6 +300,44 @@ describe('DEV-059 真实入口行为', () => {
     });
     expect(useTranslationStore.getState().input).not.toBeNull();
     expect(bridge.calls('agent:run:translation')).toHaveLength(0);
+  });
+
+  it('en-US 翻译工作台状态、按钮与提示按词典成文（ADR-0023）', async () => {
+    setLanguage('en-US');
+    const bridge = installBridge();
+    const session = openTranslationWorkbench();
+    await mount(<TranslationLayer />);
+    const en = (key: string, params?: Record<string, string | number>) =>
+      translate(CATALOGS['en-US'], key, 'en-US', params);
+
+    expect(
+      document.querySelector('[data-testid="translation-input-workbench"] [role="dialog"]')
+        ?.getAttribute('aria-label'),
+    ).toBe(en('translation.workbenchLabel'));
+    expect(document.querySelector('[data-testid="translation-input-status"]')?.textContent).toBe(
+      en('translation.status.draft'),
+    );
+    expect(document.querySelector('[data-testid="translation-input-submit"]')?.textContent).toBe(
+      en('translation.start'),
+    );
+    expect(document.querySelector('[data-testid="translation-input-language"]')?.getAttribute('aria-label')).toBe(
+      en('translation.targetLanguage'),
+    );
+    expect(document.querySelector('[data-testid="translation-input-close"]')?.getAttribute('aria-label')).toBe(
+      en('common.close'),
+    );
+
+    await act(async () => {
+      session.setDraft('Please translate this paragraph.');
+      session.submit();
+      await bridge.flush();
+    });
+    expect(document.querySelector('[data-testid="translation-input-output"]')?.textContent).toContain(
+      en('translation.status.streaming'),
+    );
+    expect(document.querySelector('[data-testid="translation-input-stop"]')?.textContent).toContain(
+      en('translation.stop'),
+    );
   });
 
   it('块编辑真实 dispatch 选区 AI 下拉的 translate:workbench 与 translate:selection 互不干扰', async () => {
@@ -850,7 +892,10 @@ describe('DEV-041 翻译浮层/临时视图', () => {
     const view = document.querySelector<HTMLElement>('[data-testid="translation-document-view"]');
     expect(view).not.toBeNull();
     expect(view!.getAttribute('data-path')).toBe('页面 A.md');
-    expect(view!.textContent).toContain('不会写入文件');
+    expect(view!.textContent).toContain(translate(CATALOGS['zh-CN'], 'translation.documentViewHint', 'zh-CN'));
+    expect(
+      view!.querySelector('[role="dialog"]')?.getAttribute('aria-label'),
+    ).toBe(translate(CATALOGS['zh-CN'], 'translation.documentViewLabel', 'zh-CN'));
 
     await act(async () => {
       document

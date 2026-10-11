@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { Check, Copy, Languages, Loader2, Square, TriangleAlert, X } from 'lucide-react';
 import { Button } from '../../../components/ui/button';
 import { cn } from '../../../lib/utils';
+import { useI18n } from '../../../lib/i18n';
 import { useTabStore } from '../../../stores/tab-store';
 import { TRANSLATION_LANGUAGES } from './languages';
 import { isIncomplete, useTranslationStore, type TranslationSession } from './translation-store';
@@ -16,6 +17,7 @@ import { isIncomplete, useTranslationStore, type TranslationSession } from './tr
 
 type Scope = 'selection' | 'document' | 'input';
 const testId = (scope: Scope, name: string) => `translation-${scope}-${name}`;
+type Translate = (key: string, params?: Record<string, string | number>) => string;
 
 async function copyText(text: string): Promise<boolean> {
   try {
@@ -26,26 +28,34 @@ async function copyText(text: string): Promise<boolean> {
   }
 }
 
-function statusLabel(session: TranslationSession): string {
-  if (session.status === 'draft') return '等待提交';
-  if (session.status === 'streaming') return '翻译中…';
-  if (session.status === 'cancelled') return '已停止 · 未完成';
-  if (session.status === 'error') return '翻译失败 · 未完成';
-  return '已完成';
+function statusLabel(session: TranslationSession, t: Translate): string {
+  if (session.status === 'draft') return t('translation.status.draft');
+  if (session.status === 'streaming') return t('translation.status.streaming');
+  if (session.status === 'cancelled') return t('translation.status.cancelled');
+  if (session.status === 'error') return t('translation.status.error');
+  return t('translation.status.done');
 }
 
 function TranslationHeader({ scope, session }: { scope: Scope; session: TranslationSession }) {
-  const label = scope === 'selection' ? '划词' : session.kind === 'document' ? session.title : '';
+  const t = useI18n();
+  const label =
+    scope === 'selection'
+      ? t('translation.header.selection')
+      : session.kind === 'document'
+        ? session.title
+        : '';
   return (
     <div className="flex items-center gap-2 border-b px-3 py-2 text-xs font-medium">
       <Languages className="size-3.5 text-primary" />
-      <span data-testid={testId(scope, 'label')}>翻译 · {label}</span>
+      <span data-testid={testId(scope, 'label')}>
+        {t('translation.header.title', { label })}
+      </span>
       {session.status === 'streaming' && (
         <Loader2 className="size-3.5 animate-spin text-muted-foreground" />
       )}
       <select
         data-testid={testId(scope, 'language')}
-        aria-label="目标语言"
+        aria-label={t('translation.targetLanguage')}
         className="ml-auto h-6 rounded border bg-background px-1 text-[11px]"
         value={session.language}
         onChange={(event) => session.onChangeLanguage(event.target.value)}
@@ -59,7 +69,7 @@ function TranslationHeader({ scope, session }: { scope: Scope; session: Translat
       <button
         type="button"
         data-testid={testId(scope, 'close')}
-        aria-label="关闭"
+        aria-label={t('common.close')}
         className="rounded p-0.5 text-muted-foreground hover:bg-accent hover:text-foreground"
         onClick={() => session.onClose()}
       >
@@ -78,6 +88,7 @@ function TranslationBody({
   session: TranslationSession;
   outputClassName?: string;
 }) {
+  const t = useI18n();
   const [copied, setCopied] = useState(false);
   const incomplete = isIncomplete(session);
   const canCopy = session.output.trim().length > 0;
@@ -92,10 +103,10 @@ function TranslationBody({
         )}
       >
         {session.output.trim().length === 0 && session.status === 'streaming' && (
-          <span className="text-muted-foreground">翻译中…</span>
+          <span className="text-muted-foreground">{t('translation.status.streaming')}</span>
         )}
         {session.output.trim().length === 0 && session.status !== 'streaming' && (
-          <span className="text-muted-foreground">（无内容）</span>
+          <span className="text-muted-foreground">{t('translation.empty')}</span>
         )}
         {session.output}
       </div>
@@ -106,7 +117,7 @@ function TranslationBody({
           className="flex items-center gap-1.5 border-t bg-amber-500/10 px-3 py-1.5 text-[11px] text-amber-600 dark:text-amber-400"
         >
           <TriangleAlert className="size-3" />
-          {statusLabel(session)}
+          {statusLabel(session, t)}
         </div>
       )}
 
@@ -115,7 +126,7 @@ function TranslationBody({
           data-testid={testId(scope, 'error')}
           className="border-t border-destructive/30 bg-destructive/10 px-3 py-1.5 text-[11px] text-destructive"
         >
-          {session.error ?? '翻译失败'}
+          {session.error ?? t('translation.failed')}
         </div>
       )}
 
@@ -124,7 +135,7 @@ function TranslationBody({
           data-testid={testId(scope, 'status')}
           className="mr-auto text-[11px] text-muted-foreground"
         >
-          {statusLabel(session)}
+          {statusLabel(session, t)}
         </span>
         <Button
           data-testid={testId(scope, 'copy')}
@@ -137,7 +148,7 @@ function TranslationBody({
           }}
         >
           {copied ? <Check className="size-3" /> : <Copy className="size-3" />}
-          {copied ? '已复制' : '复制'}
+          {copied ? t('translation.copied') : t('common.copy')}
         </Button>
         {scope !== 'input' && session.status !== 'streaming' && (
           <Button
@@ -147,7 +158,7 @@ function TranslationBody({
             className="h-7 px-2 text-xs"
             onClick={() => session.onSubmit()}
           >
-            {session.output.trim() ? '重新翻译' : '翻译'}
+            {session.output.trim() ? t('translation.retry') : t('translation.start')}
           </Button>
         )}
         {session.status === 'streaming' && (
@@ -158,7 +169,7 @@ function TranslationBody({
             className="h-7 px-2 text-xs"
             onClick={() => session.onStop()}
           >
-            <Square className="size-3" /> 停止
+            <Square className="size-3" /> {t('translation.stop')}
           </Button>
         )}
       </div>
@@ -171,6 +182,7 @@ function TranslationWorkbench({
 }: {
   session: Extract<TranslationSession, { kind: 'input' }>;
 }) {
+  const t = useI18n();
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const composingRef = useRef(false);
   useEffect(() => inputRef.current?.focus(), []);
@@ -182,7 +194,7 @@ function TranslationWorkbench({
       <div
         role="dialog"
         aria-modal="true"
-        aria-label="翻译工作台"
+        aria-label={t('translation.workbenchLabel')}
         className="flex max-h-[88vh] w-[min(960px,94vw)] flex-col rounded-xl border bg-popover text-popover-foreground shadow-2xl"
       >
         <TranslationHeader scope="input" session={session} />
@@ -192,7 +204,7 @@ function TranslationWorkbench({
               htmlFor="translation-input-draft"
               className="border-b px-3 py-2 text-xs font-medium"
             >
-              原文
+              {t('translation.sourceLabel')}
             </label>
             <textarea
               id="translation-input-draft"
@@ -217,7 +229,7 @@ function TranslationWorkbench({
                   session.onSubmit();
                 }
               }}
-              placeholder="输入或粘贴要翻译的内容"
+              placeholder={t('translation.sourcePlaceholder')}
               className="min-h-0 flex-1 resize-none bg-transparent p-3 text-sm outline-none"
             />
             <div
@@ -227,25 +239,27 @@ function TranslationWorkbench({
               )}
             >
               {session.overLimit
-                ? `已超出 ${Math.abs(session.remaining)} 个字符，请删减后提交`
-                : `剩余 ${session.remaining.toLocaleString()} 个字符`}
+                ? t('translation.overLimit', { count: Math.abs(session.remaining) })
+                : t('translation.remaining', { count: session.remaining.toLocaleString() })}
             </div>
           </div>
           <div className="flex min-h-[18rem] flex-col rounded-lg border">
-            <div className="border-b px-3 py-2 text-xs font-medium">译文 · 只读</div>
+            <div className="border-b px-3 py-2 text-xs font-medium">
+              {t('translation.outputLabel')}
+            </div>
             <TranslationBody scope="input" session={session} outputClassName="min-h-0 flex-1" />
           </div>
         </div>
         <div className="flex items-center gap-2 border-t px-3 py-2">
           <span className="mr-auto text-[11px] text-muted-foreground">
-            ⌘/Ctrl + Enter 提交 · 输入、粘贴和打开均不会自动请求
+            {t('translation.submitHint')}
           </span>
           <Button
             data-testid="translation-input-submit"
             disabled={!session.canSubmit || session.status === 'streaming'}
             onClick={() => session.onSubmit()}
           >
-            翻译
+            {t('translation.start')}
           </Button>
         </div>
       </div>
@@ -254,6 +268,7 @@ function TranslationWorkbench({
 }
 
 export function TranslationLayer() {
+  const t = useI18n();
   const selection = useTranslationStore((state) => state.selection);
   const documentSession = useTranslationStore((state) => state.document);
   const inputSession = useTranslationStore((state) => state.input);
@@ -291,12 +306,12 @@ export function TranslationLayer() {
         >
           <div
             role="dialog"
-            aria-label="临时翻译视图"
+            aria-label={t('translation.documentViewLabel')}
             className="flex max-h-[80vh] w-[min(860px,92vw)] flex-col rounded-lg border bg-popover text-popover-foreground shadow-2xl"
           >
             <TranslationHeader scope="document" session={documentSession} />
             <div className="border-b bg-muted/40 px-3 py-1.5 text-[11px] text-muted-foreground">
-              临时视图 · 不会写入文件，也不会进入文档树
+              {t('translation.documentViewHint')}
             </div>
             <TranslationBody
               scope="document"

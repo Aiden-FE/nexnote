@@ -2,6 +2,7 @@ import { Node, mergeAttributes } from '@tiptap/core';
 import type { Editor, MarkdownToken, NodeViewRendererProps } from '@tiptap/core';
 import type { Node as ProseMirrorNode } from '@tiptap/pm/model';
 import { TextSelection } from '@tiptap/pm/state';
+import { tCurrent } from '@nexnote/shared';
 
 /**
  * 正文目录块：在文档正文中插入一份「目录」占位（Obsidian 兼容：正文可携带
@@ -112,7 +113,7 @@ class TableOfContentsNodeView {
 
     const title = document.createElement('div');
     title.className = 'nexnote-table-of-contents-title';
-    title.textContent = '目录';
+    title.textContent = tCurrent('outline.bodyTocTitle');
     this.dom.append(title);
 
     const entries = collectEntries(this.editor.state.doc);
@@ -120,7 +121,7 @@ class TableOfContentsNodeView {
       const empty = document.createElement('div');
       empty.className = 'nexnote-table-of-contents-empty';
       empty.setAttribute('data-table-of-contents-empty', '');
-      empty.textContent = '暂无标题';
+      empty.textContent = tCurrent('outline.bodyTocEmpty');
       this.dom.append(empty);
       return;
     }
@@ -176,7 +177,7 @@ export const TableOfContents = Node.create({
         class: 'nexnote-table-of-contents',
       }),
       // 无 NodeView 的静态 HTML/SSR 场景仍保留可读 fallback。
-      ['div', { class: 'nexnote-table-of-contents-placeholder' }, '目录'],
+      ['div', { class: 'nexnote-table-of-contents-placeholder' }, tCurrent('outline.bodyTocTitle')],
     ];
   },
 
