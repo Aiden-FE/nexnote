@@ -1,6 +1,6 @@
 # DEV-103 官网产品文档上线 + 欢迎页「快速上手」跳转文档
 
-状态：partial（文档站 + 跳转已随 v0.0.30 发布；11 章内容已补齐；ADR-0024 手机端双语已实现；ADR-0023 桌面端双语阶段①②④持续推进；ADR-0025 截图仍待环境）
+状态：partial（文档站 + 跳转已随 v0.0.30 发布并于 2026-10-12 实拍复验 CTA；11 章内容已补齐；ADR-0024 手机端双语已实现；ADR-0023 桌面端双语阶段②③④持续推进；ADR-0025 macOS 欢迎页 + 文档站截图已出，应用内容页截图仍待 GUI 环境稳定）
 日期：2026-10-07（grill 四轮确认；2026-10-07 随 v0.0.30 发布已落地的部分见「本轮实际交付」）
 关联：ADR-0021、ADR-0022、ADR-0023、ADR-0024、ADR-0025、ADR-0010（Docs 边界已被 ADR-0021 推翻并就地标注）、DEV-074
 
@@ -145,6 +145,14 @@
 - [ ] macOS 全套截图：**被环境阻塞**——本轮执行时 Mac 进入锁屏，GUI 自动化无法解锁；需在解锁后的图形会话中启动打包应用打开演示库并经 `capturePage` 截图
 - [ ] 截图入官网并标注「截图以 macOS 为准，各平台功能一致」
 - [ ] Windows/Linux 截图（环境不具备，见 ADR-0025 已登记后续项）
+
+### ADR-0025 截图进展（2026-10-12）
+
+- [x] **欢迎页 CTA 实拍验收**：解锁后的图形会话中启动打包应用 `release/mac-arm64/NexNote.app`（v0.0.34）打开 `docs/demo-vault`，点击欢迎页「快速上手」后系统默认浏览器（Google Chrome）打开 `https://website-aiden-fes-projects.vercel.app/zh/docs/getting-started`，标题为「快速上手 · NexNote 文档」——「用系统默认浏览器打开对应语言文档页」的决定得到实测确认。
+- [x] **文档站实拍**：`/zh/docs/getting-started` 完整渲染 11 章侧栏、页内目录、正文表格与版本标注。用户此前报告的「文档无图例」经核查为当前设计边界——文档渲染器（`apps/website/src/docs/markdown.ts`）按 ADR-0010 只支持文本、表格、代码块与双链语法，不解析 `![](...)` 图片语法，文档正文本就是纯文字排版。
+- [x] 产出两张 macOS 实拍资产（2000px 宽，落盘 `apps/website/public/screenshots/`）：`macos-welcome-zh.png`（欢迎页 + 页面树 + 快速上手 CTA）、`docs-getting-started-zh.png`（文档快速上手页全貌）。暂未嵌入正文（渲染器不支持图片语法）。
+- [ ] macOS 全套**应用内容页**截图（编辑器 / 图谱 / 设置 / 插件）：本次 GUI 自动化中，侧边栏文件树的点击与 Tab 导航焦点在 Electron 渲染进程与浏览器之间反复漂移（前台被其他应用抢占、窗口位置漂移、Tab 焦点跳出到 Chrome），未能在打包应用中稳定打开 `notes/Reading Notes` 等内容页。按 ADR-0025「未实际拍摄不得声称已验收」的边界保持 `NOT_RUN`，不放有瑕疵截图充当证据。
+- [ ] en-US 界面重截、Windows/Linux 截图（环境仍不具备，见 ADR-0025）。
 
 ## Out of scope
 

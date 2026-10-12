@@ -25,3 +25,30 @@ status: in_progress
 - macOS 截图：本轮执行时 Mac 进入锁屏，GUI 自动化无法解锁而被阻塞（`NOT_RUN`）；
   待解锁后的图形会话中启动打包应用打开演示库并经 `capturePage` 截图。
 - 官网文档页的截图引用与「截图以 macOS 为准，各平台功能一致」标注待截图产出后落地。
+
+## Progress（2026-10-12）
+
+### CTA 与文档站实拍已完成
+
+- 解锁后的图形会话中，用独立 `--user-data-dir` 预置 `lastVaultPath` 与
+  `nexnote-ai.json`（`setupPromptDismissed: true`，绕开首启 AI 弹窗）启动了
+  打包应用 `release/mac-arm64/NexNote.app`（v0.0.34）并打开 `docs/demo-vault`。
+- **DEV-103 核心 CTA 实拍验收**：欢迎页「快速上手」按钮点击后，系统默认浏览器
+  （Google Chrome）打开 `https://website-aiden-fes-projects.vercel.app/zh/docs/getting-started`，
+  标题为「快速上手 · NexNote 文档」，符合「用系统默认浏览器打开对应语言文档页」的决定。
+- 文档站实拍：`/zh/docs/getting-started` 完整渲染 11 章侧栏、页内目录、正文表格
+  与「适用版本 v0.0.29+」标注。**用户此前报告的「文档无图例」经实拍核查为当前设计
+  边界**：文档渲染器（`apps/website/src/docs/markdown.ts`）按 ADR-0010 只支持文本、
+  表格、代码块与双链语法，不解析 `![](...)` 图片语法。
+- 已产出并落盘两张 macOS 实拍资产（2000px 宽，供后续评审/部署用，暂未嵌入正文）：
+  - `apps/website/public/screenshots/macos-welcome-zh.png`（欢迎页 + 页面树 + 快速上手 CTA）
+  - `apps/website/public/screenshots/docs-getting-started-zh.png`（文档快速上手页全貌）
+
+### 仍未完成
+
+- **应用内容页（编辑器/图谱/设置/插件等）截图**：本次 GUI 自动化中，侧边栏文件树的
+  点击与 Tab 导航焦点在 Electron 渲染进程与浏览器之间反复漂移（前台被其他应用抢占、
+  窗口位置漂移、Tab 焦点跳出到 Chrome），未能在打包应用中稳定打开
+  `notes/Reading Notes` 等内容页。按本 ADR「未实际拍摄的平台/页面不得声称已验收」的边界，
+  这些页面保持 `NOT_RUN`，不放入任何有瑕疵的截图作为验收证据。
+- en-US 界面重截、macOS 全套页面截图、Windows/Linux 截图仍待后续环境就绪补拍。
