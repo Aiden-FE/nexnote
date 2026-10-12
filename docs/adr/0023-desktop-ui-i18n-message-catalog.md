@@ -240,6 +240,16 @@ status: in_progress
   `afterEach` 复位 `setCurrentLanguage('zh-CN')`，不污染其他用例。新增 0 key，
   消息目录 zh/en 保持 1628 key、零差集。门禁：`pnpm lint` 0、
   204 files / 1924 passed / 3 skipped 退出码 0。
+- 阶段④第二十九批（2026-10-12）：预览错误横幅补 en-US 渲染断言。
+  `live-preview-retry` 在 DEV-109 已有的 zh-CN「重试」断言旁补 en-US 用例：
+  切到 `en-US` 后断言重试按钮为 `Retry`，且 `preview-stale` 横幅 `textContent`
+  不含任何 CJK，证明失败横幅与重试动作的 UI chrome 已成文，而注入的
+  `Invalid content for node type listItem` 仍按内核错误原文保留。
+  `afterEach` 复位 `setCurrentLanguage('zh-CN')`。新增 0 key，消息目录
+  zh/en 保持 1628 key、零差集。门禁：`pnpm lint` 0、
+  204 files / 1925 passed / 3 skipped 退出码 0。
+  （同轮 `watch-service` 的 chokidar vault 切换用例在并行全量下曾出现一次
+  既有时序 flaky，单独重跑与随后全量重跑均通过。）
 - 阶段③第二十七批（2026-10-12）：Chat 导出标签与注释标记词典化。
   `chat-service.ts` 的 `renderDocumentBody` 中「> 提问：」与
   `<!-- 用户提问` 改走 `chat.export.userQuestion` /

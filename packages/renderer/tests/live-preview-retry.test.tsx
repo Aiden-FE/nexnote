@@ -4,6 +4,7 @@ import { createRoot, type Root } from 'react-dom/client';
 import { act } from 'react';
 import type { EditorKernelInstance } from '@nexnote/kernel';
 import type * as KernelModuleType from '@nexnote/kernel';
+import { setCurrentLanguage } from '@nexnote/shared';
 
 /**
  * DEV-109：预览解析失败横幅的重试交互。
@@ -13,8 +14,6 @@ import type * as KernelModuleType from '@nexnote/kernel';
  * parseMarkdown 层修复（list-item-content-normalize.test.ts），这里在
  * kernel 模块边界注入「可控失败」的 setMarkdown，锁定 UI 交互闭环本身。
  */
-
-
 
 type KernelModule = KernelModuleType;
 
@@ -67,6 +66,7 @@ afterEach(() => {
   act(() => root?.unmount());
   root = null;
   vi.useRealTimers();
+  setCurrentLanguage('zh-CN');
 });
 
 function mount(markdown: string): void {
@@ -96,9 +96,9 @@ describe('DEV-109 · 预览错误横幅重试', () => {
     });
     // 挂载即渲染失败（内核抛错）
     expect(container.querySelector('[data-testid="preview-error"]')).toBeTruthy();
-    expect(
-      container.querySelector('[data-testid="preview-stale"]')?.textContent,
-    ).toContain('Invalid content for node type listItem');
+    expect(container.querySelector('[data-testid="preview-stale"]')?.textContent).toContain(
+      'Invalid content for node type listItem',
+    );
     expect(container.querySelector('[data-testid="preview-retry"]')).toBeTruthy();
 
     // 内容恢复：内核不再抛错，下一次防抖渲染自动清横幅（既有语义保留）
@@ -174,8 +174,20 @@ describe('DEV-109 · 预览错误横幅重试', () => {
     await act(async () => {
       await Promise.resolve();
     });
-    expect(
-      container.querySelector('[data-testid="preview-retry"]')?.textContent,
-    ).toBe('重试');
+    expect(container.querySelector('[data-testid="preview-retry"]')?.textContent).toBe('重试');
+  });
+
+  it('en-US 重试按钮与错误横幅不含中文残留', async () => {
+    setCurrentLanguage('en-US');
+    vi.useFakeTimers();
+    setMarkdownBehavior.throwMessage = 'boom';
+    mount(GOOD);
+    await act(async () => {
+      await Promise.resolve();
+    });
+    const retry = container.querySelector('[data-testid="preview-retry"]');
+    expect(retry?.textContent).toBe('Retry');
+    const banner = container.querySelector('[data-testid="preview-stale"]');
+    expect(banner?.textContent ?? '').not.toMatch(/\p{Script=Han}/u);
   });
 });
