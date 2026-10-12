@@ -261,9 +261,9 @@ export function graphElements(
         target: link.target,
         animated: highlighted,
         style: {
-          stroke: highlighted ? 'var(--primary)' : 'var(--border)',
-          strokeWidth: highlighted ? 2.5 : 1,
-          opacity: selectedPath && !highlighted ? 0.22 : 1,
+          stroke: highlighted ? 'var(--primary)' : 'var(--muted-foreground)',
+          strokeWidth: highlighted ? 2.5 : 1.4,
+          opacity: selectedPath ? (highlighted ? 1 : 0.2) : 0.62,
         },
       };
     }),

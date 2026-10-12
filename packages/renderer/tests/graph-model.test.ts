@@ -97,6 +97,11 @@ describe('graph model', () => {
     expect(node.get('docs/c.md')).toMatchObject({ selected: false, highlighted: false, dimmed: true });
     expect(elements.edges.find((edge) => edge.id === 'a.md=>work/b.md')).toMatchObject({
       animated: true,
+      style: { stroke: 'var(--primary)', strokeWidth: 2.5, opacity: 1 },
+    });
+    expect(elements.edges.find((edge) => edge.id === 'work/b.md=>docs/c.md')).toMatchObject({
+      animated: false,
+      style: { stroke: 'var(--muted-foreground)', strokeWidth: 1.4, opacity: 0.2 },
     });
   });
 
