@@ -2,21 +2,21 @@
   "schema": "nexnote-release-qa/v1",
   "repository": "Aiden-FE/nexnote",
   "tag": "v0.0.35",
-  "commit": "20dac42ded8f58c79fe04e09288a86f88a60f078",
+  "commit": "fde61cfb1b9aa2a0ec26263008ebb0e717bf51f9",
   "channel": "stable",
   "allRequiredChecksPassed": true,
   "scope": "v0.0.35-release",
   "machineChecks": {
-    "typecheck": "passed (local CI=true pnpm -r --if-present typecheck at 20dac42; all applicable workspace projects clean, zero errors/warnings; packages/main verified additionally with npx tsc --noEmit -p packages/main/tsconfig.json)",
-    "lint": "passed (local CI=true pnpm lint at 20dac42; zero errors and zero warnings)",
-    "tests": "passed (local CI=true pnpm test at 20dac42; 1942 passed | 3 skipped, 203 test files passed | 1 skipped, exit code 0; +11 tests over v0.0.34 from the four-ticket release review follow-ups)",
-    "build": "passed (local CI=true pnpm build at 20dac42; main/preload/renderer builds completed with zero warnings/errors)",
-    "websiteBuild": "passed (local CI=true pnpm --filter website build at 20dac42; TypeScript + Vite production build completed)",
-    "releaseConfig": "31/31 passed (local pnpm verify:release-config at 20dac42)",
-    "changedFormat": "passed (npx prettier --check on all files changed vs v0.0.34 at 20dac42; formatted and re-verified)",
-    "packagedSmoke": "passed locally on macOS arm64 packaged app bound to 20dac42, app 0.0.35, Electron 44.2.0, ABI 149: 266/266 checks passed, exit code 0, results.json notRun=[Windows packaged smoke, Linux packaged smoke]. xlsx round-trip checks: 保存后单元格内容保留 (cells=4 values=Plan|费用|Cursor Pro|20); 保存后工作表名保留 (AI Coding 支出); 内容未变的重复保存不重写文件 (sha 6d983217 → 6d983217) Third local run bound to 20dac42 after the smoke-language fix.",
+    "typecheck": "passed (local CI=true pnpm -r --if-present typecheck at fde61cf; all applicable workspace projects clean, zero errors/warnings; packages/main verified additionally with npx tsc --noEmit -p packages/main/tsconfig.json)",
+    "lint": "passed (local CI=true pnpm lint at fde61cf; zero errors and zero warnings)",
+    "tests": "passed (local CI=true pnpm test at fde61cf; 1942 passed | 3 skipped, 203 test files passed | 1 skipped, exit code 0; +11 tests over v0.0.34 from the four-ticket release review follow-ups)",
+    "build": "passed (local CI=true pnpm build at fde61cf; main/preload/renderer builds completed with zero warnings/errors)",
+    "websiteBuild": "passed (local CI=true pnpm --filter website build at fde61cf; TypeScript + Vite production build completed)",
+    "releaseConfig": "31/31 passed (local pnpm verify:release-config at fde61cf)",
+    "changedFormat": "passed (npx prettier --check on all files changed vs v0.0.34 at fde61cf; formatted and re-verified)",
+    "packagedSmoke": "passed locally on macOS arm64 packaged app bound to fde61cf, app 0.0.35, Electron 44.2.0, ABI 149: 266/266 checks passed, exit code 0, results.json notRun=[Windows packaged smoke, Linux packaged smoke]. xlsx round-trip checks: 保存后单元格内容保留 (cells=4 values=Plan|费用|Cursor Pro|20); 保存后工作表名保留 (AI Coding 支出); 内容未变的重复保存不重写文件 (sha 6d983217 → 6d983217) Third local run bound to fde61cf after the smoke-language fix. Fourth local run bound to fde61cf (test-only diff from 20dac42; app binary unchanged).",
     "packagedIntegrity": "Ad hoc signature verified with codesign --verify --deep --strict (valid on disk, satisfies Designated Requirement); bundled Git verified through scripts/verify-bundled-git.mjs --app release/mac-arm64/NexNote.app (git version 2.53.0)",
-    "ciLogHygiene": "local full-suite and packaged-smoke logs inspected at 20dac42; zero warnings/errors (one initial full-suite run had a single unhandled error that did not reproduce across three subsequent clean runs; final gates recorded from the clean runs)",
+    "ciLogHygiene": "local full-suite and packaged-smoke logs inspected at fde61cf; zero warnings/errors (one initial full-suite run had a single unhandled error that did not reproduce across three subsequent clean runs; final gates recorded from the clean runs)",
     "gatekeeper": "Ad hoc signed app; Gatekeeper manual Open Anyway remains expected on first launch without Developer ID notarization"
   },
   "gateDecisions": {
@@ -24,7 +24,7 @@
     "macosGatekeeper": "DEFERRED to first-launch Open Anyway on the owner Mac (Ad hoc signing only); Developer ID signing/notarization remains future work"
   },
   "candidateContents": {
-    "tickets": "Release: master candidate 20dac42ded8f58c79fe04e09288a86f88a60f078, version 0.0.35; contains DEV-107/DEV-108/DEV-109 (three P1 user-reported bugs) plus DEV-103 batches (official docs site content, desktop/mobile bilingual i18n, macOS screenshot assets), followed by a pre-release four-ticket review that fixed one leftover kernel crash and closed four test/website gaps.",
+    "tickets": "Release: master candidate fde61cfb1b9aa2a0ec26263008ebb0e717bf51f9, version 0.0.35; contains DEV-107/DEV-108/DEV-109 (three P1 user-reported bugs) plus DEV-103 batches (official docs site content, desktop/mobile bilingual i18n, macOS screenshot assets), followed by a pre-release four-ticket review that fixed one leftover kernel crash and closed four test/website gaps.",
     "highlights": [
       "DEV-107 P1：xmind 思维导图删除键/撤销/重做双重分发消除——应用层撤下与 simple-mind-map KeyCommand 重复的 'Del|Backspace'/'Control+z'/'Control+y' 分发，保留 Ctrl+S 并补库缺失的 Cmd/Ctrl+Shift+Z 重做；选中末尾节点按一次删除不再连带删除相邻兄弟（用户数据误删）。",
       "DEV-108 P1：块 ID 锚点不再被末位 mark 包裹泄漏——appendInlinePlaceholder 感知末位文本节点 marks，落盘形态 `**加粗尾** ^id` 可被 parse 侧行末正则回收；修复前每次切换文档追加一个泄漏 ID 逐次增长。五种 mark（bold/italic/strike/code/link）+ heading/listItem 宿主覆盖。",
@@ -34,7 +34,8 @@
       "ADR-0024 手机端双语：flutter_localizations + .arb 161/161 key 对齐 + 错误码化（iOS 真机核验仍为环境受限登记项）。",
       "发布前四票联审（本次候选内 commit de91ae6）：DEV-109 空 content 补丁 + 4 个空项变体用例 + 真实 kernel 挂载断言；DEV-107 补 Ctrl+S 与输入态守卫回归测试；DEV-108 补 mark 内手写字面量行为锁定；官网软 404 noindex/canonical 收敛、协议相对链接 rel 补齐、截图题注平台口径补齐、孤儿资产 docs-getting-started-zh.png 嵌入正文。",
       "图谱修复：GraphPageNode 补 React Flow Handle（getEdgePosition 恒 null 导致全部边被 EdgeWrapper 丢弃），全局图谱与侧栏局部图谱两视图共用同一 nodeTypes 一处修复全覆盖。",
-      "首次 tag（候选 55e216c）流水线暴露三处 release 质量缺口，候选内修复：① main-i18n-residue 棘轮在 Windows 的路径分隔符不匹配（119 条既有残留被误报为新增，该测试引入后首次在 Windows CI 运行）；② watch-service untilEvent 8s 预算在 macos-15-intel 高负载 runner 不足（放宽至 20s，成功即早退）；③ ADR-0023 阶段①「首启动按系统语言初始化」使英文系统 CI runner 上打包 smoke 的 266 项中文断言全挂（隔离 userData 首启动 UI 变英文，场景卡满 180s 脚本超时两连复现；v0.0.34 该机制未合入故从未暴露）——smoke 模式固定 zh-CN 修复，A/B 验证：修复前 CI 构建产物在 -AppleLanguages (en) 模拟下 176/266 且 200s 未完成，修复后构建同参数 266/266。"
+      "首次 tag（候选 55e216c）流水线暴露三处 release 质量缺口，候选内修复：① main-i18n-residue 棘轮在 Windows 的路径分隔符不匹配（119 条既有残留被误报为新增，该测试引入后首次在 Windows CI 运行）；② watch-service untilEvent 8s 预算在 macos-15-intel 高负载 runner 不足（放宽至 20s，成功即早退）；③ ADR-0023 阶段①「首启动按系统语言初始化」使英文系统 CI runner 上打包 smoke 的 266 项中文断言全挂（隔离 userData 首启动 UI 变英文，场景卡满 180s 脚本超时两连复现；v0.0.34 该机制未合入故从未暴露）——smoke 模式固定 zh-CN 修复，A/B 验证：修复前 CI 构建产物在 -AppleLanguages (en) 模拟下 176/266 且 200s 未完成，修复后构建同参数 266/266。",
+      "第三次 tag（候选 20dac42）流水线在 macos-15-intel 暴露 mindmap 集成测试的异步 unhandled error：svg.js rbox() 对「全零盒 + 不在文档中」元素抛错，happy-dom 的 SVGElement.getBoundingClientRect 恒为零矩形，destroy 后库内残留定时器触发即异步抛错被 vitest 记为失败。补非零矩形桩消解（test-only，app 二进制不变）。"
     ]
   },
   "artifacts": {
