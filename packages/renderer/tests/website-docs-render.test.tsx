@@ -8,6 +8,7 @@ import { describe, expect, it } from 'vitest';
 import { DocsChapter, DocsIndex, docsCopy } from '../../../apps/website/src/docs/DocsView';
 import { chapters } from '../../../apps/website/src/docs/content';
 import { renderMarkdown } from '../../../apps/website/src/docs/markdown';
+import { QUICK_START_SLUG, docsPath, quickStartPath } from '../../../apps/website/src/docs/paths';
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
@@ -24,6 +25,18 @@ function render(ui: React.ReactNode): string {
 }
 
 describe('website docs', () => {
+  it('quick start entry resolves to the first chapter in both languages', () => {
+    expect(QUICK_START_SLUG).toBe('getting-started');
+    expect(quickStartPath('zh')).toBe('/zh/docs/getting-started');
+    expect(quickStartPath('en')).toBe('/docs/getting-started');
+    // 快速上手 slug 必须真实存在于两语言章节目录中，否则主页入口会落到软 404
+    for (const lang of ['zh', 'en'] as const) {
+      expect(chapters(lang).some((c) => c.slug === QUICK_START_SLUG)).toBe(true);
+    }
+    // 主页入口不得误指文档首页或带尾斜杠（与 header 导航的 docsPath 同源）
+    expect(quickStartPath('zh')).toBe(`${docsPath('zh')}/${QUICK_START_SLUG}`);
+  });
+
   it('publishes the complete bilingual chapter catalog in order', () => {
     const expected = [
       'getting-started',

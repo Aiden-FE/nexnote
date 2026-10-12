@@ -4,6 +4,7 @@ import './styles.css';
 import './docs.css';
 import { DocsChapter, DocsIndex, docsCopy } from './docs/DocsView';
 import { chapterBySlug } from './docs/content';
+import { docsPath, quickStartPath } from './docs/paths';
 
 type Lang = 'en' | 'zh';
 const copy = {
@@ -122,9 +123,6 @@ type Route =
   { lang: Lang; name: 'home' | 'missing' } | { lang: Lang; name: 'docs'; slug: string | null };
 function pathFor(lang: Lang) {
   return lang === 'zh' ? '/zh' : '/';
-}
-function docsPath(lang: Lang, slug?: string) {
-  return `${lang === 'zh' ? '/zh/docs' : '/docs'}${slug ? `/${slug}` : ''}`;
 }
 /** 路由只看「语言前缀 + 是否 docs + slug」三段，未知路径落到 missing。 */
 function currentRoute(): Route {
@@ -283,12 +281,15 @@ function Cta({ text, lang }: { text: Text; lang: Lang }) {
   return (
     <section className="cta section">
       <div>
-        <p className="eyebrow">NEXNOTE · v0.0.11</p>
+        <p className="eyebrow">NEXNOTE · v0.0.35</p>
         <h2>{lang === 'zh' ? '把知识带回本地。' : 'Bring your knowledge home.'}</h2>
       </div>
       <div className="cta-actions">
         <Link href="https://github.com/Aiden-FE/nexnote/releases/latest" className="button primary">
           {text.download} ↗
+        </Link>
+        <Link href={quickStartPath(lang)} className="button ghost">
+          {lang === 'zh' ? '快速上手' : 'Quick start'} →
         </Link>
         <Link href="https://github.com/Aiden-FE/nexnote" className="button secondary">
           {text.github}
@@ -329,6 +330,9 @@ function Editorial({ lang, text }: { lang: Lang; text: Text }) {
                 className="button primary"
               >
                 {text.download} ↗
+              </Link>
+              <Link href={quickStartPath(lang)} className="button ghost">
+                {lang === 'zh' ? '快速上手' : 'Quick start'} →
               </Link>
               <Link href="#features" className="button ghost">
                 {lang === 'zh' ? '浏览功能' : 'Explore features'} ↓
