@@ -25,6 +25,9 @@ import {
 /** 触发形态：`N. `（编号后无正文）下一行跟缩进的列表或表格。 */
 const TRIGGER_INPUTS = ['1. \n   - a\n', '1. \n   | t |\n   | - |\n'];
 
+/** 触发形态（空 content 变体）：无正文且无缩进块的有序项，parse 产出 listItem(content: [])。 */
+const EMPTY_ITEM_INPUTS = ['1. \n', '1.\n', '1. \n2. b\n', '1. a\n2. \n3. c\n'];
+
 const extensions = buildKernelExtensions({ slashMenu: false, dragHandle: false });
 
 /** 用真实 schema 对全文档节点做 validContent 断言。 */
@@ -76,9 +79,7 @@ describe('DEV-109 · 空正文有序列表项解析', () => {
       const doc = parseMarkdown(manager, src);
       const out = serializeMarkdown(manager, doc);
       const doc2 = parseMarkdown(manager, out);
-      expect(normalizeForCompare(serializeMarkdown(manager, doc2))).toBe(
-        normalizeForCompare(out),
-      );
+      expect(normalizeForCompare(serializeMarkdown(manager, doc2))).toBe(normalizeForCompare(out));
       // 空段落不得被分配 blockId（锚点无内容承载，与空段锚点丢弃语义一致）
       const item = doc.content?.[0]?.content?.[0];
       const emptyPara = item?.content?.[0];
@@ -113,6 +114,43 @@ describe('DEV-109 · 空正文有序列表项解析', () => {
       expect(kernel.getMarkdown()).toContain('a');
     } finally {
       kernel.destroy();
+    }
+  });
+
+  for (const markdown of EMPTY_ITEM_INPUTS) {
+    it(`孤立空有序项 setMarkdown 不抛错：${JSON.stringify(markdown)}`, () => {
+      const kernel = createEditor(document.createElement('div'), {
+        initialMarkdown: '',
+        slashMenu: false,
+        dragHandle: false,
+      });
+      try {
+        expect(() => kernel.setMarkdown(markdown)).not.toThrow();
+        assertSchemaValid(kernel);
+      } finally {
+        kernel.destroy();
+      }
+    });
+  }
+
+  it('孤立空有序项往返稳定：parse → serialize 幂等，不再产出空 content 的 listItem', () => {
+    const manager = createMarkdownManager(extensions);
+    for (const src of EMPTY_ITEM_INPUTS) {
+      const doc = parseMarkdown(manager, src);
+      const out = serializeMarkdown(manager, doc);
+      const doc2 = parseMarkdown(manager, out);
+      expect(normalizeForCompare(serializeMarkdown(manager, doc2))).toBe(normalizeForCompare(out));
+      const walk = (node: ReturnType<typeof parseMarkdown>): void => {
+        if (node.type === 'listItem' || node.type === 'taskItem') {
+          expect(
+            node.content?.[0]?.type,
+            `listItem 首子块须为 paragraph：${JSON.stringify(node)}`,
+          ).toBe('paragraph');
+        }
+        node.content?.forEach(walk);
+      };
+      walk(doc);
+      walk(doc2);
     }
   });
 });

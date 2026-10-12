@@ -1,10 +1,25 @@
 // @vitest-environment happy-dom
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { createElement } from 'react';
 import { createRoot } from 'react-dom/client';
 import { act } from 'react';
 import { MindmapEditor } from '../src/binary-host/mindmap-editor';
+import type * as SessionModule from '../src/binary-host/session';
+
+// Ctrl+S 立即保存走宿主 session 的 flushPending； spying 以断言分发到达，
+// 其余 session 行为保持真实实现。
+const flushSpy = vi.fn();
+vi.mock('../src/binary-host/session', async (importOriginal) => {
+  const actual = (await importOriginal()) as typeof SessionModule;
+  return {
+    ...actual,
+    flushPending: (): Promise<void> => {
+      flushSpy();
+      return Promise.resolve();
+    },
+  };
+});
 
 /**
  * DEV-107：xmind 删除键双重分发回归测试。
@@ -25,11 +40,7 @@ import { MindmapEditor } from '../src/binary-host/mindmap-editor';
 
 const MODEL = {
   data: { text: 'root' },
-  children: [
-    { data: { text: 'c1' } },
-    { data: { text: 'c2' } },
-    { data: { text: 'c3' } },
-  ],
+  children: [{ data: { text: 'c1' } }, { data: { text: 'c2' } }, { data: { text: 'c3' } }],
 };
 
 interface NodeLike {
@@ -106,9 +117,8 @@ async function mountEditor(onChange: (m: unknown) => void): Promise<{
       }),
     );
   });
-  const host = container.querySelector(
-    '[data-testid="mindmap-editor"] > div',
-  ) as (HTMLElement & { __mindMap?: MindMap }) | null;
+  const host = container.querySelector('[data-testid="mindmap-editor"] > div') as
+    (HTMLElement & { __mindMap?: MindMap }) | null;
   const mindMap = host?.__mindMap;
   if (!mindMap) throw new Error('宿主未暴露 __mindMap 观测口');
   return {
@@ -166,9 +176,7 @@ async function waitForChildren(latest: () => NodeLike, target: number): Promise<
     if ((tree.children ?? []).length === target) return tree;
     await new Promise<void>((resolve) => setTimeout(resolve, 10));
   }
-  throw new Error(
-    `onChange 未在预期时长内收到 ${target} 个子节点：${JSON.stringify(latest())}`,
-  );
+  throw new Error(`onChange 未在预期时长内收到 ${target} 个子节点：${JSON.stringify(latest())}`);
 }
 
 /** 派发一次 keydown：target=body（真实点选节点后焦点位置），冒泡到 window 监听。 */
@@ -221,10 +229,7 @@ describe('DEV-107 · 删除键双重分发', () => {
       });
       const tree = await waitForChildren(() => latest, 2);
       // 修复断言：只有 c3 被删；c1、c2 保留。双重分发下 c2 会被连带删除（只剩 c1）。
-      expect((tree.children ?? []).map((c) => plainText(c.data?.text))).toEqual([
-        'c1',
-        'c2',
-      ]);
+      expect((tree.children ?? []).map((c) => plainText(c.data?.text))).toEqual(['c1', 'c2']);
     } finally {
       await handles.unmount();
     }
@@ -240,10 +245,7 @@ describe('DEV-107 · 删除键双重分发', () => {
         pressKey({ key: 'Backspace', code: 'Backspace', keyCode: 8 });
       });
       const tree = await waitForChildren(() => latest, 2);
-      expect((tree.children ?? []).map((c) => plainText(c.data?.text))).toEqual([
-        'c1',
-        'c2',
-      ]);
+      expect((tree.children ?? []).map((c) => plainText(c.data?.text))).toEqual(['c1', 'c2']);
     } finally {
       await handles.unmount();
     }
@@ -264,11 +266,7 @@ describe('DEV-107 · 删除键双重分发', () => {
       });
       const tree = await waitForChildren(() => latest, 3);
       // 双重分发下会一次跳两步或步进异常；修复后一次撤销恢复原树。
-      expect((tree.children ?? []).map((c) => plainText(c.data?.text))).toEqual([
-        'c1',
-        'c2',
-        'c3',
-      ]);
+      expect((tree.children ?? []).map((c) => plainText(c.data?.text))).toEqual(['c1', 'c2', 'c3']);
     } finally {
       await handles.unmount();
     }
@@ -293,10 +291,7 @@ describe('DEV-107 · 删除键双重分发', () => {
       });
       const tree = await waitForChildren(() => latest, 2);
       // 库的 FORWARD 只注册在 Control+y；Cmd/Ctrl+Shift+Z 由应用层补，且只执行一步。
-      expect((tree.children ?? []).map((c) => plainText(c.data?.text))).toEqual([
-        'c1',
-        'c2',
-      ]);
+      expect((tree.children ?? []).map((c) => plainText(c.data?.text))).toEqual(['c1', 'c2']);
     } finally {
       await handles.unmount();
     }
@@ -328,4 +323,92 @@ describe('DEV-107 · 删除键双重分发', () => {
       await handles.unmount();
     }
   });
+
+  it('Ctrl/Cmd+S：应用层保留的立即保存键，preventDefault 并触发 flushPending', async () => {
+    const handles = await setupWithActiveNode('c3', () => undefined);
+    try {
+      let event: KeyboardEvent | null = null;
+      await act(async () => {
+        event = dispatchKey(
+          new KeyboardEvent('keydown', {
+            key: 's',
+            code: 'KeyS',
+            keyCode: 83,
+            ctrlKey: true,
+            bubbles: true,
+            cancelable: true,
+          }),
+        );
+      });
+      // 库不注册 Ctrl+S：preventDefault 只可能来自应用层处理器
+      expect(event?.defaultPrevented).toBe(true);
+      expect(flushSpy).toHaveBeenCalledTimes(1);
+    } finally {
+      flushSpy.mockClear();
+      await handles.unmount();
+    }
+  });
+
+  it('文本输入态守卫：INPUT/TEXTAREA/contenteditable 目标按键不被应用层拦截', async () => {
+    const handles = await setupWithActiveNode('c3', () => undefined);
+    try {
+      for (const buildTarget of [
+        () => document.createElement('input'),
+        () => document.createElement('textarea'),
+        () => {
+          const el = document.createElement('div');
+          el.contentEditable = 'true';
+          return el;
+        },
+      ]) {
+        const target = buildTarget();
+        document.body.append(target);
+        let ctrlS: KeyboardEvent | null = null;
+        await act(async () => {
+          ctrlS = dispatchKey(
+            new KeyboardEvent('keydown', {
+              key: 's',
+              code: 'KeyS',
+              keyCode: 83,
+              ctrlKey: true,
+              bubbles: true,
+              cancelable: true,
+            }),
+            target,
+          );
+        });
+        // 守卫生效：应用层早退，不 preventDefault、不触发保存
+        expect(ctrlS?.defaultPrevented).toBe(false);
+        expect(flushSpy).not.toHaveBeenCalled();
+        await act(async () => {
+          dispatchKey(
+            new KeyboardEvent('keydown', {
+              key: 'Delete',
+              code: 'Delete',
+              keyCode: 46,
+              bubbles: true,
+            }),
+            target,
+          );
+        });
+        await new Promise<void>((resolve) => setTimeout(resolve, 50));
+        target.remove();
+      }
+      // 库自身的 defaultEnableCheck 也只放行 body/编辑节点——树不受影响
+      const root = rendererOf(handles.mindMap).root;
+      const childTexts = (root?.children ?? []).map((c) =>
+        plainText((c as { getData: (k: string) => unknown }).getData('text')),
+      );
+      expect(childTexts).toEqual(['c1', 'c2', 'c3']);
+    } finally {
+      flushSpy.mockClear();
+      await handles.unmount();
+    }
+  });
 });
+
+/** 从指定 target 派发 keydown（默认 body）并返回该事件，供 defaultPrevented 断言。 */
+function dispatchKey(event: KeyboardEvent, target: HTMLElement = document.body): KeyboardEvent {
+  target.dispatchEvent(event);
+  return event;
+}

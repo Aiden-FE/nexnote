@@ -122,11 +122,18 @@ describe('website docs', () => {
     const unsafe = renderMarkdown('![危险](javascript:alert(1))');
     expect(unsafe).not.toContain('<img');
     expect(unsafe).not.toContain('src="javascript:');
+
+    // 协议相对 `//host` 链接按跨站出口处理：补 rel/target，不留裸链接
+    const protocolRelative = renderMarkdown('[外链](//example.com/x)');
+    expect(protocolRelative).toContain('href="//example.com/x"');
+    expect(protocolRelative).toContain('rel="noreferrer noopener"');
+    expect(protocolRelative).toContain('target="_blank"');
   });
   it('embeds screenshots in the relevant bilingual chapters and every asset exists', () => {
     const expectations: Record<string, string[]> = {
       'getting-started': [
         '/screenshots/macos-welcome-zh.png',
+        '/screenshots/docs-getting-started-zh.png',
         '/screenshots/macos-editor-reading-notes-zh.png',
         '/screenshots/macos-ai-dock-zh.png',
       ],
@@ -138,9 +145,7 @@ describe('website docs', () => {
 
     for (const lang of ['zh', 'en'] as const) {
       for (const [slug, sources] of Object.entries(expectations)) {
-        const out = render(
-          <DocsChapter lang={lang} text={docsCopy[lang]} slug={slug} />,
-        );
+        const out = render(<DocsChapter lang={lang} text={docsCopy[lang]} slug={slug} />);
         for (const source of sources) {
           expect(out).toContain(`src="${source}"`);
           expect(existsSync(join(process.cwd(), 'apps/website/public', source))).toBe(true);

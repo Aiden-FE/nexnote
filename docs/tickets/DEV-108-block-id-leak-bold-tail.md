@@ -67,6 +67,11 @@
 - 修复：`appendInlinePlaceholder`（packages/kernel/src/markdown/block-id.ts）感知末位文本节点的 marks——带 mark 时占位符作为独立的无 mark 文本节点插入，落盘形态 `**加粗尾** ^id`（parse 侧行末锚点正则可回收）。采用票面两方案中的 serialize 侧方案，parse 侧正则未动，手写 `^xxx` 字面量语义零改动。
 - 覆盖：bold/italic/strike/code/link 五种 mark、heading 与 bulletList 宿主、末位无 mark 的既有形态回归、链接 URL 含 `^` 的字面量不受影响。
 
+## 发布前审查补测（2026-10-12）
+
+- 票面期望行为 3 点名的「带 mark 场景手写字面量行为需测试锁定」补齐：`block-id-mark-tail.test.ts` 新增 3 轮真实 createEditor 循环——mark 内手写 `^handwritten1` 保持可见文本、DEV-044 防御使该块不注入新锚点（blockId 保持 null）、往返不增长（三轮后仍恰 1 个 `^` 串）。
+- 审查结论：修复正确（判定只看 marks 数组与 mark 类型无关，任意 mark 天然覆盖）；票面外探针（旧版污染文档幂等、taskItem 宿主）均表现正确。已知纯外观瑕疵：末位 mark 文本自带尾随空格时落盘双空格，仍可回收，不修。
+
 ## Out of scope
 
 - 已污染文档的一次性迁移/清洗（用户手动删掉泄漏字符即可；如后续需要，另开票）。

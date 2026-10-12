@@ -118,3 +118,49 @@ describe('Live Preview 首帧（DEV-020 GUI 反馈：初次进入右侧不得空
     );
   });
 });
+
+describe('DEV-109 · 触发形态挂载真实内核：不出现解析失败横幅', () => {
+  // 票面验收第 3 条：构造触发文档挂载 LivePreview（真实 kernel，无 mock）→
+  // 修复后不出现 preview-error。live-preview-retry.test.tsx 在 kernel 边界注入
+  // 可控失败锁定重试交互闭环；这里锁定端到端「触发输入 → 正常渲染」。
+  const TRIGGER_DOCS = [
+    { label: '空正文有序项 + 缩进列表', markdown: '1. \n   - a\n', expectText: 'a' },
+    // 孤立空项渲染为空列表占位，无可见正文——断言 ProseMirror 已挂载即可
+    { label: '孤立空有序项', markdown: '1. \n', expectText: null },
+  ];
+
+  for (const { label, markdown, expectText } of TRIGGER_DOCS) {
+    it(`${label}：挂载即渲染成功，无 preview-error`, () => {
+      vi.useFakeTimers();
+      mount(markdown);
+
+      expect(container.querySelector('[data-testid="preview-error"]')).toBeNull();
+      // 内容真实渲染（首帧同步）
+      expect(container.querySelector('.ProseMirror')).not.toBeNull();
+      if (expectText !== null) {
+        expect(container.querySelector('.ProseMirror')?.textContent).toContain(expectText);
+      }
+    });
+  }
+
+  it('孤立空有序项切换文档后仍无横幅（防抖路径）', async () => {
+    vi.useFakeTimers();
+    mount('1. \n');
+    act(() => {
+      root!.render(
+        <LivePreview
+          markdown="1. \n2. 正文\n"
+          sourcePath="预览页.md"
+          onNavigate={() => undefined}
+          scrollRef={{ current: null }}
+        />,
+      );
+    });
+    expect(container.querySelector('[data-testid="preview-error"]')).toBeNull();
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(250);
+    });
+    expect(container.querySelector('[data-testid="preview-error"]')).toBeNull();
+    expect(container.querySelector('.ProseMirror')?.textContent).toContain('正文');
+  });
+});

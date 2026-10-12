@@ -431,6 +431,10 @@ function App() {
   const docsText = docsCopy[route.lang];
   const chapter =
     route.name === 'docs' && route.slug ? chapterBySlug(route.lang, route.slug) : undefined;
+  // 未知 docs slug 与任意未知路径同样按「页面不存在」处理（否则 vercel 全量
+  // rewrite 下它们返回 200，成为指向自身的 canonical 软 404）。
+  const notFound =
+    route.name === 'missing' || (route.name === 'docs' && route.slug !== null && !chapter);
 
   // 逐页 SEO：docs 章节各自有 title / description / canonical / hreflang。
   const slug = route.name === 'docs' ? route.slug : null;
@@ -439,8 +443,11 @@ function App() {
   const selfPath = route.lang === 'zh' ? zhPath : enPath;
   useEffect(() => {
     const isZh = route.lang === 'zh';
-    const pageTitle =
-      route.name === 'docs'
+    const pageTitle = notFound
+      ? isZh
+        ? '页面不存在 · NexNote'
+        : 'Page not found · NexNote'
+      : route.name === 'docs'
         ? chapter
           ? isZh
             ? `${chapter.title} · NexNote 文档`
@@ -448,25 +455,20 @@ function App() {
           : isZh
             ? 'NexNote 产品文档'
             : 'NexNote Documentation'
-        : route.name === 'missing'
-          ? isZh
-            ? '页面不存在 · NexNote'
-            : 'Page not found · NexNote'
-          : `NexNote — ${isZh ? '本地优先的知识' : 'local-first knowledge'}`;
-    const pageDescription =
-      route.name === 'docs'
+        : `NexNote — ${isZh ? '本地优先的知识' : 'local-first knowledge'}`;
+    const pageDescription = notFound
+      ? isZh
+        ? 'NexNote 官网页面不存在。'
+        : 'This page does not exist on the NexNote site.'
+      : route.name === 'docs'
         ? chapter && chapter.summary
           ? chapter.summary
           : isZh
             ? 'NexNote 官方产品文档：从打开知识库到写出第一篇带双链的页面。'
             : 'Official NexNote documentation: from opening a vault to your first page with a wikilink.'
-        : route.name === 'missing'
-          ? isZh
-            ? 'NexNote 官网页面不存在。'
-            : 'This page does not exist on the NexNote site.'
-          : isZh
-            ? 'NexNote：本地优先的知识库，连接块编辑、双链、Git 与显式 AI。'
-            : 'NexNote — a local-first knowledge base for pages, wikilinks, Git, and explicit AI.';
+        : isZh
+          ? 'NexNote：本地优先的知识库，连接块编辑、双链、Git 与显式 AI。'
+          : 'NexNote — a local-first knowledge base for pages, wikilinks, Git, and explicit AI.';
     document.documentElement.lang = isZh ? 'zh-CN' : 'en';
     document.title = pageTitle;
     document.querySelector('meta[name="description"]')?.setAttribute('content', pageDescription);
@@ -474,13 +476,28 @@ function App() {
     document
       .querySelector('meta[property="og:description"]')
       ?.setAttribute('content', pageDescription);
+    // 软 404 页 canonical 指向文档首页（未知 slug）而非自身，并加 noindex
+    const canonicalPath = notFound && route.name === 'docs' ? docsPath(route.lang) : selfPath;
     document
       .querySelector('link[rel="canonical"]')
-      ?.setAttribute('href', new URL(selfPath, window.location.origin).href);
+      ?.setAttribute('href', new URL(canonicalPath, window.location.origin).href);
+    let robots = document.querySelector('meta[name="robots"]');
+    if (notFound) {
+      if (!robots) {
+        robots = document.createElement('meta');
+        (robots as HTMLMetaElement).name = 'robots';
+        document.head.append(robots);
+      }
+      robots.setAttribute('content', 'noindex');
+    } else {
+      robots?.remove();
+    }
     document.querySelectorAll('link[data-language-alternate]').forEach((node) => node.remove());
+    const altEn = notFound && route.name === 'docs' ? docsPath('en') : enPath;
+    const altZh = notFound && route.name === 'docs' ? docsPath('zh') : zhPath;
     for (const [hreflang, href] of [
-      ['en', enPath],
-      ['zh-CN', zhPath],
+      ['en', altEn],
+      ['zh-CN', altZh],
     ] as const) {
       const link = document.createElement('link');
       link.rel = 'alternate';
@@ -489,7 +506,7 @@ function App() {
       link.dataset.languageAlternate = 'true';
       document.head.append(link);
     }
-  }, [route, text, chapter, selfPath, enPath, zhPath]);
+  }, [route, text, chapter, selfPath, enPath, zhPath, notFound]);
   if (route.name === 'home') return <Editorial lang={route.lang} text={text} />;
   const body =
     route.name === 'docs' ? (

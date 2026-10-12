@@ -75,18 +75,20 @@ export function parseMarkdown(manager: MarkdownManager, markdown: string): JSONC
  *
  * 这里在管线内兜底：首子块不是 paragraph 的列表项补一个空 paragraph，
  * 使 JSON 对 schema 合法（空段落对用户呈现为列表项占位行，与编辑器里
- * 手动产生同类结构的结果一致）。
+ * 手动产生同类结构的结果一致）。空 content（源码 `1. ` 的孤立空项）同样
+ * 违反 `paragraph block*` 约束，须一并补空 paragraph。
  */
 export function normalizeListItemContent(node: JSONContent): JSONContent {
-  if (!Array.isArray(node.content) || node.content.length === 0) return node;
-  const content = node.content.map(normalizeListItemContent);
   if (node.type === 'listItem' || node.type === 'taskItem') {
+    const content = (Array.isArray(node.content) ? node.content : []).map(normalizeListItemContent);
     const first = content[0];
-    if (first && first.type !== 'paragraph') {
-      content.unshift({ type: 'paragraph', content: [] });
+    if (!first || first.type !== 'paragraph') {
+      return { ...node, content: [{ type: 'paragraph', content: [] }, ...content] };
     }
+    return { ...node, content };
   }
-  return { ...node, content };
+  if (!Array.isArray(node.content) || node.content.length === 0) return node;
+  return { ...node, content: node.content.map(normalizeListItemContent) };
 }
 
 /** 收集文档中带 code 标记且包含反引号的文本。 */

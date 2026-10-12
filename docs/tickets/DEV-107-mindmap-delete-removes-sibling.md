@@ -66,6 +66,11 @@
 - 组件在宿主容器暴露 `__mindMap` 观测口供集成测试取实例。
 - 新增 `packages/renderer/tests/mindmap-delete-key.test.tsx`：真实 simple-mind-map 管线（DEV-102 约定不 mock 库），断言一次按键只删一个节点、撤销/重做各一步、画布外按键不触发；3 轮运行稳定。
 
+## 发布前审查补测（2026-10-12）
+
+- 原验收勾选与实际不符的两处补齐：Ctrl/Cmd+S 立即保存（spy `flushPending`，断言 preventDefault + 恰一次分发）与文本输入态守卫（INPUT/TEXTAREA/contenteditable 目标按键不 preventDefault、不触发保存、树不变）各入 `mindmap-delete-key.test.tsx`；session 模块仅 mock `flushPending` 一函数，其余真实。
+- 审查结论：双重分发已彻底消除（库快捷键注册表全量核对，`Control+z/y` 在 macOS 的 Cmd 组合同样命中库注册，撤下应用层不致 macOS 撤销失效）；删除/撤销/重做现受库默认 `enableShortcutOnlyWhenMouseInSvg` 门控（鼠标离开画布后不响应），属「全权交给库」的既定取舍，工具栏按钮可替代。
+
 ## Out of scope
 
 - simple-mind-map 库内部删除/激活逻辑的重做（`getNextActiveNode` 的"删末尾激活前一个"是库的正常 UX，不动）。

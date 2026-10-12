@@ -26,4 +26,4 @@ Mermaid 图表与 KaTeX 公式作为内置插件随包提供：它们的清单�
 
 在设置里可以查看已安装插件、启用或禁用，并查看插件声明了哪些能力。第三方插件只能看到经宿主允许的数据，API 协议有稳定版本，破坏性变更会提升主版本号。
 
-![插件管理页](/screenshots/macos-plugins-zh.png "内置 Mermaid 与 KaTeX 插件可查看、启停并核对贡献点与权限。")
+![插件管理页](/screenshots/macos-plugins-zh.png "内置 Mermaid 与 KaTeX 插件可查看、启停并核对贡献点与权限。截图以 macOS 为准，各平台功能一致。")

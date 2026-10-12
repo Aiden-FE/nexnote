@@ -166,6 +166,15 @@
 - [x] **六张截图嵌入中英双语正文**：快速上手 ×3（欢迎页/编辑器/AI dock）、wikilinks（图谱）、ai-assistant（AI dock）、plugins、settings；题注注明「截图以 macOS 为准，各平台功能一致」。`website-docs-render.test.tsx` 锁定安全渲染、双语嵌入与资产文件存在性。
 - [ ] en-US 界面重截、Windows/Linux 截图（环境仍不具备，见 ADR-0025）。
 
+## 发布前审查（2026-10-12，v0.0.35 发布前）
+
+四票联审中 DEV-103 全面复核：11 章中英 slug/order 对齐、渲染器 XSS 攻击样本实测（13 条全拒）、截图资产存在性、词典 1628/1628 零差集独立脚本复核、棘轮基线 119 条与源码精确同步、欢迎页/设置页跳转 zh/en 双分支、手机端 .arb 161/161 对齐、demo-vault 边界登记——全部通过，NOT_RUN 项（iOS 真机、Windows/Linux 截图、en-US 重截）评估为环境受限登记项、不构成发布阻塞。审查发现的 4 项待改进当日修复：
+
+- **截图题注平台口径补齐**：其余 6 处嵌入（editor/AI dock/graph/plugins/settings 及文档站图）中英题注统一追加「截图以 macOS 为准，各平台功能一致」口径，与 ADR-0025 决策对齐（原先仅欢迎页一处有标注）。
+- **孤儿资产消除**：`docs-getting-started-zh.png`（469KB）原先无任何正文引用；现作为「快速上手按钮跳转目标」的实拍嵌入中英 getting-started 章，`website-docs-render.test.tsx` 资产存在性断言同步覆盖。
+- **未知 docs slug 软 404 收敛**：vercel 全量 rewrite 下 `/docs/nope` 返回 200 且 canonical 指向自身；现未知 slug 按 not-found 处理（标题、描述、canonical 指向 `/docs` 文档首页、`noindex` meta；任意未知路径同样加 noindex）。
+- **协议相对链接防御**：`safeHref` 放行的 `//host` 形态现统一补 `rel="noreferrer noopener" target="_blank"`（原先仅显式 `https?:` 补），测试锁定。
+
 ## Out of scope
 
 - 手机端官网文档章节（ADR-0021 决定：手机端有公开发布渠道前不写官网章节，「有双语界面」不等于「可被安装」）

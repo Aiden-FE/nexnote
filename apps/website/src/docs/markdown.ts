@@ -65,7 +65,8 @@ function inline(text: string): string {
     .replace(/\[([^\]]+)\]\(([^)\s]+)\)/g, (match, label: string, href: string) => {
       const safe = safeHref(href);
       if (!safe) return match;
-      const external = /^https?:/i.test(safe);
+      // 协议相对 `//host` 与显式 http(s) 同为跨站出口，统一补 rel/target
+      const external = /^(https?:)?\/\//i.test(safe);
       const attributes = external ? ' rel="noreferrer noopener" target="_blank"' : '';
       return `<a href="${escapeHtml(safe)}"${attributes}>${label}</a>`;
     })

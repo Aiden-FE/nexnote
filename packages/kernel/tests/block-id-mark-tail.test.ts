@@ -22,7 +22,11 @@ import {
  */
 
 /** 各 inline mark 的落盘包裹形态（与 @tiptap/markdown 序列化器一致）。 */
-const MARK_WRAPPERS: Array<{ label: string; marks: Array<Record<string, unknown>>; wrap: (t: string) => string }> = [
+const MARK_WRAPPERS: Array<{
+  label: string;
+  marks: Array<Record<string, unknown>>;
+  wrap: (t: string) => string;
+}> = [
   { label: '加粗', marks: [{ type: 'bold' }], wrap: (t) => `**${t}**` },
   { label: '斜体', marks: [{ type: 'italic' }], wrap: (t) => `*${t}*` },
   { label: '删除线', marks: [{ type: 'strike' }], wrap: (t) => `~~${t}~~` },
@@ -156,6 +160,30 @@ describe('DEV-108 · mark 尾随的块 ID 锚点往返', () => {
     expect(firstId).toBe('seed-id-1');
   });
 
+  it('mark 内手写 ^id 字面量：保留为可见文本、不注入新锚点、往返不增长（期望行为 3 锁定）', async () => {
+    let current = '普通 **加粗尾 ^handwritten1**\n';
+    for (let round = 0; round < 3; round += 1) {
+      const kernel = createEditor(document.createElement('div'), {
+        initialMarkdown: current,
+        slashMenu: false,
+        dragHandle: false,
+      });
+      await vi.waitFor(() => {
+        expect(JSON.stringify(kernel.getJSON())).toContain('"blockId"');
+      });
+      // 手写字面量不在行末锚点形态（行末是 `**`），按加粗可见文本保留
+      expect(kernel.editor.getText()).toContain('^handwritten1');
+      // DEV-044 防御：文本已含 ^id 形态时不注入新锚点，块保持无 blockId
+      expect(kernel.getMarkdown()).toBe('普通 **加粗尾 ^handwritten1**');
+      const para = kernel.getJSON().content?.[0];
+      expect(para?.attrs?.blockId ?? null).toBeNull();
+      current = kernel.getMarkdown();
+      kernel.destroy();
+    }
+    // 三轮后仍是唯一的手写字面量，无追加
+    expect((current.match(/\^[A-Za-z0-9-]+/g) ?? []).length).toBe(1);
+  });
+
   it('标题与列表项的 mark 尾随锚点同样可回收', () => {
     const extensions = buildKernelExtensions({ slashMenu: false, dragHandle: false });
     const manager = createMarkdownManager(extensions);
@@ -170,7 +198,7 @@ describe('DEV-108 · mark 尾随的块 ID 锚点往返', () => {
       ],
     };
     const hOut = serializeMarkdown(manager, headingDoc);
-    expect(hOut).toBe("# **标题尾** ^h-1");
+    expect(hOut).toBe('# **标题尾** ^h-1');
     const h2 = parseMarkdown(manager, hOut);
     expect(h2.content?.[0]?.attrs?.blockId).toBe('h-1');
     expect(collectTexts(h2).join('\n')).not.toContain('^h-1');
@@ -196,7 +224,7 @@ describe('DEV-108 · mark 尾随的块 ID 锚点往返', () => {
       ],
     };
     const liOut = serializeMarkdown(manager, listDoc);
-    expect(liOut).toBe("- *项尾* ^li-1");
+    expect(liOut).toBe('- *项尾* ^li-1');
     const li2 = parseMarkdown(manager, liOut);
     const item = li2.content?.[0]?.content?.[0];
     expect(item?.attrs?.blockId).toBe('li-1');

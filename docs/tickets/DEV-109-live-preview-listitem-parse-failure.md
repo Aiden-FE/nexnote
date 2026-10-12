@@ -76,6 +76,11 @@
 - 防线补强：LivePreview 错误横幅新增「重试」按钮（`data-testid="preview-retry"`），用最新文本立即重走渲染，成功清横幅、失败刷新错误；自动恢复路径（后续文本可解析时防抖渲染清横幅）保留。
 - 验证：挂载即触发形态（initialMarkdown 为 `1. \n   - a\n`）成功解析；真实 schema `validContent` 全文档断言。
 
+## 发布前审查补丁（2026-10-12）
+
+- **漏洞修补**：原实现对空 `content` 数组直接早退，孤立空有序项（`1. \n`、`1.\n`、`1. \n2. b\n`、`1. a\n2. \n3. c\n`——比票面触发面更常见的输入）仍确定性抛同一条 `Invalid content for node type listItem`。现 listItem/taskItem 空 content 也补空 paragraph；4 个变体用例 + 往返幂等用例入 `list-item-content-normalize.test.ts`，突变验证（回退修复即 5 用例全红）确认锁定有效。
+- **验收第 3 条前半落实**：`live-preview-mount.test.tsx` 新增真实 kernel（无 mock）挂载用例——`1. \n   - a\n` 与 `1. \n` 挂载即渲染成功、无 `preview-error`，另覆盖防抖路径切换文档仍无横幅。原 `live-preview-retry.test.tsx` 的 kernel 边界可控失败注入继续锁定重试交互闭环。
+
 ## Out of scope
 
 - markdown 文档视图切换时的整页解析拦截（守卫接入是行为变更，另议）。
