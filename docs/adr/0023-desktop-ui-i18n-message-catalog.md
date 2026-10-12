@@ -258,6 +258,17 @@ status: in_progress
   不参与 CJK 断言，避免把内容边界误判为漏网。`afterEach` 复位
   `setCurrentLanguage('zh-CN')`。新增 0 key，消息目录 zh/en 保持 1628 key、
   零差集。门禁：`pnpm lint` 0、204 files / 1926 passed / 3 skipped 退出码 0。
+- 阶段④第三十一批（2026-10-12）：双链补全与 AI 模型下拉测试词典化 + en-US 断言。
+  `source-wikilink-completion` 把三处硬编码的「创建新页面」断言改为
+  `tCurrent('suggest.createNewPage')`，并新增 en-US 用例断言红链候选 detail
+  成文为 `Create new page` 且无 CJK——`label`（页面标题）仍按内容边界保留
+  原文（`全新页`）。
+  `ai-model-candidates` 与 `ai-entry-consolidation` 把 `aria-label="展开模型列表"`
+  断言改为 `tCurrent('ai.model.expand')`；前者新增 en-US 用例断言展开按钮
+  `aria-label` 成文为 `Expand model list` 且无 CJK，后者新增 en-US 用例断言
+  AI dock 未配置入口 chrome 无 CJK。三个测试均在 `afterEach` 复位
+  `setCurrentLanguage('zh-CN')`。新增 0 key，消息目录 zh/en 保持 1628 key、
+  零差集。门禁：`pnpm lint` 0、204 files / 1929 passed / 3 skipped 退出码 0。
 - 阶段③第二十七批（2026-10-12）：Chat 导出标签与注释标记词典化。
   `chat-service.ts` 的 `renderDocumentBody` 中「> 提问：」与
   `<!-- 用户提问` 改走 `chat.export.userQuestion` /

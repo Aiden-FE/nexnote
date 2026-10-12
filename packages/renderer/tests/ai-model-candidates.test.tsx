@@ -2,7 +2,13 @@
 import { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import type { AiConfigState, AiConnectionTarget, AiProfileView } from '@nexnote/shared';
+import {
+  setCurrentLanguage,
+  tCurrent,
+  type AiConfigState,
+  type AiConnectionTarget,
+  type AiProfileView,
+} from '@nexnote/shared';
 import { AiSettingsSection } from '../src/features/ai/AiSettingsSection';
 import { AiSetupWizard } from '../src/features/ai/AiSetupWizard';
 import { useAiConfig, useAiWizard } from '../src/features/ai/ai-config';
@@ -90,7 +96,9 @@ const modelInput = (): HTMLInputElement =>
 /** 点击下拉箭头打开面板（测试中比 focus 事件更可靠）。 */
 function openDropdown(input: HTMLInputElement): void {
   const picker = input.closest('[data-testid^="ai-model-picker-"]');
-  const btn = picker?.querySelector<HTMLButtonElement>('[aria-label="展开模型列表"]');
+  const btn = picker?.querySelector<HTMLButtonElement>(
+    `[aria-label="${tCurrent('ai.model.expand')}"]`,
+  );
   const panel = picker?.querySelector('[data-testid^="ai-model-dropdown-"]');
   if (panel) {
     // 已经打开，先关闭再重新打开（模拟用户重新聚焦）
@@ -123,6 +131,7 @@ afterEach(() => {
   document.body.replaceChildren();
   clearModelCandidatesCache();
   vi.clearAllMocks();
+  setCurrentLanguage('zh-CN');
 });
 
 describe('DEV-091 分功能模型候选缓存语义', () => {
@@ -207,6 +216,17 @@ describe('DEV-091 分功能模型候选缓存语义', () => {
 });
 
 describe('DEV-091 设置页分功能下拉与向导候选对齐', () => {
+  it('en-US：模型下拉展开按钮的 aria-label 成文且无 CJK 残留', () => {
+    mockModels(['m-a']);
+    setCurrentLanguage('en-US');
+    mount();
+    const input = modelInput();
+    const picker = input.closest('[data-testid^="ai-model-picker-"]');
+    const btn = picker?.querySelector<HTMLButtonElement>('[aria-label="Expand model list"]');
+    expect(btn).not.toBeNull();
+    expect(btn?.getAttribute('aria-label')).not.toMatch(/\p{Script=Han}/u);
+  });
+
   it('一次空结果不会让下拉长期为空：重新聚焦可拿到候选', async () => {
     mockModels([]);
     mount();

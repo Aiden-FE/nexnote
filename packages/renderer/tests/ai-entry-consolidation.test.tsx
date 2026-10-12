@@ -2,7 +2,7 @@
 import { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import type { AiConfigState, VaultInfo } from '@nexnote/shared';
+import { setCurrentLanguage, tCurrent, type AiConfigState, type VaultInfo } from '@nexnote/shared';
 import { AiDockPanel } from '../src/features/ai/AiDockPanel';
 import { AiSettingsSection } from '../src/features/ai/AiSettingsSection';
 import { shouldAutoShowSetupPrompt, useAiConfig, useAiWizard } from '../src/features/ai/ai-config';
@@ -87,6 +87,7 @@ afterEach(() => {
   root = null;
   container?.remove();
   document.body.replaceChildren();
+  setCurrentLanguage('zh-CN');
 });
 
 describe('DEV-026 AI 配置入口收口', () => {
@@ -132,6 +133,16 @@ describe('DEV-026 AI 配置入口收口', () => {
       .tabs.find((tab) => tab.id === useTabStore.getState().activeTabId);
     expect(active?.kind).toBe('settings');
     expect(document.querySelector('[data-testid="ai-wizard"]')).toBeNull();
+  });
+
+  it('en-US：AI dock 未配置入口 chrome 成文且无 CJK 残留', async () => {
+    setCurrentLanguage('en-US');
+    useAiConfig.setState({ state: aiState, loading: false });
+    mount(<AiDockPanel />);
+    await act(async () => tick());
+    const button = document.querySelector<HTMLButtonElement>('[data-testid="ai-dock-configure"]');
+    expect(button).not.toBeNull();
+    expect(button?.textContent ?? '').not.toMatch(/\p{Script=Han}/u);
   });
 
   it('AI 设置提供独立翻译 Profile；翻译目标语言已移至常规分区', async () => {
@@ -264,7 +275,9 @@ describe('DEV-075 分功能指定模型：自由输入 + 下拉双模式', () =>
     )!;
     // 点击下拉箭头打开面板
     const picker = input.closest('[data-testid^="ai-model-picker-"]');
-    const chevron = picker?.querySelector<HTMLButtonElement>('[aria-label="展开模型列表"]');
+    const chevron = picker?.querySelector<HTMLButtonElement>(
+      `[aria-label="${tCurrent('ai.model.expand')}"]`,
+    );
     act(() => chevron?.click());
     await act(async () => tick(20));
     const panel = picker?.querySelector('[data-testid^="ai-model-dropdown-"]');
@@ -297,7 +310,9 @@ describe('DEV-075 分功能指定模型：自由输入 + 下拉双模式', () =>
     )!;
     // 点击下拉箭头打开面板
     const picker2 = input2.closest('[data-testid^="ai-model-picker-"]');
-    const chevron2 = picker2?.querySelector<HTMLButtonElement>('[aria-label="展开模型列表"]');
+    const chevron2 = picker2?.querySelector<HTMLButtonElement>(
+      `[aria-label="${tCurrent('ai.model.expand')}"]`,
+    );
     act(() => chevron2?.click());
     await act(async () => tick(20));
     // 失败时不弹错误提示，自由输入仍然可用

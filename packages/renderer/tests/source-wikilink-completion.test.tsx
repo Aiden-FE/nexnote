@@ -1,5 +1,6 @@
 // @vitest-environment happy-dom
-import { describe, expect, it, vi } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
+import { setCurrentLanguage, tCurrent } from '@nexnote/shared';
 import { EditorState } from '@codemirror/state';
 import type { EditorView } from '@codemirror/view';
 import {
@@ -18,6 +19,10 @@ import {
   wikilinkQueryBefore,
   type WikilinkCompletionDeps,
 } from '../src/editor/source/wikilink-completion';
+
+afterEach(() => {
+  setCurrentLanguage('zh-CN');
+});
 import { createSourceEditor, type SourceEditorHandle } from '../src/editor/source/codemirror-host';
 import type { SuggestionItem } from '@nexnote/kernel';
 
@@ -83,20 +88,28 @@ describe('createWikilinkCompletionSource（补全源）', () => {
     expect(result?.from).toBe('见 [['.length);
     const labels = (result?.options ?? []).map((o) => o.label);
     expect(labels).toEqual(expect.arrayContaining(['计划', '总结', '随笔']));
-    expect(result?.options.every((o) => o.detail !== '创建新页面')).toBe(true);
+    expect(result?.options.every((o) => o.detail !== tCurrent('suggest.createNewPage'))).toBe(true);
   });
   it('查询词模糊过滤已有页面（未精确命中时红链候选殿后）', () => {
     const result = run('见 [[计');
     expect(result?.from).toBe('见 [['.length);
     const labels = (result?.options ?? []).map((o) => o.label);
     expect(labels).toEqual(['计划', '计']);
-    expect(result?.options[0]?.detail).not.toBe('创建新页面');
-    expect(result?.options[1]?.detail).toBe('创建新页面');
+    expect(result?.options[0]?.detail).not.toBe(tCurrent('suggest.createNewPage'));
+    expect(result?.options[1]?.detail).toBe(tCurrent('suggest.createNewPage'));
   });
   it('未命中页面追加「创建新页面」红链候选', () => {
     const result = run('[[全新页');
-    const uncreated = result?.options.find((o) => o.detail === '创建新页面');
+    const uncreated = result?.options.find((o) => o.detail === tCurrent('suggest.createNewPage'));
     expect(uncreated?.label).toBe('全新页');
+  });
+  it('en-US：红链候选 detail 成文为 Create new page 且无 CJK 残留', () => {
+    setCurrentLanguage('en-US');
+    const result = run('[[全新页');
+    const uncreated = result?.options.find((o) => o.detail === tCurrent('suggest.createNewPage'));
+    expect(uncreated?.label).toBe('全新页');
+    expect(uncreated?.detail).toBe('Create new page');
+    expect(uncreated?.detail ?? '').not.toMatch(/\p{Script=Han}/u);
   });
   it('无触发串返回 null', () => {
     expect(run('无触发')).toBeNull();
