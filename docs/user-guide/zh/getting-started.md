@@ -23,7 +23,7 @@ summary: 从打开知识库到写出第一篇带双链的页面。
 
 ![NexNote 欢迎页与快速上手入口](/screenshots/macos-welcome-zh.png "截图以 macOS 为准，各平台功能一致。")
 
-![「快速上手」打开的官方文档页](/screenshots/docs-getting-started-zh.png "欢迎页「快速上手」用系统默认浏览器打开的官方快速上手文档。截图以 macOS 为准，各平台功能一致。")
+![「快速上手」打开的官方文档页](/screenshots/docs-quick-start-page-zh.png "欢迎页「快速上手」用系统默认浏览器打开的官方快速上手文档。截图以 macOS 为准，各平台功能一致。")
 
 ## 2. 写出第一篇页面
 

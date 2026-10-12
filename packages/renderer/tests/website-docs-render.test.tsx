@@ -149,7 +149,7 @@ describe('website docs', () => {
     const expectations: Record<string, string[]> = {
       'getting-started': [
         '/screenshots/macos-welcome-zh.png',
-        '/screenshots/docs-getting-started-zh.png',
+        '/screenshots/docs-quick-start-page-zh.png',
         '/screenshots/macos-editor-reading-notes-zh.png',
         '/screenshots/macos-ai-dock-zh.png',
       ],

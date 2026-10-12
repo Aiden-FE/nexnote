@@ -23,7 +23,7 @@ Once it is open, the page tree is on the left, the command palette is on top (‚å
 
 ![NexNote welcome screen and quick-start action](/screenshots/macos-welcome-zh.png "Captured on macOS; features are identical across platforms.")
 
-![The documentation page opened by "Quick start"](/screenshots/docs-getting-started-zh.png "The official quick-start documentation that the welcome page opens in your default browser. Captured on macOS; features are identical across platforms.")
+![The documentation page opened by "Quick start"](/screenshots/docs-quick-start-page-zh.png "The official quick-start documentation that the welcome page opens in your default browser. Captured on macOS; features are identical across platforms.")
 
 ## 2. Write your first page
 

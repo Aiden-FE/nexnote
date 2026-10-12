@@ -154,7 +154,7 @@
 
 - [x] **欢迎页 CTA 实拍验收**：解锁后的图形会话中启动打包应用 `release/mac-arm64/NexNote.app`（v0.0.34）打开 `docs/demo-vault`，点击欢迎页「快速上手」后系统默认浏览器（Google Chrome）打开 `https://website-aiden-fes-projects.vercel.app/zh/docs/getting-started`，标题为「快速上手 · NexNote 文档」——「用系统默认浏览器打开对应语言文档页」的决定得到实测确认。
 - [x] **文档站实拍**：`/zh/docs/getting-started` 完整渲染 11 章侧栏、页内目录、正文表格与版本标注。用户此前报告的「文档无图例」经核查为当前设计边界——文档渲染器（`apps/website/src/docs/markdown.ts`）按 ADR-0010 只支持文本、表格、代码块与双链语法，不解析 `![](...)` 图片语法，文档正文本就是纯文字排版。
-- [x] 产出两张 macOS 实拍资产（2000px 宽，落盘 `apps/website/public/screenshots/`）：`macos-welcome-zh.png`（欢迎页 + 页面树 + 快速上手 CTA）、`docs-getting-started-zh.png`（文档快速上手页全貌）。暂未嵌入正文（渲染器不支持图片语法）。
+- [x] 产出两张 macOS 实拍资产（2000px 宽，落盘 `apps/website/public/screenshots/`）：`macos-welcome-zh.png`（欢迎页 + 页面树 + 快速上手 CTA）、`docs-quick-start-page-zh.png`（文档快速上手页首屏，仅页面内容区）。暂未嵌入正文（渲染器不支持图片语法）。
 - [ ] macOS 全套**应用内容页**截图（编辑器 / 图谱 / 设置 / 插件）：本次 GUI 自动化中，侧边栏文件树的点击与 Tab 导航焦点在 Electron 渲染进程与浏览器之间反复漂移（前台被其他应用抢占、窗口位置漂移、Tab 焦点跳出到 Chrome），未能在打包应用中稳定打开 `notes/Reading Notes` 等内容页。按 ADR-0025「未实际拍摄不得声称已验收」的边界保持 `NOT_RUN`，不放有瑕疵截图充当证据。（→ 当晚已解决，见下）
 - [ ] en-US 界面重截、Windows/Linux 截图（环境仍不具备，见 ADR-0025）。
 
@@ -171,9 +171,16 @@
 四票联审中 DEV-103 全面复核：11 章中英 slug/order 对齐、渲染器 XSS 攻击样本实测（13 条全拒）、截图资产存在性、词典 1628/1628 零差集独立脚本复核、棘轮基线 119 条与源码精确同步、欢迎页/设置页跳转 zh/en 双分支、手机端 .arb 161/161 对齐、demo-vault 边界登记——全部通过，NOT_RUN 项（iOS 真机、Windows/Linux 截图、en-US 重截）评估为环境受限登记项、不构成发布阻塞。审查发现的 4 项待改进当日修复：
 
 - **截图题注平台口径补齐**：其余 6 处嵌入（editor/AI dock/graph/plugins/settings 及文档站图）中英题注统一追加「截图以 macOS 为准，各平台功能一致」口径，与 ADR-0025 决策对齐（原先仅欢迎页一处有标注）。
-- **孤儿资产消除**：`docs-getting-started-zh.png`（469KB）原先无任何正文引用；现作为「快速上手按钮跳转目标」的实拍嵌入中英 getting-started 章，`website-docs-render.test.tsx` 资产存在性断言同步覆盖。
+- **孤儿资产消除**：`docs-quick-start-page-zh.png`（原先无任何正文引用；现作为「快速上手按钮跳转目标」的实拍嵌入中英 getting-started 章，`website-docs-render.test.tsx` 资产存在性断言同步覆盖。
 - **未知 docs slug 软 404 收敛**：vercel 全量 rewrite 下 `/docs/nope` 返回 200 且 canonical 指向自身；现未知 slug 按 not-found 处理（标题、描述、canonical 指向 `/docs` 文档首页、`noindex` meta；任意未知路径同样加 noindex）。
 - **协议相对链接防御**：`safeHref` 放行的 `//host` 形态现统一补 `rel="noreferrer noopener" target="_blank"`（原先仅显式 `https?:` 补），测试锁定。
+
+### 截图隐私修复（2026-10-13）
+
+- **文档站截图泄漏本机 tab 信息**：首版 `docs-getting-started-zh.png` 是全屏浏览器截图，顶部含Chrome tab 条与地址栏，暴露拍摄者本机其它已开标签页标题。已用页面内容区重新截取（仅站点自身顶栏 + 首屏正文），并**改名** `docs-quick-start-page-zh.png` 让 CDN 缓存失效；中英正文与 `website-docs-render.test.tsx` 资产断言同步更新。
+- **顺带修正**：重拍图内文档版本已是 v0.0.35+（旧图仍是 v0.0.29+）；截图裁到自身嵌入点之前，消除「截图里套截图」的递归观感。
+- **其余 6 张应用截图复核干净**：均为窗口内容区捕获（无菜单栏、Dock、其它窗口），无本机个人信息。
+- **遗留登记**：应用截图内的应用版本标签为 v0.0.34（拍摄时版本），下次按 ADR-0025 重拍批次统一刷新。
 
 ### v0.0.35 发布流水线暴露的 ADR-0023 阶段①次生缺陷（已修）
 

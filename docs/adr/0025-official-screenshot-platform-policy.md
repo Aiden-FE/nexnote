@@ -42,7 +42,7 @@ status: in_progress
   表格、代码块与双链语法，不解析 `![](...)` 图片语法。
 - 已产出并落盘两张 macOS 实拍资产（2000px 宽，供后续评审/部署用，暂未嵌入正文）：
   - `apps/website/public/screenshots/macos-welcome-zh.png`（欢迎页 + 页面树 + 快速上手 CTA）
-  - `apps/website/public/screenshots/docs-getting-started-zh.png`（文档快速上手页全貌）
+  - `apps/website/public/screenshots/docs-quick-start-page-zh.png`（文档快速上手页首屏，仅页面内容区）
 
 ### 仍未完成（2026-10-12 下午核查，当晚已解决第一项）
 
