@@ -1,6 +1,6 @@
 # NexNote 用户手册
 
-> 适用版本：v0.0.29 及以后。本手册是官方产品文档的**唯一真相源**，官网 `/docs` 与 `/zh/docs` 由本目录内容构建渲染（见 [ADR-0021](../../docs/adr/0021-product-documentation-on-official-website.md)）。改这里，官网同步变。
+> 适用版本：v0.0.35 及以后。本手册是官方产品文档的**唯一真相源**，官网 `/docs` 与 `/zh/docs` 由本目录内容构建渲染（见 [ADR-0021](../../docs/adr/0021-product-documentation-on-official-website.md)）。改这里，官网同步变。
 
 每个主题拆成独立章节，按使用顺序排列；每章有中文与英文两个版本，共用同一个 URL slug。
 

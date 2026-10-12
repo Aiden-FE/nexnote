@@ -6,7 +6,7 @@ export const docsCopy = {
   zh: {
     home: '产品文档',
     intro: '按顺序读完这几章，你就能把 NexNote 用顺手。文档与仓库同源，内容随产品持续校正。',
-    version: '适用版本 v0.0.29+',
+    version: '适用版本 v0.0.35+',
     read: '开始阅读',
     onThisPage: '本页内容',
     notFound: '找不到这一章。',
@@ -18,7 +18,7 @@ export const docsCopy = {
     home: 'Documentation',
     intro:
       'Read these chapters in order and NexNote will feel natural. The docs are sourced from the repository and corrected as the product changes.',
-    version: 'Applies to v0.0.29+',
+    version: 'Applies to v0.0.35+',
     read: 'Start reading',
     onThisPage: 'On this page',
     notFound: 'This chapter does not exist.',

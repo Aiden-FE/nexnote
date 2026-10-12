@@ -1,6 +1,6 @@
 # NexNote 插件开发文档
 
-> 适用版本：v0.0.1，Plugin API v1.0.0。
+> 适用版本：v0.0.35+，Plugin API v1.0.0。
 > 所有功能均基于真实代码实现编写；不存在的能力未列出。
 
 ---
@@ -230,14 +230,16 @@ NexNote 内置两个 UI 级插件，可禁用但不可卸载：
 
 | 插件 id | 功能 |
 | --- | --- |
-| `com.nexnote.builtin.mermaid` | Mermaid 流程图/时序图/甘特图等 |
-| `com.nexnote.builtin.katex` | KaTeX 数学公式（行内 `$...$` 与块级 `$$...$$`） |
+| `com.nexnote.mermaid` | Mermaid 流程图/时序图/甘特图等 |
+| `com.nexnote.katex` | KaTeX 数学公式（行内 `$...$` 与块级 `$$...$$`） |
+
+两者都是**宿主内直接渲染的 UI 内置插件**：不启动沙箱 iframe 帧，可禁用、不可卸载。
 
 ---
 
 ## 8. 打包与分发
 
-- **目录插件**：开发用，从「设置 → 插件 → 从目录安装」加载。
+- **目录插件**：开发用，从「设置 → 插件 → 从文件夹安装」加载。
 - **Zip 包**：分发用。支持标准 ZIP（deflate）。安装时先解压到 staging，做 hash，确认时固化为只读快照。
 - 包内必须有 `manifest.json` 和 `main` 字段指向的入口文件。
 - 插件源码不得超过 1 MB（`MAX_PLUGIN_SOURCE_BYTES`）。
@@ -277,4 +279,4 @@ window.addEventListener('nexnote-plugin-ready', () => {
 
 - `minAppVersion` 指定最低宿主版本（semver）；低于此版本的 NexNote 会拒绝安装。
 - 破坏性变更必须提升 `PLUGIN_API_VERSION` 主版本号（当前 `1.0.0`）。
-- 插件打包时宿主版本号自动传入，插件可通过 `callCapability` 查询宿主详细版本。
+- `callCapability` 的 RPC 通道已就绪，但当前宿主对**全部** operation 返回 `NOT_IMPLEMENTED`——尚无任何可用的宿主能力操作，别把它当成现成 API 依赖。

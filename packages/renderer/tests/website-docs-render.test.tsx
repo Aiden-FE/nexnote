@@ -47,7 +47,10 @@ describe('website docs', () => {
     const out = render(<DocsIndex lang="zh" text={docsCopy.zh} />);
     expect(out).toContain('快速上手');
     expect(out).toContain('href="/zh/docs/getting-started"');
-    expect(out).toContain('适用版本 v0.0.29+');
+    // 版本标注跟随词典值（改版只改 DocsView），另断言其形如 vX.Y.Z+
+    expect(out).toContain(docsCopy.zh.version);
+    expect(docsCopy.zh.version).toMatch(/^适用版本 v\d+\.\d+\.\d+\+$/);
+    expect(docsCopy.en.version).toMatch(/^Applies to v\d+\.\d+\.\d+\+$/);
   });
   it('en chapter renders article, sidebar, toc and pager', () => {
     const out = render(<DocsChapter lang="en" text={docsCopy.en} slug="getting-started" />);

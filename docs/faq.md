@@ -1,6 +1,6 @@
 # NexNote FAQ
 
-> 适用版本：v0.0.1。
+> 适用版本：v0.0.35+。
 
 ---
 
@@ -8,7 +8,7 @@
 
 **Q: NexNote 需要联网吗？账号呢？**
 
-不需要。NexNote 是本地优先（local-first）的桌面应用：所有数据（笔记、索引、插件设置）都保存在本地 vault 目录和用户配置目录里。不需要注册账号，没有云端同步（v0.0.1 只支持 Git 远程）。
+不需要。NexNote 是本地优先（local-first）的桌面应用：所有数据（笔记、索引、插件设置）都保存在本地 vault 目录和用户配置目录里。不需要注册账号，没有官方云端同步——版本历史与多设备同步走 Git 远程（pull / push）。
 
 唯一需要联网的场景：
 - 使用基于云端的 AI 模型（如 OpenAI 兼容 API）
@@ -19,7 +19,7 @@
 
 **Q: vault 是什么？**
 
-vault 是一个普通文件夹，里面是 markdown 文件和一个 `.nexnote/` 子目录（放索引 SQLite 等派生数据），v0.0.1 起还必须有 `.git/` 目录（自动版本化）。你可以用任何文件管理器、其他笔记软件直接打开这个文件夹。
+vault 是一个普通文件夹，里面是 markdown 文件和一个 `.nexnote/` 子目录（放索引 SQLite 等派生数据），以及 `.git/` 目录（Git 版本化）。你可以用任何文件管理器、其他笔记软件直接打开这个文件夹。
 
 ---
 
@@ -27,25 +27,25 @@ vault 是一个普通文件夹，里面是 markdown 文件和一个 `.nexnote/` 
 
 可以。NexNote 的 markdown 方言与 Obsidian 高度兼容：Wikilink `[[page|alias]]`、frontmatter `aliases`/`tags`、内联 `#tag`、Callout `> [!note]`、块锚点 `^id` 都支持。
 
-在首启动向导选「打开已有文件夹」，选中含 `.obsidian/` 的目录即可；首次打开会自动初始化 Git 和索引，不会修改你的笔记内容（除非你在 NexNote 中编辑）。
+在首启动向导选「打开本地文件夹」，选中含 `.obsidian/` 的目录即可；首次打开会先弹出 Git 初始化确认（点击「初始化并打开」后建立 `.git/`），索引随后自动构建，不会修改你的笔记内容（除非你在 NexNote 中编辑）。
 
 ---
 
 **Q: 数据安全吗？卸载会丢数据吗？**
 
-你的笔记内容只存在于 vault 文件夹里。卸载应用不会删除 vault；删除 `~/.config/nexnote/` 等配置目录也不会碰 vault 里的任何内容。
+你的笔记内容只存在于 vault 文件夹里。卸载应用不会删除 vault；删除应用配置目录也不会碰 vault 里的任何内容。
 
-索引、AI 配置、插件等存在用户配置目录（与 vault 分开），丢失也能从 vault 重建（索引下次打开自动重建）。
+索引、AI 配置、插件等存在应用配置目录（macOS：`~/Library/Application Support/nexnote/`；Windows：`%APPDATA%\nexnote\`；Linux：`~/.config/nexnote/`），与 vault 分开，丢失也能从 vault 重建（索引下次打开自动重建）。
 
 ---
 
 **Q: Git 自动提交会不会把我的历史搞乱？**
 
-不会。自动提交使用 `nexnote-auto` 前缀的提交信息（如 `auto: 保存 a.md, 重命名 b → c`），和你的手动提交（`manual:` 前缀）清晰区分。你可以：
+不会。自动提交使用 `nexnote:auto:` 前缀的提交信息（如 `nexnote:auto: 保存 a.md`），你的手动提交是 `nexnote:manual:`，版本恢复是 `nexnote:restore:`，三类清晰区分。你可以：
 
 - 在 Git 面板看完整时间线
 - 对单个文件做「恢复到指定版本」
-- 禁用自动提交（设置 → Git → 自动提交防抖设为关闭）
+- 禁用自动提交（设置 → Git → 关闭「自动提交」开关；间隔本身可在 2s–10min 之间调整）
 
 ---
 
@@ -129,9 +129,9 @@ vault 是一个普通文件夹，里面是 markdown 文件和一个 `.nexnote/` 
 
 **Q: 本地 embedding 是什么？不联网也能做语义召回吗？**
 
-可以。NexNote 内置了本地 embedding（基于 transformers.js），不联网也能做语义向量召回。质量比云端模型差，但隐私安全、零延迟、零成本。
+可以，但要说清它的性质：NexNote 内置的本地 embedding 后端是 `local-hash-384`——基于确定性哈希的**词法向量**，零依赖、离线、零成本，可用于三阶段召回的向量重排；它**不是语义模型**，召回质量明显弱于云端 embedding，也不是可插拔的 ONNX 语义模型（宿主已预留替换位）。
 
-在设置 → AI → 添加 Profile → 选「本地 Embedding」即可。
+在设置 → AI → 添加 Profile → 选「本地 Embedding」即可。若需要真正的语义召回，请配置云端 embedding 供应商。
 
 ---
 
@@ -215,7 +215,7 @@ Windows 以 NSIS installer 为自动更新主路径；`portable` 是额外的手
 **Q: 自动提交没生效？**
 
 检查：
-1. 设置 → Git → 自动提交防抖是否被设得很大或关闭；
+1. 设置 → Git → 「自动提交」开关是否被关闭，或「自动提交间隔」是否被设得很大；
 2. 文件是否真的被修改（外部程序修改可能没触发 watcher）；
 3. 工作区有没有冲突标记文件（`<<<<<<< HEAD` 等），冲突存在时自动提交被拒绝。
 
@@ -224,7 +224,7 @@ Windows 以 NSIS installer 为自动更新主路径；`portable` 是额外的手
 **Q: 插件安装失败？**
 
 常见原因：
-- `manifest.json` 缺少必填字段（`id` / `name` / `version` / `main` / `permissions` / `capabilities`）；
+- `manifest.json` 缺少必填字段（`id` / `name` / `version` / `minAppVersion` / `main`；`capabilities` 与 `permissions` 可省略，默认分别为空与继承 capabilities）；
 - `minAppVersion` 高于当前 NexNote 版本；
 - 入口文件 `main` 路径不对；
 - 插件目录被修改（staging hash 校验失败，是安全防护，不是 bug）。
@@ -241,4 +241,4 @@ Windows 以 NSIS installer 为自动更新主路径；`portable` 是额外的手
 
 **Q: 三端（macOS / Windows / Linux）都支持吗？**
 
-代码层面都支持，CI 也构建三平台产物。v0.0.1 是 MVP 内测版；macOS 当前为 Ad hoc、未公证，Windows/Linux 的真实签名、平台安装和 N-1 网络升级是否完成必须以 [QA 清单](./release/QA-CHECKLIST.md) 的 evidence 为准。发布格式与已知边界见 [Release Notes](../.scratch/nexnote-build/RELEASE-NOTES.md)。
+代码层面都支持，CI 也构建三平台产物。macOS 当前为 Ad hoc、未公证，Windows/Linux 的真实签名、平台安装和 N-1 网络升级是否完成必须以 [QA 清单](./release/QA-CHECKLIST.md) 的 evidence 为准；未执行的项目保持 `NOT_RUN`，不写成「已验证」。发布格式与已知边界见 [Release Notes](../.scratch/nexnote-build/RELEASE-NOTES.md)。
