@@ -42,4 +42,4 @@ Writing `#tag` in the body indexes it. Tags aggregate in the sidebar Tags panel;
 
 The graph view draws pages as nodes and wikilinks as edges. It reads the same relation data as backlinks, so anything visible in the graph is also findable through Linked Mentions. The graph is visualization only and never changes files.
 
-![The global knowledge graph](/screenshots/macos-graph-zh.png "Four pages and six wikilinks from the demo vault; node size reflects inbound links.Captured on macOS; features are identical across platforms.")
+![The global knowledge graph](/screenshots/macos-graph-zh.png "Four pages and six wikilinks from the demo vault; node size reflects inbound links. Captured on macOS; features are identical across platforms.")

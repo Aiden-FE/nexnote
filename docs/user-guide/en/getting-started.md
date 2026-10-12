@@ -21,9 +21,9 @@ A vault is an ordinary folder, and it must contain `.git`. NexNote creates `.nex
 
 Once it is open, the page tree is on the left, the command palette is on top (⌘K), and the collapsible AI chat dock is on the right.
 
-![NexNote welcome screen and quick-start action](/screenshots/macos-welcome-zh.png "Captured on macOS with the Simplified Chinese UI; Windows and Linux expose the same features.")
+![NexNote welcome screen and quick-start action](/screenshots/macos-welcome-zh.png "Captured on macOS; features are identical across platforms.")
 
-![The documentation page opened by "Quick start"](/screenshots/docs-getting-started-zh.png "The official quick-start documentation that the welcome page opens in your default browser. Captured with the Simplified Chinese UI.")
+![The documentation page opened by "Quick start"](/screenshots/docs-getting-started-zh.png "The official quick-start documentation that the welcome page opens in your default browser. Captured on macOS; features are identical across platforms.")
 
 ## 2. Write your first page
 
@@ -37,7 +37,7 @@ In a block document, typing `/` opens the quick-insert menu for headings, to-dos
 
 Content is **autosaved** (by default 1.5 seconds after you stop typing) and then bundled into one Git commit by the **auto-commit** window (30 seconds by default). Both intervals are configurable in Settings.
 
-![A real block document in the editor](/screenshots/macos-editor-reading-notes-zh.png "A page from the demo vault; the heading, list, wikilink and saved state are real product UI.Captured on macOS; features are identical across platforms.")
+![A real block document in the editor](/screenshots/macos-editor-reading-notes-zh.png "A page from the demo vault; the heading, list, wikilink and saved state are real product UI. Captured on macOS; features are identical across platforms.")
 
 ## 3. Create your first wikilink
 
@@ -68,7 +68,7 @@ AI is unavailable until you add an OpenAI-compatible provider profile (base URL,
 
 NexNote only issues an AI request when **you explicitly trigger an AI action** — editing, saving, navigating, or changing the selection never does. Sessions have permission modes: chat (read-only), edit (approve each turn), and full access (writes back automatically under guardrails).
 
-![The collapsible AI chat dock on the right](/screenshots/macos-ai-dock-zh.png "AI stays unconfigured until you add a provider; only explicit AI actions issue requests.Captured on macOS; features are identical across platforms.")
+![The collapsible AI chat dock on the right](/screenshots/macos-ai-dock-zh.png "AI stays unconfigured until you add a provider; only explicit AI actions issue requests. Captured on macOS; features are identical across platforms.")
 
 ## 6. Version history and sync
 

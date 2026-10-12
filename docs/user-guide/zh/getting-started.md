@@ -21,9 +21,9 @@ summary: 从打开知识库到写出第一篇带双链的页面。
 
 打开后，左侧是页面树，顶部是命令面板（⌘K），右侧是可折叠的 AI 对话 dock。
 
-![NexNote 欢迎页与快速上手入口](/screenshots/macos-welcome-zh.png "macOS 简体中文界面实拍；Windows / Linux 功能一致，截图后续补齐。")
+![NexNote 欢迎页与快速上手入口](/screenshots/macos-welcome-zh.png "截图以 macOS 为准，各平台功能一致。")
 
-![「快速上手」打开的官方文档页](/screenshots/docs-getting-started-zh.png "欢迎页「快速上手」用系统默认浏览器打开的官方快速上手文档。")
+![「快速上手」打开的官方文档页](/screenshots/docs-getting-started-zh.png "欢迎页「快速上手」用系统默认浏览器打开的官方快速上手文档。截图以 macOS 为准，各平台功能一致。")
 
 ## 2. 写出第一篇页面
 
