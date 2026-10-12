@@ -59,6 +59,27 @@ let happyDomInternalAppendChild: symbol | null = null;
 
 /** happy-dom 里元素无真实尺寸，库拒绝宽高为 0 的容器——全量打桩。 */
 const realGetBoundingClientRect = HTMLElement.prototype.getBoundingClientRect;
+/**
+ * SVG 元素同样需要非零尺寸桩：happy-dom 的 getBoundingClientRect 返回全零矩形，
+ * svg.js 的 rbox() 对「零盒 + 不在文档中」（destroy/卸载后库内定时器仍触发）
+ * 会抛 "Getting rbox of element "g" is not possible"——异步未捕获即被 vitest
+ * 记为 unhandled error（慢 runner 上时序放大；v0.0.35 第三次 tag 流水线
+ * macos-15-intel 失败根因）。非零矩形从源头消解该错误。
+ */
+const realSvgGetBoundingClientRect = SVGElement.prototype.getBoundingClientRect;
+
+const stubbedDomRect = (): DOMRect =>
+  ({
+    x: 0,
+    y: 0,
+    left: 0,
+    top: 0,
+    width: 1000,
+    height: 800,
+    right: 1000,
+    bottom: 800,
+    toJSON: () => ({}),
+  }) as DOMRect;
 
 beforeEach(() => {
   happyDomInternalAppendChild = null;
@@ -82,23 +103,17 @@ beforeEach(() => {
     }
   };
   HTMLElement.prototype.getBoundingClientRect = function stubbedRect() {
-    return {
-      x: 0,
-      y: 0,
-      left: 0,
-      top: 0,
-      width: 1000,
-      height: 800,
-      right: 1000,
-      bottom: 800,
-      toJSON: () => ({}),
-    } as DOMRect;
+    return stubbedDomRect();
+  };
+  SVGElement.prototype.getBoundingClientRect = function stubbedSvgRect() {
+    return stubbedDomRect();
   };
 });
 
 afterEach(() => {
   Node.prototype.appendChild = happyDomAppendChild;
   HTMLElement.prototype.getBoundingClientRect = realGetBoundingClientRect;
+  SVGElement.prototype.getBoundingClientRect = realSvgGetBoundingClientRect;
 });
 
 async function mountEditor(onChange: (m: unknown) => void): Promise<{
