@@ -109,7 +109,8 @@ function scan(root: string): { file: string; text: string }[] {
         continue;
       }
       if (!/\.(ts|tsx)$/.test(entry)) continue;
-      const file = full.slice(root.length + 1);
+      // Windows 的 path.join 产生反斜杠；基线统一存正斜杠相对路径
+      const file = full.slice(root.length + 1).replaceAll('\\', '/');
       const lines = readFileSync(full, 'utf8').split('\n');
       let inBlockComment = false;
       for (const raw of lines) {
