@@ -175,6 +175,10 @@
 - **未知 docs slug 软 404 收敛**：vercel 全量 rewrite 下 `/docs/nope` 返回 200 且 canonical 指向自身；现未知 slug 按 not-found 处理（标题、描述、canonical 指向 `/docs` 文档首页、`noindex` meta；任意未知路径同样加 noindex）。
 - **协议相对链接防御**：`safeHref` 放行的 `//host` 形态现统一补 `rel="noreferrer noopener" target="_blank"`（原先仅显式 `https?:` 补），测试锁定。
 
+### v0.0.35 发布流水线暴露的 ADR-0023 阶段①次生缺陷（已修）
+
+- **打包 smoke 在英文系统 CI 上全挂**：阶段①「首启动按系统语言初始化」使 GitHub Actions 英文系统 runner 上的 smoke 隔离 userData 首启动得到 en-US UI，而 266 项打包断言全部按中文 UI 文案编写——首次 tag 流水线 smoke 连续两次 180s 超时（v0.0.34 该机制尚未合入故从未暴露）。修复：smoke 模式下 SettingsService 构造固定 zh-CN（`packages/main/src/index.ts`）。A/B 验证：修复前 CI 构建产物在 `-AppleLanguages (en)` 模拟下 176/266 且 200s 未完成；修复后构建同参数 266/266。同批修复发布 CI 两处测试平台缺陷：`main-i18n-residue` 棘轮在 Windows 的路径分隔符不匹配（119 条既有残留被误报为新增）、`watch-service` 的 8s 事件等待预算在 macos-15-intel 高负载 runner 不足（放宽至 20s，成功即早退）。
+
 ## Out of scope
 
 - 手机端官网文档章节（ADR-0021 决定：手机端有公开发布渠道前不写官网章节，「有双语界面」不等于「可被安装」）
