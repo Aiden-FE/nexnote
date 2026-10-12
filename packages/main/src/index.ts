@@ -230,7 +230,13 @@ async function bootstrap(): Promise<void> {
   });
 
   // DEV-016：全局设置单一权威（替代 AppStore 中的零散字段 + localStorage 主题）。
-  const settings = new SettingsService(join(app.getPath('userData'), 'nexnote-settings.json'));
+  // smoke 模式固定 zh-CN：266 项打包断言按中文 UI 文案编写，而 ADR-0023 阶段①
+  // 让无设置文件的首启动按系统语言初始化——英文系统的 CI runner 会让 UI 变英文，
+  // 全部断言等待超时（v0.0.35 首次 tag 流水线 smoke 两连超时的根因）。
+  const settings = new SettingsService(
+    join(app.getPath('userData'), 'nexnote-settings.json'),
+    isSmokeMode ? 'zh-CN' : undefined,
+  );
   // ADR-0023 stage 3：主进程 native menu/dialog 与渲染层共享同一当前语言权威。
   setCurrentLanguage(settings.get().appearance.language);
   const applyGlobalSettings = (global: ReturnType<SettingsService['get']>): void => {
