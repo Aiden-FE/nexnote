@@ -7,6 +7,8 @@ summary: Find each settings section and customize keys with the shortcut table.
 
 Settings are organized by section, with a search box at the top. This chapter lists what each section covers.
 
+![The General settings section](/screenshots/macos-settings-zh.png "Theme, interface language, fonts, translation target and help entry live in General.")
+
 ## Settings sections
 
 | Section | Contents |

@@ -2,9 +2,12 @@
 /** 网站文档渲染与路由契约的回归测试：渲染器在共享 vitest 环境下验证。 */
 import { act } from 'react';
 import { createRoot } from 'react-dom/client';
+import { existsSync } from 'node:fs';
+import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { DocsChapter, DocsIndex, docsCopy } from '../../../apps/website/src/docs/DocsView';
 import { chapters } from '../../../apps/website/src/docs/content';
+import { renderMarkdown } from '../../../apps/website/src/docs/markdown';
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
@@ -106,5 +109,43 @@ describe('website docs', () => {
       <DocsChapter lang="zh" text={docsCopy.zh} slug="spreadsheets-and-mindmaps" />,
     );
     expect(chapter).toContain('导入或新建');
+  });
+  it('renders bundled screenshots as lazy figures and rejects unsafe image sources', () => {
+    const safe = renderMarkdown('![界面](/screenshots/macos-welcome-zh.png "欢迎页实拍")');
+    expect(safe).toContain('<figure class="docs-figure">');
+    expect(safe).toContain('src="/screenshots/macos-welcome-zh.png"');
+    expect(safe).toContain('alt="界面"');
+    expect(safe).toContain('loading="lazy"');
+    expect(safe).toContain('decoding="async"');
+    expect(safe).toContain('<figcaption>欢迎页实拍</figcaption>');
+
+    const unsafe = renderMarkdown('![危险](javascript:alert(1))');
+    expect(unsafe).not.toContain('<img');
+    expect(unsafe).not.toContain('src="javascript:');
+  });
+  it('embeds screenshots in the relevant bilingual chapters and every asset exists', () => {
+    const expectations: Record<string, string[]> = {
+      'getting-started': [
+        '/screenshots/macos-welcome-zh.png',
+        '/screenshots/macos-editor-reading-notes-zh.png',
+        '/screenshots/macos-ai-dock-zh.png',
+      ],
+      wikilinks: ['/screenshots/macos-graph-zh.png'],
+      'ai-assistant': ['/screenshots/macos-ai-dock-zh.png'],
+      plugins: ['/screenshots/macos-plugins-zh.png'],
+      settings: ['/screenshots/macos-settings-zh.png'],
+    };
+
+    for (const lang of ['zh', 'en'] as const) {
+      for (const [slug, sources] of Object.entries(expectations)) {
+        const out = render(
+          <DocsChapter lang={lang} text={docsCopy[lang]} slug={slug} />,
+        );
+        for (const source of sources) {
+          expect(out).toContain(`src="${source}"`);
+          expect(existsSync(join(process.cwd(), 'apps/website/public', source))).toBe(true);
+        }
+      }
+    }
   });
 });

@@ -19,6 +19,8 @@ Open **Settings → AI Providers** and add an OpenAI-compatible profile:
 
 No cloud key ships with the repository and none is hosted for you. You can disable or delete a profile in Settings at any time.
 
+![The AI chat dock on the welcome screen](/screenshots/macos-ai-dock-zh.png "Without a provider, the AI panel only offers the configuration entry point and issues no network request.")
+
 ## Three permission modes
 
 Every AI session runs under one explicit permission mode:

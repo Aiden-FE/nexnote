@@ -1,8 +1,9 @@
 /**
  * 面向产品文档的最小 Markdown 渲染器。
  * 只支持仓库章节实际用到的语法：标题、段落、有序/无序列表、围栏代码块、
- * 引用、GFM 表格，以及行内的 `code` / **bold** / *italic* / [link](href)。
- * 输出经过转义；链接仅允许相对路径、锚点与 http(s)。
+ * 引用、GFM 表格、块级图片，以及行内的 `code` / **bold** / *italic* /
+ * [link](href)。输出经过转义；链接仅允许相对路径、锚点与 http(s)，
+ * 图片仅允许仓库自带的 `/screenshots/*.png`。
  */
 
 function escapeHtml(text: string): string {
@@ -30,6 +31,21 @@ function safeHref(href: string): string | null {
     return trimmed;
   }
   return null;
+}
+
+function safeImageSrc(src: string): string | null {
+  const trimmed = src.trim();
+  return /^\/screenshots\/[a-z0-9][a-z0-9/_-]*\.png$/i.test(trimmed) ? trimmed : null;
+}
+
+function image(line: string): string | null {
+  const match = /^!\[([^\]]*)\]\((\/screenshots\/[^\s)]+)(?:\s+"([^"]*)")?\)\s*$/.exec(line);
+  if (!match) return null;
+  const src = safeImageSrc(match[2] ?? '');
+  if (!src) return null;
+  const alt = escapeHtml(match[1] ?? '');
+  const caption = match[3] ? `<figcaption>${escapeHtml(match[3])}</figcaption>` : '';
+  return `<figure class="docs-figure"><img src="${escapeHtml(src)}" alt="${alt}" loading="lazy" decoding="async">${caption}</figure>`;
 }
 
 function inline(text: string): string {
@@ -109,6 +125,14 @@ export function renderMarkdown(source: string): string {
       index += 1;
       const attribute = language ? ` class="lang-${escapeHtml(language)}"` : '';
       out.push(`<pre${attribute}><code>${escapeHtml(body.join('\n'))}</code></pre>`);
+      continue;
+    }
+
+    const figure = image(line.trim());
+    if (figure) {
+      flushParagraph();
+      out.push(figure);
+      index += 1;
       continue;
     }
 

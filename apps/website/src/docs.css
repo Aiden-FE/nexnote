@@ -245,6 +245,26 @@
   color: #312e81;
 }
 
+.docs-body .docs-figure {
+  margin: 22px 0 26px;
+}
+
+.docs-body .docs-figure img {
+  background: #fff;
+  border: 1px solid #deded8;
+  border-radius: 10px;
+  display: block;
+  height: auto;
+  width: 100%;
+}
+
+.docs-body .docs-figure figcaption {
+  color: #6b6b64;
+  font-size: 13px;
+  line-height: 1.6;
+  margin-top: 8px;
+}
+
 .docs-pager {
   border-top: 1px solid #deded8;
   display: flex;

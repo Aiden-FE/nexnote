@@ -44,11 +44,36 @@ status: in_progress
   - `apps/website/public/screenshots/macos-welcome-zh.png`（欢迎页 + 页面树 + 快速上手 CTA）
   - `apps/website/public/screenshots/docs-getting-started-zh.png`（文档快速上手页全貌）
 
-### 仍未完成
+### 仍未完成（2026-10-12 下午核查，当晚已解决第一项）
 
-- **应用内容页（编辑器/图谱/设置/插件等）截图**：本次 GUI 自动化中，侧边栏文件树的
-  点击与 Tab 导航焦点在 Electron 渲染进程与浏览器之间反复漂移（前台被其他应用抢占、
-  窗口位置漂移、Tab 焦点跳出到 Chrome），未能在打包应用中稳定打开
-  `notes/Reading Notes` 等内容页。按本 ADR「未实际拍摄的平台/页面不得声称已验收」的边界，
-  这些页面保持 `NOT_RUN`，不放入任何有瑕疵的截图作为验收证据。
-- en-US 界面重截、macOS 全套页面截图、Windows/Linux 截图仍待后续环境就绪补拍。
+- ~~**应用内容页（编辑器/图谱/设置/插件等）截图**~~：当晚已全套实拍完成，见下节。
+- en-US 界面重截、Windows/Linux 截图仍待后续环境就绪补拍。
+
+### 应用内容页截图全套完成（2026-10-12 晚）
+
+- **实拍中发现并修复产品缺陷**：初版图谱页截图显示 4 节点但 6 条链接全部缺失——
+  根因是自定义图谱节点（`GraphPageNode`）未注册 React Flow `Handle`，`getEdgePosition()`
+  恒返回 null，`EdgeWrapper` 丢弃全部边。修复为节点注册透明零占位 Handle（不参与连线），
+  并顺带把普通边色从几乎不可见的 `--border` 提升为 `--muted-foreground`（1.4 宽、
+  选中路径外 0.2 透明度）。`graph-model.test.ts` 锁定边样式契约。
+- **文档渲染器解锁图片语法**：`apps/website/src/docs/markdown.ts` 新增**块级**图片支持，
+  仅放行仓库自带 `/screenshots/*.png`（其余 src 一律拒绝，`javascript:` 等不产生 `<img>`），
+  输出 `<figure class="docs-figure">` + 可选 figcaption，`loading="lazy"`；`docs.css` 配套
+  figure 样式。`website-docs-render.test.tsx` 锁定安全渲染、双语章节嵌入与资产文件存在性。
+- **截图工艺定型**：系统级 CGEvent 点击 + 捕获期 `CGDisplayHideCursor` 隐藏光标 +
+  `screencapture -R0,80,1440,852` 仅取窗口内容区（跳过标题栏与圆角外桌面），彻底消除
+  此前批次的光标残影与顶部桌面条瑕疵；点击后光标移至空白区避免 hover tooltip 残留。
+- **六张内容页截图全部实拍完成**（打包应用 v0.0.34 + `docs/demo-vault`，2000px 宽落盘
+  `apps/website/public/screenshots/`，均经逐张目检验收）：
+  - `macos-welcome-zh.png`（欢迎页 + 页面树 + 快速上手 CTA，Dock 收起）
+  - `macos-editor-reading-notes-zh.png`（Reading Notes 块编辑器：frontmatter、双语正文、双链、已保存）
+  - `macos-graph-zh.png`（知识图谱 4 页面 · 6 链接，修复后边全部渲染）
+  - `macos-settings-zh.png`（设置 → 常规：外观/语言/字体/翻译）
+  - `macos-plugins-zh.png`（设置 → 插件：内置 Mermaid 详情、贡献点、权限、RPC 审计）
+  - `macos-ai-dock-zh.png`（欢迎页 + 右侧 AI 对话 dock 未配置空态）
+- 六张截图已嵌入中英双语对应章节正文（快速上手 ×3、双链/图谱、AI 助手、插件、设置），
+  题注标注「截图以 macOS 为准，各平台功能一致」口径。
+
+### 仍未完成（截至 2026-10-12 晚）
+
+- en-US 界面重截、Windows/Linux 截图（环境仍不具备，见上）。

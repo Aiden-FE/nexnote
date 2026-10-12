@@ -21,6 +21,8 @@ A vault is an ordinary folder, and it must contain `.git`. NexNote creates `.nex
 
 Once it is open, the page tree is on the left, the command palette is on top (⌘K), and the collapsible AI chat dock is on the right.
 
+![NexNote welcome screen and quick-start action](/screenshots/macos-welcome-zh.png "Captured on macOS with the Simplified Chinese UI; Windows and Linux expose the same features.")
+
 ## 2. Write your first page
 
 Click "New" in the page tree to pick one of three formats:
@@ -32,6 +34,8 @@ Click "New" in the page tree to pick one of three formats:
 In a block document, typing `/` opens the quick-insert menu for headings, to-dos, code blocks, callouts, Mermaid diagrams and math formulas.
 
 Content is **autosaved** (by default 1.5 seconds after you stop typing) and then bundled into one Git commit by the **auto-commit** window (30 seconds by default). Both intervals are configurable in Settings.
+
+![A real block document in the editor](/screenshots/macos-editor-reading-notes-zh.png "A page from the demo vault; the heading, list, wikilink and saved state are real product UI.")
 
 ## 3. Create your first wikilink
 
@@ -61,6 +65,8 @@ The default shortcuts are `⌘E` (source ↔ split) and `⌘⇧E` (preview ↔ t
 AI is unavailable until you add an OpenAI-compatible provider profile (base URL, API key, model name) under **Settings → AI providers**. The key is stored in the system keychain and is never written into the vault.
 
 NexNote only issues an AI request when **you explicitly trigger an AI action** — editing, saving, navigating, or changing the selection never does. Sessions have permission modes: chat (read-only), edit (approve each turn), and full access (writes back automatically under guardrails).
+
+![The collapsible AI chat dock on the right](/screenshots/macos-ai-dock-zh.png "AI stays unconfigured until you add a provider; only explicit AI actions issue requests.")
 
 ## 6. Version history and sync
 

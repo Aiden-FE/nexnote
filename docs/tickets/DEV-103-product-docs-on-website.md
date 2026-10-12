@@ -1,6 +1,6 @@
 # DEV-103 官网产品文档上线 + 欢迎页「快速上手」跳转文档
 
-状态：partial（文档站 + 跳转已随 v0.0.30 发布并于 2026-10-12 实拍复验 CTA；11 章内容已补齐；ADR-0024 手机端双语已实现；ADR-0023 桌面端双语阶段②③④持续推进；ADR-0025 macOS 欢迎页 + 文档站截图已出，应用内容页截图仍待 GUI 环境稳定）
+状态：partial（文档站 + 跳转已随 v0.0.30 发布并于 2026-10-12 实拍复验 CTA；11 章内容已补齐并嵌入全套 macOS 实拍截图；ADR-0024 手机端双语已实现；ADR-0023 桌面端双语阶段②③④持续推进；ADR-0025 macOS 全套 6 张截图完成并嵌入中英正文，en-US 重截与 Windows/Linux 截图仍待环境）
 日期：2026-10-07（grill 四轮确认；2026-10-07 随 v0.0.30 发布已落地的部分见「本轮实际交付」）
 关联：ADR-0021、ADR-0022、ADR-0023、ADR-0024、ADR-0025、ADR-0010（Docs 边界已被 ADR-0021 推翻并就地标注）、DEV-074
 
@@ -54,7 +54,7 @@
 
 - [ ] ADR-0023 桌面端界面双语：消息目录 + 跨进程错误码化，完成门槛 en-US 全 UI 无中文残留（2026-10-09 阶段①②第一批已落地，见下）
 - [x] ADR-0024 手机端 Flutter l10n（2026-10-09 完成：`flutter_localizations` + 各 161 key 的 `.arb` + 错误码化 + iOS `CFBundleLocalizations`/`knownRegions`；证据见下）
-- [ ] ADR-0025 演示知识库 + macOS 截图上官网；Windows/Linux 截图待环境就绪补拍
+- [x] ADR-0025 演示知识库 + macOS 截图上官网（2026-10-12 晚全套 6 张完成并嵌入中英正文；en-US 重截与 Windows/Linux 截图待环境就绪补拍）
 - [x] 文档其余章节补齐（2026-10-09 完成：11 章中英双语，`website-docs-render.test.tsx` 目录契约测试锁定）
 - [x] 官网部署到生产 Vercel 后核验深链对外可达（2026-10-09：四条生产深链均 200，且真实 Chrome 渲染核验中英快速上手页内容完整）
 
@@ -147,7 +147,7 @@
 
 - [x] 演示知识库已新建于 `docs/demo-vault/`（本地资产、不入外层仓库）：自带独立 `.git`、中英双语 4 个真实示例页面、双链与标签关系真实存在（ADR-0010/0025 硬约束）
 - [x] 截图的 GUI 环境阻塞已于 2026-10-12 解锁：Mac 唤醒后成功启动打包应用打开演示库并实拍（详见下方 2026-10-12 进展）
-- [~] 截图入官网：欢迎页 CTA 与文档站两张资产已落盘 `apps/website/public/screenshots/`，但按 ADR-0025「未实际拍摄不得声称已验收」，在应用内容页截图补齐前**不发布到官网正文**，避免以不完整截图集对外呈现
+- [~] 截图入官网：~~欢迎页 CTA 与文档站两张资产已落盘~~ → 2026-10-12 晚全套 6 张应用截图 + 文档站资产已落盘并嵌入中英正文（见下方「2026-10-12 晚」进展）
 - [ ] Windows/Linux 截图（环境不具备，见 ADR-0025 已登记后续项）
 
 ### ADR-0025 截图进展（2026-10-12）
@@ -155,7 +155,15 @@
 - [x] **欢迎页 CTA 实拍验收**：解锁后的图形会话中启动打包应用 `release/mac-arm64/NexNote.app`（v0.0.34）打开 `docs/demo-vault`，点击欢迎页「快速上手」后系统默认浏览器（Google Chrome）打开 `https://website-aiden-fes-projects.vercel.app/zh/docs/getting-started`，标题为「快速上手 · NexNote 文档」——「用系统默认浏览器打开对应语言文档页」的决定得到实测确认。
 - [x] **文档站实拍**：`/zh/docs/getting-started` 完整渲染 11 章侧栏、页内目录、正文表格与版本标注。用户此前报告的「文档无图例」经核查为当前设计边界——文档渲染器（`apps/website/src/docs/markdown.ts`）按 ADR-0010 只支持文本、表格、代码块与双链语法，不解析 `![](...)` 图片语法，文档正文本就是纯文字排版。
 - [x] 产出两张 macOS 实拍资产（2000px 宽，落盘 `apps/website/public/screenshots/`）：`macos-welcome-zh.png`（欢迎页 + 页面树 + 快速上手 CTA）、`docs-getting-started-zh.png`（文档快速上手页全貌）。暂未嵌入正文（渲染器不支持图片语法）。
-- [ ] macOS 全套**应用内容页**截图（编辑器 / 图谱 / 设置 / 插件）：本次 GUI 自动化中，侧边栏文件树的点击与 Tab 导航焦点在 Electron 渲染进程与浏览器之间反复漂移（前台被其他应用抢占、窗口位置漂移、Tab 焦点跳出到 Chrome），未能在打包应用中稳定打开 `notes/Reading Notes` 等内容页。按 ADR-0025「未实际拍摄不得声称已验收」的边界保持 `NOT_RUN`，不放有瑕疵截图充当证据。
+- [ ] macOS 全套**应用内容页**截图（编辑器 / 图谱 / 设置 / 插件）：本次 GUI 自动化中，侧边栏文件树的点击与 Tab 导航焦点在 Electron 渲染进程与浏览器之间反复漂移（前台被其他应用抢占、窗口位置漂移、Tab 焦点跳出到 Chrome），未能在打包应用中稳定打开 `notes/Reading Notes` 等内容页。按 ADR-0025「未实际拍摄不得声称已验收」的边界保持 `NOT_RUN`，不放有瑕疵截图充当证据。（→ 当晚已解决，见下）
+- [ ] en-US 界面重截、Windows/Linux 截图（环境仍不具备，见 ADR-0025）。
+
+### ADR-0025 截图进展（2026-10-12 晚，全套完成）
+
+- [x] **macOS 全套应用内容页截图实拍完成**：打包应用 v0.0.34 + `docs/demo-vault`，系统级 CGEvent 点击 + 捕获期隐藏光标 + 仅截窗口内容区（无光标、无桌面条、无窗口 chrome），六张 2000px 资产落盘并逐张目检验收：`macos-welcome-zh.png` / `macos-editor-reading-notes-zh.png` / `macos-graph-zh.png` / `macos-settings-zh.png` / `macos-plugins-zh.png` / `macos-ai-dock-zh.png`。
+- [x] **图谱页实拍暴露产品缺陷并修复**：自定义图谱节点未注册 React Flow `Handle`，全部 6 条边被 `EdgeWrapper` 丢弃（`getEdgePosition()` 恒 null）。`GraphPageNode` 补透明零占位 Handle，普通边色提升为 `--muted-foreground`；`graph-model.test.ts` 锁定边样式契约。
+- [x] **文档渲染器支持安全的块级图片语法**：`markdown.ts` 仅放行仓库自带 `/screenshots/*.png`（拒绝其他 src，`javascript:` 不产生 `<img>`），输出 `<figure>` + figcaption + lazy；`docs.css` 配套样式。
+- [x] **六张截图嵌入中英双语正文**：快速上手 ×3（欢迎页/编辑器/AI dock）、wikilinks（图谱）、ai-assistant（AI dock）、plugins、settings；题注注明「截图以 macOS 为准，各平台功能一致」。`website-docs-render.test.tsx` 锁定安全渲染、双语嵌入与资产文件存在性。
 - [ ] en-US 界面重截、Windows/Linux 截图（环境仍不具备，见 ADR-0025）。
 
 ## Out of scope

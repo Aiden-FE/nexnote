@@ -25,3 +25,5 @@ Mermaid diagrams and KaTeX formulas ship as built-in plugins: their manifests ar
 ## Managing plugins
 
 In Settings you can inspect installed plugins, enable or disable them, and see which capabilities each declares. Third-party plugins only see data the host allows. The API protocol has a stable version, and breaking changes increment the major version.
+
+![The plugin management page](/screenshots/macos-plugins-zh.png "Built-in Mermaid and KaTeX plugins can be inspected, toggled and audited for contributions and permissions.")
