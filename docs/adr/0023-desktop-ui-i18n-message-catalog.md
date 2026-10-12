@@ -250,6 +250,14 @@ status: in_progress
   204 files / 1925 passed / 3 skipped 退出码 0。
   （同轮 `watch-service` 的 chokidar vault 切换用例在并行全量下曾出现一次
   既有时序 flaky，单独重跑与随后全量重跑均通过。）
+- 阶段④第三十批（2026-10-12）：工具栏溢出「更多」入口补 en-US 渲染断言。
+  `editor-toolbar-overflow` 在既有 DEV-035 溢出 DOM 用例旁补 en-US 用例：
+  窄行宽下断言 `toolbar-more` 的 `aria-label` 成文为 `More`，且该节点
+  `outerHTML` 不含任何 CJK，证明 `toolbar.more` / `toolbar.moreMenu` 的
+  tooltip 与 aria 已词典化。用例显式注明传入的「已保存」status 属测试数据、
+  不参与 CJK 断言，避免把内容边界误判为漏网。`afterEach` 复位
+  `setCurrentLanguage('zh-CN')`。新增 0 key，消息目录 zh/en 保持 1628 key、
+  零差集。门禁：`pnpm lint` 0、204 files / 1926 passed / 3 skipped 退出码 0。
 - 阶段③第二十七批（2026-10-12）：Chat 导出标签与注释标记词典化。
   `chat-service.ts` 的 `renderDocumentBody` 中「> 提问：」与
   `<!-- 用户提问` 改走 `chat.export.userQuestion` /

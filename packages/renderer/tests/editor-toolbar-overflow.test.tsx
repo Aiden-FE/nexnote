@@ -2,6 +2,7 @@
 import { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { setCurrentLanguage } from '@nexnote/shared';
 import { EditorToolbar, TOOLBAR_MORE_ID } from '../src/editor/toolbar/EditorToolbar';
 import type { ToolbarEntrySpec } from '../src/editor/toolbar/entries';
 import { resolveToolbarLayout } from '../src/editor/toolbar/overflow';
@@ -114,6 +115,7 @@ afterEach(() => {
   container?.remove();
   document.body.innerHTML = '';
   rectSpy.mockRestore();
+  setCurrentLanguage('zh-CN');
 });
 
 describe('工具栏 Priority+ 布局（resolveToolbarLayout）', () => {
@@ -192,6 +194,18 @@ describe('工具栏溢出的 DOM 行为（DEV-035）', () => {
     expect(document.querySelectorAll(`[data-testid^="toolbar-entry-"]`)).toHaveLength(4);
     expect(byTestId('toolbar-more')).toBeNull();
     expect(byTestId('save-status')?.textContent).toBe('已保存');
+  });
+
+  it('en-US：「更多」入口的 tooltip 与 aria-label 均成文且无 CJK 残留', () => {
+    rowWidth = 100;
+    setCurrentLanguage('en-US');
+    mount(makeEntries());
+    const more = byTestId('toolbar-more');
+    expect(more).not.toBeNull();
+    expect(more?.getAttribute('aria-label')).toBe('More');
+    expect(more?.getAttribute('aria-label')).not.toMatch(/\p{Script=Han}/u);
+    // 「已保存」是本用例传入的 status 测试数据，不参与词典断言。
+    expect(more?.outerHTML ?? '').not.toMatch(/\p{Script=Han}/u);
   });
 
   it('宽度不足：放不下的动作与 AI 入口整体进入「更多」，状态项仍可见', () => {
