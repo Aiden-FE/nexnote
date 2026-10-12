@@ -123,7 +123,7 @@
 - [x] 阶段④第三十批（2026-10-12）：工具栏溢出「更多」入口补 en-US 渲染断言。`editor-toolbar-overflow` 在既有 DEV-035 溢出 DOM 用例旁补 en-US 用例：窄行宽下断言 `toolbar-more` 的 `aria-label` 成文为 `More`，且该节点 `outerHTML` 不含任何 CJK，证明 `toolbar.more` / `toolbar.moreMenu` 的 tooltip 与 aria 已词典化；用例显式注明传入的「已保存」status 属测试数据、不参与 CJK 断言。`afterEach` 复位 `setCurrentLanguage('zh-CN')`。新增 0 key，消息目录 zh/en 保持 1628 key、零差集。门禁：`pnpm lint` 0、`pnpm test` 204 files / 1926 passed / 3 skipped 退出码 0。
 - [x] 阶段④第三十一批（2026-10-12）：双链补全与 AI 模型下拉测试词典化 + en-US 断言。`source-wikilink-completion` 把三处硬编码的「创建新页面」断言改为 `tCurrent('suggest.createNewPage')`，并新增 en-US 用例断言红链候选 detail 成文为 `Create new page` 且无 CJK（页面标题 `label` 仍按内容边界保留原文）。`ai-model-candidates` 与 `ai-entry-consolidation` 把 `aria-label="展开模型列表"` 断言改为 `tCurrent('ai.model.expand')`；前者新增 en-US 用例断言展开按钮 aria-label 成文为 `Expand model list`，后者新增 en-US 用例断言 AI dock 未配置入口 chrome 无 CJK。三个测试均在 `afterEach` 复位 `setCurrentLanguage('zh-CN')`。新增 0 key，消息目录 zh/en 保持 1628 key、零差集。门禁：`pnpm lint` 0、`pnpm test` 204 files / 1929 passed / 3 skipped 退出码 0。
 - [ ] 阶段③剩余：主进程用户可读状态与校验错误残留继续按棘轮基线收敛；GitService / vault / doctor / DOCX / FS / AI service / plugin manifest / settings IPC / agent gateway/tools / confidence / binary / chat / skill / preload / IPC validation 服务状态已完成
-- [ ] 阶段④剩余：继续按「真实 UI 断言 + 内容/服务消息边界」分批迁移既有测试
+- [~] 阶段④剩余：54 个 happy-dom UI 测试中 40 个已带 en-US 渲染断言（含 CJK 残留检查）；剩余 14 个逐个核查后确认均为纯逻辑 / 几何 / 内容数据断言（DOM 计时、滚动定位、文件名与标题数据），不含词典 chrome，不构成「en-US 全 UI 无中文残留」门槛缺口
 - [ ] **NOT_RUN / 未达门槛**：按 ADR「en-US 全 UI 无中文残留」，当前不声称桌面端双语完成
 
 ### ADR-0024 验收证据（2026-10-09）
