@@ -1,0 +1,51 @@
+{
+  "schema": "nexnote-release-qa/v1",
+  "repository": "Aiden-FE/nexnote",
+  "tag": "v0.0.35",
+  "commit": "55e216cf98cc71b0df3db63f8eb1e80ebfae435a",
+  "channel": "stable",
+  "allRequiredChecksPassed": true,
+  "scope": "v0.0.35-release",
+  "machineChecks": {
+    "typecheck": "passed (local CI=true pnpm -r --if-present typecheck at 55e216c; all applicable workspace projects clean, zero errors/warnings; packages/main verified additionally with npx tsc --noEmit -p packages/main/tsconfig.json)",
+    "lint": "passed (local CI=true pnpm lint at 55e216c; zero errors and zero warnings)",
+    "tests": "passed (local CI=true pnpm test at 55e216c; 1942 passed | 3 skipped, 203 test files passed | 1 skipped, exit code 0; +11 tests over v0.0.34 from the four-ticket release review follow-ups)",
+    "build": "passed (local CI=true pnpm build at 55e216c; main/preload/renderer builds completed with zero warnings/errors)",
+    "websiteBuild": "passed (local CI=true pnpm --filter website build at 55e216c; TypeScript + Vite production build completed)",
+    "releaseConfig": "31/31 passed (local pnpm verify:release-config at 55e216c)",
+    "changedFormat": "passed (npx prettier --check on all files changed vs v0.0.34 before the candidate commit; formatted and re-verified)",
+    "packagedSmoke": "passed locally on macOS arm64 packaged app bound to 55e216c, app 0.0.35, Electron 44.2.0, ABI 149: 266/266 checks passed, exit code 0, results.json notRun=[Windows packaged smoke, Linux packaged smoke]. xlsx round-trip checks: 保存后单元格内容保留 (cells=4 values=Plan|费用|Cursor Pro|20); 保存后工作表名保留 (AI Coding 支出); 内容未变的重复保存不重写文件 (sha 6d983217 → 6d983217)",
+    "packagedIntegrity": "Ad hoc signature verified with codesign --verify --deep --strict (valid on disk, satisfies Designated Requirement); bundled Git verified through scripts/verify-bundled-git.mjs --app release/mac-arm64/NexNote.app (git version 2.53.0)",
+    "ciLogHygiene": "local full-suite and packaged-smoke logs inspected at 55e216c; zero warnings/errors (one initial full-suite run had a single unhandled error that did not reproduce across three subsequent clean runs; final gates recorded from the clean runs)",
+    "gatekeeper": "Ad hoc signed app; Gatekeeper manual Open Anyway remains expected on first launch without Developer ID notarization"
+  },
+  "gateDecisions": {
+    "windowsLinuxPhysicalInstall": "WAIVED by repository owner Aiden-FE: no Windows/Linux hardware available; release CI still builds and smoke-tests the supported matrix",
+    "macosGatekeeper": "DEFERRED to first-launch Open Anyway on the owner Mac (Ad hoc signing only); Developer ID signing/notarization remains future work"
+  },
+  "candidateContents": {
+    "tickets": "Release: master candidate 55e216cf98cc71b0df3db63f8eb1e80ebfae435a, version 0.0.35; contains DEV-107/DEV-108/DEV-109 (three P1 user-reported bugs) plus DEV-103 batches (official docs site content, desktop/mobile bilingual i18n, macOS screenshot assets), followed by a pre-release four-ticket review that fixed one leftover kernel crash and closed four test/website gaps.",
+    "highlights": [
+      "DEV-107 P1：xmind 思维导图删除键/撤销/重做双重分发消除——应用层撤下与 simple-mind-map KeyCommand 重复的 'Del|Backspace'/'Control+z'/'Control+y' 分发，保留 Ctrl+S 并补库缺失的 Cmd/Ctrl+Shift+Z 重做；选中末尾节点按一次删除不再连带删除相邻兄弟（用户数据误删）。",
+      "DEV-108 P1：块 ID 锚点不再被末位 mark 包裹泄漏——appendInlinePlaceholder 感知末位文本节点 marks，落盘形态 `**加粗尾** ^id` 可被 parse 侧行末正则回收；修复前每次切换文档追加一个泄漏 ID 逐次增长。五种 mark（bold/italic/strike/code/link）+ heading/listItem 宿主覆盖。",
+      "DEV-109 P1：空正文有序列表项解析失败根因修复——normalizeListItemContent 为首子块非 paragraph 的 listItem/taskItem 补空 paragraph，预览不再抛 `Invalid content for node type listItem` 整页失败；LivePreview 错误横幅新增重试按钮。发布前审查补丁：孤立空有序项（`1. ` 回车即触发）的空 content 早退漏洞同修。",
+      "DEV-103：官网产品文档 11 章中英双语 + 6 张 macOS 实拍截图嵌入正文（含图谱节点 React Flow Handle 修复后实拍）；欢迎页「快速上手」/设置页「产品文档」按界面语言用系统浏览器打开文档站。",
+      "ADR-0023 桌面端 i18n 大批量推进：消息目录 zh/en 各 1628 key 零差集；renderer 模块迁移闭环 + 主进程错误码化 + binary-host 双语 + 主进程残留棘轮基线收敛至 119 条（全仓 UI 测试含 en-US 渲染断言与 CJK 残留检查）。",
+      "ADR-0024 手机端双语：flutter_localizations + .arb 161/161 key 对齐 + 错误码化（iOS 真机核验仍为环境受限登记项）。",
+      "发布前四票联审（本次候选内 commit de91ae6）：DEV-109 空 content 补丁 + 4 个空项变体用例 + 真实 kernel 挂载断言；DEV-107 补 Ctrl+S 与输入态守卫回归测试；DEV-108 补 mark 内手写字面量行为锁定；官网软 404 noindex/canonical 收敛、协议相对链接 rel 补齐、截图题注平台口径补齐、孤儿资产 docs-getting-started-zh.png 嵌入正文。",
+      "图谱修复：GraphPageNode 补 React Flow Handle（getEdgePosition 恒 null 导致全部边被 EdgeWrapper 丢弃），全局图谱与侧栏局部图谱两视图共用同一 nodeTypes 一处修复全覆盖。"
+    ]
+  },
+  "artifacts": {
+    "macArm64Zip": "release/NexNote-0.0.35-mac-arm64.zip (sha256 baa79433048c9d47bd3feedea826c82f7154a5cac6eab01b801d43061e3a55a8)",
+    "macArm64Dmg": "release/NexNote-0.0.35-mac-arm64.dmg (sha256 3a6d36b07b44536e3d2217eeac84244236a531e24eeecc8852573412cbd69fba)"
+  },
+  "notRun": [
+    "matrix signed builds for mac-arm64/mac-x64/windows-x64/linux-x64 before tag dispatch (executed by the release-tag-bound pipeline)",
+    "Windows packaged smoke and Linux packaged smoke before tag dispatch (executed by the release-tag-bound pipeline)",
+    "macOS notarization / Developer ID code signing",
+    "Windows/Linux physical installation and real N-1 network upgrade",
+    "release-qa Environment required-reviewer approval before publication",
+    "post-publication 24-hour monitoring"
+  ]
+}
