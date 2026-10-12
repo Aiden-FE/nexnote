@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it } from 'vitest';
 // @vitest-environment happy-dom
 import { createRoot } from 'react-dom/client';
 import { act } from 'react';
@@ -10,8 +10,15 @@ import { useUiStore } from '../src/stores/ui-store';
 import type { TagIndexEntry } from '@nexnote/shared';
 import { TagsPanel } from '../src/features/sidebar/tags/index';
 import { buildTagTree } from '../src/features/sidebar/tags/tree';
+import { setCurrentLanguage } from '@nexnote/shared';
 
-function flush(): Promise<void> { return new Promise((r) => setTimeout(r, 0)); }
+afterEach(() => {
+  setCurrentLanguage('zh-CN');
+});
+
+function flush(): Promise<void> {
+  return new Promise((r) => setTimeout(r, 0));
+}
 
 function installMockEntries(entries: TagIndexEntry[]): void {
   useIndexStore.setState({
@@ -31,7 +38,12 @@ describe('buildTagTree', () => {
       { tag: 'work', pageCount: 1, descendantPageCount: 3, path: ['work'] },
       { tag: 'work/project', pageCount: 1, descendantPageCount: 1, path: ['work', 'project'] },
       { tag: 'work/notes', pageCount: 1, descendantPageCount: 2, path: ['work', 'notes'] },
-      { tag: 'work/notes/daily', pageCount: 2, descendantPageCount: 2, path: ['work', 'notes', 'daily'] },
+      {
+        tag: 'work/notes/daily',
+        pageCount: 2,
+        descendantPageCount: 2,
+        path: ['work', 'notes', 'daily'],
+      },
       { tag: 'archive', pageCount: 1, descendantPageCount: 1, path: ['archive'] },
     ];
     const tree = buildTagTree(entries);
@@ -59,7 +71,13 @@ describe('TagsPanel（嵌套树）', () => {
     installMockEntries(entries);
 
     // stub window.nexnote bridge：index:tagPages 走假数据
-    (window as unknown as { nexnote?: { invoke: (ch: string, payload: unknown) => Promise<{ ok: true; data: unknown }> } }).nexnote = {
+    (
+      window as unknown as {
+        nexnote?: {
+          invoke: (ch: string, payload: unknown) => Promise<{ ok: true; data: unknown }>;
+        };
+      }
+    ).nexnote = {
       invoke: async (channel, payload) => {
         if (channel === 'index:tags') return { ok: true, data: entries };
         if (channel === 'index:tagPages') {
@@ -94,7 +112,10 @@ describe('TagsPanel（嵌套树）', () => {
       expect(container.querySelectorAll('[data-tag="work/notes"]').length).toBe(0);
 
       // 展开
-      await act(async () => { workExpand.click(); await flush(); });
+      await act(async () => {
+        workExpand.click();
+        await flush();
+      });
       const expands2 = container.querySelectorAll('[data-testid="tag-expand"]');
       const workExpand2 = expands2[0] as HTMLElement;
       expect(workExpand2.getAttribute('data-open')).toBe('true');
@@ -115,7 +136,11 @@ describe('TagsPanel（嵌套树）', () => {
       expect(filter).toBe('work');
       expect(usePageTreeStore.getState().tagFiles).toEqual(['a.md', 'b.md', 'c.md']);
       expect(useUiStore.getState().searchOpen).toBe(true);
-      expect(useUiStore.getState().searchRoute).toEqual({ kind: 'tag', tag: 'work', paths: ['a.md', 'b.md', 'c.md'] });
+      expect(useUiStore.getState().searchRoute).toEqual({
+        kind: 'tag',
+        tag: 'work',
+        paths: ['a.md', 'b.md', 'c.md'],
+      });
 
       // 再次点击取消过滤
       await act(async () => {
@@ -124,10 +149,43 @@ describe('TagsPanel（嵌套树）', () => {
       });
       expect(usePageTreeStore.getState().tagFilter).toBeNull();
 
-      await act(async () => { root.unmount(); });
+      await act(async () => {
+        root.unmount();
+      });
     } finally {
       delete (window as unknown as { nexnote?: unknown }).nexnote;
       usePageTreeStore.getState().setTagFilter(null, null);
+    }
+  });
+
+  it('en-US renders tag chrome from the message catalog without CJK residue', async () => {
+    setCurrentLanguage('en-US');
+    installMockEntries([{ tag: 'work', pageCount: 1, descendantPageCount: 1, path: ['work'] }]);
+    (window as unknown as { nexnote?: unknown }).nexnote = {
+      invoke: async (channel: string) =>
+        channel === 'index:tags'
+          ? { ok: true, data: [] }
+          : channel === 'index:tagPages'
+            ? { ok: true, data: [] }
+            : { ok: true, data: null },
+    };
+    try {
+      const container = document.createElement('div');
+      document.body.appendChild(container);
+      const root = createRoot(container);
+      await act(async () => {
+        root.render(<TagsPanel />);
+        await flush();
+      });
+      const panel = container.querySelector('[data-testid="sidebar-panel-tags"]');
+      expect(panel).not.toBeNull();
+      const text = panel?.textContent ?? '';
+      expect(text).not.toMatch(/\p{Script=Han}/u);
+      await act(async () => {
+        root.unmount();
+      });
+    } finally {
+      delete (window as unknown as { nexnote?: unknown }).nexnote;
     }
   });
 });

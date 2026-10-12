@@ -232,6 +232,14 @@ status: in_progress
   新增 2 key，消息目录 zh/en 各 1626 key、零差集；main 残留棘轮基线从
   125 收敛至 121（Git 类剩 2 条均为 stable 语义字符串）。门禁：四套 tsc
   通过、`pnpm lint` 0、204 files / 1922 passed / 3 skipped 退出码 0。
+- 阶段④第二十八批（2026-10-12）：标签树与设置入口补 en-US 真实渲染断言。
+  `tags-tree` 新增 en-US 用例：渲染后断言标签面板 `textContent` 不含任何 CJK
+  字符，证明 `sidebar.tags.*` 词典 chrome（副标题 / 来源 / 空态 / 折叠 aria）
+  已成文；`sidebar-settings-navigation` 新增 en-US 用例：切换语言后重新渲染，
+  断言左下角设置入口 `textContent` 为 `Settings` 且无 CJK。两个测试均在
+  `afterEach` 复位 `setCurrentLanguage('zh-CN')`，不污染其他用例。新增 0 key，
+  消息目录 zh/en 保持 1628 key、零差集。门禁：`pnpm lint` 0、
+  204 files / 1924 passed / 3 skipped 退出码 0。
 - 阶段③第二十七批（2026-10-12）：Chat 导出标签与注释标记词典化。
   `chat-service.ts` 的 `renderDocumentBody` 中「> 提问：」与
   `<!-- 用户提问` 改走 `chat.export.userQuestion` /

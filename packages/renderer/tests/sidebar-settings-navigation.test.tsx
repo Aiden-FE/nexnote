@@ -2,7 +2,7 @@
 import { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import type { VaultInfo } from '@nexnote/shared';
+import { setCurrentLanguage, type VaultInfo } from '@nexnote/shared';
 import { Sidebar } from '../src/shell/Sidebar';
 import { VaultContext } from '../src/shell/vault-context';
 import { useSettingsNav } from '../src/lib/open-settings';
@@ -41,6 +41,7 @@ afterEach(() => {
   act(() => root?.unmount());
   root = null;
   container.remove();
+  setCurrentLanguage('zh-CN');
 });
 
 describe('左下角设置入口', () => {
@@ -56,5 +57,20 @@ describe('左下角设置入口', () => {
       .tabs.find((tab) => tab.id === useTabStore.getState().activeTabId);
     expect(activeTab?.kind).toBe('settings');
     expect(container.querySelector('[data-testid="git-settings"]')).toBeNull();
+  });
+
+  it('en-US renders the settings entry from the message catalog without CJK residue', () => {
+    setCurrentLanguage('en-US');
+    act(() => {
+      root?.render(
+        <VaultContext.Provider value={vault}>
+          <Sidebar />
+        </VaultContext.Provider>,
+      );
+    });
+    const button = container.querySelector<HTMLButtonElement>('[data-tour="settings"]');
+    expect(button).not.toBeNull();
+    expect(button?.textContent).toBe('Settings');
+    expect(button?.textContent).not.toMatch(/\p{Script=Han}/u);
   });
 });
