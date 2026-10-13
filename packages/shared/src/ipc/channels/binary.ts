@@ -16,13 +16,31 @@ import type { BinaryEditorCommand } from '../events';
 export const BINARY_MAX_IMPORT_BYTES = 200 * 1024 * 1024;
 
 /**
- * xmind 布局结构（DEV-102，ADR-0020）：node 的生长方向排布，与节点内容/层级无关。
- * 存 sidecar（`mindmapStructure`）而非 xmind 字节——xmind 的 structureClass 在本应用
- * 解析端不读、写回端恒为 logic.right，布局无法经字节往返。
+ * xmind 布局结构（DEV-102 / DEV-114）：node 的生长方向排布，与节点内容/层级无关。
+ * 受支持的结构以 XMind 官方 root `structureClass` 为权威并随字节往返；legacy
+ * sidecar 仅作为旧版本迁移来源。up/x 是 NexNote 专用布局，不承诺外部一致性。
  */
-export const MINDMAP_STRUCTURE_IDS = ['right', 'left', 'up', 'down', 'fishbone', 'x'] as const;
+export const MINDMAP_STRUCTURE_IDS = ['right', 'left', 'down', 'fishbone', 'up', 'x'] as const;
 
 export type MindmapStructureId = (typeof MINDMAP_STRUCTURE_IDS)[number];
+
+/** XMind 官方结构类。该文件仅受支持且可往返的结构；NexNote 专用 up/x 不在此表。 */
+export const MINDMAP_STRUCTURE_CLASS_BY_ID = {
+  right: 'org.xmind.ui.logic.right',
+  left: 'org.xmind.ui.logic.left',
+  down: 'org.xmind.ui.org-chart.down',
+  fishbone: 'org.xmind.ui.fishbone.rightHeaded',
+} as const satisfies Record<Exclude<MindmapStructureId, 'up' | 'x'>, string>;
+
+/** 从官方 structureClass 反向定位 NexNote 结构 id；未知值返回 null。 */
+export function mindmapStructureIdFromClass(value: unknown): MindmapStructureId | null {
+  if (typeof value !== 'string') return null;
+  return (
+    (Object.entries(MINDMAP_STRUCTURE_CLASS_BY_ID) as [MindmapStructureId, string][]).find(
+      ([, structureClass]) => structureClass === value,
+    )?.[0] ?? null
+  );
+}
 
 /** X 结构仅在根节点子节点数 ≥ 2 时可用（DEV-102 决策 4）。 */
 export const MIN_ROOT_CHILDREN_FOR_X_STRUCTURE = 2;
@@ -43,14 +61,15 @@ export interface BinaryReadResult {
    * 传稳定枚举而非中文文本，避免经 IPC 泄漏语言。
    */
   readonly?: BinaryReadonlyTag[];
+  /** DEV-114：读取到的官方 root structureClass；仅受支持结构会返回映射 id，未知官方值返回 null。 */
+  structureId?: MindmapStructureId | null;
+  /** DEV-114：官方 root structureClass 未知时显示只读保留提示；受支持/缺失时不设置。 */
+  structurePreserved?: boolean;
 }
 
 /** 只读保留区稳定 code。 */
 export type BinaryReadonlyTag =
-  | 'MACRO'
-  | 'CHART'
-  | 'PIVOT_TABLE'
-  | 'BORDER_OR_RELATION';
+  'MACRO' | 'CHART' | 'PIVOT_TABLE' | 'BORDER_OR_RELATION' | 'XMIND_STRUCTURE_FALLBACK';
 
 export const BINARY_CHANNELS = [
   'binary:ping',
@@ -105,7 +124,12 @@ export interface BinaryChannelMap {
   };
   /** 保存语义模型回 vault 副本（原地覆写，expectedSha256 乐观锁；等待 pending 写入完成）。 */
   'binary:save': {
-    request: { kind: BinaryKind; path: string; data: unknown; expectedSha256: string };
+    request: {
+      kind: BinaryKind;
+      path: string;
+      data: unknown;
+      expectedSha256: string;
+    };
     response: Result<{ sha256: string }>;
   };
   /** 切换「二进制文档不随 Git 跟踪」：写入 vault 根 .gitignore（默认跟踪，不设行）。 */

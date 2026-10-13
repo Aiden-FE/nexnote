@@ -320,6 +320,7 @@ export async function preserveXlsxReadonly(
  * boundaries / relationships / theme / skeleton 等多版本字段，simple-mind-map
  * 不实现这些字段的解析，必须原样回填以避免保存后丢失（ADR-0015 Decision 4）。
  * 编辑涉及的字段（id/class/title/rootTopic/children/summaries/extensions）以重建为准。
+ * root 的 structureClass 只在重建端明确写入时拥有；否则 DEV-114 要求保留未知官方结构。
  */
 export async function preserveXmindReadonly(
   originalBytes: Buffer,
@@ -398,24 +399,23 @@ function mergeXmindSheets(originalJson: unknown, rebuiltJson: unknown): unknown 
   // rootTopic 内的 boundaries / relationships / skeleton / theme / extensions 等同样保留
   const originalRoot = (originalSheet.rootTopic ?? {}) as Record<string, unknown>;
   const rebuiltRoot = (rebuiltSheet.rootTopic ?? {}) as Record<string, unknown>;
-  const preservedRootKeys = new Set(
-    Object.keys(originalRoot).filter(
-      (k) =>
-        ![
-          'id',
-          'structureClass',
-          'title',
-          'notes',
-          'href',
-          'labels',
-          'children',
-          'summaries',
-          'marker',
-        ].includes(k),
-    ),
-  );
-  const mergedRoot = { ...originalRoot, ...rebuiltRoot };
-  // 把 preservedRootKeys 强制包含（rebuiltRoot 没有这些键时，原值必须保留）
+  const ownedRootKeys = new Set([
+    'id',
+    'title',
+    'notes',
+    'href',
+    'labels',
+    'children',
+    'summaries',
+    'marker',
+    // 结构类是条件性 owned：writer 明确输出时表达用户/迁移后的新选择；
+    // writer 输出 undefined 时说明模型无法映射，原官方结构必须保留。
+    ...(typeof rebuiltRoot.structureClass === 'string' ? ['structureClass'] : []),
+  ]);
+  const preservedRootKeys = new Set(Object.keys(originalRoot).filter((k) => !ownedRootKeys.has(k)));
+  const mergedRoot: Record<string, unknown> = { ...originalRoot, ...rebuiltRoot };
+  // 把 preservedRootKeys 强制包含（rebuiltRoot 没有这些键时，原值必须保留）。
+  // structureClass 不在 owned 集合时，Spread 已保留 original 值；这里补注释避免被误当遗漏。
   for (const key of preservedRootKeys) {
     if (!(key in mergedRoot) && key in originalRoot) {
       (mergedRoot as Record<string, unknown>)[key] = originalRoot[key];

@@ -1,11 +1,8 @@
 import { describe, it, expect } from 'vitest';
 import JSZip from 'jszip';
-import {
-  parseXmindToModel,
-  writeModelToXmind,
-  XmindError,
-} from '../src/binary/xmind-convert';
+import { parseXmindToModel, writeModelToXmind, XmindError } from '../src/binary/xmind-convert';
 import { preserveXmindReadonly } from '../src/binary/zip-preserve';
+import { MINDMAP_STRUCTURE_CLASS_BY_ID } from '@nexnote/shared';
 
 /** 构造一个合法 xmind（content.json v2）字节。 */
 async function buildSampleXmind(): Promise<Buffer> {
@@ -94,7 +91,9 @@ describe('xmind-convert（DEV-074，ADR-0015 R3）', () => {
     expect(out.file('resources/logo.png')).not.toBeNull();
     expect(await out.file('resources/logo.png')!.async('nodebuffer')).toEqual(imageBytes);
     expect(out.file('content.xml')).not.toBeNull();
-    expect(await out.file('content.xml')!.async('string')).toContain('preserved="boundary-relationship"');
+    expect(await out.file('content.xml')!.async('string')).toContain(
+      'preserved="boundary-relationship"',
+    );
     const manifest = JSON.parse(await out.file('manifest.json')!.async('string')) as {
       'file-entries': Record<string, unknown>;
     };
@@ -140,9 +139,9 @@ describe('xmind-convert（DEV-074，ADR-0015 R3）', () => {
     const preserved = await preserveXmindReadonly(originalBytes, rebuilt);
 
     const out = await JSZip.loadAsync(preserved);
-    const outSheet = JSON.parse(
-      await out.file('content.json')!.async('string'),
-    ) as Array<Record<string, unknown>>;
+    const outSheet = JSON.parse(await out.file('content.json')!.async('string')) as Array<
+      Record<string, unknown>
+    >;
     const sheet0 = outSheet[0]!;
     const outRoot = (sheet0.rootTopic ?? {}) as Record<string, unknown>;
     expect(sheet0.boundaries).toEqual([{ id: 'b1', title: '外框 A', range: '(0,2)' }]);
@@ -154,5 +153,55 @@ describe('xmind-convert（DEV-074，ADR-0015 R3）', () => {
     expect(String(sheet0.id)).toMatch(/^simpleMindMap_/);
     expect(outRoot.title).toBe('中心主题');
     expect(Array.isArray((outRoot.children as { attached?: unknown[] })?.attached)).toBe(true);
+  });
+
+  it('DEV-114：官方 root structureClass 未知时读取映射为 null 并进入只读保留标注', async () => {
+    const zip = new JSZip();
+    zip.file(
+      'content.json',
+      JSON.stringify([
+        {
+          rootTopic: {
+            id: 'root1',
+            structureClass: 'org.xmind.ui.map.clockwise',
+            title: '中心主题',
+            children: { attached: [{ id: 'child1', title: '子节点' }] },
+          },
+        },
+      ]),
+    );
+    const bytes = await zip.generateAsync({ type: 'nodebuffer' });
+    const parsed = await parseXmindToModel(bytes);
+    expect(parsed.structureClass).toBe('org.xmind.ui.map.clockwise');
+    expect(parsed.readonly).toContain('XMIND_STRUCTURE_FALLBACK');
+    // writer 不提供结构时保留未知结构：root 不被硬编码覆写。
+    const rebuilt = await writeModelToXmind(parsed.model, '样例');
+    const outRoot = JSON.parse(
+      await JSZip.loadAsync(rebuilt).then((z) => z.file('content.json')!.async('string')),
+    )[0].rootTopic;
+    expect(outRoot.structureClass).toBeUndefined();
+    const preserved = await preserveXmindReadonly(bytes, rebuilt);
+    const preservedRoot = JSON.parse(
+      await JSZip.loadAsync(preserved).then((z) => z.file('content.json')!.async('string')),
+    )[0].rootTopic;
+    expect(preservedRoot.structureClass).toBe('org.xmind.ui.map.clockwise');
+  });
+
+  it('DEV-114：显式受支持结构写入官方 root structureClass 并可往返', async () => {
+    const bytes = await buildSampleXmind();
+    const parsed = await parseXmindToModel(bytes);
+    for (const [id, structureClass] of Object.entries(MINDMAP_STRUCTURE_CLASS_BY_ID)) {
+      const rebuilt = await writeModelToXmind(
+        parsed.model,
+        '样例',
+        id as keyof typeof MINDMAP_STRUCTURE_CLASS_BY_ID,
+      );
+      const outRoot = JSON.parse(
+        await JSZip.loadAsync(rebuilt).then((z) => z.file('content.json')!.async('string')),
+      )[0].rootTopic;
+      expect(outRoot.structureClass).toBe(structureClass);
+      const reparsed = await parseXmindToModel(rebuilt);
+      expect(reparsed.structureClass).toBe(structureClass);
+    }
   });
 });

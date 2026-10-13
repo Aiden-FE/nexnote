@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   DEFAULT_MINDMAP_STRUCTURE,
   MINDMAP_STRUCTURE_OPTIONS,
+  VISIBLE_MINDMAP_STRUCTURE_OPTIONS,
   countRootChildren,
   isStructureSelectable,
   structureById,
@@ -28,6 +29,19 @@ describe('布局结构选项（DEV-102）', () => {
       expect(option.label.length).toBeGreaterThan(0);
       expect(option.layout.length).toBeGreaterThan(0);
     }
+  });
+
+  it('DEV-114：结构面板仅暴露可写入官方 structureClass 的四项，隐藏 up/x', () => {
+    expect(VISIBLE_MINDMAP_STRUCTURE_OPTIONS.map((o) => o.id)).toEqual([
+      'right',
+      'left',
+      'down',
+      'fishbone',
+    ]);
+    expect(MINDMAP_STRUCTURE_OPTIONS.filter((o) => !o.visible).map((o) => o.id)).toEqual([
+      'up',
+      'x',
+    ]);
   });
 
   it('未知 id 回退到默认结构，不抛错', () => {

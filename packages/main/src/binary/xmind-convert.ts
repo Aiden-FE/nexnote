@@ -1,6 +1,11 @@
 import JSZip from 'jszip';
 import xmlConvert from 'xml-js';
-import { tCurrent, type BinaryReadonlyTag } from '@nexnote/shared';
+import {
+  MINDMAP_STRUCTURE_CLASS_BY_ID,
+  mindmapStructureIdFromClass,
+  tCurrent,
+  type BinaryReadonlyTag,
+} from '@nexnote/shared';
 
 /**
  * xmind ↔ simple-mind-map 数据转换（DEV-074，ADR-0015 R3）。
@@ -63,6 +68,8 @@ export async function parseXmindToModel(bytes: Buffer): Promise<{
   model: SmmNode;
   readonly: BinaryReadonlyTag[];
   unsupportedCount: number;
+  /** DEV-114：root 官方结构类；content.xml 旧格式没有该字段时为 null。 */
+  structureClass: string | null;
 }> {
   let zip: JSZip;
   try {
@@ -79,9 +86,21 @@ export async function parseXmindToModel(bytes: Buffer): Promise<{
     if (jsonFile) {
       const json = JSON.parse(await jsonFile.async('string')) as { rootTopic?: RawXmindTopic }[];
       const data = Array.isArray(json) && json.length > 0 ? json[0] : null;
-      if (!data?.rootTopic) throw new XmindError(tCurrent('binary.error.XMIND_NO_ROOT'), 'XMIND_NO_ROOT');
+      if (!data?.rootTopic)
+        throw new XmindError(tCurrent('binary.error.XMIND_NO_ROOT'), 'XMIND_NO_ROOT');
       const model = transformXmindTopic(data.rootTopic);
-      return { model, readonly: ['BORDER_OR_RELATION'], unsupportedCount: countUnsupported(data.rootTopic) };
+      const structureClass =
+        typeof data.rootTopic.structureClass === 'string' ? data.rootTopic.structureClass : null;
+      const readonlyTags: BinaryReadonlyTag[] = ['BORDER_OR_RELATION'];
+      if (structureClass !== null && mindmapStructureIdFromClass(structureClass) === null) {
+        readonlyTags.push('XMIND_STRUCTURE_FALLBACK');
+      }
+      return {
+        model,
+        readonly: readonlyTags,
+        unsupportedCount: countUnsupported(data.rootTopic),
+        structureClass,
+      };
     }
     if (xmlFile) {
       const xml = await xmlFile.async('string');
@@ -90,7 +109,12 @@ export async function parseXmindToModel(bytes: Buffer): Promise<{
       };
       const root = xmind8Root(json.elements ?? []);
       if (!root) throw new XmindError(tCurrent('binary.error.XMIND_NO_ROOT'), 'XMIND_NO_ROOT');
-      return { model: transformXmind8(root), readonly: ['BORDER_OR_RELATION'], unsupportedCount: 0 };
+      return {
+        model: transformXmind8(root),
+        readonly: ['BORDER_OR_RELATION'],
+        unsupportedCount: 0,
+        structureClass: null,
+      };
     }
     throw new XmindError(tCurrent('binary.error.XMIND_NO_CONTENT'), 'XMIND_NO_CONTENT');
   } catch (e) {
@@ -123,7 +147,12 @@ function transformXmindTopic(node: RawXmindTopic): SmmNode {
   const childrenSummary: ({ text: string } | undefined)[] = [];
   if (Array.isArray(node.summaries) && node.summaries.length > 0) {
     for (const item of node.summaries) {
-      const summaryData = { expand: true, isActive: false, text: '', range: null as number[] | null };
+      const summaryData = {
+        expand: true,
+        isActive: false,
+        text: '',
+        range: null as number[] | null,
+      };
       const target = item.topicId ? findTitleById(node, item.topicId) : '';
       summaryData.text = target ?? '';
       const match = /^\((\d+),(\d+)\)$/.exec(item.range ?? '');
@@ -233,7 +262,12 @@ function transformXmind8(node: Xmind8Element): SmmNode {
 }
 
 // ── 写：simple-mind-map 树 → xmind 字节 ─────────────────────────────
-export async function writeModelToXmind(model: SmmNode, name: string): Promise<Buffer> {
+export async function writeModelToXmind(
+  model: SmmNode,
+  name: string,
+  /** DEV-114：用户显式选择或 legacy sidecar 迁移时才提供；undefined 表示保留原 root structureClass。 */
+  structureClass?: keyof typeof MINDMAP_STRUCTURE_CLASS_BY_ID,
+): Promise<Buffer> {
   const id = `simpleMindMap_${Date.now()}`;
   interface XmindOut {
     id: string;
@@ -250,10 +284,11 @@ export async function writeModelToXmind(model: SmmNode, name: string): Promise<B
   const build = (node: SmmNode, isRoot: boolean): XmindOut => {
     const topic: Record<string, unknown> = {
       id: node.data.uid as string | undefined,
-      structureClass: 'org.xmind.ui.logic.right',
       title: stripHtml(node.data.text ?? ''),
       children: { attached: [] as unknown[] },
     };
+    if (isRoot && structureClass)
+      topic.structureClass = MINDMAP_STRUCTURE_CLASS_BY_ID[structureClass];
     if (node.data.note !== undefined) {
       topic.notes = { realHTML: { content: node.data.note }, plain: { content: node.data.note } };
     }
@@ -276,7 +311,10 @@ export async function writeModelToXmind(model: SmmNode, name: string): Promise<B
       });
       const ranged = generalization.filter((g) => g.range && g.range.length >= 2);
       for (const g of ranged) {
-        summaries.push({ topicId: (node.data as { uid?: string }).uid, range: `(${g.range![0]},${g.range![1]})` });
+        summaries.push({
+          topicId: (node.data as { uid?: string }).uid,
+          range: `(${g.range![0]},${g.range![1]})`,
+        });
         summary = { startIndex: g.range![0], endIndex: g.range![1] };
       }
       if (summaries.length > 0) {
@@ -285,7 +323,7 @@ export async function writeModelToXmind(model: SmmNode, name: string): Promise<B
       }
     }
     for (const child of node.children ?? []) {
-      ((topic.children as { attached: unknown[] }).attached).push(build(child, false));
+      (topic.children as { attached: unknown[] }).attached.push(build(child, false));
     }
     if (isRoot) {
       const out: XmindOut = {
