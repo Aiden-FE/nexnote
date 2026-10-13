@@ -1,0 +1,46 @@
+{
+  "schema": "nexnote-release-qa/v1",
+  "repository": "Aiden-FE/nexnote",
+  "tag": "v0.0.37",
+  "commit": "7ba3c56fdc9048286781778a09470c5f2eaf7351",
+  "channel": "stable",
+  "allRequiredChecksPassed": true,
+  "scope": "v0.0.37-release",
+  "machineChecks": {
+    "typecheck": "passed (local CI=true pnpm -r --if-present typecheck at 7ba3c56; all applicable workspace projects clean, zero errors/warnings)",
+    "lint": "passed (local CI=true pnpm lint at 7ba3c56; zero errors and zero warnings)",
+    "tests": "passed (local CI=true pnpm test at 7ba3c56; 1973 passed | 3 skipped, 208 test files passed | 1 skipped, exit code 0; +14 tests over v0.0.36 including document print IPC/entry tests)",
+    "build": "passed (local CI=true pnpm build at 7ba3c56; main/preload/renderer builds completed with zero warnings/errors)",
+    "releaseConfig": "31/31 passed (local pnpm verify:release-config at 7ba3c56)",
+    "packagedSmoke": "passed locally on macOS arm64 packaged app bound to 7ba3c56, app 0.0.37, Electron 44.2.0, ABI 149: 268/268 checks passed, exit code 0, results.json notRun=[Windows packaged smoke, Linux packaged smoke]",
+    "packagedIntegrity": "Ad hoc signature verified by the packaging pipeline (ad-hoc-sign script verify step); bundled Git verified during build through scripts/verify-bundled-git.mjs",
+    "ciLogHygiene": "local full-suite and packaged-smoke logs inspected at 7ba3c56; zero warnings/errors",
+    "gatekeeper": "Ad hoc signed app; Gatekeeper manual Open Anyway remains expected on first launch without Developer ID notarization"
+  },
+  "gateDecisions": {
+    "windowsLinuxPhysicalInstall": "WAIVED by repository owner Aiden-FE: no Windows/Linux hardware available; release CI still builds and smoke-tests the supported matrix",
+    "macosGatekeeper": "DEFERRED to first-launch Open Anyway on the owner Mac (Ad hoc signing only); Developer ID signing/notarization remains future work"
+  },
+  "candidateContents": {
+    "tickets": "Release: master candidate 7ba3c56fdc9048286781778a09470c5f2eaf7351, version 0.0.37; contains rendered document printing for block documents and Markdown documents (hidden print window + system print dialog, whole-document scope), DEV-114 xmind external structure consistency, block editor color-entry relocation into the font action group, and a DEV-047 preview-toolbar smoke contract update for the new print entry.",
+    "highlights": [
+      "块文档、MD 文档支持使用打印机打印文档：新增 File 菜单「打印当前文档…」（⌘P）、编辑器工具栏打印入口与 document.print 命令；渲染层收集当前语义 HTML + 应用样式，主进程创建隐藏打印窗口调起系统打印对话框；不打印应用 UI，未保存内容以当前编辑器内存内容为准，Markdown 文档打印时排除 YAML frontmatter。",
+      "DEV-114：XMind 外部结构一致性（official structureClass）。",
+      "块文档颜色入口并入字体动作区（编辑器交互优化）。",
+      "smoke 契约更新：预览只读工具栏在既有视图切换 + 悬浮目录基础上新增 document:print 入口断言（268/268 通过）。"
+    ]
+  },
+  "artifacts": {
+    "macArm64Zip": "release/NexNote-0.0.37-mac-arm64.zip",
+    "macArm64Dmg": "release/NexNote-0.0.37-mac-arm64.dmg"
+  },
+  "notRun": [
+    "matrix signed builds for mac-arm64/mac-x64/windows-x64/linux-x64 before tag dispatch (executed by the release-tag-bound pipeline)",
+    "Windows packaged smoke and Linux packaged smoke before tag dispatch (executed by the release-tag-bound pipeline)",
+    "macOS notarization / Developer ID code signing",
+    "Windows/Linux physical installation and real N-1 network upgrade",
+    "release-qa Environment required-reviewer approval before publication",
+    "post-publication 24-hour monitoring",
+    "physical printer end-to-end print acceptance on real hardware"
+  ]
+}
