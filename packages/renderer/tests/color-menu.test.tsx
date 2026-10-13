@@ -19,34 +19,31 @@ function mount(ui: React.ReactNode): HTMLDivElement {
 }
 
 describe('字体颜色 / 背景色（验收问题 1）', () => {
-  it('工具栏渲染字体与背景色两个触发器，初始不展开面板', () => {
+  it('工具栏渲染单触发器，初始不展开面板', () => {
     setCurrentLanguage('zh-CN');
     const container = mount(<ColorMenu onApply={vi.fn()} />);
-    expect(container.querySelector('[data-testid="color-menu-text-trigger"]')).not.toBeNull();
-    expect(container.querySelector('[data-testid="color-menu-background-trigger"]')).not.toBeNull();
+    expect(container.querySelector('[data-testid="color-menu-trigger"]')).not.toBeNull();
     expect(container.querySelector('[data-testid="color-menu-panel"]')).toBeNull();
   });
 
-  it('点击字体触发器展开面板，色板包含预设色与自定义/清除', () => {
+  it('点击触发器展开面板：字体/背景 tab + 色板 + 自定义/清除', () => {
     const container = mount(<ColorMenu onApply={vi.fn()} />);
     act(() => {
-      container
-        .querySelector<HTMLButtonElement>('[data-testid="color-menu-text-trigger"]')!
-        .click();
+      container.querySelector<HTMLButtonElement>('[data-testid="color-menu-trigger"]')!.click();
     });
     expect(container.querySelector('[data-testid="color-menu-panel"]')).not.toBeNull();
-    expect(container.querySelectorAll('[data-testid^="color-swatch-"]').length).toBeGreaterThan(0);
+    expect(container.querySelector('[data-testid="color-tab-text"]')).not.toBeNull();
+    expect(container.querySelector('[data-testid="color-tab-background"]')).not.toBeNull();
+    expect(container.querySelectorAll('[data-testid^="color-swatch-"]').length).toBe(8);
     expect(container.querySelector('[data-testid="color-custom-input"]')).not.toBeNull();
     expect(container.querySelector('[data-testid="color-clear"]')?.textContent).toContain('清除');
   });
 
-  it('点击预设色 → onApply(text-color, #RRGGBB) 并关闭面板', () => {
+  it('默认字体 tab：点预设色 → onApply(text-color, #RRGGBB) 并关闭面板', () => {
     const onApply = vi.fn();
     const container = mount(<ColorMenu onApply={onApply} />);
     act(() => {
-      container
-        .querySelector<HTMLButtonElement>('[data-testid="color-menu-text-trigger"]')!
-        .click();
+      container.querySelector<HTMLButtonElement>('[data-testid="color-menu-trigger"]')!.click();
     });
     act(() => {
       container.querySelector<HTMLButtonElement>('[data-testid="color-swatch-E06666"]')!.click();
@@ -55,13 +52,14 @@ describe('字体颜色 / 背景色（验收问题 1）', () => {
     expect(container.querySelector('[data-testid="color-menu-panel"]')).toBeNull();
   });
 
-  it('切到背景色 → onApply(background-color, #RRGGBB)', () => {
+  it('切背景 tab → onApply(background-color, #RRGGBB)', () => {
     const onApply = vi.fn();
     const container = mount(<ColorMenu onApply={onApply} />);
     act(() => {
-      container
-        .querySelector<HTMLButtonElement>('[data-testid="color-menu-background-trigger"]')!
-        .click();
+      container.querySelector<HTMLButtonElement>('[data-testid="color-menu-trigger"]')!.click();
+    });
+    act(() => {
+      container.querySelector<HTMLButtonElement>('[data-testid="color-tab-background"]')!.click();
     });
     act(() => {
       container.querySelector<HTMLButtonElement>('[data-testid="color-swatch-FFD966"]')!.click();
@@ -73,14 +71,22 @@ describe('字体颜色 / 背景色（验收问题 1）', () => {
     const onApply = vi.fn();
     const container = mount(<ColorMenu onApply={onApply} />);
     act(() => {
-      container
-        .querySelector<HTMLButtonElement>('[data-testid="color-menu-background-trigger"]')!
-        .click();
+      container.querySelector<HTMLButtonElement>('[data-testid="color-menu-trigger"]')!.click();
     });
     act(() => {
       container.querySelector<HTMLButtonElement>('[data-testid="color-clear"]')!.click();
     });
-    expect(onApply).toHaveBeenCalledWith(FORMAT_BACKGROUND_COLOR, null);
+    expect(onApply).toHaveBeenCalledWith(FORMAT_TEXT_COLOR, null);
+  });
+
+  it('触发器显示当前色条', () => {
+    const container = mount(
+      <ColorMenu currentTextColor="#E06666" currentBackgroundColor="#FFD966" onApply={vi.fn()} />,
+    );
+    const text = container.querySelector<HTMLElement>('[data-testid="color-indicator-text"]');
+    const bg = container.querySelector<HTMLElement>('[data-testid="color-indicator-background"]');
+    expect(text?.style.backgroundColor).toBe('#E06666');
+    expect(bg?.style.backgroundColor).toBe('#FFD966');
   });
 
   it('非法色值与非颜色动作 id 被拒绝', () => {
@@ -111,7 +117,6 @@ describe('字体颜色 / 背景色（验收问题 1）', () => {
     expect(applyColorAction(FORMAT_TEXT_COLOR, null, kernel)).toBe(true);
     const md = kernel.getMarkdown();
     expect(md).not.toContain('color: #ff0000');
-    // 文字不丢
     expect(kernel.editor.getText()).toContain('彩色');
   });
 });

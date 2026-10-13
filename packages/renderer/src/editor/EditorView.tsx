@@ -1155,36 +1155,36 @@ export function EditorView({ tab }: EditorViewProps) {
           inTable,
         })}
         onCommand={runToolbarCommand}
+        rowTail={
+          <ColorMenu
+            currentTextColor={selectionColors.text}
+            currentBackgroundColor={selectionColors.background}
+            onApply={(id, color) => applyColorAction(id, color, kernelRef.current)}
+          />
+        }
         tools={
-          <>
-            <ColorMenu
-              currentTextColor={selectionColors.text}
-              currentBackgroundColor={selectionColors.background}
-              onApply={(id, color) => applyColorAction(id, color, kernelRef.current)}
-            />
-            <DocumentPropertiesPopover
-              data={fmData}
-              source={fmSource}
-              knownTags={effectiveKnownTags}
-              locked={fmLocked}
-              parseError={fmParseError}
-              onChange={applyFrontmatter}
-              onYamlChange={(source, next) => applyFrontmatter(next, source)}
-            />
-          </>
+          <DocumentPropertiesPopover
+            data={fmData}
+            source={fmSource}
+            knownTags={effectiveKnownTags}
+            locked={fmLocked}
+            parseError={fmParseError}
+            onChange={applyFrontmatter}
+            onYamlChange={(source, next) => applyFrontmatter(next, source)}
+          />
         }
         status={
           <span
             data-testid="editor-save-status"
-            className="flex shrink-0 items-center gap-1"
+            className="flex min-w-0 shrink items-center gap-1 overflow-hidden whitespace-nowrap"
             aria-label={
               saveError
                 ? uiText('common.withColon', { text: status.text, detail: saveError })
                 : status.text
             }
           >
-            <StatusIcon className={`size-3 ${status.className}`} />
-            {status.text}
+            <StatusIcon className={`size-3 shrink-0 ${status.className}`} />
+            <span className="min-w-0 truncate">{status.text}</span>
           </span>
         }
       />

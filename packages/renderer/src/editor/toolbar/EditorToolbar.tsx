@@ -39,6 +39,11 @@ export interface EditorToolbarProps {
   tools?: ReactNode;
   /** 右侧状态展示（保存状态）；只读状态，不是动作。 */
   status?: ReactNode;
+  /**
+   * 动作行尾部的固定控件（如颜色选择器）：参与溢出宽度预算（从可用宽度中预留），
+   * 但不收进「更多」。窄窗下与动作一起竞争空间，避免把 flex-1 动作行压成 0 宽。
+   */
+  rowTail?: ReactNode;
 }
 
 interface PanelState {
@@ -64,9 +69,17 @@ interface PanelState {
  * 宽度由动作按钮实测宽度 + 容器宽度（ResizeObserver）得出；测量不可用（容器或动作
  * 宽度为 0）时退回「全部平铺」，保证任何情况下动作都可达。
  */
-export function EditorToolbar({ label, entries, onCommand, tools, status }: EditorToolbarProps) {
+export function EditorToolbar({
+  label,
+  entries,
+  onCommand,
+  tools,
+  status,
+  rowTail,
+}: EditorToolbarProps) {
   const t = useI18n();
   const rowRef = useRef<HTMLDivElement>(null);
+  const rowTailRef = useRef<HTMLDivElement>(null);
   const refs = useRef(new Map<string, HTMLButtonElement>());
   const widths = useRef(new Map<string, number>());
   const panelRef = useRef<HTMLDivElement>(null);
@@ -74,6 +87,9 @@ export function EditorToolbar({ label, entries, onCommand, tools, status }: Edit
   const [overflow, setOverflow] = useState<string[]>([]);
   const [panel, setPanel] = useState<PanelState | null>(null);
   const [focusId, setFocusId] = useState<string | null>(null);
+  // 极窄时行尾控件（rowTail）让位隐藏：连「更多」按钮 + 行尾控件 + 间距都放不下时，
+  // 保住动作可达性优先（「更多」始终可达；行尾控件在宽度恢复后重新出现）。
+  const [tailCollapsed, setTailCollapsed] = useState(false);
 
   const signature = entries.map((entry) => entry.id).join('|');
   const visible = entries.filter((entry) => !overflow.includes(entry.id));
@@ -106,6 +122,9 @@ export function EditorToolbar({ label, entries, onCommand, tools, status }: Edit
       if (width > 0) widths.current.set(id, width);
     });
     const available = row.getBoundingClientRect().width;
+    // 行尾固定控件（rowTail）从可用宽度中预留，动作只在剩余空间里布局
+    const tailWidth = rowTailRef.current?.getBoundingClientRect().width ?? 0;
+    const moreWidth = widths.current.get(TOOLBAR_MORE_ID) ?? MORE_WIDTH_FALLBACK;
     const measured = entries.map((entry) => ({
       id: entry.id,
       width: widths.current.get(entry.id) ?? 0,
@@ -114,10 +133,17 @@ export function EditorToolbar({ label, entries, onCommand, tools, status }: Edit
     }));
     // 容器或动作尚未测得宽度（首帧、无布局环境）：保持全部平铺。
     if (available <= 0 || measured.some((entry) => entry.width <= 0)) return;
+    // 连行尾控件 + 「更多」 + 两个间距都放不下 → 收起行尾控件，把空间还给动作行
+    const tailFits = available >= tailWidth + moreWidth + ITEM_GAP * 2;
+    setTailCollapsed((prev) => {
+      const next = rowTail ? !tailFits : false;
+      return prev === next ? prev : next;
+    });
+    const effectiveTail = tailFits ? tailWidth : 0;
     const layout = resolveToolbarLayout(
       measured,
-      available,
-      widths.current.get(TOOLBAR_MORE_ID) ?? MORE_WIDTH_FALLBACK,
+      Math.max(0, available - effectiveTail),
+      moreWidth,
       ITEM_GAP,
     );
     setOverflow((prev) =>
@@ -126,7 +152,7 @@ export function EditorToolbar({ label, entries, onCommand, tools, status }: Edit
         ? prev
         : layout.overflowIds,
     );
-  }, [entries]);
+  }, [entries, rowTail]);
 
   // 测量驱动布局：渲染后、绘制前按实测宽度收敛溢出集合（React 的 measure-before-paint
   // 用例；setOverflow 有同值短路，不会自激）。
@@ -144,7 +170,8 @@ export function EditorToolbar({ label, entries, onCommand, tools, status }: Edit
       }
     }
     recompute();
-  }, [entries, signature, overflow.length, recompute]);
+    // tail 收起/恢复改变行内构成：再测一轮收敛（recompute 内有同值短路）。
+  }, [entries, signature, overflow.length, tailCollapsed, recompute]);
   /* eslint-enable react-hooks/set-state-in-effect */
 
   useEffect(() => {
@@ -262,7 +289,9 @@ export function EditorToolbar({ label, entries, onCommand, tools, status }: Edit
           data-item-id={entry.id}
           data-testid={`toolbar-entry-${entry.id}`}
           aria-label={
-            reason ? t('common.withParenthetical', { text: entry.label, detail: reason }) : entry.label
+            reason
+              ? t('common.withParenthetical', { text: entry.label, detail: reason })
+              : entry.label
           }
           aria-disabled={disabled || undefined}
           aria-haspopup={isMenu ? 'menu' : undefined}
@@ -346,6 +375,15 @@ export function EditorToolbar({ label, entries, onCommand, tools, status }: Edit
         className="flex min-w-0 flex-1 items-center gap-1 overflow-hidden"
       >
         {visible.map((entry, index) => trigger(entry, index))}
+        {rowTail && !tailCollapsed ? (
+          <div
+            ref={rowTailRef}
+            className="ml-auto flex shrink-0 items-center pl-0.5"
+            data-testid="editor-toolbar-row-tail"
+          >
+            {rowTail}
+          </div>
+        ) : null}
         {hidden.length > 0 && (
           <ToolbarTooltip key={TOOLBAR_MORE_ID} text={t('toolbar.more')}>
             <button

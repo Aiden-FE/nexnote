@@ -1,19 +1,22 @@
 import { useEffect, useRef, useState } from 'react';
-import { Baseline, Highlighter } from 'lucide-react';
+import { Baseline } from 'lucide-react';
 import { cn } from '../../lib/utils';
 import { useI18n } from '../../lib/i18n';
 import { FORMAT_BACKGROUND_COLOR, FORMAT_TEXT_COLOR } from '../interactions/format-ids';
 
 /**
- * 字体颜色 / 背景色选择器（挂在块编辑器工具栏右侧）。
+ * 字体颜色 / 背景色选择器（块编辑器工具栏右侧，单触发器省横向空间）。
  *
  * 颜色动作在动作目录里是普通语义 id（format:text-color / format:background-color），
  * 但它们不像粗体那样能直接 toggle——必须先选色值，所以这里用「触发器 + 弹层」承载：
- * 触发器本身只打开面板，真正执行由 onApply(id, color) 交给上层调用
- * applyColorAction。色值 null 表示清除该颜色。
+ * 触发器显示两种颜色的当前值色条，面板内切 tab（字体/背景），真正执行由
+ * onApply(id, color) 交给上层调用 applyColorAction。色值 null 表示清除该颜色。
  *
- * 预设色板对齐 Obsidian 的默认色板（8 色 + 透明）；自定义色用原生
- * `<input type="color">`，其值天然是 `#rrggbb`，与内核 textStyle 落盘一致。
+ * 预设色板对齐 Obsidian 的默认色板（8 色）；自定义色用原生 `<input type="color">`，
+ * 其值天然是 `#rrggbb`，与内核 textStyle 落盘一致。
+ *
+ * 布局约束：工具栏在最小窗口宽度（960px）下仍要给动作区留出空间，因此触发器
+ * 收缩为一个 size-7 按钮（与相邻工具按钮同宽），不增加固定横向占位。
  */
 export type ColorMenuTarget = 'text' | 'background';
 export type ColorApply = (id: string, color: string | null) => void;
@@ -31,7 +34,7 @@ const PALETTE = [
 ] as const;
 
 export interface ColorMenuProps {
-  /** 当前选区已有颜色（用于在触发器下方显示色条）。 */
+  /** 当前选区已有颜色（用于在触发器显示色条）。 */
   currentTextColor?: string | null;
   currentBackgroundColor?: string | null;
   onApply: ColorApply;
@@ -50,7 +53,7 @@ export function ColorMenu({
   const [open, setOpen] = useState(false);
   const rootRef = useRef<HTMLDivElement>(null);
 
-  // 点击外部或 Esc 关闭；打开时色板首个色格可 Tab 达（DOM 顺序即焦点顺序）。
+  // 点击外部或 Esc 关闭；面板内 DOM 顺序即焦点顺序。
   useEffect(() => {
     if (!open) return;
     const onPointerDown = (event: MouseEvent): void => {
@@ -70,60 +73,40 @@ export function ColorMenu({
   const isText = target === 'text';
   const actionId = isText ? FORMAT_TEXT_COLOR : FORMAT_BACKGROUND_COLOR;
   const current = isText ? currentTextColor : currentBackgroundColor;
-  const triggerLabel = isText ? t('colorPicker.textColor') : t('colorPicker.backgroundColor');
 
   return (
-    <div ref={rootRef} className="relative" data-testid="color-menu">
-      <div className="flex items-center">
-        <button
-          type="button"
-          data-testid="color-menu-text-trigger"
-          aria-label={t('colorPicker.textColor')}
-          aria-expanded={open && target === 'text'}
-          disabled={disabled}
-          className={cn(
-            'flex size-7 items-center justify-center rounded-md text-muted-foreground transition hover:bg-accent hover:text-foreground',
-            open && target === 'text' && 'bg-accent text-foreground',
-            disabled && 'cursor-not-allowed opacity-40',
-          )}
-          onClick={() => {
-            setTarget('text');
-            setOpen((v) => (target === 'text' ? !v : true));
-          }}
-        >
-          <Baseline className="size-3.5" />
-          {currentTextColor ? (
-            <span
-              className="absolute bottom-0.5 left-1/2 h-0.5 w-3.5 -translate-x-1/2 rounded-full"
-              style={{ backgroundColor: currentTextColor }}
-            />
-          ) : null}
-        </button>
-        <button
-          type="button"
-          data-testid="color-menu-background-trigger"
-          aria-label={t('colorPicker.backgroundColor')}
-          aria-expanded={open && target === 'background'}
-          disabled={disabled}
-          className={cn(
-            'flex size-7 items-center justify-center rounded-md text-muted-foreground transition hover:bg-accent hover:text-foreground',
-            open && target === 'background' && 'bg-accent text-foreground',
-            disabled && 'cursor-not-allowed opacity-40',
-          )}
-          onClick={() => {
-            setTarget('background');
-            setOpen((v) => (target === 'background' ? !v : true));
-          }}
-        >
-          <Highlighter className="size-3.5" />
-          {currentBackgroundColor ? (
-            <span
-              className="absolute bottom-0.5 left-1/2 h-0.5 w-3.5 -translate-x-1/2 rounded-full"
-              style={{ backgroundColor: currentBackgroundColor }}
-            />
-          ) : null}
-        </button>
-      </div>
+    <div ref={rootRef} className="relative shrink-0" data-testid="color-menu">
+      <button
+        type="button"
+        data-testid="color-menu-trigger"
+        aria-label={t('colorPicker.textColor')}
+        aria-haspopup="menu"
+        aria-expanded={open}
+        disabled={disabled}
+        className={cn(
+          'relative flex size-7 items-center justify-center rounded-md text-muted-foreground transition hover:bg-accent hover:text-foreground',
+          open && 'bg-accent text-foreground',
+          disabled && 'cursor-not-allowed opacity-40',
+        )}
+        onClick={() => setOpen((v) => !v)}
+      >
+        <Baseline className="size-3.5" />
+        {/* 当前字体色（上条）与背景色（下条）：有值即显示，一眼可读 */}
+        {currentTextColor ? (
+          <span
+            data-testid="color-indicator-text"
+            className="absolute bottom-[3px] left-1/2 h-[3px] w-3.5 -translate-x-1/2 rounded-full"
+            style={{ backgroundColor: currentTextColor }}
+          />
+        ) : null}
+        {currentBackgroundColor ? (
+          <span
+            data-testid="color-indicator-background"
+            className="absolute bottom-0 left-1/2 h-[3px] w-3.5 -translate-x-1/2 rounded-full"
+            style={{ backgroundColor: currentBackgroundColor }}
+          />
+        ) : null}
+      </button>
 
       {open ? (
         <div
@@ -131,7 +114,34 @@ export function ColorMenu({
           data-testid="color-menu-panel"
           className="absolute right-0 top-full z-30 mt-1 w-48 rounded-lg border bg-popover p-2 shadow-md"
         >
-          <p className="px-1 pb-1 text-xs text-muted-foreground">{triggerLabel}</p>
+          <div className="mb-1 flex rounded-md bg-muted p-0.5" role="tablist">
+            <button
+              type="button"
+              role="tab"
+              aria-selected={isText}
+              data-testid="color-tab-text"
+              className={cn(
+                'flex-1 rounded px-2 py-1 text-xs transition',
+                isText ? 'bg-background shadow-sm' : 'text-muted-foreground hover:text-foreground',
+              )}
+              onClick={() => setTarget('text')}
+            >
+              {t('colorPicker.textColor')}
+            </button>
+            <button
+              type="button"
+              role="tab"
+              aria-selected={!isText}
+              data-testid="color-tab-background"
+              className={cn(
+                'flex-1 rounded px-2 py-1 text-xs transition',
+                !isText ? 'bg-background shadow-sm' : 'text-muted-foreground hover:text-foreground',
+              )}
+              onClick={() => setTarget('background')}
+            >
+              {t('colorPicker.backgroundColor')}
+            </button>
+          </div>
           <div className="grid grid-cols-4 gap-1.5">
             {PALETTE.map((color) => (
               <button
