@@ -119,12 +119,16 @@ export function parseXlsxToModel(bytes: Buffer): XlsxModel & { readonly: BinaryR
 }
 
 /**
- * 把 fortune 工作簿 JSON 重建为 .xlsx 字节。
- * 保留：多 sheet、公式、合并单元格、基础样式（字体加粗/斜体/颜色/字号、对齐、填充）。
+ * 把 fortune 工作簿 JSON 重建为 .xlsx。
+ * 保留：多 sheet、公式（含缓存结果）、合并单元格、数字格式（货币/日期等）、
+ * 基础样式（字体加粗/斜体/颜色/字号、对齐、填充）。
  * 只读保留区（宏/图表/透视表）不参与重建；含未支持内容的原包由调用方决定整包保留。
  */
 export async function writeModelToXlsx(model: XlsxModel): Promise<Buffer> {
   const workbook = new ExcelJS.Workbook();
+  // 公式缺缓存结果时要求 Excel/WPS 打开后全量重算，否则公式单元格显示空白
+  // （exceljs 不做公式求值；无 <v> 缓存且不重算就是用户报告的「公式还在、显示空白」）。
+  let needsFullCalc = false;
   for (const rawSheet of Array.isArray(model.sheets) ? model.sheets : []) {
     const sheet = rawSheet as Record<string, unknown>;
     const name = typeof sheet.name === 'string' && sheet.name.trim() ? sheet.name.trim() : 'Sheet';
@@ -137,9 +141,26 @@ export async function writeModelToXlsx(model: XlsxModel): Promise<Buffer> {
       const v = (cell.v ?? {}) as Record<string, unknown>;
       const target = worksheet.getRow(r + 1).getCell(c + 1);
       if (typeof v.f === 'string' && v.f) {
-        target.value = { formula: v.f.replace(/^=/, '') };
+        const formula = v.f.replace(/^=/, '');
+        // fortune 把公式缓存计算结果放在 v（与普通值同源，始终是字符串）。
+        const cached = numericCellValue(v.v);
+        if (cached !== null) {
+          target.value = { formula, result: cached };
+        } else {
+          target.value = { formula, result: typeof v.v === 'string' ? v.v : undefined };
+          needsFullCalc = true;
+        }
       } else if (v.v !== undefined && v.v !== null) {
-        target.value = v.v as ExcelJS.CellValue;
+        // 恢复数值类型：fortune 读 XML 时把 <v> 一律字符串化，直接照写会产生
+        // t="s" 文本数字（Excel/WPS 标绿色小三角「以文本形式存储的数字」，且
+        // SUM 对其不参与计算）。有数字格式声明（ct.t==='n'）或无类型声明的
+        // 纯数字串都按数字写回；显式文本（ct.t 为其它值）保持字符串。
+        const num = numericCellValue(v.v);
+        if (num !== null && isNumericType(v)) {
+          target.value = num;
+        } else {
+          target.value = v.v as ExcelJS.CellValue;
+        }
       }
       applyBasicStyle(target, v);
     }
@@ -162,12 +183,49 @@ export async function writeModelToXlsx(model: XlsxModel): Promise<Buffer> {
       }
     }
   }
+  if (needsFullCalc) workbook.calcProperties = { fullCalcOnLoad: true };
   const buffer = await workbook.xlsx.writeBuffer();
   return Buffer.from(buffer as ArrayBuffer);
 }
 
-/** fortune 单元格基础样式 → exceljs（字体加粗/斜体/颜色/字号、对齐、填充色）。 */
+/**
+ * 纯数字串 → 数字；非数字返回 null。接受整数、小数、千分位与科学计数法。
+ * 布尔、公式文本、混合内容一律视为非数字。
+ */
+function numericCellValue(raw: unknown): number | null {
+  if (typeof raw === 'number') return Number.isFinite(raw) ? raw : null;
+  if (typeof raw !== 'string') return null;
+  const trimmed = raw.trim();
+  if (!/^[+-]?(?:\d{1,3}(?:,\d{3})+|\d+)(?:\.\d+)?(?:[eE][+-]?\d+)?$/.test(trimmed)) {
+    return null;
+  }
+  const n = Number(trimmed.replace(/,/g, ''));
+  return Number.isFinite(n) ? n : null;
+}
+
+/**
+ * 该单元格是否应按数值类型写回：
+ * - fortune 数字格式声明 ct.t === 'n'（货币/日期/百分比等）→ 必为数字；
+ * - 显式文本/其它 ct 类型 → 保持字符串；
+ * - 无 ct 声明的纯数字串也按数字（xlsx 语义下纯数字串本就不是文本数据，
+ *   同时修复历史版本已写成文本数字的文件）。
+ */
+function isNumericType(v: Record<string, unknown>): boolean {
+  const ct = v.ct as { t?: unknown } | null;
+  if (!ct || typeof ct !== 'object') return true;
+  if (ct.t === 'n') return true;
+  return false;
+}
+
+/** fortune 单元格基础样式 → exceljs（数字格式、字体、对齐、填充色）。 */
 function applyBasicStyle(target: ExcelJS.Cell, v: Record<string, unknown>): void {
+  // 数字格式（货币 ¥、日期、百分比等）：fortune 存为 ct.fa（格式码）。
+  // 不写回 numFmt 会让货币格式在往返后整体退化成「常规」。
+  const ct = v.ct as { fa?: unknown } | null;
+  if (ct && typeof ct === 'object' && typeof ct.fa === 'string' && ct.fa.trim()) {
+    const format = ct.fa.trim();
+    if (format !== 'General') target.numFmt = format;
+  }
   const font: Record<string, unknown> = {};
   if (typeof v.ff === 'string' && v.ff) font.name = v.ff;
   if (typeof v.fs === 'number' && v.fs > 0) font.size = v.fs;
@@ -180,9 +238,11 @@ function applyBasicStyle(target: ExcelJS.Cell, v: Record<string, unknown>): void
   const alignment: Record<string, unknown> = {};
   // fortune ht：0 居中 1 左 2 右；vt：0 居中 1 上 2 下
   if (v.ht === 0) alignment.horizontal = 'center';
+  else if (v.ht === 1) alignment.horizontal = 'left';
   else if (v.ht === 2) alignment.horizontal = 'right';
   if (v.vt === 0) alignment.vertical = 'middle';
-  else if (v.vt === 2) alignment.vertical = 'top';
+  else if (v.vt === 1) alignment.vertical = 'top';
+  else if (v.vt === 2) alignment.vertical = 'bottom';
   if (Object.keys(alignment).length > 0) target.alignment = alignment as Partial<ExcelJS.Alignment>;
   if (typeof v.bg === 'string' && /^#[0-9a-fA-F]{6}$/.test(v.bg)) {
     target.fill = {

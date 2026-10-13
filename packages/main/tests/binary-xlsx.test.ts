@@ -48,9 +48,62 @@ describe('xlsx-convert（DEV-074，ADR-0015 R3）', () => {
     expect(rtCelldata.some((c) => typeof (c.v as Record<string, unknown>).f === 'string')).toBe(
       true,
     );
-    expect(
-      rtCelldata.some((c) => (c.v as Record<string, unknown>).v === '标题'),
-    ).toBe(true);
+    expect(rtCelldata.some((c) => (c.v as Record<string, unknown>).v === '标题')).toBe(true);
+  });
+
+  it('货币数字格式、数值类型、公式缓存与对齐往返保留（2026-10 验收）', async () => {
+    const workbook = new ExcelJS.Workbook();
+    const ws = workbook.addWorksheet('AI Coding 支出');
+    ws.getCell('A1').value = '套餐名';
+    ws.getCell('B1').value = '套餐费用';
+    ws.getCell('A2').value = 'MiniMax Max';
+    ws.getCell('B2').value = 119;
+    ws.getCell('B2').numFmt = '"¥"#,##0.00';
+    ws.getCell('B2').alignment = { horizontal: 'right', vertical: 'bottom' };
+    ws.getCell('A3').value = 'Kimi Andante';
+    ws.getCell('B3').value = 49;
+    ws.getCell('B3').numFmt = '"¥"#,##0.00';
+    ws.getCell('B3').alignment = { horizontal: 'right', vertical: 'bottom' };
+    ws.getCell('A4').value = 'CommandCode Gota';
+    ws.getCell('B4').value = 67;
+    ws.getCell('B4').numFmt = '"¥"#,##0.00';
+    ws.getCell('B4').alignment = { horizontal: 'right', vertical: 'bottom' };
+    ws.getCell('A5').value = '总计';
+    ws.getCell('B5').value = { formula: 'SUM(B2:B4)', result: 235 };
+    const bytes = Buffer.from((await workbook.xlsx.writeBuffer()) as ArrayBuffer);
+
+    const rebuilt = await writeModelToXlsx({ sheets: parseXlsxToModel(bytes).sheets });
+    const out = new ExcelJS.Workbook();
+    await out.xlsx.load(rebuilt as ArrayBuffer);
+    const ows = out.getWorksheet('AI Coding 支出')!;
+
+    // 数值类型：不得写成 t="s" 文本数字（绿色小三角「以文本形式存储的数字」根因）
+    expect(ows.getCell('B2').value).toBe(119);
+    expect(ows.getCell('B3').value).toBe(49);
+    expect(ows.getCell('B4').value).toBe(67);
+    // 货币数字格式往返保留（旧实现 numFmtId 恒为 0/General）
+    expect(ows.getCell('B2').numFmt).toBe('"¥"#,##0.00');
+    // 右对齐 + 底端对齐保留；旧实现把 fortune vt=2 错映为 top
+    expect(ows.getCell('B2').alignment).toMatchObject({ horizontal: 'right', vertical: 'bottom' });
+    // 公式保留且带缓存结果（旧实现无 <v>，Excel/WPS 打开显示空白）
+    expect(ows.getCell('B5').value).toEqual({ formula: 'SUM(B2:B4)', result: 235 });
+    // 真文本单元格不被误转成数字
+    expect(ows.getCell('A2').value).toBe('MiniMax Max');
+    expect(ows.getCell('A5').value).toBe('总计');
+  });
+
+  it('无缓存结果的公式写出 fullCalcOnLoad，打开后自动重算', async () => {
+    const workbook = new ExcelJS.Workbook();
+    const ws = workbook.addWorksheet('s');
+    ws.getCell('A1').value = 1;
+    ws.getCell('A2').value = 2;
+    ws.getCell('A3').value = { formula: 'A1+A2' }; // exceljs 无 result
+    const bytes = Buffer.from((await workbook.xlsx.writeBuffer()) as ArrayBuffer);
+
+    const rebuilt = await writeModelToXlsx({ sheets: parseXlsxToModel(bytes).sheets });
+    const zip = await JSZip.loadAsync(rebuilt);
+    const wbXml = await zip.file('xl/workbook.xml')!.async('string');
+    expect(wbXml).toContain('fullCalcOnLoad="1"');
   });
 
   it('损坏 / 非 zip 字节 fail-closed 拒绝', () => {
@@ -85,7 +138,10 @@ describe('xlsx-convert（DEV-074，ADR-0015 R3）', () => {
     // 2) 给 chart 在 workbook.xml.rels 里分配一个 Id（与重建端 styles/sharedStrings 通常使用的 rId1 撞车）
     const wbRels = await zip.file('xl/_rels/workbook.xml.rels')!.async('string');
     // 先移除现有 rId1，再插入 chart 用的 rId1（模拟 OpenXML 极端情况）
-    const stripped = wbRels.replace(/<Relationship\b[^>]*Id="rId1"[^>]*(?:\/>|><\/Relationship>)/, '');
+    const stripped = wbRels.replace(
+      /<Relationship\b[^>]*Id="rId1"[^>]*(?:\/>|><\/Relationship>)/,
+      '',
+    );
     zip.file(
       'xl/_rels/workbook.xml.rels',
       stripped.replace(
@@ -134,9 +190,7 @@ describe('xlsx-convert（DEV-074，ADR-0015 R3）', () => {
     const wbRels = zip.file('xl/_rels/workbook.xml.rels')!;
     zip.file(
       'xl/_rels/workbook.xml.rels',
-      (
-        await wbRels.async('string')
-      ).replace(
+      (await wbRels.async('string')).replace(
         '</Relationships>',
         '<Relationship Id="rIdVba" Type="http://schemas.microsoft.com/office/2006/relationships/vbaProject" Target="vbaProject.bin"/></Relationships>',
       ),
