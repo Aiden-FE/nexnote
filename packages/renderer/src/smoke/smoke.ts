@@ -3064,7 +3064,7 @@ export async function runSmokeIfEnabled(): Promise<void> {
     );
     document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
 
-    // 预览视图是只读边界：工具栏收敛为「视图切换 + 悬浮目录」。
+    // 预览视图是只读边界：工具栏收敛为「视图切换 + 悬浮目录 + 文档打印」。
     const dev047TabId = useTabStore.getState().tabs.find((t) => t.pagePath === dev047Path)?.id;
     const previewSwitched = await clickToolbarEntry('view:preview');
     check(
@@ -3078,7 +3078,8 @@ export async function runSmokeIfEnabled(): Promise<void> {
         (await waitFor(() => {
           const ids = rowEntryIds().filter((id) => id !== 'toolbar:more');
           return (
-            !moreButton() && ids.join(',') === 'view:source,view:split,view:preview,view:outline'
+            !moreButton() &&
+            ids.join(',') === 'view:source,view:split,view:preview,view:outline,document:print'
           );
         })),
       rowEntryIds().join(' | '),
