@@ -10,6 +10,7 @@ import { createPage } from '../editor/create-page';
 import { expandAllCurrentHeadingFolds } from '../../editor/expand-all';
 import { requestAppSave } from '../../editor/app-save';
 import { importDocxIn, importBinaryIn } from '../sidebar/page-tree/ops';
+import { printActiveDocument } from '../../print/collect-print-document';
 import {
   expandCurrentSection,
   foldCurrentSection,
@@ -110,7 +111,12 @@ commandRegistry.register({
 });
 
 for (const [id, title, level, keywords] of [
-  ['editor.foldToLevel1', 'command.editor.foldToLevel1', 1, ['fold', 'level', 'H1', '层级', '折叠到层级']],
+  [
+    'editor.foldToLevel1',
+    'command.editor.foldToLevel1',
+    1,
+    ['fold', 'level', 'H1', '层级', '折叠到层级'],
+  ],
   ['editor.foldToLevel2', 'command.editor.foldToLevel2', 2, ['fold', 'level', 'H2', '层级']],
   ['editor.foldToLevel3', 'command.editor.foldToLevel3', 3, ['fold', 'level', 'H3', '层级']],
 ] as const) {
@@ -146,7 +152,12 @@ commandRegistry.register({
 for (const [id, title, keywords, view] of [
   ['editor.viewSource', 'command.editor.viewSource', ['source', '源码', 'source view'], 'source'],
   ['editor.viewSplit', 'command.editor.viewSplit', ['split', '分栏', 'split view'], 'split'],
-  ['editor.viewPreview', 'command.editor.viewPreview', ['preview', '预览', 'preview view'], 'preview'],
+  [
+    'editor.viewPreview',
+    'command.editor.viewPreview',
+    ['preview', '预览', 'preview view'],
+    'preview',
+  ],
 ] as const) {
   commandRegistry.register({
     id,
@@ -266,6 +277,15 @@ commandRegistry.register({
         (result.message ? `\n${result.message}` : ''),
     );
   },
+});
+
+commandRegistry.register({
+  id: 'document.print',
+  title: 'app.menu.file.print',
+  category: 'command.category.document',
+  keywords: ['print', 'printer', '打印', '打印机'],
+  shortcut: '⌘P',
+  run: () => void printActiveDocument(),
 });
 
 commandRegistry.register({

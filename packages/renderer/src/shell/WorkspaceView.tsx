@@ -18,6 +18,7 @@ import {
   importDocxIn,
   importBinaryIn,
 } from '../features/sidebar/page-tree/ops';
+import { printActiveDocument } from '../print/collect-print-document';
 
 /** DEV-096：原生菜单动作分发到渲染层 ops。 */
 function handleMenuAction(action: MenuAction): void {
@@ -36,6 +37,9 @@ function handleMenuAction(action: MenuAction): void {
       break;
     case 'importXmind':
       void importBinaryIn('mindmap', '');
+      break;
+    case 'printDocument':
+      void printActiveDocument();
       break;
   }
 }

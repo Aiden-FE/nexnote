@@ -190,14 +190,17 @@ describe('DEV-050 共享动作模型单一数据源', () => {
     const block = blockToolbarEntries({ sourceModeToggle: false });
     const source = sourceToolbarEntries({ isMarkdown: true, markdownView: 'source' });
     for (const entry of [...block, ...source]) {
-      if (entry.id.startsWith('menu:') || entry.id.startsWith('view:')) continue;
+      if (
+        entry.id.startsWith('menu:') ||
+        entry.id.startsWith('view:') ||
+        entry.id === 'document:print'
+      )
+        continue;
       const action = editorAction(entry.id);
       expect(entry.label, entry.id).toBe(action.label);
       expect(entry.icon, entry.id).toBe(action.icon);
     }
-    expect(editorAction('format:code').label).toBe(
-      text('zh-CN', 'editorAction.format:code.name'),
-    );
+    expect(editorAction('format:code').label).toBe(text('zh-CN', 'editorAction.format:code.name'));
     expect(editorAction('format:link').label).toBe(text('zh-CN', 'editorAction.format:link.name'));
     for (const id of ['edit:undo', 'edit:redo', 'format:bold', 'format:italic', 'format:link']) {
       const action = editorAction(id);
@@ -227,6 +230,13 @@ describe('DEV-050 共享动作模型单一数据源', () => {
       false,
     );
     expect(EDITOR_ACTION_MODEL.every((action) => action.semantic && action.priority)).toBe(true);
+  });
+
+  it('打印入口在块编辑和 Markdown 源码工具栏中始终可达', () => {
+    const block = blockToolbarEntries({ sourceModeToggle: false });
+    const source = sourceToolbarEntries({ isMarkdown: true, markdownView: 'source' });
+    expect(block.some((entry) => entry.id === 'document:print')).toBe(true);
+    expect(source.some((entry) => entry.id === 'document:print')).toBe(true);
   });
 });
 

@@ -26,12 +26,16 @@ describe('native application menu localization (ADR-0023 stage 3)', () => {
       'Import Word document (convert to block document)…',
       'Import XLSX…',
       'Import XMind…',
+      undefined,
+      'Print current document…',
     ]);
     (items[0]?.click as () => void)();
     (items[4]?.click as (() => void) | undefined)?.();
+    (items[10]?.click as (() => void) | undefined)?.();
     expect(actions).toEqual([
       { type: 'createNote', format: 'native-block' },
       { type: 'createBlankBinary', kind: 'xmind' },
+      { type: 'printDocument' },
     ]);
   });
 
@@ -42,6 +46,7 @@ describe('native application menu localization (ADR-0023 stage 3)', () => {
     expect(items[0]?.label).toBe('新建文档（块编辑）');
     expect(items[0]?.accelerator).toBe('CmdOrCtrl+N');
     expect(items[1]?.accelerator).toBe('CmdOrCtrl+Shift+N');
+    expect(items[10]?.accelerator).toBe('CmdOrCtrl+P');
   });
 
   it('materializes Edit / View role submenu labels from the message catalog in en-US', () => {

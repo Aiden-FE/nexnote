@@ -153,6 +153,7 @@ export const DEFAULT_SHORTCUTS: readonly ShortcutOverride[] = [
   // 改造落地，避免 ShortcutRuntime 不消费 sequence 时命令假绑定。
   { commandId: 'editor.foldCurrentSection', key: 'Mod+Shift+[', disabled: false },
   { commandId: 'editor.expandCurrentSection', key: 'Mod+Shift+]', disabled: false },
+  { commandId: 'document.print', key: 'Mod+P', disabled: false },
 ];
 
 /**

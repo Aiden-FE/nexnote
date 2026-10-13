@@ -19,3 +19,9 @@ describe('DEFAULT_SHORTCUTS 页签循环切换（DEV-022）', () => {
     ).toBe(true);
   });
 });
+
+describe('DEFAULT_SHORTCUTS 文档打印（codex/print-docs）', () => {
+  it('登记 document.print 为 Mod+P', () => {
+    expect(DEFAULT_SHORTCUTS.find((s) => s.commandId === 'document.print')?.key).toBe('Mod+P');
+  });
+});

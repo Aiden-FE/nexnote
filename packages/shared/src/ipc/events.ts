@@ -59,7 +59,8 @@ export type MenuAction =
   | { type: 'createBlankBinary'; kind: 'xlsx' | 'xmind' }
   | { type: 'importDocx' }
   | { type: 'importXlsx' }
-  | { type: 'importXmind' };
+  | { type: 'importXmind' }
+  | { type: 'printDocument' };
 
 interface BinaryEditorCommandBase {
   /** kind 与 TabKind 对齐；宿主用它过滤自身不关心的指令（DEV-098 后仅 xlsx / mindmap）。 */

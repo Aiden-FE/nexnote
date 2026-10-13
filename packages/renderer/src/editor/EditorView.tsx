@@ -18,6 +18,7 @@ import { bindH1ToTitle, firstH1, sanitizePageTitle, titleFromPath } from './titl
 import { registerAppSaveListener } from './app-save';
 import { getActiveEditor, registerEditor } from './active-editor';
 import { registerModeSwitchHandler, requestSourceModeToggle } from './source/source-mode-toggle';
+import { printActiveDocument } from '../print/collect-print-document';
 import {
   createWritingController,
   writingAiMenuActions,
@@ -102,6 +103,7 @@ import {
   INSERT_GANTT_ID,
   INSERT_TOC_ID,
   TOGGLE_OUTLINE_ID,
+  PRINT_DOCUMENT_ID,
   PARAGRAPH_ID,
 } from './toolbar/entries';
 import {
@@ -1011,6 +1013,9 @@ export function EditorView({ tab }: EditorViewProps) {
         }
         return;
       }
+      case PRINT_DOCUMENT_ID:
+        void printActiveDocument();
+        return;
       case UNDO_ID:
         kernelRef.current?.editor.commands.undo();
         return;

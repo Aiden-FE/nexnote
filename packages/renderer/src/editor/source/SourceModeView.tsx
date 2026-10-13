@@ -20,6 +20,7 @@ import {
   type PageFileIo,
 } from './page-source-io';
 import { createSourceEditor, type SourceEditorHandle } from './codemirror-host';
+import { printActiveDocument } from '../../print/collect-print-document';
 import { usePluginStore } from '../../features/plugins/plugin-store';
 import { importDroppedFile } from '../../features/sidebar/page-tree/ops';
 import {
@@ -54,6 +55,7 @@ import {
   FORMAT_SELECTION_ID,
   FORMAT_DOCUMENT_ID,
   TOGGLE_OUTLINE_ID,
+  PRINT_DOCUMENT_ID,
   PARAGRAPH_ID,
 } from '../toolbar/entries';
 import {
@@ -976,6 +978,10 @@ export function SourceModeView({ tab }: { tab: TabDescriptor }) {
       outlineVisibleRef.current = next;
       setOutlineVisible(next);
       if (next) setOutline(parseMarkdownOutline(textRef.current));
+      return;
+    }
+    if (id === PRINT_DOCUMENT_ID) {
+      void printActiveDocument();
       return;
     }
     // 预览态是严格只读边界：导航动作在上方已处理，其余编辑命令一律忽略。
