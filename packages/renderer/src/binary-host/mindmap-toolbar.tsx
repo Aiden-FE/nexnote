@@ -18,7 +18,7 @@ import {
 import type MindMap from 'simple-mind-map';
 import { MINDMAP_THEME_PRESETS } from './mindmap-themes';
 import {
-  MINDMAP_STRUCTURE_OPTIONS,
+  VISIBLE_MINDMAP_STRUCTURE_OPTIONS,
   isStructureSelectable,
   MIN_ROOT_CHILDREN_FOR_X,
   type MindmapStructureIcon,
@@ -50,11 +50,11 @@ export interface MindmapToolbarProps {
   saveStatus: string | null;
   onThemeChange: (themeId: string) => void;
   onSaveNow: () => void;
-  /** DEV-102：当前布局结构 id（sidecar 回读 + 菜单高亮）。 */
+  /** DEV-102 / DEV-114：当前布局结构 id（文件权威回读 + 菜单高亮）。 */
   structure: MindmapStructureId;
   /** DEV-102：根节点一级子节点数（X 结构门控）。 */
   rootChildCount: number;
-  /** DEV-102：选择结构回调（编辑器负责应用 setLayout + sidecar 写回）。 */
+  /** DEV-102 / DEV-114：选择结构回调（编辑器负责应用 setLayout + 随模型保存写 root structureClass）。 */
   onStructureChange: (structure: MindmapStructureId) => void;
 }
 
@@ -160,7 +160,11 @@ export function MindmapToolbar({
 
       <div className="pointer-events-none absolute right-3 top-3 z-20">
         <div className={GROUP_CLASS}>
-          <FloatButton title={t('binary.toolbar.zoomOut')} disabled={!mindMap} onClick={() => call('narrow')}>
+          <FloatButton
+            title={t('binary.toolbar.zoomOut')}
+            disabled={!mindMap}
+            onClick={() => call('narrow')}
+          >
             <ZoomOut className="size-4" />
           </FloatButton>
           <span
@@ -169,17 +173,32 @@ export function MindmapToolbar({
           >
             {Math.round(scale * 100)}%
           </span>
-          <FloatButton title={t('binary.toolbar.zoomIn')} disabled={!mindMap} onClick={() => call('enlarge')}>
+          <FloatButton
+            title={t('binary.toolbar.zoomIn')}
+            disabled={!mindMap}
+            onClick={() => call('enlarge')}
+          >
             <ZoomIn className="size-4" />
           </FloatButton>
-          <FloatButton title={t('binary.toolbar.fit')} disabled={!mindMap} onClick={() => call('fit')}>
+          <FloatButton
+            title={t('binary.toolbar.fit')}
+            disabled={!mindMap}
+            onClick={() => call('fit')}
+          >
             <Maximize className="size-4" />
           </FloatButton>
-          <FloatButton title={t('binary.toolbar.reset')} disabled={!mindMap} onClick={() => call('reset')}>
+          <FloatButton
+            title={t('binary.toolbar.reset')}
+            disabled={!mindMap}
+            onClick={() => call('reset')}
+          >
             <RotateCcw className="size-4" />
           </FloatButton>
           <div ref={structureMenuRef} className="relative">
-            <FloatButton title={t('binary.toolbar.structure')} onClick={() => setStructureMenuOpen((open) => !open)}>
+            <FloatButton
+              title={t('binary.toolbar.structure')}
+              onClick={() => setStructureMenuOpen((open) => !open)}
+            >
               <GitBranch className="size-4" />
             </FloatButton>
             {structureMenuOpen && (
@@ -188,7 +207,7 @@ export function MindmapToolbar({
                 data-testid="mindmap-structure-menu"
                 className="absolute right-0 top-9 z-30 w-40 rounded-md border border-neutral-200 bg-white py-1 shadow-md dark:border-neutral-700 dark:bg-neutral-800"
               >
-                {MINDMAP_STRUCTURE_OPTIONS.map((option) => {
+                {VISIBLE_MINDMAP_STRUCTURE_OPTIONS.map((option) => {
                   const selectable = isStructureSelectable(option.id, rootChildCount);
                   const Icon = STRUCTURE_ICONS[option.icon];
                   const isCurrent = option.id === structure;
@@ -230,7 +249,10 @@ export function MindmapToolbar({
             )}
           </div>
           <div ref={menuRef} className="relative">
-            <FloatButton title={t('binary.toolbar.theme')} onClick={() => setThemeMenuOpen((open) => !open)}>
+            <FloatButton
+              title={t('binary.toolbar.theme')}
+              onClick={() => setThemeMenuOpen((open) => !open)}
+            >
               <Palette className="size-4" />
             </FloatButton>
             {themeMenuOpen && (

@@ -1003,6 +1003,7 @@ export const MESSAGES_ZH_CN = {
   'binary.readonly.tag.CHART': '图表（只读）',
   'binary.readonly.tag.PIVOT_TABLE': '透视表（只读）',
   'binary.readonly.tag.BORDER_OR_RELATION': '外框 / 关联线（只读）',
+  'binary.readonly.tag.XMIND_STRUCTURE_FALLBACK': '外部结构（只读保留）',
   'binary.readonly.banner': '只读保留区（原字节不丢失，此处不编辑）：{tags}',
   'binary.host.waiting': '等待加载文档…',
   'binary.host.confirmDiscard': '本地编辑尚未保存。重新加载将丢弃本地修改，是否继续？',
@@ -2796,6 +2797,7 @@ export const MESSAGES_EN_US = {
   'binary.readonly.tag.CHART': 'Charts (read-only)',
   'binary.readonly.tag.PIVOT_TABLE': 'Pivot tables (read-only)',
   'binary.readonly.tag.BORDER_OR_RELATION': 'Borders / relation lines (read-only)',
+  'binary.readonly.tag.XMIND_STRUCTURE_FALLBACK': 'External structure (read-only preserved)',
   'binary.readonly.banner':
     'Read-only preserved region (original bytes kept; not editable here): {tags}',
   'binary.host.waiting': 'Waiting for the document to load…',

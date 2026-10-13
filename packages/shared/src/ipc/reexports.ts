@@ -5,6 +5,8 @@ export { AGENT_SCENARIOS, AGENT_CHANNELS, scenarioChannel } from './channels/age
 export { BINARY_MAX_IMPORT_BYTES } from './channels/binary';
 export {
   MINDMAP_STRUCTURE_IDS,
+  MINDMAP_STRUCTURE_CLASS_BY_ID,
+  mindmapStructureIdFromClass,
   MIN_ROOT_CHILDREN_FOR_X_STRUCTURE,
   isMindmapStructureId,
 } from './channels/binary';

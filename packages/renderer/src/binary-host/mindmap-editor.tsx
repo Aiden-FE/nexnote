@@ -1,9 +1,19 @@
 import { useEffect, useRef, useState } from 'react';
 import MindMap from 'simple-mind-map';
 import Drag from 'simple-mind-map/src/plugins/Drag.js';
-import type { MindmapStructureId } from '@nexnote/shared';
+import {
+  MINDMAP_STRUCTURE_CLASS_BY_ID,
+  isMindmapStructureId,
+  type MindmapStructureId,
+} from '@nexnote/shared';
 import { invoke } from '../lib/ipc';
-import { subscribeSession, flushPending, sessionStatusText } from './session';
+import {
+  getSession,
+  markExplicitStructure,
+  subscribeSession,
+  flushPending,
+  sessionStatusText,
+} from './session';
 import type { SessionState } from './session';
 import { MindmapToolbar } from './mindmap-toolbar';
 import { MindmapDrawer } from './mindmap-drawer';
@@ -46,6 +56,22 @@ type MindMapWithInternals = MindMap & {
   on: (event: string, cb: (...args: never[]) => void) => void;
   off: (event: string, cb: (...args: never[]) => void) => void;
 };
+
+/** DEV-114：把受支持结构写入 root 节点数据（文件权威），且不触发历史/重绘。 */
+function applyRootStructureClass(
+  mindMap: MindMapWithInternals | null,
+  id: MindmapStructureId,
+): void {
+  if (!mindMap) return;
+  const structureClass =
+    MINDMAP_STRUCTURE_CLASS_BY_ID[id as keyof typeof MINDMAP_STRUCTURE_CLASS_BY_ID];
+  if (!structureClass) return;
+  const renderTree = (
+    mindMap.renderer as unknown as { renderTree?: { data: Record<string, unknown> } }
+  ).renderTree;
+  if (!renderTree) return;
+  renderTree.data.structureClass = structureClass;
+}
 
 export function MindmapEditor({ path, model, onChange }: MindmapEditorProps): React.JSX.Element {
   const t = useI18n();
@@ -124,9 +150,7 @@ export function MindmapEditor({ path, model, onChange }: MindmapEditorProps): Re
     mapRef.current = mindMap;
     // 观测口：键盘/布局/结构等集成测试从宿主容器取实例（DEV-102/107 测试约定）。
     hostRef.current.dataset.mindMapInstance = 'attached';
-    (
-      hostRef.current as unknown as { __mindMap?: MindMapWithInternals }
-    ).__mindMap = mindMap;
+    (hostRef.current as unknown as { __mindMap?: MindMapWithInternals }).__mindMap = mindMap;
     setMapInstance(mindMap);
     baseThemeRef.current = JSON.parse(JSON.stringify(mindMap.themeConfig)) as Record<
       string,
@@ -177,7 +201,8 @@ export function MindmapEditor({ path, model, onChange }: MindmapEditorProps): Re
     };
     window.addEventListener('keydown', onKeyDown);
 
-    // 主题与结构：sidecar 持久化优先（主题 DEV-099；结构 DEV-102 / ADR-0020）。
+    // 主题与结构：主题仍是 sidecar；结构已改为文件权威（DEV-114）。sidecar 只作为
+    // legacy 来源：受支持结构的首笔保存会迁移为字节权威，up/x 保留原文件结构直到显式更改。
     void invoke('document:getMetadata', { path })
       .then((meta) => {
         const stored = (meta as { mindmapTheme?: unknown } | null)?.mindmapTheme;
@@ -185,9 +210,14 @@ export function MindmapEditor({ path, model, onChange }: MindmapEditorProps): Re
         setThemeId(themeKey);
         applyThemeConfig(mindMap, themeKey);
         const storedStructure = (meta as { mindmapStructure?: unknown } | null)?.mindmapStructure;
-        // 即便存的结构在当前树上不可用（X 结构但子节点不足）也原样回填——不改写用户的
-        // 选择，只在菜单里置灰（ADR-0020 决策 4）。
-        setStructure(structureById(storedStructure).id);
+        const readStructure =
+          (getSession() as { mindmap?: { structureId?: MindmapStructureId | null } | null })
+            ?.mindmap?.structureId ?? null;
+        const nextStructure =
+          readStructure ??
+          (isMindmapStructureId(storedStructure) ? storedStructure : null) ??
+          DEFAULT_MINDMAP_STRUCTURE;
+        setStructure(structureById(nextStructure).id);
         // 重新加载的文档按其当前一级子节点数决定 X 结构是否可用
         setRootChildCount(countRootChildren(model));
       })
@@ -214,6 +244,10 @@ export function MindmapEditor({ path, model, onChange }: MindmapEditorProps): Re
   const handleStructureChange = (id: MindmapStructureId): void => {
     // 只改状态：套用由 [mapInstance, structure] effect 统一执行，避免 setLayout 跑两遍。
     setStructure(id);
+    if (MINDMAP_STRUCTURE_CLASS_BY_ID[id as keyof typeof MINDMAP_STRUCTURE_CLASS_BY_ID]) {
+      applyRootStructureClass(mapRef.current, id);
+      markExplicitStructure(id);
+    }
     void invoke('binary:mindmapStructure:set', { path, structure: id }).catch(() => undefined);
   };
 

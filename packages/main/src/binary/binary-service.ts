@@ -1,12 +1,18 @@
 import { promises as fsp } from 'node:fs';
 import path from 'node:path';
 import { createHash } from 'node:crypto';
-import type { BinaryKind, BinaryReadResult } from '@nexnote/shared';
+import {
+  MINDMAP_STRUCTURE_CLASS_BY_ID,
+  isMindmapStructureId,
+  mindmapStructureIdFromClass,
+  type BinaryKind,
+  type BinaryReadResult,
+} from '@nexnote/shared';
 import type { VaultFsService } from '../fs/fs-service';
 import { formatForPath } from '../document/document-domain';
 import { MetadataStore } from '../document/metadata-store';
 import { parseXlsxToModel, writeModelToXlsx } from './xlsx-convert';
-import { parseXmindToModel, writeModelToXmind } from './xmind-convert';
+import { parseXmindToModel, writeModelToXmind, type SmmNode } from './xmind-convert';
 import {
   preserveXlsxReadonly,
   preserveXmindReadonly,
@@ -70,6 +76,24 @@ export class BinaryService {
     }
   }
 
+  /** DEV-114：解析当前文件结构与 legacy sidecar；这是读写两侧共同的迁移/回写决策输入。 */
+  private async xmindStructureContext(
+    relPath: string,
+    bytes: Buffer,
+  ): Promise<{
+    currentId: MindmapStructureId | null;
+    currentClass: string | null;
+    legacyId: MindmapStructureId | null;
+  }> {
+    const { structureClass } = await parseXmindToModel(bytes);
+    const currentId = mindmapStructureIdFromClass(structureClass);
+    const metadata = await new MetadataStore(this.requireRoot()).read(relPath);
+    const legacyId = isMindmapStructureId(metadata?.mindmapStructure)
+      ? metadata.mindmapStructure
+      : null;
+    return { currentId, currentClass: structureClass, legacyId };
+  }
+
   /** 统一导入入口（base64）：fail-closed 校验 → 落盘 vault 副本 → sidecar 元数据。 */
   async importBinary(
     kind: BinaryKind,
@@ -78,7 +102,10 @@ export class BinaryService {
   ): Promise<{ path: string; sha256: string }> {
     const root = this.requireRoot();
     if (!input.base64) {
-      throw new BinaryServiceError(tCurrent('binary.error.IMPORT_SOURCE_MISSING'), 'BINARY_IMPORT_SOURCE');
+      throw new BinaryServiceError(
+        tCurrent('binary.error.IMPORT_SOURCE_MISSING'),
+        'BINARY_IMPORT_SOURCE',
+      );
     }
     const encoded = input.base64;
     if (
@@ -86,15 +113,22 @@ export class BinaryService {
       encoded.length % 4 !== 0 ||
       !/^[A-Za-z0-9+/]*={0,2}$/.test(encoded)
     ) {
-      throw new BinaryServiceError(tCurrent('binary.error.IMPORT_SOURCE_INVALID'), 'BINARY_IMPORT_SOURCE');
+      throw new BinaryServiceError(
+        tCurrent('binary.error.IMPORT_SOURCE_INVALID'),
+        'BINARY_IMPORT_SOURCE',
+      );
     }
     let bytes: Buffer;
     try {
       bytes = Buffer.from(encoded, 'base64');
     } catch {
-      throw new BinaryServiceError(tCurrent('binary.error.IMPORT_SOURCE_INVALID'), 'BINARY_IMPORT_SOURCE');
+      throw new BinaryServiceError(
+        tCurrent('binary.error.IMPORT_SOURCE_INVALID'),
+        'BINARY_IMPORT_SOURCE',
+      );
     }
-    if (bytes.length === 0) throw new BinaryServiceError(tCurrent('binary.error.EMPTY'), 'BINARY_EMPTY');
+    if (bytes.length === 0)
+      throw new BinaryServiceError(tCurrent('binary.error.EMPTY'), 'BINARY_EMPTY');
     if (bytes.length > MAX_BINARY_BYTES) {
       throw new BinaryServiceError(tCurrent('binary.error.TOO_LARGE'), 'BINARY_TOO_LARGE');
     }
@@ -163,11 +197,23 @@ export class BinaryService {
         readonly,
       };
     }
-    const { model, readonly } = await parseXmindToModel(bytes);
+    const { model, readonly, structureClass } = await parseXmindToModel(bytes);
+    const fileId = mindmapStructureIdFromClass(structureClass);
+    const { legacyId } = await this.xmindStructureContext(relPath, bytes);
+    // 旧 NexNote 文件恒写 logic.right：此时 legacy sidecar 代表升级前的真实选择；
+    // 外部文件一旦显式选择非 right 官方结构，文件立刻赢得 legacy sidecar。
+    const structureId =
+      fileId && fileId !== 'right'
+        ? fileId
+        : legacyId && legacyId !== 'up' && legacyId !== 'x'
+          ? legacyId
+          : fileId;
     return {
       data: { kind, model },
       sha256: createHash('sha256').update(bytes).digest('hex'),
       readonly,
+      structureId,
+      structurePreserved: structureClass !== null && structureId === null,
     };
   }
 
@@ -194,9 +240,35 @@ export class BinaryService {
       // 照写会在 Git 工作区留下无意义的 diff（历史缺陷之一）。
       if (await xlsxPackagesEquivalent(current, bytes)) return { sha256: actual };
     } else {
-      const model = (data as { model?: Parameters<typeof writeModelToXmind>[0] })?.model;
-      if (!model) throw new BinaryServiceError(tCurrent('binary.error.INVALID_DATA'), 'BINARY_INVALID_DATA');
-      const rebuilt = await writeModelToXmind(model, path.basename(relPath, EXT_BY_KIND[kind]));
+      const model = (data as { model?: SmmNode })?.model;
+      if (!model)
+        throw new BinaryServiceError(tCurrent('binary.error.INVALID_DATA'), 'BINARY_INVALID_DATA');
+      const request = data as { explicitStructure?: MindmapStructureId };
+      const explicitStructure = isMindmapStructureId(request.explicitStructure)
+        ? request.explicitStructure
+        : null;
+      const { currentId, currentClass, legacyId } = await this.xmindStructureContext(
+        relPath,
+        current,
+      );
+      const supportedLegacy =
+        legacyId && legacyId in MINDMAP_STRUCTURE_CLASS_BY_ID
+          ? (legacyId as keyof typeof MINDMAP_STRUCTURE_CLASS_BY_ID)
+          : undefined;
+      // 显式 > 文件非 right 官方结构 > 缺失/旧 right 文件上的 legacy sidecar > 保留原文件。
+      // 未知/缺失结构永远不被 legacy 设置覆写，避免外部结构悄悄丢失。
+      const migratedStructure =
+        explicitStructure ??
+        (currentId && currentId !== 'right'
+          ? currentId
+          : (currentClass === null || currentId === 'right') && supportedLegacy
+            ? supportedLegacy
+            : undefined);
+      const rebuilt = await writeModelToXmind(
+        model,
+        path.basename(relPath, EXT_BY_KIND[kind]),
+        migratedStructure,
+      );
       // ADR-0015 Decision 4：恢复模型未涵盖的主题资源、外框/关联线等原始 archive entries。
       bytes = await preserveXmindReadonly(current, rebuilt);
     }

@@ -2,6 +2,7 @@ import { invoke, onEvent } from '../lib/ipc';
 import {
   setCurrentLanguage,
   tCurrent,
+  type MindmapStructureId,
   type BinaryEditorCommand,
   type BinaryReadonlyTag,
 } from '@nexnote/shared';
@@ -19,7 +20,7 @@ export interface SessionState {
   path: string;
   sha256: string;
   xlsx?: { sheets: unknown[] };
-  mindmap?: { model: unknown };
+  mindmap?: { model: unknown; structureId: MindmapStructureId | null };
   readonly: BinaryReadonlyTag[];
   /** 只读保留区标注（宏/图表/透视表/外框/关联线）。 */
   /** 语言无关的保存状态；UI 按当前语言成文。 */
@@ -41,6 +42,8 @@ let session: SessionState | null = null;
 interface DirtyPayload {
   sheets?: unknown[];
   model?: unknown;
+  /** DEV-114：用户显式选择的结构；随下一次模型保存写入官方 root structureClass。 */
+  explicitStructure?: MindmapStructureId;
 }
 let dirtyPayload: DirtyPayload | null = null;
 let saveTimer: ReturnType<typeof setTimeout> | null = null;
@@ -143,7 +146,7 @@ async function persistNow(): Promise<void> {
       const result = await invoke('binary:save', {
         kind: 'mindmap',
         path: session.path,
-        data: { model: payload.model },
+        data: { model: payload.model, explicitStructure: payload.explicitStructure },
         expectedSha256: session.sha256,
       });
       session.sha256 = result.sha256;
@@ -214,6 +217,16 @@ export function markDirty(patch: { sheets?: unknown[]; model?: unknown }): void 
   scheduleSave();
 }
 
+/** DEV-114：结构选择不单独写盘；它与下一次模型保存合并成一次 xmind 字节变更。 */
+export function markExplicitStructure(structure: MindmapStructureId): void {
+  if (!session || session.kind !== 'mindmap' || session.conflict) return;
+  dirtyPayload = { ...(dirtyPayload ?? {}), explicitStructure: structure };
+  session.mindmap = session.mindmap
+    ? { ...session.mindmap, structureId: structure }
+    : { model: { data: { text: '' }, children: [] }, structureId: structure };
+  emit();
+}
+
 async function loadDocument(kind: SessionState['kind'], path: string): Promise<SessionState> {
   const result = await invoke('binary:read', { kind, path });
   if (kind === 'xlsx') {
@@ -229,11 +242,15 @@ async function loadDocument(kind: SessionState['kind'], path: string): Promise<S
     };
   }
   const data = result.data as { model?: unknown };
+  const structureId = result.structureId ?? null;
   return {
     kind,
     path,
     sha256: result.sha256,
-    mindmap: { model: data.model ?? { data: { text: '' }, children: [] } },
+    mindmap: {
+      model: data.model ?? { data: { text: '' }, children: [] },
+      structureId,
+    },
     readonly: result.readonly ?? [],
     status: null,
     conflict: false,

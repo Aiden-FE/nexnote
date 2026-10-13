@@ -148,10 +148,8 @@ describe('ADR-0023 binary host English rendering', () => {
     expect([...items].map((el) => el.textContent?.trim())).toEqual([
       'Right branch',
       'Left branch',
-      'Upward branch',
       'Downward branch',
       'Fishbone structure',
-      'X structureRequires more than 2 child nodes',
     ]);
 
     const theme = [...view.querySelectorAll('button')].find(
@@ -181,7 +179,7 @@ describe('MindmapToolbar 结构菜单（DEV-102）', () => {
     expect(labels).toEqual(expect.arrayContaining(['结构']));
   });
 
-  it('结构下拉列出六个选项并标出当前结构', () => {
+  it('DEV-114：结构下拉仅列出外部一致四项并标出当前结构', () => {
     const view = mount(createElement(MindmapToolbar, props));
     act(() => {
       [...view.querySelectorAll('button')].find((b) => b.getAttribute('title') === '结构')?.click();
@@ -192,23 +190,20 @@ describe('MindmapToolbar 结构菜单（DEV-102）', () => {
     expect(items.map((el) => el.textContent)).toEqual([
       '向右分支',
       '向左分支',
-      '向上分支',
       '向下分支',
       '鱼骨结构',
-      'X 结构',
     ]);
     const current = items.find((el) => el.getAttribute('aria-current') === 'true');
     expect(current?.textContent).toBe('向右分支');
   });
 
-  it('根节点子节点 < 2 时 X 结构置灰且不可选（ADR-0020 决策 4）', () => {
+  it('DEV-114：up/x 不进入结构面板，避免外部打开不一致', () => {
     const view = mount(createElement(MindmapToolbar, { ...props, rootChildCount: 1 }));
     act(() => {
       [...view.querySelectorAll('button')].find((b) => b.getAttribute('title') === '结构')?.click();
     });
-    const x = view.querySelector('[data-testid="mindmap-structure-x"]');
-    expect(x?.hasAttribute('disabled')).toBe(true);
-    expect(x?.textContent).toContain('需 2 个以上子节点');
+    expect(view.querySelector('[data-testid="mindmap-structure-up"]')).toBeNull();
+    expect(view.querySelector('[data-testid="mindmap-structure-x"]')).toBeNull();
   });
 
   it('选择结构回调出结构 id 并收起菜单', () => {

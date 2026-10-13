@@ -28,6 +28,11 @@ export interface MindmapStructureOption {
   /** 是否为本仓库自研布局（自研布局下 v1 不启用节点拖拽，见 ADR-0020 Consequences）。 */
   custom: boolean;
   icon: MindmapStructureIcon;
+  /**
+   * DEV-114：是否出现在结构面板。up/x 无官方 XMind 对应结构，为避免外部打开
+   * 不一致而隐藏；legacy 文件仍可经由 sidecar/文件状态渲染，但不再新选。
+   */
+  visible: boolean;
 }
 
 export const MINDMAP_STRUCTURE_OPTIONS: MindmapStructureOption[] = [
@@ -37,6 +42,7 @@ export const MINDMAP_STRUCTURE_OPTIONS: MindmapStructureOption[] = [
     layout: 'logicalStructure',
     custom: false,
     icon: 'arrow-right',
+    visible: true,
   },
   {
     id: 'left',
@@ -44,18 +50,46 @@ export const MINDMAP_STRUCTURE_OPTIONS: MindmapStructureOption[] = [
     layout: 'logicalStructureLeft',
     custom: false,
     icon: 'arrow-left',
+    visible: true,
   },
-  { id: 'up', label: 'binary.structure.up', layout: 'nexxUpStructure', custom: true, icon: 'arrow-up' },
+  {
+    id: 'up',
+    label: 'binary.structure.up',
+    layout: 'nexxUpStructure',
+    custom: true,
+    icon: 'arrow-up',
+    visible: false,
+  },
   {
     id: 'down',
     label: 'binary.structure.down',
     layout: 'organizationStructure',
     custom: false,
     icon: 'arrow-down',
+    visible: true,
   },
-  { id: 'fishbone', label: 'binary.structure.fishbone', layout: 'fishbone', custom: false, icon: 'git-branch' },
-  { id: 'x', label: 'binary.structure.x', layout: 'nexxXStructure', custom: true, icon: 'asterisk' },
+  {
+    id: 'fishbone',
+    label: 'binary.structure.fishbone',
+    layout: 'fishbone',
+    custom: false,
+    icon: 'git-branch',
+    visible: true,
+  },
+  {
+    id: 'x',
+    label: 'binary.structure.x',
+    layout: 'nexxXStructure',
+    custom: true,
+    icon: 'asterisk',
+    visible: false,
+  },
 ];
+
+/** DEV-114：结构面板只暴露能写入官方 structureClass 的受支持结构。 */
+export const VISIBLE_MINDMAP_STRUCTURE_OPTIONS = MINDMAP_STRUCTURE_OPTIONS.filter(
+  (option) => option.visible,
+);
 
 export const DEFAULT_MINDMAP_STRUCTURE: MindmapStructureId = 'right';
 

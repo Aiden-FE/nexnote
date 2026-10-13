@@ -50,6 +50,8 @@ export {
   DEFAULT_SHORTCUTS,
   sanitizeEntryName,
   MINDMAP_STRUCTURE_IDS,
+  MINDMAP_STRUCTURE_CLASS_BY_ID,
+  mindmapStructureIdFromClass,
   MIN_ROOT_CHILDREN_FOR_X_STRUCTURE,
   isMindmapStructureId,
 } from './ipc/reexports';
