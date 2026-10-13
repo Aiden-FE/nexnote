@@ -39,6 +39,7 @@ import { PluginBlock } from './plugin-block';
 import { MermaidBlock } from './mermaid';
 import { TableOfContents } from './table-of-contents';
 import { MathBlock, MathInline } from './math';
+import { TextStyleWithMarkdown, Color, BackgroundColor } from './text-style';
 import { SuggestionMenu, type SuggestionItem, type SuggestionTrigger } from './suggestion-menu';
 import { createObsidianMarked } from '../markdown/pipeline';
 
@@ -139,6 +140,10 @@ export function buildKernelExtensions(options: KernelExtensionsOptions = {}): Ex
     TableOfContents,
     MathBlock,
     MathInline,
+    // 字体颜色 / 背景色（textStyle mark，HTML span 落盘往返）
+    TextStyleWithMarkdown,
+    Color,
+    BackgroundColor,
     Fold,
     ...createBlockIdExtensions(),
     ListDev069,

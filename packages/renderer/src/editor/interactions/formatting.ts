@@ -7,6 +7,8 @@ import {
   FORMAT_ITALIC,
   FORMAT_LINK,
   FORMAT_STRIKE,
+  FORMAT_TEXT_COLOR,
+  FORMAT_BACKGROUND_COLOR,
   FORMAT_WIKILINK,
 } from './format-ids';
 
@@ -16,6 +18,8 @@ export {
   FORMAT_ITALIC,
   FORMAT_LINK,
   FORMAT_STRIKE,
+  FORMAT_TEXT_COLOR,
+  FORMAT_BACKGROUND_COLOR,
   FORMAT_WIKILINK,
 } from './format-ids';
 
@@ -44,8 +48,55 @@ export function runFormatAction(
   selectionText: string,
   options?: { allowEmptySelection?: boolean },
 ): boolean {
+  return applyFormatAction(id, kernel, selectionText, options);
+}
+
+/**
+ * 颜色动作的统一入口：选择器选中颜色后调用。
+ *
+ * @param id `format:text-color` / `format:background-color`
+ * @param color 形如 `#RRGGBB`；传 null 表示清除该颜色
+ * @param allowEmptySelection 无选区时对光标处设置 stored mark（继续输入即生效）
+ */
+export function applyColorAction(
+  id: string,
+  color: string | null,
+  kernel: EditorKernelInstance | null,
+): boolean {
+  if (id !== FORMAT_TEXT_COLOR && id !== FORMAT_BACKGROUND_COLOR) return false;
   if (!kernel) return false;
   const editor = kernel.editor;
+  const chain = editor.chain().focus();
+  if (color === null) {
+    if (id === FORMAT_TEXT_COLOR) void chain.unsetColor().run();
+    else void chain.unsetBackgroundColor().run();
+    return true;
+  }
+  if (!/^#[0-9a-fA-F]{6}$/.test(color)) return false;
+  // 无选区时允许 stored mark；有选区直接应用
+  if (id === FORMAT_TEXT_COLOR) chain.setColor(color);
+  else chain.setBackgroundColor(color);
+  void chain.run();
+  return true;
+}
+
+/**
+ * 在编辑器选区上执行格式化动作；返回是否命中格式化 id。
+ *
+ * 工具栏入口传 `allowEmptySelection`：无选区时对光标处设置存储 mark（继续输入
+ * 即生效）；划词 bubble 不传，保持「无选区不动作」的原语义。
+ */
+function applyFormatAction(
+  id: string,
+  kernel: EditorKernelInstance | null,
+  selectionText: string,
+  options?: { allowEmptySelection?: boolean },
+): boolean {
+  if (!kernel) return false;
+  const editor = kernel.editor;
+
+  // 颜色动作不携带具体色值时不直接切换（由颜色选择器走 applyColorAction）
+  if (id === FORMAT_TEXT_COLOR || id === FORMAT_BACKGROUND_COLOR) return true;
 
   // 双链（DEV-023）：有选区经内核 wikilink 节点插入 [[选区]]；
   // 无选区插入 `[[` 骨架，交由内核 [[ 补全菜单确认目标页面。

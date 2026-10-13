@@ -1,8 +1,4 @@
-import {
-  CATALOGS,
-  translate as translateMessage,
-  type UiLanguage,
-} from '../i18n/message-catalog';
+import { CATALOGS, translate as translateMessage, type UiLanguage } from '../i18n/message-catalog';
 
 export type EditorActionMode = 'block' | 'source' | 'preview';
 export type EditorActionGroup = 'primary' | 'format' | 'insert' | 'ai' | 'view' | 'navigation';
@@ -18,6 +14,8 @@ export type EditorActionIconKey =
   | 'strike'
   | 'code'
   | 'link'
+  | 'text-color'
+  | 'background-color'
   | 'wikilink'
   | 'selection'
   | 'wand'
@@ -129,9 +127,10 @@ export const EDITOR_ACTION_CATALOG: readonly EditorActionCatalogEntry[] = [
   },
   ...([1, 2, 3, 4, 5, 6] as const).map((level): EditorActionCatalogEntry => ({
     id: `block:heading:${level}`,
-    nameKey: level === 1
-      ? 'editorAction.block:heading:1.name'
-      : `editorAction.block:heading:${level}.name`,
+    nameKey:
+      level === 1
+        ? 'editorAction.block:heading:1.name'
+        : `editorAction.block:heading:${level}.name`,
     icon: 'heading',
     semantic: 'block-type',
     group: 'primary',
@@ -282,6 +281,25 @@ export const EDITOR_ACTION_CATALOG: readonly EditorActionCatalogEntry[] = [
     semantic: 'format',
     hintKey: 'editorAction.format:link.hint',
     shortcut: '⌘K',
+    group: 'format',
+    modes: ['block', 'source'],
+  },
+  {
+    id: 'format:text-color',
+    nameKey: 'editorAction.format:text-color.name',
+    icon: 'text-color',
+    semantic: 'format',
+    hintKey: 'editorAction.format:text-color.hint',
+    group: 'format',
+    // 颜色走 HTML span 落盘，源码视图手写 span 同样可解析，故两个模式都在
+    modes: ['block', 'source'],
+  },
+  {
+    id: 'format:background-color',
+    nameKey: 'editorAction.format:background-color.name',
+    icon: 'background-color',
+    semantic: 'format',
+    hintKey: 'editorAction.format:background-color.hint',
     group: 'format',
     modes: ['block', 'source'],
   },
@@ -516,18 +534,12 @@ export function editorActionCatalogEntry(id: string): EditorActionCatalogEntry |
 }
 
 /** 按界面语言取快捷插入分组标题（ADR-0023）。 */
-export function quickInsertGroupName(
-  group: QuickInsertGroup,
-  language: UiLanguage,
-): string {
+export function quickInsertGroupName(group: QuickInsertGroup, language: UiLanguage): string {
   return translateMessage(CATALOGS[language], `editorAction.group.${group}.name`, language);
 }
 
 /** 按界面语言取动作显示名（ADR-0023）。key 缺失时回退动作 id，保证可见。 */
-export function editorActionName(
-  entry: EditorActionCatalogEntry,
-  language: UiLanguage,
-): string {
+export function editorActionName(entry: EditorActionCatalogEntry, language: UiLanguage): string {
   const text = translateMessage(CATALOGS[language], entry.nameKey, language);
   return text === entry.nameKey ? entry.id : text;
 }

@@ -76,11 +76,13 @@ import {
   FORMAT_STRIKE,
   FORMAT_WIKILINK,
   runFormatAction,
+  applyColorAction,
 } from './interactions/formatting';
 import { usePluginStore } from '../features/plugins/plugin-store';
 import { usePageTreeStore } from '../stores/page-tree-store';
 import { importDroppedFile } from '../features/sidebar/page-tree/ops';
 import { EditorToolbar } from './toolbar/EditorToolbar';
+import { ColorMenu } from './toolbar/ColorMenu';
 import { OutlinePanel } from './OutlinePanel';
 import {
   AI_ASK_ID,
@@ -345,6 +347,11 @@ export function EditorView({ tab }: EditorViewProps) {
   const [outlineVisible, setOutlineVisible] = useState(false);
   const outlineVisibleRef = useRef(false);
   const [outline, setOutline] = useState<OutlineEntry[]>([]);
+  // 选区处的字体颜色 / 背景色（颜色触发器显示当前色；光标处读 stored mark）
+  const [selectionColors, setSelectionColors] = useState<{
+    text: string | null;
+    background: string | null;
+  }>({ text: null, background: null });
   const foldAnnouncement = useHeadingFoldAnnouncement(tab.id);
   useEffect(() => {
     outlineVisibleRef.current = outlineVisible;
@@ -703,6 +710,20 @@ export function EditorView({ tab }: EditorViewProps) {
     };
     kernel.editor.on('selectionUpdate', onTableContextUpdate);
     kernel.editor.on('update', onTableContextUpdate);
+    // 颜色触发器随选区反映当前 textStyle 的 color/background-color
+    const onSelectionColorsUpdate = () => {
+      const attrs = kernel.editor.getAttributes('textStyle') as {
+        color?: string | null;
+        backgroundColor?: string | null;
+      };
+      const text = typeof attrs.color === 'string' ? attrs.color : null;
+      const background = typeof attrs.backgroundColor === 'string' ? attrs.backgroundColor : null;
+      setSelectionColors((prev) =>
+        prev.text === text && prev.background === background ? prev : { text, background },
+      );
+    };
+    kernel.editor.on('selectionUpdate', onSelectionColorsUpdate);
+    kernel.editor.on('update', onSelectionColorsUpdate);
     // DEV-087：表格单元格焦点加号点击转发到 TipTap 命令（addRowAfter / addColumnAfter）。
     const onTablePlusRow = (event: Event) => {
       event.preventDefault();
@@ -732,6 +753,10 @@ export function EditorView({ tab }: EditorViewProps) {
       gutter?.destroy();
       kernel.editor.off('selectionUpdate', onSelectionUpdate);
       kernel.editor.off('update', refreshOutline);
+      kernel.editor.off('selectionUpdate', onSelectionColorsUpdate);
+      kernel.editor.off('update', onSelectionColorsUpdate);
+      kernel.editor.off('selectionUpdate', onTableContextUpdate);
+      kernel.editor.off('update', onTableContextUpdate);
       // DEV-087：清理表格加号事件监听
       hostEl?.removeEventListener('nexnote:table-cell-plus:row-after', onTablePlusRow);
       hostEl?.removeEventListener('nexnote:table-cell-plus:col-after', onTablePlusCol);
@@ -1131,15 +1156,22 @@ export function EditorView({ tab }: EditorViewProps) {
         })}
         onCommand={runToolbarCommand}
         tools={
-          <DocumentPropertiesPopover
-            data={fmData}
-            source={fmSource}
-            knownTags={effectiveKnownTags}
-            locked={fmLocked}
-            parseError={fmParseError}
-            onChange={applyFrontmatter}
-            onYamlChange={(source, next) => applyFrontmatter(next, source)}
-          />
+          <>
+            <ColorMenu
+              currentTextColor={selectionColors.text}
+              currentBackgroundColor={selectionColors.background}
+              onApply={(id, color) => applyColorAction(id, color, kernelRef.current)}
+            />
+            <DocumentPropertiesPopover
+              data={fmData}
+              source={fmSource}
+              knownTags={effectiveKnownTags}
+              locked={fmLocked}
+              parseError={fmParseError}
+              onChange={applyFrontmatter}
+              onYamlChange={(source, next) => applyFrontmatter(next, source)}
+            />
+          </>
         }
         status={
           <span

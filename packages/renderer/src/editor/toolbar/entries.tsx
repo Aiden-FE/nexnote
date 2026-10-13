@@ -3,6 +3,7 @@ import type { BubbleIconName } from '@nexnote/kernel';
 import { EDITOR_ACTION_CATALOG } from '@nexnote/shared';
 import { t } from '../../lib/i18n';
 import {
+  Baseline,
   Bold,
   ChartGantt,
   Code,
@@ -10,6 +11,7 @@ import {
   Eye,
   EyeOff,
   FileCode2,
+  Highlighter,
   Heading,
   Image,
   Italic,
@@ -105,6 +107,8 @@ const ICONS: Record<string, ReactNode> = {
   strike: <Strikethrough className="size-3.5" />,
   code: <Code className="size-3.5" />,
   link: <Link className="size-3.5" />,
+  'text-color': <Baseline className="size-3.5" />,
+  'background-color': <Highlighter className="size-3.5" />,
   wikilink: <span className="text-[10px] font-semibold">[[]]</span>,
   selection: <TextSelect className="size-3.5" />,
   wand: <WandSparkles className="size-3.5" />,
@@ -128,36 +132,40 @@ const SELECTION_ACTIONS: Readonly<Record<string, { icon: BubbleIconName; order: 
 };
 
 /** Renderer 只把 shared catalog 的 icon semantic key 映射为 React component。 */
-export const EDITOR_ACTION_MODEL: readonly EditorActionCatalogModel[] = EDITOR_ACTION_CATALOG.filter(
-  (action) =>
-    !action.id.startsWith('block:heading:') &&
-    ![
-      'block:paragraph',
-      'block:bullet-list',
-      'block:ordered-list',
-      'block:task-list',
-      'block:blockquote',
-      'block:code',
-      'insert:horizontal-rule',
-    ].includes(action.id),
-).map((action) => ({
-  id: action.id,
-  labelKey: action.nameKey,
-  hintKey: action.hintKey,
-  shortcut: action.shortcut,
-  icon: ICONS[action.icon] ?? <Sparkles className="size-3.5" />,
-  group: action.group,
-  semantic: action.semantic,
-  modes: action.modes,
-  selectionIcon: SELECTION_ACTIONS[action.id]?.icon,
-  selectionOrder: SELECTION_ACTIONS[action.id]?.order,
-  priority:
-    action.group === 'primary' || action.group === 'ai'
-      ? 'persistent'
-      : action.group === 'navigation'
-        ? 'supplementary'
-        : 'secondary',
-}));
+export const EDITOR_ACTION_MODEL: readonly EditorActionCatalogModel[] =
+  EDITOR_ACTION_CATALOG.filter(
+    (action) =>
+      !action.id.startsWith('block:heading:') &&
+      // 字体颜色/背景色由独立 ColorMenu 承载（需先选色再应用，不是 toggle）
+      action.id !== 'format:text-color' &&
+      action.id !== 'format:background-color' &&
+      ![
+        'block:paragraph',
+        'block:bullet-list',
+        'block:ordered-list',
+        'block:task-list',
+        'block:blockquote',
+        'block:code',
+        'insert:horizontal-rule',
+      ].includes(action.id),
+  ).map((action) => ({
+    id: action.id,
+    labelKey: action.nameKey,
+    hintKey: action.hintKey,
+    shortcut: action.shortcut,
+    icon: ICONS[action.icon] ?? <Sparkles className="size-3.5" />,
+    group: action.group,
+    semantic: action.semantic,
+    modes: action.modes,
+    selectionIcon: SELECTION_ACTIONS[action.id]?.icon,
+    selectionOrder: SELECTION_ACTIONS[action.id]?.order,
+    priority:
+      action.group === 'primary' || action.group === 'ai'
+        ? 'persistent'
+        : action.group === 'navigation'
+          ? 'supplementary'
+          : 'secondary',
+  }));
 
 const actionById = new Map(EDITOR_ACTION_MODEL.map((action) => [action.id, action]));
 export function editorAction(id: string): EditorActionDefinition {
@@ -167,8 +175,9 @@ export function editorAction(id: string): EditorActionDefinition {
   return { ...rest, label: t(labelKey), hint: hintKey ? t(hintKey) : undefined };
 }
 export function editorActionsForMode(mode: EditorActionMode): EditorActionDefinition[] {
-  return EDITOR_ACTION_MODEL.filter((action) => action.modes.includes(mode))
-    .map((action) => editorAction(action.id));
+  return EDITOR_ACTION_MODEL.filter((action) => action.modes.includes(mode)).map((action) =>
+    editorAction(action.id),
+  );
 }
 
 export interface ToolbarSubItemSpec {
@@ -240,12 +249,15 @@ function headingEntry(state: HeadingActionState = {}): ToolbarMenuSpec {
     kind: 'menu',
     ...editorAction(BLOCK_TYPE_MENU_ID),
     items: [
-      { id: PARAGRAPH_ID, label: t('toolbar.heading.paragraph'), icon: <Pilcrow className="size-3.5" />, ...common },
+      {
+        id: PARAGRAPH_ID,
+        label: t('toolbar.heading.paragraph'),
+        icon: <Pilcrow className="size-3.5" />,
+        ...common,
+      },
       ...([1, 2, 3, 4, 5, 6] as const).map((level) => ({
         id: headingId(level),
-        label: level === 1
-          ? t('toolbar.heading.pageTitle')
-          : t('toolbar.heading.level', { level }),
+        label: level === 1 ? t('toolbar.heading.pageTitle') : t('toolbar.heading.level', { level }),
         icon: <span className="w-3.5 text-center text-[10px] font-semibold">H{level}</span>,
         ...common,
       })),
@@ -372,8 +384,18 @@ export function sourceToolbarEntries(options: {
     );
   if (options.isMarkdown)
     entries.push(
-      viewEntry(VIEW_SOURCE_ID, t('toolbar.view.source'), t('toolbar.view.sourceOnly'), <FileCode2 className="size-3.5" />),
-      viewEntry(VIEW_SPLIT_ID, t('toolbar.view.split'), t('toolbar.view.splitHint'), <Columns2 className="size-3.5" />),
+      viewEntry(
+        VIEW_SOURCE_ID,
+        t('toolbar.view.source'),
+        t('toolbar.view.sourceOnly'),
+        <FileCode2 className="size-3.5" />,
+      ),
+      viewEntry(
+        VIEW_SPLIT_ID,
+        t('toolbar.view.split'),
+        t('toolbar.view.splitHint'),
+        <Columns2 className="size-3.5" />,
+      ),
       viewEntry(
         VIEW_PREVIEW_ID,
         t('toolbar.view.preview'),

@@ -165,7 +165,35 @@ export function serializeMarkdown(manager: MarkdownManager, doc: JSONContent): s
   const body = fixInlineCodeFences(finalizeAnchors(raw), codeTexts)
     .replace(/^\n+/, '')
     .replace(/\n+$/, '\n');
-  return head + body;
+  return head + foldMarkdownAroundColorSpan(body);
+}
+
+/**
+ * 颜色 span 与 bold/italic/strike 同范围时的序列化折叠。
+ *
+ * @tiptap/markdown 默认输出 `**<span style="color:…">红</span>**`：CommonMark 下
+ * inline HTML 内不解析 markdown，重新解析时 @tiptap/markdown 又只把 span 片段交给
+ * generateJSON（拿不到外层 strong 上下文），导致加粗丢失且留下字面星号。这里把
+ * 「markdown 分隔符整体包住颜色 span」折叠为等价 HTML 嵌套，两类操作顺序都保真。
+ *
+ * 只匹配带 color / background-color 的 style，不影响普通 `**文字**` 与用户手写的
+ * 其它 inline HTML。
+ */
+export function foldMarkdownAroundColorSpan(markdown: string): string {
+  const SPAN = '(<span\\s+style="[^"]*(?:color|background-color)[^"]*">[^]*?</span>)';
+  const rules: { open: string; close: string; tag: string }[] = [
+    { open: '\\*\\*', close: '\\*\\*', tag: 'strong' },
+    { open: '(?<!\\*)\\*(?!\\*)', close: '(?<!\\*)\\*(?!\\*)', tag: 'em' },
+    { open: '~~', close: '~~', tag: 's' },
+  ];
+  let out = markdown;
+  for (const rule of rules) {
+    out = out.replace(
+      new RegExp(`${rule.open}${SPAN}${rule.close}`, 'g'),
+      (_match, span: string) => `<${rule.tag}>${span}</${rule.tag}>`,
+    );
+  }
+  return out;
 }
 
 /**

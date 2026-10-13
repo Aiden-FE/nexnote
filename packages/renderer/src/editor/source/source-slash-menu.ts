@@ -78,6 +78,8 @@ const icons: Record<EditorActionIconKey, string> = {
   strike: 'S̶',
   code: '</>',
   link: '↗',
+  'text-color': 'A',
+  'background-color': '🖍',
   wikilink: '[[]]',
   selection: '▣',
   wand: '✦',

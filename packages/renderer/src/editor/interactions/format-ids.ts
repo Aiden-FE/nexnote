@@ -6,6 +6,10 @@ export const FORMAT_CODE = 'format:code';
 export const FORMAT_LINK = 'format:link';
 /** 双链（[[页面名]]），与外部 URL 链接独立。 */
 export const FORMAT_WIKILINK = 'format:wikilink';
+/** 字体颜色（颜色值由颜色选择器附加，见 applyTextColor）。 */
+export const FORMAT_TEXT_COLOR = 'format:text-color';
+/** 背景色（颜色值由颜色选择器附加，见 applyTextColor）。 */
+export const FORMAT_BACKGROUND_COLOR = 'format:background-color';
 
 export const SELECTION_FORMAT_ACTION_IDS = [
   FORMAT_BOLD,
