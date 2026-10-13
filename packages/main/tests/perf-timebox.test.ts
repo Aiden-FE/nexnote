@@ -134,7 +134,9 @@ describe('DEV-019 千级页面性能时间盒', () => {
     expect(searchLatinMs, `拉丁搜索 ${searchLatinMs}ms`).toBeLessThan(100);
     expect(jumpMs, `jumpTo ${jumpMs}ms`).toBeLessThan(100);
     expect(graphMs, `graph() ${graphMs}ms`).toBeLessThan(1_500);
-    expect(pageRankMs, `PageRank ${pageRankMs}ms`).toBeLessThan(4_000);
+    // PageRank 20 次迭代纯 CPU；本地亚秒级，intel CI 高负载 runner 实测 ~4.7s
+    //（2026-10-13 v0.0.36 首次 tag 流水线）。10s 仍保住「防 O(n²) 回归」的时间盒目的。
+    expect(pageRankMs, `PageRank ${pageRankMs}ms`).toBeLessThan(10_000);
     expect(retrievalMs, `两阶段召回 ${retrievalMs}ms`).toBeLessThan(500);
 
     console.log(
