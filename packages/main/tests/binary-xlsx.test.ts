@@ -74,7 +74,7 @@ describe('xlsx-convert（DEV-074，ADR-0015 R3）', () => {
 
     const rebuilt = await writeModelToXlsx({ sheets: parseXlsxToModel(bytes).sheets });
     const out = new ExcelJS.Workbook();
-    await out.xlsx.load(rebuilt as ArrayBuffer);
+    await out.xlsx.load(rebuilt as unknown as ArrayBuffer);
     const ows = out.getWorksheet('AI Coding 支出')!;
 
     // 数值类型：不得写成 t="s" 文本数字（绿色小三角「以文本形式存储的数字」根因）
