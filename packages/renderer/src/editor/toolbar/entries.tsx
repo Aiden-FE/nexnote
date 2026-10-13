@@ -19,6 +19,7 @@ import {
   ListTree,
   Paperclip,
   Pilcrow,
+  Printer,
   Puzzle,
   Redo2,
   Sparkles,
@@ -60,6 +61,7 @@ export const VIEW_SOURCE_ID = 'view:source';
 export const VIEW_SPLIT_ID = 'view:split';
 export const VIEW_BLOCK_ID = 'view:block';
 export const VIEW_PREVIEW_ID = 'view:preview';
+export const PRINT_DOCUMENT_ID = 'document:print';
 
 export type EditorActionMode = 'block' | 'source' | 'preview';
 export type EditorActionGroup = 'primary' | 'format' | 'insert' | 'ai' | 'view' | 'navigation';
@@ -355,6 +357,7 @@ export function blockToolbarEntries(options: {
       ),
     );
   entries.push(actionEntry(TOGGLE_OUTLINE_ID));
+  entries.push(printEntry());
   return entries;
 }
 
@@ -404,5 +407,18 @@ export function sourceToolbarEntries(options: {
       ),
     );
   entries.push(actionEntry(TOGGLE_OUTLINE_ID));
+  entries.push(printEntry());
   return entries;
+}
+
+function printEntry(): ToolbarActionSpec {
+  return {
+    kind: 'action',
+    id: PRINT_DOCUMENT_ID,
+    label: t('app.menu.file.print'),
+    hint: t('toolbar.print.hint'),
+    icon: <Printer className="size-3.5" />,
+    priority: 'secondary',
+    overflowGroup: 'view',
+  };
 }

@@ -231,6 +231,7 @@ const binaryEditorTheme = object(
     },
   ],
 );
+const printDocument = object(['title', 'html'], [stringField('title'), stringField('html')]);
 const binaryMindmapThemeSet = object(
   ['path', 'theme'],
   [stringField('path'), stringField('theme')],
@@ -861,6 +862,8 @@ const VALIDATORS: Partial<Record<IpcChannel, PayloadValidator>> = {
   'binary:mindmapTheme:set': binaryMindmapThemeSet,
   'binary:mindmapStructure:set': binaryMindmapStructureSet,
   'binary:editorTheme': binaryEditorTheme,
+  // print（块文档 / Markdown 文档；payload 由渲染层生成，只做结构校验）
+  'print:document': printDocument,
   // 'binary:gitignore:get' 无 payload，走默认拒绝非空 payload
 };
 

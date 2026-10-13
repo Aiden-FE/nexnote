@@ -47,6 +47,12 @@ export function buildApplicationMenuTemplate(
           label: t('app.menu.file.importXmind'),
           click: () => send({ type: 'importXmind' }),
         },
+        { type: 'separator' },
+        {
+          label: t('app.menu.file.print'),
+          accelerator: 'CmdOrCtrl+P',
+          click: () => send({ type: 'printDocument' }),
+        },
       ],
     },
     {
