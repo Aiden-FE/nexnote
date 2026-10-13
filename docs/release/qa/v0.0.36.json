@@ -1,0 +1,47 @@
+{
+  "schema": "nexnote-release-qa/v1",
+  "repository": "Aiden-FE/nexnote",
+  "tag": "v0.0.36",
+  "commit": "1330c7b0fb6250388a8b25469dc83ae4da9abcc7",
+  "channel": "stable",
+  "allRequiredChecksPassed": true,
+  "scope": "v0.0.36-release",
+  "machineChecks": {
+    "typecheck": "passed (local CI=true pnpm -r --if-present typecheck at 1330c7b; all applicable workspace projects clean, zero errors/warnings; packages/main verified additionally with npx tsc --noEmit -p packages/main/tsconfig.json)",
+    "lint": "passed (local CI=true pnpm lint at 1330c7b; zero errors and zero warnings)",
+    "tests": "passed (local CI=true pnpm test at 1330c7b; 1959 passed | 3 skipped, 205 test files passed | 1 skipped, exit code 0; +17 tests over v0.0.35 from the acceptance fixes)",
+    "build": "passed (local CI=true pnpm build at 1330c7b; main/preload/renderer builds completed with zero warnings/errors)",
+    "websiteBuild": "passed (local CI=true pnpm --filter website build at 1330c7b; TypeScript + Vite production build completed)",
+    "releaseConfig": "31/31 passed (local pnpm verify:release-config at 1330c7b)",
+    "changedFormat": "passed (npx prettier --check on all files changed vs v0.0.35 at 1330c7b; formatted and re-verified)",
+    "packagedSmoke": "passed locally on macOS arm64 packaged app bound to 1330c7b, app 0.0.36, Electron 44.2.0, ABI 149: 266/266 checks passed, exit code 0, results.json notRun=[Windows packaged smoke, Linux packaged smoke]",
+    "packagedIntegrity": "Ad hoc signature verified with codesign --verify --deep --strict; bundled Git verified through scripts/verify-bundled-git.mjs --app release/mac-arm64/NexNote.app (git version 2.53.0)",
+    "ciLogHygiene": "local full-suite and packaged-smoke logs inspected at 1330c7b; zero warnings/errors",
+    "gatekeeper": "Ad hoc signed app; Gatekeeper manual Open Anyway remains expected on first launch without Developer ID notarization"
+  },
+  "gateDecisions": {
+    "windowsLinuxPhysicalInstall": "WAIVED by repository owner Aiden-FE: no Windows/Linux hardware available; release CI still builds and smoke-tests the supported matrix",
+    "macosGatekeeper": "DEFERRED to first-launch Open Anyway on the owner Mac (Ad hoc signing only); Developer ID signing/notarization remains future work"
+  },
+  "candidateContents": {
+    "tickets": "Release: master candidate 1330c7b0fb6250388a8b25469dc83ae4da9abcc7, version 0.0.36; contains two acceptance fixes from the 2026-10-13 review round: block editor font color/background color (acceptance issue 1) and xlsx currency-format/number-type/formula-cache/alignment round-trip fidelity (acceptance issue 2), plus a toolbar overflow layout regression fix discovered during packaged smoke.",
+    "highlights": [
+      "验收问题 1：块文档支持字体颜色与背景色。内核引入官方 TextStyle/Color/BackgroundColor 并补 markdown 序列化（官方扩展无 renderMarkdown 时 @tiptap/markdown 静默丢 mark），落盘为 Obsidian 兼容内联 span；bold+颜色组合折叠为 <strong><span>…</span></strong> 防 CommonMark 字面星号丢粗体。工具栏新增颜色入口（字体/背景双 tab + Obsidian 预设 8 色板 + 自定义取色器 + 清除），触发器显示当前色条；源码模式手写 span 同样解析回颜色。",
+      "验收问题 2：xlsx 货币格式/数值类型/公式缓存/对齐往返保真。写盘层修复四处：ct.fa 写回 numFmt（¥/日期/百分比不再退化 General）；纯数字串按数值类型写回（消除 Excel/WPS 绿色小三角「文本数字」且 SUM 正确求和）；公式带缓存结果 {formula, result}，缓存缺失时写 fullCalcOnLoad 打开自动重算（消除「公式还在、显示空白」）；vt 枚举映射纠正（0=middle 1=top 2=bottom）并补 ht 左对齐。用户受损文件已备份后用修复管线重存。",
+      "打包 smoke 回归修复：颜色色板初版固定占位把 960 最小窗下工具栏动作区压成 0 宽（溢出机制失效、9 项断言失败）。EditorToolbar 新增 rowTail 插槽参与溢出预算、极窄时自动让位；保存状态 span 允许收缩。smoke 恢复 266/266。",
+      "文档站（随 master，Vercel 已部署）：文档事实修正（FAQ transformers.js 失实、Git 提交前缀、插件 manifest 字段、快捷键 Mod+K）、截图题注统一平台口径、主页「快速上手」入口、文档站截图隐私重拍。"
+    ]
+  },
+  "artifacts": {
+    "macArm64Zip": "release/NexNote-0.0.36-mac-arm64.zip (sha256 1d84c1e1a4c0d30c7505de751f74c15f8443208cf31dc27f68cf8d4f409f5262)",
+    "macArm64Dmg": "release/NexNote-0.0.36-mac-arm64.dmg (sha256 3c92ac67991a9ddd2aea01dbffc027678125c020df94a8e75433057c1d402f1d)"
+  },
+  "notRun": [
+    "matrix signed builds for mac-arm64/mac-x64/windows-x64/linux-x64 before tag dispatch (executed by the release-tag-bound pipeline)",
+    "Windows packaged smoke and Linux packaged smoke before tag dispatch (executed by the release-tag-bound pipeline)",
+    "macOS notarization / Developer ID code signing",
+    "Windows/Linux physical installation and real N-1 network upgrade",
+    "release-qa Environment required-reviewer approval before publication",
+    "post-publication 24-hour monitoring"
+  ]
+}
