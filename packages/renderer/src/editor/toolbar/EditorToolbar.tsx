@@ -44,6 +44,11 @@ export interface EditorToolbarProps {
    * 但不收进「更多」。窄窗下与动作一起竞争空间，避免把 flex-1 动作行压成 0 宽。
    */
   rowTail?: ReactNode;
+  /**
+   * 把 rowTail 挂到动作行内指定动作之后（通常紧跟左侧字体快捷动作）。
+   * 未指定时保持旧行尾语义；指定 id 不存在时仍落到动作行末尾。
+   */
+  rowTailAfterId?: string;
 }
 
 interface PanelState {
@@ -76,6 +81,7 @@ export function EditorToolbar({
   tools,
   status,
   rowTail,
+  rowTailAfterId,
 }: EditorToolbarProps) {
   const t = useI18n();
   const rowRef = useRef<HTMLDivElement>(null);
@@ -361,6 +367,21 @@ export function EditorToolbar({
     );
   };
 
+  const tail =
+    rowTail && !tailCollapsed ? (
+      <div
+        ref={rowTailRef}
+        className="flex shrink-0 items-center pl-0.5"
+        data-testid="editor-toolbar-row-tail"
+      >
+        {rowTail}
+      </div>
+    ) : null;
+
+  const tailIndex = rowTailAfterId ? visible.findIndex((entry) => entry.id === rowTailAfterId) : -1;
+  const visibleBeforeTail = tailIndex < 0 ? visible : visible.slice(0, tailIndex + 1);
+  const visibleAfterTail = tailIndex < 0 ? [] : visible.slice(tailIndex + 1);
+
   return (
     <div
       role="toolbar"
@@ -374,16 +395,9 @@ export function EditorToolbar({
         onKeyDown={onToolbarKeyDown}
         className="flex min-w-0 flex-1 items-center gap-1 overflow-hidden"
       >
-        {visible.map((entry, index) => trigger(entry, index))}
-        {rowTail && !tailCollapsed ? (
-          <div
-            ref={rowTailRef}
-            className="ml-auto flex shrink-0 items-center pl-0.5"
-            data-testid="editor-toolbar-row-tail"
-          >
-            {rowTail}
-          </div>
-        ) : null}
+        {visibleBeforeTail.map((entry, index) => trigger(entry, index))}
+        {tail}
+        {visibleAfterTail.map((entry, index) => trigger(entry, index))}
         {hidden.length > 0 && (
           <ToolbarTooltip key={TOOLBAR_MORE_ID} text={t('toolbar.more')}>
             <button

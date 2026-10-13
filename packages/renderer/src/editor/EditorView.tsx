@@ -75,6 +75,8 @@ import {
   FORMAT_LINK,
   FORMAT_STRIKE,
   FORMAT_WIKILINK,
+  FORMAT_TEXT_COLOR,
+  FORMAT_BACKGROUND_COLOR,
   runFormatAction,
   applyColorAction,
 } from './interactions/formatting';
@@ -1047,6 +1049,8 @@ export function EditorView({ tab }: EditorViewProps) {
       case FORMAT_CODE:
       case FORMAT_LINK:
       case FORMAT_WIKILINK:
+      case FORMAT_TEXT_COLOR:
+      case FORMAT_BACKGROUND_COLOR:
         // 工具栏入口允许空选区：光标处设置存储 mark / 插入 `[[` 骨架。
         runFormatAction(id, kernelRef.current, selectionText(), { allowEmptySelection: true });
         return;
@@ -1155,6 +1159,7 @@ export function EditorView({ tab }: EditorViewProps) {
           inTable,
         })}
         onCommand={runToolbarCommand}
+        rowTailAfterId="format:wikilink"
         rowTail={
           <ColorMenu
             currentTextColor={selectionColors.text}

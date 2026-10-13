@@ -614,6 +614,134 @@ export async function runSmokeIfEnabled(): Promise<void> {
         } else {
           check('块编辑双链按钮：定位选区文本', false, '第一块 not found');
         }
+
+        // 块文档颜色入口：字体快捷动作同区、Tooltip、弹层、字体/背景应用与落盘。
+        const colorTrigger = document.querySelector<HTMLButtonElement>(
+          '[data-testid="color-menu-trigger"]',
+        );
+        const colorBeforeTrigger = document.querySelector<HTMLElement>(
+          '[data-testid="toolbar-entry-format:wikilink"]',
+        );
+        const colorPositionOk =
+          !!colorTrigger &&
+          !!colorBeforeTrigger &&
+          Math.abs(
+            colorTrigger.getBoundingClientRect().right -
+              colorBeforeTrigger.getBoundingClientRect().right,
+          ) < 48;
+        const colorTooltipOk = await (async () => {
+          if (!colorTrigger) return false;
+          colorTrigger.dispatchEvent(
+            new PointerEvent('pointerover', { bubbles: true, cancelable: true }),
+          );
+          const visible = await waitFor(
+            () => !!document.querySelector('[data-testid="toolbar-tooltip"]'),
+            2000,
+          );
+          const text = document.querySelector('[data-testid="toolbar-tooltip"]')?.textContent ?? '';
+          colorTrigger.dispatchEvent(
+            new PointerEvent('pointerout', { bubbles: true, cancelable: true }),
+          );
+          await sleep(100);
+          return visible && text.includes('字体颜色') && text.includes('背景色');
+        })();
+        const colorApplyOk = await (async (): Promise<string | true> => {
+          if (!colorTrigger) return 'no-trigger';
+          const findFirstBlockRange = (): { from: number; to: number } | null => {
+            const active = getActiveEditor();
+            if (!active) return null;
+            let found: { from: number; to: number } | null = null;
+            active.editor.state.doc.descendants((node, pos) => {
+              if (found || !node.isText) return true;
+              const at = node.text?.indexOf('第一块') ?? -1;
+              if (at >= 0) found = { from: pos + at, to: pos + at + '第一块'.length };
+              return false;
+            });
+            return found;
+          };
+          const openPanel = async (stage: string): Promise<string | null> => {
+            if (!document.querySelector('[data-testid="color-menu-panel"]')) colorTrigger.click();
+            const opened = await waitFor(
+              () => !!document.querySelector('[data-testid="color-menu-panel"]'),
+              2000,
+            );
+            return opened ? null : `no-panel-${stage}`;
+          };
+          const editor = getActiveEditor();
+          const range = findFirstBlockRange();
+          if (!range || !editor) return 'no-range-or-editor';
+          editor.editor.view.dispatch(
+            editor.editor.view.state.tr.setSelection(
+              TextSelection.create(editor.editor.view.state.doc, range.from, range.to),
+            ),
+          );
+          const textPanelError = await openPanel('text');
+          if (textPanelError) return textPanelError;
+          document.querySelector<HTMLButtonElement>('[data-testid="color-swatch-E06666"]')?.click();
+          await sleep(2200);
+          const textApplied = (await invoke('fs:readTextFile', { path: '冒烟页面 A.md' }))
+            .toLowerCase()
+            .includes('color: #e06666');
+          const currentRange = findFirstBlockRange();
+          const activeEditor = getActiveEditor();
+          if (!currentRange || !activeEditor) return 'no-range-background';
+          activeEditor.editor.view.dispatch(
+            activeEditor.editor.view.state.tr.setSelection(
+              TextSelection.create(
+                activeEditor.editor.view.state.doc,
+                currentRange.from,
+                currentRange.to,
+              ),
+            ),
+          );
+          const backgroundPanelError = await openPanel('background');
+          if (backgroundPanelError) return backgroundPanelError;
+          const backgroundTab = document.querySelector<HTMLButtonElement>(
+            '[data-testid="color-tab-background"]',
+          );
+          if (!backgroundTab) return 'no-background-tab';
+          backgroundTab.click();
+          await sleep(150);
+          document.querySelector<HTMLButtonElement>('[data-testid="color-swatch-FFD966"]')?.click();
+          await sleep(2200);
+          const backgroundApplied = (await invoke('fs:readTextFile', { path: '冒烟页面 A.md' }))
+            .toLowerCase()
+            .includes('background-color: #ffd966');
+          const clearRange = findFirstBlockRange();
+          const clearEditor = getActiveEditor();
+          if (!clearRange || !clearEditor) return 'no-range-clear';
+          clearEditor.editor.view.dispatch(
+            clearEditor.editor.view.state.tr.setSelection(
+              TextSelection.create(
+                clearEditor.editor.view.state.doc,
+                clearRange.from,
+                clearRange.to,
+              ),
+            ),
+          );
+          const clearPanelError = await openPanel('clear');
+          if (clearPanelError) return clearPanelError;
+          const clearTab = document.querySelector<HTMLButtonElement>('[data-testid="color-clear"]');
+          if (!clearTab) return 'no-clear';
+          clearTab.click();
+          await sleep(2200);
+          const markdown = await invoke('fs:readTextFile', { path: '冒烟页面 A.md' });
+          const clearOk =
+            !markdown.toLowerCase().includes('color: #e06666') &&
+            !markdown.toLowerCase().includes('background-color: #ffd966');
+          return textApplied && backgroundApplied && clearOk
+            ? true
+            : `text=${textApplied} background=${backgroundApplied} clear=${clearOk} markdown=${markdown.slice(0, 240)}`;
+        })();
+        check('块文档颜色入口同区且 Tooltip 可见', colorPositionOk && colorTooltipOk);
+        check(
+          '块文档选字后设置字体/背景色并落盘可清除',
+          colorApplyOk === true,
+          colorApplyOk === true ? undefined : colorApplyOk,
+        );
+        blockKernel.setMarkdown(originalSaved);
+        blockKernel.editor.commands.focus();
+        await sleep(2200);
       }
       useTabStore.getState().closeTab(leftPageTab.id);
       await openDocumentTab('冒烟页面 A.md');

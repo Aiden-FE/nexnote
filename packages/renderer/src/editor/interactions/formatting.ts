@@ -68,8 +68,9 @@ export function applyColorAction(
   const editor = kernel.editor;
   const chain = editor.chain().focus();
   if (color === null) {
-    if (id === FORMAT_TEXT_COLOR) void chain.unsetColor().run();
-    else void chain.unsetBackgroundColor().run();
+    // 清除是“颜色”这一个动作的清空语义：同时移除字体色与背景色，
+    // 避免用户清字体色后误以为整段颜色都已恢复默认。
+    void chain.unsetColor().unsetBackgroundColor().run();
     return true;
   }
   if (!/^#[0-9a-fA-F]{6}$/.test(color)) return false;
@@ -95,8 +96,15 @@ function applyFormatAction(
   if (!kernel) return false;
   const editor = kernel.editor;
 
-  // 颜色动作不携带具体色值时不直接切换（由颜色选择器走 applyColorAction）
-  if (id === FORMAT_TEXT_COLOR || id === FORMAT_BACKGROUND_COLOR) return true;
+  // 颜色入口若未经色板携带色值，只打开选择器而不猜测颜色；避免命令分发吞掉动作。
+  if (id === FORMAT_TEXT_COLOR || id === FORMAT_BACKGROUND_COLOR) {
+    window.dispatchEvent(
+      new CustomEvent('nexnote:open-color-menu', {
+        detail: { target: id === FORMAT_BACKGROUND_COLOR ? 'background' : 'text' },
+      }),
+    );
+    return true;
+  }
 
   // 双链（DEV-023）：有选区经内核 wikilink 节点插入 [[选区]]；
   // 无选区插入 `[[` 骨架，交由内核 [[ 补全菜单确认目标页面。
