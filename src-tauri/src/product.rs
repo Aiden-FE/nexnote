@@ -1736,10 +1736,118 @@ fn dispatch(
                 Err(e) => error("PRINT_VALIDATION_FAILED", &e.to_string()),
             }
         }
-        "docx:import" | "docx:export" => error(
-            "DOCX_NOT_PORTED",
-            "DOCX import/export is not ported to Rust yet",
-        ),
+        "docx:import" => {
+            let Some(root) = vault_root.get() else {
+                return error("NO_VAULT", "No vault is open");
+            };
+            let Some(data_base64) = string_field(payload, "data") else {
+                return error("DOCX_DATA_REQUIRED", "data (base64) is required");
+            };
+            let bytes = match base64::Engine::decode(
+                &base64::engine::general_purpose::STANDARD,
+                &data_base64,
+            ) {
+                Ok(b) => b,
+                Err(e) => return error("DOCX_DECODE_FAILED", &e.to_string()),
+            };
+            let cursor = std::io::Cursor::new(&bytes[..]);
+            let mut archive = match zip::ZipArchive::new(cursor) {
+                Ok(a) => a,
+                Err(e) => return error("DOCX_PARSE_FAILED", &e.to_string()),
+            };
+            let mut document_xml = String::new();
+            match archive.by_name("word/document.xml") {
+                Ok(mut entry) => {
+                    use std::io::Read;
+                    let _ = entry.read_to_string(&mut document_xml);
+                }
+                Err(e) => return error("DOCX_PARSE_FAILED", &format!("no word/document.xml: {e}")),
+            }
+            // Extract text between <w:t> tags
+            let mut markdown = String::new();
+            let mut remaining = document_xml.as_str();
+            while let Some(start) = remaining.find("<w:t") {
+                let text_start = match remaining[start..].find('>') {
+                    Some(pos) => start + pos + 1,
+                    None => break,
+                };
+                let text_end = match remaining[text_start..].find("</w:t>") {
+                    Some(pos) => text_start + pos,
+                    None => break,
+                };
+                let text = &remaining[text_start..text_end];
+                if !text.is_empty() {
+                    markdown.push_str(text);
+                }
+                remaining = &remaining[text_end + 6..];
+            }
+            let name = string_field(payload, "name")
+                .map(|n| n.trim_end_matches(".docx").to_owned())
+                .unwrap_or_else(|| "Imported".to_owned());
+            let target_dir = string_field(payload, "targetDir").unwrap_or_default();
+            let rel = if target_dir.is_empty() {
+                format!("{name}.md")
+            } else {
+                format!("{target_dir}/{name}.md")
+            };
+            let target = root.join(&rel);
+            if let Some(parent) = target.parent() {
+                let _ = fs::create_dir_all(parent);
+            }
+            match fs::write(&target, &markdown) {
+                Ok(()) => ok(json!({ "path": rel })),
+                Err(e) => error("DOCX_IMPORT_FAILED", &e.to_string()),
+            }
+        }
+        "docx:export" => {
+            let Some(root) = vault_root.get() else {
+                return error("NO_VAULT", "No vault is open");
+            };
+            let Some(path) = string_field(payload, "path") else {
+                return error("DOCX_PATH_REQUIRED", "path is required");
+            };
+            let Ok(content) = fs::read_to_string(root.join(&path)) else {
+                return error("DOCX_SOURCE_NOT_FOUND", "Source markdown not found");
+            };
+            let target_path = string_field(payload, "targetPath")
+                .unwrap_or_else(|| path.trim_end_matches(".md").to_owned() + ".docx");
+            let target = root.join(&target_path);
+            if target.exists() {
+                return error("DOCX_TARGET_EXISTS", "Target docx already exists");
+            }
+            let body_xml = content
+                .lines()
+                .map(|line| {
+                    let trimmed = line.trim();
+                    if trimmed.is_empty() {
+                        return String::new();
+                    }
+                    if let Some(heading) = trimmed.strip_prefix("# ") {
+                        format!("<w:p><w:pPr><w:pStyle w:val=\"Heading1\"/></w:pPr><w:r><w:t>{heading}</w:t></w:r></w:p>")
+                    } else {
+                        format!("<w:p><w:r><w:t>{line}</w:t></w:r></w:p>")
+                    }
+                })
+                .collect::<String>();
+            let document_xml = format!(
+                "<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?><w:document xmlns:w=\"http://schemas.openxmlformats.org/wordprocessingml/2006/main\"><w:body>{body_xml}</w:body></w:document>"
+            );
+            use std::io::Write;
+            let mut buf = Vec::new();
+            let mut zip = zip::ZipWriter::new(std::io::Cursor::new(&mut buf));
+            let options = zip::write::SimpleFileOptions::default();
+            let _ = zip.start_file("[Content_Types].xml", options);
+            let _ = zip.write_all(br#"<?xml version="1.0"?><Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/><Override PartName="/word/document.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml"/></Types>"#);
+            let _ = zip.start_file("_rels/.rels", options);
+            let _ = zip.write_all(br#"<?xml version="1.0"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="word/document.xml"/></Relationships>"#);
+            let _ = zip.start_file("word/document.xml", options);
+            let _ = zip.write_all(document_xml.as_bytes());
+            let _ = zip.finish();
+            match fs::write(&target, &buf) {
+                Ok(()) => ok(json!({ "path": target_path })),
+                Err(e) => error("DOCX_EXPORT_FAILED", &e.to_string()),
+            }
+        }
         channel if channel.starts_with("agent:run:") => {
             let scenario = channel.trim_start_matches("agent:run:");
             let run_id = uuid::Uuid::new_v4().to_string();
