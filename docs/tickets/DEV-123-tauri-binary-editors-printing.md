@@ -42,6 +42,14 @@ Electron 版本使用 `WebContentsView` 为 xlsx / xmind 编辑器提供独立�
 
 仍待完成：macOS 实测（隐藏窗口、系统对话框、内存）；Windows/Linux 打印 **NOT_RUN（无实测条件）**；xlsx/xmind 的 `WebContentsView` 等价宿主（多 WebView 隔离）尚未迁移。
 
+### 二进制编辑器宿主（Tauri 2 等价方案）
+
+Tauri 2 没有 `WebContentsView` 等价物，改用每文档一个 borderless 子窗口：`parent(main)` + `decorations(false)` + `skip_taskbar(true)`，macOS 上是真子窗口，Windows/Linux 上是 owned/transient 窗口（始终在父窗口之上、随父窗口最小化隐藏）。`binary:host:open|close|setActive|setBounds|flush|ready` 六个通道与 `binary:editorCommand` 事件已接线，注册表按 `kind:path` 管理宿主，只有「已激活且已上报占位矩形」的宿主可见——宿主绝不覆盖侧栏/标签条/状态栏。
+
+就绪协议沿用 Electron 的 pull 模型：编辑器页 bootstrap 后调用 `binary:host:ready`，响应里带回排队的命令（首条为从全局设置读取的当前语言），避免初始 load 被推入尚未订阅的页面而永久丢失。
+
+已知缺口（矩阵中已逐条标注）：`flush` 只投递命令、不等待页内 `__nexnoteHostFlush` 写盘往返；`setBounds` 不跟随主窗口 resize 重算；`ready` 以「第一个未 ready 宿主」识别 ack 来源，多宿主并发时需改为 sender id 识别；并发上限（渲染层 ≤3 LRU）未在 Rust 侧强制。macOS 实测（宿主定位、崩溃隔离、内存）与 Windows/Linux 的 WebView 进程隔离仍为 **NOT_RUN（无实测条件）**。
+
 ## Out of scope
 
 - 新增 DOCX 应用内编辑（ADR-0015 已移除主编辑形态）。
