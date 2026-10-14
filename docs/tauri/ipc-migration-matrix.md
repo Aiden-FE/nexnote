@@ -82,7 +82,7 @@
 | fs:delete | vault | yes | no | yes | no | `fs-handlers.ts` | `vault_fs::delete` | vault | ported |
 | fs:revealInFinder | host | no | no | no | no | `fs-handlers.ts` | `product::reveal_item` | vault | ported |
 | fs:scanTags | vault | no | no | yes | no | `fs-handlers.ts` | `index::scan_tags` | vault | ported |
-| document:getMetadata | vault | no | no | yes | no | `document-handlers.ts` | `vault_fs::get_metadata` | vault | pending |
+| document:getMetadata | vault | no | no | yes | no | `document-handlers.ts` | `vault_fs::get_metadata` | vault | ported |
 
 ## Git
 

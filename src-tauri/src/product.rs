@@ -111,7 +111,11 @@ fn error(code: &str, message: &str) -> Value {
 /// UI silently goes stale even though every command call succeeds. Payloads
 /// reuse the same values the command returned, so an event can never disagree
 /// with the response that triggered it.
-fn emit_channel_event(app: &AppHandle, channel: &str, vault_root: &VaultRoot) {
+fn emit_channel_event<R: tauri::Runtime>(
+    app: &tauri::AppHandle<R>,
+    channel: &str,
+    vault_root: &VaultRoot,
+) {
     let state = app.state::<ProductState>();
     match channel {
         // AI config changes invalidate the wizard, the model list and the
@@ -333,7 +337,7 @@ fn update_config_layout(vault: &VaultInfo, layout: &Value) -> Result<(), String>
     write_config(&path, &config).map_err(|e| format!("write vault config failed: {e}"))
 }
 
-fn app_info(app: &AppHandle) -> Value {
+fn app_info<R: tauri::Runtime>(app: &tauri::AppHandle<R>) -> Value {
     json!({
         "version": app.package_info().version.to_string(),
         "platform": std::env::consts::OS,
@@ -361,7 +365,9 @@ fn git_result(result: Result<Value, GitError>) -> Value {
 
 static AI_STORE: OnceLock<Mutex<AiStore>> = OnceLock::new();
 
-fn ai_store(app: &AppHandle) -> std::sync::MutexGuard<'static, AiStore> {
+fn ai_store<R: tauri::Runtime>(
+    app: &tauri::AppHandle<R>,
+) -> std::sync::MutexGuard<'static, AiStore> {
     let store = AI_STORE.get_or_init(|| {
         let data_dir = app.path().app_data_dir().unwrap_or_default();
         Mutex::new(AiStore::new(data_dir.join("nexnote-ai.json")))
@@ -377,7 +383,9 @@ fn ai_state_value(state: ai_service::AiConfigState) -> Value {
 
 static SKILL_STORE: OnceLock<Mutex<skill_service::SkillStore>> = OnceLock::new();
 
-fn skill_store(app: &AppHandle) -> std::sync::MutexGuard<'static, skill_service::SkillStore> {
+fn skill_store<R: tauri::Runtime>(
+    app: &tauri::AppHandle<R>,
+) -> std::sync::MutexGuard<'static, skill_service::SkillStore> {
     let store = SKILL_STORE.get_or_init(|| {
         let data_dir = app.path().app_data_dir().unwrap_or_default();
         Mutex::new(skill_service::SkillStore::new(
@@ -547,8 +555,8 @@ pub async fn nexnote_invoke(
     Ok(response)
 }
 
-fn dispatch(
-    app: &AppHandle,
+fn dispatch<R: tauri::Runtime>(
+    app: &tauri::AppHandle<R>,
     state: &State<'_, ProductState>,
     embedding: &State<'_, std::sync::Arc<embedding_service::EmbeddingState>>,
     plugin_state: &State<'_, PluginState>,
@@ -942,6 +950,7 @@ fn dispatch(
         "fs:listDir"
         | "fs:listTree"
         | "fs:readTextFile"
+        | "document:getMetadata"
         | "fs:writeTextFile"
         | "fs:createTextFile"
         | "fs:createNote"
@@ -960,6 +969,17 @@ fn dispatch(
                 "fs:listDir" => vault_fs::list_dir(&root, payload),
                 "fs:listTree" => vault_fs::list_tree(&root, payload),
                 "fs:readTextFile" => vault_fs::read_text_file(&root, payload),
+                "document:getMetadata" => {
+                    // Sidecar metadata for native-block documents; non-document
+                    // paths read as null exactly like the reference handler.
+                    match string_field(payload, "path") {
+                        Some(path) if vault_fs::is_document_path(&path) => {
+                            ok(vault_fs::read_metadata(&root, &path).unwrap_or(Value::Null))
+                        }
+                        Some(_) => ok(Value::Null),
+                        None => error("INVALID_PATH", "path is required"),
+                    }
+                }
                 "fs:writeTextFile" => vault_fs::write_text_file(&root, payload),
                 "fs:createTextFile" => vault_fs::create_text_file(&root, payload),
                 "fs:createNote" => vault_fs::create_note(&root, payload),
@@ -2310,7 +2330,11 @@ fn dispatch(
     }
 }
 
-pub fn sync_vault_root(app: &AppHandle, root: &Path, state: &VaultRoot) -> Result<(), Value> {
+pub fn sync_vault_root<R: tauri::Runtime>(
+    app: &tauri::AppHandle<R>,
+    root: &Path,
+    state: &VaultRoot,
+) -> Result<(), Value> {
     if !root.join(".nexnote/config.json").is_file() {
         return Err(json!({
             "ok": false,
@@ -2348,6 +2372,66 @@ mod tests {
         let root = std::env::temp_dir().join(format!("nexnote-dev119-{}-{id}", std::process::id()));
         fs::create_dir_all(root.join(".nexnote")).expect("create temp vault");
         root
+    }
+
+    /// Builds a mock app with every state type `dispatch` needs, so tests can
+    /// drive the real match without a window.
+    fn dispatch_harness() -> tauri::App<tauri::test::MockRuntime> {
+        let app = tauri::test::mock_app();
+        let data = std::env::temp_dir().join(format!(
+            "nexnote-dispatch-{}-{}",
+            std::process::id(),
+            TEMP_SEQUENCE.fetch_add(1, Ordering::SeqCst)
+        ));
+        let _ = fs::create_dir_all(&data);
+        app.manage(ProductState::default());
+        app.manage(std::sync::Arc::new(embedding_service::EmbeddingState::new(
+            &data,
+        )));
+        app.manage(PluginState::new(data.join("plugins"), "0.0.37"));
+        app.manage(VaultRoot::default());
+        app
+    }
+
+    /// Locks dispatch reachability: these channels must match a real arm, not
+    /// fall into the catch-all. An inner arm without an outer-list entry (the
+    /// `document:getMetadata` bug) silently degrades to UNSUPPORTED_CHANNEL —
+    /// this test catches exactly that class.
+    #[test]
+    fn wired_channels_are_reachable_through_dispatch() {
+        let app = dispatch_harness();
+        let handle = app.handle();
+        let state = app.state::<ProductState>();
+        let embedding = app.state::<std::sync::Arc<embedding_service::EmbeddingState>>();
+        let plugins = app.state::<PluginState>();
+        let vault = app.state::<VaultRoot>();
+
+        for channel in [
+            // The regression: inner arm existed, outer list entry was missing.
+            "document:getMetadata",
+            // Sampling each namespace that requires a vault (error = NO_VAULT).
+            "fs:readTextFile",
+            "fs:stat",
+            "git:getStatus",
+            // State-only channels that work without a vault.
+            "settings:getAll",
+            "ai:getState",
+        ] {
+            let response = dispatch(
+                handle,
+                &state,
+                &embedding,
+                &plugins,
+                &vault,
+                channel,
+                &json!({}),
+            );
+            assert_ne!(
+                response.get("code").and_then(Value::as_str),
+                Some("UNSUPPORTED_CHANNEL"),
+                "{channel} is wired in an inner arm but missing from the outer match list"
+            );
+        }
     }
 
     #[test]
