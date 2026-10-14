@@ -1,3 +1,4 @@
+mod agent_service;
 mod ai_service;
 mod binary_service;
 mod confidence_service;

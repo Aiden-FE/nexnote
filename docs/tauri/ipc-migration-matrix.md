@@ -25,7 +25,7 @@
 
 | Channel | 现状 | 剩余工作 |
 | --- | --- | --- |
-| agent:cancel / agent:approval:respond | 返回 `{cancelled:false}` 占位 | 迁移 Electron agent gateway 的取消与工具审批语义（DEV-121） |
+| agent:approval:respond | 返回 `{accepted:false}` 占位 | 迁移 Electron agent gateway 的工具审批语义（DEV-121） |
 | skills:retrieve | 以 index_service FTS 结果代替 Skill 召回 | 迁移 DEV-014 Skill 召回/重排链路（DEV-121） |
 | agent:run:* | SSE 文本流已接通，但无工具审批/权限模式 | 迁移工具调用与权限模式（DEV-121） |
 | index:confidenceChanged | 无重算触发点（`index:confidence` 只读） | 置信度重算落地后触发事件（DEV-119） |
@@ -170,11 +170,11 @@
 
 | Channel | 所有权 | persist | net | fs | proc | Electron handler | Tauri target | batch | status |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| agent:run:chat | remote-provider | no | yes | yes | no | `agent-handlers.ts` | `agent::run_chat` | ai | pending（SSE 文本流已接；工具审批/权限模式未迁移） |
-| agent:run:writing | remote-provider | no | yes | yes | no | `agent-handlers.ts` | `agent::run_writing` | ai | pending（SSE 文本流已接；工具审批/权限模式未迁移） |
-| agent:run:debug | remote-provider | no | yes | yes | no | `agent-handlers.ts` | `agent::run_debug` | ai | pending（SSE 文本流已接；工具审批/权限模式未迁移） |
-| agent:run:translation | remote-provider | no | yes | yes | no | `agent-handlers.ts` | `agent::run_translation` | ai | pending（SSE 文本流已接；工具审批/权限模式未迁移） |
-| agent:cancel | app-state | no | no | no | no | `agent-handlers.ts` | `agent::cancel` | ai | pending（返回占位；取消语义未迁移） |
+| agent:run:chat | remote-provider | no | yes | yes | no | `agent-handlers.ts` | `agent::run_chat` | ai | pending（SSE 流与取消已接；工具审批/权限模式未迁移） |
+| agent:run:writing | remote-provider | no | yes | yes | no | `agent-handlers.ts` | `agent::run_writing` | ai | pending（SSE 流与取消已接；工具审批/权限模式未迁移） |
+| agent:run:debug | remote-provider | no | yes | yes | no | `agent-handlers.ts` | `agent::run_debug` | ai | pending（SSE 流与取消已接；工具审批/权限模式未迁移） |
+| agent:run:translation | remote-provider | no | yes | yes | no | `agent-handlers.ts` | `agent::run_translation` | ai | pending（SSE 流与取消已接；工具审批/权限模式未迁移） |
+| agent:cancel | app-state | no | no | no | no | `agent-handlers.ts` | `agent::cancel` | ai | ported |
 | agent:approval:respond | app-state | no | no | no | no | `agent-handlers.ts` | `agent::approval_respond` | ai | pending（返回占位；工具审批语义未迁移） |
 
 ## Chat

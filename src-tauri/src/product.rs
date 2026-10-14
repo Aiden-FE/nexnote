@@ -1,4 +1,5 @@
 use crate::{
+    agent_service,
     ai_service::{self, AiStore},
     binary_service, embedding_service,
     git_service::{self, GitError},
@@ -2018,7 +2019,32 @@ fn dispatch<R: tauri::Runtime>(
                 Err(e) => error("CHAT_SAVE_AS_DOC_FAILED", &e.to_string()),
             }
         }
-        "agent:cancel" | "agent:approval:respond" => ok(json!({ "cancelled": false })),
+        "agent:cancel" => {
+            let Some(run_id) = string_field(payload, "runId") else {
+                return error("AGENT_RUN_ID_REQUIRED", "runId is required");
+            };
+            // Cancel flips the flag; the streaming thread observes it within
+            // one poll interval and emits the terminal error event itself.
+            match agent_service::cancel_run(&run_id) {
+                Some(scenario) => {
+                    let _ = app.emit(
+                        "agent:runEvent",
+                        json!({
+                            "runId": run_id,
+                            "scenario": scenario,
+                            "event": {
+                                "type": "error",
+                                "message": "Agent run cancelled by user",
+                                "code": "CANCELLED",
+                            },
+                        }),
+                    );
+                    ok(json!({ "cancelled": true }))
+                }
+                None => ok(json!({ "cancelled": false })),
+            }
+        }
+        "agent:approval:respond" => ok(json!({ "accepted": false })),
         "binary:ping" => ping("binary", "DEV-074"),
         "binary:import" => {
             let Some(root) = vault_root.get() else {
@@ -2302,13 +2328,14 @@ fn dispatch<R: tauri::Runtime>(
             let app_handle = app.clone();
             let run_id_for_response = run_id.clone();
             let api_key = ai_service::read_credential(&profile.id);
+            let run_handle = agent_service::register_run(&run_id, &scenario);
             std::thread::spawn(move || {
-                let result = ai_service::stream_chat(
+                let result = ai_service::stream_chat_cancellable(
                     &base_url,
                     api_key.as_deref(),
                     &model,
                     &messages,
-                    |event| match event {
+                    &mut |event| match event {
                         ai_service::ChatSseEvent::Start { model } => {
                             let _ = app_handle.emit(
                                 "agent:runEvent",
@@ -2354,7 +2381,11 @@ fn dispatch<R: tauri::Runtime>(
                             );
                         }
                     },
+                    &|| run_handle.is_cancelled(),
                 );
+                agent_service::finish_run(&run_id);
+                // On cancellation `agent:cancel` already emitted the terminal
+                // error event, so only provider failures need reporting here.
                 if let Err(error) = result {
                     let _ = app_handle.emit(
                         "agent:runEvent",

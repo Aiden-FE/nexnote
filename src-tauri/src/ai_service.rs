@@ -1346,6 +1346,58 @@ pub fn stream_chat(
     messages: &[Value],
     mut on_event: impl FnMut(ChatSseEvent),
 ) -> Result<String, String> {
+    let never_cancel = || false;
+    match stream_chat_inner(
+        base_url,
+        api_key,
+        model,
+        messages,
+        &mut on_event,
+        &never_cancel,
+    )? {
+        ChatStreamOutcome::Completed(text) => Ok(text),
+        // The never-cancel flag means this arm is unreachable; the type system
+        // forces us to handle the shared return type exhaustively.
+        ChatStreamOutcome::Cancelled => unreachable!("the never-cancel flag cannot cancel"),
+    }
+}
+
+/// Cancellable variant: `is_cancelled` is polled between stream chunks so an
+/// agent run can abort mid-response. Cancellation surfaces as
+/// `ChatStreamOutcome::Cancelled` rather than an error, because the user asked
+/// for it — it is not a provider failure.
+pub fn stream_chat_cancellable(
+    base_url: &str,
+    api_key: Option<&str>,
+    model: &str,
+    messages: &[Value],
+    on_event: &mut dyn FnMut(ChatSseEvent),
+    is_cancelled: &dyn Fn() -> bool,
+) -> Result<ChatStreamOutcome, String> {
+    stream_chat_inner(base_url, api_key, model, messages, on_event, is_cancelled)
+}
+
+/// Terminal state of a chat stream.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ChatStreamOutcome {
+    /// Provider finished normally; carries the assembled text.
+    Completed(String),
+    /// The run was cancelled before the stream ended.
+    Cancelled,
+}
+
+/// Read timeout for the cancellable loop. Short enough that a cancel lands
+/// within ~100ms of the flag flipping, long enough for slow providers.
+const CANCEL_POLL_READ_TIMEOUT: Duration = Duration::from_millis(100);
+
+fn stream_chat_inner(
+    base_url: &str,
+    api_key: Option<&str>,
+    model: &str,
+    messages: &[Value],
+    on_event: &mut dyn FnMut(ChatSseEvent),
+    is_cancelled: &dyn Fn() -> bool,
+) -> Result<ChatStreamOutcome, String> {
     let origin = parse_http_origin(base_url)?;
     let request_target = format!(
         "{}/v1/chat/completions",
@@ -1370,7 +1422,7 @@ pub fn stream_chat(
     let mut stream = TcpStream::connect((origin.host.as_str(), origin.port))
         .map_err(|e| format!("failed to connect to AI provider: {e}"))?;
     stream
-        .set_read_timeout(Some(Duration::from_secs(120)))
+        .set_read_timeout(Some(CANCEL_POLL_READ_TIMEOUT))
         .map_err(|error| format!("failed to configure provider connection: {error}"))?;
     stream
         .set_write_timeout(Some(Duration::from_secs(15)))
@@ -1391,9 +1443,24 @@ pub fn stream_chat(
     let mut line = String::new();
     loop {
         line.clear();
-        let bytes_read = reader
-            .read_line(&mut line)
-            .map_err(|error| format!("failed to read provider stream: {error}"))?;
+        // Cancel is checked before every blocking read so a stop request lands
+        // within one poll interval instead of at the end of the response.
+        if is_cancelled() {
+            return Ok(ChatStreamOutcome::Cancelled);
+        }
+        let bytes_read = match reader.read_line(&mut line) {
+            Ok(read) => read,
+            Err(error)
+                if matches!(
+                    error.kind(),
+                    std::io::ErrorKind::WouldBlock | std::io::ErrorKind::TimedOut
+                ) =>
+            {
+                // Idle provider: loop back so the cancel flag is re-checked.
+                continue;
+            }
+            Err(error) => return Err(format!("failed to read provider stream: {error}")),
+        };
         if bytes_read == 0 {
             break;
         }
@@ -1421,7 +1488,7 @@ pub fn stream_chat(
         }
     }
     on_event(ChatSseEvent::Done);
-    Ok(full_text)
+    Ok(ChatStreamOutcome::Completed(full_text))
 }
 
 #[cfg(test)]
@@ -1669,5 +1736,72 @@ mod tests {
         stream.write_all(response.as_bytes()).unwrap();
         stream.write_all(body).unwrap();
         stream.flush().unwrap();
+    }
+
+    /// A real SSE server that sends two chunks then stalls; a cancellation
+    /// must land before the stream finishes, proving the poll works.
+    #[test]
+    fn cancellable_stream_aborts_mid_response() {
+        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+        let address = listener.local_addr().unwrap();
+        thread::spawn(move || {
+            let stream = listener.accept().unwrap().0;
+            let mut reader = BufReader::new(stream);
+            let mut request_line = String::new();
+            reader.read_line(&mut request_line).unwrap();
+            let mut header = String::new();
+            loop {
+                header.clear();
+                reader.read_line(&mut header).unwrap();
+                if header == "\r\n" {
+                    break;
+                }
+            }
+            // Streaming-style SSE: no Content-Length (the connection stays
+            // open) and newline-terminated events so the client's read_line
+            // can complete. Real providers terminate data lines with \n.
+            let sink = reader.get_mut();
+            sink.write_all(
+                b"HTTP/1.1 200 OK\r\nContent-Type: text/event-stream\r\nConnection: close\r\n\r\n",
+            )
+            .unwrap();
+            // Avoid raw-string syntax here: the JSON's trailing quotes make
+            // the `"#` terminator ambiguous and silently add bad bytes.
+            sink.write_all(br#"data: {"choices":[{"delta":{"content":"first"}}]}"#.as_slice())
+                .unwrap();
+            sink.write_all(b"\n\n").unwrap();
+            sink.flush().unwrap();
+            // Stall forever after the chunks; only cancellation ends the read.
+            loop {
+                thread::sleep(Duration::from_secs(10));
+            }
+        });
+
+        let base_url = format!("http://{address}/api");
+        let flag = std::sync::atomic::AtomicBool::new(false);
+        let cancel_after_first = || flag.load(std::sync::atomic::Ordering::SeqCst);
+        let mut deltas = 0;
+        let outcome = stream_chat_cancellable(
+            &base_url,
+            None,
+            "test-model",
+            &[json!({ "role": "user", "content": "hello" })],
+            &mut |event| {
+                if matches!(event, ChatSseEvent::Delta { .. }) {
+                    deltas += 1;
+                    // Cancel after the first chunk so the second is never read.
+                    flag.store(true, std::sync::atomic::Ordering::SeqCst);
+                }
+            },
+            &cancel_after_first,
+        )
+        .expect("stream must not error");
+
+        assert_eq!(
+            outcome,
+            ChatStreamOutcome::Cancelled,
+            "cancellation must be distinguishable from provider failure"
+        );
+        assert_eq!(deltas, 1, "exactly one delta before the cancel lands");
     }
 }
