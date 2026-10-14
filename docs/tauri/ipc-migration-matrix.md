@@ -18,43 +18,55 @@
 | batch | 迁移批次（foundation / vault / git / ai / plugin / binary-print / updater / retire） |
 | status | pending（未迁移） / ported（已迁移） / explicitly-unsupported（明确不支持） / electron-only（仅 Electron 可用） |
 
+> 状态说明：已接线但语义不完整的通道保持 `pending`，并在下方「已知未完成」中列出，
+> 不用 `ported` 掩盖差距。
+
+## 已知未完成（保持 pending）
+
+| Channel | 现状 | 剩余工作 |
+| --- | --- | --- |
+| agent:cancel / agent:approval:respond | 返回 `{cancelled:false}` 占位 | 迁移 Electron agent gateway 的取消与工具审批语义（DEV-121） |
+| skills:retrieve | 以 index_service FTS 结果代替 Skill 召回 | 迁移 DEV-014 Skill 召回/重排链路（DEV-121） |
+| print:document | 校验通过后返回 `accepted:false` + `PRINT_RUNTIME_NOT_INTEGRATED` | 接入隐藏 WebviewWindow 打印（DEV-123） |
+| agent:run:* | SSE 文本流已接通，但无工具审批/权限模式 | 迁移工具调用与权限模式（DEV-121） |
+
 ## App
 
 | Channel | 所有权 | persist | net | fs | proc | Electron handler | Tauri target | batch | status |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| app:getInfo | app-state | no | no | no | no | `app-handlers.ts` | `product::app_info` | foundation | pending |
+| app:getInfo | app-state | no | no | no | no | `app-handlers.ts` | `product::app_info` | foundation | ported |
 | app:checkForUpdates | remote-provider | no | yes | no | no | `app-handlers.ts` | `updater::check` | updater | ported |
 | app:downloadUpdate | remote-provider | yes | yes | yes | no | `app-handlers.ts` | `updater::download` | updater | ported |
 | app:installUpdate | host | yes | no | yes | yes | `app-handlers.ts` | `updater::install` | updater | ported |
-| app:setUpdateChannel | app-state | yes | no | yes | no | `app-handlers.ts` | `product::set_update_channel` | foundation | pending |
-| app:getUpdateSettings | app-state | yes | no | yes | no | `app-handlers.ts` | `product::get_update_settings` | foundation | pending |
-| app:setUpdateSettings | app-state | yes | no | yes | no | `app-handlers.ts` | `product::set_update_settings` | foundation | pending |
+| app:setUpdateChannel | app-state | yes | no | yes | no | `app-handlers.ts` | `product::set_update_channel` | foundation | ported |
+| app:getUpdateSettings | app-state | yes | no | yes | no | `app-handlers.ts` | `product::get_update_settings` | foundation | ported |
+| app:setUpdateSettings | app-state | yes | no | yes | no | `app-handlers.ts` | `product::set_update_settings` | foundation | ported |
 
 ## Vault
 
 | Channel | 所有权 | persist | net | fs | proc | Electron handler | Tauri target | batch | status |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| vault:getState | app-state | yes | no | yes | no | `vault-handlers.ts` | `product::vault_get_state` | foundation | pending |
-| vault:pickDirectory | host | no | no | no | no | `vault-handlers.ts` | `product::vault_pick_dir` | foundation | pending |
-| vault:create | vault | yes | no | yes | no | `vault-handlers.ts` | `product::vault_create` | vault | pending |
-| vault:open | vault | yes | no | yes | no | `vault-handlers.ts` | `product::vault_open` | vault | pending |
-| vault:clone | vault | yes | yes | yes | yes | `vault-handlers.ts` | `vault::clone` | git | pending |
-| vault:initGit | vault | yes | no | yes | yes | `vault-handlers.ts` | `git::init` | git | pending |
-| vault:inspect | vault | no | no | yes | no | `vault-handlers.ts` | `product::vault_inspect` | vault | pending |
-| vault:clonePreflight | remote-provider | no | yes | no | no | `vault-handlers.ts` | `git::clone_preflight` | git | pending |
-| vault:cancelOperation | app-state | no | no | no | no | `vault-handlers.ts` | `vault::cancel_op` | vault | pending |
-| vault:close | app-state | yes | no | yes | no | `vault-handlers.ts` | `product::vault_close` | foundation | pending |
-| vault:listRecent | app-state | yes | no | yes | no | `vault-handlers.ts` | `product::vault_list_recent` | foundation | pending |
-| vault:removeRecent | app-state | yes | no | yes | no | `vault-handlers.ts` | `product::vault_remove_recent` | foundation | pending |
-| vault:getLayout | vault | yes | no | yes | no | `vault-handlers.ts` | `product::vault_get_layout` | vault | pending |
-| vault:saveLayout | vault | yes | no | yes | no | `vault-handlers.ts` | `product::vault_save_layout` | vault | pending |
-| vault:reveal | host | no | no | no | no | `vault-handlers.ts` | `product::vault_reveal` | vault | pending |
+| vault:getState | app-state | yes | no | yes | no | `vault-handlers.ts` | `product::vault_get_state` | foundation | ported |
+| vault:pickDirectory | host | no | no | no | no | `vault-handlers.ts` | `product::vault_pick_dir` | foundation | ported |
+| vault:create | vault | yes | no | yes | no | `vault-handlers.ts` | `product::vault_create` | vault | ported |
+| vault:open | vault | yes | no | yes | no | `vault-handlers.ts` | `product::vault_open` | vault | ported |
+| vault:clone | vault | yes | yes | yes | yes | `vault-handlers.ts` | `vault::clone` | git | ported |
+| vault:initGit | vault | yes | no | yes | yes | `vault-handlers.ts` | `git::init` | git | ported |
+| vault:inspect | vault | no | no | yes | no | `vault-handlers.ts` | `product::vault_inspect` | vault | ported |
+| vault:clonePreflight | remote-provider | no | yes | no | no | `vault-handlers.ts` | `git::clone_preflight` | git | ported |
+| vault:cancelOperation | app-state | no | no | no | no | `vault-handlers.ts` | `vault::cancel_op` | vault | ported |
+| vault:close | app-state | yes | no | yes | no | `vault-handlers.ts` | `product::vault_close` | foundation | ported |
+| vault:listRecent | app-state | yes | no | yes | no | `vault-handlers.ts` | `product::vault_list_recent` | foundation | ported |
+| vault:removeRecent | app-state | yes | no | yes | no | `vault-handlers.ts` | `product::vault_remove_recent` | foundation | ported |
+| vault:getLayout | vault | yes | no | yes | no | `vault-handlers.ts` | `product::vault_get_layout` | vault | ported |
+| vault:saveLayout | vault | yes | no | yes | no | `vault-handlers.ts` | `product::vault_save_layout` | vault | ported |
+| vault:reveal | host | no | no | no | no | `vault-handlers.ts` | `product::vault_reveal` | vault | ported |
 
 ## FS / Document
 
 | Channel | 所有权 | persist | net | fs | proc | Electron handler | Tauri target | batch | status |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| fs:listDir | vault | no | no | yes | no | `fs-handlers.ts` | `vault_fs::list_dir` | vault | pending |
+| fs:listDir | vault | no | no | yes | no | `fs-handlers.ts` | `vault_fs::list_dir` | vault | ported |
 | fs:listTree | vault | no | no | yes | no | `fs-handlers.ts` | `vault_fs::list_tree` | vault | pending |
 | fs:readTextFile | vault | no | no | yes | no | `fs-handlers.ts` | `vault_fs::read_text` | vault | ported |
 | fs:writeTextFile | vault | yes | no | yes | no | `fs-handlers.ts` | `vault_fs::write_text` | vault | ported |
@@ -65,7 +77,7 @@
 | fs:stat | vault | no | no | yes | no | `fs-handlers.ts` | `vault_fs::stat` | vault | pending |
 | fs:mkdir | vault | yes | no | yes | no | `fs-handlers.ts` | `vault_fs::mkdir` | vault | pending |
 | fs:rename | vault | yes | no | yes | no | `fs-handlers.ts` | `vault_fs::rename` | vault | pending |
-| fs:renameLinked | vault | yes | no | yes | no | `fs-handlers.ts` | `vault_fs::rename_linked` | vault | pending |
+| fs:renameLinked | vault | yes | no | yes | no | `fs-handlers.ts` | `vault_fs::rename_linked` | vault | ported |
 | fs:delete | vault | yes | no | yes | no | `fs-handlers.ts` | `vault_fs::delete` | vault | pending |
 | fs:revealInFinder | host | no | no | no | no | `fs-handlers.ts` | `product::reveal_item` | vault | pending |
 | fs:scanTags | vault | no | no | yes | no | `fs-handlers.ts` | `index::scan_tags` | vault | pending |
@@ -75,8 +87,8 @@
 
 | Channel | 所有权 | persist | net | fs | proc | Electron handler | Tauri target | batch | status |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| git:ping | host | no | no | no | no | `git-handlers.ts` | `git::ping` | git | pending |
-| git:getStatus | vault | no | no | yes | yes | `git-handlers.ts` | `git::status` | git | pending |
+| git:ping | host | no | no | no | no | `git-handlers.ts` | `git::ping` | git | ported |
+| git:getStatus | vault | no | no | yes | yes | `git-handlers.ts` | `git::status` | git | ported |
 | git:getTimeline | vault | no | no | yes | yes | `git-handlers.ts` | `git::timeline` | git | pending |
 | git:recordAutoCommit | vault | yes | no | yes | yes | `git-handlers.ts` | `git::record_auto_commit` | git | pending |
 | git:commit | vault | yes | no | yes | yes | `git-handlers.ts` | `git::commit` | git | pending |
@@ -100,7 +112,7 @@
 
 | Channel | 所有权 | persist | net | fs | proc | Electron handler | Tauri target | batch | status |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| index:status | sqlite | no | no | yes | no | `index-handlers.ts` | `index::status` | vault | pending |
+| index:status | sqlite | no | no | yes | no | `index-handlers.ts` | `index::status` | vault | ported |
 | index:rebuild | sqlite | yes | no | yes | no | `index-handlers.ts` | `index::rebuild` | vault | pending |
 | index:backlinks | sqlite | no | no | yes | no | `index-handlers.ts` | `index::backlinks` | vault | pending |
 | index:search | sqlite | no | no | yes | no | `index-handlers.ts` | `index::search` | vault | pending |
@@ -118,40 +130,40 @@
 
 | Channel | 所有权 | persist | net | fs | proc | Electron handler | Tauri target | batch | status |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| settings:getAll | app-state | yes | no | yes | no | `settings-handlers.ts` | `product::settings_get_all` | foundation | pending |
-| settings:getVault | vault | yes | no | yes | no | `settings-handlers.ts` | `product::settings_get_vault` | foundation | pending |
-| settings:setGlobal | app-state | yes | no | yes | no | `settings-handlers.ts` | `product::settings_set_global` | foundation | pending |
-| settings:setVault | vault | yes | no | yes | no | `settings-handlers.ts` | `product::settings_set_vault` | foundation | pending |
-| settings:setShortcuts | app-state | yes | no | yes | no | `settings-handlers.ts` | `product::settings_set_shortcuts` | foundation | pending |
-| settings:exportShortcuts | host | yes | no | yes | no | `settings-handlers.ts` | `product::settings_export` | foundation | pending |
-| settings:importShortcuts | app-state | yes | no | yes | no | `settings-handlers.ts` | `product::settings_import` | foundation | pending |
-| settings:search | host | no | no | no | no | `settings-handlers.ts` | `product::settings_search` | foundation | pending |
-| settings:pickImportFile | host | no | no | no | no | `settings-handlers.ts` | `product::settings_pick_file` | foundation | pending |
-| settings:saveExportFile | host | yes | no | yes | no | `settings-handlers.ts` | `product::settings_save_file` | foundation | pending |
+| settings:getAll | app-state | yes | no | yes | no | `settings-handlers.ts` | `product::settings_get_all` | foundation | ported |
+| settings:getVault | vault | yes | no | yes | no | `settings-handlers.ts` | `product::settings_get_vault` | foundation | ported |
+| settings:setGlobal | app-state | yes | no | yes | no | `settings-handlers.ts` | `product::settings_set_global` | foundation | ported |
+| settings:setVault | vault | yes | no | yes | no | `settings-handlers.ts` | `product::settings_set_vault` | foundation | ported |
+| settings:setShortcuts | app-state | yes | no | yes | no | `settings-handlers.ts` | `product::settings_set_shortcuts` | foundation | ported |
+| settings:exportShortcuts | host | yes | no | yes | no | `settings-handlers.ts` | `product::settings_export` | foundation | ported |
+| settings:importShortcuts | app-state | yes | no | yes | no | `settings-handlers.ts` | `product::settings_import` | foundation | ported |
+| settings:search | host | no | no | no | no | `settings-handlers.ts` | `product::settings_search` | foundation | ported |
+| settings:pickImportFile | host | no | no | no | no | `settings-handlers.ts` | `product::settings_pick_file` | foundation | ported |
+| settings:saveExportFile | host | yes | no | yes | no | `settings-handlers.ts` | `product::settings_save_file` | foundation | ported |
 
 ## AI
 
 | Channel | 所有权 | persist | net | fs | proc | Electron handler | Tauri target | batch | status |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| ai:ping | host | no | no | no | no | `ai-handlers.ts` | `ai::ping` | ai | pending |
-| ai:getState | app-state | yes | no | yes | no | `ai-handlers.ts` | `ai::get_state` | ai | pending |
-| ai:credential:submit | app-state | yes | no | yes | no | `ai-handlers.ts` | `ai::credential_submit` | ai | pending |
-| ai:profile:save | app-state | yes | no | yes | no | `ai-handlers.ts` | `ai::profile_save` | ai | pending |
-| ai:profile:delete | app-state | yes | no | yes | no | `ai-handlers.ts` | `ai::profile_delete` | ai | pending |
-| ai:profile:setDefault | app-state | yes | no | yes | no | `ai-handlers.ts` | `ai::profile_set_default` | ai | pending |
-| ai:features:set | app-state | yes | no | yes | no | `ai-handlers.ts` | `ai::features_set` | ai | pending |
-| ai:translation:setTargetLanguage | app-state | yes | no | yes | no | `ai-handlers.ts` | `ai::set_target_language` | ai | pending |
-| ai:setupPrompt:dismiss | app-state | yes | no | yes | no | `ai-handlers.ts` | `ai::setup_dismiss` | ai | pending |
-| ai:testConnection | remote-provider | no | yes | no | no | `ai-handlers.ts` | `ai::test_connection` | ai | pending |
-| ai:listModels | remote-provider | no | yes | no | no | `ai-handlers.ts` | `ai::list_models` | ai | pending |
+| ai:ping | host | no | no | no | no | `ai-handlers.ts` | `ai::ping` | ai | ported |
+| ai:getState | app-state | yes | no | yes | no | `ai-handlers.ts` | `ai::get_state` | ai | ported |
+| ai:credential:submit | app-state | yes | no | yes | no | `ai-handlers.ts` | `ai::credential_submit` | ai | ported |
+| ai:profile:save | app-state | yes | no | yes | no | `ai-handlers.ts` | `ai::profile_save` | ai | ported |
+| ai:profile:delete | app-state | yes | no | yes | no | `ai-handlers.ts` | `ai::profile_delete` | ai | ported |
+| ai:profile:setDefault | app-state | yes | no | yes | no | `ai-handlers.ts` | `ai::profile_set_default` | ai | ported |
+| ai:features:set | app-state | yes | no | yes | no | `ai-handlers.ts` | `ai::features_set` | ai | ported |
+| ai:translation:setTargetLanguage | app-state | yes | no | yes | no | `ai-handlers.ts` | `ai::set_target_language` | ai | ported |
+| ai:setupPrompt:dismiss | app-state | yes | no | yes | no | `ai-handlers.ts` | `ai::setup_dismiss` | ai | ported |
+| ai:testConnection | remote-provider | no | yes | no | no | `ai-handlers.ts` | `ai::test_connection` | ai | ported |
+| ai:listModels | remote-provider | no | yes | no | no | `ai-handlers.ts` | `ai::list_models` | ai | ported |
 | ai:embed | remote-provider | no | yes | no | no | `ai-handlers.ts` | `ai::embed` | ai | ported |
 | ai:embedWithMetadata | remote-provider | no | yes | no | no | `ai-handlers.ts` | `ai::embed_meta` | ai | ported |
 | ai:retrieve | sqlite | no | no | yes | no | `ai-handlers.ts` | `retrieval::retrieve` | ai | ported |
 | ai:builtInEmbedding:status | app-state | no | no | yes | no | —（Tauri 新增） | `embedding::status` | ai | ported |
 | ai:builtInEmbedding:download | app-state | yes | yes | yes | no | —（Tauri 新增，ADR-0027） | `embedding::download` | ai | ported |
 | ai:builtInEmbedding:delete | app-state | yes | no | yes | no | —（Tauri 新增，ADR-0027） | `embedding::delete` | ai | ported |
-| ai:export | app-state | no | no | no | no | `ai-handlers.ts` | `ai::export_profiles` | ai | pending |
-| ai:import | app-state | yes | no | yes | no | `ai-handlers.ts` | `ai::import_profiles` | ai | pending |
+| ai:export | app-state | no | no | no | no | `ai-handlers.ts` | `ai::export_profiles` | ai | ported |
+| ai:import | app-state | yes | no | yes | no | `ai-handlers.ts` | `ai::import_profiles` | ai | ported |
 
 ## Agent
 
@@ -168,18 +180,18 @@
 
 | Channel | 所有权 | persist | net | fs | proc | Electron handler | Tauri target | batch | status |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| chat:list | vault | no | no | yes | no | `chat-handlers.ts` | `chat::list` | vault | pending |
-| chat:get | vault | no | no | yes | no | `chat-handlers.ts` | `chat::get` | vault | pending |
-| chat:new | app-state | no | no | no | no | `chat-handlers.ts` | `chat::new` | vault | pending |
-| chat:save | vault | yes | no | yes | no | `chat-handlers.ts` | `chat::save` | vault | pending |
-| chat:saveAsDoc | vault | yes | no | yes | no | `chat-handlers.ts` | `chat::save_as_doc` | vault | pending |
+| chat:list | vault | no | no | yes | no | `chat-handlers.ts` | `chat::list` | vault | ported |
+| chat:get | vault | no | no | yes | no | `chat-handlers.ts` | `chat::get` | vault | ported |
+| chat:new | app-state | no | no | no | no | `chat-handlers.ts` | `chat::new` | vault | ported |
+| chat:save | vault | yes | no | yes | no | `chat-handlers.ts` | `chat::save` | vault | ported |
+| chat:saveAsDoc | vault | yes | no | yes | no | `chat-handlers.ts` | `chat::save_as_doc` | vault | ported |
 
 ## Plugins
 
 | Channel | 所有权 | persist | net | fs | proc | Electron handler | Tauri target | batch | status |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| plugins:ping | host | no | no | no | no | `plugin-handlers.ts` | `plugin::ping` | plugin | pending |
-| plugins:list | plugin | yes | no | yes | no | `plugin-handlers.ts` | `plugin::list` | plugin | pending |
+| plugins:ping | host | no | no | no | no | `plugin-handlers.ts` | `plugin::ping` | plugin | ported |
+| plugins:list | plugin | yes | no | yes | no | `plugin-handlers.ts` | `plugin::list` | plugin | ported |
 | plugins:listCommands | plugin | yes | no | yes | no | `plugin-handlers.ts` | `plugin::list_commands` | plugin | pending |
 | plugins:listContributions | plugin | yes | no | yes | no | `plugin-handlers.ts` | `plugin::list_contribs` | plugin | pending |
 | plugins:pickSource | host | no | no | no | no | `plugin-handlers.ts` | `plugin::pick_source` | plugin | pending |
@@ -203,10 +215,10 @@
 
 | Channel | 所有权 | persist | net | fs | proc | Electron handler | Tauri target | batch | status |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| skills:ping | host | no | no | no | no | `skill-handlers.ts` | `skill::ping` | ai | pending |
-| skills:list | plugin | yes | no | yes | no | `skill-handlers.ts` | `skill::list` | ai | pending |
+| skills:ping | host | no | no | no | no | `skill-handlers.ts` | `skill::ping` | ai | ported |
+| skills:list | plugin | yes | no | yes | no | `skill-handlers.ts` | `skill::list` | ai | ported |
 | skills:retrieve | sqlite | no | no | yes | no | `skill-handlers.ts` | `retrieval::skill_search` | ai | pending |
-| skills:setEnabled | plugin | yes | no | yes | no | `skill-handlers.ts` | `skill::set_enabled` | ai | pending |
+| skills:setEnabled | plugin | yes | no | yes | no | `skill-handlers.ts` | `skill::set_enabled` | ai | ported |
 | skills:setOrder | plugin | yes | no | yes | no | `skill-handlers.ts` | `skill::set_order` | ai | pending |
 | skills:setParams | plugin | yes | no | yes | no | `skill-handlers.ts` | `skill::set_params` | ai | pending |
 
@@ -214,18 +226,18 @@
 
 | Channel | 所有权 | persist | net | fs | proc | Electron handler | Tauri target | batch | status |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| docx:import | vault | yes | no | yes | no | `docx-handlers.ts` | `docx::import` | binary-print | pending |
-| docx:export | vault | yes | no | yes | no | `docx-handlers.ts` | `docx::export` | binary-print | pending |
+| docx:import | vault | yes | no | yes | no | `docx-handlers.ts` | `docx::import` | binary-print | ported |
+| docx:export | vault | yes | no | yes | no | `docx-handlers.ts` | `docx::export` | binary-print | ported |
 
 ## Binary
 
 | Channel | 所有权 | persist | net | fs | proc | Electron handler | Tauri target | batch | status |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| binary:ping | host | no | no | no | no | `binary-handlers.ts` | `binary::ping` | binary-print | pending |
-| binary:import | vault | yes | no | yes | no | `binary-handlers.ts` | `binary::import` | binary-print | pending |
-| binary:create | vault | yes | no | yes | no | `binary-handlers.ts` | `binary::create` | binary-print | pending |
-| binary:read | vault | no | no | yes | no | `binary-handlers.ts` | `binary::read` | binary-print | pending |
-| binary:save | vault | yes | no | yes | no | `binary-handlers.ts` | `binary::save` | binary-print | pending |
+| binary:ping | host | no | no | no | no | `binary-handlers.ts` | `binary::ping` | binary-print | ported |
+| binary:import | vault | yes | no | yes | no | `binary-handlers.ts` | `binary::import` | binary-print | ported |
+| binary:create | vault | yes | no | yes | no | `binary-handlers.ts` | `binary::create` | binary-print | ported |
+| binary:read | vault | no | no | yes | no | `binary-handlers.ts` | `binary::read` | binary-print | ported |
+| binary:save | vault | yes | no | yes | no | `binary-handlers.ts` | `binary::save` | binary-print | ported |
 | binary:host:open | host | no | no | no | no | `binary-handlers.ts` | `binary_host::open` | binary-print | pending |
 | binary:host:close | host | no | no | no | no | `binary-handlers.ts` | `binary_host::close` | binary-print | pending |
 | binary:host:setActive | host | no | no | no | no | `binary-handlers.ts` | `binary_host::set_active` | binary-print | pending |
@@ -235,8 +247,8 @@
 | binary:editorTheme | host | no | no | no | no | `binary-handlers.ts` | `binary_host::editor_theme` | binary-print | pending |
 | binary:mindmapTheme:set | vault | yes | no | yes | no | `binary-handlers.ts` | `binary::mindmap_theme` | binary-print | pending |
 | binary:mindmapStructure:set | vault | yes | no | yes | no | `binary-handlers.ts` | `binary::mindmap_structure` | binary-print | pending |
-| binary:gitignore:set | vault | yes | no | yes | no | `binary-handlers.ts` | `binary::gitignore_set` | binary-print | pending |
-| binary:gitignore:get | vault | no | no | yes | no | `binary-handlers.ts` | `binary::gitignore_get` | binary-print | pending |
+| binary:gitignore:set | vault | yes | no | yes | no | `binary-handlers.ts` | `binary::gitignore_set` | binary-print | ported |
+| binary:gitignore:get | vault | no | no | yes | no | `binary-handlers.ts` | `binary::gitignore_get` | binary-print | ported |
 
 ## Print
 
@@ -248,7 +260,7 @@
 
 | Channel | 所有权 | persist | net | fs | proc | Electron handler | Tauri target | batch | status |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| editor:ping | host | no | no | no | no | `app-handlers.ts` | `product::ping_editor` | foundation | pending |
+| editor:ping | host | no | no | no | no | `app-handlers.ts` | `product::ping_editor` | foundation | ported |
 
 ## Events
 
