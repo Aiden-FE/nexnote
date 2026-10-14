@@ -169,12 +169,12 @@
 
 | Channel | 所有权 | persist | net | fs | proc | Electron handler | Tauri target | batch | status |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| agent:run:chat | remote-provider | no | yes | yes | no | `agent-handlers.ts` | `agent::run_chat` | ai | pending |
-| agent:run:writing | remote-provider | no | yes | yes | no | `agent-handlers.ts` | `agent::run_writing` | ai | pending |
-| agent:run:debug | remote-provider | no | yes | yes | no | `agent-handlers.ts` | `agent::run_debug` | ai | pending |
-| agent:run:translation | remote-provider | no | yes | yes | no | `agent-handlers.ts` | `agent::run_translation` | ai | pending |
-| agent:cancel | app-state | no | no | no | no | `agent-handlers.ts` | `agent::cancel` | ai | pending |
-| agent:approval:respond | app-state | no | no | no | no | `agent-handlers.ts` | `agent::approval_respond` | ai | pending |
+| agent:run:chat | remote-provider | no | yes | yes | no | `agent-handlers.ts` | `agent::run_chat` | ai | pending（SSE 文本流已接；工具审批/权限模式未迁移） |
+| agent:run:writing | remote-provider | no | yes | yes | no | `agent-handlers.ts` | `agent::run_writing` | ai | pending（SSE 文本流已接；工具审批/权限模式未迁移） |
+| agent:run:debug | remote-provider | no | yes | yes | no | `agent-handlers.ts` | `agent::run_debug` | ai | pending（SSE 文本流已接；工具审批/权限模式未迁移） |
+| agent:run:translation | remote-provider | no | yes | yes | no | `agent-handlers.ts` | `agent::run_translation` | ai | pending（SSE 文本流已接；工具审批/权限模式未迁移） |
+| agent:cancel | app-state | no | no | no | no | `agent-handlers.ts` | `agent::cancel` | ai | pending（返回占位；取消语义未迁移） |
+| agent:approval:respond | app-state | no | no | no | no | `agent-handlers.ts` | `agent::approval_respond` | ai | pending（返回占位；工具审批语义未迁移） |
 
 ## Chat
 
@@ -217,7 +217,7 @@
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
 | skills:ping | host | no | no | no | no | `skill-handlers.ts` | `skill::ping` | ai | ported |
 | skills:list | plugin | yes | no | yes | no | `skill-handlers.ts` | `skill::list` | ai | ported |
-| skills:retrieve | sqlite | no | no | yes | no | `skill-handlers.ts` | `retrieval::skill_search` | ai | pending |
+| skills:retrieve | sqlite | no | no | yes | no | `skill-handlers.ts` | `retrieval::skill_search` | ai | pending（以 FTS 代替 Skill 召回；重排链路未迁移） |
 | skills:setEnabled | plugin | yes | no | yes | no | `skill-handlers.ts` | `skill::set_enabled` | ai | ported |
 | skills:setOrder | plugin | yes | no | yes | no | `skill-handlers.ts` | `skill::set_order` | ai | pending |
 | skills:setParams | plugin | yes | no | yes | no | `skill-handlers.ts` | `skill::set_params` | ai | pending |
@@ -254,7 +254,7 @@
 
 | Channel | 所有权 | persist | net | fs | proc | Electron handler | Tauri target | batch | status |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| print:document | host | no | no | yes | no | `print-handlers.ts` | `print::document` | binary-print | pending |
+| print:document | host | no | no | yes | no | `print-handlers.ts` | `print::document` | binary-print | pending（仅校验；WebviewWindow 打印运行时未接入） |
 
 ## Editor
 
