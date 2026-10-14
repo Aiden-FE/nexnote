@@ -1091,6 +1091,162 @@ fn dispatch(
             "SKILL_SERVICE_NOT_PORTED",
             "Skill service is not ported to Rust yet",
         ),
+        "skills:ping" => ping("skills", "DEV-014"),
+        "chat:new" => {
+            let title = string_field(payload, "title").unwrap_or_default();
+            let id = uuid::Uuid::new_v4().to_string();
+            let now = chrono::Utc::now().to_rfc3339();
+            let path = format!(".nexnote/sessions/{id}.txt");
+            ok(json!({
+                "path": path,
+                "meta": {
+                    "id": id, "title": title, "profileId": null, "model": null,
+                    "permissionMode": null, "createdAt": now, "updatedAt": now
+                },
+                "turns": []
+            }))
+        }
+        "chat:list" => {
+            let Some(root) = vault_root.get() else {
+                return ok(json!([]));
+            };
+            let sessions_dir = root.join(".nexnote/sessions");
+            let mut summaries = Vec::new();
+            if let Ok(entries) = fs::read_dir(&sessions_dir) {
+                for entry in entries.filter_map(Result::ok) {
+                    let path = entry.path();
+                    if path.extension().and_then(|v| v.to_str()) != Some("txt") {
+                        continue;
+                    }
+                    let Ok(content) = fs::read_to_string(&path) else {
+                        continue;
+                    };
+                    let mut meta = Value::Null;
+                    let mut status = "complete".to_owned();
+                    for line in content.lines() {
+                        if let Ok(v) = serde_json::from_str::<Value>(line) {
+                            if v.get("meta").is_some() {
+                                meta = v["meta"].clone();
+                            } else if v.get("status").is_some() {
+                                status = v["status"].as_str().unwrap_or("complete").to_owned();
+                            }
+                        }
+                    }
+                    let rel = path
+                        .strip_prefix(&root)
+                        .unwrap_or(&path)
+                        .to_string_lossy()
+                        .replace('\\', "/");
+                    summaries.push(json!({
+                        "path": rel,
+                        "id": meta["id"],
+                        "title": meta["title"],
+                        "model": meta["model"],
+                        "turnCount": content.lines().count().saturating_sub(2),
+                        "updatedAt": meta["updatedAt"],
+                        "status": status,
+                    }));
+                }
+            }
+            summaries.sort_by(|a, b| {
+                b["updatedAt"]
+                    .as_str()
+                    .unwrap_or("")
+                    .cmp(a["updatedAt"].as_str().unwrap_or(""))
+            });
+            ok(json!(summaries))
+        }
+        "chat:get" => {
+            let Some(root) = vault_root.get() else {
+                return error("NO_VAULT", "No vault is open");
+            };
+            let Some(path) = string_field(payload, "path") else {
+                return error("CHAT_PATH_REQUIRED", "path is required");
+            };
+            match fs::read_to_string(root.join(&path)) {
+                Ok(content) => {
+                    let mut meta = Value::Null;
+                    let mut turns = Vec::new();
+                    let mut status = "complete".to_owned();
+                    let mut error_msg: Option<String> = None;
+                    for line in content.lines() {
+                        if let Ok(v) = serde_json::from_str::<Value>(line) {
+                            if v.get("meta").is_some() {
+                                meta = v["meta"].clone();
+                            } else if v.get("status").is_some() {
+                                status = v["status"].as_str().unwrap_or("complete").to_owned();
+                                error_msg = v
+                                    .get("error")
+                                    .and_then(Value::as_str)
+                                    .map(ToOwned::to_owned);
+                            } else {
+                                turns.push(v);
+                            }
+                        }
+                    }
+                    let mut result =
+                        json!({ "path": path, "meta": meta, "turns": turns, "status": status });
+                    if let Some(err) = error_msg {
+                        result["error"] = json!(err);
+                    }
+                    ok(result)
+                }
+                Err(_) => error("CHAT_NOT_FOUND", "Chat session not found"),
+            }
+        }
+        "chat:save" => {
+            let Some(root) = vault_root.get() else {
+                return error("NO_VAULT", "No vault is open");
+            };
+            let Some(session) = payload.get("session") else {
+                return error("CHAT_SESSION_REQUIRED", "session is required");
+            };
+            let path = session.get("path").and_then(Value::as_str).unwrap_or("");
+            if path.is_empty() {
+                return error("CHAT_PATH_REQUIRED", "session path is required");
+            }
+            let target = root.join(path);
+            if let Some(parent) = target.parent() {
+                let _ = fs::create_dir_all(parent);
+            }
+            let mut lines = Vec::new();
+            if let Some(meta) = session.get("meta") {
+                lines.push(json!({ "meta": meta }).to_string());
+            }
+            if let Some(turns) = session.get("turns").and_then(Value::as_array) {
+                for turn in turns {
+                    lines.push(turn.to_string());
+                }
+            }
+            let status = payload
+                .get("status")
+                .and_then(Value::as_str)
+                .unwrap_or("complete");
+            let mut status_line = json!({ "status": status });
+            if let Some(err) = payload.get("error").and_then(Value::as_str) {
+                status_line["error"] = json!(err);
+            }
+            lines.push(status_line.to_string());
+            let content = lines.join("\n");
+            match fs::write(&target, &content) {
+                Ok(()) => ok(json!({
+                    "path": path,
+                    "name": "",
+                    "kind": "file",
+                    "size": content.len(),
+                    "modifiedAt": chrono::Utc::now().to_rfc3339(),
+                })),
+                Err(e) => error("CHAT_SAVE_FAILED", &e.to_string()),
+            }
+        }
+        "chat:saveAsDoc" => error(
+            "CHAT_SAVE_AS_DOC_NOT_PORTED",
+            "Chat save-as-doc is not ported to Rust yet",
+        ),
+        "agent:cancel" | "agent:approval:respond" => error(
+            "AGENT_NOT_PORTED",
+            "Agent gateway is not ported to Rust yet",
+        ),
         "binary:ping" => ping("binary", "DEV-074"),
         "binary:import" => {
             let Some(root) = vault_root.get() else {
@@ -1165,6 +1321,10 @@ fn dispatch(
         "docx:import" | "docx:export" => error(
             "DOCX_NOT_PORTED",
             "DOCX import/export is not ported to Rust yet",
+        ),
+        channel if channel.starts_with("agent:run:") => error(
+            "AGENT_NOT_PORTED",
+            "Agent gateway is not ported to Rust yet",
         ),
         _ => error(
             "UNSUPPORTED_CHANNEL",
