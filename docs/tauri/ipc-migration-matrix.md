@@ -56,8 +56,8 @@
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
 | fs:listDir | vault | no | no | yes | no | `fs-handlers.ts` | `vault_fs::list_dir` | vault | pending |
 | fs:listTree | vault | no | no | yes | no | `fs-handlers.ts` | `vault_fs::list_tree` | vault | pending |
-| fs:readTextFile | vault | no | no | yes | no | `fs-handlers.ts` | `vault_fs::read_text` | vault | pending |
-| fs:writeTextFile | vault | yes | no | yes | no | `fs-handlers.ts` | `vault_fs::write_text` | vault | pending |
+| fs:readTextFile | vault | no | no | yes | no | `fs-handlers.ts` | `vault_fs::read_text` | vault | ported |
+| fs:writeTextFile | vault | yes | no | yes | no | `fs-handlers.ts` | `vault_fs::write_text` | vault | ported |
 | fs:createTextFile | vault | yes | no | yes | no | `fs-handlers.ts` | `vault_fs::create_text` | vault | pending |
 | fs:createNote | vault | yes | no | yes | no | `fs-handlers.ts` | `vault_fs::create_note` | vault | pending |
 | fs:importBinaryFile | vault | yes | no | yes | no | `fs-handlers.ts` | `vault_fs::import_binary` | vault | pending |
@@ -255,7 +255,7 @@
 | Event | 所有权 | 触发来源 | Electron sender | Tauri target | batch | status |
 | --- | --- | --- | --- | --- | --- | --- |
 | vault:changed | app-state | Rust product core | `webContents.send` | `product::emit_vault_changed` | foundation | pending |
-| fs:changed | vault | file watcher | `webContents.send` | `vault_fs::watch_event` | vault | pending |
+| fs:changed | vault | file watcher | `webContents.send` | `vault_fs::watch_event` | vault | ported |
 | app:updateStatus | remote-provider | updater | `webContents.send` | `updater::status_event` | updater | pending |
 | agent:runEvent | remote-provider | agent gateway | `webContents.send` | `agent::run_event` | ai | pending |
 | ai:streamEvent | remote-provider | AI adapter | `webContents.send` | `agent::stream_event` | ai | pending |

@@ -29,7 +29,43 @@ const DEFAULT_EMBEDDING_METRIC: &str = "cosine";
 /// Marker used instead of an unknown embedding dimension in a fingerprint.
 const AUTO_DIMENSION: &str = "auto";
 /// Placeholder credential account stored until the OS credential vault lands.
-const PLACEHOLDER_CREDENTIAL_ACCOUNT: &str = "system-credential:pending";
+/// Keyring service name; the account is the profile id.
+const CREDENTIAL_SERVICE: &str = "NexNote AI";
+
+/// Stores an opaque credential in the OS credential vault.
+pub fn store_credential(profile_id: &str, secret: &str) -> Result<(), String> {
+    keyring::Entry::new(CREDENTIAL_SERVICE, profile_id)
+        .and_then(|entry| entry.set_password(secret))
+        .map_err(|error| format!("Failed to store the credential: {error}"))
+}
+
+/// Reads a stored credential; a missing entry is `None`, not an error, so
+/// headless environments degrade instead of failing every call.
+pub fn read_credential(profile_id: &str) -> Option<String> {
+    keyring::Entry::new(CREDENTIAL_SERVICE, profile_id)
+        .ok()
+        .and_then(|entry| entry.get_password().ok())
+}
+
+pub fn delete_credential(profile_id: &str) -> Result<(), String> {
+    let entry = keyring::Entry::new(CREDENTIAL_SERVICE, profile_id)
+        .map_err(|error| format!("Failed to open the credential entry: {error}"))?;
+    match entry.delete_credential() {
+        Ok(()) => Ok(()),
+        Err(keyring::Error::NoEntry) => Ok(()),
+        Err(error) => Err(format!("Failed to delete the credential: {error}")),
+    }
+}
+
+/// Marker stored in `credential_account` once a keychain entry exists.
+fn credential_marker(profile_id: &str) -> String {
+    format!("{CREDENTIAL_SERVICE}:{profile_id}")
+}
+
+/// Extracts the profile id back from a credential marker.
+pub fn profile_id_from_marker(marker: &str) -> Option<&str> {
+    marker.strip_prefix(CREDENTIAL_SERVICE)?.strip_prefix(':')
+}
 
 /// Provider transport family, matching the shared TypeScript union.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
@@ -436,14 +472,17 @@ impl AiStore {
             None => (new_profile_id(), now, None),
         };
 
-        let credential_account = if profile.kind == AiProviderKind::LocalEmbedding
-            || profile.clear_credential == Some(true)
-        {
+        let credential_account = if profile.kind == AiProviderKind::LocalEmbedding {
             None
-        } else if has_credential_input {
-            // No key material is persisted. This placeholder is replaced by the
-            // native credential vault in the next DEV-121 slice.
-            Some(PLACEHOLDER_CREDENTIAL_ACCOUNT.to_string())
+        } else if profile.clear_credential == Some(true) {
+            // Remove the OS-vault entry; already-gone is fine (idempotent).
+            let _ = delete_credential(&id);
+            None
+        } else if let Some(secret) = profile.credential_token.as_deref() {
+            // Store first; failure aborts the whole save so the config file
+            // and the OS vault can never disagree about a credential.
+            store_credential(&id, secret)?;
+            Some(credential_marker(&id))
         } else {
             old_credential
         };
@@ -517,6 +556,11 @@ impl AiStore {
     /// Deletes a profile and clears assignments/default references.
     pub fn delete_profile(&self, id: &str) -> Result<AiConfigState, String> {
         let mut state = self.lock();
+        let stored_credential = state
+            .profiles
+            .iter()
+            .find(|profile| profile.id == id)
+            .is_some_and(|profile| profile.has_api_key);
         let before = state.profiles.len();
         state.profiles.retain(|profile| profile.id != id);
         if state.profiles.len() == before {
@@ -532,6 +576,11 @@ impl AiStore {
         }
         refresh_embedding_fingerprint(&mut state);
         persist_state(&self.path, &state)?;
+        // Delete the OS-vault entry only after the config write succeeded;
+        // an unreachable leftover key is harmless, a missing one is not.
+        if stored_credential {
+            delete_credential(id)?;
+        }
         Ok(self.get_state_unlocked(&state))
     }
 
@@ -823,9 +872,9 @@ fn normalize_state(mut state: AiConfigState) -> AiConfigState {
     }
     for profile in &mut state.profiles {
         profile.key_storage = "system-credential".to_string();
-        profile.credential_account = profile
-            .has_api_key
-            .then(|| PLACEHOLDER_CREDENTIAL_ACCOUNT.to_string());
+        // The OS vault is the secret store; this marker only signals which
+        // profile id the entry belongs to so later calls can read it back.
+        profile.credential_account = profile.has_api_key.then(|| credential_marker(&profile.id));
     }
     if state.embedding_generation == 0 && state.embedding_fingerprint.is_none() {
         state.features = state.features.normalized();
@@ -1391,6 +1440,37 @@ mod tests {
         ));
         fs::create_dir_all(&directory).expect("create temp directory");
         directory.join(name)
+    }
+
+    #[test]
+    fn credential_marker_round_trips_the_profile_id() {
+        let marker = credential_marker("prof_abc123");
+        assert_eq!(profile_id_from_marker(&marker), Some("prof_abc123"));
+        assert_eq!(profile_id_from_marker("legacy:placeholder"), None);
+        assert_eq!(profile_id_from_marker("nonsense"), None);
+    }
+
+    /// Exercises the real OS credential vault. Environments without a keychain
+    /// (headless CI) report the platform error instead of failing unrelated
+    /// suites, while macOS/Linux desktops assert the full round trip.
+    #[test]
+    fn keychain_round_trips_stores_reads_and_deletes() {
+        let profile_id = format!("test-keychain-{}", now_millis());
+        if let Err(error) = store_credential(&profile_id, "secret-value") {
+            eprintln!("[keychain-test] skipped, no usable credential vault: {error}");
+            return;
+        }
+        assert_eq!(
+            read_credential(&profile_id).as_deref(),
+            Some("secret-value")
+        );
+        // Overwrite is how re-saving a profile rotates its key.
+        store_credential(&profile_id, "rotated").expect("rotate credential");
+        assert_eq!(read_credential(&profile_id).as_deref(), Some("rotated"));
+        delete_credential(&profile_id).expect("delete credential");
+        assert_eq!(read_credential(&profile_id), None);
+        // Deleting twice is idempotent so profile removal never hard-fails.
+        delete_credential(&profile_id).expect("delete is idempotent");
     }
 
     fn profile_input(name: &str, base_url: &str) -> AiProfileInput {

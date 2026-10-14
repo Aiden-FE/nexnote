@@ -319,9 +319,9 @@ fn connection_target(store: &AiStore, payload: &Value) -> Result<(String, Option
                     &format!("AI profile not found: {id}"),
                 )
             })?;
-        // DEV-121 fail-closed credential boundary: saved profiles expose only
-        // `has_api_key`; the OS credential vault is required to recover bytes.
-        return Ok((profile.base_url, None));
+        // Secret bytes live only in the OS credential vault; the renderer
+        // never sees them and the config file never stores them.
+        return Ok((profile.base_url, ai_service::read_credential(&profile.id)));
     }
     let candidate = payload.get("candidate").cloned().unwrap_or(Value::Null);
     let base_url = candidate
@@ -403,8 +403,9 @@ fn ai_embed_with_metadata(
             profile_id: profile.id,
         });
     }
-    // Saved-profile keys remain fail-closed until the OS credential vault lands.
-    let vectors = ai_service::embed(&profile.base_url, None, &model, texts).map_err(ai_error)?;
+    let api_key = ai_service::read_credential(&profile.id);
+    let vectors = ai_service::embed(&profile.base_url, api_key.as_deref(), &model, texts)
+        .map_err(ai_error)?;
     let dimensions = vectors.first().map_or(0, Vec::len) as u32;
     Ok(ai_service::EmbedResult {
         vectors,
@@ -1995,12 +1996,11 @@ fn dispatch(
             // soon as the run id exists, matching the Electron contract.
             let app_handle = app.clone();
             let run_id_for_response = run_id.clone();
+            let api_key = ai_service::read_credential(&profile.id);
             std::thread::spawn(move || {
                 let result = ai_service::stream_chat(
                     &base_url,
-                    // Saved-profile keys remain fail-closed until the OS
-                    // credential vault lands in the DEV-121 keychain slice.
-                    None,
+                    api_key.as_deref(),
                     &model,
                     &messages,
                     |event| match event {
