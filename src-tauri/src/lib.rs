@@ -1,3 +1,4 @@
+mod ai_service;
 mod git_service;
 mod git_sync;
 mod index_service;

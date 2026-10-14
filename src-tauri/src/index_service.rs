@@ -16,6 +16,8 @@ fn ok(data: Value) -> Value {
 
 static DB: Mutex<Option<Connection>> = Mutex::new(None);
 static CURRENT_ROOT: Mutex<Option<String>> = Mutex::new(None);
+#[cfg(test)]
+static TEST_LOCK: Mutex<()> = Mutex::new(());
 
 pub fn open_database(root: &Path) -> Result<Connection, String> {
     let dir = root.join(".nexnote");
@@ -482,7 +484,7 @@ fn upsert_page(conn: &Connection, page: &ParsedPage) -> Result<(), String> {
 
 fn resolve_links(conn: &Connection) -> Result<(), String> {
     conn.execute(
-        "UPDATE links SET target_page_id = (SELECT id FROM pages WHERE pages.path = links.target_raw OR pages.path = links.target_raw || '.md' OR pages.title = links.target_raw) WHERE target_page_id IS NULL",
+        "UPDATE links SET target_page_id = (SELECT id FROM pages WHERE pages.path = links.target_raw OR pages.path = links.target_raw || '.md' OR pages.title = links.target_raw OR pages.path LIKE '%/' || links.target_raw || '.md') WHERE target_page_id IS NULL",
         [],
     )
     .map_err(|e| e.to_string())?;
@@ -673,4 +675,557 @@ pub fn backlinks(root: &Path, payload: &Value) -> Value {
         .filter_map(Result::ok)
         .collect();
     ok(json!(results))
+}
+
+fn parse_aliases_json(raw: &str) -> Vec<String> {
+    serde_json::from_str::<Vec<String>>(raw).unwrap_or_default()
+}
+
+fn folder_for_path(path: &str) -> String {
+    path.rsplit_once('/')
+        .map(|(folder, _)| folder.to_owned())
+        .unwrap_or_default()
+}
+
+fn tags_for_page(conn: &Connection, page_id: i64) -> Vec<String> {
+    let Ok(mut stmt) =
+        conn.prepare("SELECT tag_name FROM tags WHERE page_id = ?1 ORDER BY tag_name")
+    else {
+        return Vec::new();
+    };
+    stmt.query_map([page_id], |row| row.get::<_, String>(0))
+        .map(|rows| rows.filter_map(Result::ok).collect())
+        .unwrap_or_default()
+}
+
+fn rewrite_wikilink_target(content: &str, old_stem: &str, new_stem: &str) -> String {
+    if old_stem == new_stem {
+        return content.to_owned();
+    }
+
+    let mut rewritten = String::with_capacity(content.len());
+    let mut rest = content;
+    while let Some(offset) = rest.find("[[") {
+        let Some(relative_end) = rest[offset + 2..].find("]]") else {
+            rewritten.push_str(rest);
+            return rewritten;
+        };
+
+        let inner_start = offset + 2;
+        let inner_end = inner_start + relative_end;
+        rewritten.push_str(&rest[..inner_start]);
+        let inner = &rest[inner_start..inner_end];
+        let target_end = inner.find(['|', '#']).unwrap_or(inner.len());
+        let (target, tail) = inner.split_at(target_end);
+        let target_stem = target.strip_suffix(".md").unwrap_or(target);
+
+        if target_stem == old_stem {
+            rewritten.push_str(new_stem);
+            rewritten.push_str(tail);
+        } else {
+            rewritten.push_str(inner);
+        }
+        rewritten.push_str("]]");
+        rest = &rest[inner_end + 2..];
+    }
+
+    rewritten.push_str(rest);
+    rewritten
+}
+
+pub fn graph(root: &Path) -> Value {
+    if let Err(e) = ensure_open(root) {
+        return e;
+    }
+    let db_guard = DB.lock().expect("index db lock");
+    let Some(conn) = db_guard.as_ref() else {
+        return error("INDEX_NOT_OPEN", "Index database is not open");
+    };
+
+    let mut page_stmt = match conn.prepare(
+        "SELECT p.id, p.path, p.title, COALESCE(p.aliases, '[]'), \
+         (SELECT COUNT(DISTINCT l.source_page_id) FROM links l WHERE l.target_page_id = p.id) AS inbound, \
+         (SELECT COUNT(DISTINCT l.target_page_id) FROM links l WHERE l.source_page_id = p.id AND l.target_page_id IS NOT NULL) AS outbound \
+         FROM pages p ORDER BY p.path",
+    ) {
+        Ok(stmt) => stmt,
+        Err(err) => return error("GRAPH_FAILED", &err.to_string()),
+    };
+    let mut pages = Vec::new();
+    let page_rows = page_stmt.query_map([], |row| {
+        Ok((
+            row.get::<_, i64>(0)?,
+            row.get::<_, String>(1)?,
+            row.get::<_, String>(2)?,
+            row.get::<_, String>(3)?,
+            row.get::<_, i64>(4)?,
+            row.get::<_, i64>(5)?,
+        ))
+    });
+    match page_rows {
+        Ok(rows) => {
+            for row in rows.filter_map(Result::ok) {
+                let (page_id, path, title, aliases, inbound, outbound) = row;
+                pages.push(json!({
+                    "path": path,
+                    "title": title,
+                    "folder": folder_for_path(&path),
+                    "tags": tags_for_page(conn, page_id),
+                    "inboundLinks": inbound,
+                    "outboundLinks": outbound,
+                    "_aliases": parse_aliases_json(&aliases),
+                }));
+            }
+        }
+        Err(err) => return error("GRAPH_FAILED", &err.to_string()),
+    }
+
+    let mut link_stmt = match conn.prepare(
+        "SELECT DISTINCT sp.path, tp.path \
+         FROM links l \
+         JOIN pages sp ON sp.id = l.source_page_id \
+         JOIN pages tp ON tp.id = l.target_page_id \
+         WHERE l.target_page_id IS NOT NULL \
+         ORDER BY sp.path, tp.path",
+    ) {
+        Ok(stmt) => stmt,
+        Err(err) => return error("GRAPH_FAILED", &err.to_string()),
+    };
+    let links: Vec<Value> = link_stmt
+        .query_map([], |row| {
+            Ok(json!({
+                "source": row.get::<_, String>(0)?,
+                "target": row.get::<_, String>(1)?,
+            }))
+        })
+        .map(|rows| rows.filter_map(Result::ok).collect())
+        .unwrap_or_default();
+
+    let pages: Vec<Value> = pages
+        .into_iter()
+        .map(|mut page| {
+            if let Some(object) = page.as_object_mut() {
+                object.remove("_aliases");
+            }
+            page
+        })
+        .collect();
+    ok(json!({ "pages": pages, "links": links }))
+}
+
+pub fn tag_pages(root: &Path, payload: &Value) -> Value {
+    if let Err(e) = ensure_open(root) {
+        return e;
+    }
+    let tag = payload.get("tag").and_then(Value::as_str).unwrap_or("");
+    if tag.is_empty() {
+        return ok(json!([]));
+    }
+
+    let db_guard = DB.lock().expect("index db lock");
+    let Some(conn) = db_guard.as_ref() else {
+        return error("INDEX_NOT_OPEN", "Index database is not open");
+    };
+    let mut stmt = match conn.prepare(
+        "SELECT p.path FROM tags t JOIN pages p ON p.id = t.page_id WHERE t.tag_name = ?1 ORDER BY p.path",
+    ) {
+        Ok(stmt) => stmt,
+        Err(err) => return error("TAG_PAGES_FAILED", &err.to_string()),
+    };
+    let paths: Vec<String> = stmt
+        .query_map([tag], |row| row.get(0))
+        .map(|rows| rows.filter_map(Result::ok).collect())
+        .unwrap_or_default();
+    ok(json!(paths))
+}
+
+pub fn tags(root: &Path, payload: &Value) -> Value {
+    if let Err(e) = ensure_open(root) {
+        return e;
+    }
+    let _flat = payload.get("flat").and_then(Value::as_bool).unwrap_or(true);
+
+    let db_guard = DB.lock().expect("index db lock");
+    let Some(conn) = db_guard.as_ref() else {
+        return error("INDEX_NOT_OPEN", "Index database is not open");
+    };
+    let mut stmt = match conn.prepare(
+        "SELECT tag_name, COUNT(*) AS page_count FROM tags GROUP BY tag_name ORDER BY tag_name",
+    ) {
+        Ok(stmt) => stmt,
+        Err(err) => return error("TAGS_FAILED", &err.to_string()),
+    };
+    let entries: Vec<Value> = stmt
+        .query_map([], |row| {
+            Ok((row.get::<_, String>(0)?, row.get::<_, i64>(1)?))
+        })
+        .map(|rows| {
+            rows.filter_map(Result::ok)
+                .map(|(tag, page_count)| {
+                    json!({
+                        "tag": tag,
+                        "pageCount": page_count,
+                        "descendantPageCount": page_count,
+                        "path": [tag],
+                        "isIntermediate": false,
+                    })
+                })
+                .collect()
+        })
+        .unwrap_or_default();
+    ok(json!(entries))
+}
+
+pub fn page_summary(root: &Path, payload: &Value) -> Value {
+    if let Err(e) = ensure_open(root) {
+        return e;
+    }
+    let page_path = payload.get("path").and_then(Value::as_str).unwrap_or("");
+    if page_path.is_empty() {
+        return error("PAGE_NOT_FOUND", "Page path is required");
+    }
+
+    let db_guard = DB.lock().expect("index db lock");
+    let Some(conn) = db_guard.as_ref() else {
+        return error("INDEX_NOT_OPEN", "Index database is not open");
+    };
+    let summary = conn.query_row(
+        "SELECT p.id, p.path, p.title, COALESCE(p.aliases, '[]'), COALESCE(p.updated_at, ''), \
+         (SELECT COUNT(DISTINCT l.source_page_id) FROM links l WHERE l.target_page_id = p.id), \
+         (SELECT COUNT(DISTINCT l.target_page_id) FROM links l WHERE l.source_page_id = p.id AND l.target_page_id IS NOT NULL) \
+         FROM pages p WHERE p.path = ?1 OR p.path = ?1 || '.md'",
+        [page_path],
+        |row| {
+            Ok((
+                row.get::<_, i64>(0)?,
+                row.get::<_, String>(1)?,
+                row.get::<_, String>(2)?,
+                row.get::<_, String>(3)?,
+                row.get::<_, String>(4)?,
+                row.get::<_, i64>(5)?,
+                row.get::<_, i64>(6)?,
+            ))
+        },
+    );
+    let (page_id, path, title, aliases, updated_at, inbound, outbound) = match summary {
+        Ok(value) => value,
+        Err(rusqlite::Error::QueryReturnedNoRows) => {
+            return error("PAGE_NOT_FOUND", &format!("Page not found: {page_path}"));
+        }
+        Err(err) => return error("PAGE_SUMMARY_FAILED", &err.to_string()),
+    };
+
+    let body = conn
+        .query_row(
+            "SELECT content FROM page_fts WHERE path = ?1",
+            [&path],
+            |row| row.get::<_, String>(0),
+        )
+        .unwrap_or_default();
+    let word_count = body.split_whitespace().count();
+    let block_count: i64 = conn
+        .query_row(
+            "SELECT COUNT(*) FROM blocks WHERE page_id = ?1",
+            [page_id],
+            |row| row.get(0),
+        )
+        .unwrap_or(0);
+
+    ok(json!({
+        "pageId": page_id,
+        "path": path,
+        "title": title,
+        "aliases": parse_aliases_json(&aliases),
+        "tags": tags_for_page(conn, page_id),
+        "updatedAt": updated_at,
+        "wordCount": word_count,
+        "blockCount": block_count,
+        "inboundLinks": inbound,
+        "outboundLinks": outbound,
+    }))
+}
+
+pub fn page_summaries(root: &Path) -> Value {
+    if let Err(e) = ensure_open(root) {
+        return e;
+    }
+    let db_guard = DB.lock().expect("index db lock");
+    let Some(conn) = db_guard.as_ref() else {
+        return error("INDEX_NOT_OPEN", "Index database is not open");
+    };
+    let mut stmt = match conn
+        .prepare("SELECT path, title, COALESCE(aliases, '[]') FROM pages ORDER BY path")
+    {
+        Ok(stmt) => stmt,
+        Err(err) => return error("PAGE_SUMMARIES_FAILED", &err.to_string()),
+    };
+    let summaries: Vec<Value> = stmt
+        .query_map([], |row| {
+            Ok((
+                row.get::<_, String>(0)?,
+                row.get::<_, String>(1)?,
+                row.get::<_, String>(2)?,
+            ))
+        })
+        .map(|rows| {
+            rows.filter_map(Result::ok)
+                .map(|(path, title, aliases)| {
+                    json!({
+                        "path": path,
+                        "title": title,
+                        "aliases": parse_aliases_json(&aliases),
+                    })
+                })
+                .collect()
+        })
+        .unwrap_or_default();
+    ok(json!(summaries))
+}
+
+pub fn jump_to(root: &Path, payload: &Value) -> Value {
+    if let Err(e) = ensure_open(root) {
+        return e;
+    }
+    let query = payload.get("query").and_then(Value::as_str).unwrap_or("");
+    if query.trim().is_empty() {
+        return ok(json!([]));
+    }
+    let limit = payload.get("limit").and_then(Value::as_u64).unwrap_or(10) as usize;
+    let query_lower = query.to_lowercase();
+
+    let db_guard = DB.lock().expect("index db lock");
+    let Some(conn) = db_guard.as_ref() else {
+        return error("INDEX_NOT_OPEN", "Index database is not open");
+    };
+    let mut stmt = match conn.prepare("SELECT path, title, COALESCE(aliases, '[]') FROM pages") {
+        Ok(stmt) => stmt,
+        Err(err) => return error("JUMP_TO_FAILED", &err.to_string()),
+    };
+    let rows = stmt.query_map([], |row| {
+        Ok((
+            row.get::<_, String>(0)?,
+            row.get::<_, String>(1)?,
+            row.get::<_, String>(2)?,
+        ))
+    });
+    let mut results = Vec::new();
+    match rows {
+        Ok(rows) => {
+            for row in rows.filter_map(Result::ok) {
+                let (path, title, aliases) = row;
+                let title_lower = title.to_lowercase();
+                let path_lower = path.to_lowercase();
+                let aliases = parse_aliases_json(&aliases);
+
+                let exact_title = title_lower == query_lower;
+                let title_match = title_lower.contains(&query_lower);
+                let alias_match = aliases
+                    .iter()
+                    .find(|alias| alias.to_lowercase().contains(&query_lower));
+                let path_match = path_lower.contains(&query_lower);
+
+                let rank = if exact_title {
+                    0
+                } else if title_match {
+                    1
+                } else if alias_match.is_some() {
+                    2
+                } else if path_match {
+                    3
+                } else {
+                    continue;
+                };
+                let match_kind = if title_match {
+                    "title"
+                } else if alias_match.is_some() {
+                    "alias"
+                } else {
+                    "path"
+                };
+                let folder = folder_for_path(&path);
+                let subtitle = match match_kind {
+                    "alias" => alias_match.map(String::as_str).unwrap_or_default(),
+                    "path" => path.as_str(),
+                    _ => folder.as_str(),
+                };
+                results.push((
+                    rank,
+                    json!({
+                        "path": path,
+                        "title": title,
+                        "subtitle": subtitle,
+                        "match": match_kind,
+                    }),
+                ));
+            }
+        }
+        Err(err) => return error("JUMP_TO_FAILED", &err.to_string()),
+    }
+
+    results.sort_by_key(|(rank, _)| *rank);
+    let results = results.into_iter().map(|(_, item)| item).take(limit);
+    ok(json!(results.collect::<Vec<_>>()))
+}
+
+pub fn rename_linked(root: &Path, old_path: &str, new_path: &str) -> Value {
+    if old_path.is_empty() || new_path.is_empty() {
+        return error("RENAME_LINKED_FAILED", "Old and new paths are required");
+    }
+    if let Err(e) = ensure_open(root) {
+        return e;
+    }
+
+    let Some(old_stem) = Path::new(old_path).file_stem().and_then(|s| s.to_str()) else {
+        return error("RENAME_LINKED_FAILED", "Invalid old path");
+    };
+    let Some(new_stem) = Path::new(new_path).file_stem().and_then(|s| s.to_str()) else {
+        return error("RENAME_LINKED_FAILED", "Invalid new path");
+    };
+
+    {
+        let db_guard = DB.lock().expect("index db lock");
+        let Some(conn) = db_guard.as_ref() else {
+            return error("INDEX_NOT_OPEN", "Index database is not open");
+        };
+        if let Err(err) = conn.execute(
+            "UPDATE pages SET path = ?1 WHERE path = ?2",
+            rusqlite::params![new_path, old_path],
+        ) {
+            return error("RENAME_LINKED_FAILED", &err.to_string());
+        }
+    }
+
+    for file in collect_markdown_files(root) {
+        let path = root.join(&file);
+        let Ok(content) = fs::read_to_string(&path) else {
+            continue;
+        };
+        let updated = rewrite_wikilink_target(&content, old_stem, new_stem);
+        if updated != content {
+            if let Err(err) = fs::write(&path, updated) {
+                return error("RENAME_LINKED_FAILED", &err.to_string());
+            }
+        }
+    }
+
+    rebuild(root)
+}
+
+#[cfg(test)]
+pub(crate) use tests::with_test_lock;
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::path::PathBuf;
+    use std::time::{SystemTime, UNIX_EPOCH};
+
+    pub(crate) fn with_test_lock<T>(operation: impl FnOnce() -> T) -> T {
+        let _guard = TEST_LOCK.lock().expect("index test lock");
+        operation()
+    }
+
+    fn test_vault(name: &str) -> PathBuf {
+        let unique = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .expect("clock")
+            .as_nanos();
+        let root = std::env::temp_dir().join(format!(
+            "nexnote-index-{name}-{}-{unique}",
+            std::process::id()
+        ));
+        fs::create_dir_all(&root).expect("create test vault");
+        root
+    }
+
+    fn seed_vault(name: &str) -> PathBuf {
+        close();
+        let root = test_vault(name);
+        fs::write(
+            root.join("a.md"),
+            "---\ntags: [rust]\n---\n\n# Alpha\n\nLink [[b]] and [[Missing]].\n",
+        )
+        .expect("write a");
+        fs::write(
+            root.join("b.md"),
+            "---\ntags: [rust]\n---\n\n# Beta\n\nBack [[Alpha|alpha link]].\n",
+        )
+        .expect("write b");
+        fs::write(
+            root.join("c.md"),
+            "---\ntags:\n  - notes/depth\n---\n\n# Gamma\n",
+        )
+        .expect("write c");
+        root
+    }
+
+    #[test]
+    fn graph_tags_summaries_and_jump_use_resolved_index() {
+        with_test_lock(|| {
+            let root = seed_vault("queries");
+            assert_eq!(rebuild(&root)["ok"], json!(true));
+
+            let graph = graph(&root);
+            assert_eq!(graph["ok"], json!(true));
+            assert_eq!(graph["data"]["pages"].as_array().unwrap().len(), 3);
+            let links = graph["data"]["links"].as_array().unwrap();
+            assert_eq!(links.len(), 2);
+            assert!(links.contains(&json!({ "source": "a.md", "target": "b.md" })));
+            assert!(links.contains(&json!({ "source": "b.md", "target": "a.md" })));
+
+            let tag_pages = tag_pages(&root, &json!({ "tag": "rust" }));
+            assert_eq!(tag_pages["data"], json!(["a.md", "b.md"]));
+
+            let tags = tags(&root, &json!({ "flat": true }));
+            let tags = tags["data"].as_array().unwrap();
+            assert_eq!(tags.len(), 2);
+            assert!(tags.contains(&json!({
+                "tag": "rust",
+                "pageCount": 2,
+                "descendantPageCount": 2,
+                "path": ["rust"],
+                "isIntermediate": false,
+            })));
+
+            let summary = page_summary(&root, &json!({ "path": "a.md" }));
+            assert_eq!(summary["data"]["inboundLinks"], json!(1));
+            assert_eq!(summary["data"]["outboundLinks"], json!(1));
+            assert_eq!(summary["data"]["blockCount"], json!(2));
+            assert_eq!(summary["data"]["tags"], json!(["rust"]));
+
+            let summaries = page_summaries(&root);
+            assert_eq!(summaries["data"].as_array().unwrap().len(), 3);
+
+            let jumps = jump_to(&root, &json!({ "query": "beta", "limit": 10 }));
+            assert_eq!(jumps["data"][0]["path"], json!("b.md"));
+            assert_eq!(jumps["data"][0]["match"], json!("title"));
+
+            close();
+            let _ = fs::remove_dir_all(root);
+        });
+    }
+
+    #[test]
+    fn rename_linked_updates_wikilinks_and_index() {
+        with_test_lock(|| {
+            let root = seed_vault("rename");
+            assert_eq!(rebuild(&root)["ok"], json!(true));
+
+            fs::create_dir(root.join("docs")).expect("create docs");
+            fs::rename(root.join("b.md"), root.join("docs/renamed.md")).expect("rename file");
+            let result = rename_linked(&root, "b.md", "docs/renamed.md");
+            assert_eq!(result["ok"], json!(true));
+            let content = fs::read_to_string(root.join("a.md")).expect("read renamed target");
+            assert!(content.contains("[[renamed]]"));
+
+            let graph = graph(&root);
+            assert!(graph["data"]["links"]
+                .as_array()
+                .unwrap()
+                .contains(&json!({ "source": "a.md", "target": "docs/renamed.md" })));
+
+            close();
+            let _ = fs::remove_dir_all(root);
+        });
+    }
 }

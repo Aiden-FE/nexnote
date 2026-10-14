@@ -533,6 +533,75 @@ pub fn init(root: &Path) -> Result<Value, GitError> {
     )
 }
 
+fn validate_path(path: &str) -> Result<&str, GitError> {
+    if path.trim().is_empty() {
+        return Err(GitError::new("INVALID_PATH", "file path is empty"));
+    }
+    let path = Path::new(path);
+    if !path.is_relative() {
+        return Err(GitError::new("INVALID_PATH", "file path must be relative"));
+    }
+    let only_normal_components = path
+        .components()
+        .all(|component| matches!(component, std::path::Component::Normal(_)));
+    if !only_normal_components {
+        return Err(GitError::new(
+            "INVALID_PATH",
+            "file path must stay inside the vault",
+        ));
+    }
+    path.to_str()
+        .ok_or_else(|| GitError::new("INVALID_PATH", "file path is not valid Unicode"))
+}
+
+pub fn preview_restore(root: &Path, path: &str, commit: &str) -> Result<Value, GitError> {
+    let path = validate_path(path)?;
+    if commit.trim().is_empty() {
+        return Err(GitError::new("INVALID_COMMIT", "commit is empty"));
+    }
+    if !is_repository(root) || !has_head(root) {
+        return Err(GitError::new(
+            "NOT_A_REPOSITORY",
+            "vault is not a Git repository with HEAD",
+        ));
+    }
+
+    let object = format!("{commit}:{path}");
+    let target = run_git(root, &["show", &object])?;
+    let current = std::fs::read_to_string(root.join(path)).ok();
+    let preview = GitRestorePreview {
+        path: path.to_owned(),
+        commit: commit.to_owned(),
+        current,
+        target,
+    };
+    serde_json::to_value(preview)
+        .map_err(|error| GitError::new("SERIALIZATION_FAILED", error.to_string()))
+}
+
+pub fn restore_file(root: &Path, path: &str, commit: &str) -> Result<Value, GitError> {
+    let path = validate_path(path)?;
+    if commit.trim().is_empty() {
+        return Err(GitError::new("INVALID_COMMIT", "commit is empty"));
+    }
+    if !is_repository(root) || !has_head(root) {
+        return Err(GitError::new(
+            "NOT_A_REPOSITORY",
+            "vault is not a Git repository with HEAD",
+        ));
+    }
+    run_git(root, &["checkout", commit, "--", path])?;
+    operation_result(root, "file restored", None)
+}
+
+pub fn set_use_system_git(_root: &Path, enabled: bool) -> Result<Value, GitError> {
+    // The first Tauri runtime slice always uses the system Git binary.  The
+    // argument is accepted now so packaging a bundled runtime later does not
+    // require an IPC contract change.
+    let _ = enabled;
+    Ok(json!({ "message": "ok", "usingSystemGit": true }))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -603,6 +672,56 @@ mod tests {
         write_file(&root, "notes/manual.md", "manual\n");
         let manual = commit(&root, "manual update").unwrap();
         assert!(manual["hash"].is_string());
+
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn previews_and_restores_file_contents() {
+        let root = unique_temp_root("restore");
+        init(&root).unwrap();
+        write_file(&root, "doc.md", "original\n");
+        record_auto_commit(&root, "original", 500).unwrap();
+        let original_hash = run_git(&root, &["rev-parse", "HEAD"])
+            .unwrap()
+            .trim()
+            .to_owned();
+
+        write_file(&root, "doc.md", "changed\n");
+        record_auto_commit(&root, "changed", 500).unwrap();
+        let preview = preview_restore(&root, "doc.md", &original_hash).unwrap();
+        assert_eq!(preview["path"], "doc.md");
+        assert_eq!(preview["target"], "original\n");
+        assert_eq!(preview["current"], "changed\n");
+
+        let restored = restore_file(&root, "doc.md", &original_hash).unwrap();
+        assert_eq!(restored["message"], "file restored");
+        assert_eq!(restored["status"]["changed"], json!(1));
+        assert_eq!(
+            fs::read_to_string(root.join("doc.md")).unwrap(),
+            "original\n"
+        );
+        assert!(preview_restore(&root, "../escape.md", &original_hash).is_err());
+
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn preview_marks_missing_file_current_null() {
+        let root = unique_temp_root("restore-new");
+        init(&root).unwrap();
+        write_file(&root, "new.md", "old\n");
+        record_auto_commit(&root, "old", 500).unwrap();
+        let hash = run_git(&root, &["rev-parse", "HEAD"])
+            .unwrap()
+            .trim()
+            .to_owned();
+        fs::remove_file(root.join("new.md")).unwrap();
+        record_auto_commit(&root, "deleted", 500).unwrap();
+
+        let preview = preview_restore(&root, "new.md", &hash).unwrap();
+        assert_eq!(preview["current"], Value::Null);
+        assert_eq!(preview["target"], "old\n");
 
         fs::remove_dir_all(root).unwrap();
     }

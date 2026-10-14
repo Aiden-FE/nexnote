@@ -502,7 +502,16 @@ fn dispatch(
         | "git:pull"
         | "git:push"
         | "git:sync"
-        | "git:doctor:diagnose" => {
+        | "git:previewRestore"
+        | "git:restoreFile"
+        | "git:setUseSystemGit"
+        | "git:configureAutoSync"
+        | "git:getAutoCommitDebounce"
+        | "git:setAutoCommitDebounce"
+        | "git:doctor:diagnose"
+        | "git:doctor:repairPrepare"
+        | "git:doctor:repairExecute"
+        | "git:doctor:dismiss" => {
             let Some(root) = vault_root.get() else {
                 return error("NO_VAULT", "No vault is open");
             };
@@ -550,6 +559,70 @@ fn dispatch(
                 ),
                 "git:push" => git_sync::push(&root),
                 "git:sync" => git_sync::sync(&root),
+                "git:previewRestore" => {
+                    match (
+                        string_field(payload, "path"),
+                        string_field(payload, "commit"),
+                    ) {
+                        (Some(path), Some(commit)) => {
+                            git_result(git_service::preview_restore(&root, &path, &commit))
+                        }
+                        _ => error("INVALID_RESTORE", "path and commit are required"),
+                    }
+                }
+                "git:restoreFile" => {
+                    match (
+                        string_field(payload, "path"),
+                        string_field(payload, "commit"),
+                    ) {
+                        (Some(path), Some(commit)) => {
+                            git_result(git_service::restore_file(&root, &path, &commit))
+                        }
+                        _ => error("INVALID_RESTORE", "path and commit are required"),
+                    }
+                }
+                "git:setUseSystemGit" => match payload.get("enabled").and_then(Value::as_bool) {
+                    Some(enabled) => git_result(git_service::set_use_system_git(&root, enabled)),
+                    None => error("INVALID_USE_SYSTEM_GIT", "enabled is required"),
+                },
+                "git:configureAutoSync" => {
+                    let enabled = payload.get("enabled").and_then(Value::as_bool);
+                    let interval = payload
+                        .get("intervalSec")
+                        .or_else(|| payload.get("interval"))
+                        .and_then(Value::as_u64);
+                    match (
+                        enabled,
+                        interval,
+                        string_field(payload, "strategy").as_deref(),
+                    ) {
+                        (Some(enabled), Some(interval), Some(strategy)) => {
+                            git_sync::configure_auto_sync(&root, enabled, interval, strategy)
+                        }
+                        _ => error(
+                            "INVALID_AUTO_SYNC",
+                            "enabled, intervalSec and strategy are required",
+                        ),
+                    }
+                }
+                "git:getAutoCommitDebounce" => git_sync::get_auto_commit_debounce(&root),
+                "git:setAutoCommitDebounce" => {
+                    match payload.get("milliseconds").and_then(Value::as_u64) {
+                        Some(milliseconds) => {
+                            git_sync::set_auto_commit_debounce(&root, milliseconds)
+                        }
+                        None => error("INVALID_DEBOUNCE", "milliseconds is required"),
+                    }
+                }
+                "git:doctor:repairPrepare" => match string_field(payload, "action") {
+                    Some(action) => git_sync::repair_prepare(&root, &action),
+                    None => error("INVALID_REPAIR_ACTION", "action is required"),
+                },
+                "git:doctor:repairExecute" => match string_field(payload, "ticket") {
+                    Some(ticket) => git_sync::repair_execute(&root, &ticket),
+                    None => error("INVALID_REPAIR_TICKET", "ticket is required"),
+                },
+                "git:doctor:dismiss" => git_sync::dismiss(&root),
                 _ => git_sync::diagnose(&root),
             }
         }
@@ -634,24 +707,26 @@ mod tests {
 
     #[test]
     fn index_commands_accept_a_document_and_return_a_stable_contract() {
-        let root = temp_vault();
-        let note = r#"---
+        index_service::with_test_lock(|| {
+            let root = temp_vault();
+            let note = r#"---
 title: Architecture
 tags: [rust, tauri]
 ---
 
 See [[Glossary]].
 "#;
-        fs::write(root.join("Architecture.md"), note).expect("write note");
-        assert_eq!(index_service::rebuild(&root)["ok"], true);
-        assert_eq!(
-            index_service::search(&root, &json!({ "query": "Glossary" }))["ok"],
-            true
-        );
-        assert_eq!(
-            index_service::backlinks(&root, &json!({ "title": "Glossary" }))["ok"],
-            true
-        );
-        fs::remove_dir_all(root).ok();
+            fs::write(root.join("Architecture.md"), note).expect("write note");
+            assert_eq!(index_service::rebuild(&root)["ok"], true);
+            assert_eq!(
+                index_service::search(&root, &json!({ "query": "Glossary" }))["ok"],
+                true
+            );
+            assert_eq!(
+                index_service::backlinks(&root, &json!({ "title": "Glossary" }))["ok"],
+                true
+            );
+            fs::remove_dir_all(root).ok();
+        });
     }
 }
