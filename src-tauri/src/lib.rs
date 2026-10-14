@@ -30,9 +30,16 @@ pub fn run() {
         .join("nexnote");
     let _ = std::fs::create_dir_all(&app_data);
     let host_version = env!("CARGO_PKG_VERSION").to_owned();
-    tauri::Builder::default()
+    // DEV-124: tauri-plugin-updater panics during plugin init when its config
+    // carries no signing public key, which made the app unlaunchable before
+    // the release pipeline exists. Register it only when a key is configured;
+    // `updater:check` then reports UPDATE_PLUGIN_NOT_READY, which the settings
+    // UI already surfaces.
+    // The updater plugin only joins the chain when a key is configured, so the
+    // branch happens before the builder chain rather than after it.
+    let updater_enabled = updater_is_configured();
+    let base = tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
-        .plugin(tauri_plugin_updater::Builder::new().build())
         .plugin(tauri_plugin_process::init())
         .manage(product::ProductState::default())
         .manage(std::sync::Arc::new(embedding_service::EmbeddingState::new(
@@ -46,7 +53,6 @@ pub fn run() {
                 .get_webview_window("main")
                 .expect("NexNote main webview must be declared");
             let _ = main.set_title("NexNote");
-
             let language = product::persisted_language(app.handle());
             build_native_menu(app.handle(), menu_labels::UiLanguage::parse(&language));
             Ok(())
@@ -68,9 +74,32 @@ pub fn run() {
                     _ => {}
                 }
             }
-        })
-        .run(tauri::generate_context!())
-        .expect("failed to run NexNote Tauri runtime");
+        });
+
+    // `generate_context!` embeds the Info.plist as a symbol, so it must expand
+    // exactly once: the two branches differ only in which builder is returned.
+    if updater_enabled {
+        base.plugin(tauri_plugin_updater::Builder::new().build())
+    } else {
+        base
+    }
+    .run(tauri::generate_context!())
+    .expect("failed to run NexNote Tauri runtime");
+}
+
+/// True when `tauri.conf.json` carries an updater public key, i.e. signed
+/// updates can actually be verified (DEV-124).
+fn updater_is_configured() -> bool {
+    let Ok(config) = std::fs::read_to_string("tauri.conf.json") else {
+        return false;
+    };
+    let Ok(value) = serde_json::from_str::<serde_json::Value>(&config) else {
+        return false;
+    };
+    value
+        .pointer("/plugins/updater/pubkey")
+        .and_then(serde_json::Value::as_str)
+        .is_some_and(|key| !key.trim().is_empty())
 }
 
 /// Builds the native application menu and wires clicks to `menu:action`.
