@@ -29,7 +29,6 @@
 | skills:retrieve | 以 index_service FTS 结果代替 Skill 召回 | 迁移 DEV-014 Skill 召回/重排链路（DEV-121） |
 | agent:run:* | SSE 文本流已接通，但无工具审批/权限模式 | 迁移工具调用与权限模式（DEV-121） |
 | skills:list / skills:setEnabled / skills:setOrder / skills:setParams | 硬编码 builtin 列表或返回空占位，无持久化 Skill 配置 | 建立 Skill 配置存储与启停/排序/参数持久化（DEV-121） |
-| git:syncProgress | 无事件发出 | 为 git_sync 增加阶段钩子（DEV-120） |
 | index:confidenceChanged | 无重算触发点（`index:confidence` 只读） | 置信度重算落地后触发事件（DEV-119） |
 | binary:editorCommand / menu:action | 未迁移 | 多 WebView 编辑器宿主与原生菜单（DEV-123 / DEV-124） |
 
@@ -277,7 +276,7 @@
 | ai:retrievalStatus | sqlite | retrieval service | `webContents.send` | `retrieval::status_event` | ai | ported |
 | ai:configChanged | app-state | AI store | `webContents.send` | `ai::config_changed` | ai | ported |
 | git:statusChanged | vault | git service | `webContents.send` | `git::status_event` | git | ported |
-| git:syncProgress | vault | git service | `webContents.send` | `git::sync_progress` | git | pending（git_sync 尚无阶段钩子；状态栏进度未迁移） |
+| git:syncProgress | vault | git service | `webContents.send` | `git::sync_progress` | git | ported |
 | plugins:changed | plugin | plugin service | `webContents.send` | `plugin::changed_event` | plugin | ported |
 | skills:changed | plugin | skill service | `webContents.send` | `skill::changed_event` | ai | pending（无持久化 Skill 配置存储） |
 | index:statusChanged | sqlite | index service | `webContents.send` | `index::status_event` | vault | ported |

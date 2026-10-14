@@ -442,15 +442,30 @@ pub fn remove_remote(root: &Path, name: &str) -> Value {
     }
 }
 
-pub fn pull(root: &Path, force: bool) -> Value {
+/// Phase callback: `(phase, optional message)`.
+pub type SyncProgress<'a> = &'a dyn Fn(&str, Option<&str>);
+
+/// Emits one sync phase; a missing callback makes the call silent (tests).
+pub fn emit_sync_phase(on_progress: Option<SyncProgress<'_>>, phase: &str, message: Option<&str>) {
+    if let Some(callback) = on_progress {
+        callback(phase, message);
+    }
+}
+
+pub fn pull(root: &Path, force: bool, on_progress: Option<SyncProgress<'_>>) -> Value {
     if let Err(err) = require_repository(root) {
+        emit_sync_phase(on_progress, "error", Some("not a repository"));
         return err;
     }
     let status = match status_info(root) {
         Ok(value) => value,
-        Err(err) => return err,
+        Err(err) => {
+            emit_sync_phase(on_progress, "error", Some("status check failed"));
+            return err;
+        }
     };
     if status.changed > 0 && !force {
+        emit_sync_phase(on_progress, "error", Some("worktree is dirty"));
         return error(
             "WORKTREE_DIRTY",
             "Refusing to pull a dirty worktree without force",
@@ -458,11 +473,14 @@ pub fn pull(root: &Path, force: bool) -> Value {
     }
     let branch = status.branch.clone();
     let Some(remote) = resolve_remote(root, branch.as_deref()) else {
+        emit_sync_phase(on_progress, "error", Some("no remote configured"));
         return error("NO_REMOTE", "No remote is configured for pull");
     };
     let Some(branch) = branch else {
+        emit_sync_phase(on_progress, "error", Some("HEAD is detached"));
         return error("NO_BRANCH", "HEAD is detached");
     };
+    emit_sync_phase(on_progress, "rebasing", None);
     let mut args = vec!["pull".to_owned(), "--rebase".to_owned()];
     if force {
         args.push("--force".to_owned());
@@ -471,77 +489,125 @@ pub fn pull(root: &Path, force: bool) -> Value {
     args.push(branch);
     let arg_refs: Vec<&str> = args.iter().map(String::as_str).collect();
     match run_git(root, &arg_refs) {
-        Ok(_) => ok(json!({ "message": "pull completed" })),
-        Err(err) => err,
+        Ok(_) => {
+            emit_sync_phase(on_progress, "done", Some("pull completed"));
+            ok(json!({ "message": "pull completed" }))
+        }
+        Err(err) => {
+            emit_sync_phase(on_progress, "error", Some("pull failed"));
+            err
+        }
     }
 }
 
-pub fn push(root: &Path) -> Value {
+pub fn push(root: &Path, on_progress: Option<SyncProgress<'_>>) -> Value {
     if let Err(err) = require_repository(root) {
+        emit_sync_phase(on_progress, "error", Some("not a repository"));
         return err;
     }
-    let status = match status_info(root) {
-        Ok(value) => value,
-        Err(err) => return err,
-    };
+    emit_sync_phase(on_progress, "pushing", None);
+    match push_inner(root) {
+        Ok(()) => {
+            emit_sync_phase(on_progress, "done", Some("push completed"));
+            ok(json!({ "message": "push completed" }))
+        }
+        Err(err) => {
+            emit_sync_phase(on_progress, "error", Some("push failed"));
+            err
+        }
+    }
+}
+
+/// Push without phase events: only the outermost operation may announce
+/// phases, otherwise a nested call would emit `done` mid-run.
+fn push_inner(root: &Path) -> Result<(), Value> {
+    let status = status_info(root)?;
     let branch = status.branch.clone();
     let Some(remote) = resolve_remote(root, branch.as_deref()) else {
-        return error("NO_REMOTE", "No remote is configured for push");
+        return Err(error("NO_REMOTE", "No remote is configured for push"));
     };
     let Some(branch) = branch else {
-        return error("NO_BRANCH", "HEAD is detached");
+        return Err(error("NO_BRANCH", "HEAD is detached"));
     };
-    match run_git(root, &["push", "-u", &remote, &branch]) {
-        Ok(_) => ok(json!({ "message": "push completed" })),
-        Err(err) => err,
+    run_git(root, &["push", "-u", &remote, &branch]).map(|_| ())
+}
+
+pub fn fetch(root: &Path, on_progress: Option<SyncProgress<'_>>) -> Value {
+    if let Err(err) = require_repository(root) {
+        emit_sync_phase(on_progress, "error", Some("not a repository"));
+        return err;
+    }
+    emit_sync_phase(on_progress, "fetching", None);
+    match fetch_inner(root) {
+        Ok(()) => {
+            emit_sync_phase(on_progress, "done", Some("fetch completed"));
+            ok(json!({ "message": "fetch completed" }))
+        }
+        Err(err) => {
+            emit_sync_phase(on_progress, "error", Some("fetch failed"));
+            err
+        }
     }
 }
 
-pub fn fetch(root: &Path) -> Value {
-    if let Err(err) = require_repository(root) {
-        return err;
-    }
-    match run_git(root, &["fetch", "--all", "--prune"]) {
-        Ok(_) => ok(json!({ "message": "fetch completed" })),
-        Err(err) => err,
-    }
+/// Fetch without phase events; see [`push_inner`].
+fn fetch_inner(root: &Path) -> Result<(), Value> {
+    run_git(root, &["fetch", "--all", "--prune"]).map(|_| ())
 }
 
-pub fn sync(root: &Path) -> Value {
+pub fn sync(root: &Path, on_progress: Option<SyncProgress<'_>>) -> Value {
     if let Err(err) = require_repository(root) {
+        emit_sync_phase(on_progress, "error", Some("not a repository"));
         return err;
     }
-    let fetched = fetch(root);
+    emit_sync_phase(on_progress, "fetching", None);
+    let fetched = match fetch_inner(root) {
+        Ok(()) => ok(json!({ "message": "fetch completed" })),
+        Err(err) => err,
+    };
     if !is_result(&fetched) {
+        emit_sync_phase(on_progress, "error", Some("fetch failed during sync"));
         return fetched;
     }
     let status = match status_info(root) {
         Ok(value) => value,
-        Err(err) => return err,
+        Err(err) => {
+            emit_sync_phase(on_progress, "error", Some("status check failed"));
+            return err;
+        }
     };
     let branch = status.branch.clone();
     let Some(remote) = resolve_remote(root, branch.as_deref()) else {
+        emit_sync_phase(on_progress, "error", Some("no remote configured"));
         return error("NO_REMOTE", "No remote is configured for sync");
     };
     let Some(branch) = branch else {
+        emit_sync_phase(on_progress, "error", Some("HEAD is detached"));
         return error("NO_BRANCH", "HEAD is detached");
     };
     if status.behind > 0 {
         let upstream = format!("{remote}/{branch}");
+        emit_sync_phase(on_progress, "rebasing", None);
         if let Err(err) = run_git(root, &["rebase", &upstream]) {
+            emit_sync_phase(on_progress, "error", Some("rebase failed"));
             return err;
         }
     }
     let status = match status_info(root) {
         Ok(value) => value,
-        Err(err) => return err,
+        Err(err) => {
+            emit_sync_phase(on_progress, "error", Some("status check failed"));
+            return err;
+        }
     };
     if status.ahead > 0 {
-        let pushed = push(root);
-        if !is_result(&pushed) {
-            return pushed;
+        emit_sync_phase(on_progress, "pushing", None);
+        if let Err(err) = push_inner(root) {
+            emit_sync_phase(on_progress, "error", Some("push failed during sync"));
+            return err;
         }
     }
+    emit_sync_phase(on_progress, "done", Some("sync completed"));
     ok(json!({ "message": "sync completed" }))
 }
 
@@ -749,8 +815,8 @@ pub fn repair_execute(root: &Path, ticket: &str) -> Value {
             )
             .map(|_| ok(json!({ "message": "commit completed" })))
         }
-        "pull" => Ok(pull(root, false)),
-        "push" => Ok(push(root)),
+        "pull" => Ok(pull(root, false, None)),
+        "push" => Ok(push(root, None)),
         "abort-rebase-or-merge" | "force-abort-rebase-or-merge" => abort_in_progress(root)
             .map(|kind| ok(json!({ "message": format!("{kind} aborted"), "kind": kind }))),
         "resolve-conflict-and-continue" => resolve_self_owned_conflicts(root),
@@ -817,7 +883,7 @@ fn resolve_self_owned_conflicts(root: &Path) -> Result<Value, Value> {
     )?;
     let status = status_info(root)?;
     if status.ahead > 0 {
-        let push_result = push(root);
+        let push_result = push(root, None);
         if !push_result
             .get("ok")
             .and_then(Value::as_bool)
@@ -1210,6 +1276,138 @@ mod tests {
             .expect("git must be installed for tests");
         assert!(status.success());
         root
+    }
+
+    /// Creates a bare repo a work repo can use as `origin`.
+    fn temp_bare() -> PathBuf {
+        let unique = TEST_COUNTER.fetch_add(1, Ordering::Relaxed);
+        let nanos = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .map(|value| value.as_nanos())
+            .unwrap_or_default();
+        let bare =
+            std::env::temp_dir().join(format!("nexnote-git-bare-test-{}-{nanos}-{unique}", id()));
+        fs::create_dir_all(&bare).expect("create bare dir");
+        let status = Command::new("git")
+            .arg("init")
+            .arg("--bare")
+            .current_dir(&bare)
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .status()
+            .expect("git must be installed");
+        assert!(status.success());
+        bare
+    }
+
+    fn commit_file(root: &Path, name: &str, content: &str, message: &str) {
+        fs::write(root.join(name), content).expect("write file");
+        run_git(root, &["add", "."]).expect("git add");
+        run_git(root, &["commit", "-m", message]).expect("git commit");
+    }
+
+    fn first_commit(root: &Path) {
+        commit_file(root, "init.md", "init\n", "init");
+    }
+
+    /// Runs an operation and returns the exact (phase, message) sequence.
+    fn phase_log(
+        operation: impl FnOnce(&dyn Fn(&str, Option<&str>)) -> Value,
+    ) -> Vec<(String, Option<String>)> {
+        let log: std::sync::Mutex<Vec<(String, Option<String>)>> =
+            std::sync::Mutex::new(Vec::new());
+        let collector = |phase: &str, message: Option<&str>| {
+            log.lock()
+                .expect("phase log lock")
+                .push((phase.to_owned(), message.map(ToOwned::to_owned)));
+        };
+        let _ = operation(&collector);
+        log.into_inner().expect("phase log drain")
+    }
+
+    #[test]
+    fn pull_without_remote_reports_only_error() {
+        let root = temp_repo();
+        first_commit(&root);
+        let phases = phase_log(|cb| pull(&root, false, Some(cb)));
+        assert_eq!(
+            phases,
+            vec![("error".to_owned(), Some("no remote configured".to_owned()))],
+            "no remote must be a terminal error, not a partial run"
+        );
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn push_walks_pushing_then_done() {
+        let bare = temp_bare();
+        let root = temp_repo();
+        first_commit(&root);
+        let bare_url = format!("file://{}", bare.display());
+        add_remote(&root, "origin", &bare_url);
+        let phases = phase_log(|cb| push(&root, Some(cb)));
+        assert_eq!(
+            phases,
+            vec![
+                ("pushing".to_owned(), None),
+                ("done".to_owned(), Some("push completed".to_owned())),
+            ],
+            "push must walk pushing → done with no intermediate phases"
+        );
+        let _ = fs::remove_dir_all(root);
+        let _ = fs::remove_dir_all(bare);
+    }
+
+    #[test]
+    fn sync_walks_fetch_rebase_and_push_phases_in_order() {
+        let bare = temp_bare();
+        let bare_url = format!("file://{}", bare.display());
+
+        let seed = temp_repo();
+        first_commit(&seed);
+        add_remote(&seed, "origin", &bare_url);
+        run_git(&seed, &["push", "-u", "origin", "HEAD"]).expect("seed bare");
+
+        // Clone BEFORE the second upstream commit so the follower is truly
+        // behind by exactly one commit when it commits locally.
+        let follower = std::env::temp_dir().join(format!(
+            "nexnote-git-follower-{}-{}",
+            id(),
+            SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .map(|value| value.as_nanos())
+                .unwrap_or_default()
+        ));
+        let status = Command::new("git")
+            .arg("clone")
+            .arg(&bare_url)
+            .arg(&follower)
+            .status()
+            .expect("git clone");
+        assert!(status.success());
+
+        // Diverge: the follower gains a local commit, the seed gains another
+        // upstream commit, so sync must rebase before pushing.
+        commit_file(&seed, "upstream.md", "v2\n", "upstream v2");
+        run_git(&seed, &["push"]).expect("push v2");
+        commit_file(&follower, "follower.md", "local\n", "follower local");
+
+        // Follower is behind (upstream v2) and ahead (local commit): the sync
+        // contract is fetching → rebasing → pushing → done.
+        let phases = phase_log(|cb| sync(&follower, Some(cb)));
+        let names: Vec<&str> = phases.iter().map(|(p, _)| p.as_str()).collect();
+        assert_eq!(
+            names,
+            vec!["fetching", "rebasing", "pushing", "done"],
+            "sync phase contract violated: got {phases:?}"
+        );
+        // Start phases carry no message; only `done` summarizes the run.
+        assert_eq!(phases[0].1, None);
+        assert_eq!(phases[3].1.as_deref(), Some("sync completed"));
+
+        let _ = fs::remove_dir_all(&seed);
+        let _ = fs::remove_dir_all(&follower);
+        let _ = fs::remove_dir_all(bare);
     }
 
     #[test]

@@ -1119,15 +1119,46 @@ fn dispatch(
                         Err(e) => error("SERIALIZATION_FAILED", &e.to_string()),
                     }
                 }
-                "git:pull" => git_sync::pull(
-                    &root,
-                    payload
-                        .get("force")
-                        .and_then(Value::as_bool)
-                        .unwrap_or(false),
-                ),
-                "git:push" => git_sync::push(&root),
-                "git:sync" => git_sync::sync(&root),
+                "git:pull" => {
+                    let progress_app = app.clone();
+                    git_sync::pull(
+                        &root,
+                        payload
+                            .get("force")
+                            .and_then(Value::as_bool)
+                            .unwrap_or(false),
+                        Some(&|phase, message| {
+                            let _ = progress_app.emit(
+                                "git:syncProgress",
+                                json!({ "phase": phase, "message": message }),
+                            );
+                        }),
+                    )
+                }
+                "git:push" => {
+                    let progress_app = app.clone();
+                    git_sync::push(
+                        &root,
+                        Some(&|phase, message| {
+                            let _ = progress_app.emit(
+                                "git:syncProgress",
+                                json!({ "phase": phase, "message": message }),
+                            );
+                        }),
+                    )
+                }
+                "git:sync" => {
+                    let progress_app = app.clone();
+                    git_sync::sync(
+                        &root,
+                        Some(&|phase, message| {
+                            let _ = progress_app.emit(
+                                "git:syncProgress",
+                                json!({ "phase": phase, "message": message }),
+                            );
+                        }),
+                    )
+                }
                 "git:previewRestore" => {
                     match (
                         string_field(payload, "path"),
