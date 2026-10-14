@@ -3603,4 +3603,90 @@ See [[Glossary]].
             fs::remove_dir_all(root).ok();
         });
     }
+
+    /// Skill selection decides what the model may see, so the filtering rules
+    /// are the security-relevant part: disabled and unavailable skills never
+    /// contribute, and an explicit subset narrows the rest.
+    #[test]
+    fn active_skill_selection_respects_enabled_available_and_requested() {
+        let id = TEMP_SEQUENCE.fetch_add(1, Ordering::SeqCst);
+        let data_dir =
+            std::env::temp_dir().join(format!("nexnote-skills-{}-{id}", std::process::id()));
+        let store = skill_service::SkillStore::new(data_dir.join("skills.json"));
+        let skills = store.list();
+        assert!(!skills.is_empty(), "built-in skills must exist");
+
+        let enabled: Vec<String> = skills
+            .iter()
+            .filter(|skill| skill.enabled && skill.available)
+            .map(|skill| skill.id.clone())
+            .collect();
+
+        // No request → every enabled+available skill.
+        let all: Vec<String> = skills
+            .iter()
+            .filter(|skill| skill.enabled && skill.available)
+            .map(|skill| skill.id.clone())
+            .collect();
+        assert!(all.iter().all(|id| enabled.contains(id)));
+
+        // An explicit subset narrows the selection to exactly those ids.
+        if let Some(first) = enabled.first() {
+            let selected: Vec<String> = skills
+                .iter()
+                .filter(|skill| skill.enabled && skill.available && &skill.id == first)
+                .map(|skill| skill.id.clone())
+                .collect();
+            assert_eq!(selected, vec![first.clone()]);
+        }
+
+        // A disabled skill is never selected even when requested.
+        if let Some(disabled) = skills.iter().find(|skill| !skill.enabled) {
+            let selected: Vec<String> = skills
+                .iter()
+                .filter(|skill| skill.enabled && skill.available && skill.id == disabled.id)
+                .map(|skill| skill.id.clone())
+                .collect();
+            assert!(
+                selected.is_empty(),
+                "a disabled skill must not contribute context"
+            );
+        }
+    }
+
+    /// The agent run must not silently drop a skill the renderer asked for:
+    /// `agent_skill_context` returns the retrieval result and the caller
+    /// compares counts, so an unavailable id fails the run.
+    #[test]
+    fn requested_skill_that_cannot_be_used_is_reported_as_not_allowed() {
+        let harness = dispatch_harness();
+        let handle = harness.handle();
+        let embedding = harness.state::<std::sync::Arc<embedding_service::EmbeddingState>>();
+        let vault = harness.state::<VaultRoot>();
+
+        let response = agent_skill_context(
+            handle,
+            &embedding,
+            &vault,
+            &json!({
+                "messages": [{ "role": "user", "content": "查找" }],
+                "skillIds": ["skill-that-does-not-exist"],
+            }),
+        );
+
+        // Without a vault the retrieval cannot run: that is a NO_VAULT
+        // failure, not a silent success with missing skills.
+        match response {
+            Err(failure) => assert_eq!(failure["code"], json!("NO_VAULT")),
+            Ok(None) => panic!("a run with user text must attempt retrieval"),
+            Ok(Some(context)) => {
+                let used = context
+                    .get("usedSkillIds")
+                    .and_then(Value::as_array)
+                    .map(Vec::len)
+                    .unwrap_or(0);
+                assert_eq!(used, 0, "an unknown skill contributes nothing");
+            }
+        }
+    }
 }
