@@ -110,6 +110,212 @@ fn error(code: &str, message: &str) -> Value {
     json!({ "ok": false, "error": message, "code": code })
 }
 
+/// Agent-run skill retrieval budget. Below the channel default so a long
+/// conversation cannot crowd out the system prompt.
+const AGENT_SKILL_BUDGET_CHARS: u64 = 2000;
+
+/// Retrieves the skill context for one agent run, or `None` when the run has
+/// no skills and no user text to search with.
+///
+/// Returns a failure envelope so the caller can fail the run with the stable
+/// code (a requested-but-missing skill must not silently drop).
+fn agent_skill_context<R: tauri::Runtime>(
+    app: &tauri::AppHandle<R>,
+    embedding: &State<'_, std::sync::Arc<embedding_service::EmbeddingState>>,
+    vault_root: &State<'_, VaultRoot>,
+    payload: &Value,
+) -> Result<Option<Value>, Value> {
+    let last_user = payload
+        .get("messages")
+        .and_then(Value::as_array)
+        .and_then(|messages| {
+            messages
+                .iter()
+                .rev()
+                .find(|message| message.get("role").and_then(Value::as_str) == Some("user"))
+        })
+        .or_else(|| payload.get("target"))
+        .and_then(Value::as_str)
+        .unwrap_or_default()
+        .to_owned();
+    let skill_ids = payload.get("skillIds").and_then(Value::as_array);
+    if last_user.trim().is_empty() && skill_ids.is_none() {
+        return Ok(None);
+    }
+    let Some(root) = vault_root.get() else {
+        return Err(error("NO_VAULT", "No vault is open"));
+    };
+    let mut request = json!({
+        "query": last_user,
+        "budgetChars": AGENT_SKILL_BUDGET_CHARS,
+    });
+    if let Some(skill_ids) = skill_ids {
+        request["skillIds"] = Value::Array(skill_ids.clone());
+    }
+    match skill_retrieve(app, embedding, &root, &request) {
+        Ok(response) => Ok(Some(response)),
+        Err(failure) => Err(error(
+            failure
+                .get("code")
+                .and_then(Value::as_str)
+                .unwrap_or("SKILL_RETRIEVE_FAILED"),
+            failure
+                .get("error")
+                .and_then(Value::as_str)
+                .unwrap_or("Skill retrieval failed"),
+        )),
+    }
+}
+
+/// Runs multi-skill retrieval and returns the merged payload. Shared by the
+/// `skills:retrieve` channel and agent runs (DEV-121), so both paths use the
+/// same per-skill params, cross-skill merge, and context packing.
+fn skill_retrieve<R: tauri::Runtime>(
+    app: &tauri::AppHandle<R>,
+    embedding: &State<'_, std::sync::Arc<embedding_service::EmbeddingState>>,
+    root: &Path,
+    payload: &Value,
+) -> Result<Value, Value> {
+    let query = string_field(payload, "query").unwrap_or_default();
+    if query.trim().is_empty() {
+        return Err(error("QUERY_REQUIRED", "query is required"));
+    }
+    // Resolve the embedding profile once for all skills (they share the same
+    // vector runtime; only their retrieval params differ).
+    index_service::ensure_open(root)?;
+    let store = ai_store(app);
+    let embedder = match embedding_source(&store) {
+        Ok((profile, _)) if profile.kind == ai_service::AiProviderKind::LocalEmbedding => {
+            Some(retrieval_service::Embedder::BuiltIn {
+                state: embedding.inner().clone(),
+                profile_id: profile.id,
+            })
+        }
+        Ok((profile, model)) => Some(retrieval_service::Embedder::Remote {
+            base_url: profile.base_url,
+            model,
+            profile_id: profile.id,
+        }),
+        Err(_) => None,
+    };
+
+    // Select the enabled skills (or the explicit subset).
+    let requested_ids: Option<Vec<String>> =
+        payload
+            .get("skillIds")
+            .and_then(Value::as_array)
+            .map(|ids| {
+                ids.iter()
+                    .filter_map(Value::as_str)
+                    .map(ToOwned::to_owned)
+                    .collect()
+            });
+    let skill_store_handle = skill_store(app);
+    let active_skills: Vec<skill_service::SkillView> = skill_store_handle
+        .list()
+        .into_iter()
+        .filter(|view| {
+            view.enabled
+                && view.available
+                && requested_ids
+                    .as_ref()
+                    .is_none_or(|ids| ids.iter().any(|id| id == &view.id))
+        })
+        .collect();
+
+    let default_top_k = payload.get("topK").and_then(Value::as_u64).unwrap_or(8) as usize;
+    let default_budget = payload
+        .get("budgetChars")
+        .and_then(Value::as_u64)
+        .unwrap_or(4000) as usize;
+
+    if active_skills.is_empty() {
+        return Ok(json!({
+            "query": query,
+            "usedSkillIds": Vec::<String>::new(),
+            "sources": Vec::<Value>::new(),
+            "degraded": false,
+            "contextText": "",
+        }));
+    }
+
+    // Per-skill retrieval with that skill's params; sources carry a skillId
+    // tag for cross-skill provenance.
+    let request_overrides = payload.get("confidenceWeight").and_then(Value::as_f64);
+    let disable_vector_override = payload.get("disableVector").and_then(Value::as_bool);
+    let mut runs: Vec<(String, Vec<Value>, bool)> = Vec::new();
+    let mut retrieval_model: Option<String> = None;
+    for skill in &active_skills {
+        let top_k = skill
+            .params
+            .get("topK")
+            .and_then(Value::as_u64)
+            .unwrap_or(default_top_k as u64) as usize;
+        let budget = skill
+            .params
+            .get("budgetChars")
+            .and_then(Value::as_u64)
+            .unwrap_or(default_budget as u64) as usize;
+        let confidence = skill
+            .params
+            .get("confidenceWeight")
+            .and_then(Value::as_f64)
+            .or(request_overrides)
+            .unwrap_or(0.3);
+        let disable_vector = skill
+            .params
+            .get("disableVector")
+            .and_then(Value::as_bool)
+            .or(disable_vector_override)
+            .unwrap_or(false);
+
+        let request = retrieval_service::RetrievalRequest {
+            query: query.clone(),
+            top_k,
+            fts_limit: 20,
+            budget_chars: budget,
+            confidence_weight: confidence,
+            disable_vector,
+        };
+        let response = retrieval_service::retrieve(root, &request, embedder.as_ref());
+        let degraded = response
+            .get("degraded")
+            .and_then(Value::as_bool)
+            .unwrap_or(false);
+        // Skills share one vector runtime, so the first model identity is the
+        // run's retrieval model; it labels the turn's sources in the UI.
+        if retrieval_model.is_none() {
+            retrieval_model = response
+                .get("model")
+                .and_then(Value::as_str)
+                .map(ToOwned::to_owned);
+        }
+        let sources: Vec<Value> = response
+            .get("sources")
+            .and_then(Value::as_array)
+            .cloned()
+            .unwrap_or_default();
+        runs.push((skill.id.clone(), sources, degraded));
+    }
+
+    // Cross-skill merge: min-max normalize per skill, dedup by path+blockId,
+    // keep the highest normalized score, tag all matching skills, then sort.
+    let merged = merge_skill_results(&runs);
+    let any_degraded = runs.iter().any(|(_, _, degraded)| *degraded);
+    let used_ids: Vec<&str> = active_skills.iter().map(|s| s.id.as_str()).collect();
+
+    // Pack context from the merged sources within the budget.
+    let context = pack_skill_context(&merged, default_budget);
+    Ok(json!({
+        "query": query,
+        "usedSkillIds": used_ids,
+        "sources": merged,
+        "degraded": any_degraded,
+        "retrievalModel": retrieval_model,
+        "contextText": context,
+    }))
+}
+
 /// Cross-skill merge + rerank (DEV-014, mirrors `merge-rerank.ts`).
 ///
 /// Raw scores from different skills (or the same retriever with different
@@ -1924,137 +2130,10 @@ fn dispatch<R: tauri::Runtime>(
             let Some(root) = vault_root.get() else {
                 return error("NO_VAULT", "No vault is open");
             };
-            let query = string_field(payload, "query").unwrap_or_default();
-            if query.trim().is_empty() {
-                return error("QUERY_REQUIRED", "query is required");
+            match skill_retrieve(app, embedding, &root, payload) {
+                Ok(response) => ok(response),
+                Err(failure) => failure,
             }
-
-            // Resolve the embedding profile once for all skills (they share
-            // the same vector runtime; only their retrieval params differ).
-            if let Err(failure) = index_service::ensure_open(&root) {
-                return failure;
-            }
-            let store = ai_store(app);
-            let embedder = match embedding_source(&store) {
-                Ok((profile, _)) if profile.kind == ai_service::AiProviderKind::LocalEmbedding => {
-                    Some(retrieval_service::Embedder::BuiltIn {
-                        state: embedding.inner().clone(),
-                        profile_id: profile.id,
-                    })
-                }
-                Ok((profile, model)) => Some(retrieval_service::Embedder::Remote {
-                    base_url: profile.base_url,
-                    model,
-                    profile_id: profile.id,
-                }),
-                Err(_) => None,
-            };
-
-            // Select the enabled skills (or the explicit subset).
-            let requested_ids: Option<Vec<String>> = payload
-                .get("skillIds")
-                .and_then(Value::as_array)
-                .map(|ids| {
-                    ids.iter()
-                        .filter_map(Value::as_str)
-                        .map(ToOwned::to_owned)
-                        .collect()
-                });
-            let skill_store_handle = skill_store(app);
-            let active_skills: Vec<skill_service::SkillView> = skill_store_handle
-                .list()
-                .into_iter()
-                .filter(|view| {
-                    view.enabled
-                        && view.available
-                        && requested_ids
-                            .as_ref()
-                            .is_none_or(|ids| ids.iter().any(|id| id == &view.id))
-                })
-                .collect();
-
-            if active_skills.is_empty() {
-                return ok(json!({
-                    "query": query,
-                    "usedSkillIds": [],
-                    "sources": [],
-                    "degraded": false,
-                    "contextText": "",
-                }));
-            }
-
-            // Per-skill retrieval with that skill's params; sources carry a
-            // skillId tag for cross-skill provenance.
-            let default_top_k = payload.get("topK").and_then(Value::as_u64).unwrap_or(8) as usize;
-            let default_budget = payload
-                .get("budgetChars")
-                .and_then(Value::as_u64)
-                .unwrap_or(4000) as usize;
-            let request_overrides = payload.get("confidenceWeight").and_then(Value::as_f64);
-            let disable_vector_override = payload.get("disableVector").and_then(Value::as_bool);
-
-            let mut runs: Vec<(String, Vec<Value>, bool)> = Vec::new();
-            for skill in &active_skills {
-                let top_k = skill
-                    .params
-                    .get("topK")
-                    .and_then(Value::as_u64)
-                    .unwrap_or(default_top_k as u64) as usize;
-                let budget = skill
-                    .params
-                    .get("budgetChars")
-                    .and_then(Value::as_u64)
-                    .unwrap_or(default_budget as u64) as usize;
-                let confidence = skill
-                    .params
-                    .get("confidenceWeight")
-                    .and_then(Value::as_f64)
-                    .or(request_overrides)
-                    .unwrap_or(0.3);
-                let disable_vector = skill
-                    .params
-                    .get("disableVector")
-                    .and_then(Value::as_bool)
-                    .or(disable_vector_override)
-                    .unwrap_or(false);
-
-                let request = retrieval_service::RetrievalRequest {
-                    query: query.clone(),
-                    top_k,
-                    fts_limit: 20,
-                    budget_chars: budget,
-                    confidence_weight: confidence,
-                    disable_vector,
-                };
-                let response = retrieval_service::retrieve(&root, &request, embedder.as_ref());
-                let degraded = response
-                    .get("degraded")
-                    .and_then(Value::as_bool)
-                    .unwrap_or(false);
-                let sources: Vec<Value> = response
-                    .get("sources")
-                    .and_then(Value::as_array)
-                    .cloned()
-                    .unwrap_or_default();
-                runs.push((skill.id.clone(), sources, degraded));
-            }
-
-            // Cross-skill merge: min-max normalize per skill, dedup by
-            // path+blockId, keep the highest normalized score, tag all
-            // matching skills, then sort by normalized score descending.
-            let merged = merge_skill_results(&runs);
-            let any_degraded = runs.iter().any(|(_, _, degraded)| *degraded);
-            let used_ids: Vec<&str> = active_skills.iter().map(|s| s.id.as_str()).collect();
-
-            // Pack context from the merged sources within the budget.
-            let context = pack_skill_context(&merged, default_budget);
-            ok(json!({
-                "query": query,
-                "usedSkillIds": used_ids,
-                "sources": merged,
-                "degraded": any_degraded,
-                "contextText": context,
-            }))
         }
         "skills:setEnabled" => {
             let store = skill_store(app);
@@ -2645,16 +2724,45 @@ fn dispatch<R: tauri::Runtime>(
         channel if channel.starts_with("agent:run:") => {
             let scenario = channel.trim_start_matches("agent:run:").to_string();
             let run_id = uuid::Uuid::new_v4().to_string();
-            // Scenario prompts are main-process owned: the renderer may send
-            // context but never the model-facing instructions.
-            let messages = match agent_scenario::build_messages(
-                &scenario,
-                payload,
+            // Skill retrieval runs before the run starts so the `context`
+            // event carries exactly the sources the model will see (DEV-121).
+            let skill_context_event = match agent_skill_context(app, embedding, vault_root, payload)
+            {
+                Ok(context) => context,
+                Err(failure) => return failure,
+            };
+            if let Some(requested) = payload.get("skillIds").and_then(Value::as_array) {
+                let used = skill_context_event
+                    .as_ref()
+                    .and_then(|response| response.get("usedSkillIds"))
+                    .and_then(Value::as_array)
+                    .map(Vec::len)
+                    .unwrap_or(0);
+                if !requested.is_empty() && used != requested.len() {
+                    // An explicitly requested skill must never silently drop.
+                    return error("SKILL_NOT_ALLOWED", "A requested skill is not available");
+                }
+            }
+            let skill_context = skill_context_event
+                .as_ref()
+                .and_then(|response| response.get("contextText"))
+                .and_then(Value::as_str)
+                .unwrap_or_default()
+                .to_owned();
+            let context_text = [
                 payload
                     .get("contextText")
                     .and_then(Value::as_str)
                     .unwrap_or_default(),
-            ) {
+                skill_context.as_str(),
+            ]
+            .into_iter()
+            .filter(|part| !part.trim().is_empty())
+            .collect::<Vec<_>>()
+            .join("\n\n");
+            // Scenario prompts are main-process owned: the renderer may send
+            // context but never the model-facing instructions.
+            let messages = match agent_scenario::build_messages(&scenario, payload, &context_text) {
                 Ok(messages) => messages,
                 Err(failure) => return error(failure.code, &failure.message),
             };
@@ -2730,6 +2838,28 @@ fn dispatch<R: tauri::Runtime>(
                     context_paths,
                 },
             );
+            // Announce the retrieval provenance before streaming so the chat
+            // dock can label the turn's sources while the model is still
+            // producing text.
+            if let Some(context) = &skill_context_event {
+                emit_agent_event(
+                    app,
+                    &run_id,
+                    &scenario,
+                    json!({
+                        "type": "context",
+                        "sources": context.get("sources").cloned().unwrap_or(json!([])),
+                        "degraded": context
+                            .get("degraded")
+                            .and_then(Value::as_bool)
+                            .unwrap_or(false),
+                        "retrievalModel": context
+                            .get("retrievalModel")
+                            .cloned()
+                            .unwrap_or(Value::Null),
+                    }),
+                );
+            }
             std::thread::spawn(move || {
                 let vault_state = app_handle.state::<VaultRoot>();
                 let embedding_state = app_handle
