@@ -471,6 +471,16 @@ fn emit_channel_event<R: tauri::Runtime>(
         | "settings:setShortcuts"
         | "settings:importShortcuts" => {
             let global = state.global_settings.lock().expect("settings lock").clone();
+            // The native menu is built by the OS, so it cannot read the
+            // renderer's catalog: a language change has to rebuild it (DEV-124).
+            if channel == "settings:setGlobal" {
+                let language = global
+                    .pointer("/appearance/language")
+                    .and_then(Value::as_str)
+                    .unwrap_or("zh-CN")
+                    .to_owned();
+                crate::rebuild_menu_for_language(app, &language);
+            }
             // Read the persisted vault settings so the event payload equals
             // what `settings:getVault` would return, never a defaulted guess.
             let vault = vault_root.get().map(|_| current_vault_settings(&state));
@@ -3378,6 +3388,21 @@ fn authorize_agent_tool<R: tauri::Runtime>(
             "Approval expired before the user responded",
         )),
     }
+}
+
+/// Reads the persisted UI language. The native menu is built before any
+/// renderer call, so it needs the setting directly (DEV-124).
+pub fn persisted_language<R: tauri::Runtime>(app: &tauri::AppHandle<R>) -> String {
+    app.try_state::<ProductState>()
+        .and_then(|state| {
+            state.global_settings.lock().ok().and_then(|settings| {
+                settings
+                    .pointer("/appearance/language")
+                    .and_then(Value::as_str)
+                    .map(ToOwned::to_owned)
+            })
+        })
+        .unwrap_or_else(|| "zh-CN".to_owned())
 }
 
 pub fn sync_vault_root<R: tauri::Runtime>(
