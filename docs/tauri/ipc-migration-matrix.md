@@ -26,7 +26,7 @@
 | Channel | 现状 | 剩余工作 |
 | --- | --- | --- |
 | agent:approval:respond | 已接通：审批表按 tool/run 校验、TTL 过期、取消即拒绝（`agent_service.rs`） | — |
-| agent:run:* | SSE 流、取消、工具环、审批横幅、权限模式（conversation/edit/full）、full 模式作用域护栏、场景 prompt 模板、skills 上下文与 `context` 事件、params 注入、无工具降级重试、10 分钟 TTL 自动取消均已迁移（`agent_tools.rs` / `agent_scenario.rs` / `product.rs`） | 翻译 reasoning 流过滤（`reasoning-filter.ts`）未迁移（DEV-121） |
+| agent:run:* | agent 语义已全部迁移：SSE 流、取消与 TTL、工具环、审批横幅、权限模式与作用域护栏、场景 prompt 模板、skills 上下文与 `context` 事件、params 注入、无工具降级重试、翻译 reasoning 过滤（`agent_tools.rs` / `agent_scenario.rs` / `reasoning_filter.rs` / `product.rs`） | 无 |
 | binary:editorCommand | load/theme/language 直投；flush 经一次性 token 往返等待编辑器真实落盘（`binary:host:flushAck`） | macOS 实测后确认收发完整（DEV-123） |
 
 ## App
@@ -171,7 +171,7 @@
 | agent:run:chat | remote-provider | no | yes | yes | no | `agent-handlers.ts` | `agent::run_chat` | ai | ported |
 | agent:run:writing | remote-provider | no | yes | yes | no | `agent-handlers.ts` | `agent::run_writing` | ai | ported |
 | agent:run:debug | remote-provider | no | yes | yes | no | `agent-handlers.ts` | `agent::run_debug` | ai | ported |
-| agent:run:translation | remote-provider | no | yes | yes | no | `agent-handlers.ts` | `agent::run_translation` | ai | pending（system prompt 已迁移；reasoning 流过滤未迁移） |
+| agent:run:translation | remote-provider | no | yes | yes | no | `agent-handlers.ts` | `agent::run_translation` | ai | ported |
 | agent:cancel | app-state | no | no | no | no | `agent-handlers.ts` | `agent::cancel` | ai | ported |
 | agent:approval:respond | app-state | no | no | no | no | `agent-handlers.ts` | `agent::approval_respond` | ai | ported |
 | binary:host:flushAck | app-state | no | no | no | no | Tauri-only（Electron 用 executeJavaScript 取回值） | `binary::host_flush_ack` | binary | ported |

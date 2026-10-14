@@ -12,6 +12,7 @@ mod index_service;
 mod plugin_service;
 mod print_service;
 mod product;
+mod reasoning_filter;
 mod retrieval_service;
 mod skill_service;
 mod updater_service;

@@ -3,8 +3,8 @@ use crate::{
     ai_service::{self, AiStore},
     binary_host_service, binary_service, confidence_service, embedding_service,
     git_service::{self, GitError},
-    git_sync, index_service, plugin_service, print_service, retrieval_service, skill_service,
-    updater_service, vault_fs, watcher_service,
+    git_sync, index_service, plugin_service, print_service, reasoning_filter, retrieval_service,
+    skill_service, updater_service, vault_fs, watcher_service,
 };
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
@@ -3040,6 +3040,9 @@ fn run_agent_turn<R: tauri::Runtime>(
     let mut tools = agent_tools::provider_tools(scenario);
     let mut allow_tool_fallback = !tools.is_empty();
     let is_cancelled = || run_handle.is_cancelled();
+    // Only translation filters reasoning; other scenarios surface deltas as-is.
+    let filtering = *scenario == "translation";
+    let mut filter = filtering.then(reasoning_filter::ReasoningFilter::new);
     let mut round = 0;
     loop {
         round += 1;
@@ -3054,12 +3057,20 @@ fn run_agent_turn<R: tauri::Runtime>(
                 );
             }
             ai_service::ChatSseEvent::Delta { text } => {
-                emit_agent_event(
-                    app,
-                    run_id,
-                    scenario,
-                    json!({ "type": "delta", "text": text }),
-                );
+                // Translation must show only the translation: reasoning blocks
+                // some providers leak into delta text are filtered out.
+                let text = match filter.as_mut() {
+                    Some(filter) => filter.push(&text),
+                    None => text,
+                };
+                if !text.is_empty() {
+                    emit_agent_event(
+                        app,
+                        run_id,
+                        scenario,
+                        json!({ "type": "delta", "text": text }),
+                    );
+                }
             }
             ai_service::ChatSseEvent::ToolCall {
                 id,
@@ -3125,6 +3136,19 @@ fn run_agent_turn<R: tauri::Runtime>(
             }
         };
         if tool_calls.is_empty() {
+            // A held `<…` prefix that proved to be plain text must still reach
+            // the renderer before the turn ends.
+            if let Some(filter) = filter.as_mut() {
+                let tail = filter.finish();
+                if !tail.is_empty() {
+                    emit_agent_event(
+                        app,
+                        run_id,
+                        scenario,
+                        json!({ "type": "delta", "text": tail }),
+                    );
+                }
+            }
             emit_agent_event(app, run_id, scenario, json!({ "type": "done" }));
             return Ok(());
         }
