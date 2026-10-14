@@ -6,6 +6,7 @@ import type {
   AiFeatureKey,
   AiProfileExportBundle,
   AiProfileInput,
+  BuiltInEmbeddingStatus,
   ConnectionTestResult,
   EmbedResult,
 } from '../../types/ai';
@@ -33,6 +34,9 @@ export const AI_CHANNELS = [
   'ai:embed',
   'ai:embedWithMetadata',
   'ai:retrieve',
+  'ai:builtInEmbedding:status',
+  'ai:builtInEmbedding:download',
+  'ai:builtInEmbedding:delete',
   'ai:export',
   'ai:import',
 ] as const;
@@ -99,6 +103,24 @@ export interface AiChannelMap {
   'ai:retrieve': {
     request: RetrievalOptions;
     response: Result<RetrievalResponse>;
+  };
+  /** 内置语义向量缓存状态：当前固定 revision、各文件校验结果与运行态。 */
+  'ai:builtInEmbedding:status': {
+    request: void;
+    response: Result<BuiltInEmbeddingStatus>;
+  };
+  /**
+   * 按需下载固定 revision 的模型文件。立即返回 started=true，
+   * 进度与终态通过 `ai:builtInEmbeddingStatus` 事件推送，避免 IPC 长阻塞。
+   */
+  'ai:builtInEmbedding:download': {
+    request: void;
+    response: Result<{ started: true }>;
+  };
+  /** 删除派生缓存（应用数据目录，非 vault），可重新下载。 */
+  'ai:builtInEmbedding:delete': {
+    request: void;
+    response: Result<{ deleted: true }>;
   };
   'ai:export': {
     request: void;

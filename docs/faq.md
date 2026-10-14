@@ -129,9 +129,9 @@ vault 是一个普通文件夹，里面是 markdown 文件和一个 `.nexnote/` 
 
 **Q: 本地 embedding 是什么？不联网也能做语义召回吗？**
 
-可以，但要说清它的性质：NexNote 内置的本地 embedding 后端是 `local-hash-384`——基于确定性哈希的**词法向量**，零依赖、离线、零成本，可用于三阶段召回的向量重排；它**不是语义模型**，召回质量明显弱于云端 embedding，也不是可插拔的 ONNX 语义模型（宿主已预留替换位）。
+可以。NexNote 的本地 embedding 已按 ADR-0027 升级为按需下载的**多语言语义模型** `multilingual-e5-small`（int8 量化 ONNX，384 维）：模型不随安装包捆绑，用户显式启用内置向量后才按固定 revision、文件 SHA-256 与许可材料下载到应用数据目录。下载失败、校验失败或未启用时，召回自动降级为 FTS + 双链两阶段，不会静默外发文本到远程 embedding 接口；已配置的远程 embedding Profile 仍可作为高质量替代。
 
-在设置 → AI → 添加 Profile → 选「本地 Embedding」即可。若需要真正的语义召回，请配置云端 embedding 供应商。
+在设置 → AI → 添加 Profile → 选「本地 Embedding」即可启用并触发下载。中英及混合语言检索质量显著优于旧版 `local-hash-384` 词法哈希后端（该后端已按 ADR-0027 移除，避免双重模型成本与错误质量预期）。
 
 ---
 

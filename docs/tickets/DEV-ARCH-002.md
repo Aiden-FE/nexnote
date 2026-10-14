@@ -23,14 +23,14 @@
 | 子票 | 主题 | 依赖 | 状态 |
 | --- | --- | --- | --- |
 | DEV-115 | 迁移契约与命令所有权盘点 | 无 | done |
-| DEV-116 | Tauri 2 壳 + Renderer bridge | DEV-115 | todo |
+| DEV-116 | Tauri 2 壳 + Renderer bridge | DEV-115 | done |
 | DEV-117 | 三 WebView 编辑器兼容矩阵 | DEV-116 | todo / Windows-Linux environment-blocked |
-| DEV-118 | Rust product core 基础与状态生命周期 | DEV-115 | todo |
-| DEV-119 | Vault / FS / SQLite / 索引迁移 | DEV-118 | todo |
-| DEV-120 | Git 运行时与同步体系迁移 | DEV-119 | todo |
-| DEV-121 | AI、召回与内置语义向量迁移 | DEV-118 | todo |
-| DEV-122 | 插件沙箱与 capability 迁移 | DEV-116、DEV-118 | todo |
-| DEV-123 | 二进制编辑器宿主与打印迁移 | DEV-116、DEV-117 | todo |
+| DEV-118 | Rust product core 基础与状态生命周期 | DEV-115 | done |
+| DEV-119 | Vault / FS / SQLite / 索引迁移 | DEV-118 | in progress |
+| DEV-120 | Git 运行时与同步体系迁移 | DEV-119 | in progress |
+| DEV-121 | AI、召回与内置语义向量迁移 | DEV-118 | in progress |
+| DEV-122 | 插件沙箱与 capability 迁移 | DEV-116、DEV-118 | in progress |
+| DEV-123 | 二进制编辑器宿主与打印迁移 | DEV-116、DEV-117 | in progress |
 | DEV-124 | Tauri 更新、签名、发布与 QA | DEV-116 | todo |
 | DEV-125 | Electron 退役与默认通道切换 | 全部子票 | blocked |
 

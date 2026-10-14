@@ -144,9 +144,12 @@
 | ai:setupPrompt:dismiss | app-state | yes | no | yes | no | `ai-handlers.ts` | `ai::setup_dismiss` | ai | pending |
 | ai:testConnection | remote-provider | no | yes | no | no | `ai-handlers.ts` | `ai::test_connection` | ai | pending |
 | ai:listModels | remote-provider | no | yes | no | no | `ai-handlers.ts` | `ai::list_models` | ai | pending |
-| ai:embed | remote-provider | no | yes | no | no | `ai-handlers.ts` | `ai::embed` | ai | pending |
-| ai:embedWithMetadata | remote-provider | no | yes | no | no | `ai-handlers.ts` | `ai::embed_meta` | ai | pending |
-| ai:retrieve | sqlite | no | no | yes | no | `ai-handlers.ts` | `retrieval::retrieve` | ai | pending |
+| ai:embed | remote-provider | no | yes | no | no | `ai-handlers.ts` | `ai::embed` | ai | ported |
+| ai:embedWithMetadata | remote-provider | no | yes | no | no | `ai-handlers.ts` | `ai::embed_meta` | ai | ported |
+| ai:retrieve | sqlite | no | no | yes | no | `ai-handlers.ts` | `retrieval::retrieve` | ai | ported |
+| ai:builtInEmbedding:status | app-state | no | no | yes | no | —（Tauri 新增） | `embedding::status` | ai | ported |
+| ai:builtInEmbedding:download | app-state | yes | yes | yes | no | —（Tauri 新增，ADR-0027） | `embedding::download` | ai | ported |
+| ai:builtInEmbedding:delete | app-state | yes | no | yes | no | —（Tauri 新增，ADR-0027） | `embedding::delete` | ai | ported |
 | ai:export | app-state | no | no | no | no | `ai-handlers.ts` | `ai::export_profiles` | ai | pending |
 | ai:import | app-state | yes | no | yes | no | `ai-handlers.ts` | `ai::import_profiles` | ai | pending |
 

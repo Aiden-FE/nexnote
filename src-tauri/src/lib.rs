@@ -1,12 +1,14 @@
 mod ai_service;
 mod binary_service;
 mod confidence_service;
+mod embedding_service;
 mod git_service;
 mod git_sync;
 mod index_service;
 mod plugin_service;
 mod print_service;
 mod product;
+mod retrieval_service;
 mod vault_fs;
 
 use tauri::Manager;
@@ -22,6 +24,9 @@ pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
         .manage(product::ProductState::default())
+        .manage(std::sync::Arc::new(embedding_service::EmbeddingState::new(
+            &app_data,
+        )))
         .manage(product::PluginState::new(app_data, &host_version))
         .manage(product::VaultRoot::default())
         .invoke_handler(tauri::generate_handler![product::nexnote_invoke])

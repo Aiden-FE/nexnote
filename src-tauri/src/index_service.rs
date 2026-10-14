@@ -1115,6 +1115,307 @@ pub fn rename_linked(root: &Path, old_path: &str, new_path: &str) -> Value {
     rebuild(root)
 }
 
+/// Page-level search hit with a term-wise relevance tier (DEV-011 stage one).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SearchHit {
+    pub path: String,
+    pub title: String,
+    pub tier: &'static str,
+}
+
+/// One indexable block with the metadata retrieval needs to cite it.
+#[derive(Debug, Clone, PartialEq)]
+pub struct CandidateBlock {
+    pub block_rowid: i64,
+    pub page_id: i64,
+    pub path: String,
+    pub title: String,
+    pub block_id: Option<String>,
+    pub block_type: String,
+    pub content: String,
+}
+
+/// A stored vector together with the identity that produced it.
+#[derive(Debug, Clone, PartialEq)]
+pub struct VectorRow {
+    pub block_rowid: i64,
+    pub vector: Vec<f64>,
+    pub model: String,
+}
+
+/// Vector index coverage, reported to the renderer as retrieval status.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct VectorCoverage {
+    pub blocks: i64,
+    pub vectors: i64,
+    pub model: Option<String>,
+}
+
+fn chunked_paths(paths: &[String]) -> Vec<&[String]> {
+    paths.chunks(400).collect()
+}
+
+/// Stage one: FTS page hits classified into `title > tag > alias > content`.
+/// Term-wise classification mirrors the reference implementation: a tier only
+/// wins when every query term is contained in that field, so ordering stays
+/// deterministic and comparable with the Electron channel.
+pub fn search_page_hits(conn: &Connection, query: &str, limit: usize) -> Vec<SearchHit> {
+    let expr = fts_query_expr(query);
+    if expr.is_empty() {
+        return Vec::new();
+    }
+    let Ok(mut stmt) = conn.prepare(
+        "SELECT path, title, aliases, tags FROM page_fts WHERE page_fts MATCH ?1 ORDER BY rank LIMIT ?2",
+    ) else {
+        return Vec::new();
+    };
+    let rows = stmt
+        .query_map(rusqlite::params![expr, limit as i64], |row| {
+            Ok((
+                row.get::<_, String>(0)?,
+                row.get::<_, String>(1)?,
+                row.get::<_, String>(2)?,
+                row.get::<_, String>(3)?,
+            ))
+        })
+        .map(|rows| rows.filter_map(Result::ok).collect::<Vec<_>>())
+        .unwrap_or_default();
+
+    let terms: Vec<String> = query
+        .to_lowercase()
+        .split_whitespace()
+        .map(str::to_owned)
+        .collect();
+    let contains_all = |field: &str| terms.iter().all(|term| field.contains(term.as_str()));
+    rows.into_iter()
+        .map(|(path, title, aliases, tags)| {
+            let lowered_title = title.to_lowercase();
+            let lowered_tags = format!("{lowered_title}\n{}", tags.to_lowercase());
+            let lowered_aliases = format!("{lowered_tags}\n{}", aliases.to_lowercase());
+            let tier = if contains_all(&lowered_title) {
+                "title"
+            } else if contains_all(&lowered_tags) {
+                "tag"
+            } else if contains_all(&lowered_aliases) {
+                "alias"
+            } else {
+                "content"
+            };
+            SearchHit { path, title, tier }
+        })
+        .collect()
+}
+
+/// Blocks of the given pages, ordered by path and position for stable ranking.
+pub fn blocks_for_paths(conn: &Connection, paths: &[String]) -> Vec<CandidateBlock> {
+    if paths.is_empty() {
+        return Vec::new();
+    }
+    let mut blocks = Vec::new();
+    for chunk in chunked_paths(paths) {
+        let placeholders = vec!["?"; chunk.len()].join(",");
+        let sql = format!(
+            "SELECT b.id, b.page_id, p.path, p.title, b.block_id, b.block_type, b.content_text \
+             FROM blocks b JOIN pages p ON p.id = b.page_id \
+             WHERE p.path IN ({placeholders}) ORDER BY p.path, b.position"
+        );
+        let Ok(mut stmt) = conn.prepare(&sql) else {
+            continue;
+        };
+        let rows = stmt
+            .query_map(rusqlite::params_from_iter(chunk.iter()), |row| {
+                Ok(CandidateBlock {
+                    block_rowid: row.get(0)?,
+                    page_id: row.get(1)?,
+                    path: row.get(2)?,
+                    title: row.get(3)?,
+                    block_id: row.get(4)?,
+                    block_type: row.get(5)?,
+                    content: row.get(6)?,
+                })
+            })
+            .map(|rows| rows.filter_map(Result::ok).collect::<Vec<_>>())
+            .unwrap_or_default();
+        blocks.extend(rows);
+    }
+    blocks
+}
+
+/// Every indexed block, used to build the vector index in batches.
+pub fn all_blocks(conn: &Connection) -> Vec<CandidateBlock> {
+    let Ok(mut stmt) = conn.prepare(
+        "SELECT b.id, b.page_id, p.path, p.title, b.block_id, b.block_type, b.content_text \
+         FROM blocks b JOIN pages p ON p.id = b.page_id ORDER BY p.path, b.position",
+    ) else {
+        return Vec::new();
+    };
+    stmt.query_map([], |row| {
+        Ok(CandidateBlock {
+            block_rowid: row.get(0)?,
+            page_id: row.get(1)?,
+            path: row.get(2)?,
+            title: row.get(3)?,
+            block_id: row.get(4)?,
+            block_type: row.get(5)?,
+            content: row.get(6)?,
+        })
+    })
+    .map(|rows| rows.filter_map(Result::ok).collect())
+    .unwrap_or_default()
+}
+
+/// Stage two: bidirectional one-hop neighbours of the seed pages, seeds excluded.
+pub fn neighbor_paths(conn: &Connection, seeds: &[String]) -> Vec<String> {
+    if seeds.is_empty() {
+        return Vec::new();
+    }
+    let mut neighbors = Vec::new();
+    for chunk in chunked_paths(seeds) {
+        let placeholders = vec!["?"; chunk.len()].join(",");
+        let sql = format!(
+            "SELECT DISTINCT p.path FROM links l \
+             JOIN pages seed ON seed.id IN (SELECT id FROM pages WHERE path IN ({placeholders})) \
+             JOIN pages p ON p.id = CASE \
+               WHEN l.source_page_id = seed.id THEN l.target_page_id \
+               WHEN l.target_page_id = seed.id THEN l.source_page_id END \
+             WHERE p.path NOT IN ({placeholders}) ORDER BY p.path"
+        );
+        // The seed list is bound twice: once for the join and once for the exclusion.
+        let params: Vec<String> = chunk.iter().chain(chunk.iter()).cloned().collect();
+        let Ok(mut stmt) = conn.prepare(&sql) else {
+            continue;
+        };
+        let rows = stmt
+            .query_map(rusqlite::params_from_iter(params.iter()), |row| {
+                row.get::<_, String>(0)
+            })
+            .map(|rows| rows.filter_map(Result::ok).collect::<Vec<_>>())
+            .unwrap_or_default();
+        neighbors.extend(rows);
+    }
+    neighbors.sort();
+    neighbors.dedup();
+    neighbors
+}
+
+/// Reads stored vectors for the given block row ids.
+pub fn vectors_for_blocks(conn: &Connection, rowids: &[i64]) -> Vec<VectorRow> {
+    if rowids.is_empty() {
+        return Vec::new();
+    }
+    let mut vectors = Vec::new();
+    for chunk in rowids.chunks(400) {
+        let placeholders = vec!["?"; chunk.len()].join(",");
+        let sql = format!(
+            "SELECT block_rowid, vector, model FROM block_vectors WHERE block_rowid IN ({placeholders})"
+        );
+        let Ok(mut stmt) = conn.prepare(&sql) else {
+            continue;
+        };
+        let rows = stmt
+            .query_map(rusqlite::params_from_iter(chunk.iter()), |row| {
+                Ok((
+                    row.get::<_, i64>(0)?,
+                    row.get::<_, String>(1)?,
+                    row.get::<_, String>(2)?,
+                ))
+            })
+            .map(|rows| rows.filter_map(Result::ok).collect::<Vec<_>>())
+            .unwrap_or_default();
+        for (block_rowid, raw, model) in rows {
+            // A corrupt JSON blob must degrade retrieval, not crash it.
+            if let Ok(vector) = serde_json::from_str::<Vec<f64>>(&raw) {
+                if !vector.is_empty() {
+                    vectors.push(VectorRow {
+                        block_rowid,
+                        vector,
+                        model,
+                    });
+                }
+            }
+        }
+    }
+    vectors
+}
+
+/// One vector row to write: `(block_rowid, block_id, block_type, vector, model)`.
+pub type PageVectorItem<'a> = (i64, Option<&'a str>, &'a str, &'a [f64], &'a str);
+
+/// Replaces all vectors of one page inside a transaction (DEV-011 indexing).
+pub fn replace_page_vectors(
+    conn: &mut Connection,
+    page_id: i64,
+    items: &[PageVectorItem<'_>],
+) -> Result<usize, String> {
+    let transaction = conn.transaction().map_err(|error| error.to_string())?;
+    transaction
+        .execute("DELETE FROM block_vectors WHERE page_id = ?1", [page_id])
+        .map_err(|error| error.to_string())?;
+    let mut written = 0;
+    for (block_rowid, block_id, block_type, vector, model) in items {
+        let encoded =
+            serde_json::to_string(vector).map_err(|error| format!("invalid vector: {error}"))?;
+        transaction
+            .execute(
+                "INSERT OR REPLACE INTO block_vectors(block_rowid,page_id,block_id,block_type,vector,dims,model) \
+                 VALUES(?1,?2,?3,?4,?5,?6,?7)",
+                rusqlite::params![
+                    block_rowid,
+                    page_id,
+                    block_id,
+                    block_type,
+                    encoded,
+                    vector.len() as i64,
+                    model
+                ],
+            )
+            .map_err(|error| error.to_string())?;
+        written += 1;
+    }
+    transaction.commit().map_err(|error| error.to_string())?;
+    Ok(written)
+}
+
+pub fn set_vector_meta(conn: &Connection, key: &str, value: &str) -> Result<(), String> {
+    conn.execute(
+        "INSERT OR REPLACE INTO vector_meta(key,value) VALUES(?1,?2)",
+        rusqlite::params![key, value],
+    )
+    .map_err(|error| error.to_string())?;
+    Ok(())
+}
+
+pub fn vector_meta(conn: &Connection, key: &str) -> Option<String> {
+    conn.query_row(
+        "SELECT value FROM vector_meta WHERE key = ?1",
+        [key],
+        |row| row.get::<_, String>(0),
+    )
+    .ok()
+}
+
+pub fn vector_coverage(conn: &Connection) -> VectorCoverage {
+    let count = |sql: &str| -> i64 {
+        conn.query_row(sql, [], |row| row.get::<_, i64>(0))
+            .unwrap_or(0)
+    };
+    VectorCoverage {
+        blocks: count("SELECT COUNT(*) FROM blocks"),
+        vectors: count("SELECT COUNT(*) FROM block_vectors"),
+        model: vector_meta(conn, "embedding_model"),
+    }
+}
+
+/// DEV-008 confidence of a page, or `None` when it has never been computed.
+pub fn confidence_score(conn: &Connection, page_id: i64) -> Option<f64> {
+    conn.query_row(
+        "SELECT score FROM confidence WHERE page_id = ?1",
+        [page_id],
+        |row| row.get::<_, f64>(0),
+    )
+    .ok()
+}
+
 #[cfg(test)]
 pub(crate) use tests::with_test_lock;
 
@@ -1125,7 +1426,11 @@ mod tests {
     use std::time::{SystemTime, UNIX_EPOCH};
 
     pub(crate) fn with_test_lock<T>(operation: impl FnOnce() -> T) -> T {
-        let _guard = TEST_LOCK.lock().expect("index test lock");
+        // Tolerate poisoning: one failing assertion must not mask the results of
+        // every other test sharing this lock.
+        let _guard = TEST_LOCK
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
         operation()
     }
 
@@ -1204,6 +1509,158 @@ mod tests {
             assert_eq!(jumps["data"][0]["path"], json!("b.md"));
             assert_eq!(jumps["data"][0]["match"], json!("title"));
 
+            close();
+            let _ = fs::remove_dir_all(root);
+        });
+    }
+
+    #[test]
+    fn search_page_hits_classifies_tiers_term_wise() {
+        with_test_lock(|| {
+            let root = seed_vault("tiers");
+            assert_eq!(rebuild(&root)["ok"], json!(true));
+            {
+                let guard = db_handle();
+                let conn = guard.as_ref().expect("index open");
+
+                let hits = search_page_hits(conn, "alpha", 10);
+                let tier_of =
+                    |path: &str| hits.iter().find(|hit| hit.path == path).map(|hit| hit.tier);
+                assert_eq!(tier_of("a.md"), Some("title"));
+                assert_eq!(tier_of("b.md"), Some("content"));
+
+                // Every term must be contained in a field for that tier to win.
+                let tag_hits = search_page_hits(conn, "rust", 10);
+                assert!(tag_hits.iter().any(|hit| hit.path == "a.md"));
+                assert!(tag_hits
+                    .iter()
+                    .all(|hit| hit.tier == "tag" || hit.tier == "title"));
+
+                assert!(search_page_hits(conn, "  ", 10).is_empty());
+            }
+            close();
+            let _ = fs::remove_dir_all(root);
+        });
+    }
+
+    #[test]
+    fn blocks_and_neighbors_follow_bidirectional_links() {
+        with_test_lock(|| {
+            let root = seed_vault("blocks");
+            assert_eq!(rebuild(&root)["ok"], json!(true));
+            {
+                let guard = db_handle();
+                let conn = guard.as_ref().expect("index open");
+
+                // a.md splits into a heading block and a body block.
+                let blocks = blocks_for_paths(conn, &["a.md".to_string()]);
+                assert_eq!(blocks.len(), 2);
+                assert!(blocks
+                    .iter()
+                    .any(|block| block.content.contains("Link [[b]]")));
+                assert!(blocks.iter().all(|block| block.block_type == "text"));
+
+                assert_eq!(
+                    neighbor_paths(conn, &["a.md".to_string()]),
+                    vec!["b.md".to_string()]
+                );
+                // The reverse direction matters too: b links back to Alpha.
+                assert_eq!(
+                    neighbor_paths(conn, &["b.md".to_string()]),
+                    vec!["a.md".to_string()]
+                );
+                assert!(
+                    neighbor_paths(conn, &["c.md".to_string()]).is_empty(),
+                    "c.md has no links"
+                );
+            }
+            close();
+            let _ = fs::remove_dir_all(root);
+        });
+    }
+
+    #[test]
+    fn vector_round_trip_reports_coverage() {
+        with_test_lock(|| {
+            let root = seed_vault("vectors");
+            assert_eq!(rebuild(&root)["ok"], json!(true));
+            {
+                let mut guard = db_handle();
+                let conn = guard.as_mut().expect("index open");
+                let blocks = blocks_for_paths(conn, &["a.md".to_string()]);
+                let (rowid, page_id) = (blocks[0].block_rowid, blocks[0].page_id);
+
+                let written = replace_page_vectors(
+                    conn,
+                    page_id,
+                    &[(
+                        rowid,
+                        Some("abc123"),
+                        "text",
+                        &[1.0, 2.0, 3.0],
+                        "test-model",
+                    )],
+                )
+                .expect("write page vectors");
+                assert_eq!(written, 1);
+
+                let stored = vectors_for_blocks(conn, &[rowid]);
+                assert_eq!(stored.len(), 1);
+                assert_eq!(stored[0].vector, vec![1.0, 2.0, 3.0]);
+                assert_eq!(stored[0].model, "test-model");
+
+                set_vector_meta(conn, "embedding_model", "test-model").expect("set meta");
+                let coverage = vector_coverage(conn);
+                assert!(coverage.blocks >= 1);
+                assert_eq!(coverage.vectors, 1);
+                assert_eq!(coverage.model.as_deref(), Some("test-model"));
+
+                // Replacing the same page must not accumulate duplicate rows.
+                replace_page_vectors(
+                    conn,
+                    page_id,
+                    &[(rowid, Some("abc123"), "text", &[9.0], "test-model")],
+                )
+                .expect("rewrite page vectors");
+                assert_eq!(vector_coverage(conn).vectors, 1);
+
+                // Unreadable blobs degrade silently instead of poisoning queries.
+                conn.execute(
+                    "UPDATE block_vectors SET vector = '{oops' WHERE block_rowid = ?1",
+                    [rowid],
+                )
+                .expect("corrupt blob");
+                assert!(vectors_for_blocks(conn, &[rowid]).is_empty());
+            }
+            close();
+            let _ = fs::remove_dir_all(root);
+        });
+    }
+
+    #[test]
+    fn confidence_score_reads_computed_pages_only() {
+        with_test_lock(|| {
+            let root = seed_vault("confidence");
+            assert_eq!(rebuild(&root)["ok"], json!(true));
+            {
+                let guard = db_handle();
+                let conn = guard.as_ref().expect("index open");
+                let page_id: i64 = conn
+                    .query_row("SELECT id FROM pages WHERE path = 'a.md'", [], |row| {
+                        row.get(0)
+                    })
+                    .expect("page id");
+
+                assert_eq!(confidence_score(conn, page_id), None);
+                conn.execute(
+                    "INSERT INTO confidence(page_id, score, factors_json, computed_at) \
+                     VALUES(?1, 77.0, '{}', '2026-10-15')",
+                    [page_id],
+                )
+                .expect("seed confidence");
+                assert_eq!(confidence_score(conn, page_id), Some(77.0));
+                assert_eq!(confidence_score(conn, 999_999), None);
+            }
             close();
             let _ = fs::remove_dir_all(root);
         });

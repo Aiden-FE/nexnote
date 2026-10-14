@@ -144,7 +144,7 @@ function WizardBody({
     if (!isEdit) {
       setBaseUrl(p.baseUrl);
       if (!name) setName(t(p.titleKey));
-      if (id === 'local-embedding') setModel('local-hash-384');
+      if (id === 'local-embedding') setModel('multilingual-e5-small');
     }
     invalidateTest();
     setStep('connection');
@@ -253,7 +253,7 @@ function WizardBody({
         }
         const embedModel =
           kind === 'local-embedding'
-            ? 'local-hash-384'
+            ? 'multilingual-e5-small'
             : models.find((m) => m.toLowerCase().includes('embed'));
         if (embedModel) {
           await invoke('ai:features:set', {

@@ -1,8 +1,8 @@
 use crate::{
     ai_service::{self, AiStore},
-    binary_service,
+    binary_service, embedding_service,
     git_service::{self, GitError},
-    git_sync, index_service, plugin_service, print_service, vault_fs,
+    git_sync, index_service, plugin_service, print_service, retrieval_service, vault_fs,
 };
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
@@ -381,14 +381,26 @@ fn embedding_source(store: &AiStore) -> Result<(ai_service::AiProfileView, Strin
 
 fn ai_embed_with_metadata(
     store: &AiStore,
+    embedding_state: &embedding_service::EmbeddingState,
     texts: &[String],
+    role: embedding_service::InputRole,
 ) -> Result<ai_service::EmbedResult, Value> {
     let (profile, model) = embedding_source(store)?;
     if profile.kind == ai_service::AiProviderKind::LocalEmbedding {
-        return Err(error(
-            "LOCAL_EMBEDDING_NOT_READY",
-            "The built-in embedding runtime is not available yet",
-        ));
+        // Built-in vectors stay on device; the prefix depends on the semantic
+        // role and must never be supplied by the caller.
+        let vectors = embedding_state
+            .embed(role, texts)
+            .map_err(ai_error)?
+            .into_iter()
+            .map(|vector| vector.into_iter().map(f64::from).collect())
+            .collect();
+        return Ok(ai_service::EmbedResult {
+            dimensions: embedding_service::MODEL_DIMENSIONS,
+            vectors,
+            model: embedding_service::model_identity(),
+            profile_id: profile.id,
+        });
     }
     // Saved-profile keys remain fail-closed until the OS credential vault lands.
     let vectors = ai_service::embed(&profile.base_url, None, &model, texts).map_err(ai_error)?;
@@ -405,6 +417,7 @@ fn ai_embed_with_metadata(
 pub async fn nexnote_invoke(
     app: AppHandle,
     state: State<'_, ProductState>,
+    embedding: State<'_, std::sync::Arc<embedding_service::EmbeddingState>>,
     plugin_state: State<'_, PluginState>,
     vault_root: State<'_, VaultRoot>,
     channel: String,
@@ -414,6 +427,7 @@ pub async fn nexnote_invoke(
     Ok(dispatch(
         &app,
         &state,
+        &embedding,
         &plugin_state,
         &vault_root,
         &channel,
@@ -424,6 +438,7 @@ pub async fn nexnote_invoke(
 fn dispatch(
     app: &AppHandle,
     state: &State<'_, ProductState>,
+    embedding: &State<'_, std::sync::Arc<embedding_service::EmbeddingState>>,
     plugin_state: &State<'_, PluginState>,
     vault_root: &State<'_, VaultRoot>,
     channel: &str,
@@ -1197,7 +1212,15 @@ fn dispatch(
             let texts: Result<Vec<String>, Value> =
                 serde_json::from_value(payload.get("texts").cloned().unwrap_or(Value::Null))
                     .map_err(|e| error("INVALID_AI_EMBEDDING_INPUT", &e.to_string()));
-            match texts.and_then(|texts| ai_embed_with_metadata(&store, &texts)) {
+            let embedding_state = embedding.inner().clone();
+            match texts.and_then(|texts| {
+                ai_embed_with_metadata(
+                    &store,
+                    embedding_state.as_ref(),
+                    &texts,
+                    embedding_service::InputRole::Passage,
+                )
+            }) {
                 Ok(result) if channel == "ai:embed" => {
                     ok(serde_json::to_value(result.vectors).unwrap_or(Value::Null))
                 }
@@ -1205,6 +1228,49 @@ fn dispatch(
                 Err(failure) => failure,
             }
         }
+        "ai:builtInEmbedding:status" => ok(embedding.status()),
+        "ai:builtInEmbedding:download" => {
+            // Downloads are single-flight and emit progress events so the
+            // renderer never blocks an IPC call for a 100MB+ artifact.
+            if let Err(message) = embedding.begin_download() {
+                return error("BUILTIN_EMBEDDING_DOWNLOAD_IN_FLIGHT", &message);
+            }
+            let app_handle = app.clone();
+            let embedding_state = embedding.inner().clone();
+            std::thread::spawn(move || {
+                let result = embedding_state.ensure_downloaded(|progress| {
+                    let _ = app_handle.emit(
+                        "ai:builtInEmbeddingStatus",
+                        json!({
+                            "phase": "downloading",
+                            "file": progress.file,
+                            "downloadedBytes": progress.downloaded_bytes,
+                            "totalBytes": progress.total_bytes,
+                            "done": progress.done,
+                        }),
+                    );
+                });
+                embedding_state.end_download();
+                let _ = app_handle.emit(
+                    "ai:builtInEmbeddingStatus",
+                    match &result {
+                        Ok(()) => json!({
+                            "phase": "ready",
+                            "identity": embedding_service::model_identity(),
+                        }),
+                        Err(message) => json!({
+                            "phase": "error",
+                            "error": message,
+                        }),
+                    },
+                );
+            });
+            ok(json!({ "started": true }))
+        }
+        "ai:builtInEmbedding:delete" => match embedding.delete() {
+            Ok(()) => ok(json!({ "deleted": true })),
+            Err(message) => error("BUILTIN_EMBEDDING_DELETE_FAILED", &message),
+        },
         "ai:export" => {
             let store = ai_store(app);
             ok(store.export_profiles())
@@ -1216,10 +1282,36 @@ fn dispatch(
                 None => error("INVALID_AI_IMPORT", "json is required"),
             }
         }
-        "ai:retrieve" => error(
-            "AI_RETRIEVAL_NOT_PORTED",
-            "AI retrieval is implemented by the DEV-121 runtime slice",
-        ),
+        "ai:retrieve" => {
+            let Some(root) = vault_root.get() else {
+                return error("VAULT_NOT_OPEN", "Open a vault before retrieving context");
+            };
+            if let Err(failure) = index_service::ensure_open(&root) {
+                return failure;
+            }
+            let store = ai_store(app);
+            let request = retrieval_service::RetrievalRequest::from_payload(payload);
+            let embedder = match embedding_source(&store) {
+                Ok((profile, _)) if profile.kind == ai_service::AiProviderKind::LocalEmbedding => {
+                    Some(retrieval_service::Embedder::BuiltIn {
+                        state: embedding.inner().clone(),
+                        profile_id: profile.id,
+                    })
+                }
+                Ok((profile, model)) => Some(retrieval_service::Embedder::Remote {
+                    base_url: profile.base_url,
+                    model,
+                    profile_id: profile.id,
+                }),
+                // No embedding configuration degrades retrieval; it is not an error.
+                Err(_) => None,
+            };
+            ok(retrieval_service::retrieve(
+                &root,
+                &request,
+                embedder.as_ref(),
+            ))
+        }
         channel if channel.starts_with("ai:") => error(
             "UNSUPPORTED_CHANNEL",
             "This AI command is not ported to Rust yet",
@@ -1849,18 +1941,130 @@ fn dispatch(
             }
         }
         channel if channel.starts_with("agent:run:") => {
-            let scenario = channel.trim_start_matches("agent:run:");
+            let scenario = channel.trim_start_matches("agent:run:").to_string();
             let run_id = uuid::Uuid::new_v4().to_string();
-            let _messages = payload.get("messages").cloned().unwrap_or(json!([]));
-            let _ = app.emit(
-                "agent:runEvent",
-                json!({
-                    "runId": run_id,
-                    "scenario": scenario,
-                    "event": { "type": "start", "model": "streaming" },
-                }),
-            );
-            ok(json!({ "runId": run_id }))
+            let messages: Vec<Value> = payload
+                .get("messages")
+                .and_then(Value::as_array)
+                .cloned()
+                .unwrap_or_default();
+
+            // Resolve the chat-capable profile the same way ai:chat would:
+            // the writing feature assignment wins over the default profile.
+            let store = ai_store(app);
+            let ai_state = store.get_state();
+            let chat_profile_id = ai_state
+                .features
+                .writing
+                .as_ref()
+                .map(|assignment| assignment.profile_id.clone())
+                .or_else(|| ai_state.default_profile_id.clone());
+            let Some(chat_profile_id) = chat_profile_id else {
+                return error(
+                    "AI_CHAT_NOT_CONFIGURED",
+                    "No AI profile is configured for agent runs",
+                );
+            };
+            let Some(profile) = ai_state
+                .profiles
+                .iter()
+                .find(|profile| profile.id == chat_profile_id)
+            else {
+                return error(
+                    "AI_PROFILE_NOT_FOUND",
+                    &format!("AI profile not found: {chat_profile_id}"),
+                );
+            };
+            if profile.kind == ai_service::AiProviderKind::LocalEmbedding {
+                return error(
+                    "AI_PROFILE_CHAT_INCAPABLE",
+                    "A local embedding profile cannot run agent scenarios",
+                );
+            }
+            let model = ai_state
+                .features
+                .writing
+                .as_ref()
+                .map(|assignment| assignment.model.clone())
+                .unwrap_or_else(|| profile.default_model.clone());
+            let base_url = profile.base_url.clone();
+            drop(store);
+
+            // Agent runs stream through events; the IPC call itself returns as
+            // soon as the run id exists, matching the Electron contract.
+            let app_handle = app.clone();
+            let run_id_for_response = run_id.clone();
+            std::thread::spawn(move || {
+                let result = ai_service::stream_chat(
+                    &base_url,
+                    // Saved-profile keys remain fail-closed until the OS
+                    // credential vault lands in the DEV-121 keychain slice.
+                    None,
+                    &model,
+                    &messages,
+                    |event| match event {
+                        ai_service::ChatSseEvent::Start { model } => {
+                            let _ = app_handle.emit(
+                                "agent:runEvent",
+                                json!({
+                                    "runId": run_id.as_str(),
+                                    "scenario": scenario.as_str(),
+                                    "event": { "type": "start", "model": model.as_str() },
+                                }),
+                            );
+                        }
+                        ai_service::ChatSseEvent::Delta { text } => {
+                            let _ = app_handle.emit(
+                                "agent:runEvent",
+                                json!({
+                                    "runId": run_id.as_str(),
+                                    "scenario": scenario.as_str(),
+                                    "event": { "type": "delta", "text": text.as_str() },
+                                }),
+                            );
+                        }
+                        ai_service::ChatSseEvent::Done => {
+                            let _ = app_handle.emit(
+                                "agent:runEvent",
+                                json!({
+                                    "runId": run_id.as_str(),
+                                    "scenario": scenario.as_str(),
+                                    "event": { "type": "done" },
+                                }),
+                            );
+                        }
+                        ai_service::ChatSseEvent::Error { message, code } => {
+                            let _ = app_handle.emit(
+                                "agent:runEvent",
+                                json!({
+                                    "runId": run_id.as_str(),
+                                    "scenario": scenario.as_str(),
+                                    "event": {
+                                        "type": "error",
+                                        "message": message.as_str(),
+                                        "code": code.as_str(),
+                                    },
+                                }),
+                            );
+                        }
+                    },
+                );
+                if let Err(error) = result {
+                    let _ = app_handle.emit(
+                        "agent:runEvent",
+                        json!({
+                            "runId": run_id.as_str(),
+                            "scenario": scenario.as_str(),
+                            "event": {
+                                "type": "error",
+                                "message": error.as_str(),
+                                "code": "AGENT_STREAM_FAILED",
+                            },
+                        }),
+                    );
+                }
+            });
+            ok(json!({ "runId": run_id_for_response }))
         }
         _ => error(
             "UNSUPPORTED_CHANNEL",

@@ -2,6 +2,22 @@ import type { GitStatus } from './channels/git';
 import type { VaultInfo } from '../types/vault';
 import type { UpdateCheckResult, UpdateChannel } from './channels/app';
 import type { AiConfigState } from '../types/ai';
+
+/**
+ * 内置语义向量下载进度载荷（ADR-0027 / DEV-121）。
+ * downloading 阶段携带分文件字节进度；ready 表示三个固定文件均已通过 SHA-256 校验。
+ */
+export interface BuiltInEmbeddingDownloadStatus {
+  phase: 'downloading' | 'ready' | 'error';
+  file?: string;
+  downloadedBytes?: number;
+  totalBytes?: number;
+  done?: boolean;
+  /** ready 时给出 generation identity（model/revision/dtype/维度/度量）。 */
+  identity?: string;
+  /** error 阶段的失败原因（下载失败或校验不通过）。 */
+  error?: string;
+}
 import type { AgentScenario, AgentRunEvent } from '../types/agent';
 import type { ChatStreamEvent } from '../types/ai';
 import type { IndexStatus } from '../types/index';
@@ -26,6 +42,12 @@ export interface IpcEventMap {
   'ai:streamEvent': { streamId: string; event: ChatStreamEvent };
   /** DEV-011 向量索引后台构建进度 */
   'ai:retrievalStatus': { status: RetrievalIndexStatusPayload };
+  /**
+   * DEV-121 内置语义向量下载进度（ADR-0027）。
+   * 用户显式启用后才下载固定 revision 的模型文件；
+   * error 终态说明校验或网络失败，此时召回退回 FTS + 双链。
+   */
+  'ai:builtInEmbeddingStatus': BuiltInEmbeddingDownloadStatus;
   /** AI 配置变化（Profile 增删改/分功能指定/embedding generation 变更） */
   'ai:configChanged': { state: AiConfigState };
   /** Git 工作区/上游状态变化；自动提交、pull/push 后推送。 */
@@ -96,6 +118,7 @@ export const IPC_EVENT_CHANNELS: readonly string[] = [
   'app:updateStatus',
   'agent:runEvent',
   'ai:retrievalStatus',
+  'ai:builtInEmbeddingStatus',
   'ai:configChanged',
   'git:statusChanged',
   'git:syncProgress',

@@ -154,6 +154,38 @@ export interface EmbedResult {
   profileId: string;
 }
 
+/**
+ * 内置语义向量缓存状态（ADR-0027 / DEV-121）。
+ * 模型不随安装包捆绑：用户显式启用后才按固定 revision 下载并校验。
+ * identity 覆盖 model/revision/dtype/维度/度量，变化即新 generation，禁止混排。
+ */
+export interface BuiltInEmbeddingFile {
+  name: string;
+  remotePath: string;
+  sizeBytes: number;
+  /** 与固定 revision 绑定的期望摘要；校验不通过的文件绝不加载。 */
+  sha256: string;
+  present: boolean;
+  verified: boolean;
+}
+
+export interface BuiltInEmbeddingStatus {
+  identity: string;
+  model: string;
+  revision: string;
+  dtype: string;
+  dimensions: number;
+  metric: string;
+  license: string;
+  /** e5 输入角色前缀；缺失会显著降低检索质量，由运行时统一施加。 */
+  rolePrefixes: { query: string; passage: string };
+  directory: string;
+  files: BuiltInEmbeddingFile[];
+  downloaded: boolean;
+  downloading: boolean;
+  loaded: boolean;
+}
+
 /** Profile 导出捆绑（永不含密钥）。 */
 export interface AiProfileExportBundle {
   app: 'nexnote';
