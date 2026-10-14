@@ -1,7 +1,10 @@
 mod ai_service;
+mod binary_service;
+mod confidence_service;
 mod git_service;
 mod git_sync;
 mod index_service;
+mod print_service;
 mod product;
 mod vault_fs;
 

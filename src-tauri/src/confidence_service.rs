@@ -1,3 +1,5 @@
+#![allow(dead_code)]
+
 //! Confidence score computation and SQLite persistence for DEV-119.
 
 use rusqlite::{params, params_from_iter, Connection};
@@ -334,7 +336,7 @@ fn page_authority<'a>(
     for _ in 0..20 {
         let dangling_mass: f64 = ranks
             .iter()
-            .filter(|(path, _)| outgoing_targets.get(*path).map_or(true, Vec::is_empty))
+            .filter(|(path, _)| outgoing_targets.get(*path).is_none_or(Vec::is_empty))
             .map(|(_, rank)| *rank)
             .sum();
         let dangling_share = 0.85 * dangling_mass / page_count;

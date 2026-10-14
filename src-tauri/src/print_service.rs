@@ -1,3 +1,5 @@
+#![allow(dead_code)]
+
 //! Validation-only print document core for the Tauri runtime.
 
 use serde::{Deserialize, Serialize};
@@ -123,7 +125,7 @@ mod tests {
         assert_eq!(validated.html_bytes, request().html.len());
 
         let result = print_document(&request()).expect("partial result");
-        assert_eq!(result.accepted, false);
+        assert!(!result.accepted);
         assert_eq!(
             result.failure_reason.as_deref(),
             Some(PRINT_RUNTIME_NOT_INTEGRATED)
