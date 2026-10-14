@@ -9,6 +9,7 @@ mod plugin_service;
 mod print_service;
 mod product;
 mod retrieval_service;
+mod updater_service;
 mod vault_fs;
 mod watcher_service;
 
@@ -24,6 +25,8 @@ pub fn run() {
     let host_version = env!("CARGO_PKG_VERSION").to_owned();
     tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
+        .plugin(tauri_plugin_updater::Builder::new().build())
+        .plugin(tauri_plugin_process::init())
         .manage(product::ProductState::default())
         .manage(std::sync::Arc::new(embedding_service::EmbeddingState::new(
             &app_data,

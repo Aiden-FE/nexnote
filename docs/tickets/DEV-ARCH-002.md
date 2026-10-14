@@ -31,7 +31,7 @@
 | DEV-121 | AI、召回与内置语义向量迁移 | DEV-118 | in progress |
 | DEV-122 | 插件沙箱与 capability 迁移 | DEV-116、DEV-118 | in progress |
 | DEV-123 | 二进制编辑器宿主与打印迁移 | DEV-116、DEV-117 | in progress |
-| DEV-124 | Tauri 更新、签名、发布与 QA | DEV-116 | todo |
+| DEV-124 | Tauri 更新、签名、发布与 QA | DEV-116 | in progress |
 | DEV-125 | Electron 退役与默认通道切换 | 全部子票 | blocked |
 
 ## Epic 完成定义

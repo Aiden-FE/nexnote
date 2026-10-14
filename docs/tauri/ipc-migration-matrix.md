@@ -23,9 +23,9 @@
 | Channel | 所有权 | persist | net | fs | proc | Electron handler | Tauri target | batch | status |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
 | app:getInfo | app-state | no | no | no | no | `app-handlers.ts` | `product::app_info` | foundation | pending |
-| app:checkForUpdates | remote-provider | no | yes | no | no | `app-handlers.ts` | `updater::check` | updater | pending |
-| app:downloadUpdate | remote-provider | yes | yes | yes | no | `app-handlers.ts` | `updater::download` | updater | pending |
-| app:installUpdate | host | yes | no | yes | yes | `app-handlers.ts` | `updater::install` | updater | pending |
+| app:checkForUpdates | remote-provider | no | yes | no | no | `app-handlers.ts` | `updater::check` | updater | ported |
+| app:downloadUpdate | remote-provider | yes | yes | yes | no | `app-handlers.ts` | `updater::download` | updater | ported |
+| app:installUpdate | host | yes | no | yes | yes | `app-handlers.ts` | `updater::install` | updater | ported |
 | app:setUpdateChannel | app-state | yes | no | yes | no | `app-handlers.ts` | `product::set_update_channel` | foundation | pending |
 | app:getUpdateSettings | app-state | yes | no | yes | no | `app-handlers.ts` | `product::get_update_settings` | foundation | pending |
 | app:setUpdateSettings | app-state | yes | no | yes | no | `app-handlers.ts` | `product::set_update_settings` | foundation | pending |

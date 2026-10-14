@@ -2,8 +2,8 @@ use crate::{
     ai_service::{self, AiStore},
     binary_service, embedding_service,
     git_service::{self, GitError},
-    git_sync, index_service, plugin_service, print_service, retrieval_service, vault_fs,
-    watcher_service,
+    git_sync, index_service, plugin_service, print_service, retrieval_service, updater_service,
+    vault_fs, watcher_service,
 };
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
@@ -448,10 +448,8 @@ fn dispatch(
 ) -> Value {
     match channel {
         "app:getInfo" => ok(app_info(app)),
-        "app:checkForUpdates" | "app:downloadUpdate" | "app:installUpdate" => error(
-            "APP_UPDATE_NOT_PORTED",
-            "Updater flows are not ported to Tauri yet",
-        ),
+        "app:checkForUpdates" => updater_service::check(app),
+        "app:downloadUpdate" | "app:installUpdate" => updater_service::download_and_install(app),
         "app:getUpdateSettings" => {
             let settings = state.global_settings.lock().expect("settings lock");
             ok(settings
