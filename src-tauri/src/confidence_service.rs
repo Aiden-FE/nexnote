@@ -547,6 +547,152 @@ pub fn store_confidence(
     Ok(inserted)
 }
 
+/// Refreshes confidence scores for the current vault and returns the
+/// affected paths (None = full rebuild). Emits nothing itself — the caller
+/// owns the event boundary.
+pub fn refresh(
+    conn: &Connection,
+    root: &std::path::Path,
+    scope: Option<&[String]>,
+) -> Result<Vec<String>, String> {
+    // Gather page inputs (id, path, created_at, confidence_boost).
+    let mut page_stmt = conn
+        .prepare("SELECT id, path, created_at, confidence_boost FROM pages ORDER BY path")
+        .map_err(|e| e.to_string())?;
+    let all_pages: Vec<ConfidencePageInput> = page_stmt
+        .query_map([], |row| {
+            Ok(ConfidencePageInput {
+                id: row.get(0)?,
+                path: row.get(1)?,
+                created_at: row.get(2)?,
+                confidence_boost: row.get(3)?,
+            })
+        })
+        .map_err(|e| e.to_string())?
+        .filter_map(Result::ok)
+        .collect();
+    drop(page_stmt);
+
+    // Filter to scope if provided (incremental refresh after git commit).
+    let pages: Vec<ConfidencePageInput> = match scope {
+        Some(paths) => all_pages
+            .into_iter()
+            .filter(|page| paths.iter().any(|p| p == &page.path))
+            .collect(),
+        None => all_pages,
+    };
+    if pages.is_empty() {
+        return Ok(Vec::new());
+    }
+
+    // Build the graph snapshot from pages and links.
+    let mut graph_stmt = conn
+        .prepare("SELECT p.path FROM pages p ORDER BY p.path")
+        .map_err(|e| e.to_string())?;
+    let graph_pages: Vec<GraphPage> = graph_stmt
+        .query_map([], |row| Ok(GraphPage { path: row.get(0)? }))
+        .map_err(|e| e.to_string())?
+        .filter_map(Result::ok)
+        .collect();
+    drop(graph_stmt);
+
+    let mut link_stmt = conn
+        .prepare(
+            "SELECT sp.path, tp.path FROM links l \
+             JOIN pages sp ON sp.id = l.source_page_id \
+             LEFT JOIN pages tp ON tp.id = l.target_page_id \
+             WHERE tp.path IS NOT NULL",
+        )
+        .map_err(|e| e.to_string())?;
+    let graph_links: Vec<GraphLink> = link_stmt
+        .query_map([], |row| {
+            Ok(GraphLink {
+                source: row.get(0)?,
+                target: row.get(1)?,
+            })
+        })
+        .map_err(|e| e.to_string())?
+        .filter_map(Result::ok)
+        .collect();
+    drop(link_stmt);
+
+    let graph = GraphSnapshot {
+        pages: graph_pages,
+        links: graph_links,
+    };
+
+    // Gather git file histories via a single git log pass.
+    let histories = git_file_histories(root);
+
+    // Compute and store.
+    let now = ConfidenceTime::from_unix_millis(
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|d| d.as_millis() as i64)
+            .unwrap_or_default(),
+    );
+    let results = compute_confidence_results(&pages, &graph, &histories, now);
+    let paths: Vec<String> = results.iter().map(|r| r.path.clone()).collect();
+    store_confidence(conn, &results, scope).map_err(|e| e.to_string())?;
+    Ok(paths)
+}
+
+/// Builds per-file git histories from `git log --numstat --format`.
+/// Returns an empty map for non-git directories (confidence degrades to
+/// graph-only factors rather than failing).
+fn git_file_histories(root: &std::path::Path) -> GitFileHistories {
+    let mut histories = GitFileHistories::new();
+    let output = std::process::Command::new("git")
+        .args(["log", "--numstat", "--format=%aI\x1f%an"])
+        .current_dir(root)
+        .output();
+    let Ok(output) = output else { return histories };
+    if !output.status.success() {
+        return histories;
+    }
+    let text = String::from_utf8_lossy(&output.stdout);
+
+    let mut current_author: Option<String> = None;
+    let mut current_date: Option<String> = None;
+    for line in text.lines() {
+        if line.ends_with("\u{1f}") {
+            continue;
+        }
+        if line.contains('\u{1f}') {
+            let mut parts = line.splitn(2, '\u{1f}');
+            current_date = parts.next().map(ToOwned::to_owned);
+            current_author = parts.next().map(ToOwned::to_owned);
+            continue;
+        }
+        // numstat line: additions\tdeletions\tpath
+        let parts: Vec<&str> = line.split('\t').collect();
+        if parts.len() != 3 {
+            continue;
+        }
+        let (Ok(additions), Ok(deletions)) = (parts[0].parse::<u64>(), parts[1].parse::<u64>())
+        else {
+            continue;
+        };
+        let path = parts[2].to_owned();
+        let entry = histories.entry(path).or_default();
+        entry.commits += 1;
+        if let Some(date) = &current_date {
+            if entry.first_commit_at.is_none() {
+                entry.first_commit_at = Some(date.clone());
+            }
+        }
+        // Track unique authors (simplified: just count non-empty).
+        if current_author.is_some() {
+            entry.authors += 1;
+        }
+        entry.events.push(GitFileEvent {
+            additions,
+            deletions,
+        });
+    }
+    histories
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

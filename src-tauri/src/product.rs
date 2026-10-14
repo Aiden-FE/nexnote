@@ -1,7 +1,7 @@
 use crate::{
     agent_service,
     ai_service::{self, AiStore},
-    binary_host_service, binary_service, embedding_service,
+    binary_host_service, binary_service, confidence_service, embedding_service,
     git_service::{self, GitError},
     git_sync, index_service, plugin_service, print_service, retrieval_service, skill_service,
     updater_service, vault_fs, watcher_service,
@@ -308,6 +308,18 @@ fn emit_channel_event<R: tauri::Runtime>(
             if let Some(root) = vault_root.get() {
                 let status = index_service::status(&root);
                 let _ = app.emit("index:statusChanged", status["data"].clone());
+                // Confidence depends on the fully indexed pages and links.
+                if index_service::ensure_open(&root).is_ok() {
+                    let guard = index_service::db_handle();
+                    if let Some(conn) = guard.as_ref() {
+                        if let Ok(paths) = confidence_service::refresh(conn, &root, None) {
+                            let affected: Option<Vec<String>> =
+                                (!paths.is_empty()).then_some(paths);
+                            let _ =
+                                app.emit("index:confidenceChanged", json!({ "paths": affected }));
+                        }
+                    }
+                }
             }
         }
         _ => {}
