@@ -6,6 +6,7 @@ out/
 release/
 dist/
 src-tauri/target/
+src-tauri/gen/
 *.tsbuildinfo
 
 # 日志与临时
