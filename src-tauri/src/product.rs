@@ -1,4 +1,7 @@
-use crate::{index_service, vault_fs};
+use crate::{
+    git_service::{self, GitError},
+    git_sync, index_service, vault_fs,
+};
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use std::{
@@ -238,6 +241,13 @@ fn ping(namespace: &'static str, implemented_by: &'static str) -> Value {
         "namespace": namespace,
         "implementedBy": implemented_by
     }))
+}
+
+fn git_result(result: Result<Value, GitError>) -> Value {
+    match result {
+        Ok(value) => ok(value),
+        Err(failure) => error(&failure.code, &failure.message),
+    }
 }
 
 #[tauri::command]
@@ -481,6 +491,72 @@ fn dispatch(
                 _ => index_service::backlinks(&root, payload),
             }
         }
+        "git:ping" => ping("git", "DEV-120"),
+        "git:getStatus"
+        | "git:getTimeline"
+        | "git:commit"
+        | "git:recordAutoCommit"
+        | "git:initGit"
+        | "git:addRemote"
+        | "git:listRemotes"
+        | "git:pull"
+        | "git:push"
+        | "git:sync"
+        | "git:doctor:diagnose" => {
+            let Some(root) = vault_root.get() else {
+                return error("NO_VAULT", "No vault is open");
+            };
+            match channel {
+                "git:getStatus" => git_result(git_service::status(&root)),
+                "git:getTimeline" => git_result(git_service::get_timeline(
+                    &root,
+                    string_field(payload, "path"),
+                    payload.get("limit").and_then(Value::as_u64).unwrap_or(100) as usize,
+                )),
+                "git:commit" => match string_field(payload, "message") {
+                    Some(message) => git_result(git_service::commit(&root, &message)),
+                    None => error("INVALID_COMMIT_MESSAGE", "message is required"),
+                },
+                "git:recordAutoCommit" => git_result(git_service::record_auto_commit(
+                    &root,
+                    string_field(payload, "summary")
+                        .unwrap_or_default()
+                        .as_str(),
+                    payload
+                        .get("debounceMs")
+                        .and_then(Value::as_u64)
+                        .unwrap_or_default(),
+                )),
+                "git:initGit" => git_result(git_service::init(&root)),
+                "git:addRemote" => {
+                    match (string_field(payload, "name"), string_field(payload, "url")) {
+                        (Some(name), Some(url)) => git_sync::add_remote(&root, &name, &url),
+                        _ => error("INVALID_REMOTE", "name and url are required"),
+                    }
+                }
+                "git:listRemotes" => {
+                    let remotes = git_sync::list_remotes(&root);
+                    match serde_json::to_value(remotes) {
+                        Ok(value) => ok(value),
+                        Err(e) => error("SERIALIZATION_FAILED", &e.to_string()),
+                    }
+                }
+                "git:pull" => git_sync::pull(
+                    &root,
+                    payload
+                        .get("force")
+                        .and_then(Value::as_bool)
+                        .unwrap_or(false),
+                ),
+                "git:push" => git_sync::push(&root),
+                "git:sync" => git_sync::sync(&root),
+                _ => git_sync::diagnose(&root),
+            }
+        }
+        channel if channel.starts_with("git:") => error(
+            "UNSUPPORTED_CHANNEL",
+            "This Git command is not ported to Rust yet",
+        ),
         "editor:ping" => ping("editor", "DEV-002"),
         "ai:ping" => ping("ai", "DEV-009"),
         "plugins:ping" => ping("plugins", "DEV-013"),

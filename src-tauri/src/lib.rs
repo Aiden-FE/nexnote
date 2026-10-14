@@ -1,3 +1,5 @@
+mod git_service;
+mod git_sync;
 mod index_service;
 mod product;
 mod vault_fs;
