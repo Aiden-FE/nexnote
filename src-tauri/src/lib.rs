@@ -48,13 +48,21 @@ pub fn run() {
             Ok(())
         })
         .on_window_event(|window, event| {
-            // Editor hosts are parented to the main window on macOS and owned
-            // on Windows/Linux, but destroying them explicitly keeps the
-            // registry from leaking across a close/reopen cycle.
-            if matches!(event, tauri::WindowEvent::CloseRequested { .. })
-                && window.label() == "main"
-            {
-                binary_host_service::destroy_all(window.app_handle());
+            if window.label() == "main" {
+                match event {
+                    // Editor hosts are parented to the main window on macOS
+                    // and owned on Windows/Linux; explicit destroy keeps the
+                    // registry from leaking across a close/reopen cycle.
+                    tauri::WindowEvent::CloseRequested { .. } => {
+                        binary_host_service::destroy_all(window.app_handle());
+                    }
+                    // Hosts use renderer-reported placeholder rects; when the
+                    // window shrinks, clamp them to stay inside the new area.
+                    tauri::WindowEvent::Resized(_) => {
+                        binary_host_service::layout_visible(window.app_handle());
+                    }
+                    _ => {}
+                }
             }
         })
         .run(tauri::generate_context!())

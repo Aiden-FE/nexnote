@@ -262,6 +262,54 @@ pub fn set_bounds<R: Runtime>(
     ok(json!({ "applied": true }))
 }
 
+/// Repositions every active host to fit inside the main window's current
+/// bounds. Called on main-window resize/maximize/unmaximize so hosts never
+/// extend past the visible area after the window shrinks.
+pub fn layout_visible<R: Runtime>(app: &AppHandle<R>) {
+    let Some(main) = app.get_webview_window("main") else {
+        return;
+    };
+    let Ok(main_size) = main.inner_size() else {
+        return;
+    };
+    let Ok(scale) = main.scale_factor() else {
+        return;
+    };
+    let (max_w, max_h) = (
+        main_size.width as f64 / scale,
+        main_size.height as f64 / scale,
+    );
+
+    let entries: Vec<(String, HostBounds)> = {
+        let reg = registry().lock().expect("binary host registry lock");
+        let Some(active) = &reg.active_key else {
+            return;
+        };
+        reg.hosts
+            .iter()
+            .filter_map(|(key, entry)| {
+                let bounds = entry.bounds?;
+                (key == active).then_some((key.clone(), bounds))
+            })
+            .collect()
+    };
+
+    for (key, bounds) in entries {
+        let label = format!("binary-editor-{}", key.replace([':', '/'], "-"));
+        let Some(window) = app.get_webview_window(&label) else {
+            continue;
+        };
+        // Clamp to the main window content area, mirroring Electron's
+        // layoutBounds: never cover sidebar/status beyond the window edge.
+        let x = bounds.x.clamp(0.0, max_w);
+        let y = bounds.y.clamp(0.0, max_h);
+        let w = bounds.width.min(max_w - x).max(0.0);
+        let h = bounds.height.min(max_h - y).max(0.0);
+        let _ = window.set_position(tauri::LogicalPosition::new(x, y));
+        let _ = window.set_size(tauri::LogicalSize::new(w, h));
+    }
+}
+
 /// `binary:host:flush` — asks an editor to persist pending writes before the
 /// tab closes. Returns `flushed:false` when the host is unknown, not yet ready
 /// (the editor has no page to persist from), or has already been destroyed.
