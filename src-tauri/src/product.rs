@@ -110,6 +110,132 @@ fn error(code: &str, message: &str) -> Value {
     json!({ "ok": false, "error": message, "code": code })
 }
 
+/// Cross-skill merge + rerank (DEV-014, mirrors `merge-rerank.ts`).
+///
+/// Raw scores from different skills (or the same retriever with different
+/// params) are not directly comparable: normalize per skill with min-max,
+/// dedup by `path::blockId`, keep the highest normalized score when a source
+/// is hit by multiple skills, then sort by normalized score descending (fall
+/// back to raw score, then path, for stability).
+fn merge_skill_results(runs: &[(String, Vec<Value>, bool)]) -> Vec<Value> {
+    let mut merged: Vec<(Value, f64, f64, String)> = Vec::new();
+
+    for (skill_id, sources, _) in runs {
+        let scores: Vec<f64> = sources
+            .iter()
+            .map(|s| s.get("score").and_then(Value::as_f64).unwrap_or(0.0))
+            .collect();
+        let max = scores.iter().cloned().fold(0.0, f64::max);
+        let min = scores.iter().cloned().fold(0.0, f64::min);
+        let range = max - min;
+
+        for source in sources {
+            let raw = source.get("score").and_then(Value::as_f64).unwrap_or(0.0);
+            let norm = if range > 0.0 {
+                (raw - min) / range
+            } else if raw > 0.0 {
+                1.0
+            } else {
+                0.0
+            };
+            let path = source.get("path").and_then(Value::as_str).unwrap_or("");
+            let block = source.get("blockId").and_then(Value::as_str).unwrap_or("");
+            let key = format!("{path}::{block}");
+
+            // Tag this source with the skill that retrieved it.
+            let mut tagged = source.clone();
+            tagged["skillId"] = json!(skill_id);
+
+            match merged
+                .iter_mut()
+                .find(|(_, _, _, existing_key)| *existing_key == key)
+            {
+                None => {
+                    merged.push((tagged, norm, raw, key));
+                }
+                Some((existing_source, existing_norm, existing_raw, _)) => {
+                    // Multi-skill hit: keep the highest normalized score.
+                    if norm > *existing_norm {
+                        *existing_source = tagged;
+                    }
+                    *existing_norm = existing_norm.max(norm);
+                    *existing_raw = existing_raw.max(raw);
+                    // Provenance: a source hit by several skills records
+                    // every matcher, not just the highest-scoring one.
+                    let mut hits: Vec<String> = existing_source["skillIds"]
+                        .as_array()
+                        .map(|ids| {
+                            ids.iter()
+                                .filter_map(Value::as_str)
+                                .map(ToOwned::to_owned)
+                                .collect()
+                        })
+                        .unwrap_or_else(|| {
+                            existing_source["skillId"]
+                                .as_str()
+                                .map(|id| vec![id.to_owned()])
+                                .unwrap_or_default()
+                        });
+                    if !hits.iter().any(|id| id == skill_id) {
+                        hits.push(skill_id.clone());
+                    }
+                    existing_source["skillIds"] = json!(hits);
+                }
+            }
+        }
+    }
+
+    // Sort by normalized score (primary), then raw score, then path — the
+    // exact ordering contract from Electron's merge-rerank.ts.
+    merged.sort_by(|(_, a_norm, a_raw, a_key), (_, b_norm, b_raw, b_key)| {
+        b_norm
+            .partial_cmp(a_norm)
+            .unwrap_or(std::cmp::Ordering::Equal)
+            .then_with(|| {
+                b_raw
+                    .partial_cmp(a_raw)
+                    .unwrap_or(std::cmp::Ordering::Equal)
+            })
+            .then_with(|| a_key.cmp(b_key))
+    });
+
+    merged
+        .into_iter()
+        .map(|(mut source, norm, raw, _)| {
+            source["score"] = json!(raw);
+            // `skillIds` is the complete match set; `skillId` stays the
+            // single primary matcher for back-compat with older callers.
+            if let Some(ids) = source["skillIds"].as_array().cloned() {
+                if !ids.is_empty() {
+                    source["skillId"] = ids[0].clone();
+                }
+            }
+            let _ = norm;
+            source
+        })
+        .collect::<Vec<_>>()
+        .into_iter()
+        .collect()
+}
+
+/// Packs merged sources into a context string within the budget.
+fn pack_skill_context(sources: &[Value], budget_chars: usize) -> String {
+    let mut parts = Vec::new();
+    let mut used = 0usize;
+    for source in sources {
+        let title = source.get("title").and_then(Value::as_str).unwrap_or("");
+        let skill = source.get("skillId").and_then(Value::as_str).unwrap_or("");
+        let snippet = source.get("snippet").and_then(Value::as_str).unwrap_or("");
+        let block = format!("{title}（{skill}）\n{snippet}");
+        if used + block.chars().count() > budget_chars {
+            break;
+        }
+        used += block.chars().count() + 2;
+        parts.push(block);
+    }
+    parts.join("\n\n")
+}
+
 /// Emits the renderer-visible event that follows a successful command.
 ///
 /// The renderer subscribes to these events to refresh stores; without them the
@@ -1783,18 +1909,132 @@ fn dispatch<R: tauri::Runtime>(
             if query.trim().is_empty() {
                 return error("QUERY_REQUIRED", "query is required");
             }
-            let search_payload = json!({ "query": query });
-            let search_result = index_service::search(&root, &search_payload);
-            let sources = search_result
-                .get("data")
-                .cloned()
-                .unwrap_or_else(|| json!([]));
+
+            // Resolve the embedding profile once for all skills (they share
+            // the same vector runtime; only their retrieval params differ).
+            if let Err(failure) = index_service::ensure_open(&root) {
+                return failure;
+            }
+            let store = ai_store(app);
+            let embedder = match embedding_source(&store) {
+                Ok((profile, _)) if profile.kind == ai_service::AiProviderKind::LocalEmbedding => {
+                    Some(retrieval_service::Embedder::BuiltIn {
+                        state: embedding.inner().clone(),
+                        profile_id: profile.id,
+                    })
+                }
+                Ok((profile, model)) => Some(retrieval_service::Embedder::Remote {
+                    base_url: profile.base_url,
+                    model,
+                    profile_id: profile.id,
+                }),
+                Err(_) => None,
+            };
+
+            // Select the enabled skills (or the explicit subset).
+            let requested_ids: Option<Vec<String>> = payload
+                .get("skillIds")
+                .and_then(Value::as_array)
+                .map(|ids| {
+                    ids.iter()
+                        .filter_map(Value::as_str)
+                        .map(ToOwned::to_owned)
+                        .collect()
+                });
+            let skill_store_handle = skill_store(app);
+            let active_skills: Vec<skill_service::SkillView> = skill_store_handle
+                .list()
+                .into_iter()
+                .filter(|view| {
+                    view.enabled
+                        && view.available
+                        && requested_ids
+                            .as_ref()
+                            .is_none_or(|ids| ids.iter().any(|id| id == &view.id))
+                })
+                .collect();
+
+            if active_skills.is_empty() {
+                return ok(json!({
+                    "query": query,
+                    "usedSkillIds": [],
+                    "sources": [],
+                    "degraded": false,
+                    "contextText": "",
+                }));
+            }
+
+            // Per-skill retrieval with that skill's params; sources carry a
+            // skillId tag for cross-skill provenance.
+            let default_top_k = payload.get("topK").and_then(Value::as_u64).unwrap_or(8) as usize;
+            let default_budget = payload
+                .get("budgetChars")
+                .and_then(Value::as_u64)
+                .unwrap_or(4000) as usize;
+            let request_overrides = payload.get("confidenceWeight").and_then(Value::as_f64);
+            let disable_vector_override = payload.get("disableVector").and_then(Value::as_bool);
+
+            let mut runs: Vec<(String, Vec<Value>, bool)> = Vec::new();
+            for skill in &active_skills {
+                let top_k = skill
+                    .params
+                    .get("topK")
+                    .and_then(Value::as_u64)
+                    .unwrap_or(default_top_k as u64) as usize;
+                let budget = skill
+                    .params
+                    .get("budgetChars")
+                    .and_then(Value::as_u64)
+                    .unwrap_or(default_budget as u64) as usize;
+                let confidence = skill
+                    .params
+                    .get("confidenceWeight")
+                    .and_then(Value::as_f64)
+                    .or(request_overrides)
+                    .unwrap_or(0.3);
+                let disable_vector = skill
+                    .params
+                    .get("disableVector")
+                    .and_then(Value::as_bool)
+                    .or(disable_vector_override)
+                    .unwrap_or(false);
+
+                let request = retrieval_service::RetrievalRequest {
+                    query: query.clone(),
+                    top_k,
+                    fts_limit: 20,
+                    budget_chars: budget,
+                    confidence_weight: confidence,
+                    disable_vector,
+                };
+                let response = retrieval_service::retrieve(&root, &request, embedder.as_ref());
+                let degraded = response
+                    .get("degraded")
+                    .and_then(Value::as_bool)
+                    .unwrap_or(false);
+                let sources: Vec<Value> = response
+                    .get("sources")
+                    .and_then(Value::as_array)
+                    .cloned()
+                    .unwrap_or_default();
+                runs.push((skill.id.clone(), sources, degraded));
+            }
+
+            // Cross-skill merge: min-max normalize per skill, dedup by
+            // path+blockId, keep the highest normalized score, tag all
+            // matching skills, then sort by normalized score descending.
+            let merged = merge_skill_results(&runs);
+            let any_degraded = runs.iter().any(|(_, _, degraded)| *degraded);
+            let used_ids: Vec<&str> = active_skills.iter().map(|s| s.id.as_str()).collect();
+
+            // Pack context from the merged sources within the budget.
+            let context = pack_skill_context(&merged, default_budget);
             ok(json!({
                 "query": query,
-                "usedSkillIds": ["builtin-retrieval"],
-                "sources": sources,
-                "degraded": true,
-                "contextText": "",
+                "usedSkillIds": used_ids,
+                "sources": merged,
+                "degraded": any_degraded,
+                "contextText": context,
             }))
         }
         "skills:setEnabled" => {
@@ -2520,6 +2760,48 @@ mod tests {
         let root = std::env::temp_dir().join(format!("nexnote-dev119-{}-{id}", std::process::id()));
         fs::create_dir_all(root.join(".nexnote")).expect("create temp vault");
         root
+    }
+
+    #[test]
+    fn cross_skill_merge_normalizes_dedups_and_sorts() {
+        let run_a = (
+            "skill-a".to_owned(),
+            vec![
+                json!({ "path": "doc.md", "blockId": null, "title": "Doc", "snippet": "text", "score": 4.0, "via": "fts" }),
+                json!({ "path": "other.md", "blockId": null, "title": "Other", "snippet": "text", "score": 2.0, "via": "fts" }),
+            ],
+            false,
+        );
+        // Same scale range but higher absolute; the overlap doc hits both.
+        let run_b = (
+            "skill-b".to_owned(),
+            vec![
+                json!({ "path": "doc.md", "blockId": null, "title": "Doc", "snippet": "text", "score": 400.0, "via": "fts" }),
+                json!({ "path": "third.md", "blockId": null, "title": "Third", "snippet": "text", "score": 200.0, "via": "fts" }),
+            ],
+            false,
+        );
+        let merged = merge_skill_results(&[run_a, run_b]);
+
+        // Three unique sources (doc, other, third) after dedup.
+        assert_eq!(merged.len(), 3, "overlapping sources dedup: {merged:?}");
+
+        // doc.md is hit by both skills with normalized score 1.0 and carries
+        // provenance for every matcher.
+        assert_eq!(merged[0]["path"], "doc.md");
+        let skill_ids: Vec<&str> = merged[0]["skillIds"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .filter_map(Value::as_str)
+            .collect();
+        assert!(skill_ids.contains(&"skill-a"));
+        assert!(skill_ids.contains(&"skill-b"));
+        assert_eq!(
+            merged[0]["score"],
+            json!(400.0),
+            "raw score is the max across skills"
+        );
     }
 
     /// Builds a mock app with every state type `dispatch` needs, so tests can
