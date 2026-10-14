@@ -239,12 +239,12 @@
 | binary:create | vault | yes | no | yes | no | `binary-handlers.ts` | `binary::create` | binary-print | ported |
 | binary:read | vault | no | no | yes | no | `binary-handlers.ts` | `binary::read` | binary-print | ported |
 | binary:save | vault | yes | no | yes | no | `binary-handlers.ts` | `binary::save` | binary-print | ported |
-| binary:host:open | host | no | no | no | no | `binary-handlers.ts` | `binary_host::open` | binary-print | pending |
-| binary:host:close | host | no | no | no | no | `binary-handlers.ts` | `binary_host::close` | binary-print | pending |
-| binary:host:setActive | host | no | no | no | no | `binary-handlers.ts` | `binary_host::set_active` | binary-print | pending |
-| binary:host:setBounds | host | no | no | no | no | `binary-handlers.ts` | `binary_host::set_bounds` | binary-print | pending |
-| binary:host:flush | host | no | no | yes | no | `binary-handlers.ts` | `binary_host::flush` | binary-print | pending |
-| binary:host:ready | host | no | no | no | no | `binary-handlers.ts` | `binary_host::ready` | binary-print | pending |
+| binary:host:open | host | no | no | no | no | `binary-handlers.ts` | `binary_host::open` | binary-print | pending（每文档 borderless 子窗口；macOS 实测待做） |
+| binary:host:close | host | no | no | no | no | `binary-handlers.ts` | `binary_host::close` | binary-print | pending（销毁窗口；flush 往返未实现） |
+| binary:host:setActive | host | no | no | no | no | `binary-handlers.ts` | `binary_host::set_active` | binary-print | pending（激活显示/隐藏；并发上限未验证） |
+| binary:host:setBounds | host | no | no | no | no | `binary-handlers.ts` | `binary_host::set_bounds` | binary-print | pending（按占位矩形定位；主窗口 resize 跟随未实现） |
+| binary:host:flush | host | no | no | yes | no | `binary-handlers.ts` | `binary_host::flush` | binary-print | pending（仅投递 flush 命令；未等待写盘往返） |
+| binary:host:ready | host | no | no | no | no | `binary-handlers.ts` | `binary_host::ready` | binary-print | pending（pull 模型返回队列；多宿主并发时 sender 识别待修正） |
 | binary:editorTheme | host | no | no | no | no | `binary-handlers.ts` | `binary_host::editor_theme` | binary-print | ported |
 | binary:mindmapTheme:set | vault | yes | no | yes | no | `binary-handlers.ts` | `binary::mindmap_theme` | binary-print | ported |
 | binary:mindmapStructure:set | vault | yes | no | yes | no | `binary-handlers.ts` | `binary::mindmap_structure` | binary-print | ported |
@@ -281,5 +281,5 @@
 | index:statusChanged | sqlite | index service | `webContents.send` | `index::status_event` | vault | ported |
 | index:confidenceChanged | sqlite | confidence service | `webContents.send` | `index::confidence_event` | vault | pending（index:confidence 只读不重算，无触发点） |
 | settings:changed | app-state | settings service | `webContents.send` | `product::settings_event` | foundation | ported |
-| binary:editorCommand | host | binary editor host | `webContents.send` | `binary_host::editor_command` | binary-print | pending（多 WebView 编辑器宿主未迁移，DEV-123） |
+| binary:editorCommand | host | binary editor host | `webContents.send` | `binary_host::editor_command` | binary-print | pending（load/theme/flush 已投递；DEV-123 实测待做） |
 | menu:action | host | native menu | `webContents.send` | `window_menu::action` | foundation | pending（原生菜单未迁移，DEV-124） |
