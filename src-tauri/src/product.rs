@@ -1064,7 +1064,33 @@ fn dispatch(
             "This AI command is not ported to Rust yet",
         ),
         "plugins:ping" => ping("plugins", "DEV-013"),
-        "skills:ping" => ping("skills", "DEV-014"),
+        "plugins:list"
+        | "plugins:listCommands"
+        | "plugins:listContributions"
+        | "plugins:pickSource"
+        | "plugins:installPreview"
+        | "plugins:confirmInstall"
+        | "plugins:uninstall"
+        | "plugins:setEnabled"
+        | "plugins:listAuditLog"
+        | "plugins:revokePermission"
+        | "plugins:runCommand"
+        | "plugins:beginSession"
+        | "plugins:closeSession"
+        | "plugins:getRuntimeSource"
+        | "plugins:reportCrash"
+        | "plugins:beginAuthChallenge"
+        | "plugins:rejectAuthChallenge"
+        | "plugins:grantPermission"
+        | "plugins:rpc" => error(
+            "PLUGIN_SERVICE_NOT_PORTED",
+            "Plugin service dispatch requires a managed PluginStore instance",
+        ),
+        "skills:list" | "skills:retrieve" | "skills:setEnabled" | "skills:setOrder"
+        | "skills:setParams" => error(
+            "SKILL_SERVICE_NOT_PORTED",
+            "Skill service is not ported to Rust yet",
+        ),
         "binary:ping" => ping("binary", "DEV-074"),
         "binary:import" => {
             let Some(root) = vault_root.get() else {
