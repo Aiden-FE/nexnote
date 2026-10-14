@@ -11,10 +11,18 @@ mod vault_fs;
 
 use tauri::Manager;
 
+use std::path::PathBuf;
+
 pub fn run() {
+    let app_data = dirs::data_dir()
+        .unwrap_or_else(|| PathBuf::from("."))
+        .join("nexnote");
+    let _ = std::fs::create_dir_all(&app_data);
+    let host_version = env!("CARGO_PKG_VERSION").to_owned();
     tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
         .manage(product::ProductState::default())
+        .manage(product::PluginState::new(app_data, &host_version))
         .manage(product::VaultRoot::default())
         .invoke_handler(tauri::generate_handler![product::nexnote_invoke])
         .setup(|app| {

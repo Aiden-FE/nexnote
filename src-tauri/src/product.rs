@@ -2,7 +2,7 @@ use crate::{
     ai_service::{self, AiStore},
     binary_service,
     git_service::{self, GitError},
-    git_sync, index_service, print_service, vault_fs,
+    git_sync, index_service, plugin_service, print_service, vault_fs,
 };
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
@@ -33,6 +33,22 @@ pub struct ProductState {
     global_settings: Mutex<Value>,
     current_vault: Mutex<Option<VaultInfo>>,
     recent_vaults: Mutex<Vec<RecentVaultEntry>>,
+}
+
+pub struct PluginState {
+    store: Mutex<plugin_service::PluginStore>,
+}
+
+impl PluginState {
+    pub fn new(app_data: PathBuf, host_version: &str) -> Self {
+        Self {
+            store: Mutex::new(plugin_service::PluginStore::new(
+                Some(app_data.join("nexnote-plugins.json")),
+                Some(app_data.join("plugins")),
+                host_version,
+            )),
+        }
+    }
 }
 
 #[derive(Default)]
@@ -389,17 +405,26 @@ fn ai_embed_with_metadata(
 pub async fn nexnote_invoke(
     app: AppHandle,
     state: State<'_, ProductState>,
+    plugin_state: State<'_, PluginState>,
     vault_root: State<'_, VaultRoot>,
     channel: String,
     payload: Option<Value>,
 ) -> Result<Value, ()> {
     let payload = payload.unwrap_or(Value::Null);
-    Ok(dispatch(&app, &state, &vault_root, &channel, &payload))
+    Ok(dispatch(
+        &app,
+        &state,
+        &plugin_state,
+        &vault_root,
+        &channel,
+        &payload,
+    ))
 }
 
 fn dispatch(
     app: &AppHandle,
     state: &State<'_, ProductState>,
+    plugin_state: &State<'_, PluginState>,
     vault_root: &State<'_, VaultRoot>,
     channel: &str,
     payload: &Value,
@@ -1082,10 +1107,78 @@ fn dispatch(
         | "plugins:beginAuthChallenge"
         | "plugins:rejectAuthChallenge"
         | "plugins:grantPermission"
-        | "plugins:rpc" => error(
-            "PLUGIN_SERVICE_NOT_PORTED",
-            "Plugin service dispatch requires a managed PluginStore instance",
-        ),
+        | "plugins:rpc" => {
+            let mut store = plugin_state.store.lock().expect("plugin store lock");
+            match channel {
+                "plugins:list" => {
+                    let views = store.list();
+                    match serde_json::to_value(views) {
+                        Ok(value) => ok(value),
+                        Err(e) => error("PLUGIN_SERIALIZE_FAILED", &e.to_string()),
+                    }
+                }
+                "plugins:uninstall" => match string_field(payload, "pluginId") {
+                    Some(id) => match store.uninstall(&id) {
+                        Ok(()) => ok(Value::Null),
+                        Err(e) => error("PLUGIN_UNINSTALL_FAILED", &e),
+                    },
+                    None => error("PLUGIN_ID_REQUIRED", "pluginId is required"),
+                },
+                "plugins:setEnabled" => {
+                    match (
+                        string_field(payload, "pluginId"),
+                        payload.get("enabled").and_then(Value::as_bool),
+                    ) {
+                        (Some(id), Some(enabled)) => match store.set_enabled(&id, enabled) {
+                            Ok(view) => match serde_json::to_value(view) {
+                                Ok(value) => ok(value),
+                                Err(e) => error("PLUGIN_SERIALIZE_FAILED", &e.to_string()),
+                            },
+                            Err(e) => error("PLUGIN_SET_ENABLED_FAILED", &e),
+                        },
+                        _ => error("PLUGIN_ID_REQUIRED", "pluginId and enabled are required"),
+                    }
+                }
+                "plugins:listAuditLog" => {
+                    let plugin_id = string_field(payload, "pluginId");
+                    let limit =
+                        payload.get("limit").and_then(Value::as_u64).unwrap_or(100) as usize;
+                    let records = store.list_audit_log(plugin_id.as_deref(), limit);
+                    match serde_json::to_value(records) {
+                        Ok(value) => ok(value),
+                        Err(e) => error("PLUGIN_SERIALIZE_FAILED", &e.to_string()),
+                    }
+                }
+                "plugins:getRuntimeSource" => match string_field(payload, "pluginId") {
+                    Some(id) => match store.get_runtime_source(&id) {
+                        Ok(source) => ok(json!({ "source": source })),
+                        Err(e) => error("PLUGIN_SOURCE_FAILED", &e),
+                    },
+                    None => error("PLUGIN_ID_REQUIRED", "pluginId is required"),
+                },
+                "plugins:beginSession" => match string_field(payload, "pluginId") {
+                    Some(id) => match store.begin_session(&id) {
+                        Ok(token) => match serde_json::to_value(token) {
+                            Ok(value) => ok(value),
+                            Err(e) => error("PLUGIN_SERIALIZE_FAILED", &e.to_string()),
+                        },
+                        Err(e) => error("PLUGIN_SESSION_FAILED", &e),
+                    },
+                    None => error("PLUGIN_ID_REQUIRED", "pluginId is required"),
+                },
+                "plugins:closeSession" => match string_field(payload, "token") {
+                    Some(token) => match store.close_session(&token) {
+                        Ok(()) => ok(Value::Null),
+                        Err(e) => error("PLUGIN_SESSION_FAILED", &e),
+                    },
+                    None => error("TOKEN_REQUIRED", "token is required"),
+                },
+                _ => error(
+                    "PLUGIN_NOT_PORTED",
+                    "This plugin command is not ported to Rust yet",
+                ),
+            }
+        }
         "skills:list" | "skills:retrieve" | "skills:setEnabled" | "skills:setOrder"
         | "skills:setParams" => error(
             "SKILL_SERVICE_NOT_PORTED",
