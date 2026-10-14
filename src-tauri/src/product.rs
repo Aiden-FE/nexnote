@@ -1,7 +1,7 @@
 use crate::{
     agent_service,
     ai_service::{self, AiStore},
-    binary_service, embedding_service,
+    binary_host_service, binary_service, embedding_service,
     git_service::{self, GitError},
     git_sync, index_service, plugin_service, print_service, retrieval_service, skill_service,
     updater_service, vault_fs, watcher_service,
@@ -2143,7 +2143,75 @@ fn dispatch<R: tauri::Runtime>(
                 _ => return error("BINARY_THEME_INVALID", "theme must be 'light' or 'dark'"),
             };
             *state.editor_theme.lock().expect("editor theme lock") = theme;
+            // Editor windows are separate processes; broadcast so each host
+            // page receives the theme without sharing renderer memory.
+            binary_host_service::apply_theme(app, theme);
             ok(json!({ "applied": true }))
+        }
+        // DEV-123 二进制编辑器宿主：每文档一个 borderless 子窗口，覆盖主窗口
+        // 内容区的占位矩形，激活才显示。
+        "binary:host:open" | "binary:host:close" | "binary:host:flush" => {
+            let (Some(kind), Some(path)) =
+                (string_field(payload, "kind"), string_field(payload, "path"))
+            else {
+                return error("BINARY_HOST_INPUT", "kind and path are required");
+            };
+            match channel {
+                "binary:host:open" => binary_host_service::open(app, &kind, &path),
+                "binary:host:close" => binary_host_service::close(app, &kind, &path),
+                _ => binary_host_service::flush(app, &kind, &path),
+            }
+        }
+        "binary:host:setActive" => {
+            // 缺省 payload = 切到非二进制 tab，收回全部宿主。
+            binary_host_service::set_active(
+                app,
+                string_field(payload, "kind").as_deref(),
+                string_field(payload, "path").as_deref(),
+            )
+        }
+        "binary:host:setBounds" => {
+            let (Some(kind), Some(path)) =
+                (string_field(payload, "kind"), string_field(payload, "path"))
+            else {
+                return error("BINARY_HOST_INPUT", "kind and path are required");
+            };
+            let bounds = match payload.get("bounds") {
+                None | Some(Value::Null) => None,
+                Some(value) => {
+                    let read = |key: &str| value.get(key).and_then(Value::as_f64);
+                    match (read("x"), read("y"), read("width"), read("height")) {
+                        (Some(x), Some(y), Some(width), Some(height)) => {
+                            Some(binary_host_service::HostBounds {
+                                x,
+                                y,
+                                width,
+                                height,
+                            })
+                        }
+                        _ => {
+                            return error(
+                                "BINARY_HOST_BOUNDS_INVALID",
+                                "bounds must carry numeric x/y/width/height",
+                            )
+                        }
+                    }
+                }
+            };
+            binary_host_service::set_bounds(app, &kind, &path, bounds)
+        }
+        "binary:host:ready" => {
+            // Editor windows do not share renderer memory, so the ready
+            // response re-syncs the current UI language as its first command.
+            let language = state
+                .global_settings
+                .lock()
+                .expect("settings lock")
+                .pointer("/appearance/language")
+                .and_then(Value::as_str)
+                .unwrap_or("zh-CN")
+                .to_owned();
+            binary_host_service::ready(app, &language)
         }
         "print:document" => {
             let Some(title) = string_field(payload, "title") else {

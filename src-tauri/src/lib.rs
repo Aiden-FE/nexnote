@@ -1,5 +1,6 @@
 mod agent_service;
 mod ai_service;
+mod binary_host_service;
 mod binary_service;
 mod confidence_service;
 mod embedding_service;
@@ -42,6 +43,16 @@ pub fn run() {
                 .expect("NexNote main webview must be declared");
             let _ = main.set_title("NexNote");
             Ok(())
+        })
+        .on_window_event(|window, event| {
+            // Editor hosts are parented to the main window on macOS and owned
+            // on Windows/Linux, but destroying them explicitly keeps the
+            // registry from leaking across a close/reopen cycle.
+            if matches!(event, tauri::WindowEvent::CloseRequested { .. })
+                && window.label() == "main"
+            {
+                binary_host_service::destroy_all(window.app_handle());
+            }
         })
         .run(tauri::generate_context!())
         .expect("failed to run NexNote Tauri runtime");
