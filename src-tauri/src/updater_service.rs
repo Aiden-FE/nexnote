@@ -12,7 +12,7 @@
 
 use serde_json::{json, Value};
 use std::sync::{Mutex, OnceLock};
-use tauri::Runtime;
+use tauri::{Emitter, Runtime};
 use tauri_plugin_updater::{Update, UpdaterExt};
 
 /// A checked update awaiting download/install.
@@ -75,21 +75,22 @@ pub fn check<R: Runtime>(app: &tauri::AppHandle<R>) -> Value {
     };
     match run_blocking(async move { updater.check().await }) {
         Ok(Some(update)) => {
+            // The renderer drives its update banner from this event, not from
+            // the command response alone, so both carry the same shape.
             let metadata = json!({
-                "available": true,
-                "currentVersion": update.current_version,
+                "status": "available",
                 "version": update.version,
-                "notes": update.body,
-                "date": update.date.map(|date| date.to_string()),
-                "target": update.target,
+                "action": "install-started",
             });
             *pending().lock().expect("pending update lock") = Some(PendingUpdate(update));
+            let _ = app.emit("app:updateStatus", metadata.clone());
             ok(metadata)
         }
-        Ok(None) => ok(json!({
-            "available": false,
-            "currentVersion": app.package_info().version.to_string(),
-        })),
+        Ok(None) => {
+            let metadata = json!({ "status": "up-to-date" });
+            let _ = app.emit("app:updateStatus", metadata.clone());
+            ok(metadata)
+        }
         Err(message) => error("UPDATE_CHECK_FAILED", &message),
     }
 }

@@ -381,10 +381,11 @@ fn maybe_start_background_rebuild(root: std::path::PathBuf, embedder: &Embedder)
         });
 }
 
-/// Progress hook installed by the product layer so build status can be emitted
-/// as `ai:retrievalStatus` events. `(blocks_done, blocks_total, note)` — a
-/// non-empty `note` starting with "error:" marks a failed build.
-pub static BUILD_PROGRESS_CALLBACK: std::sync::OnceLock<fn(u64, u64, &str)> =
+/// Progress hook installed once by the product layer so build status can be
+/// emitted as `ai:retrievalStatus` events. `(blocks_done, blocks_total, note)` —
+/// a non-empty `note` starting with "error:" marks a failed build.
+pub type BuildProgressHook = Box<dyn Fn(u64, u64, &str) + Send + Sync>;
+pub static BUILD_PROGRESS_CALLBACK: std::sync::OnceLock<BuildProgressHook> =
     std::sync::OnceLock::new();
 
 /// Embeds every block and replaces the vector index page by page.

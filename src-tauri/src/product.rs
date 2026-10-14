@@ -105,6 +105,71 @@ fn error(code: &str, message: &str) -> Value {
     json!({ "ok": false, "error": message, "code": code })
 }
 
+/// Emits the renderer-visible event that follows a successful command.
+///
+/// The renderer subscribes to these events to refresh stores; without them the
+/// UI silently goes stale even though every command call succeeds. Payloads
+/// reuse the same values the command returned, so an event can never disagree
+/// with the response that triggered it.
+fn emit_channel_event(app: &AppHandle, channel: &str, vault_root: &VaultRoot) {
+    let state = app.state::<ProductState>();
+    match channel {
+        // AI config changes invalidate the wizard, the model list and the
+        // embedding generation in every open surface.
+        "ai:profile:save"
+        | "ai:profile:delete"
+        | "ai:profile:setDefault"
+        | "ai:features:set"
+        | "ai:translation:setTargetLanguage"
+        | "ai:import" => {
+            let store = ai_store(app);
+            let _ = app.emit("ai:configChanged", json!({ "state": store.get_state() }));
+        }
+        "settings:setGlobal"
+        | "settings:setVault"
+        | "settings:setShortcuts"
+        | "settings:importShortcuts" => {
+            let global = state.global_settings.lock().expect("settings lock").clone();
+            // Read the persisted vault settings so the event payload equals
+            // what `settings:getVault` would return, never a defaulted guess.
+            let vault = vault_root.get().map(|_| current_vault_settings(&state));
+            let _ = app.emit(
+                "settings:changed",
+                json!({ "global": global, "vault": vault }),
+            );
+        }
+        // Any git mutation can change status, ahead/behind or conflicts.
+        "git:commit"
+        | "git:initGit"
+        | "git:addRemote"
+        | "git:removeRemote"
+        | "git:setBranch"
+        | "git:fetch"
+        | "git:pull"
+        | "git:push"
+        | "git:sync"
+        | "git:rebase"
+        | "git:abort"
+        | "git:doctor:repairExecute" => {
+            if let Some(root) = vault_root.get() {
+                if let Ok(status) = git_service::status(&root) {
+                    let _ = app.emit("git:statusChanged", status);
+                }
+            }
+        }
+        "plugins:confirmInstall" | "plugins:uninstall" | "plugins:setEnabled" => {
+            let _ = app.emit("plugins:changed", json!({ "reason": channel }));
+        }
+        "index:rebuild" => {
+            if let Some(root) = vault_root.get() {
+                let status = index_service::status(&root);
+                let _ = app.emit("index:statusChanged", status["data"].clone());
+            }
+        }
+        _ => {}
+    }
+}
+
 fn string_field(payload: &Value, field: &str) -> Option<String> {
     payload
         .get(field)
@@ -167,6 +232,22 @@ fn default_vault_settings() -> Value {
         },
         "binary": { "maxConcurrentTabs": 3 }
     })
+}
+
+/// Persisted vault settings for the `settings:changed` event payload.
+fn current_vault_settings(state: &State<'_, ProductState>) -> Value {
+    state
+        .current_vault
+        .lock()
+        .expect("vault state lock")
+        .as_ref()
+        .and_then(|vault| {
+            fs::read_to_string(&vault.config_path)
+                .ok()
+                .and_then(|raw| serde_json::from_str::<Value>(&raw).ok())
+        })
+        .and_then(|config| config.get("settings").cloned())
+        .unwrap_or_else(default_vault_settings)
 }
 
 fn default_vault_config() -> Value {
@@ -426,7 +507,7 @@ pub async fn nexnote_invoke(
     payload: Option<Value>,
 ) -> Result<Value, ()> {
     let payload = payload.unwrap_or(Value::Null);
-    Ok(dispatch(
+    let response = dispatch(
         &app,
         &state,
         &embedding,
@@ -434,7 +515,13 @@ pub async fn nexnote_invoke(
         &vault_root,
         &channel,
         &payload,
-    ))
+    );
+    // Renderer stores refresh from events, not from call sites: only a
+    // successful command may announce a change.
+    if response.get("ok") == Some(&Value::Bool(true)) {
+        emit_channel_event(&app, &channel, &vault_root);
+    }
+    Ok(response)
 }
 
 fn dispatch(
@@ -1289,6 +1376,32 @@ fn dispatch(
             if let Err(failure) = index_service::ensure_open(&root) {
                 return failure;
             }
+            // Install the vector-build progress hook once; the handle outlives
+            // every retrieval run and the callback is process-wide by design.
+            retrieval_service::BUILD_PROGRESS_CALLBACK.get_or_init(|| {
+                let progress_app = app.clone();
+                Box::new(move |blocks_done: u64, blocks_total: u64, note: &str| {
+                    let failed = note.starts_with("error:");
+                    let phase = if failed {
+                        "error"
+                    } else if blocks_done >= blocks_total {
+                        "ready"
+                    } else {
+                        "building"
+                    };
+                    let _ = progress_app.emit(
+                        "ai:retrievalStatus",
+                        json!({
+                            "phase": phase,
+                            "mode": "full",
+                            "blocksTotal": blocks_total,
+                            "blocksDone": blocks_done,
+                            "model": if failed { Value::Null } else { json!(note) },
+                            "error": if failed { note.strip_prefix("error:") } else { None },
+                        }),
+                    );
+                }) as retrieval_service::BuildProgressHook
+            });
             let store = ai_store(app);
             let request = retrieval_service::RetrievalRequest::from_payload(payload);
             let embedder = match embedding_source(&store) {

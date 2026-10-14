@@ -280,9 +280,17 @@ fn flush<R: Runtime>(app: &tauri::AppHandle<R>, root: &Path, changes: Vec<Pendin
         match change.kind {
             "add" | "change" => {
                 index_service::update_page(root, &change.relative);
+                let _ = app.emit(
+                    "index:statusChanged",
+                    index_service::status(root)["data"].clone(),
+                );
             }
             "unlink" => {
                 index_service::remove_page(root, &change.relative);
+                let _ = app.emit(
+                    "index:statusChanged",
+                    index_service::status(root)["data"].clone(),
+                );
             }
             // Directory churn cascades into many descendants; one rebuild covers it.
             _ => needs_rebuild = true,
