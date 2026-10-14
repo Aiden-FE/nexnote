@@ -34,6 +34,9 @@ pub struct ProductState {
     global_settings: Mutex<Value>,
     current_vault: Mutex<Option<VaultInfo>>,
     recent_vaults: Mutex<Vec<RecentVaultEntry>>,
+    /// Active binary-editor host theme; hosts read this on creation until
+    /// the multi-WebView runtime can push live updates (DEV-123).
+    editor_theme: Mutex<&'static str>,
 }
 
 pub struct PluginState {
@@ -69,6 +72,7 @@ impl Default for ProductState {
             global_settings: Mutex::new(default_global_settings()),
             current_vault: Mutex::new(None),
             recent_vaults: Mutex::new(Vec::new()),
+            editor_theme: Mutex::new("light"),
         }
     }
 }
@@ -2069,6 +2073,51 @@ fn dispatch<R: tauri::Runtime>(
                 Ok(value) => value,
                 Err(e) => error(&e.code, &e.message),
             }
+        }
+        // DEV-099 / DEV-102：xmind 主题与布局结构持久化到 sidecar
+        // （read-merge-write），xmind 字节保持规范纯净。
+        "binary:mindmapTheme:set" | "binary:mindmapStructure:set" => {
+            let Some(root) = vault_root.get() else {
+                return error("NO_VAULT", "No vault is open");
+            };
+            let Some(path) = string_field(payload, "path") else {
+                return error("BINARY_PATH_REQUIRED", "path is required");
+            };
+            let (field, value) = if channel == "binary:mindmapTheme:set" {
+                ("mindmapTheme", payload.get("theme").cloned())
+            } else {
+                ("mindmapStructure", payload.get("structure").cloned())
+            };
+            let Some(value) = value else {
+                return error(
+                    "BINARY_META_VALUE_REQUIRED",
+                    &format!("{field} is required"),
+                );
+            };
+            let mut metadata = vault_fs::read_metadata(&root, &path).unwrap_or_else(|| json!({}));
+            if !metadata.is_object() {
+                metadata = json!({});
+            }
+            metadata[field] = value;
+            if let Err(io_error) = vault_fs::write_metadata(&root, &path, &metadata) {
+                return error("BINARY_METADATA_WRITE_FAILED", &io_error.to_string());
+            }
+            // Sidecar writes must trigger auto-commit, otherwise untracked
+            // metadata JSON blocks every future sync with WORKTREE_DIRTY.
+            // Best-effort: a vault without git still persists the setting.
+            if root.join(".git").exists() {
+                let _ = git_service::record_auto_commit(&root, &format!("save mindmap {path}"), 0);
+            }
+            ok(json!({ "saved": true }))
+        }
+        "binary:editorTheme" => {
+            let theme = match string_field(payload, "theme").as_deref() {
+                Some("light") => "light",
+                Some("dark") => "dark",
+                _ => return error("BINARY_THEME_INVALID", "theme must be 'light' or 'dark'"),
+            };
+            *state.editor_theme.lock().expect("editor theme lock") = theme;
+            ok(json!({ "applied": true }))
         }
         "print:document" => {
             let Some(title) = string_field(payload, "title") else {
