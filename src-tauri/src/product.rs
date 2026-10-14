@@ -1,5 +1,5 @@
 use crate::{
-    agent_service,
+    agent_service, agent_tools,
     ai_service::{self, AiStore},
     binary_host_service, binary_service, confidence_service, embedding_service,
     git_service::{self, GitError},
@@ -2296,7 +2296,31 @@ fn dispatch<R: tauri::Runtime>(
                 None => ok(json!({ "cancelled": false })),
             }
         }
-        "agent:approval:respond" => ok(json!({ "accepted": false })),
+        // DEV-121: hands the user's decision to the parked run thread. A
+        // rejected response (unknown id, already decided, expired) returns
+        // `accepted: false` so the renderer can surface the stale banner
+        // instead of leaving the run waiting.
+        "agent:approval:respond" => {
+            let Some(approval_id) = string_field(payload, "approvalId") else {
+                return error("AGENT_APPROVAL_ID_REQUIRED", "approvalId is required");
+            };
+            let Some(decision) = string_field(payload, "decision") else {
+                return error("AGENT_APPROVAL_DECISION_REQUIRED", "decision is required");
+            };
+            let decision = match decision.as_str() {
+                "approved" => agent_service::ApprovalDecision::Approved,
+                "denied" => agent_service::ApprovalDecision::Denied,
+                _ => {
+                    return error(
+                        "AGENT_APPROVAL_DECISION_INVALID",
+                        "decision must be approved or denied",
+                    )
+                }
+            };
+            ok(json!({
+                "accepted": agent_service::respond_approval(&approval_id, decision),
+            }))
+        }
         "binary:ping" => ping("binary", "DEV-074"),
         "binary:import" => {
             let Some(root) = vault_root.get() else {
@@ -2648,74 +2672,67 @@ fn dispatch<R: tauri::Runtime>(
             let app_handle = app.clone();
             let run_id_for_response = run_id.clone();
             let api_key = ai_service::read_credential(&profile.id);
-            let run_handle = agent_service::register_run(&run_id, &scenario);
+            // DEV-121: the chat dock owns tool permission; non-chat scenarios
+            // are pinned to conversation mode by the registry itself.
+            let permission_mode = payload
+                .get("permissionMode")
+                .and_then(Value::as_str)
+                .and_then(|mode| agent_service::PermissionMode::parse(mode, &scenario));
+            let context_paths = payload
+                .get("contextPaths")
+                .and_then(Value::as_array)
+                .map(|paths| {
+                    paths
+                        .iter()
+                        .filter_map(Value::as_str)
+                        .map(ToOwned::to_owned)
+                        .collect()
+                })
+                .unwrap_or_default();
+            let run_handle = agent_service::register_run_with_options(
+                &run_id,
+                &scenario,
+                agent_service::RunOptions {
+                    permission_mode,
+                    context_paths,
+                },
+            );
             std::thread::spawn(move || {
-                let result = ai_service::stream_chat_cancellable(
+                let vault_state = app_handle.state::<VaultRoot>();
+                let embedding_state = app_handle
+                    .state::<std::sync::Arc<embedding_service::EmbeddingState>>()
+                    .inner()
+                    .clone();
+                let mut conversation = messages;
+                let result = run_agent_turn(
+                    &AgentRunContext {
+                        app: &app_handle,
+                        embedding: &embedding_state,
+                        vault_root: &vault_state,
+                        scenario: &scenario,
+                        run_id: &run_id,
+                        run_handle: &run_handle,
+                    },
                     &base_url,
                     api_key.as_deref(),
                     &model,
-                    &messages,
-                    &mut |event| match event {
-                        ai_service::ChatSseEvent::Start { model } => {
-                            let _ = app_handle.emit(
-                                "agent:runEvent",
-                                json!({
-                                    "runId": run_id.as_str(),
-                                    "scenario": scenario.as_str(),
-                                    "event": { "type": "start", "model": model.as_str() },
-                                }),
-                            );
-                        }
-                        ai_service::ChatSseEvent::Delta { text } => {
-                            let _ = app_handle.emit(
-                                "agent:runEvent",
-                                json!({
-                                    "runId": run_id.as_str(),
-                                    "scenario": scenario.as_str(),
-                                    "event": { "type": "delta", "text": text.as_str() },
-                                }),
-                            );
-                        }
-                        ai_service::ChatSseEvent::Done => {
-                            let _ = app_handle.emit(
-                                "agent:runEvent",
-                                json!({
-                                    "runId": run_id.as_str(),
-                                    "scenario": scenario.as_str(),
-                                    "event": { "type": "done" },
-                                }),
-                            );
-                        }
-                        ai_service::ChatSseEvent::Error { message, code } => {
-                            let _ = app_handle.emit(
-                                "agent:runEvent",
-                                json!({
-                                    "runId": run_id.as_str(),
-                                    "scenario": scenario.as_str(),
-                                    "event": {
-                                        "type": "error",
-                                        "message": message.as_str(),
-                                        "code": code.as_str(),
-                                    },
-                                }),
-                            );
-                        }
-                    },
-                    &|| run_handle.is_cancelled(),
+                    &mut conversation,
                 );
                 agent_service::finish_run(&run_id);
                 // On cancellation `agent:cancel` already emitted the terminal
                 // error event, so only provider failures need reporting here.
                 if let Err(error) = result {
-                    let _ = app_handle.emit(
-                        "agent:runEvent",
+                    emit_agent_event(
+                        &app_handle,
+                        &run_id,
+                        &scenario,
                         json!({
-                            "runId": run_id.as_str(),
-                            "scenario": scenario.as_str(),
-                            "event": {
-                                "type": "error",
-                                "message": error.as_str(),
-                                "code": "AGENT_STREAM_FAILED",
+                            "type": "error",
+                            "message": error.as_str(),
+                            "code": if error == "TOOL_ROUND_LIMIT_EXCEEDED" {
+                                "TOOL_ROUND_LIMIT_EXCEEDED"
+                            } else {
+                                "AGENT_STREAM_FAILED"
                             },
                         }),
                     );
@@ -2727,6 +2744,389 @@ fn dispatch<R: tauri::Runtime>(
             "UNSUPPORTED_CHANNEL",
             "This product command is not ported to Rust yet",
         ),
+    }
+}
+
+/// DEV-121: one provider turn that may call agent tools. Drives the
+/// approve → execute → replay loop so the model sees tool results and
+/// continues in the same run.
+struct AgentToolCall {
+    id: String,
+    tool: String,
+    input: Value,
+    arguments: String,
+}
+
+/// Full mode still refuses shell/delete/rename/config-style writes; the same
+/// word list the Electron gateway matches against `name + JSON(input)`.
+fn tool_input_forbidden(tool: &str, input: &Value) -> bool {
+    let haystack = format!("{tool} {input}").to_lowercase();
+    [
+        "shell", "command", "delete", "remove", "rename", "config", "setting", "vault",
+    ]
+    .iter()
+    .any(|needle| haystack.contains(needle))
+}
+
+fn emit_agent_event<R: tauri::Runtime>(
+    app: &tauri::AppHandle<R>,
+    run_id: &str,
+    scenario: &str,
+    event: Value,
+) {
+    let _ = app.emit(
+        "agent:runEvent",
+        json!({ "runId": run_id, "scenario": scenario, "event": event }),
+    );
+}
+
+/// Desensitized tool result summary: structure counts only, never content.
+fn summarize_tool_result(result: &Value) -> Option<String> {
+    for key in ["sources", "pages", "items", "results"] {
+        if let Some(count) = result.get(key).and_then(Value::as_array).map(Vec::len) {
+            return Some(format!("{count} {key}"));
+        }
+    }
+    None
+}
+
+/// Resolves the active embedder for agent-triggered retrieval (ADR-0027).
+fn agent_embedder<R: tauri::Runtime>(
+    app: &tauri::AppHandle<R>,
+    embedding: &std::sync::Arc<embedding_service::EmbeddingState>,
+) -> Option<retrieval_service::Embedder> {
+    let store = ai_store(app);
+    match embedding_source(&store) {
+        Ok((profile, _)) if profile.kind == ai_service::AiProviderKind::LocalEmbedding => {
+            Some(retrieval_service::Embedder::BuiltIn {
+                state: embedding.clone(),
+                profile_id: profile.id,
+            })
+        }
+        Ok((profile, model)) => Some(retrieval_service::Embedder::Remote {
+            base_url: profile.base_url,
+            model,
+            profile_id: profile.id,
+        }),
+        // No embedding configuration degrades retrieval; it is not an error.
+        Err(_) => None,
+    }
+}
+
+/// Everything one agent run needs to stream, gate, and execute tools. Bundled
+/// into a struct so the tool-loop helpers stay readable.
+struct AgentRunContext<'a, R: tauri::Runtime> {
+    app: &'a tauri::AppHandle<R>,
+    embedding: &'a std::sync::Arc<embedding_service::EmbeddingState>,
+    vault_root: &'a tauri::State<'a, VaultRoot>,
+    scenario: &'a str,
+    run_id: &'a str,
+    run_handle: &'a agent_service::RunHandle,
+}
+
+/// Runs one agent turn to completion, including up to `MAX_TOOL_ROUNDS`
+/// tool rounds. Returns `Err` only for provider/transport failures; a denied
+/// or failed tool call becomes a tool message so the model can recover.
+fn run_agent_turn<R: tauri::Runtime>(
+    context: &AgentRunContext<'_, R>,
+    base_url: &str,
+    api_key: Option<&str>,
+    model: &str,
+    messages: &mut Vec<Value>,
+) -> Result<(), String> {
+    let AgentRunContext {
+        app,
+        scenario,
+        run_id,
+        run_handle,
+        ..
+    } = context;
+    /// Provider tool rounds are bounded so a misbehaving model cannot loop.
+    const MAX_TOOL_ROUNDS: usize = 5;
+    let tools = agent_tools::provider_tools(scenario);
+    let is_cancelled = || run_handle.is_cancelled();
+    for _ in 0..MAX_TOOL_ROUNDS {
+        let mut tool_calls: Vec<AgentToolCall> = Vec::new();
+        let mut on_event = |event: ai_service::ChatSseEvent| match event {
+            ai_service::ChatSseEvent::Start { model } => {
+                emit_agent_event(
+                    app,
+                    run_id,
+                    scenario,
+                    json!({ "type": "start", "model": model }),
+                );
+            }
+            ai_service::ChatSseEvent::Delta { text } => {
+                emit_agent_event(
+                    app,
+                    run_id,
+                    scenario,
+                    json!({ "type": "delta", "text": text }),
+                );
+            }
+            ai_service::ChatSseEvent::ToolCall {
+                id,
+                tool,
+                input,
+                arguments,
+            } => tool_calls.push(AgentToolCall {
+                id,
+                tool,
+                input,
+                arguments,
+            }),
+            // `done` is emitted once the whole run finishes, after the final
+            // tool round; emitting per turn would end the stream early.
+            ai_service::ChatSseEvent::Done => {}
+            ai_service::ChatSseEvent::Error { message, code } => {
+                emit_agent_event(
+                    app,
+                    run_id,
+                    scenario,
+                    json!({ "type": "error", "message": message, "code": code }),
+                );
+            }
+        };
+        let outcome = ai_service::stream_chat_cancellable_with_tools(
+            base_url,
+            api_key,
+            model,
+            messages,
+            &tools,
+            &mut on_event,
+            &is_cancelled,
+        );
+        let assistant_text = match outcome {
+            Ok(ai_service::ChatStreamOutcome::Cancelled) => {
+                // `agent:cancel` already emitted the terminal error event.
+                return Ok(());
+            }
+            Ok(ai_service::ChatStreamOutcome::Completed(text)) => text,
+            Err(error) => return Err(error),
+        };
+        if tool_calls.is_empty() {
+            emit_agent_event(app, run_id, scenario, json!({ "type": "done" }));
+            return Ok(());
+        }
+        // Replay the assistant turn verbatim so providers can match the tool
+        // results to the calls that produced them.
+        messages.push(json!({
+            "role": "assistant",
+            "content": if assistant_text.is_empty() { Value::Null } else { json!(assistant_text) },
+            "tool_calls": tool_calls
+                .iter()
+                .map(|call| json!({
+                    "id": call.id,
+                    "type": "function",
+                    "function": { "name": call.tool, "arguments": call.arguments },
+                }))
+                .collect::<Vec<Value>>(),
+        }));
+        for call in tool_calls {
+            if run_handle.is_cancelled() {
+                return Ok(());
+            }
+            let outcome = execute_agent_tool(context, &call);
+            let (content, summary, status) = match outcome {
+                Ok(value) => (
+                    serde_json::to_string(&value).unwrap_or_else(|_| "null".to_owned()),
+                    summarize_tool_result(&value),
+                    "completed",
+                ),
+                Err(error) => (
+                    json!({ "error": { "code": error.code, "message": error.message } })
+                        .to_string(),
+                    None,
+                    "failed",
+                ),
+            };
+            emit_agent_event(
+                app,
+                run_id,
+                scenario,
+                json!({
+                    "type": "tool",
+                    "tool": call.tool.as_str(),
+                    "status": status,
+                    "summary": summary,
+                }),
+            );
+            messages.push(json!({
+                "role": "tool",
+                "tool_call_id": call.id,
+                "name": call.tool,
+                "content": content,
+            }));
+        }
+    }
+    Err("TOOL_ROUND_LIMIT_EXCEEDED".to_owned())
+}
+
+/// One tool call: policy gate → optional approval → execution.
+fn execute_agent_tool<R: tauri::Runtime>(
+    context: &AgentRunContext<'_, R>,
+    call: &AgentToolCall,
+) -> Result<Value, agent_tools::ToolError> {
+    let AgentRunContext {
+        app,
+        embedding,
+        vault_root,
+        scenario,
+        run_id,
+        ..
+    } = context;
+    let approved = authorize_agent_tool(context, call)?;
+    let Some(root) = vault_root.get() else {
+        return Err(agent_tools::ToolError::new("NO_VAULT", "No vault is open"));
+    };
+    emit_agent_event(
+        app,
+        run_id,
+        scenario,
+        json!({ "type": "tool", "tool": call.tool.as_str(), "status": "started" }),
+    );
+    let retrieve = |query: &str, top_k: Option<usize>| {
+        let embedder = agent_embedder(app, embedding);
+        let request = retrieval_service::RetrievalRequest {
+            query: query.to_owned(),
+            top_k: top_k.unwrap_or(8),
+            fts_limit: 20,
+            budget_chars: 4000,
+            confidence_weight: 0.3,
+            disable_vector: false,
+        };
+        retrieval_service::retrieve(&root, &request, embedder.as_ref())
+    };
+    let deps = agent_tools::ToolDeps {
+        root: &root,
+        retrieve: &retrieve,
+    };
+    agent_tools::execute(&deps, &call.tool, &call.input, approved)
+}
+
+/// Decides whether one tool call may execute, parking an approval banner when
+/// the policy requires it (DEV-121).
+fn authorize_agent_tool<R: tauri::Runtime>(
+    context: &AgentRunContext<'_, R>,
+    call: &AgentToolCall,
+) -> Result<bool, agent_tools::ToolError> {
+    let AgentRunContext {
+        app,
+        scenario,
+        run_id,
+        run_handle,
+        ..
+    } = context;
+    let allowed = agent_tools::allowed_tools(scenario);
+    let Some(definition) = allowed.iter().find(|def| def.name == call.tool) else {
+        return Err(agent_tools::ToolError::new(
+            "TOOL_NOT_ALLOWED",
+            format!("Tool not allowed in {scenario}: {}", call.tool),
+        ));
+    };
+    let policy = agent_service::run_policy(run_id);
+    let permission_mode = policy
+        .as_ref()
+        .map(|policy| policy.permission_mode)
+        .unwrap_or(agent_service::PermissionMode::Conversation);
+    let context_paths = policy
+        .as_ref()
+        .map(|policy| policy.context_paths.clone())
+        .unwrap_or_default();
+    // Read tools never need a banner; write tools do unless full mode applies.
+    if definition.access != agent_tools::ToolAccess::Write && !definition.requires_approval {
+        return Ok(false);
+    }
+    // git_doctor_repair runs even in conversation mode but always needs an
+    // explicit approval: the user must see which repair action is about to run.
+    let doctor_repair = call.tool == "git_doctor_repair";
+    if !doctor_repair && permission_mode == agent_service::PermissionMode::Conversation {
+        emit_agent_event(
+            app,
+            run_id,
+            scenario,
+            json!({
+                "type": "tool",
+                "tool": call.tool.as_str(),
+                "status": "denied",
+                "summary": "Write requires edit mode",
+            }),
+        );
+        return Err(agent_tools::ToolError::new(
+            "WRITE_REQUIRES_EDIT_MODE",
+            "Writes require edit or full permission mode",
+        ));
+    }
+    if !definition.requires_approval && !doctor_repair {
+        // A write-capable tool that declares no approval requirement still has
+        // to respect conversation mode.
+        return Ok(false);
+    }
+    if permission_mode == agent_service::PermissionMode::Full && !doctor_repair {
+        // Full mode skips approval but not the five guardrails.
+        let target = call.input.get("path").and_then(Value::as_str);
+        let in_scope = target.is_none_or(|target| {
+            !context_paths.is_empty()
+                && context_paths
+                    .iter()
+                    .any(|path| target == path || target.starts_with(&format!("{path}/")))
+        });
+        if tool_input_forbidden(&call.tool, &call.input) || !in_scope {
+            emit_agent_event(
+                app,
+                run_id,
+                scenario,
+                json!({
+                    "type": "tool",
+                    "tool": call.tool.as_str(),
+                    "status": "denied",
+                    "summary": "Out of scope for full mode",
+                }),
+            );
+            return Err(agent_tools::ToolError::new(
+                "FULL_MODE_SCOPE_DENIED",
+                "Full mode only allows writes inside the active document scope",
+            ));
+        }
+        return Ok(false);
+    }
+    let Some(ticket) = agent_service::request_approval(run_id, &call.tool) else {
+        return Err(agent_tools::ToolError::new(
+            "RUN_NOT_ACTIVE",
+            "Agent run is no longer active",
+        ));
+    };
+    let mut event = json!({
+        "type": "approvalRequired",
+        "approvalId": ticket.approval_id,
+        "tool": call.tool.as_str(),
+        "expiresAt": ticket.expires_at,
+    });
+    if doctor_repair {
+        if let Some(action) = call.input.get("action").and_then(Value::as_str) {
+            event["summary"] = json!(format!("Git Doctor 修复：{action}"));
+        }
+    }
+    emit_agent_event(app, run_id, scenario, event);
+    let _ = run_handle;
+    match agent_service::wait_approval(&ticket.approval_id, &call.tool, run_id) {
+        Ok(agent_service::ApprovalDecision::Approved) => Ok(true),
+        Ok(agent_service::ApprovalDecision::Denied) => {
+            emit_agent_event(
+                app,
+                run_id,
+                scenario,
+                json!({ "type": "tool", "tool": call.tool.as_str(), "status": "denied" }),
+            );
+            Err(agent_tools::ToolError::new(
+                "APPROVAL_DENIED",
+                "User denied the tool approval",
+            ))
+        }
+        Err(_) => Err(agent_tools::ToolError::new(
+            "APPROVAL_EXPIRED",
+            "Approval expired before the user responded",
+        )),
     }
 }
 

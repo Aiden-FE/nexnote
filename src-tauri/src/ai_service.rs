@@ -14,6 +14,7 @@
 
 #![allow(dead_code)]
 
+use std::collections::HashMap;
 use std::fs;
 use std::io::{BufRead, BufReader, Read, Write};
 use std::net::TcpStream;
@@ -1331,10 +1332,27 @@ pub fn embed(
 #[derive(Debug, Clone, Serialize)]
 #[serde(tag = "type", rename_all = "camelCase")]
 pub enum ChatSseEvent {
-    Start { model: String },
-    Delta { text: String },
+    Start {
+        model: String,
+    },
+    Delta {
+        text: String,
+    },
+    /// A provider-emitted tool call. Function-call fragments arrive
+    /// incrementally, so one logical call is emitted once assembled.
+    ToolCall {
+        /// Provider call id, echoed back on the tool result message.
+        id: String,
+        tool: String,
+        input: Value,
+        /// Raw JSON argument string, replayed verbatim in the assistant turn.
+        arguments: String,
+    },
     Done,
-    Error { message: String, code: String },
+    Error {
+        message: String,
+        code: String,
+    },
 }
 
 /// Streams `/v1/chat/completions` using SSE and calls `on_event` for each delta.
@@ -1352,6 +1370,7 @@ pub fn stream_chat(
         api_key,
         model,
         messages,
+        None,
         &mut on_event,
         &never_cancel,
     )? {
@@ -1374,7 +1393,39 @@ pub fn stream_chat_cancellable(
     on_event: &mut dyn FnMut(ChatSseEvent),
     is_cancelled: &dyn Fn() -> bool,
 ) -> Result<ChatStreamOutcome, String> {
-    stream_chat_inner(base_url, api_key, model, messages, on_event, is_cancelled)
+    stream_chat_inner(
+        base_url,
+        api_key,
+        model,
+        messages,
+        None,
+        on_event,
+        is_cancelled,
+    )
+}
+
+/// Cancellable stream that also advertises function tools (DEV-121). Tool
+/// declarations are sent in OpenAI function-calling shape; assembled
+/// `tool_calls` fragments arrive as [`ChatSseEvent::ToolCall`] so the agent
+/// loop can execute them through the approval seam.
+pub fn stream_chat_cancellable_with_tools(
+    base_url: &str,
+    api_key: Option<&str>,
+    model: &str,
+    messages: &[Value],
+    tools: &[Value],
+    on_event: &mut dyn FnMut(ChatSseEvent),
+    is_cancelled: &dyn Fn() -> bool,
+) -> Result<ChatStreamOutcome, String> {
+    stream_chat_inner(
+        base_url,
+        api_key,
+        model,
+        messages,
+        (!tools.is_empty()).then_some(tools),
+        on_event,
+        is_cancelled,
+    )
 }
 
 /// Terminal state of a chat stream.
@@ -1395,6 +1446,7 @@ fn stream_chat_inner(
     api_key: Option<&str>,
     model: &str,
     messages: &[Value],
+    tools: Option<&[Value]>,
     on_event: &mut dyn FnMut(ChatSseEvent),
     is_cancelled: &dyn Fn() -> bool,
 ) -> Result<ChatStreamOutcome, String> {
@@ -1403,11 +1455,15 @@ fn stream_chat_inner(
         "{}/v1/chat/completions",
         origin.path_prefix.trim_end_matches('/')
     );
-    let body = json!({
+    let mut body = json!({
         "model": model,
         "messages": messages,
         "stream": true,
     });
+    if let Some(tools) = tools {
+        body["tools"] = json!(tools);
+        body["tool_choice"] = json!("auto");
+    }
     let body_bytes =
         serde_json::to_vec(&body).map_err(|e| format!("failed to encode stream request: {e}"))?;
     let mut request = format!(
@@ -1440,6 +1496,11 @@ fn stream_chat_inner(
 
     let mut reader = BufReader::new(stream);
     let mut full_text = String::new();
+    // Function-calling deltas arrive fragmented: arguments stream as JSON
+    // string pieces keyed by tool index, and the name usually arrives first.
+    let mut pending_tool_arguments: Vec<String> = Vec::new();
+    let mut pending_tool_names: HashMap<usize, String> = HashMap::new();
+    let mut pending_tool_ids: HashMap<usize, String> = HashMap::new();
     let mut line = String::new();
     loop {
         line.clear();
@@ -1486,6 +1547,68 @@ fn stream_chat_inner(
                 });
             }
         }
+        if let Some(fragments) = chunk
+            .pointer("/choices/0/delta/tool_calls")
+            .and_then(Value::as_array)
+        {
+            for (position, fragment) in fragments.iter().enumerate() {
+                // `index` is spec-compliant; positional fallback keeps
+                // providers that omit it from silently dropping the call.
+                let index = fragment
+                    .get("index")
+                    .and_then(Value::as_u64)
+                    .unwrap_or(position as u64) as usize;
+                while pending_tool_arguments.len() <= index {
+                    pending_tool_arguments.push(String::new());
+                }
+                if let Some(fragment_text) = fragment
+                    .pointer("/function/arguments")
+                    .and_then(Value::as_str)
+                    .filter(|text| !text.is_empty())
+                {
+                    pending_tool_arguments[index].push_str(fragment_text);
+                }
+                if let Some(name) = fragment
+                    .pointer("/function/name")
+                    .and_then(Value::as_str)
+                    .filter(|name| !name.is_empty())
+                {
+                    pending_tool_names.insert(index, name.to_owned());
+                }
+                if let Some(id) = fragment
+                    .get("id")
+                    .and_then(Value::as_str)
+                    .filter(|id| !id.is_empty())
+                {
+                    pending_tool_ids.insert(index, id.to_owned());
+                }
+            }
+        }
+    }
+    for (index, arguments) in pending_tool_arguments.iter().enumerate() {
+        let Some(tool) = pending_tool_names.get(&index) else {
+            continue;
+        };
+        let input = if arguments.trim().is_empty() {
+            json!({})
+        } else {
+            serde_json::from_str(arguments).map_err(|error| {
+                format!("provider returned invalid tool arguments for {tool}: {error}")
+            })?
+        };
+        on_event(ChatSseEvent::ToolCall {
+            id: pending_tool_ids
+                .get(&index)
+                .cloned()
+                .unwrap_or_else(|| format!("call_{index}")),
+            tool: tool.clone(),
+            input,
+            arguments: if arguments.trim().is_empty() {
+                "{}".to_owned()
+            } else {
+                arguments.clone()
+            },
+        });
     }
     on_event(ChatSseEvent::Done);
     Ok(ChatStreamOutcome::Completed(full_text))
@@ -1803,5 +1926,112 @@ mod tests {
             "cancellation must be distinguishable from provider failure"
         );
         assert_eq!(deltas, 1, "exactly one delta before the cancel lands");
+    }
+
+    /// Function-calling deltas arrive fragmented (name first, then argument
+    /// JSON in pieces). The assembled call must carry the provider id, the
+    /// tool name, and a parsed JSON input for the agent loop to execute.
+    #[test]
+    fn tool_call_deltas_are_assembled_into_one_call() {
+        // Build the SSE payloads at runtime so the nested JSON in the tool
+        // arguments needs no manual escaping.
+        let first_fragment = json!({
+            "choices": [{ "delta": { "tool_calls": [{
+                "index": 0,
+                "id": "call_abc",
+                "function": { "name": "search_notes", "arguments": "" }
+            }] } }]
+        });
+        let arguments = json!({ "query": "notes" }).to_string();
+        let (head, tail) = arguments.split_at(4);
+        let second_fragment = json!({
+            "choices": [{ "delta": { "tool_calls": [{
+                "index": 0,
+                "function": { "arguments": head }
+            }] } }]
+        });
+        let third_fragment = json!({
+            "choices": [{ "delta": { "tool_calls": [{
+                "index": 0,
+                "function": { "arguments": tail }
+            }] } }]
+        });
+
+        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+        let address = listener.local_addr().unwrap();
+        let payloads = [
+            first_fragment.to_string(),
+            second_fragment.to_string(),
+            third_fragment.to_string(),
+        ];
+        thread::spawn(move || {
+            let stream = listener.accept().unwrap().0;
+            let mut reader = BufReader::new(stream);
+            let mut line = String::new();
+            reader.read_line(&mut line).unwrap();
+            loop {
+                line.clear();
+                reader.read_line(&mut line).unwrap();
+                if line == "\r\n" {
+                    break;
+                }
+            }
+            let sink = reader.get_mut();
+            sink.write_all(
+                b"HTTP/1.1 200 OK\r\nContent-Type: text/event-stream\r\nConnection: close\r\n\r\n",
+            )
+            .unwrap();
+            for payload in payloads {
+                sink.write_all(format!("data: {payload}\n\n").as_bytes())
+                    .unwrap();
+            }
+            sink.flush().unwrap();
+        });
+
+        let base_url = format!("http://{address}/api");
+        let never_cancel = || false;
+        let mut calls: Vec<(String, String, Value, String)> = Vec::new();
+        let outcome = stream_chat_cancellable_with_tools(
+            &base_url,
+            None,
+            "test-model",
+            &[json!({ "role": "user", "content": "search" })],
+            &[json!({
+                "type": "function",
+                "function": {
+                    "name": "search_notes",
+                    "description": "search",
+                    "parameters": { "type": "object" },
+                },
+            })],
+            &mut |event| {
+                if let ChatSseEvent::ToolCall {
+                    id,
+                    tool,
+                    input,
+                    arguments,
+                } = event
+                {
+                    calls.push((id, tool, input, arguments));
+                }
+            },
+            &never_cancel,
+        )
+        .expect("stream must not error");
+
+        assert!(
+            matches!(outcome, ChatStreamOutcome::Completed(_)),
+            "a tool-only turn still completes normally"
+        );
+        assert_eq!(calls.len(), 1, "fragments must assemble into one call");
+        let (id, tool, input, arguments) = &calls[0];
+        assert_eq!(id, "call_abc", "the provider call id must survive");
+        assert_eq!(tool, "search_notes");
+        assert_eq!(input.get("query").and_then(Value::as_str), Some("notes"));
+        assert_eq!(
+            serde_json::from_str::<Value>(arguments).unwrap(),
+            json!({ "query": "notes" }),
+            "the replayed arguments must be valid JSON for the assistant turn"
+        );
     }
 }

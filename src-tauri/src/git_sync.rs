@@ -18,7 +18,9 @@ const TICKET_TTL: Duration = Duration::from_secs(5 * 60);
 const DEFAULT_DEBOUNCE_MS: u64 = 30_000;
 const MIN_DEBOUNCE_MS: u64 = 500;
 const MAX_DEBOUNCE_MS: u64 = 10 * 60_000;
-const REPAIR_ACTIONS: [&str; 7] = [
+/// Whitelisted repair actions. Public so the agent tool schema can advertise
+/// the same enum the doctor accepts (DEV-121).
+pub const REPAIR_ACTIONS: [&str; 7] = [
     "commit",
     "pull",
     "push",
@@ -27,6 +29,11 @@ const REPAIR_ACTIONS: [&str; 7] = [
     "preserve-local-and-abort",
     "force-abort-rebase-or-merge",
 ];
+
+/// True when `action` is one of the whitelisted repair actions.
+pub fn is_repair_action(action: &str) -> bool {
+    REPAIR_ACTIONS.contains(&action)
+}
 
 #[derive(Debug, Clone, Serialize)]
 pub struct GitRemote {

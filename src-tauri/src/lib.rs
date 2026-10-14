@@ -1,4 +1,5 @@
 mod agent_service;
+mod agent_tools;
 mod ai_service;
 mod binary_host_service;
 mod binary_service;
