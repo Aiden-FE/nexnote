@@ -28,7 +28,7 @@
 | agent:approval:respond | 返回 `{accepted:false}` 占位 | 迁移 Electron agent gateway 的工具审批语义（DEV-121） |
 | agent:run:* | SSE 文本流已接通，但无工具审批/权限模式 | 迁移工具调用与权限模式（DEV-121） |
 | index:confidenceChanged | 无重算触发点（`index:confidence` 只读） | 置信度重算落地后触发事件（DEV-119） |
-| binary:editorCommand / menu:action | 未迁移 | 多 WebView 编辑器宿主与原生菜单（DEV-123 / DEV-124） |
+| binary:editorCommand | 已投递 load/theme/flush 命令；DEV-123 实测待做 | macOS 实测后确认收发完整（DEV-123） |
 
 ## App
 
@@ -281,4 +281,4 @@
 | index:confidenceChanged | sqlite | confidence service | `webContents.send` | `index::confidence_event` | vault | pending（index:confidence 只读不重算，无触发点） |
 | settings:changed | app-state | settings service | `webContents.send` | `product::settings_event` | foundation | ported |
 | binary:editorCommand | host | binary editor host | `webContents.send` | `binary_host::editor_command` | binary-print | pending（load/theme/flush 已投递；DEV-123 实测待做） |
-| menu:action | host | native menu | `webContents.send` | `window_menu::action` | foundation | pending（原生菜单未迁移，DEV-124） |
+| menu:action | host | native menu | `webContents.send` | `window_menu::action` | foundation | ported |
