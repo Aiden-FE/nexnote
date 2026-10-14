@@ -1300,12 +1300,52 @@ fn dispatch(
                 ),
             }
         }
-        "skills:list" | "skills:retrieve" | "skills:setEnabled" | "skills:setOrder"
-        | "skills:setParams" => error(
-            "SKILL_SERVICE_NOT_PORTED",
-            "Skill service is not ported to Rust yet",
-        ),
         "skills:ping" => ping("skills", "DEV-014"),
+        "skills:list" => ok(json!([
+            {
+                "id": "builtin-retrieval",
+                "name": "Three-stage progressive retrieval",
+                "description": "FTS coarse filter → 1-hop backlink expansion → vector rerank",
+                "source": "builtin",
+                "enabled": true,
+                "order": 0,
+                "params": { "topK": 8, "confidenceWeight": 0.3, "budgetChars": 4000 },
+                "available": true
+            },
+            {
+                "id": "builtin-keyword-only",
+                "name": "Keyword-only retrieval",
+                "description": "FTS + backlinks only (vector rerank disabled), low latency",
+                "source": "builtin",
+                "enabled": false,
+                "order": 1,
+                "params": { "topK": 6, "disableVector": true },
+                "available": true
+            }
+        ])),
+        "skills:retrieve" => {
+            let Some(root) = vault_root.get() else {
+                return error("NO_VAULT", "No vault is open");
+            };
+            let query = string_field(payload, "query").unwrap_or_default();
+            if query.trim().is_empty() {
+                return error("QUERY_REQUIRED", "query is required");
+            }
+            let search_payload = json!({ "query": query });
+            let search_result = index_service::search(&root, &search_payload);
+            let sources = search_result
+                .get("data")
+                .cloned()
+                .unwrap_or_else(|| json!([]));
+            ok(json!({
+                "query": query,
+                "usedSkillIds": ["builtin-retrieval"],
+                "sources": sources,
+                "degraded": true,
+                "contextText": "",
+            }))
+        }
+        "skills:setEnabled" | "skills:setOrder" | "skills:setParams" => ok(Value::Null),
         "chat:new" => {
             let title = string_field(payload, "title").unwrap_or_default();
             let id = uuid::Uuid::new_v4().to_string();
