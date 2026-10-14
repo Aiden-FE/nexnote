@@ -32,13 +32,10 @@ pub fn open_database(root: &Path) -> Result<Connection, String> {
 }
 
 fn migrate(conn: &Connection) -> Result<(), String> {
+    // Read the schema version only. `pragma_update_and_check("user_version", 0, …)`
+    // would *write* 0 first, making every reopen replay non-idempotent ALTERs.
     let version: i64 = conn
-        .pragma_update_and_check(None, "user_version", 0, |_row| Ok(()))
-        .map_err(|e| e.to_string())
-        .and_then(|_| {
-            conn.query_row("PRAGMA user_version", [], |row| row.get(0))
-                .map_err(|e| e.to_string())
-        })
+        .query_row("PRAGMA user_version", [], |row| row.get(0))
         .unwrap_or(0);
     if version >= SCHEMA_VERSION {
         return Ok(());
@@ -556,6 +553,60 @@ fn collect_markdown_files(root: &Path) -> Vec<String> {
     walk_md(root, root, &mut files);
     files.sort();
     files
+}
+
+/// Re-indexes a single page after an add/change event (DEV-119 watcher path).
+/// A missing file removes the page instead, so callers can treat both the same.
+pub fn update_page(root: &Path, relative: &str) -> Value {
+    if let Err(e) = ensure_open(root) {
+        return e;
+    }
+    if !matches!(
+        Path::new(relative).extension().and_then(|ext| ext.to_str()),
+        Some("md") | Some("markdown")
+    ) {
+        return ok(json!({ "updated": false, "reason": "not-markdown" }));
+    }
+    let db_guard = DB.lock().expect("index db lock");
+    let Some(conn) = db_guard.as_ref() else {
+        return error("INDEX_NOT_OPEN", "Index database is not open");
+    };
+    let target = root.join(relative);
+    match fs::read_to_string(&target) {
+        Ok(content) => {
+            let page = parse_markdown_page(relative, &content);
+            match upsert_page(conn, &page) {
+                Ok(()) => {
+                    let _ = resolve_links(conn);
+                    ok(json!({ "updated": true, "path": relative }))
+                }
+                Err(message) => error("INDEX_PAGE_UPDATE_FAILED", &message),
+            }
+        }
+        // The file vanished between the event and this read: drop the page.
+        Err(_) => remove_page_locked(conn, relative),
+    }
+}
+
+/// Removes one page and its dependent rows (watcher unlink path).
+pub fn remove_page(root: &Path, relative: &str) -> Value {
+    if let Err(e) = ensure_open(root) {
+        return e;
+    }
+    let db_guard = DB.lock().expect("index db lock");
+    let Some(conn) = db_guard.as_ref() else {
+        return error("INDEX_NOT_OPEN", "Index database is not open");
+    };
+    remove_page_locked(conn, relative)
+}
+
+fn remove_page_locked(conn: &Connection, relative: &str) -> Value {
+    let removed = conn
+        .execute("DELETE FROM page_fts WHERE path=?1", [relative])
+        .and_then(|_| conn.execute("DELETE FROM pages WHERE path=?1", [relative]))
+        .unwrap_or(0);
+    let _ = resolve_links(conn);
+    ok(json!({ "removed": removed, "path": relative }))
 }
 
 fn walk_md(root: &Path, dir: &Path, out: &mut Vec<String>) {

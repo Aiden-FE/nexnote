@@ -218,7 +218,11 @@ fn atomic_write(target: &Path, bytes: &[u8]) -> Result<(), io::Error> {
     }
     let temp = target.with_extension("tmp");
     fs::write(&temp, bytes)?;
-    fs::rename(&temp, target)
+    fs::rename(&temp, target)?;
+    // DEV-020: watcher marks app writes with `origin: 'app'` so the renderer
+    // never raises an external-modification conflict against its own save.
+    crate::watcher_service::record_app_write(target);
+    Ok(())
 }
 
 pub fn write_text_file(root: &Path, payload: &Value) -> Value {
@@ -416,6 +420,7 @@ pub fn rename(root: &Path, payload: &Value) -> Value {
     };
     match fs::rename(&source, &dest) {
         Ok(()) => {
+            crate::watcher_service::record_app_write(&dest);
             let meta = dest
                 .metadata()
                 .unwrap_or_else(|_| fs::metadata(&dest).unwrap_or_else(|_| unreachable!()));
@@ -471,7 +476,13 @@ pub fn delete(root: &Path, payload: &Value) -> Value {
         fs::remove_file(&target)
     };
     match result {
-        Ok(()) => ok(Value::Null),
+        Ok(()) => {
+            // The removal itself is not a write, but renameWithLinks-style
+            // callers rewrite neighbours; mark the source so the watcher's
+            // `unlink` burst is not read back as an external conflict.
+            crate::watcher_service::record_app_write(&target);
+            ok(Value::Null)
+        }
         Err(err) => error("DELETE_FAILED", &err.to_string()),
     }
 }

@@ -26,6 +26,13 @@ ndarray = "0.16"
 ort = "=2.0.0-rc.10"
 reqwest = { version = "0.13", default-features = false, features = ["blocking", "rustls"] }
 tokenizers = { version = "0.23", default-features = false, features = ["onig"] }
+notify = "8"
+keyring = { version = "3", features = ["apple-native", "windows-native", "sync-secret-service"] }
+tauri-plugin-updater = "2"
+tauri-plugin-process = "2"
+
+[dev-dependencies]
+tauri = { version = "2", features = ["test"] }
 
 [profile.release]
 codegen-units = 1

@@ -10,6 +10,7 @@ mod print_service;
 mod product;
 mod retrieval_service;
 mod vault_fs;
+mod watcher_service;
 
 use tauri::Manager;
 

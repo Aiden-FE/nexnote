@@ -3,6 +3,7 @@ use crate::{
     binary_service, embedding_service,
     git_service::{self, GitError},
     git_sync, index_service, plugin_service, print_service, retrieval_service, vault_fs,
+    watcher_service,
 };
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
@@ -648,7 +649,7 @@ fn dispatch(
                     };
                 }
             }
-            if let Err(e) = sync_vault_root(&root, vault_root) {
+            if let Err(e) = sync_vault_root(app, &root, vault_root) {
                 return e;
             }
             state.set_current_vault(info.clone());
@@ -673,7 +674,7 @@ fn dispatch(
                 );
             }
             let info = vault_info_for_path(&root);
-            if let Err(e) = sync_vault_root(&root, vault_root) {
+            if let Err(e) = sync_vault_root(app, &root, vault_root) {
                 return e;
             }
             state.set_current_vault(info.clone());
@@ -739,7 +740,7 @@ fn dispatch(
                 Err(failure) => return error(&failure.code, &failure.message),
             }
             let info = vault_info_for_path(&root);
-            if let Err(e) = sync_vault_root(&root, vault_root) {
+            if let Err(e) = sync_vault_root(app, &root, vault_root) {
                 return e;
             }
             state.set_current_vault(info.clone());
@@ -778,7 +779,7 @@ fn dispatch(
             match output {
                 Ok(result) if result.status.success() => {
                     let info = vault_info_for_path(&target);
-                    if let Err(e) = sync_vault_root(&target, vault_root) {
+                    if let Err(e) = sync_vault_root(app, &target, vault_root) {
                         return e;
                     }
                     state.set_current_vault(info.clone());
@@ -2073,7 +2074,7 @@ fn dispatch(
     }
 }
 
-pub fn sync_vault_root(root: &Path, state: &VaultRoot) -> Result<(), Value> {
+pub fn sync_vault_root(app: &AppHandle, root: &Path, state: &VaultRoot) -> Result<(), Value> {
     if !root.join(".nexnote/config.json").is_file() {
         return Err(json!({
             "ok": false,
@@ -2083,10 +2084,14 @@ pub fn sync_vault_root(root: &Path, state: &VaultRoot) -> Result<(), Value> {
     }
     *state.root.lock().expect("vault root lock") = Some(root.to_path_buf());
     index_service::rebuild(root);
+    // DEV-119: external and app writes now stream to the renderer as
+    // `fs:changed` and drive incremental indexing.
+    watcher_service::start(app, root);
     Ok(())
 }
 
 pub fn close_vault_root(state: &VaultRoot) {
+    watcher_service::stop();
     *state.root.lock().expect("vault root lock") = None;
     index_service::close();
 }
