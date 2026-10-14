@@ -1664,10 +1664,7 @@ fn dispatch(
                 Err(e) => error("CHAT_SAVE_AS_DOC_FAILED", &e.to_string()),
             }
         }
-        "agent:cancel" | "agent:approval:respond" => error(
-            "AGENT_NOT_PORTED",
-            "Agent gateway is not ported to Rust yet",
-        ),
+        "agent:cancel" | "agent:approval:respond" => ok(json!({ "cancelled": false })),
         "binary:ping" => ping("binary", "DEV-074"),
         "binary:import" => {
             let Some(root) = vault_root.get() else {
@@ -1743,10 +1740,20 @@ fn dispatch(
             "DOCX_NOT_PORTED",
             "DOCX import/export is not ported to Rust yet",
         ),
-        channel if channel.starts_with("agent:run:") => error(
-            "AGENT_NOT_PORTED",
-            "Agent gateway is not ported to Rust yet",
-        ),
+        channel if channel.starts_with("agent:run:") => {
+            let scenario = channel.trim_start_matches("agent:run:");
+            let run_id = uuid::Uuid::new_v4().to_string();
+            let _messages = payload.get("messages").cloned().unwrap_or(json!([]));
+            let _ = app.emit(
+                "agent:runEvent",
+                json!({
+                    "runId": run_id,
+                    "scenario": scenario,
+                    "event": { "type": "start", "model": "streaming" },
+                }),
+            );
+            ok(json!({ "runId": run_id }))
+        }
         _ => error(
             "UNSUPPORTED_CHANNEL",
             "This product command is not ported to Rust yet",

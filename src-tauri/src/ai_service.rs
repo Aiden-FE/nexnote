@@ -15,7 +15,7 @@
 #![allow(dead_code)]
 
 use std::fs;
-use std::io::{Read, Write};
+use std::io::{BufRead, BufReader, Read, Write};
 use std::net::TcpStream;
 use std::path::{Path, PathBuf};
 use std::sync::Mutex;
@@ -1276,6 +1276,103 @@ pub fn embed(
         return Err("embedding vectors have inconsistent dimensions".to_string());
     }
     Ok(vectors)
+}
+
+/// SSE event emitted during a streaming chat completion.
+#[derive(Debug, Clone, Serialize)]
+#[serde(tag = "type", rename_all = "camelCase")]
+pub enum ChatSseEvent {
+    Start { model: String },
+    Delta { text: String },
+    Done,
+    Error { message: String, code: String },
+}
+
+/// Streams `/v1/chat/completions` using SSE and calls `on_event` for each delta.
+/// Returns the full assembled text on success.
+pub fn stream_chat(
+    base_url: &str,
+    api_key: Option<&str>,
+    model: &str,
+    messages: &[Value],
+    mut on_event: impl FnMut(ChatSseEvent),
+) -> Result<String, String> {
+    let origin = parse_http_origin(base_url)?;
+    let request_target = format!(
+        "{}/v1/chat/completions",
+        origin.path_prefix.trim_end_matches('/')
+    );
+    let body = json!({
+        "model": model,
+        "messages": messages,
+        "stream": true,
+    });
+    let body_bytes =
+        serde_json::to_vec(&body).map_err(|e| format!("failed to encode stream request: {e}"))?;
+    let mut request = format!(
+        "POST {request_target} HTTP/1.1\r\nHost: {}:{}\r\nConnection: close\r\nAccept: text/event-stream\r\nContent-Type: application/json\r\nContent-Length: {}\r\n",
+        origin.host, origin.port, body_bytes.len(),
+    );
+    if let Some(key) = api_key.map(str::trim).filter(|k| !k.is_empty()) {
+        request.push_str(&format!("Authorization: Bearer {key}\r\n"));
+    }
+    request.push_str("\r\n");
+
+    let mut stream = TcpStream::connect((origin.host.as_str(), origin.port))
+        .map_err(|e| format!("failed to connect to AI provider: {e}"))?;
+    stream
+        .set_read_timeout(Some(Duration::from_secs(120)))
+        .map_err(|error| format!("failed to configure provider connection: {error}"))?;
+    stream
+        .set_write_timeout(Some(Duration::from_secs(15)))
+        .map_err(|error| format!("failed to configure provider connection: {error}"))?;
+    stream
+        .write_all(request.as_bytes())
+        .map_err(|error| format!("failed to send provider request: {error}"))?;
+    stream
+        .flush()
+        .map_err(|error| format!("failed to send provider request: {error}"))?;
+
+    on_event(ChatSseEvent::Start {
+        model: model.to_owned(),
+    });
+
+    let mut reader = BufReader::new(stream);
+    let mut full_text = String::new();
+    let mut line = String::new();
+    loop {
+        line.clear();
+        let bytes_read = reader
+            .read_line(&mut line)
+            .map_err(|error| format!("failed to read provider stream: {error}"))?;
+        if bytes_read == 0 {
+            break;
+        }
+        let trimmed = line.trim();
+        if !trimmed.starts_with("data: ") {
+            continue;
+        }
+        let data = &trimmed[6..];
+        if data == "[DONE]" {
+            break;
+        }
+        let Ok(chunk) = serde_json::from_str::<Value>(data) else {
+            continue;
+        };
+        if let Some(delta) = chunk
+            .pointer("/choices/0/delta/content")
+            .and_then(Value::as_str)
+        {
+            if !delta.is_empty() {
+                full_text.push_str(delta);
+                on_event(ChatSseEvent::Delta {
+                    text: delta.to_owned(),
+                });
+            }
+        }
+    }
+    on_event(ChatSseEvent::Done);
+    Ok(full_text)
 }
 
 #[cfg(test)]
