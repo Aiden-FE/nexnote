@@ -1,6 +1,6 @@
 # DEV-119 Vault / FS / SQLite / 索引迁移
 
-- 状态：todo
+- 状态：in progress
 - 分类：architecture
 - 优先级：P0
 - 工作量：XL

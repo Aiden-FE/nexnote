@@ -1,6 +1,6 @@
 # DEV-122 Tauri 插件沙箱与 capability 迁移
 
-- 状态：todo
+- 状态：in progress
 - 分类：architecture / security
 - 优先级：P1
 - 工作量：XL

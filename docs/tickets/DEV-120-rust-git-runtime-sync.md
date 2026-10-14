@@ -1,6 +1,6 @@
 # DEV-120 Rust Git 运行时与同步体系迁移
 
-- 状态：todo
+- 状态：in progress
 - 分类：architecture
 - 优先级：P1
 - 工作量：XL

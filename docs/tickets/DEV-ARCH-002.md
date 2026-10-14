@@ -1,6 +1,6 @@
 # DEV-ARCH-002 全面迁移 Tauri 2：Rust product core 总控
 
-- 状态：planning
+- 状态：in progress
 - 日期：2026-10-14
 - 优先级：P0
 - 关联：ADR-0028、ADR-0027、ADR-0001、ADR-0015、ADR-0026、`docs/research/tauri2-migration-assessment.md`
