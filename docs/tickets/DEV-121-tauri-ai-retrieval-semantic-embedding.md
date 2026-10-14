@@ -36,11 +36,12 @@
 - `index_service.rs`：检索所需查询补齐（tier 分级页级命中、双向 1 跳邻居、块读取、向量读写/覆盖率、置信度读取），`block_vectors` / `vector_meta` 表从「只建表」变为真实读写。
 - `retrieval_service.rs`：三阶段召回 FTS(tier 计分) → 双链 → 向量重排，向量缺失或 generation 不匹配时降级为两阶段并后台重建；远程 embedding 显式配置仍可替代。
 - `product.rs`：`ai:embed` / `ai:embedWithMetadata` 内置路径走本地 ONNX；`ai:retrieve` 真实实现；新增内置模型管理通道 `ai:builtInEmbedding:status|download|delete`，下载进度经 `ai:builtInEmbeddingStatus` 事件推送。
+- 凭据：`keyring` 接入系统凭据库（macOS Keychain / Windows Credential Manager / Linux Secret Service），`save_profile` 先存后持久化、`clear_credential`/`delete_profile` 联动删除；`ai:embed`、`ai:testConnection`、`ai:listModels`、`agent:run:*` 均读取真实凭据，密钥不进配置文件也不进渲染层。
 - 共享契约（`packages/shared`）：内置向量状态/进度类型与三条通道 + 一个事件注册入白名单；向导与 FAQ 的 `local-hash-384` 表述按 ADR-0027 更新。
 
 尚未完成（保持未勾选）：
 
-- 系统 keychain 等效凭据存储：远程 provider 的 API key 仍 fail-closed，`agent:run:*` 仅为无凭据的纯文本 SSE 流；工具审批/取消语义与 Electron agent gateway 不等价，故契约矩阵中 `agent:run:*`、`agent:cancel`、`agent:approval:respond` 仍为 pending。
+- Agent 工具语义：`agent:run:*` 已是带真实凭据的 SSE 流，但工具审批、权限模式（conversation/edit/full）与取消（`agent:cancel`、`agent:approval:respond`）尚未迁移，与 Electron agent gateway 不等价，故契约矩阵中这些行仍为 pending。
 - 下载进度 UI（向导内按钮/进度条）、断点续传、代理与失败清理策略。
 - 全量/增量向量索引构建的可取消性与完整进度事件（当前为后台线程 + 降级提示）。
 - 中英混合检索评测（recall@8 / nDCG@8 对比）、低配机 RSS 门槛。
