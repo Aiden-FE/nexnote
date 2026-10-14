@@ -818,13 +818,47 @@ pub fn set_binary_ignore(root: &Path, payload: &Value) -> Result<Value, BinaryEr
         format!("{}{}", lines.join(eol), eol)
     };
     fs::write(&gitignore, output).map_err(|e| BinaryError::new("WRITE_FAILED", e.to_string()))?;
-    let removed_from_index = Command::new("git")
-        .arg("-C")
-        .arg(root)
-        .args(["ls-files", "--", "*.xlsx", "*.xmind"])
-        .output()
-        .map(|output| String::from_utf8_lossy(&output.stdout).lines().count())
-        .unwrap_or(0);
+    let removed_from_index = if untrack {
+        let output = Command::new("git")
+            .arg("-C")
+            .arg(root)
+            .args(["ls-files", "-z"])
+            .output()
+            .map_err(|e| BinaryError::new("GIT_NOT_AVAILABLE", e.to_string()))?;
+        if !output.status.success() {
+            return Err(BinaryError::new(
+                "GIT_COMMAND_FAILED",
+                String::from_utf8_lossy(&output.stderr).trim(),
+            ));
+        }
+        let tracked_owned: Vec<String> = String::from_utf8_lossy(&output.stdout)
+            .split('\0')
+            .filter(|path| {
+                path.to_ascii_lowercase().ends_with(".xlsx")
+                    || path.to_ascii_lowercase().ends_with(".xmind")
+            })
+            .map(ToOwned::to_owned)
+            .collect();
+        let tracked: Vec<&str> = tracked_owned.iter().map(|s| s.as_str()).collect();
+        if !tracked.is_empty() {
+            let remove = Command::new("git")
+                .arg("-C")
+                .arg(root)
+                .args(["rm", "--cached", "-f", "--ignore-unmatch", "--"])
+                .args(&tracked)
+                .output()
+                .map_err(|e| BinaryError::new("GIT_NOT_AVAILABLE", e.to_string()))?;
+            if !remove.status.success() {
+                return Err(BinaryError::new(
+                    "GIT_COMMAND_FAILED",
+                    String::from_utf8_lossy(&remove.stderr).trim(),
+                ));
+            }
+        }
+        tracked.len()
+    } else {
+        0
+    };
     Ok(json!({
         "untracked": untrack,
         "removedFromIndex": removed_from_index,
@@ -957,8 +991,35 @@ mod tests {
     fn toggles_gitignore_idempotently() {
         let root = temp_root("gitignore");
         fs::write(root.join(".gitignore"), "user-rule\n").unwrap();
+        Command::new("git")
+            .args(["init", "-q"])
+            .current_dir(&root)
+            .output()
+            .unwrap();
+        Command::new("git")
+            .args(["config", "user.email", "test@example.com"])
+            .current_dir(&root)
+            .output()
+            .unwrap();
+        Command::new("git")
+            .args(["config", "user.name", "Test"])
+            .current_dir(&root)
+            .output()
+            .unwrap();
+        fs::write(root.join("tracked.xlsx"), b"binary").unwrap();
+        Command::new("git")
+            .args(["add", "tracked.xlsx"])
+            .current_dir(&root)
+            .output()
+            .unwrap();
         set_binary_ignore(&root, &json!({ "untrack": true })).unwrap();
         assert_eq!(get_binary_ignore(&root).unwrap()["untracked"], true);
+        let tracked = Command::new("git")
+            .args(["ls-files"])
+            .current_dir(&root)
+            .output()
+            .unwrap();
+        assert!(!String::from_utf8_lossy(&tracked.stdout).contains("tracked.xlsx"));
         set_binary_ignore(&root, &json!({ "untrack": true })).unwrap();
         let content = fs::read_to_string(root.join(".gitignore")).unwrap();
         assert_eq!(content.matches(BINARY_IGNORE_MARKER).count(), 1);
