@@ -1328,6 +1328,37 @@ pub fn embed(
     Ok(vectors)
 }
 
+/// Sentinel surfaced when a provider rejects a tool-bearing request with 400.
+/// The agent loop reads it to drop tools and retry once, leaving an audit
+/// trail instead of failing the run outright.
+pub const PROVIDER_TOOLS_UNSUPPORTED: &str = "PROVIDER_TOOLS_UNSUPPORTED";
+
+/// Reads the HTTP status line, consuming the header block. Returns the code so
+/// the caller can fail fast instead of parsing an error body as SSE.
+fn read_response_status(reader: &mut BufReader<TcpStream>) -> Result<u16, String> {
+    let mut status_line = String::new();
+    reader
+        .read_line(&mut status_line)
+        .map_err(|error| format!("failed to read provider status: {error}"))?;
+    let status = status_line
+        .split_whitespace()
+        .nth(1)
+        .and_then(|code| code.parse::<u16>().ok())
+        .ok_or_else(|| "invalid provider response status".to_string())?;
+    // Drain the remaining headers so the body starts at the first data line.
+    let mut header = String::new();
+    loop {
+        header.clear();
+        let read = reader
+            .read_line(&mut header)
+            .map_err(|error| format!("failed to read provider headers: {error}"))?;
+        if read == 0 || header == "\r\n" || header == "\n" {
+            break;
+        }
+    }
+    Ok(status)
+}
+
 /// SSE event emitted during a streaming chat completion.
 #[derive(Debug, Clone, Serialize)]
 #[serde(tag = "type", rename_all = "camelCase")]
@@ -1362,6 +1393,7 @@ pub fn stream_chat(
     api_key: Option<&str>,
     model: &str,
     messages: &[Value],
+    params: Option<&ChatParams>,
     mut on_event: impl FnMut(ChatSseEvent),
 ) -> Result<String, String> {
     let never_cancel = || false;
@@ -1371,6 +1403,7 @@ pub fn stream_chat(
         model,
         messages,
         None,
+        params,
         &mut on_event,
         &never_cancel,
     )? {
@@ -1390,6 +1423,7 @@ pub fn stream_chat_cancellable(
     api_key: Option<&str>,
     model: &str,
     messages: &[Value],
+    params: Option<&ChatParams>,
     on_event: &mut dyn FnMut(ChatSseEvent),
     is_cancelled: &dyn Fn() -> bool,
 ) -> Result<ChatStreamOutcome, String> {
@@ -1399,6 +1433,7 @@ pub fn stream_chat_cancellable(
         model,
         messages,
         None,
+        params,
         on_event,
         is_cancelled,
     )
@@ -1408,12 +1443,15 @@ pub fn stream_chat_cancellable(
 /// declarations are sent in OpenAI function-calling shape; assembled
 /// `tool_calls` fragments arrive as [`ChatSseEvent::ToolCall`] so the agent
 /// loop can execute them through the approval seam.
+// Fixed protocol argument set (endpoint, model, tools, params, callbacks).
+#[allow(clippy::too_many_arguments)]
 pub fn stream_chat_cancellable_with_tools(
     base_url: &str,
     api_key: Option<&str>,
     model: &str,
     messages: &[Value],
     tools: &[Value],
+    params: Option<&ChatParams>,
     on_event: &mut dyn FnMut(ChatSseEvent),
     is_cancelled: &dyn Fn() -> bool,
 ) -> Result<ChatStreamOutcome, String> {
@@ -1423,6 +1461,7 @@ pub fn stream_chat_cancellable_with_tools(
         model,
         messages,
         (!tools.is_empty()).then_some(tools),
+        params,
         on_event,
         is_cancelled,
     )
@@ -1441,12 +1480,15 @@ pub enum ChatStreamOutcome {
 /// within ~100ms of the flag flipping, long enough for slow providers.
 const CANCEL_POLL_READ_TIMEOUT: Duration = Duration::from_millis(100);
 
+// Fixed protocol argument set (endpoint, model, tools, params, callbacks).
+#[allow(clippy::too_many_arguments)]
 fn stream_chat_inner(
     base_url: &str,
     api_key: Option<&str>,
     model: &str,
     messages: &[Value],
     tools: Option<&[Value]>,
+    params: Option<&ChatParams>,
     on_event: &mut dyn FnMut(ChatSseEvent),
     is_cancelled: &dyn Fn() -> bool,
 ) -> Result<ChatStreamOutcome, String> {
@@ -1460,6 +1502,19 @@ fn stream_chat_inner(
         "messages": messages,
         "stream": true,
     });
+    if let Some(params) = params {
+        // Only send what the caller actually set: an absent field means "use
+        // the provider default", not "override it with a guessed value".
+        if let Some(temperature) = params.temperature {
+            body["temperature"] = json!(temperature);
+        }
+        if let Some(max_tokens) = params.max_tokens {
+            body["max_tokens"] = json!(max_tokens);
+        }
+        if let Some(effort) = params.reasoning_effort.as_deref() {
+            body["reasoning_effort"] = json!(effort);
+        }
+    }
     if let Some(tools) = tools {
         body["tools"] = json!(tools);
         body["tool_choice"] = json!("auto");
@@ -1490,11 +1545,24 @@ fn stream_chat_inner(
         .flush()
         .map_err(|error| format!("failed to send provider request: {error}"))?;
 
+    let mut reader = BufReader::new(stream);
+    // A provider that rejects the request (e.g. 400 because it does not
+    // support tools) answers with a JSON error body, not an event stream.
+    // Without this check the loop would read a non-SSE body and report a
+    // successful, empty completion — the gateway could never fall back.
+    let status = read_response_status(&mut reader)?;
+    if !(200..300).contains(&status) {
+        return Err(if tools.is_some() && status == 400 {
+            PROVIDER_TOOLS_UNSUPPORTED.to_owned()
+        } else {
+            format!("provider returned HTTP {status}")
+        });
+    }
+
     on_event(ChatSseEvent::Start {
         model: model.to_owned(),
     });
 
-    let mut reader = BufReader::new(stream);
     let mut full_text = String::new();
     // Function-calling deltas arrive fragmented: arguments stream as JSON
     // string pieces keyed by tool index, and the name usually arrives first.
@@ -1909,6 +1977,7 @@ mod tests {
             None,
             "test-model",
             &[json!({ "role": "user", "content": "hello" })],
+            None,
             &mut |event| {
                 if matches!(event, ChatSseEvent::Delta { .. }) {
                     deltas += 1;
@@ -2004,6 +2073,7 @@ mod tests {
                     "parameters": { "type": "object" },
                 },
             })],
+            None,
             &mut |event| {
                 if let ChatSseEvent::ToolCall {
                     id,
@@ -2032,6 +2102,86 @@ mod tests {
             serde_json::from_str::<Value>(arguments).unwrap(),
             json!({ "query": "notes" }),
             "the replayed arguments must be valid JSON for the assistant turn"
+        );
+    }
+
+    /// A provider that rejects tool-bearing requests answers 400 with a JSON
+    /// error body. The stream must surface the sentinel (so the agent loop can
+    /// drop tools and retry), not report an empty successful completion.
+    #[test]
+    fn tool_rejection_surfaces_the_fallback_sentinel() {
+        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+        let address = listener.local_addr().unwrap();
+        thread::spawn(move || {
+            let stream = listener.accept().unwrap().0;
+            let mut reader = BufReader::new(stream);
+            let mut line = String::new();
+            reader.read_line(&mut line).unwrap();
+            loop {
+                line.clear();
+                reader.read_line(&mut line).unwrap();
+                if line == "\r\n" {
+                    break;
+                }
+            }
+            write_response(reader.get_mut(), 400, br#"{"error":"tools not supported"}"#);
+        });
+
+        let base_url = format!("http://{address}/api");
+        let never_cancel = || false;
+        let failure = stream_chat_cancellable_with_tools(
+            &base_url,
+            None,
+            "test-model",
+            &[json!({ "role": "user", "content": "hi" })],
+            &[json!({
+                "type": "function",
+                "function": { "name": "search_notes", "description": "s", "parameters": {} }
+            })],
+            None,
+            &mut |_event| {},
+            &never_cancel,
+        )
+        .expect_err("400 must not look like an empty success");
+        assert_eq!(failure, PROVIDER_TOOLS_UNSUPPORTED);
+    }
+
+    /// The same 400 without tools is an ordinary provider error, not the
+    /// fallback sentinel: dropping tools would not help.
+    #[test]
+    fn non_tool_http_errors_stay_generic() {
+        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+        let address = listener.local_addr().unwrap();
+        thread::spawn(move || {
+            let stream = listener.accept().unwrap().0;
+            let mut reader = BufReader::new(stream);
+            let mut line = String::new();
+            reader.read_line(&mut line).unwrap();
+            loop {
+                line.clear();
+                reader.read_line(&mut line).unwrap();
+                if line == "\r\n" {
+                    break;
+                }
+            }
+            write_response(reader.get_mut(), 400, br#"{"error":"bad model"}"#);
+        });
+
+        let base_url = format!("http://{address}/api");
+        let never_cancel = || false;
+        let failure = stream_chat_cancellable(
+            &base_url,
+            None,
+            "test-model",
+            &[json!({ "role": "user", "content": "hi" })],
+            None,
+            &mut |_event| {},
+            &never_cancel,
+        )
+        .expect_err("400 must fail");
+        assert!(
+            failure.contains("400") && failure != PROVIDER_TOOLS_UNSUPPORTED,
+            "expected a generic HTTP error, got: {failure}"
         );
     }
 }

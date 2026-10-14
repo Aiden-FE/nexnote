@@ -2813,6 +2813,28 @@ fn dispatch<R: tauri::Runtime>(
             let app_handle = app.clone();
             let run_id_for_response = run_id.clone();
             let api_key = ai_service::read_credential(&profile.id);
+            // Provider params: the request-level value wins over the profile's,
+            // mirroring `AiService.resolve`. Translation forces reasoning off so
+            // the renderer cannot turn it on.
+            let mut chat_params = profile.params.clone();
+            if let Some(request_params) = payload.get("params") {
+                let overlay: ai_service::ChatParams =
+                    serde_json::from_value(request_params.clone()).unwrap_or_default();
+                if overlay.temperature.is_some() {
+                    chat_params.temperature = overlay.temperature;
+                }
+                if overlay.max_tokens.is_some() {
+                    chat_params.max_tokens = overlay.max_tokens;
+                }
+                if overlay.reasoning_effort.is_some() {
+                    chat_params.reasoning_effort = overlay.reasoning_effort;
+                }
+            }
+            if scenario == "translation" {
+                // Translation is a pure text transform: reasoning stays off
+                // regardless of what the renderer asked for.
+                chat_params.reasoning_effort = Some("none".to_owned());
+            }
             // DEV-121: the chat dock owns tool permission; non-chat scenarios
             // are pinned to conversation mode by the registry itself.
             let permission_mode = payload
@@ -2879,6 +2901,7 @@ fn dispatch<R: tauri::Runtime>(
                     &base_url,
                     api_key.as_deref(),
                     &model,
+                    Some(&chat_params),
                     &mut conversation,
                 );
                 agent_service::finish_run(&run_id);
@@ -2995,6 +3018,7 @@ fn run_agent_turn<R: tauri::Runtime>(
     base_url: &str,
     api_key: Option<&str>,
     model: &str,
+    params: Option<&ai_service::ChatParams>,
     messages: &mut Vec<Value>,
 ) -> Result<(), String> {
     let AgentRunContext {
@@ -3006,9 +3030,14 @@ fn run_agent_turn<R: tauri::Runtime>(
     } = context;
     /// Provider tool rounds are bounded so a misbehaving model cannot loop.
     const MAX_TOOL_ROUNDS: usize = 5;
-    let tools = agent_tools::provider_tools(scenario);
+    // A provider may reject tool-bearing requests (400). One no-tool retry is
+    // allowed, with an explicit fallback event — never a silent failure.
+    let mut tools = agent_tools::provider_tools(scenario);
+    let mut allow_tool_fallback = !tools.is_empty();
     let is_cancelled = || run_handle.is_cancelled();
-    for _ in 0..MAX_TOOL_ROUNDS {
+    let mut round = 0;
+    loop {
+        round += 1;
         let mut tool_calls: Vec<AgentToolCall> = Vec::new();
         let mut on_event = |event: ai_service::ChatSseEvent| match event {
             ai_service::ChatSseEvent::Start { model } => {
@@ -3056,6 +3085,7 @@ fn run_agent_turn<R: tauri::Runtime>(
             model,
             messages,
             &tools,
+            params,
             &mut on_event,
             &is_cancelled,
         );
@@ -3065,11 +3095,31 @@ fn run_agent_turn<R: tauri::Runtime>(
                 return Ok(());
             }
             Ok(ai_service::ChatStreamOutcome::Completed(text)) => text,
-            Err(error) => return Err(error),
+            Err(error) => {
+                // Degrade once, leaving a visible trace, instead of failing a
+                // run that can still answer without tools.
+                if allow_tool_fallback && error == ai_service::PROVIDER_TOOLS_UNSUPPORTED {
+                    allow_tool_fallback = false;
+                    tools = Vec::new();
+                    emit_agent_event(
+                        app,
+                        run_id,
+                        scenario,
+                        json!({ "type": "fallback", "runtime": "builtin-fallback" }),
+                    );
+                    // The provider may have emitted `start` before rejecting;
+                    // the retry emits its own, so nothing is duplicated.
+                    continue;
+                }
+                return Err(error);
+            }
         };
         if tool_calls.is_empty() {
             emit_agent_event(app, run_id, scenario, json!({ "type": "done" }));
             return Ok(());
+        }
+        if round >= MAX_TOOL_ROUNDS {
+            return Err("TOOL_ROUND_LIMIT_EXCEEDED".to_owned());
         }
         // Replay the assistant turn verbatim so providers can match the tool
         // results to the calls that produced them.
@@ -3122,7 +3172,6 @@ fn run_agent_turn<R: tauri::Runtime>(
             }));
         }
     }
-    Err("TOOL_ROUND_LIMIT_EXCEEDED".to_owned())
 }
 
 /// One tool call: policy gate → optional approval → execution.
