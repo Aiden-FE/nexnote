@@ -126,7 +126,8 @@ function makeServices(): {
       platform: 'test',
       arch: 'test',
       isPackaged: false,
-      electronVersion: 'test',
+      runtimeName: 'electron',
+      runtimeVersion: 'test',
     }),
     checkForUpdates: async () => ({
       status: 'not-configured' as const,

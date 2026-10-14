@@ -21,7 +21,8 @@ interface BoundSmokeReport extends SmokeReport {
   candidateSha: string | null;
   appVersion: string;
   platform: NodeJS.Platform;
-  electronVersion: string;
+  runtimeName: string;
+  runtimeVersion: string;
   electronAbi: string;
   notRun: string[];
   manualSteps: string[];
@@ -293,7 +294,8 @@ export class SmokeController {
       candidateSha: process.env.NEXNOTE_SMOKE_CANDIDATE_SHA ?? null,
       appVersion: app.getVersion(),
       platform: process.platform,
-      electronVersion: process.versions.electron,
+      runtimeName: 'electron',
+      runtimeVersion: process.versions.electron,
       electronAbi: process.versions.modules,
       notRun: ['Windows packaged smoke', 'Linux packaged smoke'],
       manualSteps: [

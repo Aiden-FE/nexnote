@@ -358,7 +358,8 @@ async function bootstrap(): Promise<void> {
         platform: process.platform,
         arch: process.arch,
         isPackaged: app.isPackaged,
-        electronVersion: process.versions.electron ?? 'unknown',
+        runtimeName: 'electron' as const,
+        runtimeVersion: process.versions.electron ?? 'unknown',
       };
     },
     checkForUpdates,

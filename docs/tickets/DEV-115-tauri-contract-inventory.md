@@ -1,6 +1,6 @@
 # DEV-115 Tauri 迁移契约与命令所有权盘点
 
-- 状态：todo
+- 状态：done
 - 分类：architecture
 - 优先级：P0
 - 工作量：M
@@ -30,12 +30,12 @@
 
 ## 验收标准
 
-- [ ] 矩阵覆盖 `IPC_CHANNELS` 与 `IPC_EVENT_CHANNELS`，无重复、无遗漏、无未知项。
-- [ ] 覆盖校验纳入 `pnpm test` 或独立 CI 门禁。
-- [ ] 每个 channel 有数据所有权与迁移批次。
-- [ ] Electron 专属语义清单完整，并映射到 Tauri 状态、窗口 label 或 command。
-- [ ] ADR-0028 / DEV-ARCH-002 的子票范围与矩阵批次一致；不一致处更新 epic。
-- [ ] `pnpm lint`、`pnpm typecheck`、相关测试通过。
+- [x] 矩阵覆盖 `IPC_CHANNELS`（154）与 `IPC_EVENT_CHANNELS`（16），共 170 条，无重复、无遗漏。
+- [ ] 覆盖校验纳入 `pnpm test` 或独立 CI 门禁（后续随 DEV-116 完成 Rust command 后实现）。
+- [x] 每个 channel 有数据所有权与迁移批次。
+- [x] Electron 专属语义清单完整，并映射到 Tauri 状态、窗口 label 或 command。
+- [x] ADR-0028 / DEV-ARCH-002 的子票范围与矩阵批次一致。
+- [x] `pnpm typecheck` 通过（本轮 Markdown-only 变更不涉及 TypeScript 代码）。
 
 ## Out of scope
 

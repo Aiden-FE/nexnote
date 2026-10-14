@@ -22,7 +22,7 @@
 
 | 子票 | 主题 | 依赖 | 状态 |
 | --- | --- | --- | --- |
-| DEV-115 | 迁移契约与命令所有权盘点 | 无 | todo |
+| DEV-115 | 迁移契约与命令所有权盘点 | 无 | done |
 | DEV-116 | Tauri 2 壳 + Renderer bridge | DEV-115 | todo |
 | DEV-117 | 三 WebView 编辑器兼容矩阵 | DEV-116 | todo / Windows-Linux environment-blocked |
 | DEV-118 | Rust product core 基础与状态生命周期 | DEV-115 | todo |

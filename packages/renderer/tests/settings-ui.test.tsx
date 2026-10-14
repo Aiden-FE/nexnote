@@ -52,7 +52,8 @@ function installBridge(mock?: Record<string, unknown>) {
           platform: 'test',
           arch: 'arm64',
           isPackaged: false,
-          electronVersion: '30.0.0',
+          runtimeName: 'electron',
+          runtimeVersion: '30.0.0',
         },
       } as const);
     }

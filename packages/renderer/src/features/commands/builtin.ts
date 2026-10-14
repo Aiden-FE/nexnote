@@ -296,7 +296,7 @@ commandRegistry.register({
   run: async () => {
     const info = await invoke('app:getInfo');
     window.alert(
-      `NexNote v${info.version}\nElectron ${info.electronVersion}\n${info.platform}/${info.arch}`,
+    `NexNote v${info.version}\n${info.runtimeName} ${info.runtimeVersion}\n${info.platform}/${info.arch}`,
     );
   },
 });

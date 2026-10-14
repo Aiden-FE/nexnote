@@ -1,9 +1,12 @@
 import { StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';
+import { installTauriIpcBridge } from './lib/tauri-bridge';
 import App from './App';
 import './features/bootstrap';
 import './globals.css';
 import { runSmokeIfEnabled } from './smoke/smoke';
+
+installTauriIpcBridge();
 
 const container = document.getElementById('root');
 if (!container) throw new Error('#root 不存在');

@@ -5,7 +5,8 @@ export interface AppInfo {
   platform: string;
   arch: string;
   isPackaged: boolean;
-  electronVersion: string;
+  runtimeName: 'electron' | 'tauri';
+  runtimeVersion: string;
 }
 
 export type UpdateChannel = 'stable' | 'beta' | 'alpha';

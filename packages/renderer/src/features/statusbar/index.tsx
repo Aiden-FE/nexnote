@@ -56,7 +56,7 @@ function VersionItem() {
   return (
     <span
       className="opacity-70"
-      title={`Electron ${info.electronVersion} · ${info.platform}/${info.arch}`}
+      title={`${info.runtimeName} ${info.runtimeVersion} · ${info.platform}/${info.arch}`}
     >
       v{info.version}
     </span>

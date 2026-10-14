@@ -49,7 +49,13 @@ beforeEach(() => {
   invoke.mockImplementation(async (channel: string) => {
     if (channel === 'settings:getAll') return global;
     if (channel === 'app:getInfo')
-      return { version: '0.0.34', platform: 'test', arch: 'arm64', electronVersion: '44.0.0' };
+      return {
+        version: '0.0.34',
+        platform: 'test',
+        arch: 'arm64',
+        runtimeName: 'electron',
+        runtimeVersion: '44.0.0',
+      };
     if (channel === 'index:status')
       return { phase: 'ready', pagesIndexed: 3, pagesTotal: 3, mode: 'full' };
     return null;

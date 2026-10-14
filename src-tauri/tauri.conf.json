@@ -1,0 +1,34 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "NexNote",
+  "version": "0.0.37",
+  "identifier": "dev.nexnote.desktop",
+  "build": {
+    "beforeDevCommand": "pnpm --filter @nexnote/renderer dev",
+    "beforeBuildCommand": "pnpm --filter @nexnote/renderer build",
+    "devUrl": "http://127.0.0.1:5173",
+    "frontendDist": "../packages/renderer/dist"
+  },
+  "app": {
+    "withGlobalTauri": false,
+    "windows": [
+      {
+        "label": "main",
+        "title": "NexNote",
+        "width": 1400,
+        "height": 900,
+        "minWidth": 960,
+        "minHeight": 640,
+        "dragDropEnabled": false
+      }
+    ],
+    "security": {
+      "csp": "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self' data:; connect-src ipc: http://ipc.localhost ws://127.0.0.1:5173 http://127.0.0.1:5173"
+    }
+  },
+  "bundle": {
+    "active": false,
+    "targets": "all",
+    "icon": []
+  }
+}

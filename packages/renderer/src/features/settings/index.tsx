@@ -918,7 +918,8 @@ function AboutSection() {
     version: string;
     platform: string;
     arch: string;
-    electronVersion: string;
+    runtimeName: string;
+    runtimeVersion: string;
   } | null>(null);
 
   useEffect(() => {
@@ -942,8 +943,10 @@ function AboutSection() {
           <span className="font-mono">{info?.arch ?? '…'}</span>
         </div>
         <div className="flex justify-between">
-          <span className="text-muted-foreground">Electron</span>
-          <span className="font-mono">{info?.electronVersion ?? '…'}</span>
+          <span className="text-muted-foreground">Runtime</span>
+          <span className="font-mono">
+            {info ? `${info.runtimeName} ${info.runtimeVersion}` : '…'}
+          </span>
         </div>
       </div>
       <div className="pt-4 text-xs text-muted-foreground">
