@@ -405,6 +405,10 @@ fn dispatch(
 ) -> Value {
     match channel {
         "app:getInfo" => ok(app_info(app)),
+        "app:checkForUpdates" | "app:downloadUpdate" | "app:installUpdate" => error(
+            "APP_UPDATE_NOT_PORTED",
+            "Updater flows are not ported to Tauri yet",
+        ),
         "app:getUpdateSettings" => {
             let settings = state.global_settings.lock().expect("settings lock");
             ok(settings
@@ -448,6 +452,84 @@ fn dispatch(
                 None => ok(Value::Null),
             }
         }
+        "settings:setVault" => {
+            let vault = state
+                .current_vault
+                .lock()
+                .expect("vault state lock")
+                .clone();
+            let Some(vault) = vault else {
+                return error("NO_VAULT", "No vault is open");
+            };
+            let Some(patch) = payload.get("patch") else {
+                return error("INVALID_VAULT_SETTINGS", "patch is required");
+            };
+            let mut config: Value = fs::read_to_string(&vault.config_path)
+                .ok()
+                .and_then(|raw| serde_json::from_str(&raw).ok())
+                .unwrap_or_else(default_vault_config);
+            let Some(settings) = config.as_object_mut() else {
+                return error("VAULT_CONFIG_INVALID", "Vault config is invalid");
+            };
+            match settings.get_mut("settings") {
+                Some(current) => merge_object(current, patch),
+                None => {
+                    settings.insert("settings".to_string(), default_vault_settings());
+                    merge_object(
+                        settings
+                            .get_mut("settings")
+                            .expect("settings just inserted"),
+                        patch,
+                    );
+                }
+            }
+            let settings_value = settings.get("settings").cloned().unwrap_or(Value::Null);
+            match write_config(Path::new(&vault.config_path), &config) {
+                Ok(()) => ok(settings_value),
+                Err(message) => error("VAULT_CONFIG_WRITE_FAILED", &message.to_string()),
+            }
+        }
+        "settings:setShortcuts" => {
+            let Some(shortcuts) = payload.get("shortcuts") else {
+                return error("INVALID_SHORTCUTS", "shortcuts is required");
+            };
+            let mut settings = state.global_settings.lock().expect("settings lock");
+            if let Some(current) = settings.as_object_mut() {
+                current.insert("shortcuts".to_string(), shortcuts.clone());
+            }
+            ok(json!(shortcuts))
+        }
+        "settings:exportShortcuts" => {
+            let settings = state.global_settings.lock().expect("settings lock");
+            let shortcuts = settings.get("shortcuts").cloned().unwrap_or(Value::Null);
+            let count = shortcuts.as_array().map(Vec::len).unwrap_or_default();
+            match serde_json::to_string_pretty(&shortcuts) {
+                Ok(json_string) => ok(json!({ "json": json_string, "count": count })),
+                Err(e) => error("SERIALIZATION_FAILED", &e.to_string()),
+            }
+        }
+        "settings:importShortcuts" => {
+            let Some(json_string) = string_field(payload, "json") else {
+                return error("INVALID_SHORTCUT_IMPORT", "json is required");
+            };
+            let shortcuts: Value = match serde_json::from_str(&json_string) {
+                Ok(value) => value,
+                Err(_) => {
+                    return error("INVALID_SHORTCUT_IMPORT", "Invalid shortcut JSON");
+                }
+            };
+            let imported = shortcuts.as_array().map(Vec::len).unwrap_or_default();
+            let mut settings = state.global_settings.lock().expect("settings lock");
+            if let Some(current) = settings.as_object_mut() {
+                current.insert("shortcuts".to_string(), shortcuts.clone());
+            }
+            ok(json!({ "imported": imported, "shortcuts": shortcuts }))
+        }
+        "settings:search" => ok(json!([])),
+        "settings:pickImportFile" | "settings:saveExportFile" => error(
+            "SETTINGS_DIALOG_NOT_PORTED",
+            "Native settings dialogs are not ported to Tauri yet",
+        ),
         "vault:getState" => {
             let vault = state
                 .current_vault
@@ -570,6 +652,45 @@ fn dispatch(
                 None => ok(Value::Null),
             }
         }
+        "vault:removeRecent" => {
+            let Some(path) = string_field(payload, "path") else {
+                return error("INVALID_VAULT_PATH", "path is required");
+            };
+            let mut recent = state.recent_vaults.lock().expect("recent vault lock");
+            recent.retain(|entry| entry.path != path);
+            ok(Value::Null)
+        }
+        "vault:initGit" => {
+            let Some(path) = string_field(payload, "path") else {
+                return error("INVALID_VAULT_PATH", "path is required");
+            };
+            let root = PathBuf::from(path);
+            if !root.join(".nexnote/config.json").is_file() {
+                return error(
+                    "NOT_A_VAULT",
+                    "The selected directory has no NexNote config",
+                );
+            }
+            match git_service::init(&root) {
+                Ok(_) => {}
+                Err(failure) => return error(&failure.code, &failure.message),
+            }
+            let info = vault_info_for_path(&root);
+            if let Err(e) = sync_vault_root(&root, vault_root) {
+                return e;
+            }
+            state.set_current_vault(info.clone());
+            let _ = app.emit("vault:changed", &info);
+            ok(serde_json::to_value(info).unwrap_or(Value::Null))
+        }
+        "vault:clone" | "vault:clonePreflight" | "vault:cancelOperation" => error(
+            "VAULT_CLONE_NOT_PORTED",
+            "Remote vault operations are not ported to Rust yet",
+        ),
+        "vault:reveal" => error(
+            "VAULT_REVEAL_NOT_PORTED",
+            "Reveal in Finder is not ported to Tauri yet",
+        ),
         "vault:saveLayout" => {
             let vault = state
                 .current_vault
