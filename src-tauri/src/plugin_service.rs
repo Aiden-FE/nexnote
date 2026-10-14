@@ -1785,6 +1785,64 @@ impl PluginStore {
             .cloned()
             .collect()
     }
+
+    /// Command palette entries contributed by all loaded plugins, matching
+    /// the Electron `listCommands()` contract.
+    pub fn list_commands(&self) -> Vec<Value> {
+        let mut commands = Vec::new();
+        for record in self.plugins.values() {
+            let Some(contributions) = record.manifest.contributions.as_ref() else {
+                continue;
+            };
+            let Some(entries) = contributions.get(&PluginContributionKind::Commands) else {
+                continue;
+            };
+            for entry in entries {
+                commands.push(json!({
+                    "id": entry.id,
+                    "pluginId": record.manifest.id,
+                    "title": entry.title,
+                    "keywords": entry.keywords,
+                }));
+            }
+        }
+        commands
+    }
+
+    /// All contributions from active plugins, scoped by plugin id — the
+    /// Electron `listContributions()` contract.
+    pub fn list_contributions(&self) -> Vec<Value> {
+        let mut contributions = Vec::new();
+        for record in self.plugins.values() {
+            if record.state != PluginRuntimeState::Active {
+                continue;
+            }
+            let Some(by_kind) = record.manifest.contributions.as_ref() else {
+                continue;
+            };
+            for (kind, entries) in by_kind {
+                let kind_str = match kind {
+                    PluginContributionKind::Commands => "commands",
+                    PluginContributionKind::Menus => "menus",
+                    PluginContributionKind::Views => "views",
+                    PluginContributionKind::BlockTypes => "blockTypes",
+                };
+                for entry in entries {
+                    let mut view = serde_json::to_value(entry).unwrap_or(Value::Null);
+                    if let Some(object) = view.as_object_mut() {
+                        object.insert(
+                            "scopedId".to_owned(),
+                            json!(format!("{}:{}", record.manifest.id, entry.id)),
+                        );
+                        object.insert("pluginId".to_owned(), json!(record.manifest.id));
+                        object.insert("kind".to_owned(), json!(kind_str));
+                    }
+                    contributions.push(view);
+                }
+            }
+        }
+        contributions
+    }
 }
 
 fn remove_dir_if_exists(path: &Path) -> Result<(), String> {

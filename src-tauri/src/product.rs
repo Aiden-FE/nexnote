@@ -1077,8 +1077,56 @@ fn dispatch(
                         Err(e) => error("CONFIDENCE_QUERY_FAILED", &e.to_string()),
                     }
                 }
-                "index:confidenceSettings" | "index:setConfidenceFrontmatter" => {
-                    ok(json!({ "writeFrontmatter": false }))
+                "index:confidenceSettings" => {
+                    let vault = state
+                        .current_vault
+                        .lock()
+                        .expect("vault state lock")
+                        .clone();
+                    match vault {
+                        Some(vault) => {
+                            let config: Value = fs::read_to_string(&vault.config_path)
+                                .ok()
+                                .and_then(|raw| serde_json::from_str(&raw).ok())
+                                .unwrap_or_else(default_vault_config);
+                            ok(json!({
+                                "writeFrontmatter": config
+                                    .pointer("/features/confidenceFrontmatter")
+                                    .and_then(Value::as_bool)
+                                    .unwrap_or(false),
+                            }))
+                        }
+                        None => ok(json!({ "writeFrontmatter": false })),
+                    }
+                }
+                "index:setConfidenceFrontmatter" => {
+                    let vault = state
+                        .current_vault
+                        .lock()
+                        .expect("vault state lock")
+                        .clone();
+                    let Some(vault) = vault else {
+                        return error("NO_VAULT", "No vault is open");
+                    };
+                    let enabled = payload
+                        .get("enabled")
+                        .and_then(Value::as_bool)
+                        .unwrap_or(false);
+                    let mut config: Value = match fs::read_to_string(&vault.config_path)
+                        .ok()
+                        .and_then(|raw| serde_json::from_str(&raw).ok())
+                    {
+                        Some(config) => config,
+                        None => default_vault_config(),
+                    };
+                    if !config.get("features").is_some_and(Value::is_object) {
+                        config["features"] = json!({});
+                    }
+                    config["features"]["confidenceFrontmatter"] = json!(enabled);
+                    match write_config(Path::new(&vault.config_path), &config) {
+                        Ok(()) => ok(json!({ "writeFrontmatter": enabled })),
+                        Err(message) => error("VAULT_CONFIG_WRITE_FAILED", &message.to_string()),
+                    }
                 }
                 _ => error("INDEX_UNKNOWN", "Unknown index command"),
             }
@@ -1512,6 +1560,8 @@ fn dispatch(
                         Err(e) => error("PLUGIN_SERIALIZE_FAILED", &e.to_string()),
                     }
                 }
+                "plugins:listCommands" => ok(json!(store.list_commands())),
+                "plugins:listContributions" => ok(json!(store.list_contributions())),
                 "plugins:uninstall" => match string_field(payload, "pluginId") {
                     Some(id) => match store.uninstall(&id) {
                         Ok(()) => ok(Value::Null),
