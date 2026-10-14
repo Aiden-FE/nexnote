@@ -1173,6 +1173,127 @@ fn dispatch(
                     },
                     None => error("TOKEN_REQUIRED", "token is required"),
                 },
+                "plugins:pickSource" => match string_field(payload, "source") {
+                    Some(source) => ok(json!({ "source": source, "path": null })),
+                    None => error("PLUGIN_SOURCE_REQUIRED", "source is required"),
+                },
+                "plugins:installPreview" => {
+                    match (
+                        string_field(payload, "source"),
+                        string_field(payload, "path"),
+                    ) {
+                        (Some(_source), Some(path)) => {
+                            match store.install_preview(Path::new(&path)) {
+                                Ok(ticket) => match serde_json::to_value(ticket) {
+                                    Ok(value) => ok(value),
+                                    Err(e) => error("PLUGIN_SERIALIZE_FAILED", &e.to_string()),
+                                },
+                                Err(e) => error("PLUGIN_PREVIEW_FAILED", &e),
+                            }
+                        }
+                        _ => error("PLUGIN_SOURCE_REQUIRED", "source and path are required"),
+                    }
+                }
+                "plugins:confirmInstall" => {
+                    match (
+                        string_field(payload, "ticket"),
+                        payload.get("accept").and_then(Value::as_bool),
+                    ) {
+                        (Some(ticket), Some(accept)) => {
+                            match store.confirm_install(&ticket, accept) {
+                                Ok(view) => match serde_json::to_value(view) {
+                                    Ok(value) => ok(value),
+                                    Err(e) => error("PLUGIN_SERIALIZE_FAILED", &e.to_string()),
+                                },
+                                Err(e) => error("PLUGIN_CONFIRM_FAILED", &e),
+                            }
+                        }
+                        _ => error("PLUGIN_CONFIRM_REQUIRED", "ticket and accept are required"),
+                    }
+                }
+                "plugins:revokePermission" => {
+                    match (
+                        string_field(payload, "pluginId"),
+                        string_field(payload, "permission"),
+                    ) {
+                        (Some(id), Some(perm)) => match store.revoke_permission(&id, &perm) {
+                            Ok(view) => match serde_json::to_value(view) {
+                                Ok(value) => ok(value),
+                                Err(e) => error("PLUGIN_SERIALIZE_FAILED", &e.to_string()),
+                            },
+                            Err(e) => error("PLUGIN_REVOKE_FAILED", &e),
+                        },
+                        _ => error(
+                            "PLUGIN_PARAMS_REQUIRED",
+                            "pluginId and permission are required",
+                        ),
+                    }
+                }
+                "plugins:grantPermission" => {
+                    match (
+                        string_field(payload, "pluginId"),
+                        string_field(payload, "permission"),
+                    ) {
+                        (Some(id), Some(perm)) => match store.grant_permission(&id, &perm) {
+                            Ok(view) => match serde_json::to_value(view) {
+                                Ok(value) => ok(value),
+                                Err(e) => error("PLUGIN_SERIALIZE_FAILED", &e.to_string()),
+                            },
+                            Err(e) => error("PLUGIN_GRANT_FAILED", &e),
+                        },
+                        _ => error(
+                            "PLUGIN_PARAMS_REQUIRED",
+                            "pluginId and permission are required",
+                        ),
+                    }
+                }
+                "plugins:beginAuthChallenge" => {
+                    match (
+                        string_field(payload, "pluginId"),
+                        string_field(payload, "permission"),
+                    ) {
+                        (Some(id), Some(perm)) => match store.begin_auth_challenge(&id, &perm) {
+                            Ok(challenge) => match serde_json::to_value(challenge) {
+                                Ok(value) => ok(value),
+                                Err(e) => error("PLUGIN_SERIALIZE_FAILED", &e.to_string()),
+                            },
+                            Err(e) => error("PLUGIN_CHALLENGE_FAILED", &e),
+                        },
+                        _ => error(
+                            "PLUGIN_PARAMS_REQUIRED",
+                            "pluginId and permission are required",
+                        ),
+                    }
+                }
+                "plugins:rejectAuthChallenge" => match string_field(payload, "challenge") {
+                    Some(challenge) => match store.reject_auth_challenge(&challenge) {
+                        Ok(()) => ok(Value::Null),
+                        Err(e) => error("PLUGIN_REJECT_CHALLENGE_FAILED", &e),
+                    },
+                    None => error("CHALLENGE_REQUIRED", "challenge is required"),
+                },
+                "plugins:runCommand" => {
+                    match (
+                        string_field(payload, "pluginId"),
+                        string_field(payload, "commandId"),
+                    ) {
+                        (Some(id), Some(cmd_id)) => {
+                            let cmd_payload =
+                                payload.get("payload").cloned().unwrap_or(Value::Null);
+                            match store.run_command(&id, &cmd_id, cmd_payload) {
+                                Ok(ack) => match serde_json::to_value(ack) {
+                                    Ok(value) => ok(value),
+                                    Err(e) => error("PLUGIN_SERIALIZE_FAILED", &e.to_string()),
+                                },
+                                Err(e) => error("PLUGIN_COMMAND_FAILED", &e),
+                            }
+                        }
+                        _ => error(
+                            "PLUGIN_PARAMS_REQUIRED",
+                            "pluginId and commandId are required",
+                        ),
+                    }
+                }
                 _ => error(
                     "PLUGIN_NOT_PORTED",
                     "This plugin command is not ported to Rust yet",

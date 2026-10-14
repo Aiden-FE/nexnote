@@ -1739,6 +1739,13 @@ impl PluginStore {
         Ok(record)
     }
 
+    pub fn reject_auth_challenge(&mut self, challenge: &str) -> Result<(), String> {
+        self.challenges
+            .remove(challenge)
+            .map(|_| ())
+            .ok_or_else(|| "challenge not found or already expired".to_owned())
+    }
+
     pub fn run_command(
         &mut self,
         plugin_id: &str,
