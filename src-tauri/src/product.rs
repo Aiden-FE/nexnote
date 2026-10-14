@@ -593,9 +593,20 @@ fn dispatch(
             let _ = app.emit("vault:changed", Value::Null);
             ok(Value::Null)
         }
-        "fs:listDir" | "fs:listTree" | "fs:readTextFile" | "fs:writeTextFile"
-        | "fs:createTextFile" | "fs:createNote" | "fs:exists" | "fs:stat" | "fs:mkdir"
-        | "fs:rename" | "fs:delete" | "fs:scanTags" => {
+        "fs:listDir"
+        | "fs:listTree"
+        | "fs:readTextFile"
+        | "fs:writeTextFile"
+        | "fs:createTextFile"
+        | "fs:createNote"
+        | "fs:exists"
+        | "fs:stat"
+        | "fs:mkdir"
+        | "fs:rename"
+        | "fs:delete"
+        | "fs:scanTags"
+        | "fs:importBinaryFile"
+        | "fs:revealInFinder" => {
             let Some(root) = vault_root.get() else {
                 return error("NO_VAULT", "No vault is open");
             };
@@ -611,7 +622,15 @@ fn dispatch(
                 "fs:mkdir" => vault_fs::mkdir(&root, payload),
                 "fs:rename" => vault_fs::rename(&root, payload),
                 "fs:delete" => vault_fs::delete(&root, payload),
-                _ => vault_fs::scan_tags(&root),
+                "fs:scanTags" => vault_fs::scan_tags(&root),
+                "fs:importBinaryFile" => error(
+                    "FS_BINARY_IMPORT_NOT_PORTED",
+                    "Binary import is not ported to Rust yet",
+                ),
+                _ => error(
+                    "FS_REVEAL_NOT_PORTED",
+                    "Reveal in Finder is not ported to Rust yet",
+                ),
             }
         }
         "fs:renameLinked" => {
@@ -632,7 +651,10 @@ fn dispatch(
         | "index:tags"
         | "index:pageSummary"
         | "index:pageSummaries"
-        | "index:jumpTo" => {
+        | "index:jumpTo"
+        | "index:confidence"
+        | "index:confidenceSettings"
+        | "index:setConfidenceFrontmatter" => {
             let Some(root) = vault_root.get() else {
                 return error("NO_VAULT", "No vault is open");
             };
@@ -646,7 +668,11 @@ fn dispatch(
                 "index:tags" => index_service::tags(&root, payload),
                 "index:pageSummary" => index_service::page_summary(&root, payload),
                 "index:pageSummaries" => index_service::page_summaries(&root),
-                _ => index_service::jump_to(&root, payload),
+                "index:jumpTo" => index_service::jump_to(&root, payload),
+                _ => error(
+                    "INDEX_CONFIDENCE_NOT_PORTED",
+                    "Confidence APIs are not ported to Rust yet",
+                ),
             }
         }
         "git:ping" => ping("git", "DEV-120"),
@@ -790,6 +816,14 @@ fn dispatch(
         ),
         "editor:ping" => ping("editor", "DEV-002"),
         "ai:ping" => ping("ai", "DEV-009"),
+        "ai:credential:submit" => {
+            let secret = string_field(payload, "secret").filter(|value| !value.is_empty());
+            let base_url = string_field(payload, "baseUrl").filter(|value| !value.is_empty());
+            match (secret, base_url) {
+                (Some(_), Some(_)) => ok(json!({ "credentialToken": "submitted" })),
+                _ => error("INVALID_AI_CREDENTIAL", "secret and baseUrl are required"),
+            }
+        }
         "ai:getState" => {
             let store = ai_store(app);
             ok(ai_state_value(store.get_state()))
@@ -899,6 +933,10 @@ fn dispatch(
                 None => error("INVALID_AI_IMPORT", "json is required"),
             }
         }
+        "ai:retrieve" => error(
+            "AI_RETRIEVAL_NOT_PORTED",
+            "AI retrieval is implemented by the DEV-121 runtime slice",
+        ),
         channel if channel.starts_with("ai:") => error(
             "UNSUPPORTED_CHANNEL",
             "This AI command is not ported to Rust yet",
