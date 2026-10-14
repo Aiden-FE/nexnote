@@ -1,3 +1,4 @@
+mod agent_scenario;
 mod agent_service;
 mod agent_tools;
 mod ai_service;

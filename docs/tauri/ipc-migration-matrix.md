@@ -25,9 +25,9 @@
 
 | Channel | 现状 | 剩余工作 |
 | --- | --- | --- |
-| agent:approval:respond | 返回 `{accepted:false}` 占位 | 迁移 Electron agent gateway 的工具审批语义（DEV-121） |
-| agent:run:* | SSE 文本流已接通，但无工具审批/权限模式 | 迁移工具调用与权限模式（DEV-121） |
-| binary:editorCommand | 已投递 load/theme/flush 命令；DEV-123 实测待做 | macOS 实测后确认收发完整（DEV-123） |
+| agent:approval:respond | 已接通：审批表按 tool/run 校验、TTL 过期、取消即拒绝（`agent_service.rs`） | — |
+| agent:run:* | SSE 流、取消、工具环、审批横幅、权限模式（conversation/edit/full）、full 模式作用域护栏已迁移（`agent_tools.rs` / `product.rs`） | 场景 system prompt 与 writing/translation 模板仍在渲染层；`skills.retrieve` 上下文与 `context` 事件未接；供应商拒绝 tools 时无无工具降级重试；`params` 未注入请求（DEV-121） |
+| binary:editorCommand | load/theme/language 直投；flush 经一次性 token 往返等待编辑器真实落盘（`binary:host:flushAck`） | macOS 实测后确认收发完整（DEV-123） |
 
 ## App
 
@@ -168,12 +168,13 @@
 
 | Channel | 所有权 | persist | net | fs | proc | Electron handler | Tauri target | batch | status |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| agent:run:chat | remote-provider | no | yes | yes | no | `agent-handlers.ts` | `agent::run_chat` | ai | pending（SSE 流与取消已接；工具审批/权限模式未迁移） |
-| agent:run:writing | remote-provider | no | yes | yes | no | `agent-handlers.ts` | `agent::run_writing` | ai | pending（SSE 流与取消已接；工具审批/权限模式未迁移） |
-| agent:run:debug | remote-provider | no | yes | yes | no | `agent-handlers.ts` | `agent::run_debug` | ai | pending（SSE 流与取消已接；工具审批/权限模式未迁移） |
-| agent:run:translation | remote-provider | no | yes | yes | no | `agent-handlers.ts` | `agent::run_translation` | ai | pending（SSE 流与取消已接；工具审批/权限模式未迁移） |
+| agent:run:chat | remote-provider | no | yes | yes | no | `agent-handlers.ts` | `agent::run_chat` | ai | pending（工具环/审批/权限模式已迁移；场景 prompt 与 skills 上下文未接） |
+| agent:run:writing | remote-provider | no | yes | yes | no | `agent-handlers.ts` | `agent::run_writing` | ai | pending（同上；writing 动作模板仍在渲染层） |
+| agent:run:debug | remote-provider | no | yes | yes | no | `agent-handlers.ts` | `agent::run_debug` | ai | pending（同上） |
+| agent:run:translation | remote-provider | no | yes | yes | no | `agent-handlers.ts` | `agent::run_translation` | ai | pending（同上；翻译 system prompt 与 reasoning 过滤未迁移） |
 | agent:cancel | app-state | no | no | no | no | `agent-handlers.ts` | `agent::cancel` | ai | ported |
-| agent:approval:respond | app-state | no | no | no | no | `agent-handlers.ts` | `agent::approval_respond` | ai | pending（返回占位；工具审批语义未迁移） |
+| agent:approval:respond | app-state | no | no | no | no | `agent-handlers.ts` | `agent::approval_respond` | ai | ported |
+| binary:host:flushAck | app-state | no | no | no | no | Tauri-only（Electron 用 executeJavaScript 取回值） | `binary::host_flush_ack` | binary | ported |
 
 ## Chat
 

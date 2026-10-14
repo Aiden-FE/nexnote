@@ -1,5 +1,5 @@
 use crate::{
-    agent_service, agent_tools,
+    agent_scenario, agent_service, agent_tools,
     ai_service::{self, AiStore},
     binary_host_service, binary_service, confidence_service, embedding_service,
     git_service::{self, GitError},
@@ -2645,11 +2645,19 @@ fn dispatch<R: tauri::Runtime>(
         channel if channel.starts_with("agent:run:") => {
             let scenario = channel.trim_start_matches("agent:run:").to_string();
             let run_id = uuid::Uuid::new_v4().to_string();
-            let messages: Vec<Value> = payload
-                .get("messages")
-                .and_then(Value::as_array)
-                .cloned()
-                .unwrap_or_default();
+            // Scenario prompts are main-process owned: the renderer may send
+            // context but never the model-facing instructions.
+            let messages = match agent_scenario::build_messages(
+                &scenario,
+                payload,
+                payload
+                    .get("contextText")
+                    .and_then(Value::as_str)
+                    .unwrap_or_default(),
+            ) {
+                Ok(messages) => messages,
+                Err(failure) => return error(failure.code, &failure.message),
+            };
 
             // Resolve the chat-capable profile the same way ai:chat would:
             // the writing feature assignment wins over the default profile.
