@@ -449,7 +449,9 @@ fn dispatch(
             let _ = app.emit("vault:changed", Value::Null);
             ok(Value::Null)
         }
-        "fs:listDir" | "fs:listTree" | "fs:readTextFile" | "fs:writeTextFile" => {
+        "fs:listDir" | "fs:listTree" | "fs:readTextFile" | "fs:writeTextFile"
+        | "fs:createTextFile" | "fs:createNote" | "fs:exists" | "fs:stat" | "fs:mkdir"
+        | "fs:rename" | "fs:delete" | "fs:scanTags" => {
             let Some(root) = vault_root.get() else {
                 return error("NO_VAULT", "No vault is open");
             };
@@ -457,7 +459,15 @@ fn dispatch(
                 "fs:listDir" => vault_fs::list_dir(&root, payload),
                 "fs:listTree" => vault_fs::list_tree(&root, payload),
                 "fs:readTextFile" => vault_fs::read_text_file(&root, payload),
-                _ => vault_fs::write_text_file(&root, payload),
+                "fs:writeTextFile" => vault_fs::write_text_file(&root, payload),
+                "fs:createTextFile" => vault_fs::create_text_file(&root, payload),
+                "fs:createNote" => vault_fs::create_note(&root, payload),
+                "fs:exists" => vault_fs::exists(&root, payload),
+                "fs:stat" => vault_fs::stat(&root, payload),
+                "fs:mkdir" => vault_fs::mkdir(&root, payload),
+                "fs:rename" => vault_fs::rename(&root, payload),
+                "fs:delete" => vault_fs::delete(&root, payload),
+                _ => vault_fs::scan_tags(&root),
             }
         }
         "index:status" | "index:rebuild" | "index:search" | "index:backlinks" => {
