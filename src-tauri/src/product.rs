@@ -1,4 +1,5 @@
 use crate::{
+    ai_service::{self, AiStore},
     git_service::{self, GitError},
     git_sync, index_service, vault_fs,
 };
@@ -7,9 +8,9 @@ use serde_json::{json, Value};
 use std::{
     fs,
     path::{Path, PathBuf},
-    sync::Mutex,
+    sync::{Mutex, OnceLock},
 };
-use tauri::{AppHandle, Emitter, State};
+use tauri::{AppHandle, Emitter, Manager, State};
 use tauri_plugin_dialog::DialogExt;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -250,6 +251,139 @@ fn git_result(result: Result<Value, GitError>) -> Value {
     }
 }
 
+static AI_STORE: OnceLock<Mutex<AiStore>> = OnceLock::new();
+
+fn ai_store(app: &AppHandle) -> std::sync::MutexGuard<'static, AiStore> {
+    let store = AI_STORE.get_or_init(|| {
+        let data_dir = app.path().app_data_dir().unwrap_or_default();
+        Mutex::new(AiStore::new(data_dir.join("nexnote-ai.json")))
+    });
+    store
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner)
+}
+
+fn ai_state_value(state: ai_service::AiConfigState) -> Value {
+    serde_json::to_value(state).unwrap_or(Value::Null)
+}
+
+fn ai_error(message: impl AsRef<str>) -> Value {
+    error("AI_REQUEST_FAILED", message.as_ref())
+}
+
+fn ai_profile_input(payload: &Value) -> Result<ai_service::AiProfileInput, Value> {
+    let profile = payload.get("profile").cloned().unwrap_or(Value::Null);
+    let mut input: ai_service::AiProfileInput =
+        serde_json::from_value(profile).map_err(|e| error("INVALID_AI_PROFILE", &e.to_string()))?;
+    input.id = string_field(payload, "id").or(input.id);
+    Ok(input)
+}
+
+fn ai_assignment(payload: &Value) -> Result<Option<ai_service::AiFeatureAssignment>, Value> {
+    match payload.get("assignment") {
+        None | Some(Value::Null) => Ok(None),
+        Some(value) => serde_json::from_value(value.clone())
+            .map(Some)
+            .map_err(|e| error("INVALID_AI_ASSIGNMENT", &e.to_string())),
+    }
+}
+
+fn connection_target(store: &AiStore, payload: &Value) -> Result<(String, Option<String>), Value> {
+    if let Some(id) = string_field(payload, "profileId") {
+        let profile = store
+            .get_state()
+            .profiles
+            .into_iter()
+            .find(|profile| profile.id == id)
+            .ok_or_else(|| {
+                error(
+                    "AI_PROFILE_NOT_FOUND",
+                    &format!("AI profile not found: {id}"),
+                )
+            })?;
+        // DEV-121 fail-closed credential boundary: saved profiles expose only
+        // `has_api_key`; the OS credential vault is required to recover bytes.
+        return Ok((profile.base_url, None));
+    }
+    let candidate = payload.get("candidate").cloned().unwrap_or(Value::Null);
+    let base_url = candidate
+        .get("baseUrl")
+        .and_then(Value::as_str)
+        .ok_or_else(|| {
+            error(
+                "INVALID_AI_CONNECTION",
+                "profileId or candidate is required",
+            )
+        })?
+        .to_owned();
+    Ok((
+        base_url,
+        candidate
+            .get("credentialToken")
+            .and_then(Value::as_str)
+            .map(str::to_owned),
+    ))
+}
+
+fn embedding_source(store: &AiStore) -> Result<(ai_service::AiProfileView, String), Value> {
+    let state = store.get_state();
+    let assignment = state.features.embedding.clone().or_else(|| {
+        state.default_profile_id.clone().map(|profile_id| {
+            let profile = state
+                .profiles
+                .iter()
+                .find(|profile| profile.id == profile_id);
+            ai_service::AiFeatureAssignment {
+                profile_id,
+                model: profile
+                    .map(|profile| profile.default_model.clone())
+                    .unwrap_or_default(),
+                dimensions: None,
+                metric: None,
+            }
+        })
+    });
+    let assignment = assignment.ok_or_else(|| {
+        error(
+            "AI_EMBEDDING_NOT_CONFIGURED",
+            "No embedding profile is configured",
+        )
+    })?;
+    let profile = state
+        .profiles
+        .into_iter()
+        .find(|profile| profile.id == assignment.profile_id)
+        .ok_or_else(|| {
+            error(
+                "AI_PROFILE_NOT_FOUND",
+                &format!("AI profile not found: {}", assignment.profile_id),
+            )
+        })?;
+    Ok((profile, assignment.model))
+}
+
+fn ai_embed_with_metadata(
+    store: &AiStore,
+    texts: &[String],
+) -> Result<ai_service::EmbedResult, Value> {
+    let (profile, model) = embedding_source(store)?;
+    if profile.kind == ai_service::AiProviderKind::LocalEmbedding {
+        return Err(error(
+            "LOCAL_EMBEDDING_NOT_READY",
+            "The built-in embedding runtime is not available yet",
+        ));
+    }
+    // Saved-profile keys remain fail-closed until the OS credential vault lands.
+    let vectors = ai_service::embed(&profile.base_url, None, &model, texts).map_err(ai_error)?;
+    let dimensions = vectors.first().map_or(0, Vec::len) as u32;
+    Ok(ai_service::EmbedResult {
+        vectors,
+        dimensions,
+        model,
+        profile_id: profile.id,
+    })
+}
+
 #[tauri::command]
 pub async fn nexnote_invoke(
     app: AppHandle,
@@ -480,7 +614,25 @@ fn dispatch(
                 _ => vault_fs::scan_tags(&root),
             }
         }
-        "index:status" | "index:rebuild" | "index:search" | "index:backlinks" => {
+        "fs:renameLinked" => {
+            let Some(root) = vault_root.get() else {
+                return error("NO_VAULT", "No vault is open");
+            };
+            match (string_field(payload, "from"), string_field(payload, "to")) {
+                (Some(from), Some(to)) => index_service::rename_linked(&root, &from, &to),
+                _ => error("INVALID_RENAME", "from and to are required"),
+            }
+        }
+        "index:status"
+        | "index:rebuild"
+        | "index:search"
+        | "index:backlinks"
+        | "index:graph"
+        | "index:tagPages"
+        | "index:tags"
+        | "index:pageSummary"
+        | "index:pageSummaries"
+        | "index:jumpTo" => {
             let Some(root) = vault_root.get() else {
                 return error("NO_VAULT", "No vault is open");
             };
@@ -488,7 +640,13 @@ fn dispatch(
                 "index:status" => index_service::status(&root),
                 "index:rebuild" => index_service::rebuild(&root),
                 "index:search" => index_service::search(&root, payload),
-                _ => index_service::backlinks(&root, payload),
+                "index:backlinks" => index_service::backlinks(&root, payload),
+                "index:graph" => index_service::graph(&root),
+                "index:tagPages" => index_service::tag_pages(&root, payload),
+                "index:tags" => index_service::tags(&root, payload),
+                "index:pageSummary" => index_service::page_summary(&root, payload),
+                "index:pageSummaries" => index_service::page_summaries(&root),
+                _ => index_service::jump_to(&root, payload),
             }
         }
         "git:ping" => ping("git", "DEV-120"),
@@ -632,6 +790,119 @@ fn dispatch(
         ),
         "editor:ping" => ping("editor", "DEV-002"),
         "ai:ping" => ping("ai", "DEV-009"),
+        "ai:getState" => {
+            let store = ai_store(app);
+            ok(ai_state_value(store.get_state()))
+        }
+        "ai:profile:save" => {
+            let store = ai_store(app);
+            match ai_profile_input(payload).and_then(|input| {
+                store
+                    .save_profile(&input)
+                    .map_err(|message| error("AI_PROFILE_SAVE_FAILED", &message))
+            }) {
+                Ok(id) => ok(json!({ "id": id, "state": ai_state_value(store.get_state()) })),
+                Err(failure) => failure,
+            }
+        }
+        "ai:profile:delete" => {
+            let store = ai_store(app);
+            match string_field(payload, "id") {
+                Some(id) => match store.delete_profile(&id) {
+                    Ok(state) => ok(json!({ "state": ai_state_value(state) })),
+                    Err(message) => error("AI_PROFILE_DELETE_FAILED", &message),
+                },
+                None => error("INVALID_AI_PROFILE_ID", "id is required"),
+            }
+        }
+        "ai:profile:setDefault" => {
+            let store = ai_store(app);
+            match string_field(payload, "id") {
+                Some(id) => match store.set_default_profile(&id) {
+                    Ok(state) => ok(json!({ "state": ai_state_value(state) })),
+                    Err(message) => error("AI_DEFAULT_PROFILE_FAILED", &message),
+                },
+                None => error("INVALID_AI_PROFILE_ID", "id is required"),
+            }
+        }
+        "ai:features:set" => {
+            let store = ai_store(app);
+            match (string_field(payload, "feature"), ai_assignment(payload)) {
+                (Some(feature), Ok(assignment)) => match store.set_feature(&feature, assignment) {
+                    Ok(state) => ok(json!({ "state": ai_state_value(state) })),
+                    Err(message) => error("AI_FEATURE_SET_FAILED", &message),
+                },
+                (_, Err(failure)) => failure,
+                (None, _) => error("INVALID_AI_FEATURE", "feature is required"),
+            }
+        }
+        "ai:translation:setTargetLanguage" => {
+            let store = ai_store(app);
+            match string_field(payload, "targetLanguage") {
+                Some(target_language) => {
+                    match store.set_translation_target_language(&target_language) {
+                        Ok(state) => ok(json!({ "state": ai_state_value(state) })),
+                        Err(message) => error("AI_TRANSLATION_LANGUAGE_FAILED", &message),
+                    }
+                }
+                None => error("INVALID_TRANSLATION_LANGUAGE", "targetLanguage is required"),
+            }
+        }
+        "ai:setupPrompt:dismiss" => {
+            let store = ai_store(app);
+            match store.dismiss_setup_prompt() {
+                Ok(state) => ok(json!({ "state": ai_state_value(state) })),
+                Err(message) => error("AI_SETUP_PROMPT_FAILED", &message),
+            }
+        }
+        "ai:testConnection" => {
+            let store = ai_store(app);
+            match connection_target(&store, payload) {
+                Ok((base_url, api_key)) => ok(serde_json::to_value(ai_service::test_connection(
+                    &base_url,
+                    api_key.as_deref(),
+                ))
+                .unwrap_or(Value::Null)),
+                Err(failure) => failure,
+            }
+        }
+        "ai:listModels" => {
+            let store = ai_store(app);
+            match connection_target(&store, payload) {
+                Ok((base_url, api_key)) => {
+                    ok(json!({ "models": ai_service::list_models(&base_url, api_key.as_deref()) }))
+                }
+                Err(failure) => failure,
+            }
+        }
+        "ai:embed" | "ai:embedWithMetadata" => {
+            let store = ai_store(app);
+            let texts: Result<Vec<String>, Value> =
+                serde_json::from_value(payload.get("texts").cloned().unwrap_or(Value::Null))
+                    .map_err(|e| error("INVALID_AI_EMBEDDING_INPUT", &e.to_string()));
+            match texts.and_then(|texts| ai_embed_with_metadata(&store, &texts)) {
+                Ok(result) if channel == "ai:embed" => {
+                    ok(serde_json::to_value(result.vectors).unwrap_or(Value::Null))
+                }
+                Ok(result) => ok(serde_json::to_value(result).unwrap_or(Value::Null)),
+                Err(failure) => failure,
+            }
+        }
+        "ai:export" => {
+            let store = ai_store(app);
+            ok(store.export_profiles())
+        }
+        "ai:import" => {
+            let store = ai_store(app);
+            match string_field(payload, "json") {
+                Some(json) => ok(store.import_profiles(&json)),
+                None => error("INVALID_AI_IMPORT", "json is required"),
+            }
+        }
+        channel if channel.starts_with("ai:") => error(
+            "UNSUPPORTED_CHANNEL",
+            "This AI command is not ported to Rust yet",
+        ),
         "plugins:ping" => ping("plugins", "DEV-013"),
         "skills:ping" => ping("skills", "DEV-014"),
         "binary:ping" => ping("binary", "DEV-074"),
