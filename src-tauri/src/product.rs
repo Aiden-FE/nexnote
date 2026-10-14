@@ -552,10 +552,27 @@ fn dispatch(
             ok(json!({ "imported": imported, "shortcuts": shortcuts }))
         }
         "settings:search" => ok(json!([])),
-        "settings:pickImportFile" | "settings:saveExportFile" => error(
-            "SETTINGS_DIALOG_NOT_PORTED",
-            "Native settings dialogs are not ported to Tauri yet",
-        ),
+        "settings:pickImportFile" => {
+            let picked = app.dialog().file().blocking_pick_file();
+            ok(picked.map(|p| json!(p.to_string())).unwrap_or(Value::Null))
+        }
+        "settings:saveExportFile" => {
+            let contents = string_field(payload, "contents").unwrap_or_default();
+            let suggested =
+                string_field(payload, "suggestedName").unwrap_or_else(|| "export.json".into());
+            let picked = app
+                .dialog()
+                .file()
+                .set_file_name(&suggested)
+                .blocking_save_file();
+            match picked {
+                Some(path) => match fs::write(path.to_string(), &contents) {
+                    Ok(()) => ok(json!(path.to_string())),
+                    Err(e) => error("SETTINGS_SAVE_FAILED", &e.to_string()),
+                },
+                None => ok(Value::Null),
+            }
+        }
         "vault:getState" => {
             let vault = state
                 .current_vault
@@ -1612,10 +1629,41 @@ fn dispatch(
                 Err(e) => error("CHAT_SAVE_FAILED", &e.to_string()),
             }
         }
-        "chat:saveAsDoc" => error(
-            "CHAT_SAVE_AS_DOC_NOT_PORTED",
-            "Chat save-as-doc is not ported to Rust yet",
-        ),
+        "chat:saveAsDoc" => {
+            let Some(root) = vault_root.get() else {
+                return error("NO_VAULT", "No vault is open");
+            };
+            let Some(path) = string_field(payload, "path") else {
+                return error("CHAT_PATH_REQUIRED", "path is required");
+            };
+            let session_file = root.join(&path);
+            let Ok(content) = fs::read_to_string(&session_file) else {
+                return error("CHAT_NOT_FOUND", "Chat session not found");
+            };
+            let mut doc = String::new();
+            for line in content.lines() {
+                if let Ok(v) = serde_json::from_str::<Value>(line) {
+                    if v.get("meta").is_some() {
+                        if let Some(title) = v["meta"]["title"].as_str() {
+                            doc.push_str(&format!("# {title}\n\n"));
+                        }
+                    } else if let Some(role) = v.get("role").and_then(Value::as_str) {
+                        let content = v.get("content").and_then(Value::as_str).unwrap_or("");
+                        match role {
+                            "user" => doc.push_str(&format!("> {content}\n\n")),
+                            "assistant" => doc.push_str(&format!("{content}\n\n")),
+                            _ => {}
+                        }
+                    }
+                }
+            }
+            let target_rel = format!("{}.md", path.trim_end_matches(".txt"));
+            let target_abs = root.join(&target_rel);
+            match fs::write(&target_abs, &doc) {
+                Ok(()) => ok(json!({ "path": target_rel })),
+                Err(e) => error("CHAT_SAVE_AS_DOC_FAILED", &e.to_string()),
+            }
+        }
         "agent:cancel" | "agent:approval:respond" => error(
             "AGENT_NOT_PORTED",
             "Agent gateway is not ported to Rust yet",
