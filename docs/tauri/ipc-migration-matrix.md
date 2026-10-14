@@ -29,8 +29,6 @@
 | skills:retrieve | 以 index_service FTS 结果代替 Skill 召回 | 迁移 DEV-014 Skill 召回/重排链路（DEV-121） |
 | agent:run:* | SSE 文本流已接通，但无工具审批/权限模式 | 迁移工具调用与权限模式（DEV-121） |
 | index:confidenceChanged | 无重算触发点（`index:confidence` 只读） | 置信度重算落地后触发事件（DEV-119） |
-| index:confidenceSettings / index:setConfidenceFrontmatter | 返回硬编码 `writeFrontmatter:false`，不读写 vault config | 读写真实 config 并触发置信度重算（DEV-119） |
-| plugins:listCommands / plugins:listContributions | dispatch 未实现该分支 | 在 plugin_service 暴露命令/贡献清单（DEV-122） |
 | binary:editorCommand / menu:action | 未迁移 | 多 WebView 编辑器宿主与原生菜单（DEV-123 / DEV-124） |
 
 ## App
@@ -126,8 +124,8 @@
 | index:pageSummaries | sqlite | no | no | yes | no | `index-handlers.ts` | `index::page_summaries` | vault | ported |
 | index:graph | sqlite | no | no | yes | no | `index-handlers.ts` | `index::graph` | vault | ported |
 | index:confidence | sqlite | yes | no | yes | no | `index-handlers.ts` | `index::confidence` | vault | ported |
-| index:confidenceSettings | vault | yes | no | yes | no | `index-handlers.ts` | `index::confidence_settings` | vault | pending（返回硬编码 false；未读 vault config） |
-| index:setConfidenceFrontmatter | vault | yes | no | yes | no | `index-handlers.ts` | `index::set_confidence_fm` | vault | pending（返回硬编码 false；未写 config/触发重算） |
+| index:confidenceSettings | vault | yes | no | yes | no | `index-handlers.ts` | `index::confidence_settings` | vault | ported |
+| index:setConfidenceFrontmatter | vault | yes | no | yes | no | `index-handlers.ts` | `index::set_confidence_fm` | vault | ported |
 
 ## Settings
 
@@ -195,8 +193,8 @@
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
 | plugins:ping | host | no | no | no | no | `plugin-handlers.ts` | `plugin::ping` | plugin | ported |
 | plugins:list | plugin | yes | no | yes | no | `plugin-handlers.ts` | `plugin::list` | plugin | ported |
-| plugins:listCommands | plugin | yes | no | yes | no | `plugin-handlers.ts` | `plugin::list_commands` | plugin | pending（dispatch 无此分支，落入 UNSUPPORTED） |
-| plugins:listContributions | plugin | yes | no | yes | no | `plugin-handlers.ts` | `plugin::list_contribs` | plugin | pending（dispatch 无此分支，落入 UNSUPPORTED） |
+| plugins:listCommands | plugin | yes | no | yes | no | `plugin-handlers.ts` | `plugin::list_commands` | plugin | ported |
+| plugins:listContributions | plugin | yes | no | yes | no | `plugin-handlers.ts` | `plugin::list_contribs` | plugin | ported |
 | plugins:pickSource | host | no | no | no | no | `plugin-handlers.ts` | `plugin::pick_source` | plugin | ported |
 | plugins:installPreview | plugin | yes | no | yes | no | `plugin-handlers.ts` | `plugin::install_preview` | plugin | ported |
 | plugins:confirmInstall | plugin | yes | no | yes | no | `plugin-handlers.ts` | `plugin::confirm_install` | plugin | ported |
