@@ -2,8 +2,8 @@ use crate::{
     ai_service::{self, AiStore},
     binary_service, embedding_service,
     git_service::{self, GitError},
-    git_sync, index_service, plugin_service, print_service, retrieval_service, updater_service,
-    vault_fs, watcher_service,
+    git_sync, index_service, plugin_service, print_service, retrieval_service, skill_service,
+    updater_service, vault_fs, watcher_service,
 };
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
@@ -159,6 +159,15 @@ fn emit_channel_event(app: &AppHandle, channel: &str, vault_root: &VaultRoot) {
         }
         "plugins:confirmInstall" | "plugins:uninstall" | "plugins:setEnabled" => {
             let _ = app.emit("plugins:changed", json!({ "reason": channel }));
+        }
+        "skills:setEnabled" | "skills:setOrder" | "skills:setParams" => {
+            // Reasons match the Electron handler byte-for-byte.
+            let reason = match channel {
+                "skills:setEnabled" => "enabled",
+                "skills:setOrder" => "order",
+                _ => "params",
+            };
+            let _ = app.emit("skills:changed", json!({ "reason": reason }));
         }
         "index:rebuild" => {
             if let Some(root) = vault_root.get() {
@@ -364,6 +373,20 @@ fn ai_store(app: &AppHandle) -> std::sync::MutexGuard<'static, AiStore> {
 
 fn ai_state_value(state: ai_service::AiConfigState) -> Value {
     serde_json::to_value(state).unwrap_or(Value::Null)
+}
+
+static SKILL_STORE: OnceLock<Mutex<skill_service::SkillStore>> = OnceLock::new();
+
+fn skill_store(app: &AppHandle) -> std::sync::MutexGuard<'static, skill_service::SkillStore> {
+    let store = SKILL_STORE.get_or_init(|| {
+        let data_dir = app.path().app_data_dir().unwrap_or_default();
+        Mutex::new(skill_service::SkillStore::new(
+            data_dir.join("nexnote-skills.json"),
+        ))
+    });
+    store
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner)
 }
 
 fn ai_error(message: impl AsRef<str>) -> Value {
@@ -1673,28 +1696,10 @@ fn dispatch(
             }
         }
         "skills:ping" => ping("skills", "DEV-014"),
-        "skills:list" => ok(json!([
-            {
-                "id": "builtin-retrieval",
-                "name": "Three-stage progressive retrieval",
-                "description": "FTS coarse filter → 1-hop backlink expansion → vector rerank",
-                "source": "builtin",
-                "enabled": true,
-                "order": 0,
-                "params": { "topK": 8, "confidenceWeight": 0.3, "budgetChars": 4000 },
-                "available": true
-            },
-            {
-                "id": "builtin-keyword-only",
-                "name": "Keyword-only retrieval",
-                "description": "FTS + backlinks only (vector rerank disabled), low latency",
-                "source": "builtin",
-                "enabled": false,
-                "order": 1,
-                "params": { "topK": 6, "disableVector": true },
-                "available": true
-            }
-        ])),
+        "skills:list" => {
+            let store = skill_store(app);
+            ok(serde_json::to_value(store.list()).unwrap_or(Value::Null))
+        }
         "skills:retrieve" => {
             let Some(root) = vault_root.get() else {
                 return error("NO_VAULT", "No vault is open");
@@ -1717,7 +1722,46 @@ fn dispatch(
                 "contextText": "",
             }))
         }
-        "skills:setEnabled" | "skills:setOrder" | "skills:setParams" => ok(Value::Null),
+        "skills:setEnabled" => {
+            let store = skill_store(app);
+            match (
+                string_field(payload, "id"),
+                payload.get("enabled").and_then(Value::as_bool),
+            ) {
+                (Some(id), Some(enabled)) => match store.set_enabled(&id, enabled) {
+                    Ok(view) => ok(serde_json::to_value(view).unwrap_or(Value::Null)),
+                    Err(message) => error("SKILL_NOT_FOUND", &message),
+                },
+                _ => error("SKILL_ENABLE_INPUT", "id and enabled are required"),
+            }
+        }
+        "skills:setOrder" => {
+            let store = skill_store(app);
+            match payload.get("order").and_then(Value::as_array) {
+                Some(items) => {
+                    let ids: Vec<String> = items
+                        .iter()
+                        .filter_map(Value::as_str)
+                        .map(ToOwned::to_owned)
+                        .collect();
+                    match store.set_order(&ids) {
+                        Ok(views) => ok(serde_json::to_value(views).unwrap_or(Value::Null)),
+                        Err(message) => error("SKILL_ORDER_FAILED", &message),
+                    }
+                }
+                None => error("SKILL_ORDER_INPUT", "order array is required"),
+            }
+        }
+        "skills:setParams" => {
+            let store = skill_store(app);
+            match (string_field(payload, "id"), payload.get("params").cloned()) {
+                (Some(id), Some(params)) => match store.set_params(&id, params) {
+                    Ok(view) => ok(serde_json::to_value(view).unwrap_or(Value::Null)),
+                    Err(message) => error("SKILL_NOT_FOUND", &message),
+                },
+                _ => error("SKILL_PARAMS_INPUT", "id and params are required"),
+            }
+        }
         "chat:new" => {
             let title = string_field(payload, "title").unwrap_or_default();
             let id = uuid::Uuid::new_v4().to_string();

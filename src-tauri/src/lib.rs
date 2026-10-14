@@ -9,6 +9,7 @@ mod plugin_service;
 mod print_service;
 mod product;
 mod retrieval_service;
+mod skill_service;
 mod updater_service;
 mod vault_fs;
 mod watcher_service;
