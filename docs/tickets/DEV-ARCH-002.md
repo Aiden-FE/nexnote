@@ -28,7 +28,7 @@
 | DEV-118 | Rust product core 基础与状态生命周期 | DEV-115 | done |
 | DEV-119 | Vault / FS / SQLite / 索引迁移 | DEV-118 | in progress |
 | DEV-120 | Git 运行时与同步体系迁移 | DEV-119 | in progress |
-| DEV-121 | AI、召回与内置语义向量迁移 | DEV-118 | in progress |
+| DEV-121 | AI、召回与内置语义向量迁移 | DEV-118 | done（agent 工具环/审批/权限/prompt/skills/降级/TTL/reasoning 过滤已迁移） |
 | DEV-122 | 插件沙箱与 capability 迁移 | DEV-116、DEV-118 | in progress |
 | DEV-123 | 二进制编辑器宿主与打印迁移 | DEV-116、DEV-117 | in progress |
 | DEV-124 | Tauri 更新、签名、发布与 QA | DEV-116 | in progress |

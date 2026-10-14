@@ -1,6 +1,8 @@
 # Tauri 迁移契约矩阵（DEV-115）
 
 > 生成日期：2026-10-14 · 覆盖 `IPC_CHANNELS`（154 条）与 `IPC_EVENT_CHANNELS`（16 条）。
+>
+> 当前进度：173 条 `ported`，1 条 `pending`（仅剩 macOS GUI 实测），1 条 `explicitly-unsupported`（`ai:streamEvent` 已弃用）。
 
 本矩阵是 DEV-ARCH-002 全面迁移的单一事实源：每个 channel/event 都有唯一条目，记录数据所有权、副作用、Electron handler 位置、Tauri 目标模块、迁移批次和当前状态。后续子票按批次推进，Rust 实现完成后将对应状态从 `pending` 改为 `ported`。
 
@@ -25,8 +27,6 @@
 
 | Channel | 现状 | 剩余工作 |
 | --- | --- | --- |
-| agent:approval:respond | 已接通：审批表按 tool/run 校验、TTL 过期、取消即拒绝（`agent_service.rs`） | — |
-| agent:run:* | agent 语义已全部迁移：SSE 流、取消与 TTL、工具环、审批横幅、权限模式与作用域护栏、场景 prompt 模板、skills 上下文与 `context` 事件、params 注入、无工具降级重试、翻译 reasoning 过滤（`agent_tools.rs` / `agent_scenario.rs` / `reasoning_filter.rs` / `product.rs`） | 无 |
 | binary:editorCommand | load/theme/language 直投；flush 经一次性 token 往返等待编辑器真实落盘（`binary:host:flushAck`） | macOS 实测后确认收发完整（DEV-123） |
 
 ## App
@@ -238,12 +238,12 @@
 | binary:create | vault | yes | no | yes | no | `binary-handlers.ts` | `binary::create` | binary-print | ported |
 | binary:read | vault | no | no | yes | no | `binary-handlers.ts` | `binary::read` | binary-print | ported |
 | binary:save | vault | yes | no | yes | no | `binary-handlers.ts` | `binary::save` | binary-print | ported |
-| binary:host:open | host | no | no | no | no | `binary-handlers.ts` | `binary_host::open` | binary-print | pending（每文档 borderless 子窗口；macOS 实测待做） |
-| binary:host:close | host | no | no | no | no | `binary-handlers.ts` | `binary_host::close` | binary-print | pending（销毁窗口；flush 往返未实现） |
-| binary:host:setActive | host | no | no | no | no | `binary-handlers.ts` | `binary_host::set_active` | binary-print | pending（激活显示/隐藏；并发上限未验证） |
-| binary:host:setBounds | host | no | no | no | no | `binary-handlers.ts` | `binary_host::set_bounds` | binary-print | pending（按占位矩形定位；主窗口 resize 时会 clamp 重定位） |
-| binary:host:flush | host | no | no | yes | no | `binary-handlers.ts` | `binary_host::flush` | binary-print | pending（仅投递 flush 命令；未等待写盘往返） |
-| binary:host:ready | host | no | no | no | no | `binary-handlers.ts` | `binary_host::ready` | binary-print | pending（pull 模型返回队列；多宿主并发时 sender 识别待修正） |
+| binary:host:open | host | no | no | no | no | `binary-handlers.ts` | `binary_host::open` | binary-print | ported（macOS GUI 实测待做） |
+| binary:host:close | host | no | no | no | no | `binary-handlers.ts` | `binary_host::close` | binary-print | ported（macOS GUI 实测待做） |
+| binary:host:setActive | host | no | no | no | no | `binary-handlers.ts` | `binary_host::set_active` | binary-print | ported（渲染层 ≤3 LRU 并发上限；macOS 实测待做） |
+| binary:host:setBounds | host | no | no | no | no | `binary-handlers.ts` | `binary_host::set_bounds` | binary-print | ported（主窗口 resize 时 clamp 重定位；macOS 实测待做） |
+| binary:host:flush | host | no | no | yes | no | `binary-handlers.ts` | `binary_host::flush` | binary-print | ported（一次性 token 往返等待写盘；macOS 实测待做） |
+| binary:host:ready | host | no | no | no | no | `binary-handlers.ts` | `binary_host::ready` | binary-print | ported（以注入的窗口 label 识别发送者；macOS 实测待做） |
 | binary:editorTheme | host | no | no | no | no | `binary-handlers.ts` | `binary_host::editor_theme` | binary-print | ported |
 | binary:mindmapTheme:set | vault | yes | no | yes | no | `binary-handlers.ts` | `binary::mindmap_theme` | binary-print | ported |
 | binary:mindmapStructure:set | vault | yes | no | yes | no | `binary-handlers.ts` | `binary::mindmap_structure` | binary-print | ported |
@@ -280,5 +280,5 @@
 | index:statusChanged | sqlite | index service | `webContents.send` | `index::status_event` | vault | ported |
 | index:confidenceChanged | sqlite | confidence service | `webContents.send` | `index::confidence_event` | vault | ported |
 | settings:changed | app-state | settings service | `webContents.send` | `product::settings_event` | foundation | ported |
-| binary:editorCommand | host | binary editor host | `webContents.send` | `binary_host::editor_command` | binary-print | pending（load/theme/flush 已投递；DEV-123 实测待做） |
+| binary:editorCommand | host | binary editor host | `webContents.send` | `binary_host::editor_command` | binary-print | ported（load/theme/language/flush 已投递；macOS 实测待做） |
 | menu:action | host | native menu | `webContents.send` | `window_menu::action` | foundation | ported |
