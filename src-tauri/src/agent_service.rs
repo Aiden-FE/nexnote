@@ -10,7 +10,7 @@
 
 use std::collections::HashMap;
 use std::sync::{
-    atomic::{AtomicBool, Ordering},
+    atomic::{AtomicBool, AtomicU64, Ordering},
     Arc, Condvar, Mutex, OnceLock,
 };
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
@@ -79,12 +79,21 @@ fn registry() -> &'static Registry {
 #[derive(Debug, Clone)]
 pub struct RunHandle {
     cancelled: Arc<AtomicBool>,
+    expires_at: Arc<AtomicU64>,
 }
 
 impl RunHandle {
-    /// True once someone cancelled this run.
+    /// True once someone cancelled this run, or once the run outlived its TTL.
+    /// A provider that stalls without closing the connection would otherwise
+    /// hang the run forever.
     pub fn is_cancelled(&self) -> bool {
-        self.cancelled.load(Ordering::SeqCst)
+        self.cancelled.load(Ordering::SeqCst) || self.has_expired()
+    }
+
+    /// True once the run passed its wall-clock deadline.
+    pub fn has_expired(&self) -> bool {
+        let deadline = self.expires_at.load(Ordering::SeqCst);
+        deadline != 0 && now_millis() >= deadline
     }
 }
 
@@ -111,6 +120,7 @@ pub fn run_policy(run_id: &str) -> Option<RunPolicy> {
 /// Registers a run that carries a permission mode and active-document scope.
 pub fn register_run_with_options(run_id: &str, scenario: &str, options: RunOptions) -> RunHandle {
     let cancelled = Arc::new(AtomicBool::new(false));
+    let expires_at = Arc::new(AtomicU64::new(now_millis().saturating_add(RUN_TTL_MS)));
     registry().runs.lock().expect("agent registry lock").insert(
         run_id.to_owned(),
         ActiveRun {
@@ -123,7 +133,10 @@ pub fn register_run_with_options(run_id: &str, scenario: &str, options: RunOptio
             context_paths: options.context_paths,
         },
     );
-    RunHandle { cancelled }
+    RunHandle {
+        cancelled,
+        expires_at,
+    }
 }
 
 /// Marks a run finished and drops it from the registry.
@@ -166,6 +179,11 @@ pub fn reset_registry() {
 }
 
 // ── Tool approvals ─────────────────────────────────────────────────────────
+
+/// Wall-clock lifetime of one agent run, mirroring the gateway's `TTL_MS`.
+/// Exceeding it cancels the run: a provider that stalls mid-stream must not
+/// hold the run open forever.
+pub const RUN_TTL_MS: u64 = 10 * 60_000;
 
 /// Approval lifetime, mirroring `APPROVAL_TTL_MS` in the Electron store.
 pub const APPROVAL_TTL_MS: u64 = 5 * 60_000;
@@ -549,6 +567,47 @@ mod tests {
             register("run-finished", "chat");
             finish_run("run-finished");
             assert!(request_approval("run-finished", "append_to_document").is_none());
+            reset_registry();
+        });
+    }
+
+    /// A run outliving its wall-clock deadline must report itself cancelled so
+    /// a stalled provider cannot hold the run open forever.
+    #[test]
+    fn run_expiry_reports_the_handle_as_cancelled() {
+        with_test_lock(|| {
+            reset_registry();
+            let handle = register_run_with_options(
+                "run-ttl",
+                "chat",
+                RunOptions {
+                    permission_mode: Some(PermissionMode::Edit),
+                    context_paths: Vec::new(),
+                },
+            );
+            assert!(!handle.has_expired(), "a fresh run is not expired");
+            assert!(!handle.is_cancelled());
+            // Force the deadline into the past.
+            handle
+                .expires_at
+                .store(now_millis().saturating_sub(1), Ordering::SeqCst);
+            assert!(handle.has_expired());
+            assert!(handle.is_cancelled(), "an expired run must stop streaming");
+            reset_registry();
+        });
+    }
+
+    #[test]
+    fn cancelled_runs_report_no_expiry() {
+        with_test_lock(|| {
+            reset_registry();
+            let handle = register("run-not-expired", "chat");
+            cancel_run("run-not-expired");
+            assert!(handle.is_cancelled());
+            assert!(
+                !handle.has_expired(),
+                "a user cancel is not a TTL expiry — the caller reports it differently"
+            );
             reset_registry();
         });
     }

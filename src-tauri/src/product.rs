@@ -2915,10 +2915,15 @@ fn dispatch<R: tauri::Runtime>(
                         json!({
                             "type": "error",
                             "message": error.as_str(),
-                            "code": if error == "TOOL_ROUND_LIMIT_EXCEEDED" {
-                                "TOOL_ROUND_LIMIT_EXCEEDED"
+                            "code": match error.as_str() {
+                                "TOOL_ROUND_LIMIT_EXCEEDED" => "TOOL_ROUND_LIMIT_EXCEEDED",
+                                "TTL_EXPIRED" => "TTL_EXPIRED",
+                                _ => "AGENT_STREAM_FAILED",
+                            },
+                            "message": if error == "TTL_EXPIRED" {
+                                "Agent runtime timed out".to_owned()
                             } else {
-                                "AGENT_STREAM_FAILED"
+                                error.clone()
                             },
                         }),
                     );
@@ -3091,7 +3096,12 @@ fn run_agent_turn<R: tauri::Runtime>(
         );
         let assistant_text = match outcome {
             Ok(ai_service::ChatStreamOutcome::Cancelled) => {
-                // `agent:cancel` already emitted the terminal error event.
+                // A user cancel already emitted its terminal error; a TTL
+                // expiry did not, so it must be reported here or the chat dock
+                // would wait for a stream that never ends.
+                if run_handle.has_expired() {
+                    return Err("TTL_EXPIRED".to_owned());
+                }
                 return Ok(());
             }
             Ok(ai_service::ChatStreamOutcome::Completed(text)) => text,
@@ -3137,7 +3147,11 @@ fn run_agent_turn<R: tauri::Runtime>(
         }));
         for call in tool_calls {
             if run_handle.is_cancelled() {
-                return Ok(());
+                return if run_handle.has_expired() {
+                    Err("TTL_EXPIRED".to_owned())
+                } else {
+                    Ok(())
+                };
             }
             let outcome = execute_agent_tool(context, &call);
             let (content, summary, status) = match outcome {
