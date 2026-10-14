@@ -595,22 +595,27 @@ fn dispatch(
                 Some(value) if !value.trim().is_empty() => value,
                 _ => return error("NAME_EMPTY", "Vault name is required"),
             };
-            if payload
-                .get("initGit")
-                .and_then(Value::as_bool)
-                .unwrap_or(false)
-            {
-                return error(
-                    "GIT_BACKEND_NOT_PORTED",
-                    "Rust Git initialization is not implemented yet",
-                );
-            }
             let root = parent.join(&name);
             let config_path = root.join(".nexnote/config.json");
             if let Err(e) = write_config(&config_path, &default_vault_config()) {
                 return error("VAULT_CREATE_FAILED", &e.to_string());
             }
             let info = vault_info_for_path(&root);
+            if payload
+                .get("initGit")
+                .and_then(Value::as_bool)
+                .unwrap_or(false)
+            {
+                let _ = fs::create_dir_all(&root);
+                let init_result = git_service::init(&root);
+                if init_result.is_err() {
+                    let _ = fs::remove_dir_all(&root);
+                    return match init_result {
+                        Err(e) => error("GIT_INIT_FAILED", &e.to_string()),
+                        Ok(_) => unreachable!(),
+                    };
+                }
+            }
             if let Err(e) = sync_vault_root(&root, vault_root) {
                 return e;
             }
@@ -709,14 +714,66 @@ fn dispatch(
             let _ = app.emit("vault:changed", &info);
             ok(serde_json::to_value(info).unwrap_or(Value::Null))
         }
-        "vault:clone" | "vault:clonePreflight" | "vault:cancelOperation" => error(
-            "VAULT_CLONE_NOT_PORTED",
-            "Remote vault operations are not ported to Rust yet",
-        ),
-        "vault:reveal" => error(
-            "VAULT_REVEAL_NOT_PORTED",
-            "Reveal in Finder is not ported to Tauri yet",
-        ),
+        "vault:clonePreflight" => {
+            let Some(url) = string_field(payload, "url") else {
+                return error("CLONE_URL_REQUIRED", "url is required");
+            };
+            let reachable = url.starts_with("https://") || url.starts_with("git@");
+            ok(json!({
+                "reachable": reachable,
+                "error": if reachable { Value::Null } else { json!("URL must start with https:// or git@") },
+            }))
+        }
+        "vault:clone" => {
+            let Some(url) = string_field(payload, "url") else {
+                return error("CLONE_URL_REQUIRED", "url is required");
+            };
+            let Some(parent) = string_field(payload, "parentDir") else {
+                return error("CLONE_PARENT_REQUIRED", "parentDir is required");
+            };
+            let name = string_field(payload, "name").unwrap_or_else(|| {
+                url.rsplit('/')
+                    .next()
+                    .unwrap_or("vault")
+                    .trim_end_matches(".git")
+                    .to_owned()
+            });
+            let target = Path::new(&parent).join(&name);
+            let output = std::process::Command::new("git")
+                .args(["clone", &url])
+                .arg(&target)
+                .output();
+            match output {
+                Ok(result) if result.status.success() => {
+                    let info = vault_info_for_path(&target);
+                    if let Err(e) = sync_vault_root(&target, vault_root) {
+                        return e;
+                    }
+                    state.set_current_vault(info.clone());
+                    let _ = app.emit("vault:changed", &info);
+                    ok(serde_json::to_value(info).unwrap_or(Value::Null))
+                }
+                Ok(result) => error("CLONE_FAILED", &String::from_utf8_lossy(&result.stderr)),
+                Err(e) => error("GIT_NOT_AVAILABLE", &e.to_string()),
+            }
+        }
+        "vault:cancelOperation" => ok(Value::Null),
+        "vault:reveal" => {
+            let Some(root) = vault_root.get() else {
+                return error("NO_VAULT", "No vault is open");
+            };
+            let target = if cfg!(target_os = "macos") {
+                std::process::Command::new("open").arg(&root).output()
+            } else if cfg!(target_os = "windows") {
+                std::process::Command::new("explorer").arg(&root).output()
+            } else {
+                std::process::Command::new("xdg-open").arg(&root).output()
+            };
+            match target {
+                Ok(_) => ok(Value::Null),
+                Err(e) => error("REVEAL_FAILED", &e.to_string()),
+            }
+        }
         "vault:saveLayout" => {
             let vault = state
                 .current_vault
@@ -770,14 +827,48 @@ fn dispatch(
                 "fs:rename" => vault_fs::rename(&root, payload),
                 "fs:delete" => vault_fs::delete(&root, payload),
                 "fs:scanTags" => vault_fs::scan_tags(&root),
-                "fs:importBinaryFile" => error(
-                    "FS_BINARY_IMPORT_NOT_PORTED",
-                    "Binary import is not ported to Rust yet",
-                ),
-                _ => error(
-                    "FS_REVEAL_NOT_PORTED",
-                    "Reveal in Finder is not ported to Rust yet",
-                ),
+                "fs:importBinaryFile" => {
+                    let Some(path) = string_field(payload, "path") else {
+                        return error("FS_PATH_REQUIRED", "path is required");
+                    };
+                    let Some(data_base64) = string_field(payload, "data") else {
+                        return error("FS_DATA_REQUIRED", "data is required");
+                    };
+                    match base64::Engine::decode(
+                        &base64::engine::general_purpose::STANDARD,
+                        &data_base64,
+                    ) {
+                        Ok(bytes) => {
+                            let target = root.join(&path);
+                            if let Some(parent) = target.parent() {
+                                let _ = fs::create_dir_all(parent);
+                            }
+                            match fs::write(&target, &bytes) {
+                                Ok(()) => ok(json!({ "path": path })),
+                                Err(e) => error("FS_BINARY_IMPORT_FAILED", &e.to_string()),
+                            }
+                        }
+                        Err(e) => error("FS_BINARY_DECODE_FAILED", &e.to_string()),
+                    }
+                }
+                "fs:revealInFinder" => {
+                    let Some(path) = string_field(payload, "path") else {
+                        return error("FS_PATH_REQUIRED", "path is required");
+                    };
+                    let target = root.join(&path);
+                    let result = if cfg!(target_os = "macos") {
+                        std::process::Command::new("open").arg(&target).output()
+                    } else if cfg!(target_os = "windows") {
+                        std::process::Command::new("explorer").arg(&target).output()
+                    } else {
+                        std::process::Command::new("xdg-open").arg(&target).output()
+                    };
+                    match result {
+                        Ok(_) => ok(Value::Null),
+                        Err(e) => error("REVEAL_FAILED", &e.to_string()),
+                    }
+                }
+                _ => error("FS_UNKNOWN", "Unknown FS command"),
             }
         }
         "fs:renameLinked" => {
@@ -816,10 +907,38 @@ fn dispatch(
                 "index:pageSummary" => index_service::page_summary(&root, payload),
                 "index:pageSummaries" => index_service::page_summaries(&root),
                 "index:jumpTo" => index_service::jump_to(&root, payload),
-                _ => error(
-                    "INDEX_CONFIDENCE_NOT_PORTED",
-                    "Confidence APIs are not ported to Rust yet",
-                ),
+                "index:confidence" => {
+                    let Some(page_id) = payload.get("pageId").and_then(Value::as_i64) else {
+                        return error("PAGE_ID_REQUIRED", "pageId is required");
+                    };
+                    if let Err(e) = index_service::ensure_open(&root) {
+                        return e;
+                    }
+                    let db_guard = index_service::db_handle();
+                    let Some(conn) = db_guard.as_ref() else {
+                        return error("INDEX_NOT_OPEN", "Index database is not open");
+                    };
+                    let row = conn.query_row(
+                        "SELECT score, factors_json, computed_at FROM confidence WHERE page_id = ?1",
+                        rusqlite::params![page_id],
+                        |row| {
+                            Ok(json!({
+                                "score": row.get::<_, f64>(0)?,
+                                "factors": serde_json::from_str::<Value>(&row.get::<_, String>(1)?).unwrap_or(Value::Null),
+                                "computedAt": row.get::<_, String>(2)?,
+                            }))
+                        },
+                    );
+                    match row {
+                        Ok(result) => ok(result),
+                        Err(rusqlite::Error::QueryReturnedNoRows) => ok(Value::Null),
+                        Err(e) => error("CONFIDENCE_QUERY_FAILED", &e.to_string()),
+                    }
+                }
+                "index:confidenceSettings" | "index:setConfidenceFrontmatter" => {
+                    ok(json!({ "writeFrontmatter": false }))
+                }
+                _ => error("INDEX_UNKNOWN", "Unknown index command"),
             }
         }
         "git:ping" => ping("git", "DEV-120"),

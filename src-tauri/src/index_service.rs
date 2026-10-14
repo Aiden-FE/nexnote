@@ -509,6 +509,10 @@ pub fn ensure_open(root: &Path) -> Result<(), Value> {
     }
 }
 
+pub fn db_handle() -> std::sync::MutexGuard<'static, Option<Connection>> {
+    DB.lock().expect("index db lock")
+}
+
 pub fn close() {
     *DB.lock().expect("index db lock") = None;
     *CURRENT_ROOT.lock().expect("current root lock") = None;
