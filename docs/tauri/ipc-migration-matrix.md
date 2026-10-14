@@ -29,6 +29,8 @@
 | skills:retrieve | 以 index_service FTS 结果代替 Skill 召回 | 迁移 DEV-014 Skill 召回/重排链路（DEV-121） |
 | agent:run:* | SSE 文本流已接通，但无工具审批/权限模式 | 迁移工具调用与权限模式（DEV-121） |
 | index:confidenceChanged | 无重算触发点（`index:confidence` 只读） | 置信度重算落地后触发事件（DEV-119） |
+| index:confidenceSettings / index:setConfidenceFrontmatter | 返回硬编码 `writeFrontmatter:false`，不读写 vault config | 读写真实 config 并触发置信度重算（DEV-119） |
+| plugins:listCommands / plugins:listContributions | dispatch 未实现该分支 | 在 plugin_service 暴露命令/贡献清单（DEV-122） |
 | binary:editorCommand / menu:action | 未迁移 | 多 WebView 编辑器宿主与原生菜单（DEV-123 / DEV-124） |
 
 ## App
@@ -68,20 +70,20 @@
 | Channel | 所有权 | persist | net | fs | proc | Electron handler | Tauri target | batch | status |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
 | fs:listDir | vault | no | no | yes | no | `fs-handlers.ts` | `vault_fs::list_dir` | vault | ported |
-| fs:listTree | vault | no | no | yes | no | `fs-handlers.ts` | `vault_fs::list_tree` | vault | pending |
+| fs:listTree | vault | no | no | yes | no | `fs-handlers.ts` | `vault_fs::list_tree` | vault | ported |
 | fs:readTextFile | vault | no | no | yes | no | `fs-handlers.ts` | `vault_fs::read_text` | vault | ported |
 | fs:writeTextFile | vault | yes | no | yes | no | `fs-handlers.ts` | `vault_fs::write_text` | vault | ported |
-| fs:createTextFile | vault | yes | no | yes | no | `fs-handlers.ts` | `vault_fs::create_text` | vault | pending |
-| fs:createNote | vault | yes | no | yes | no | `fs-handlers.ts` | `vault_fs::create_note` | vault | pending |
-| fs:importBinaryFile | vault | yes | no | yes | no | `fs-handlers.ts` | `vault_fs::import_binary` | vault | pending |
-| fs:exists | vault | no | no | yes | no | `fs-handlers.ts` | `vault_fs::exists` | vault | pending |
-| fs:stat | vault | no | no | yes | no | `fs-handlers.ts` | `vault_fs::stat` | vault | pending |
-| fs:mkdir | vault | yes | no | yes | no | `fs-handlers.ts` | `vault_fs::mkdir` | vault | pending |
-| fs:rename | vault | yes | no | yes | no | `fs-handlers.ts` | `vault_fs::rename` | vault | pending |
+| fs:createTextFile | vault | yes | no | yes | no | `fs-handlers.ts` | `vault_fs::create_text` | vault | ported |
+| fs:createNote | vault | yes | no | yes | no | `fs-handlers.ts` | `vault_fs::create_note` | vault | ported |
+| fs:importBinaryFile | vault | yes | no | yes | no | `fs-handlers.ts` | `vault_fs::import_binary` | vault | ported |
+| fs:exists | vault | no | no | yes | no | `fs-handlers.ts` | `vault_fs::exists` | vault | ported |
+| fs:stat | vault | no | no | yes | no | `fs-handlers.ts` | `vault_fs::stat` | vault | ported |
+| fs:mkdir | vault | yes | no | yes | no | `fs-handlers.ts` | `vault_fs::mkdir` | vault | ported |
+| fs:rename | vault | yes | no | yes | no | `fs-handlers.ts` | `vault_fs::rename` | vault | ported |
 | fs:renameLinked | vault | yes | no | yes | no | `fs-handlers.ts` | `vault_fs::rename_linked` | vault | ported |
-| fs:delete | vault | yes | no | yes | no | `fs-handlers.ts` | `vault_fs::delete` | vault | pending |
-| fs:revealInFinder | host | no | no | no | no | `fs-handlers.ts` | `product::reveal_item` | vault | pending |
-| fs:scanTags | vault | no | no | yes | no | `fs-handlers.ts` | `index::scan_tags` | vault | pending |
+| fs:delete | vault | yes | no | yes | no | `fs-handlers.ts` | `vault_fs::delete` | vault | ported |
+| fs:revealInFinder | host | no | no | no | no | `fs-handlers.ts` | `product::reveal_item` | vault | ported |
+| fs:scanTags | vault | no | no | yes | no | `fs-handlers.ts` | `index::scan_tags` | vault | ported |
 | document:getMetadata | vault | no | no | yes | no | `document-handlers.ts` | `vault_fs::get_metadata` | vault | pending |
 
 ## Git
@@ -90,42 +92,42 @@
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
 | git:ping | host | no | no | no | no | `git-handlers.ts` | `git::ping` | git | ported |
 | git:getStatus | vault | no | no | yes | yes | `git-handlers.ts` | `git::status` | git | ported |
-| git:getTimeline | vault | no | no | yes | yes | `git-handlers.ts` | `git::timeline` | git | pending |
-| git:recordAutoCommit | vault | yes | no | yes | yes | `git-handlers.ts` | `git::record_auto_commit` | git | pending |
-| git:commit | vault | yes | no | yes | yes | `git-handlers.ts` | `git::commit` | git | pending |
-| git:addRemote | vault | yes | no | yes | no | `git-handlers.ts` | `git::add_remote` | git | pending |
-| git:listRemotes | vault | no | no | yes | yes | `git-handlers.ts` | `git::list_remotes` | git | pending |
-| git:pull | vault | yes | yes | yes | yes | `git-handlers.ts` | `git::pull` | git | pending |
-| git:push | vault | yes | yes | yes | yes | `git-handlers.ts` | `git::push` | git | pending |
-| git:sync | vault | yes | yes | yes | yes | `git-handlers.ts` | `git::sync` | git | pending |
-| git:configureAutoSync | app-state | yes | no | no | no | `git-handlers.ts` | `git::configure_auto_sync` | git | pending |
-| git:previewRestore | vault | no | no | yes | yes | `git-handlers.ts` | `git::preview_restore` | git | pending |
-| git:restoreFile | vault | yes | no | yes | yes | `git-handlers.ts` | `git::restore_file` | git | pending |
-| git:setUseSystemGit | app-state | yes | no | no | no | `git-handlers.ts` | `git::set_use_system` | git | pending |
-| git:getAutoCommitDebounce | app-state | yes | no | no | no | `git-handlers.ts` | `git::get_debounce` | git | pending |
-| git:setAutoCommitDebounce | app-state | yes | no | no | no | `git-handlers.ts` | `git::set_debounce` | git | pending |
-| git:doctor:diagnose | vault | no | no | yes | yes | `git-handlers.ts` | `git::doctor_diagnose` | git | pending |
-| git:doctor:repairPrepare | vault | no | no | yes | yes | `git-handlers.ts` | `git::doctor_prepare` | git | pending |
-| git:doctor:repairExecute | vault | yes | yes | yes | yes | `git-handlers.ts` | `git::doctor_execute` | git | pending |
-| git:doctor:dismiss | app-state | yes | no | no | no | `git-handlers.ts` | `git::doctor_dismiss` | git | pending |
+| git:getTimeline | vault | no | no | yes | yes | `git-handlers.ts` | `git::timeline` | git | ported |
+| git:recordAutoCommit | vault | yes | no | yes | yes | `git-handlers.ts` | `git::record_auto_commit` | git | ported |
+| git:commit | vault | yes | no | yes | yes | `git-handlers.ts` | `git::commit` | git | ported |
+| git:addRemote | vault | yes | no | yes | no | `git-handlers.ts` | `git::add_remote` | git | ported |
+| git:listRemotes | vault | no | no | yes | yes | `git-handlers.ts` | `git::list_remotes` | git | ported |
+| git:pull | vault | yes | yes | yes | yes | `git-handlers.ts` | `git::pull` | git | ported |
+| git:push | vault | yes | yes | yes | yes | `git-handlers.ts` | `git::push` | git | ported |
+| git:sync | vault | yes | yes | yes | yes | `git-handlers.ts` | `git::sync` | git | ported |
+| git:configureAutoSync | app-state | yes | no | no | no | `git-handlers.ts` | `git::configure_auto_sync` | git | ported |
+| git:previewRestore | vault | no | no | yes | yes | `git-handlers.ts` | `git::preview_restore` | git | ported |
+| git:restoreFile | vault | yes | no | yes | yes | `git-handlers.ts` | `git::restore_file` | git | ported |
+| git:setUseSystemGit | app-state | yes | no | no | no | `git-handlers.ts` | `git::set_use_system` | git | ported |
+| git:getAutoCommitDebounce | app-state | yes | no | no | no | `git-handlers.ts` | `git::get_debounce` | git | ported |
+| git:setAutoCommitDebounce | app-state | yes | no | no | no | `git-handlers.ts` | `git::set_debounce` | git | ported |
+| git:doctor:diagnose | vault | no | no | yes | yes | `git-handlers.ts` | `git::doctor_diagnose` | git | ported |
+| git:doctor:repairPrepare | vault | no | no | yes | yes | `git-handlers.ts` | `git::doctor_prepare` | git | ported |
+| git:doctor:repairExecute | vault | yes | yes | yes | yes | `git-handlers.ts` | `git::doctor_execute` | git | ported |
+| git:doctor:dismiss | app-state | yes | no | no | no | `git-handlers.ts` | `git::doctor_dismiss` | git | ported |
 
 ## Index
 
 | Channel | 所有权 | persist | net | fs | proc | Electron handler | Tauri target | batch | status |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
 | index:status | sqlite | no | no | yes | no | `index-handlers.ts` | `index::status` | vault | ported |
-| index:rebuild | sqlite | yes | no | yes | no | `index-handlers.ts` | `index::rebuild` | vault | pending |
-| index:backlinks | sqlite | no | no | yes | no | `index-handlers.ts` | `index::backlinks` | vault | pending |
-| index:search | sqlite | no | no | yes | no | `index-handlers.ts` | `index::search` | vault | pending |
-| index:jumpTo | sqlite | no | no | yes | no | `index-handlers.ts` | `index::jump_to` | vault | pending |
-| index:tags | sqlite | no | no | yes | no | `index-handlers.ts` | `index::tags` | vault | pending |
-| index:tagPages | sqlite | no | no | yes | no | `index-handlers.ts` | `index::tag_pages` | vault | pending |
-| index:pageSummary | sqlite | no | no | yes | no | `index-handlers.ts` | `index::page_summary` | vault | pending |
-| index:pageSummaries | sqlite | no | no | yes | no | `index-handlers.ts` | `index::page_summaries` | vault | pending |
-| index:graph | sqlite | no | no | yes | no | `index-handlers.ts` | `index::graph` | vault | pending |
-| index:confidence | sqlite | yes | no | yes | no | `index-handlers.ts` | `index::confidence` | vault | pending |
-| index:confidenceSettings | vault | yes | no | yes | no | `index-handlers.ts` | `index::confidence_settings` | vault | pending |
-| index:setConfidenceFrontmatter | vault | yes | no | yes | no | `index-handlers.ts` | `index::set_confidence_fm` | vault | pending |
+| index:rebuild | sqlite | yes | no | yes | no | `index-handlers.ts` | `index::rebuild` | vault | ported |
+| index:backlinks | sqlite | no | no | yes | no | `index-handlers.ts` | `index::backlinks` | vault | ported |
+| index:search | sqlite | no | no | yes | no | `index-handlers.ts` | `index::search` | vault | ported |
+| index:jumpTo | sqlite | no | no | yes | no | `index-handlers.ts` | `index::jump_to` | vault | ported |
+| index:tags | sqlite | no | no | yes | no | `index-handlers.ts` | `index::tags` | vault | ported |
+| index:tagPages | sqlite | no | no | yes | no | `index-handlers.ts` | `index::tag_pages` | vault | ported |
+| index:pageSummary | sqlite | no | no | yes | no | `index-handlers.ts` | `index::page_summary` | vault | ported |
+| index:pageSummaries | sqlite | no | no | yes | no | `index-handlers.ts` | `index::page_summaries` | vault | ported |
+| index:graph | sqlite | no | no | yes | no | `index-handlers.ts` | `index::graph` | vault | ported |
+| index:confidence | sqlite | yes | no | yes | no | `index-handlers.ts` | `index::confidence` | vault | ported |
+| index:confidenceSettings | vault | yes | no | yes | no | `index-handlers.ts` | `index::confidence_settings` | vault | pending（返回硬编码 false；未读 vault config） |
+| index:setConfidenceFrontmatter | vault | yes | no | yes | no | `index-handlers.ts` | `index::set_confidence_fm` | vault | pending（返回硬编码 false；未写 config/触发重算） |
 
 ## Settings
 
@@ -193,24 +195,24 @@
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
 | plugins:ping | host | no | no | no | no | `plugin-handlers.ts` | `plugin::ping` | plugin | ported |
 | plugins:list | plugin | yes | no | yes | no | `plugin-handlers.ts` | `plugin::list` | plugin | ported |
-| plugins:listCommands | plugin | yes | no | yes | no | `plugin-handlers.ts` | `plugin::list_commands` | plugin | pending |
-| plugins:listContributions | plugin | yes | no | yes | no | `plugin-handlers.ts` | `plugin::list_contribs` | plugin | pending |
-| plugins:pickSource | host | no | no | no | no | `plugin-handlers.ts` | `plugin::pick_source` | plugin | pending |
-| plugins:installPreview | plugin | yes | no | yes | no | `plugin-handlers.ts` | `plugin::install_preview` | plugin | pending |
-| plugins:confirmInstall | plugin | yes | no | yes | no | `plugin-handlers.ts` | `plugin::confirm_install` | plugin | pending |
-| plugins:uninstall | plugin | yes | no | yes | no | `plugin-handlers.ts` | `plugin::uninstall` | plugin | pending |
-| plugins:setEnabled | plugin | yes | no | yes | no | `plugin-handlers.ts` | `plugin::set_enabled` | plugin | pending |
-| plugins:listAuditLog | plugin | yes | no | yes | no | `plugin-handlers.ts` | `plugin::audit_log` | plugin | pending |
-| plugins:revokePermission | plugin | yes | no | yes | no | `plugin-handlers.ts` | `plugin::revoke_perm` | plugin | pending |
-| plugins:runCommand | plugin | no | no | no | no | `plugin-handlers.ts` | `plugin::run_command` | plugin | pending |
-| plugins:beginSession | plugin | no | no | no | no | `plugin-handlers.ts` | `plugin::begin_session` | plugin | pending |
-| plugins:closeSession | plugin | no | no | no | no | `plugin-handlers.ts` | `plugin::close_session` | plugin | pending |
-| plugins:getRuntimeSource | plugin | no | no | yes | no | `plugin-handlers.ts` | `plugin::runtime_source` | plugin | pending |
-| plugins:reportCrash | plugin | yes | no | yes | no | `plugin-handlers.ts` | `plugin::report_crash` | plugin | pending |
-| plugins:beginAuthChallenge | plugin | no | no | no | no | `plugin-handlers.ts` | `plugin::auth_challenge` | plugin | pending |
-| plugins:rejectAuthChallenge | plugin | no | no | no | no | `plugin-handlers.ts` | `plugin::reject_auth` | plugin | pending |
-| plugins:grantPermission | plugin | yes | no | yes | no | `plugin-handlers.ts` | `plugin::grant_perm` | plugin | pending |
-| plugins:rpc | plugin | no | no | yes | no | `plugin-handlers.ts` | `plugin::rpc` | plugin | pending |
+| plugins:listCommands | plugin | yes | no | yes | no | `plugin-handlers.ts` | `plugin::list_commands` | plugin | pending（dispatch 无此分支，落入 UNSUPPORTED） |
+| plugins:listContributions | plugin | yes | no | yes | no | `plugin-handlers.ts` | `plugin::list_contribs` | plugin | pending（dispatch 无此分支，落入 UNSUPPORTED） |
+| plugins:pickSource | host | no | no | no | no | `plugin-handlers.ts` | `plugin::pick_source` | plugin | ported |
+| plugins:installPreview | plugin | yes | no | yes | no | `plugin-handlers.ts` | `plugin::install_preview` | plugin | ported |
+| plugins:confirmInstall | plugin | yes | no | yes | no | `plugin-handlers.ts` | `plugin::confirm_install` | plugin | ported |
+| plugins:uninstall | plugin | yes | no | yes | no | `plugin-handlers.ts` | `plugin::uninstall` | plugin | ported |
+| plugins:setEnabled | plugin | yes | no | yes | no | `plugin-handlers.ts` | `plugin::set_enabled` | plugin | ported |
+| plugins:listAuditLog | plugin | yes | no | yes | no | `plugin-handlers.ts` | `plugin::audit_log` | plugin | ported |
+| plugins:revokePermission | plugin | yes | no | yes | no | `plugin-handlers.ts` | `plugin::revoke_perm` | plugin | ported |
+| plugins:runCommand | plugin | no | no | no | no | `plugin-handlers.ts` | `plugin::run_command` | plugin | ported |
+| plugins:beginSession | plugin | no | no | no | no | `plugin-handlers.ts` | `plugin::begin_session` | plugin | ported |
+| plugins:closeSession | plugin | no | no | no | no | `plugin-handlers.ts` | `plugin::close_session` | plugin | ported |
+| plugins:getRuntimeSource | plugin | no | no | yes | no | `plugin-handlers.ts` | `plugin::runtime_source` | plugin | ported |
+| plugins:reportCrash | plugin | yes | no | yes | no | `plugin-handlers.ts` | `plugin::report_crash` | plugin | ported |
+| plugins:beginAuthChallenge | plugin | no | no | no | no | `plugin-handlers.ts` | `plugin::auth_challenge` | plugin | ported |
+| plugins:rejectAuthChallenge | plugin | no | no | no | no | `plugin-handlers.ts` | `plugin::reject_auth` | plugin | ported |
+| plugins:grantPermission | plugin | yes | no | yes | no | `plugin-handlers.ts` | `plugin::grant_perm` | plugin | ported |
+| plugins:rpc | plugin | no | no | yes | no | `plugin-handlers.ts` | `plugin::rpc` | plugin | ported |
 
 ## Skills
 
