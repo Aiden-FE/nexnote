@@ -53,3 +53,13 @@ _Avoid_: 捆绑向量模型、本地哈希向量
 **向量代际（Embedding generation）**:
 由同一语义向量来源产生、可相互比较的一组向量；来源变化后必须重建，不能与旧代际混排。
 _Avoid_: 向量缓存版本、模型版本作为唯一身份
+
+### 运行时与迁移
+
+**Product core**:
+NexNote 中承载产品规则、数据所有权与能力边界的权威执行层；界面壳和外部模型接口都不是权威。
+_Avoid_: Electron main、Tauri backend、Node sidecar
+
+**Reference channel**:
+迁移期间用于行为对照与回退的既有发行通道；它不因新通道可构建而被移除。
+_Avoid_: 旧版本、兼容模式

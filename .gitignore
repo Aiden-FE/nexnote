@@ -5,6 +5,7 @@ node_modules/
 out/
 release/
 dist/
+src-tauri/target/
 *.tsbuildinfo
 
 # 日志与临时
