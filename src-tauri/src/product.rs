@@ -1,3 +1,4 @@
+use crate::{index_service, vault_fs};
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use std::{
@@ -27,6 +28,17 @@ pub struct ProductState {
     global_settings: Mutex<Value>,
     current_vault: Mutex<Option<VaultInfo>>,
     recent_vaults: Mutex<Vec<RecentVaultEntry>>,
+}
+
+#[derive(Default)]
+pub struct VaultRoot {
+    root: Mutex<Option<PathBuf>>,
+}
+
+impl VaultRoot {
+    fn get(&self) -> Option<PathBuf> {
+        self.root.lock().expect("vault root lock").clone()
+    }
 }
 
 impl Default for ProductState {
@@ -232,16 +244,18 @@ fn ping(namespace: &'static str, implemented_by: &'static str) -> Value {
 pub async fn nexnote_invoke(
     app: AppHandle,
     state: State<'_, ProductState>,
+    vault_root: State<'_, VaultRoot>,
     channel: String,
     payload: Option<Value>,
 ) -> Result<Value, ()> {
     let payload = payload.unwrap_or(Value::Null);
-    Ok(dispatch(&app, &state, &channel, &payload))
+    Ok(dispatch(&app, &state, &vault_root, &channel, &payload))
 }
 
 fn dispatch(
     app: &AppHandle,
     state: &State<'_, ProductState>,
+    vault_root: &State<'_, VaultRoot>,
     channel: &str,
     payload: &Value,
 ) -> Value {
@@ -345,6 +359,9 @@ fn dispatch(
                 return error("VAULT_CREATE_FAILED", &e.to_string());
             }
             let info = vault_info_for_path(&root);
+            if let Err(e) = sync_vault_root(&root, vault_root) {
+                return e;
+            }
             state.set_current_vault(info.clone());
             let _ = app.emit("vault:changed", &info);
             ok(serde_json::to_value(info).unwrap_or(Value::Null))
@@ -367,6 +384,9 @@ fn dispatch(
                 );
             }
             let info = vault_info_for_path(&root);
+            if let Err(e) = sync_vault_root(&root, vault_root) {
+                return e;
+            }
             state.set_current_vault(info.clone());
             let _ = app.emit("vault:changed", &info);
             ok(serde_json::to_value(info).unwrap_or(Value::Null))
@@ -425,8 +445,31 @@ fn dispatch(
         }
         "vault:close" => {
             *state.current_vault.lock().expect("vault state lock") = None;
+            close_vault_root(vault_root);
             let _ = app.emit("vault:changed", Value::Null);
             ok(Value::Null)
+        }
+        "fs:listDir" | "fs:listTree" | "fs:readTextFile" | "fs:writeTextFile" => {
+            let Some(root) = vault_root.get() else {
+                return error("NO_VAULT", "No vault is open");
+            };
+            match channel {
+                "fs:listDir" => vault_fs::list_dir(&root, payload),
+                "fs:listTree" => vault_fs::list_tree(&root, payload),
+                "fs:readTextFile" => vault_fs::read_text_file(&root, payload),
+                _ => vault_fs::write_text_file(&root, payload),
+            }
+        }
+        "index:status" | "index:rebuild" | "index:search" | "index:backlinks" => {
+            let Some(root) = vault_root.get() else {
+                return error("NO_VAULT", "No vault is open");
+            };
+            match channel {
+                "index:status" => index_service::status(&root),
+                "index:rebuild" => index_service::rebuild(&root),
+                "index:search" => index_service::search(&root, payload),
+                _ => index_service::backlinks(&root, payload),
+            }
         }
         "editor:ping" => ping("editor", "DEV-002"),
         "ai:ping" => ping("ai", "DEV-009"),
@@ -440,6 +483,89 @@ fn dispatch(
     }
 }
 
+pub fn sync_vault_root(root: &Path, state: &VaultRoot) -> Result<(), Value> {
+    if !root.join(".nexnote/config.json").is_file() {
+        return Err(json!({
+            "ok": false,
+            "code": "NOT_A_VAULT",
+            "error": "The selected directory has no NexNote config"
+        }));
+    }
+    *state.root.lock().expect("vault root lock") = Some(root.to_path_buf());
+    index_service::rebuild(root);
+    Ok(())
+}
+
+pub fn close_vault_root(state: &VaultRoot) {
+    *state.root.lock().expect("vault root lock") = None;
+    index_service::close();
+}
+
 fn default_updates() -> Value {
     json!({ "channel": "stable", "autoDownload": false, "checkOnLaunch": true })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::sync::atomic::{AtomicU64, Ordering};
+
+    static TEMP_SEQUENCE: AtomicU64 = AtomicU64::new(0);
+
+    fn temp_vault() -> PathBuf {
+        let id = TEMP_SEQUENCE.fetch_add(1, Ordering::SeqCst);
+        let root = std::env::temp_dir().join(format!("nexnote-dev119-{}-{id}", std::process::id()));
+        fs::create_dir_all(root.join(".nexnote")).expect("create temp vault");
+        root
+    }
+
+    #[test]
+    fn creates_and_persists_default_vault_config() {
+        let root = temp_vault();
+        let config_path = root.join(".nexnote/config.json");
+        write_config(&config_path, &default_vault_config()).expect("write config");
+        let raw = fs::read_to_string(config_path).expect("read config");
+        let config: Value = serde_json::from_str(&raw).expect("parse config");
+        assert_eq!(config["version"], 1);
+        assert_eq!(config["settings"]["editor"]["autoSaveMs"], 1500);
+        assert_eq!(config["layout"]["sidebarWidth"], 260);
+        fs::remove_dir_all(root).ok();
+    }
+
+    #[test]
+    fn sidecar_file_content_roundtrips_inside_vault() {
+        let root = temp_vault();
+        let note = "# My Note\n\nLinked to [[Other Note]].\n\n#project/next\n";
+        let payload = json!({ "path": ".nexnote/sidecar/test.json", "content": note });
+        assert_eq!(vault_fs::write_text_file(&root, &payload)["ok"], true);
+        assert_eq!(vault_fs::read_text_file(&root, &payload)["ok"], true);
+        assert!(vault_fs::read_text_file(&root, &payload)
+            .pointer("/data/content")
+            .and_then(Value::as_str)
+            .is_some_and(|content| content.contains("[[Other Note]]")));
+        fs::remove_dir_all(root).ok();
+    }
+
+    #[test]
+    fn index_commands_accept_a_document_and_return_a_stable_contract() {
+        let root = temp_vault();
+        let note = r#"---
+title: Architecture
+tags: [rust, tauri]
+---
+
+See [[Glossary]].
+"#;
+        fs::write(root.join("Architecture.md"), note).expect("write note");
+        assert_eq!(index_service::rebuild(&root)["ok"], true);
+        assert_eq!(
+            index_service::search(&root, &json!({ "query": "Glossary" }))["ok"],
+            true
+        );
+        assert_eq!(
+            index_service::backlinks(&root, &json!({ "title": "Glossary" }))["ok"],
+            true
+        );
+        fs::remove_dir_all(root).ok();
+    }
 }
