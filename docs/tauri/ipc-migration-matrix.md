@@ -27,7 +27,6 @@
 | --- | --- | --- |
 | agent:cancel / agent:approval:respond | 返回 `{cancelled:false}` 占位 | 迁移 Electron agent gateway 的取消与工具审批语义（DEV-121） |
 | skills:retrieve | 以 index_service FTS 结果代替 Skill 召回 | 迁移 DEV-014 Skill 召回/重排链路（DEV-121） |
-| print:document | 校验通过后返回 `accepted:false` + `PRINT_RUNTIME_NOT_INTEGRATED` | 接入隐藏 WebviewWindow 打印（DEV-123） |
 | agent:run:* | SSE 文本流已接通，但无工具审批/权限模式 | 迁移工具调用与权限模式（DEV-121） |
 
 ## App
@@ -254,7 +253,7 @@
 
 | Channel | 所有权 | persist | net | fs | proc | Electron handler | Tauri target | batch | status |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| print:document | host | no | no | yes | no | `print-handlers.ts` | `print::document` | binary-print | pending（仅校验；WebviewWindow 打印运行时未接入） |
+| print:document | host | no | no | yes | no | `print-handlers.ts` | `print::document` | binary-print | ported |
 
 ## Editor
 

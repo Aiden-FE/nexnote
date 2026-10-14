@@ -1,17 +1,30 @@
-#![allow(dead_code)]
-
-//! Validation-only print document core for the Tauri runtime.
+//! Print document core for the Tauri runtime (DEV-123).
+//!
+//! Mirrors the Electron hidden-window flow: load the renderer shell in an
+//! invisible window, install the document HTML, open the system print dialog
+//! and destroy the window afterwards.
+//!
+//! One known contract difference: Tauri's `webview.print()` opens the system
+//! dialog but does not report whether the user submitted or cancelled, so a
+//! successful call reports `accepted: true` meaning "dialog dispatched",
+//! not "the user printed". The renderer must not treat it as a receipt.
 
 use serde::{Deserialize, Serialize};
+use tauri::{AppHandle, Runtime, WebviewUrl, WebviewWindowBuilder};
 
 /// The same payload limit as the Electron print handler.
 pub const MAX_HTML_BYTES: usize = 8 * 1024 * 1024;
 /// A conservative limit that keeps titles usable in window and printer UIs.
 pub const MAX_TITLE_BYTES: usize = 512;
 
-/// Marker used until the DEV-123 hidden WebviewWindow runtime is attached.
-pub const PRINT_RUNTIME_NOT_INTEGRATED: &str =
-    "PRINT_RUNTIME_NOT_INTEGRATED: hidden WebviewWindow submission is not wired yet";
+/// Shell page loaded into the hidden print window. It shares the renderer
+/// origin with the main window so the app's CSP applies unchanged.
+const PRINT_SHELL: &str = "index.html";
+
+/// Unique-ish label per print job; windows are destroyed after each print.
+fn print_label() -> String {
+    format!("nexnote-print-{}", uuid::Uuid::new_v4())
+}
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct PrintDocumentRequest {
@@ -30,9 +43,17 @@ pub struct PrintDocumentResult {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum PrintValidationError {
     TitleMissing,
-    TitleTooLarge { size: usize },
+    TitleTooLarge {
+        size: usize,
+    },
     HtmlMissing,
-    HtmlTooLarge { size: usize },
+    HtmlTooLarge {
+        size: usize,
+    },
+    /// The hidden print window could not be created, loaded or printed.
+    Runtime {
+        message: String,
+    },
 }
 
 impl std::fmt::Display for PrintValidationError {
@@ -48,6 +69,9 @@ impl std::fmt::Display for PrintValidationError {
             Self::HtmlMissing => write!(formatter, "html is required"),
             Self::HtmlTooLarge { size } => {
                 write!(formatter, "html is {size} bytes; limit is {MAX_HTML_BYTES}")
+            }
+            Self::Runtime { message } => {
+                write!(formatter, "the print runtime failed: {message}")
             }
         }
     }
@@ -89,21 +113,86 @@ pub fn validate_print_document(
     })
 }
 
-/// Validates the request and returns the documented partial print result.
+/// Prints one document through a hidden window and returns the outcome.
 ///
-/// DEV-123 still needs the hidden `WebviewWindow` runtime: load the renderer
-/// shell, install the print HTML, call `window.print()`, and translate user
-/// confirmation/cancellation into the final result. This function deliberately
-/// does not claim that a dialog was shown. Callers can distinguish it from a
-/// cancellation through `failure_reason == PRINT_RUNTIME_NOT_INTEGRATED`.
-pub fn print_document(
+/// The window is always destroyed, including on failure paths, so a cancelled
+/// or errored print can never leak a window into the window list.
+pub fn print_document<R: Runtime>(
+    app: &AppHandle<R>,
     request: &PrintDocumentRequest,
 ) -> Result<PrintDocumentResult, PrintValidationError> {
-    validate_print_document(request)?;
+    let document = validate_print_document(request)?;
+    // The shell page must exist in the bundle before any window work: a
+    // missing shell can never print, and the mock runtime's empty asset
+    // resolver turns this into a deterministic, typed failure.
+    if app.asset_resolver().get(PRINT_SHELL.to_string()).is_none() {
+        return Err(PrintValidationError::Runtime {
+            message: format!("print shell page '{PRINT_SHELL}' is not bundled"),
+        });
+    }
+    let (done_tx, done_rx) = std::sync::mpsc::channel::<Result<(), String>>();
+    let label = print_label();
+    let builder = WebviewWindowBuilder::new(app, label, WebviewUrl::App(PRINT_SHELL.into()))
+        .title(&document.title)
+        .visible(false)
+        .skip_taskbar(true);
+
+    // Install the document only once the shell finished loading, otherwise the
+    // renderer bootstrap would overwrite it.
+    let html = document.html.clone();
+    let window = builder
+        .on_page_load(move |window, payload| {
+            use tauri::webview::PageLoadEvent;
+            if payload.event() != PageLoadEvent::Finished {
+                return;
+            }
+            let result = window
+                .eval(install_print_script(&html))
+                .map_err(|error| error.to_string())
+                .and_then(|()| window.print().map_err(|error| error.to_string()));
+            let _ = done_tx.send(result);
+        })
+        .build()
+        .map_err(|error| PrintValidationError::Runtime {
+            message: error.to_string(),
+        })?;
+
+    let outcome = done_rx
+        .recv_timeout(std::time::Duration::from_secs(PRINT_TIMEOUT_SECS))
+        .map_err(|error| PrintValidationError::Runtime {
+            message: format!("the print window never finished loading: {error}"),
+        })
+        .and_then(|result| result.map_err(|message| PrintValidationError::Runtime { message }));
+    let _ = window.close();
+
     Ok(PrintDocumentResult {
-        accepted: false,
-        failure_reason: Some(PRINT_RUNTIME_NOT_INTEGRATED.to_owned()),
+        accepted: outcome.is_ok(),
+        failure_reason: outcome.err().map(|error| error.to_string()),
     })
+}
+
+/// Upper bound for loading the shell and dispatching the dialog. A wedged
+/// WebView must not hang the IPC caller forever.
+const PRINT_TIMEOUT_SECS: u64 = 30;
+
+/// Builds the script that replaces the shell body with the print document and
+/// strips chrome so the printed page carries no app UI.
+fn install_print_script(html: &str) -> String {
+    let encoded = serde_json::to_string(html).unwrap_or_else(|_| "\"\"".to_string());
+    format!(
+        r#"
+        (function () {{
+          var html = {encoded};
+          document.open();
+          document.write(html);
+          document.close();
+          window.addEventListener('load', function () {{
+            window.focus();
+            window.print();
+          }});
+        }})();
+        "#
+    )
 }
 
 #[cfg(test)]
@@ -119,16 +208,23 @@ mod tests {
     }
 
     #[test]
-    fn validates_and_reports_partial_runtime_result() {
+    fn validates_before_touching_the_runtime() {
         let validated = validate_print_document(&request()).expect("valid request");
         assert_eq!(validated.title, "Architecture");
         assert_eq!(validated.html_bytes, request().html.len());
+    }
 
-        let result = print_document(&request()).expect("partial result");
-        assert!(!result.accepted);
-        assert_eq!(
-            result.failure_reason.as_deref(),
-            Some(PRINT_RUNTIME_NOT_INTEGRATED)
+    /// The mock runtime has no bundled shell, so the hidden window cannot be
+    /// built: the channel must surface a typed runtime error rather than a
+    /// fabricated "accepted" result.
+    #[test]
+    fn runtime_failure_is_reported_as_a_typed_error() {
+        let app = tauri::test::mock_app();
+        let failure =
+            print_document(app.handle(), &request()).expect_err("a mock runtime cannot print");
+        assert!(
+            matches!(failure, PrintValidationError::Runtime { .. }),
+            "unexpected error: {failure}"
         );
     }
 

@@ -1820,7 +1820,7 @@ fn dispatch(
                 return error("PRINT_HTML_REQUIRED", "html is required");
             };
             let request = print_service::PrintDocumentRequest { title, html };
-            match print_service::print_document(&request) {
+            match print_service::print_document(app, &request) {
                 Ok(result) => match serde_json::to_value(result) {
                     Ok(value) => ok(value),
                     Err(e) => error("PRINT_SERIALIZE_FAILED", &e.to_string()),

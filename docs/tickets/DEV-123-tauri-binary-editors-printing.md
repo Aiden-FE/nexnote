@@ -34,6 +34,14 @@ Electron 版本使用 `WebContentsView` 为 xlsx / xmind 编辑器提供独立�
 - [ ] 页面范围、份数、PDF 导出在支持平台实测。
 - [ ] macOS 实测；Windows/Linux 打印对话框、WebView 进程隔离与内存保持 **NOT_RUN（当前无实测条件）**。
 
+## 实施进度
+
+打印运行时（`print_service::print_document`）已从校验占位升级为真实实现：校验通过后在隐藏 `WebviewWindow` 加载渲染层壳页，`on_page_load(Finished)` 时注入文档 HTML 并调用 `webview.print()` 打开系统打印对话框，窗口在任何结果下都被销毁，30s 超时兜底防止 WebView 卡死。
+
+与 Electron 的已知契约差异：Tauri 的 `webview.print()` 不回报用户是否提交或取消，因此 `accepted: true` 表示「系统对话框已派发」，不是打印回执；渲染层不得据此提示「打印成功」。页面范围、份数、导出 PDF 由系统对话框提供，应用侧不实现。
+
+仍待完成：macOS 实测（隐藏窗口、系统对话框、内存）；Windows/Linux 打印 **NOT_RUN（无实测条件）**；xlsx/xmind 的 `WebContentsView` 等价宿主（多 WebView 隔离）尚未迁移。
+
 ## Out of scope
 
 - 新增 DOCX 应用内编辑（ADR-0015 已移除主编辑形态）。
