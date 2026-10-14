@@ -1,7 +1,8 @@
 use crate::{
     ai_service::{self, AiStore},
+    binary_service,
     git_service::{self, GitError},
-    git_sync, index_service, vault_fs,
+    git_sync, index_service, print_service, vault_fs,
 };
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
@@ -1065,6 +1066,80 @@ fn dispatch(
         "plugins:ping" => ping("plugins", "DEV-013"),
         "skills:ping" => ping("skills", "DEV-014"),
         "binary:ping" => ping("binary", "DEV-074"),
+        "binary:import" => {
+            let Some(root) = vault_root.get() else {
+                return error("NO_VAULT", "No vault is open");
+            };
+            match binary_service::import_binary(&root, payload) {
+                Ok(value) => value,
+                Err(e) => error(&e.code, &e.message),
+            }
+        }
+        "binary:create" => {
+            let Some(root) = vault_root.get() else {
+                return error("NO_VAULT", "No vault is open");
+            };
+            match binary_service::create_binary(&root, payload) {
+                Ok(value) => value,
+                Err(e) => error(&e.code, &e.message),
+            }
+        }
+        "binary:read" => {
+            let Some(root) = vault_root.get() else {
+                return error("NO_VAULT", "No vault is open");
+            };
+            match binary_service::read_binary(&root, payload) {
+                Ok(value) => value,
+                Err(e) => error(&e.code, &e.message),
+            }
+        }
+        "binary:save" => {
+            let Some(root) = vault_root.get() else {
+                return error("NO_VAULT", "No vault is open");
+            };
+            match binary_service::save_binary(&root, payload) {
+                Ok(value) => value,
+                Err(e) => error(&e.code, &e.message),
+            }
+        }
+        "binary:gitignore:set" => {
+            let Some(root) = vault_root.get() else {
+                return error("NO_VAULT", "No vault is open");
+            };
+            match binary_service::set_binary_ignore(&root, payload) {
+                Ok(value) => value,
+                Err(e) => error(&e.code, &e.message),
+            }
+        }
+        "binary:gitignore:get" => {
+            let Some(root) = vault_root.get() else {
+                return error("NO_VAULT", "No vault is open");
+            };
+            match binary_service::get_binary_ignore(&root) {
+                Ok(value) => value,
+                Err(e) => error(&e.code, &e.message),
+            }
+        }
+        "print:document" => {
+            let Some(title) = string_field(payload, "title") else {
+                return error("PRINT_TITLE_REQUIRED", "title is required");
+            };
+            let Some(html) = string_field(payload, "html") else {
+                return error("PRINT_HTML_REQUIRED", "html is required");
+            };
+            let request = print_service::PrintDocumentRequest { title, html };
+            match print_service::print_document(&request) {
+                Ok(result) => match serde_json::to_value(result) {
+                    Ok(value) => ok(value),
+                    Err(e) => error("PRINT_SERIALIZE_FAILED", &e.to_string()),
+                },
+                Err(e) => error("PRINT_VALIDATION_FAILED", &e.to_string()),
+            }
+        }
+        "docx:import" | "docx:export" => error(
+            "DOCX_NOT_PORTED",
+            "DOCX import/export is not ported to Rust yet",
+        ),
         _ => error(
             "UNSUPPORTED_CHANNEL",
             "This product command is not ported to Rust yet",
