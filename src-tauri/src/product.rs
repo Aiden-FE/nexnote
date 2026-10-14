@@ -13,7 +13,7 @@ use std::{
     path::{Path, PathBuf},
     sync::{Mutex, OnceLock},
 };
-use tauri::{AppHandle, Emitter, Manager, State};
+use tauri::{AppHandle, Emitter, Manager, State, WebviewWindow};
 use tauri_plugin_dialog::DialogExt;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -671,8 +671,12 @@ fn ai_embed_with_metadata(
 }
 
 #[tauri::command]
+// Tauri injects one parameter per managed state plus the window that invoked
+// the command; the count is fixed by the framework, not by this file.
+#[allow(clippy::too_many_arguments)]
 pub async fn nexnote_invoke(
     app: AppHandle,
+    webview: WebviewWindow,
     state: State<'_, ProductState>,
     embedding: State<'_, std::sync::Arc<embedding_service::EmbeddingState>>,
     plugin_state: State<'_, PluginState>,
@@ -683,6 +687,7 @@ pub async fn nexnote_invoke(
     let payload = payload.unwrap_or(Value::Null);
     let response = dispatch(
         &app,
+        Some(webview.label()),
         &state,
         &embedding,
         &plugin_state,
@@ -698,8 +703,10 @@ pub async fn nexnote_invoke(
     Ok(response)
 }
 
+#[allow(clippy::too_many_arguments)]
 fn dispatch<R: tauri::Runtime>(
     app: &tauri::AppHandle<R>,
+    sender: Option<&str>,
     state: &State<'_, ProductState>,
     embedding: &State<'_, std::sync::Arc<embedding_service::EmbeddingState>>,
     plugin_state: &State<'_, PluginState>,
@@ -2438,6 +2445,20 @@ fn dispatch<R: tauri::Runtime>(
                 _ => binary_host_service::flush(app, &kind, &path),
             }
         }
+        "binary:host:flushAck" => {
+            // The editor page confirms a flush token; the parked flush call
+            // resolves from the ack instead of assuming success.
+            let Some(token) = string_field(payload, "token") else {
+                return error("BINARY_HOST_FLUSH_TOKEN", "token is required");
+            };
+            binary_host_service::flush_ack(
+                app,
+                sender,
+                &token,
+                payload.get("ok").and_then(Value::as_bool) == Some(true),
+                string_field(payload, "message").as_deref(),
+            )
+        }
         "binary:host:setActive" => {
             // 缺省 payload = 切到非二进制 tab，收回全部宿主。
             binary_host_service::set_active(
@@ -2487,7 +2508,11 @@ fn dispatch<R: tauri::Runtime>(
                 .and_then(Value::as_str)
                 .unwrap_or("zh-CN")
                 .to_owned();
-            binary_host_service::ready(app, &language)
+            // The ack carries no payload by contract, so the sending window
+            // identifies the host — the Tauri equivalent of Electron's
+            // senderId = webContents.id. Guessing "the first not-ready host"
+            // mis-attributes commands when several editors boot at once.
+            binary_host_service::ready(app, sender, &language)
         }
         "print:document" => {
             let Some(title) = string_field(payload, "title") else {
@@ -3261,6 +3286,7 @@ mod tests {
         ] {
             let response = dispatch(
                 handle,
+                None,
                 &state,
                 &embedding,
                 &plugins,

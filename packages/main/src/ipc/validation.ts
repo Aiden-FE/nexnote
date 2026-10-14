@@ -200,6 +200,12 @@ const binaryHostRef: PayloadValidator = (payload) => {
   if (!binaryHostKind(payload.kind)) return invalid(tCurrent('validation.error.BINARY_HOST_KIND'));
   return stringField('path')(payload);
 };
+// DEV-123: Tauri-only ack channel (Electron gets the flush result from
+// executeJavaScript, so it never registers this handler).
+const binaryHostFlushAck = object(
+  ['token', 'ok', 'message'],
+  [stringField('token'), booleanField('ok'), optionalField('message', 'string')],
+);
 const binaryHostSetActive: PayloadValidator = (payload) => {
   if (payload === null) return null;
   return binaryHostRef(payload);
@@ -856,6 +862,7 @@ const VALIDATORS: Partial<Record<IpcChannel, PayloadValidator>> = {
   'binary:host:open': binaryHostRef,
   'binary:host:close': binaryHostRef,
   'binary:host:flush': binaryHostRef,
+  'binary:host:flushAck': binaryHostFlushAck,
   'binary:host:ready': () => null,
   'binary:host:setActive': binaryHostSetActive,
   'binary:host:setBounds': binaryHostSetBounds,

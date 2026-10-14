@@ -94,7 +94,15 @@ interface BinaryEditorCommandBase {
 /** 主窗口 → 二进制编辑器宿主的控制指令（ADR-0023：language 必须显式携带，不允许静默回退）。 */
 export type BinaryEditorCommand =
   | (BinaryEditorCommandBase & { command: 'load' })
-  | (BinaryEditorCommandBase & { command: 'flush' })
+  | (BinaryEditorCommandBase & {
+      command: 'flush';
+      /**
+       * DEV-123: one-shot token the host echoes back through
+       * `binary:host:flushAck` so the pending flush resolves on the editor's
+       * real save result. Absent = fire-and-forget (Electron parity path).
+       */
+      token?: string;
+    })
   | (BinaryEditorCommandBase & { command: 'theme'; theme?: 'light' | 'dark' })
   | (BinaryEditorCommandBase & { command: 'language'; language: UiLanguage })
   | (BinaryEditorCommandBase & { command: 'destroy' });

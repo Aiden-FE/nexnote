@@ -321,7 +321,22 @@ async function handleCommand(command: BinaryEditorCommand): Promise<void> {
     return;
   }
   if (command.command === 'flush') {
-    await flushPending();
+    // DEV-123: Tauri 2's `eval` cannot read back a Promise result, so a flush
+    // that carries a token is confirmed through `binary:host:flushAck`. The
+    // host must not resolve until the editor's pending writes actually land.
+    const token = command.token;
+    try {
+      await flushPending();
+      if (token) await invoke('binary:host:flushAck', { token, ok: true });
+    } catch (e) {
+      if (token) {
+        await invoke('binary:host:flushAck', {
+          token,
+          ok: false,
+          message: e instanceof Error ? e.message : String(e),
+        }).catch(() => undefined);
+      }
+    }
     return;
   }
   if (command.command === 'destroy') {

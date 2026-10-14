@@ -39,6 +39,15 @@ struct HostEntry {
     loaded: bool,
     pending: Vec<Value>,
     bounds: Option<HostBounds>,
+    // In-flight flush round-trips awaiting the page's ack, keyed by token.
+    flush_waiters: Vec<(String, std::sync::mpsc::Sender<FlushOutcome>)>,
+}
+
+/// Result of one host flush round-trip.
+#[derive(Debug, PartialEq, Eq)]
+pub enum FlushOutcome {
+    Flushed,
+    Failed(String),
 }
 
 #[derive(Default)]
@@ -121,6 +130,7 @@ pub fn open<R: Runtime>(app: &AppHandle<R>, kind: &str, path: &str) -> Value {
                     loaded: false,
                     pending: Vec::new(),
                     bounds: None,
+                    flush_waiters: Vec::new(),
                 },
             );
             ok(json!({ "opened": true }))
@@ -310,47 +320,148 @@ pub fn layout_visible<R: Runtime>(app: &AppHandle<R>) {
     }
 }
 
-/// `binary:host:flush` — asks an editor to persist pending writes before the
-/// tab closes. Returns `flushed:false` when the host is unknown, not yet ready
-/// (the editor has no page to persist from), or has already been destroyed.
-/// The blocking round-trip through `window.__nexnoteHostFlush` remains
-/// DEV-123 work; until then the command is delivered and the tab keeps its
-/// window alive so a subsequent close cannot drop unsaved state.
+/// Upper bound on one flush round-trip. Electron uses the same value for its
+/// ready wait: a host that never answers must not stall tab close forever.
+const FLUSH_TIMEOUT: std::time::Duration = std::time::Duration::from_millis(1500);
+
+/// `binary:host:flush` — persists the host's pending writes and waits for the
+/// page to confirm, mirroring Electron's `roundTrip`: the command carries a
+/// one-shot token, the page flushes and acknowledges it through
+/// `binary:host:flushAck`, and only then does this call resolve. `flushed:true`
+/// is returned when the host has nothing pending (unknown/not yet loaded).
 pub fn flush<R: Runtime>(app: &AppHandle<R>, kind: &str, path: &str) -> Value {
     let key = host_key(kind, path);
-    let state = {
+    let (ready, loaded) = {
         let reg = registry().lock().expect("binary host registry lock");
         match reg.hosts.get(&key) {
             None => return ok(json!({ "flushed": false })),
-            Some(entry) => (
-                entry.ready,
-                entry.loaded,
-                entry.kind.clone(),
-                entry.path.clone(),
-            ),
+            Some(entry) => (entry.ready, entry.loaded),
         }
     };
-    let (ready, loaded, kind, path) = state;
     if !ready || !loaded {
         // Nothing has been handed to the page yet: nothing can be pending.
         return ok(json!({ "flushed": true }));
     }
-    let command = json!({ "command": "flush", "kind": kind, "path": path });
-    deliver_command(app, &kind, &path, &command);
-    ok(json!({ "flushed": true }))
+    let token = uuid::Uuid::new_v4().to_string();
+    let (sender, receiver) = std::sync::mpsc::channel();
+    {
+        let mut reg = registry().lock().expect("binary host registry lock");
+        let Some(entry) = reg.hosts.get_mut(&key) else {
+            return ok(json!({ "flushed": false }));
+        };
+        entry.flush_waiters.push((token.clone(), sender));
+    }
+    let command = json!({
+        "command": "flush",
+        "kind": kind,
+        "path": path,
+        "token": token.as_str(),
+    });
+    deliver_command(app, kind, path, &command);
+    match receiver.recv_timeout(FLUSH_TIMEOUT) {
+        Ok(FlushOutcome::Flushed) => ok(json!({ "flushed": true })),
+        Ok(FlushOutcome::Failed(message)) => error("BINARY_HOST_FLUSH_FAILED", &message),
+        Err(_) => {
+            // The waiter is dropped so a late ack cannot resolve a stale token.
+            let mut reg = registry().lock().expect("binary host registry lock");
+            if let Some(entry) = reg.hosts.get_mut(&key) {
+                entry.flush_waiters.retain(|(id, _)| *id != token);
+            }
+            error(
+                "BINARY_HOST_FLUSH_TIMEOUT",
+                &format!(
+                    "The editor did not confirm the flush within {}ms",
+                    FLUSH_TIMEOUT.as_millis()
+                ),
+            )
+        }
+    }
+}
+
+/// `binary:host:flushAck` — the editor page confirms (or fails) a flush token.
+pub fn flush_ack(
+    app: &AppHandle<impl Runtime>,
+    sender: Option<&str>,
+    token: &str,
+    ok_value: bool,
+    message: Option<&str>,
+) -> Value {
+    let Some(label) = sender else {
+        return error(
+            "BINARY_HOST_SENDER_UNKNOWN",
+            "The invoking window could not be identified",
+        );
+    };
+    let mut reg = registry().lock().expect("binary host registry lock");
+    let Some(key) = reg
+        .hosts
+        .keys()
+        .find(|key| label_for(key) == label)
+        .cloned()
+    else {
+        return ok(json!({ "accepted": false }));
+    };
+    let Some(entry) = reg.hosts.get_mut(&key) else {
+        return ok(json!({ "accepted": false }));
+    };
+    let Some(index) = entry.flush_waiters.iter().position(|(id, _)| id == token) else {
+        // Unknown or already-settled token: a duplicate ack must not fail.
+        return ok(json!({ "accepted": false }));
+    };
+    let (_, waiter) = entry.flush_waiters.remove(index);
+    let outcome = if ok_value {
+        FlushOutcome::Flushed
+    } else {
+        FlushOutcome::Failed(
+            message
+                .map(ToOwned::to_owned)
+                .unwrap_or_else(|| "The editor failed to save pending writes".to_owned()),
+        )
+    };
+    // The waiter is parked on this thread's own channel, so waking it here
+    // cannot deadlock on the registry lock.
+    drop(reg);
+    let _ = waiter.send(outcome);
+    let _ = app;
+    ok(json!({ "accepted": true }))
 }
 
 /// `binary:host:ready` — the editor page ack; pull-model command delivery.
-pub fn ready(app: &AppHandle<impl Runtime>, language: &str) -> Value {
+// Label of the window created for one host key.
+fn label_for(key: &str) -> String {
+    format!("binary-editor-{}", key.replace([':', '/'], "-"))
+}
+
+// `sender` is the window label Tauri injected for the invoking WebView — the
+// same identity the Electron implementation derives from
+// `senderId = webContents.id`. It is required: with several editors booting
+// concurrently, "the first host that is not ready yet" can attribute one
+// document's commands to a different host.
+pub fn ready(app: &AppHandle<impl Runtime>, sender: Option<&str>, language: &str) -> Value {
     // The host page invokes this after it subscribed to events, so the pending
     // queue is returned as the invoke response (pull model). Pushing instead
     // would drop the initial load into a page that has no listener yet.
     let mut reg = registry().lock().expect("binary host registry lock");
-    let Some((key, entry)) = reg.hosts.iter_mut().find(|(_, e)| !e.ready) else {
+    let Some(label) = sender else {
+        return error(
+            "BINARY_HOST_SENDER_UNKNOWN",
+            "The invoking window could not be identified",
+        );
+    };
+    let Some(key) = reg
+        .hosts
+        .keys()
+        .find(|key| label_for(key) == label)
+        .cloned()
+    else {
+        // A window that is not a registered host (main window replaying the
+        // ack) must not claim another host's queue.
+        return ok(json!({ "commands": [] }));
+    };
+    let Some(entry) = reg.hosts.get_mut(&key) else {
         return ok(json!({ "commands": [] }));
     };
     entry.ready = true;
-    let _ = key;
 
     // Return the language command first (matching Electron), then any pending.
     let mut commands = vec![json!({
@@ -397,4 +508,148 @@ pub fn destroy_all<R: Runtime>(app: &AppHandle<R>) {
         .expect("binary host registry lock")
         .hosts
         .clear();
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::sync::Mutex as TestMutex;
+
+    /// The registry is process-global, so fixtures must not interleave.
+    static TEST_LOCK: TestMutex<()> = TestMutex::new(());
+
+    fn with_test_lock<T>(operation: impl FnOnce() -> T) -> T {
+        let _guard = TEST_LOCK.lock().unwrap_or_else(|error| error.into_inner());
+        operation()
+    }
+
+    /// Installs a host entry directly so flush/ack can be tested without a
+    /// real window (the window lookup only happens at delivery time).
+    fn install_host(key: &str, ready: bool, loaded: bool) {
+        let mut reg = registry().lock().expect("binary host registry lock");
+        let (kind, path) = key.split_once(':').expect("key must be kind:path");
+        reg.hosts.insert(
+            key.to_owned(),
+            HostEntry {
+                kind: kind.to_owned(),
+                path: path.to_owned(),
+                ready,
+                loaded,
+                pending: Vec::new(),
+                bounds: None,
+                flush_waiters: Vec::new(),
+            },
+        );
+    }
+
+    fn clear_hosts() {
+        registry()
+            .lock()
+            .expect("binary host registry lock")
+            .hosts
+            .clear();
+    }
+
+    #[test]
+    fn label_for_matches_the_window_label_convention() {
+        with_test_lock(|| {
+            assert_eq!(
+                label_for("xlsx:notes/a.xlsx"),
+                "binary-editor-xlsx-notes-a.xlsx"
+            );
+        })
+    }
+
+    #[test]
+    fn flush_ack_settles_a_matching_token_once() {
+        with_test_lock(|| {
+            clear_hosts();
+            install_host("xlsx:a.xlsx", true, true);
+            let key = host_key("xlsx", "a.xlsx");
+            let (sender, receiver) = std::sync::mpsc::channel();
+            let token = "token-1".to_owned();
+            {
+                let mut reg = registry().lock().expect("binary host registry lock");
+                reg.hosts
+                    .get_mut(&key)
+                    .expect("host")
+                    .flush_waiters
+                    .push((token.clone(), sender));
+            }
+
+            let app = tauri::test::mock_app();
+            let label = label_for(&key);
+            assert_eq!(
+                flush_ack(app.handle(), Some(&label), &token, true, None)["data"]["accepted"],
+                json!(true)
+            );
+            assert_eq!(
+                receiver.recv().expect("waiter woken"),
+                FlushOutcome::Flushed
+            );
+
+            // A duplicate ack finds no waiter: it must report false, not fail.
+            assert_eq!(
+                flush_ack(app.handle(), Some(&label), &token, true, None)["data"]["accepted"],
+                json!(false)
+            );
+            clear_hosts();
+        })
+    }
+
+    #[test]
+    fn flush_ack_rejects_a_token_from_the_wrong_window() {
+        with_test_lock(|| {
+            clear_hosts();
+            install_host("xlsx:a.xlsx", true, true);
+            let key = host_key("xlsx", "a.xlsx");
+            let (sender, receiver) = std::sync::mpsc::channel();
+            let token = "token-2".to_owned();
+            {
+                let mut reg = registry().lock().expect("binary host registry lock");
+                reg.hosts
+                    .get_mut(&key)
+                    .expect("host")
+                    .flush_waiters
+                    .push((token.clone(), sender));
+            }
+
+            let app = tauri::test::mock_app();
+            let other = label_for("mindmap:b.xmind");
+            assert_eq!(
+                flush_ack(app.handle(), Some(&other), &token, true, None)["data"]["accepted"],
+                json!(false),
+                "another editor's ack must not release this host's flush"
+            );
+            assert!(
+                receiver.try_recv().is_err(),
+                "the waiter must still be parked"
+            );
+            clear_hosts();
+        })
+    }
+
+    #[test]
+    fn flush_skips_hosts_that_never_loaded() {
+        with_test_lock(|| {
+            clear_hosts();
+            install_host("xlsx:a.xlsx", false, false);
+            let app = tauri::test::mock_app();
+            // Not ready/loaded → nothing pending, so this is a no-op success.
+            let response = flush(app.handle(), "xlsx", "a.xlsx");
+            assert_eq!(response["ok"], json!(true));
+            assert_eq!(response["data"]["flushed"], json!(true));
+            clear_hosts();
+        })
+    }
+
+    #[test]
+    fn flush_reports_unknown_hosts_without_error() {
+        with_test_lock(|| {
+            clear_hosts();
+            let app = tauri::test::mock_app();
+            let response = flush(app.handle(), "xlsx", "missing.xlsx");
+            assert_eq!(response["data"]["flushed"], json!(false));
+        })
+    }
 }

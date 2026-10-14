@@ -78,6 +78,7 @@ export const BINARY_CHANNELS = [
   'binary:read',
   'binary:save',
   'binary:host:flush',
+  'binary:host:flushAck',
   'binary:host:open',
   'binary:host:close',
   'binary:host:ready',
@@ -170,6 +171,15 @@ export interface BinaryChannelMap {
   'binary:host:flush': {
     request: { kind: BinaryKind; path: string };
     response: Result<{ flushed: true }>;
+  };
+  /**
+   * DEV-123：编辑器宿主页对 `binary:host:flush` 的一次性回执。
+   * 仅 Tauri 通道使用（Tauri 2 的 `eval` 不回传 Promise 结果，Electron 用
+   * executeJavaScript 拿到 `__nexnoteHostFlush()` 的结果，因此不经过 IPC）。
+   */
+  'binary:host:flushAck': {
+    request: { token: string; ok: boolean; message?: string };
+    response: Result<{ accepted: boolean }>;
   };
   /**
    * DEV-074：宿主页面 bootstrap 完成后由渲染层主动 ack（主进程据此 flush 队列、roundTrip 才能拿到 __nexnoteHostFlush）。
