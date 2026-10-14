@@ -32,6 +32,10 @@ struct RecentVaultEntry {
 
 #[derive(Debug)]
 pub struct ProductState {
+    /// Where global settings are persisted (userData/nexnote-settings.json).
+    /// Without this, every launch started from defaults and a language change
+    /// was lost on restart (DEV-118).
+    settings_path: Option<PathBuf>,
     global_settings: Mutex<Value>,
     current_vault: Mutex<Option<VaultInfo>>,
     recent_vaults: Mutex<Vec<RecentVaultEntry>>,
@@ -70,11 +74,62 @@ impl VaultRoot {
 impl Default for ProductState {
     fn default() -> Self {
         Self {
+            settings_path: None,
             global_settings: Mutex::new(default_global_settings()),
             current_vault: Mutex::new(None),
             recent_vaults: Mutex::new(Vec::new()),
             editor_theme: Mutex::new("light"),
         }
+    }
+}
+
+impl ProductState {
+    /// Builds the state with persistence rooted at `app_data`, restoring the
+    /// previously saved settings. A missing or unreadable file falls back to
+    /// the defaults rather than failing startup.
+    pub fn with_app_data(app_data: &Path) -> Self {
+        let settings_path = app_data.join("nexnote-settings.json");
+        let global_settings = std::fs::read_to_string(&settings_path)
+            .ok()
+            .and_then(|contents| serde_json::from_str::<Value>(&contents).ok())
+            .filter(|settings| settings.get("version").is_some())
+            .unwrap_or_else(default_global_settings);
+        let state = Self {
+            settings_path: Some(settings_path),
+            global_settings: Mutex::new(global_settings),
+            current_vault: Mutex::new(None),
+            recent_vaults: Mutex::new(Vec::new()),
+            editor_theme: Mutex::new("light"),
+        };
+        // Materialize the file on first launch so the settings location is
+        // real and inspectable, matching the Electron reference.
+        if let Ok(settings) = state.global_settings.lock().map(|value| value.clone()) {
+            state.persist_global_settings(&settings);
+        }
+        state
+    }
+
+    /// Writes the current global settings. Callers must hold no lock.
+    fn persist_global_settings(&self, settings: &Value) {
+        let Some(path) = &self.settings_path else {
+            return;
+        };
+        if let Some(parent) = path.parent() {
+            let _ = std::fs::create_dir_all(parent);
+        }
+        if let Ok(serialized) = serde_json::to_string_pretty(settings) {
+            // Write-then-rename so a crash cannot leave a truncated file.
+            let temp = path.with_extension("json.tmp");
+            if std::fs::write(&temp, serialized.as_bytes()).is_ok() {
+                let _ = std::fs::rename(&temp, path);
+            }
+        }
+    }
+
+    /// Replaces the global settings and persists them.
+    fn replace_global_settings(&self, settings: Value) {
+        *self.global_settings.lock().expect("settings lock") = settings.clone();
+        self.persist_global_settings(&settings);
     }
 }
 
@@ -950,12 +1005,18 @@ fn dispatch<R: tauri::Runtime>(
             if let Some(updates) = settings.get_mut("updates") {
                 merge_object(updates, &json!({ "channel": requested }));
             }
+            let snapshot = settings.clone();
+            drop(settings);
+            state.persist_global_settings(&snapshot);
             ok(json!({ "status": "channel-switched", "channel": requested }))
         }
         "app:setUpdateSettings" => {
             let mut settings = state.global_settings.lock().expect("settings lock");
             merge_object(&mut settings, payload);
-            ok(settings
+            let snapshot = settings.clone();
+            drop(settings);
+            state.persist_global_settings(&snapshot);
+            ok(snapshot
                 .get("updates")
                 .cloned()
                 .unwrap_or_else(default_updates))
@@ -964,7 +1025,10 @@ fn dispatch<R: tauri::Runtime>(
         "settings:setGlobal" => {
             let mut settings = state.global_settings.lock().expect("settings lock");
             merge_object(&mut settings, payload);
-            ok(settings.clone())
+            let snapshot = settings.clone();
+            drop(settings);
+            state.replace_global_settings(snapshot.clone());
+            ok(snapshot)
         }
         "settings:getVault" => {
             let vault = state
@@ -1022,6 +1086,9 @@ fn dispatch<R: tauri::Runtime>(
             if let Some(current) = settings.as_object_mut() {
                 current.insert("shortcuts".to_string(), shortcuts.clone());
             }
+            let snapshot = settings.clone();
+            drop(settings);
+            state.persist_global_settings(&snapshot);
             ok(json!(shortcuts))
         }
         "settings:exportShortcuts" => {
@@ -1048,6 +1115,9 @@ fn dispatch<R: tauri::Runtime>(
             if let Some(current) = settings.as_object_mut() {
                 current.insert("shortcuts".to_string(), shortcuts.clone());
             }
+            let snapshot = settings.clone();
+            drop(settings);
+            state.persist_global_settings(&snapshot);
             ok(json!({ "imported": imported, "shortcuts": shortcuts }))
         }
         "settings:search" => ok(json!([])),
@@ -3688,5 +3758,95 @@ See [[Glossary]].
                 assert_eq!(used, 0, "an unknown skill contributes nothing");
             }
         }
+    }
+
+    /// Settings must survive a restart: without persistence every launch reset
+    /// the language, theme, and shortcuts to defaults (DEV-118).
+    #[test]
+    fn global_settings_round_trip_through_disk() {
+        let id = TEMP_SEQUENCE.fetch_add(1, Ordering::SeqCst);
+        let data_dir =
+            std::env::temp_dir().join(format!("nexnote-settings-{}-{id}", std::process::id()));
+
+        // First launch: defaults, then the user switches to English.
+        let first = ProductState::with_app_data(&data_dir);
+        assert_eq!(
+            first
+                .global_settings
+                .lock()
+                .expect("settings lock")
+                .pointer("/appearance/language")
+                .and_then(Value::as_str),
+            Some("zh-CN")
+        );
+        let mut updated = first.global_settings.lock().expect("settings lock").clone();
+        merge_object(&mut updated, &json!({ "appearance": { "language": "en" } }));
+        first.replace_global_settings(updated);
+
+        // Second launch: the saved language is restored.
+        let second = ProductState::with_app_data(&data_dir);
+        assert_eq!(
+            second
+                .global_settings
+                .lock()
+                .expect("settings lock")
+                .pointer("/appearance/language")
+                .and_then(Value::as_str),
+            Some("en"),
+            "the persisted language must be restored on the next launch"
+        );
+
+        fs::remove_dir_all(&data_dir).ok();
+    }
+
+    /// A corrupt or absent settings file must not block startup: the app falls
+    /// back to defaults rather than failing to open.
+    #[test]
+    fn unreadable_settings_fall_back_to_defaults() {
+        let id = TEMP_SEQUENCE.fetch_add(1, Ordering::SeqCst);
+        let data_dir =
+            std::env::temp_dir().join(format!("nexnote-settings-bad-{}-{id}", std::process::id()));
+        fs::create_dir_all(&data_dir).expect("create data dir");
+        fs::write(data_dir.join("nexnote-settings.json"), "{not json").expect("write junk");
+
+        let state = ProductState::with_app_data(&data_dir);
+        assert_eq!(
+            state
+                .global_settings
+                .lock()
+                .expect("settings lock")
+                .pointer("/appearance/language")
+                .and_then(Value::as_str),
+            Some("zh-CN"),
+            "a corrupt file falls back to defaults instead of failing startup"
+        );
+
+        fs::remove_dir_all(&data_dir).ok();
+    }
+
+    /// Writes are atomic: no leftover temp file, and the saved bytes parse.
+    #[test]
+    fn persisting_settings_leaves_no_temporary_file() {
+        let id = TEMP_SEQUENCE.fetch_add(1, Ordering::SeqCst);
+        let data_dir = std::env::temp_dir().join(format!(
+            "nexnote-settings-atomic-{}-{id}",
+            std::process::id()
+        ));
+        let state = ProductState::with_app_data(&data_dir);
+        let snapshot = default_global_settings();
+        state.persist_global_settings(&snapshot);
+
+        let settings_path = data_dir.join("nexnote-settings.json");
+        assert!(settings_path.is_file(), "settings must be written");
+        let parsed: Value =
+            serde_json::from_str(&fs::read_to_string(&settings_path).expect("read"))
+                .expect("parse");
+        assert_eq!(parsed["version"], json!(1));
+        assert!(
+            !data_dir.join("nexnote-settings.json.tmp").exists(),
+            "the temp file must be renamed away, not left behind"
+        );
+
+        fs::remove_dir_all(&data_dir).ok();
     }
 }

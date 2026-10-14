@@ -41,7 +41,7 @@ pub fn run() {
     let base = tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_process::init())
-        .manage(product::ProductState::default())
+        .manage(product::ProductState::with_app_data(&app_data))
         .manage(std::sync::Arc::new(embedding_service::EmbeddingState::new(
             &app_data,
         )))
