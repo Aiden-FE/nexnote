@@ -10,6 +10,16 @@ import { fileURLToPath } from 'node:url';
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const pkg = JSON.parse(readFileSync(resolve(root, 'package.json'), 'utf8'));
+// DEV-124: the Tauri build reads its version from tauri.conf.json and the
+// crate from Cargo.toml. All three must move together or the Tauri artifact
+// version silently disagrees with the release tag.
+const tauri = JSON.parse(
+  readFileSync(resolve(root, 'src-tauri/tauri.conf.json'), 'utf8'),
+);
+const cargoVersion = readFileSync(resolve(root, 'src-tauri/Cargo.toml'), 'utf8')
+  .split('\n')
+  .map((line) => /^version\s*=\s*"([^"]+)"/.exec(line)?.[1])
+  .find(Boolean);
 const args = process.argv.slice(2);
 const requireIndex = args.indexOf('--require-tag');
 const required = requireIndex >= 0;
@@ -21,12 +31,27 @@ if (!semverRe.test(pkgVersion)) {
   console.error(`package.json version "${pkgVersion}" is not valid semver`);
   process.exit(1);
 }
+if (tauri.version !== pkgVersion) {
+  console.error(
+    `version mismatch: package.json=${pkgVersion} src-tauri/tauri.conf.json=${tauri.version}`,
+  );
+  process.exit(1);
+}
+if (cargoVersion !== pkgVersion) {
+  console.error(
+    `version mismatch: package.json=${pkgVersion} src-tauri/Cargo.toml=${cargoVersion ?? '(missing)'}`,
+  );
+  process.exit(1);
+}
 if (!tag) {
   if (required) {
     console.error('--require-tag requires an explicit immutable vX.Y.Z tag');
     process.exit(1);
   }
   console.log(`package.json version: ${pkgVersion} (no tag provided)`);
+  console.log(
+    `tauri consistency: tauri.conf.json=${tauri.version} Cargo.toml=${cargoVersion}`,
+  );
   process.exit(0);
 }
 if (!/^v\d+\.\d+\.\d+(?:-[a-z]+\.\d+)?$/.test(tag)) {
@@ -39,3 +64,6 @@ if (tagVersion !== pkgVersion) {
   process.exit(1);
 }
 console.log(`version match: ${pkgVersion} (${tag})`);
+console.log(
+  `tauri consistency: tauri.conf.json=${tauri.version} Cargo.toml=${cargoVersion}`,
+);
