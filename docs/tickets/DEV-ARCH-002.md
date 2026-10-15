@@ -26,12 +26,12 @@
 | DEV-116 | Tauri 2 壳 + Renderer bridge | DEV-115 | done |
 | DEV-117 | 三 WebView 编辑器兼容矩阵 | DEV-116 | todo / Windows-Linux environment-blocked |
 | DEV-118 | Rust product core 基础与状态生命周期 | DEV-115 | done |
-| DEV-119 | Vault / FS / SQLite / 索引迁移 | DEV-118 | in progress |
-| DEV-120 | Git 运行时与同步体系迁移 | DEV-119 | in progress |
+| DEV-119 | Vault / FS / SQLite / 索引迁移 | DEV-118 | done（全部通道 ported；设置持久化重启回归已修复） |
+| DEV-120 | Git 运行时与同步体系迁移 | DEV-119 | done（全部通道 ported，含 doctor 修复票据） |
 | DEV-121 | AI、召回与内置语义向量迁移 | DEV-118 | done（agent 工具环/审批/权限/prompt/skills/降级/TTL/reasoning 过滤已迁移） |
-| DEV-122 | 插件沙箱与 capability 迁移 | DEV-116、DEV-118 | in progress |
+| DEV-122 | 插件沙箱与 capability 迁移 | DEV-116、DEV-118 | done（插件通道 ported；宿主 capability 修复见 DEV-123） |
 | DEV-123 | 二进制编辑器宿主与打印迁移 | DEV-116、DEV-117 | done（label 字符集修复后 e2e 协议测试覆盖；macOS 打开真实文档的 GUI 收尾项见矩阵） |
-| DEV-124 | Tauri 更新、签名、发布与 QA | DEV-116 | in progress |
+| DEV-124 | Tauri 更新、签名、发布与 QA | DEV-116 | in progress（updater 插件已按 pubkey 有无安全注册；签名/公证/发布流水线未建——需外部密钥与 CI 凭据） |
 | DEV-125 | Electron 退役与默认通道切换 | 全部子票 | blocked |
 
 ## Epic 完成定义
