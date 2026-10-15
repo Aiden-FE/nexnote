@@ -65,7 +65,10 @@ jobs:
       - run: pnpm install --frozen-lockfile
       - name: Verify package.json / tauri.conf.json / Cargo.toml version parity
         shell: bash
-        run: node scripts/check-version.mjs
+        # GITHUB_REF_NAME is a branch name on candidate builds; the script
+        # would treat it as a release tag and fail. The three-way parity
+        # check is what this gate exists for.
+        run: env -u GITHUB_REF_NAME node scripts/check-version.mjs
       - name: Configure Git identity for repository fixtures
         shell: bash
         run: |
