@@ -30,7 +30,7 @@ Electron main 目前负责应用配置、窗口状态、设置、语言、权限
 
 ## 2026-10-15 审查结论
 
-Rust 135 个单元/集成测试通过；全局设置跨启动、损坏回退与原子写已有测试，macOS/Windows/Linux release 包启动由 DEV-117 CI 证明。但 `settings:search` 在 Tauri dispatcher 中恒返空数组，未迁移设置搜索语义，因此本票不能标 `done`。
+Rust 单元/集成测试通过；全局设置跨启动、损坏回退、原子写与双语 `settings:search` 已有测试，macOS/Windows/Linux release 包启动由 DEV-117 CI 证明。只读目录、杀进程与启动前事件快照的完整失败路径仍未逐一补证，因此本票保持 `partial`。
 
 ## Out of scope
 

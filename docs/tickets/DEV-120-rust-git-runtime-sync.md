@@ -29,7 +29,7 @@
 
 ## 2026-10-15 审查结论
 
-status / commit / timeline / 本地 bare repo 同步 / rebase 冲突 doctor 已有 Rust 测试。未完成项仍是：Tauri 产物未捆绑 Git（`resolve_git_binary()` 返回系统 `git`）、无 Git GPLv2 分发与二进制校验门禁、Git 进程无超时/取消/进程组回收、clone preflight/clone 语义不完整、Windows/Linux 凭据与路径行为未实测。本票不能标 `done`。
+status / commit / timeline / 本地 bare repo 同步 / rebase 冲突 doctor / clone preflight-token 集成已有 Rust 测试。未完成项仍是：Tauri 产物未捆绑 Git（`resolve_git_binary()` 返回系统 `git`）、无 Git GPLv2 分发与二进制校验门禁、常规 Git 进程缺统一超时/取消/进程组回收、Windows/Linux 凭据与路径行为未实测。本票不能标 `done`。
 
 ## Out of scope
 

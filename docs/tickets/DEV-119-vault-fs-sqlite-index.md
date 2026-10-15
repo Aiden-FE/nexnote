@@ -30,7 +30,7 @@ Electron 后端的 Vault、页面树、Markdown/sidecar、文件 watcher、bette
 
 ## 2026-10-15 审查结论
 
-FS / SQLite / watcher / confidence / retrieval 的主要路径已有 Rust 测试和真实 fixture。审查发现 `vault:clonePreflight` 仅做 URL 前缀检查、`vault:clone` 缺 preflight token/进度/取消/错误脱敏、`vault:cancelOperation` 是 no-op；这三项在契约矩阵中已改回 `pending`。本票不能标 `done`。
+FS / SQLite / watcher / confidence / retrieval 的主要路径已有 Rust 测试和真实 fixture。`vault:clonePreflight` 已执行真实 `ls-remote` 并颁发 sender/url/target 绑定一次性 token；`vault:clone` 使用临时目录原子 move 并接入取消注册表；`vault:cancelOperation` 对未知 operation 返回 `OPERATION_NOT_FOUND`。macOS 真实 GUI 与 Windows/Linux 文件系统行为仍未补证，本票保持 `partial`。
 
 ## Out of scope
 

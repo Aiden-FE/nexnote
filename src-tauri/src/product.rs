@@ -12,6 +12,7 @@ use std::{
     fs,
     path::{Path, PathBuf},
     sync::{Mutex, OnceLock},
+    time::Duration,
 };
 use tauri::{AppHandle, Emitter, Manager, State, WebviewWindow};
 use tauri_plugin_dialog::DialogExt;
@@ -42,6 +43,8 @@ pub struct ProductState {
     /// Active binary-editor host theme; hosts read this on creation until
     /// the multi-WebView runtime can push live updates (DEV-123).
     editor_theme: Mutex<&'static str>,
+    clone_tokens: Mutex<crate::vault_operations::CloneTokenStore>,
+    vault_operations: Mutex<crate::vault_operations::VaultOperationRegistry>,
 }
 
 pub struct PluginState {
@@ -79,6 +82,8 @@ impl Default for ProductState {
             current_vault: Mutex::new(None),
             recent_vaults: Mutex::new(Vec::new()),
             editor_theme: Mutex::new("light"),
+            clone_tokens: Mutex::new(crate::vault_operations::CloneTokenStore::default()),
+            vault_operations: Mutex::new(crate::vault_operations::VaultOperationRegistry::default()),
         }
     }
 }
@@ -100,6 +105,8 @@ impl ProductState {
             current_vault: Mutex::new(None),
             recent_vaults: Mutex::new(Vec::new()),
             editor_theme: Mutex::new("light"),
+            clone_tokens: Mutex::new(crate::vault_operations::CloneTokenStore::default()),
+            vault_operations: Mutex::new(crate::vault_operations::VaultOperationRegistry::default()),
         };
         // Materialize the file on first launch so the settings location is
         // real and inspectable, matching the Electron reference.
@@ -731,6 +738,63 @@ fn vault_info_for_path(root: &Path) -> VaultInfo {
     }
 }
 
+fn now_millis_for_clone() -> u64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|value| value.as_millis() as u64)
+        .unwrap_or_default()
+}
+
+fn clone_target_name(url: &str, requested: Option<&str>) -> Result<String, Value> {
+    let name = requested
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .unwrap_or_else(|| {
+            url.rsplit('/')
+                .next()
+                .unwrap_or_default()
+                .trim_end_matches(".git")
+        });
+    if name.is_empty()
+        || name == "."
+        || name == ".."
+        || name.contains('/')
+        || name.contains('\\')
+        || name.contains(':')
+        || name.chars().count() > 128
+    {
+        return Err(error("INVALID_NAME", "clone directory name is invalid"));
+    }
+    Ok(name.to_owned())
+}
+
+fn resolve_clone_target(
+    parent_dir: &str,
+    url: &str,
+    name: Option<&str>,
+) -> Result<(PathBuf, String), Value> {
+    let parent = PathBuf::from(parent_dir);
+    if !parent.is_absolute() || !parent.is_dir() {
+        return Err(error(
+            "PARENT_NOT_ABSOLUTE",
+            "clone parent must be an absolute directory",
+        ));
+    }
+    let name = clone_target_name(url, name)?;
+    let canonical_parent = parent.canonicalize().map_err(|e| {
+        error(
+            "PARENT_INVALID",
+            &format!("cannot resolve clone parent: {e}"),
+        )
+    })?;
+    let target = canonical_parent.join(&name);
+    if target.exists() {
+        return Err(error("TARGET_EXISTS", "clone target already exists"));
+    }
+    let target_text = target.display().to_string();
+    Ok((target, target_text))
+}
+
 fn write_config(config_path: &Path, config: &Value) -> Result<(), std::io::Error> {
     if let Some(parent) = config_path.parent() {
         fs::create_dir_all(parent)?;
@@ -1120,7 +1184,10 @@ fn dispatch<R: tauri::Runtime>(
             state.persist_global_settings(&snapshot);
             ok(json!({ "imported": imported, "shortcuts": shortcuts }))
         }
-        "settings:search" => ok(json!([])),
+        "settings:search" => match string_field(payload, "query") {
+            Some(query) => ok(json!(crate::settings_search::search(&query))),
+            None => error("QUERY_REQUIRED", "query is required"),
+        },
         "settings:pickImportFile" => {
             let picked = app.dialog().file().blocking_pick_file();
             ok(picked.map(|p| json!(p.to_string())).unwrap_or(Value::Null))
@@ -1301,49 +1368,182 @@ fn dispatch<R: tauri::Runtime>(
             ok(serde_json::to_value(info).unwrap_or(Value::Null))
         }
         "vault:clonePreflight" => {
-            let Some(url) = string_field(payload, "url") else {
-                return error("CLONE_URL_REQUIRED", "url is required");
-            };
-            let reachable = url.starts_with("https://") || url.starts_with("git@");
-            ok(json!({
-                "reachable": reachable,
-                "error": if reachable { Value::Null } else { json!("URL must start with https:// or git@") },
-            }))
+            match (
+                string_field(payload, "url"),
+                string_field(payload, "parentDir"),
+                string_field(payload, "name"),
+            ) {
+                (Some(url), Some(parent_dir), name) => {
+                    let Ok((_target, target_text)) =
+                        resolve_clone_target(&parent_dir, &url, name.as_deref())
+                    else {
+                        return error("INVALID_CLONE_TARGET", "clone target is invalid");
+                    };
+                    let reachable = crate::vault_operations::run_git_with_timeout(
+                        &["ls-remote", &url],
+                        Duration::from_secs(20),
+                    )
+                    .map(|output| output.status.success())
+                    .unwrap_or(false);
+                    if !reachable {
+                        return ok(json!({ "reachable": false, "error": "remote is unreachable" }));
+                    }
+                    let sender = sender.unwrap_or("main");
+                    let token = state.clone_tokens.lock().expect("clone token lock").create(
+                        sender,
+                        &url,
+                        &target_text,
+                    );
+                    ok(json!({ "reachable": true, "preflightToken": token }))
+                }
+                _ => error("CLONE_PARAMS_REQUIRED", "url and parentDir are required"),
+            }
         }
         "vault:clone" => {
-            let Some(url) = string_field(payload, "url") else {
-                return error("CLONE_URL_REQUIRED", "url is required");
-            };
-            let Some(parent) = string_field(payload, "parentDir") else {
-                return error("CLONE_PARENT_REQUIRED", "parentDir is required");
-            };
-            let name = string_field(payload, "name").unwrap_or_else(|| {
-                url.rsplit('/')
-                    .next()
-                    .unwrap_or("vault")
-                    .trim_end_matches(".git")
-                    .to_owned()
-            });
-            let target = Path::new(&parent).join(&name);
-            let output = std::process::Command::new("git")
-                .args(["clone", &url])
-                .arg(&target)
-                .output();
-            match output {
-                Ok(result) if result.status.success() => {
-                    let info = vault_info_for_path(&target);
-                    if let Err(e) = sync_vault_root(app, &target, vault_root) {
+            match (
+                string_field(payload, "url"),
+                string_field(payload, "parentDir"),
+                string_field(payload, "name"),
+                string_field(payload, "preflightToken"),
+                string_field(payload, "operationId"),
+            ) {
+                (Some(url), Some(parent_dir), name, Some(preflight_token), operation_id) => {
+                    let Ok((target, target_text)) =
+                        resolve_clone_target(&parent_dir, &url, name.as_deref())
+                    else {
+                        return error("INVALID_CLONE_TARGET", "clone target is invalid");
+                    };
+                    let sender_id = sender.unwrap_or("main");
+                    if let Err(reason) = state
+                        .clone_tokens
+                        .lock()
+                        .expect("clone token lock")
+                        .consume(&preflight_token, sender_id, &url, &target_text)
+                    {
+                        return error("CLONE_TOKEN_INVALID", reason);
+                    }
+                    let cancelled = operation_id.as_deref().map(|operation_id| {
+                        state
+                            .vault_operations
+                            .lock()
+                            .expect("vault operation lock")
+                            .start(sender_id, operation_id)
+                    });
+                    if cancelled
+                        .as_ref()
+                        .is_some_and(|flag| flag.load(std::sync::atomic::Ordering::SeqCst))
+                    {
+                        return error("OPERATION_CANCELLED", "clone operation was cancelled");
+                    }
+                    let clone_name = target
+                        .file_name()
+                        .and_then(|value| value.to_str())
+                        .unwrap_or("vault")
+                        .to_owned();
+                    let temporary = target.with_file_name(format!(
+                        ".{}-{}.tmp",
+                        clone_name,
+                        now_millis_for_clone()
+                    ));
+                    let clone_result = (|| -> Result<PathBuf, (String, String)> {
+                        fs::create_dir(&temporary)
+                            .map_err(|e| ("CLONE_FAILED".to_owned(), e.to_string()))?;
+                        let output = crate::vault_operations::run_git_with_cancel(
+                            &[
+                                "clone",
+                                &url,
+                                &temporary.join(&clone_name).display().to_string(),
+                            ],
+                            Duration::from_secs(600),
+                            cancelled.as_deref(),
+                        )
+                        .map_err(|e| {
+                            (
+                                match e {
+                                    crate::vault_operations::GitProcessError::Aborted => {
+                                        "OPERATION_CANCELLED"
+                                    }
+                                    crate::vault_operations::GitProcessError::Spawn(error) => {
+                                        return ("GIT_NOT_AVAILABLE".to_owned(), error.to_string())
+                                    }
+                                    _ => "CLONE_FAILED",
+                                }
+                                .to_owned(),
+                                "git clone failed".to_owned(),
+                            )
+                        })?;
+                        if !output.status.success() {
+                            return Err(("CLONE_FAILED".to_owned(), "git clone failed".to_owned()));
+                        }
+                        let cloned = temporary.join(&clone_name);
+                        fs::rename(&cloned, &target)
+                            .map_err(|e| ("CLONE_FAILED".to_owned(), e.to_string()))?;
+                        write_config(
+                            &target.join(".nexnote/config.json"),
+                            &default_vault_config(),
+                        )
+                        .map_err(|e| ("CLONE_FAILED".to_owned(), e.to_string()))?;
+                        Ok(target)
+                    })();
+                    let _ = fs::remove_dir_all(&temporary);
+                    if let Some(operation_id) = operation_id.as_deref() {
+                        state
+                            .vault_operations
+                            .lock()
+                            .expect("vault operation lock")
+                            .finish(sender_id, operation_id);
+                    }
+                    let root = match clone_result {
+                        Ok(root) => root,
+                        Err((code, message)) => return error(&code, &message),
+                    };
+                    let info = vault_info_for_path(&root);
+                    if let Err(e) = sync_vault_root(app, &root, vault_root) {
                         return e;
                     }
                     state.set_current_vault(info.clone());
+                    let status = git_service::status(&root).unwrap_or_else(|failure| {
+                        json!({
+                            "repository": true,
+                            "branch": null,
+                            "changed": 0,
+                            "ahead": 0,
+                            "behind": 0,
+                            "remote": null,
+                            "usingSystemGit": true,
+                            "conflict": false,
+                            "rebaseInProgress": false,
+                            "error": failure.message,
+                        })
+                    });
+                    let _ = app.emit("git:statusChanged", &status);
                     let _ = app.emit("vault:changed", &info);
-                    ok(serde_json::to_value(info).unwrap_or(Value::Null))
+                    ok(json!({ "vault": info, "status": status }))
                 }
-                Ok(result) => error("CLONE_FAILED", &String::from_utf8_lossy(&result.stderr)),
-                Err(e) => error("GIT_NOT_AVAILABLE", &e.to_string()),
+                _ => error(
+                    "CLONE_PARAMS_REQUIRED",
+                    "url, parentDir, and preflightToken are required",
+                ),
             }
         }
-        "vault:cancelOperation" => ok(Value::Null),
+        "vault:cancelOperation" => match string_field(payload, "operationId") {
+            Some(operation_id) => {
+                let cancelled = state
+                    .vault_operations
+                    .lock()
+                    .expect("vault operation lock")
+                    .cancel(sender.unwrap_or("main"), &operation_id);
+                if cancelled {
+                    ok(Value::Null)
+                } else {
+                    error(
+                        "OPERATION_NOT_FOUND",
+                        "operation was not found or already finished",
+                    )
+                }
+            }
+            None => error("OPERATION_ID_REQUIRED", "operationId is required"),
+        },
         "vault:reveal" => {
             let Some(root) = vault_root.get() else {
                 return error("NO_VAULT", "No vault is open");
@@ -2050,32 +2250,103 @@ fn dispatch<R: tauri::Runtime>(
                         Err(e) => error("PLUGIN_SERIALIZE_FAILED", &e.to_string()),
                     }
                 }
-                "plugins:getRuntimeSource" => match string_field(payload, "pluginId") {
-                    Some(id) => match store.get_runtime_source(&id) {
-                        Ok(source) => ok(json!({ "source": source })),
-                        Err(e) => error("PLUGIN_SOURCE_FAILED", &e),
-                    },
-                    None => error("PLUGIN_ID_REQUIRED", "pluginId is required"),
-                },
-                "plugins:beginSession" => match string_field(payload, "pluginId") {
-                    Some(id) => match store.begin_session(&id) {
-                        Ok(token) => match serde_json::to_value(token) {
-                            Ok(value) => ok(value),
-                            Err(e) => error("PLUGIN_SERIALIZE_FAILED", &e.to_string()),
-                        },
-                        Err(e) => error("PLUGIN_SESSION_FAILED", &e),
-                    },
-                    None => error("PLUGIN_ID_REQUIRED", "pluginId is required"),
-                },
-                "plugins:closeSession" => match string_field(payload, "token") {
-                    Some(token) => match store.close_session(&token) {
-                        Ok(()) => ok(Value::Null),
-                        Err(e) => error("PLUGIN_SESSION_FAILED", &e),
-                    },
-                    None => error("TOKEN_REQUIRED", "token is required"),
-                },
+                "plugins:getRuntimeSource" => {
+                    match (
+                        string_field(payload, "pluginId"),
+                        string_field(payload, "sessionId"),
+                        string_field(payload, "token"),
+                    ) {
+                        (Some(id), Some(session_id), Some(token)) => {
+                            match store.runtime_source_for_session(&session_id, &token, &id) {
+                                Ok(source) => ok(json!({ "pluginId": id, "source": source })),
+                                Err(e) => error("PLUGIN_SOURCE_FAILED", &e),
+                            }
+                        }
+                        _ => error(
+                            "PLUGIN_SESSION_PARAMS_REQUIRED",
+                            "pluginId, sessionId, and token are required",
+                        ),
+                    }
+                }
+                "plugins:reportCrash" => {
+                    match (
+                        string_field(payload, "pluginId"),
+                        string_field(payload, "sessionId"),
+                        string_field(payload, "token"),
+                        string_field(payload, "message"),
+                    ) {
+                        (Some(id), Some(session_id), Some(token), Some(message)) => {
+                            let error_code = string_field(payload, "error");
+                            match store.report_crash_for_session(
+                                &session_id,
+                                &token,
+                                &id,
+                                &message,
+                                error_code.as_deref(),
+                            ) {
+                                Ok(view) => match serde_json::to_value(view) {
+                                    Ok(value) => ok(value),
+                                    Err(e) => error("PLUGIN_SERIALIZE_FAILED", &e.to_string()),
+                                },
+                                Err(e) => error("PLUGIN_CRASH_FAILED", &e),
+                            }
+                        }
+                        _ => error(
+                            "PLUGIN_CRASH_PARAMS_REQUIRED",
+                            "pluginId, sessionId, token, and message are required",
+                        ),
+                    }
+                }
+                "plugins:beginSession" => {
+                    match (
+                        string_field(payload, "pluginId"),
+                        string_field(payload, "nonce"),
+                        string_field(payload, "origin"),
+                    ) {
+                        (Some(id), Some(nonce), Some(origin)) => {
+                            match store.begin_session_with_nonce(&id, &nonce, &origin) {
+                                Ok(token) => match serde_json::to_value(token) {
+                                    Ok(value) => ok(value),
+                                    Err(e) => error("PLUGIN_SERIALIZE_FAILED", &e.to_string()),
+                                },
+                                Err(e) => error("PLUGIN_SESSION_FAILED", &e),
+                            }
+                        }
+                        _ => error(
+                            "PLUGIN_SESSION_PARAMS_REQUIRED",
+                            "pluginId, nonce, and origin are required",
+                        ),
+                    }
+                }
+                "plugins:closeSession" => {
+                    match (
+                        string_field(payload, "sessionId"),
+                        string_field(payload, "token"),
+                    ) {
+                        (Some(session_id), Some(token)) => {
+                            match store.close_session(&session_id, &token) {
+                                Ok(()) => ok(Value::Null),
+                                Err(e) => error("PLUGIN_SESSION_FAILED", &e),
+                            }
+                        }
+                        _ => error(
+                            "SESSION_PARAMS_REQUIRED",
+                            "sessionId and token are required",
+                        ),
+                    }
+                }
                 "plugins:pickSource" => match string_field(payload, "source") {
-                    Some(source) => ok(json!({ "source": source, "path": null })),
+                    Some(source) => {
+                        let picked = if source == "zip" {
+                            app.dialog().file().blocking_pick_file()
+                        } else {
+                            app.dialog().file().blocking_pick_folder()
+                        };
+                        ok(json!({
+                            "source": source,
+                            "path": picked.map(|path| path.to_string()),
+                        }))
+                    }
                     None => error("PLUGIN_SOURCE_REQUIRED", "source is required"),
                 },
                 "plugins:installPreview" => {
@@ -2132,42 +2403,65 @@ fn dispatch<R: tauri::Runtime>(
                 }
                 "plugins:grantPermission" => {
                     match (
-                        string_field(payload, "pluginId"),
-                        string_field(payload, "permission"),
+                        string_field(payload, "challenge"),
+                        string_field(payload, "sessionId"),
+                        string_field(payload, "token"),
+                        string_field(payload, "requestId"),
+                        payload.get("alwaysAllow").and_then(Value::as_bool),
                     ) {
-                        (Some(id), Some(perm)) => match store.grant_permission(&id, &perm) {
-                            Ok(view) => match serde_json::to_value(view) {
-                                Ok(value) => ok(value),
-                                Err(e) => error("PLUGIN_SERIALIZE_FAILED", &e.to_string()),
-                            },
-                            Err(e) => error("PLUGIN_GRANT_FAILED", &e),
-                        },
+                        (
+                            Some(challenge),
+                            Some(session_id),
+                            Some(token),
+                            Some(request_id),
+                            Some(always_allow),
+                        ) => {
+                            match store.grant_with_challenge(
+                                &challenge,
+                                &session_id,
+                                &token,
+                                &request_id,
+                                always_allow,
+                            ) {
+                                Ok(view) => match serde_json::to_value(view) {
+                                    Ok(value) => ok(value),
+                                    Err(e) => error("PLUGIN_SERIALIZE_FAILED", &e.to_string()),
+                                },
+                                Err(e) => error("PLUGIN_GRANT_FAILED", &e),
+                            }
+                        }
                         _ => error(
-                            "PLUGIN_PARAMS_REQUIRED",
-                            "pluginId and permission are required",
+                            "GRANT_PARAMS_REQUIRED",
+                            "challenge, sessionId, token, requestId, and alwaysAllow are required",
                         ),
                     }
                 }
                 "plugins:beginAuthChallenge" => {
                     match (
-                        string_field(payload, "pluginId"),
-                        string_field(payload, "permission"),
+                        string_field(payload, "sessionId"),
+                        string_field(payload, "token"),
+                        payload.get("request").cloned(),
                     ) {
-                        (Some(id), Some(perm)) => match store.begin_auth_challenge(&id, &perm) {
-                            Ok(challenge) => match serde_json::to_value(challenge) {
-                                Ok(value) => ok(value),
-                                Err(e) => error("PLUGIN_SERIALIZE_FAILED", &e.to_string()),
-                            },
-                            Err(e) => error("PLUGIN_CHALLENGE_FAILED", &e),
-                        },
+                        (Some(session_id), Some(token), Some(request)) => {
+                            match store.begin_auth_challenge(&session_id, &token, &request) {
+                                Ok(challenge) => match serde_json::to_value(challenge) {
+                                    Ok(value) => ok(value),
+                                    Err(e) => error("PLUGIN_SERIALIZE_FAILED", &e.to_string()),
+                                },
+                                Err(e) => error("PLUGIN_CHALLENGE_FAILED", &e),
+                            }
+                        }
                         _ => error(
-                            "PLUGIN_PARAMS_REQUIRED",
-                            "pluginId and permission are required",
+                            "SESSION_PARAMS_REQUIRED",
+                            "sessionId, token, and request are required",
                         ),
                     }
                 }
                 "plugins:rejectAuthChallenge" => match string_field(payload, "challenge") {
-                    Some(challenge) => match store.reject_auth_challenge(&challenge) {
+                    Some(challenge) => match store.reject_auth_challenge(
+                        &challenge,
+                        string_field(payload, "reason").as_deref(),
+                    ) {
                         Ok(()) => ok(Value::Null),
                         Err(e) => error("PLUGIN_REJECT_CHALLENGE_FAILED", &e),
                     },
@@ -2192,6 +2486,25 @@ fn dispatch<R: tauri::Runtime>(
                         _ => error(
                             "PLUGIN_PARAMS_REQUIRED",
                             "pluginId and commandId are required",
+                        ),
+                    }
+                }
+                "plugins:rpc" => {
+                    match (
+                        string_field(payload, "sessionId"),
+                        string_field(payload, "token"),
+                        payload.get("request").cloned(),
+                    ) {
+                        (Some(session_id), Some(token), Some(request)) => {
+                            let response = store.handle_rpc(&session_id, &token, &request);
+                            match serde_json::to_value(response) {
+                                Ok(value) => ok(value),
+                                Err(e) => error("PLUGIN_SERIALIZE_FAILED", &e.to_string()),
+                            }
+                        }
+                        _ => error(
+                            "SESSION_PARAMS_REQUIRED",
+                            "sessionId, token, and request are required",
                         ),
                     }
                 }
@@ -3620,6 +3933,126 @@ mod tests {
                 "{channel} is wired in an inner arm but missing from the outer match list"
             );
         }
+    }
+
+    #[test]
+    fn settings_search_returns_the_bilingual_backend_index() {
+        let app = dispatch_harness();
+        let handle = app.handle();
+        let state = app.state::<ProductState>();
+        let embedding = app.state::<std::sync::Arc<embedding_service::EmbeddingState>>();
+        let plugins = app.state::<PluginState>();
+        let vault = app.state::<VaultRoot>();
+        let response = dispatch(
+            handle,
+            None,
+            &state,
+            &embedding,
+            &plugins,
+            &vault,
+            "settings:search",
+            &json!({ "query": "主题" }),
+        );
+        let entries = response["data"].as_array().expect("search entries");
+        assert!(entries
+            .iter()
+            .any(|entry| entry["id"] == "appearance.theme"));
+    }
+
+    #[test]
+    fn clone_preflight_and_clone_use_one_shot_target_bound_tokens() {
+        index_service::with_test_lock(|| {
+            let root = std::env::temp_dir().join(format!(
+                "nexnote-clone-dispatch-{}-{}",
+                std::process::id(),
+                TEMP_SEQUENCE.fetch_add(1, Ordering::SeqCst)
+            ));
+            fs::create_dir_all(&root).expect("create clone test root");
+            let bare = root.join("bare.git");
+            let output = std::process::Command::new("git")
+                .arg("init")
+                .arg("--bare")
+                .arg(&bare)
+                .output()
+                .expect("initialize bare repository");
+            assert!(output.status.success(), "git init --bare failed");
+
+            let app = dispatch_harness();
+            let handle = app.handle();
+            let state = app.state::<ProductState>();
+            let embedding = app.state::<std::sync::Arc<embedding_service::EmbeddingState>>();
+            let plugins = app.state::<PluginState>();
+            let vault = app.state::<VaultRoot>();
+            let invoke = |channel: &str, payload: Value| {
+                dispatch(
+                    handle,
+                    Some("test-window"),
+                    &state,
+                    &embedding,
+                    &plugins,
+                    &vault,
+                    channel,
+                    &payload,
+                )
+            };
+
+            let preflight = invoke(
+                "vault:clonePreflight",
+                json!({
+                    "url": bare.display().to_string(),
+                    "parentDir": root.display().to_string(),
+                    "name": "cloned"
+                }),
+            );
+            assert_eq!(preflight["ok"], json!(true));
+            assert_eq!(preflight["data"]["reachable"], json!(true));
+            let token = preflight["data"]["preflightToken"]
+                .as_str()
+                .expect("preflight token")
+                .to_owned();
+
+            let cloned = invoke(
+                "vault:clone",
+                json!({
+                    "url": bare.display().to_string(),
+                    "parentDir": root.display().to_string(),
+                    "name": "cloned",
+                    "preflightToken": token
+                }),
+            );
+            assert_eq!(cloned["ok"], json!(true));
+            assert!(cloned["data"]["vault"]["root"]
+                .as_str()
+                .is_some_and(|value| value.ends_with("cloned")));
+            assert!(root.join("cloned/.nexnote/config.json").is_file());
+
+            let second = invoke(
+                "vault:clonePreflight",
+                json!({
+                    "url": bare.display().to_string(),
+                    "parentDir": root.display().to_string(),
+                    "name": "other"
+                }),
+            );
+            let second_token = second["data"]["preflightToken"]
+                .as_str()
+                .unwrap()
+                .to_owned();
+            let mismatch = invoke(
+                "vault:clone",
+                json!({
+                    "url": bare.display().to_string(),
+                    "parentDir": root.display().to_string(),
+                    "name": "different",
+                    "preflightToken": second_token
+                }),
+            );
+            assert_eq!(mismatch["code"], json!("CLONE_TOKEN_INVALID"));
+
+            let cancel = invoke("vault:cancelOperation", json!({ "operationId": "missing" }));
+            assert_eq!(cancel["code"], json!("OPERATION_NOT_FOUND"));
+            let _ = fs::remove_dir_all(&root);
+        });
     }
 
     #[test]

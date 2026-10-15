@@ -40,7 +40,7 @@
 
 ## 2026-10-15 审查结论
 
-插件 manifest/ZIP/安装/权限/审计 store 已有 Rust 测试，但 shared contract 要求的 session 绑定与一次性 challenge 授权链尚未迁移：`getRuntimeSource` / `reportCrash` 直接按 pluginId 操作，`grantPermission` 未消费 challenge，`plugins:rpc` 明确返回 `PLUGIN_NOT_PORTED`，`pickSource` 未打开系统选择器。相关通道已在矩阵中标 `pending`。本票不能标 `done`。
+插件 manifest/ZIP/安装/权限/审计 store 已有 Rust 测试。session 绑定（nonce/origin/sessionId/token/pluginId）、一次性 challenge 授权、`plugins:rpc` 四类方法分派、动态 command 注册、crash 吊销与 directory/zip 系统选择器已实现并有针对性测试。真实 WebView sandbox GUI、crash/heartbeat 全链路与恶意 fixture 全矩阵仍未补证，本票保持 `partial`。
 
 ## Out of scope
 

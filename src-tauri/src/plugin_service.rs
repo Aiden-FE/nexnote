@@ -263,6 +263,8 @@ struct PersistedPlugin {
     enabled: bool,
     #[serde(default)]
     grants: HashMap<PluginPermission, GrantState>,
+    #[serde(default)]
+    commands: Vec<PluginCommandRecord>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -288,8 +290,11 @@ struct Stage {
 struct AuthSession {
     session_id: String,
     plugin_id: String,
+    origin: String,
+    issued_at: u64,
     token: String,
     expires_at: u64,
+    consumed_nonces: HashSet<String>,
 }
 
 #[derive(Debug, Clone)]
@@ -300,6 +305,36 @@ struct PluginRecord {
     grants: HashMap<PluginPermission, GrantState>,
     state: PluginRuntimeState,
     last_error: Option<String>,
+    commands: HashMap<String, PluginCommandRecord>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PluginCommandRecord {
+    pub id: String,
+    pub plugin_id: String,
+    pub title: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub keywords: Option<Vec<String>>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PluginRpcResponse {
+    pub api_version: &'static str,
+    pub id: String,
+    pub ok: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub data: Option<Value>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub error: Option<PluginRpcError>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PluginRpcError {
+    pub code: String,
+    pub message: String,
 }
 
 #[derive(Debug, Default)]
@@ -312,6 +347,7 @@ pub struct PluginStore {
     tickets: HashMap<String, Stage>,
     sessions: HashMap<String, AuthSession>,
     challenges: HashMap<String, PluginAuthChallenge>,
+    revision: u64,
     seq: u64,
 }
 
@@ -1321,6 +1357,7 @@ impl PluginStore {
                 source: record.source.clone(),
                 enabled: record.enabled,
                 grants: record.grants.clone(),
+                commands: record.commands.values().cloned().collect(),
             })
             .collect::<Vec<_>>();
         plugins.sort_by(|left, right| left.id.cmp(&right.id));
@@ -1393,6 +1430,11 @@ impl PluginStore {
                         PluginRuntimeState::Disabled
                     },
                     last_error: None,
+                    commands: persisted
+                        .commands
+                        .into_iter()
+                        .map(|command| (command.id.clone(), command))
+                        .collect(),
                 },
             );
         }
@@ -1405,6 +1447,10 @@ impl PluginStore {
     }
 
     pub fn set_enabled(&mut self, plugin_id: &str, enabled: bool) -> Result<PluginView, String> {
+        self.require(plugin_id)?;
+        if !enabled {
+            self.revoke_sessions_for_plugin(plugin_id);
+        }
         let record = self.require_mut(plugin_id)?;
         record.enabled = enabled;
         record.state = if enabled {
@@ -1425,9 +1471,22 @@ impl PluginStore {
         if self.plugins.remove(plugin_id).is_none() {
             return Err(format!("plugin not found: {plugin_id}"));
         }
+        self.revoke_sessions_for_plugin(plugin_id);
         remove_dir_if_exists(&dir)?;
         self.audit(plugin_id, "install.uninstall", None, true, None);
         self.persist()
+    }
+
+    fn revoke_sessions_for_plugin(&mut self, plugin_id: &str) {
+        let stale = self
+            .sessions
+            .iter()
+            .filter(|(_, session)| session.plugin_id == plugin_id)
+            .map(|(key, _)| key.clone())
+            .collect::<Vec<_>>();
+        for key in stale {
+            self.sessions.remove(&key);
+        }
     }
 
     pub fn install_preview(&mut self, source_path: &Path) -> Result<PluginInstallTicket, String> {
@@ -1616,6 +1675,7 @@ impl PluginStore {
             grants,
             state: PluginRuntimeState::Active,
             last_error: None,
+            commands: HashMap::new(),
         };
         let view = Self::view(&record);
         self.plugins.insert(manifest.id.clone(), record);
@@ -1670,22 +1730,42 @@ impl PluginStore {
         Ok(view)
     }
 
-    pub fn begin_session(&mut self, plugin_id: &str) -> Result<PluginSessionToken, String> {
-        let record = self.require(plugin_id)?;
-        if !record.enabled || record.state != PluginRuntimeState::Active {
-            return Err("plugin is not active".to_owned());
+    pub fn begin_session_with_nonce(
+        &mut self,
+        plugin_id: &str,
+        nonce: &str,
+        origin: &str,
+    ) -> Result<PluginSessionToken, String> {
+        self.require(plugin_id)?;
+        if nonce.len() < 16 {
+            return Err("nonce must contain at least 16 characters".to_owned());
+        }
+        if origin != "plugin-frame" {
+            return Err("invalid plugin origin".to_owned());
+        }
+        if self
+            .sessions
+            .values()
+            .any(|session| session.consumed_nonces.contains(nonce))
+        {
+            return Err("plugin nonce was already used".to_owned());
         }
         let session_id = format!("session_{}", &new_secret()[..16]);
         let token = format!("token_{}", new_secret());
         let issued_at = now_ms();
         let expires_at = issued_at.saturating_add(SESSION_TTL_MS);
+        let mut consumed_nonces = HashSet::new();
+        consumed_nonces.insert(nonce.to_owned());
         self.sessions.insert(
             session_id.clone(),
             AuthSession {
                 session_id: session_id.clone(),
                 plugin_id: plugin_id.to_owned(),
+                origin: origin.to_owned(),
+                issued_at,
                 token: token.clone(),
                 expires_at,
+                consumed_nonces,
             },
         );
         Ok(PluginSessionToken {
@@ -1697,40 +1777,71 @@ impl PluginStore {
         })
     }
 
-    pub fn close_session(&mut self, token: &str) -> Result<(), String> {
-        let session_id = self
+    fn verify_session(
+        &mut self,
+        session_id: &str,
+        token: &str,
+        plugin_id: Option<&str>,
+    ) -> Result<String, String> {
+        let now = now_ms();
+        let expired = self
             .sessions
-            .values()
-            .find(|session| session.token == token)
-            .map(|session| session.session_id.clone())
-            .ok_or_else(|| "session not found".to_owned())?;
-        self.sessions.remove(&session_id);
+            .get(session_id)
+            .is_some_and(|session| session.expires_at < now);
+        if expired {
+            self.sessions.remove(session_id);
+        }
+        let session = self
+            .sessions
+            .get(session_id)
+            .ok_or_else(|| "session not found or expired".to_owned())?;
+        if session.token != token {
+            return Err("session token does not match".to_owned());
+        }
+        if let Some(expected_plugin) = plugin_id {
+            if session.plugin_id != expected_plugin {
+                return Err("session does not belong to this plugin".to_owned());
+            }
+        }
+        Ok(session.plugin_id.clone())
+    }
+
+    pub fn close_session(&mut self, session_id: &str, token: &str) -> Result<(), String> {
+        self.verify_session(session_id, token, None)?;
+        self.sessions.remove(session_id);
         Ok(())
     }
 
     pub fn begin_auth_challenge(
         &mut self,
-        plugin_id: &str,
-        permission: &str,
+        session_id: &str,
+        token: &str,
+        request: &Value,
     ) -> Result<PluginAuthChallenge, String> {
+        let plugin_id = self.verify_session(session_id, token, None)?;
+        if request.get("method").and_then(Value::as_str) != Some("permission.request") {
+            return Err("authorization request must be permission.request".to_owned());
+        }
+        let permission = request
+            .pointer("/params/permission")
+            .and_then(Value::as_str)
+            .ok_or_else(|| "permission is required".to_owned())?;
         let permission = PluginPermission::parse(permission)?;
-        self.require(plugin_id)?;
+        self.require(&plugin_id)?;
         let challenge = new_secret();
-        let request_id = new_secret();
+        let request_id = request
+            .get("id")
+            .and_then(Value::as_str)
+            .unwrap_or(&new_secret())
+            .to_owned();
         let issued_at = now_ms();
         let expires_at = issued_at.saturating_add(CHALLENGE_TTL_MS);
-        let request = json!({
-            "apiVersion": PLUGIN_API_VERSION,
-            "id": request_id.clone(),
-            "method": "permission.request",
-            "params": { "permission": permission }
-        });
         let record = PluginAuthChallenge {
             challenge: challenge.clone(),
-            plugin_id: plugin_id.to_owned(),
+            plugin_id,
             permission,
-            request,
-            session_id: String::new(),
+            request: request.clone(),
+            session_id: session_id.to_owned(),
             request_id,
             issued_at,
             expires_at,
@@ -1739,11 +1850,68 @@ impl PluginStore {
         Ok(record)
     }
 
-    pub fn reject_auth_challenge(&mut self, challenge: &str) -> Result<(), String> {
+    pub fn reject_auth_challenge(
+        &mut self,
+        challenge: &str,
+        reason: Option<&str>,
+    ) -> Result<(), String> {
         self.challenges
             .remove(challenge)
-            .map(|_| ())
+            .map(|record| {
+                self.audit(&record.plugin_id, "permission.reject", None, false, reason);
+            })
             .ok_or_else(|| "challenge not found or already expired".to_owned())
+    }
+
+    pub fn grant_with_challenge(
+        &mut self,
+        challenge: &str,
+        session_id: &str,
+        token: &str,
+        request_id: &str,
+        always_allow: bool,
+    ) -> Result<PluginView, String> {
+        let now = now_ms();
+        let record = self
+            .challenges
+            .remove(challenge)
+            .ok_or_else(|| "challenge not found or already expired".to_owned())?;
+        if record.expires_at < now {
+            return Err("challenge expired".to_owned());
+        }
+        if record.session_id != session_id || record.request_id != request_id {
+            return Err("challenge does not match this request".to_owned());
+        }
+        self.verify_session(session_id, token, Some(&record.plugin_id))?;
+        let plugin_record = self.require_mut(&record.plugin_id)?;
+        if !plugin_record
+            .manifest
+            .permissions
+            .contains(&record.permission)
+        {
+            return Err("permission is not declared by the plugin".to_owned());
+        }
+        plugin_record.grants.insert(
+            record.permission,
+            GrantState {
+                granted: true,
+                always_allow,
+            },
+        );
+        let view = Self::view(plugin_record);
+        self.audit(
+            &record.plugin_id,
+            "permission.grant",
+            Some(record.permission),
+            true,
+            if always_allow {
+                Some("always-allow")
+            } else {
+                Some("one-shot")
+            },
+        );
+        self.persist()?;
+        Ok(view)
     }
 
     pub fn run_command(
@@ -1753,6 +1921,9 @@ impl PluginStore {
         payload: Value,
     ) -> Result<PluginCommandAck, String> {
         self.require(plugin_id)?;
+        if self.require(plugin_id)?.state != PluginRuntimeState::Active {
+            return Err("plugin is not active".to_owned());
+        }
         if command_id.is_empty() {
             return Err("command id cannot be empty".to_owned());
         }
@@ -1765,12 +1936,278 @@ impl PluginStore {
         })
     }
 
-    pub fn get_runtime_source(&self, plugin_id: &str) -> Result<String, String> {
+    fn require_permission(
+        &mut self,
+        plugin_id: &str,
+        permission: PluginPermission,
+        operation: &str,
+    ) -> Result<(), String> {
+        let record = self.require(plugin_id)?;
+        if !record.manifest.permissions.contains(&permission) {
+            self.audit(
+                plugin_id,
+                "permission.request",
+                Some(permission),
+                false,
+                Some("undeclared"),
+            );
+            return Err("permission is not declared by the plugin".to_owned());
+        }
+        let granted = record
+            .grants
+            .get(&permission)
+            .is_some_and(|state| state.granted);
+        if !granted {
+            self.audit(
+                plugin_id,
+                "permission.request",
+                Some(permission),
+                false,
+                Some(operation),
+            );
+            return Err("permission is required".to_owned());
+        }
+        self.audit(
+            plugin_id,
+            "permission.request",
+            Some(permission),
+            true,
+            Some(operation),
+        );
+        Ok(())
+    }
+
+    fn consume_one_shot_grant(
+        &mut self,
+        plugin_id: &str,
+        permission: PluginPermission,
+    ) -> Result<(), String> {
+        let Some(record) = self.plugins.get_mut(plugin_id) else {
+            return Err(format!("plugin not found: {plugin_id}"));
+        };
+        let Some(state) = record.grants.get_mut(&permission) else {
+            return Err("permission is required".to_owned());
+        };
+        if state.granted && !state.always_allow {
+            state.granted = false;
+            state.always_allow = false;
+        }
+        self.audit(
+            plugin_id,
+            "permission.consume",
+            Some(permission),
+            true,
+            Some("one-shot"),
+        );
+        self.persist()
+    }
+
+    fn dispatch_rpc(
+        &mut self,
+        session_id: &str,
+        token: &str,
+        request: &Value,
+    ) -> Result<Value, String> {
+        let plugin_id = self.verify_session(session_id, token, None)?;
+        if self.require(&plugin_id)?.state != PluginRuntimeState::Active {
+            return Err("plugin is not active".to_owned());
+        }
+        if request.get("apiVersion").and_then(Value::as_str) != Some(PLUGIN_API_VERSION) {
+            return Err("plugin API version does not match".to_owned());
+        }
+        let method = request
+            .get("method")
+            .and_then(Value::as_str)
+            .ok_or_else(|| "plugin RPC method is required".to_owned())?;
+        let params = request.get("params").cloned().unwrap_or(Value::Null);
+        match method {
+            "command.register" => {
+                self.require_permission(&plugin_id, PluginPermission::Read, method)?;
+                let id = params
+                    .get("id")
+                    .and_then(Value::as_str)
+                    .ok_or_else(|| "command id must be a string".to_owned())?;
+                let title = params
+                    .get("title")
+                    .and_then(Value::as_str)
+                    .ok_or_else(|| "command title must be a string".to_owned())?;
+                let scoped_id = format!("{plugin_id}:{id}");
+                let keywords = params
+                    .get("keywords")
+                    .and_then(Value::as_array)
+                    .map(|values| {
+                        values
+                            .iter()
+                            .filter_map(Value::as_str)
+                            .map(str::to_owned)
+                            .collect::<Vec<_>>()
+                    });
+                if let Some(record) = self.plugins.get_mut(&plugin_id) {
+                    record.commands.insert(
+                        scoped_id.clone(),
+                        PluginCommandRecord {
+                            id: scoped_id.clone(),
+                            plugin_id: plugin_id.clone(),
+                            title: title.to_owned(),
+                            keywords,
+                        },
+                    );
+                }
+                self.persist()?;
+                Ok(json!({ "id": scoped_id }))
+            }
+            "transact" => {
+                self.require_permission(&plugin_id, PluginPermission::Edit, method)?;
+                let intent = params
+                    .get("intent")
+                    .ok_or_else(|| "intent is required".to_owned())?;
+                if !intent.is_object()
+                    || intent
+                        .get("type")
+                        .and_then(Value::as_str)
+                        .is_none_or(str::is_empty)
+                {
+                    return Err("invalid transaction parameters".to_owned());
+                }
+                let expected = params
+                    .get("expectedRevision")
+                    .and_then(Value::as_u64)
+                    .ok_or_else(|| "expectedRevision must be an integer".to_owned())?;
+                if expected != self.revision {
+                    return Err("document revision conflict".to_owned());
+                }
+                self.revision += 1;
+                Ok(json!({ "revision": self.revision }))
+            }
+            "capability.call" => {
+                let permission = params
+                    .get("permission")
+                    .and_then(Value::as_str)
+                    .ok_or_else(|| "permission is required".to_owned())?;
+                let permission = PluginPermission::parse(permission)?;
+                let operation = params
+                    .get("operation")
+                    .and_then(Value::as_str)
+                    .ok_or_else(|| "operation must be a string".to_owned())?;
+                self.require_permission(&plugin_id, permission, operation)?;
+                self.consume_one_shot_grant(&plugin_id, permission)?;
+                Err(format!("capability is not implemented: {operation}"))
+            }
+            "permission.request" => {
+                let permission = params
+                    .get("permission")
+                    .and_then(Value::as_str)
+                    .ok_or_else(|| "permission is required".to_owned())?;
+                let permission = PluginPermission::parse(permission)?;
+                let declared = self
+                    .require(&plugin_id)?
+                    .manifest
+                    .permissions
+                    .contains(&permission);
+                if !declared {
+                    self.audit(
+                        &plugin_id,
+                        "permission.request",
+                        Some(permission),
+                        false,
+                        Some("undeclared"),
+                    );
+                    return Err("permission is not declared by the plugin".to_owned());
+                }
+                let grant = self.require(&plugin_id)?.grants.get(&permission).cloned();
+                let allowed = grant.as_ref().is_some_and(|state| state.granted);
+                self.audit(
+                    &plugin_id,
+                    "permission.request",
+                    Some(permission),
+                    allowed,
+                    None,
+                );
+                if !allowed {
+                    return Err("permission is required".to_owned());
+                }
+                Ok(json!({
+                    "granted": true,
+                    "alwaysAllow": grant.is_some_and(|state| state.always_allow),
+                }))
+            }
+            _ => Err(format!("unknown plugin RPC method: {method}")),
+        }
+    }
+
+    pub fn handle_rpc(
+        &mut self,
+        session_id: &str,
+        token: &str,
+        request: &Value,
+    ) -> PluginRpcResponse {
+        let id = request
+            .get("id")
+            .and_then(Value::as_str)
+            .unwrap_or_default()
+            .to_owned();
+        match self.dispatch_rpc(session_id, token, request) {
+            Ok(data) => PluginRpcResponse {
+                api_version: PLUGIN_API_VERSION,
+                id,
+                ok: true,
+                data: Some(data),
+                error: None,
+            },
+            Err(message) => PluginRpcResponse {
+                api_version: PLUGIN_API_VERSION,
+                id,
+                ok: false,
+                data: None,
+                error: Some(PluginRpcError {
+                    code: "PLUGIN_RPC_FAILED".to_owned(),
+                    message,
+                }),
+            },
+        }
+    }
+
+    pub fn runtime_source_for_session(
+        &mut self,
+        session_id: &str,
+        token: &str,
+        plugin_id: &str,
+    ) -> Result<String, String> {
+        self.verify_session(session_id, token, Some(plugin_id))?;
+        self.read_runtime_source(plugin_id)
+    }
+
+    fn read_runtime_source(&self, plugin_id: &str) -> Result<String, String> {
         let record = self.require(plugin_id)?;
         let dir = self.plugin_dir(plugin_id)?;
         let entry = safe_join(&dir, &record.manifest.main)?;
         let bytes = read_capped(&entry, ARTIFACT_LIMIT, "plugin entry")?;
         String::from_utf8(bytes).map_err(|_| "plugin entry is not UTF-8".to_owned())
+    }
+
+    pub fn report_crash_for_session(
+        &mut self,
+        session_id: &str,
+        token: &str,
+        plugin_id: &str,
+        message: &str,
+        error: Option<&str>,
+    ) -> Result<PluginView, String> {
+        self.verify_session(session_id, token, Some(plugin_id))?;
+        let last_error = error
+            .unwrap_or(message)
+            .chars()
+            .take(500)
+            .collect::<String>();
+        let record = self.require_mut(plugin_id)?;
+        record.enabled = false;
+        record.state = PluginRuntimeState::Crashed;
+        record.last_error = Some(last_error.clone());
+        let view = Self::view(record);
+        self.audit(plugin_id, "runtime.crash", None, false, Some(&last_error));
+        self.sessions.remove(session_id);
+        self.persist()?;
+        Ok(view)
     }
 
     pub fn list_audit_log(&self, plugin_id: Option<&str>, limit: usize) -> Vec<PluginAuditRecord> {
@@ -1791,18 +2228,24 @@ impl PluginStore {
     pub fn list_commands(&self) -> Vec<Value> {
         let mut commands = Vec::new();
         for record in self.plugins.values() {
-            let Some(contributions) = record.manifest.contributions.as_ref() else {
-                continue;
-            };
-            let Some(entries) = contributions.get(&PluginContributionKind::Commands) else {
-                continue;
-            };
-            for entry in entries {
+            if let Some(contributions) = record.manifest.contributions.as_ref() {
+                if let Some(entries) = contributions.get(&PluginContributionKind::Commands) {
+                    for entry in entries {
+                        commands.push(json!({
+                            "id": entry.id,
+                            "pluginId": record.manifest.id,
+                            "title": entry.title,
+                            "keywords": entry.keywords,
+                        }));
+                    }
+                }
+            }
+            for command in record.commands.values() {
                 commands.push(json!({
-                    "id": entry.id,
-                    "pluginId": record.manifest.id,
-                    "title": entry.title,
-                    "keywords": entry.keywords,
+                    "id": command.id,
+                    "pluginId": command.plugin_id,
+                    "title": command.title,
+                    "keywords": command.keywords,
                 }));
             }
         }
@@ -1960,6 +2403,135 @@ mod tests {
     }
 
     #[test]
+    fn session_and_challenge_security_gates_runtime_rpc() {
+        let root = temp_root("sessions");
+        let source = root.join("source");
+        write_manifest(&source, "main.js", &["read", "edit", "network"]);
+        fs::write(source.join("main.js"), "export const ok = true;").unwrap();
+        let mut store = PluginStore::new(
+            Some(root.join("state.json")),
+            Some(root.join("plugins")),
+            "0.1.0",
+        );
+        let ticket = store.install_preview(&source).unwrap();
+        store.confirm_install(&ticket.ticket, true).unwrap();
+
+        assert!(store
+            .begin_session_with_nonce("com.nexnote.test", "short", "plugin-frame")
+            .is_err());
+        assert!(store
+            .begin_session_with_nonce("com.nexnote.test", "1234567890123456", "evil")
+            .is_err());
+        let session = store
+            .begin_session_with_nonce("com.nexnote.test", "1234567890123456", "plugin-frame")
+            .unwrap();
+        assert!(store
+            .begin_session_with_nonce("com.nexnote.test", "1234567890123456", "plugin-frame")
+            .is_err());
+        assert!(store
+            .runtime_source_for_session("missing", &session.token, "com.nexnote.test")
+            .is_err());
+        assert!(store
+            .runtime_source_for_session(&session.session_id, "wrong-token", "com.nexnote.test")
+            .is_err());
+        assert_eq!(
+            store
+                .runtime_source_for_session(&session.session_id, &session.token, "com.nexnote.test")
+                .unwrap(),
+            "export const ok = true;"
+        );
+
+        let request = json!({
+            "apiVersion": PLUGIN_API_VERSION,
+            "id": "request-1",
+            "method": "permission.request",
+            "params": { "permission": "network" }
+        });
+        let challenge = store
+            .begin_auth_challenge(&session.session_id, &session.token, &request)
+            .unwrap();
+        assert!(store
+            .grant_with_challenge(
+                &challenge.challenge,
+                "other",
+                &session.token,
+                "request-1",
+                true
+            )
+            .is_err());
+        // A mismatched session consumes the one-shot challenge, mirroring the
+        // Electron authorization manager's consume-then-validate behavior.
+        let challenge = store
+            .begin_auth_challenge(&session.session_id, &session.token, &request)
+            .unwrap();
+        let granted = store
+            .grant_with_challenge(
+                &challenge.challenge,
+                &session.session_id,
+                &session.token,
+                "request-1",
+                true,
+            )
+            .unwrap();
+        assert!(granted
+            .grants
+            .iter()
+            .any(|grant| grant.permission == PluginPermission::Network && grant.granted));
+        assert!(store
+            .grant_with_challenge(
+                &challenge.challenge,
+                &session.session_id,
+                &session.token,
+                "request-1",
+                true
+            )
+            .is_err());
+
+        let register = json!({
+            "apiVersion": PLUGIN_API_VERSION,
+            "id": "rpc-1",
+            "method": "command.register",
+            "params": { "id": "hello", "title": "Hello", "keywords": ["demo"] }
+        });
+        let response = store.handle_rpc(&session.session_id, &session.token, &register);
+        assert!(response.ok);
+        assert_eq!(response.data.unwrap()["id"], "com.nexnote.test:hello");
+        assert!(store
+            .list_commands()
+            .iter()
+            .any(|command| command["id"] == "com.nexnote.test:hello"));
+
+        let transact = json!({
+            "apiVersion": PLUGIN_API_VERSION,
+            "id": "rpc-2",
+            "method": "transact",
+            "params": { "intent": { "type": "demo" }, "expectedRevision": 0 }
+        });
+        let response = store.handle_rpc(&session.session_id, &session.token, &transact);
+        assert!(response.ok);
+        assert_eq!(response.data.unwrap()["revision"], 1);
+
+        let permission = json!({
+            "apiVersion": PLUGIN_API_VERSION,
+            "id": "rpc-3",
+            "method": "permission.request",
+            "params": { "permission": "network" }
+        });
+        let response = store.handle_rpc(&session.session_id, &session.token, &permission);
+        assert!(response.ok);
+        assert_eq!(response.data.unwrap()["alwaysAllow"], true);
+        store
+            .close_session(&session.session_id, &session.token)
+            .unwrap();
+        assert!(
+            !store
+                .handle_rpc(&session.session_id, &session.token, &register)
+                .ok
+        );
+        let _ = fs::remove_dir_all(&root);
+    }
+
+    #[test]
     fn supports_enable_disable_and_uninstall() {
         let root = temp_root("lifecycle");
         let source = root.join("source");
@@ -2103,7 +2675,7 @@ mod tests {
         assert_eq!(ticket.manifest.id, "com.nexnote.zip");
         store.confirm_install(&ticket.ticket, true).unwrap();
         assert_eq!(
-            store.get_runtime_source("com.nexnote.zip").unwrap(),
+            store.read_runtime_source("com.nexnote.zip").unwrap(),
             "console.log('zip');"
         );
         let _ = fs::remove_dir_all(&root);

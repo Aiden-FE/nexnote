@@ -15,9 +15,11 @@ mod print_service;
 mod product;
 mod reasoning_filter;
 mod retrieval_service;
+mod settings_search;
 mod skill_service;
 mod updater_service;
 mod vault_fs;
+mod vault_operations;
 mod watcher_service;
 
 use tauri::{Emitter, Manager};
