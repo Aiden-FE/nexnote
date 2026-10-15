@@ -24,14 +24,14 @@
 | --- | --- | --- | --- |
 | DEV-115 | 迁移契约与命令所有权盘点 | 无 | done |
 | DEV-116 | Tauri 2 壳 + Renderer bridge | DEV-115 | done |
-| DEV-117 | 三 WebView 编辑器兼容矩阵 | DEV-116 | todo / Windows-Linux environment-blocked |
+| DEV-117 | 三 WebView 编辑器兼容矩阵 | DEV-116 | done（CI 真机启动矩阵三平台全绿：Windows WebView2 主窗口、Linux WebKitGTK/xvfb 窗口、macOS 双架构 GUI 冒烟；深层文档交互矩阵以 macOS 实测为准，Win/Linux 交互项按指示不作为阻塞） |
 | DEV-118 | Rust product core 基础与状态生命周期 | DEV-115 | done |
 | DEV-119 | Vault / FS / SQLite / 索引迁移 | DEV-118 | done（全部通道 ported；设置持久化重启回归已修复） |
 | DEV-120 | Git 运行时与同步体系迁移 | DEV-119 | done（全部通道 ported，含 doctor 修复票据） |
 | DEV-121 | AI、召回与内置语义向量迁移 | DEV-118 | done（agent 工具环/审批/权限/prompt/skills/降级/TTL/reasoning 过滤已迁移） |
 | DEV-122 | 插件沙箱与 capability 迁移 | DEV-116、DEV-118 | done（插件通道 ported；宿主 capability 修复见 DEV-123） |
 | DEV-123 | 二进制编辑器宿主与打印迁移 | DEV-116、DEV-117 | done（label 字符集修复后 e2e 协议测试覆盖；macOS 打开真实文档的 GUI 收尾项见矩阵） |
-| DEV-124 | Tauri 更新、签名、发布与 QA | DEV-116 | in progress（签名密钥对已生成、updater 产物 .sig 本地验证通过；打包/重签/冒烟/版本门已进 CI 候选流水线——待私钥入 GitHub secrets、公证决策与发布 feed URL） |
+| DEV-124 | Tauri 更新、签名、发布与 QA | DEV-116 | in progress（CI 全平台绿：四平台产物含签名 .sig（macOS/Windows/Linux）、启动冒烟全过——余项：macOS 公证决策、发布 feed URL 与正式发布运行） |
 | DEV-125 | Electron 退役与默认通道切换 | 全部子票 | blocked |
 
 ## Epic 完成定义
