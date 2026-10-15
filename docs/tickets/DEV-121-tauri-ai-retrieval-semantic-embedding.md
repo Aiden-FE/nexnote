@@ -1,6 +1,6 @@
 # DEV-121 Tauri AI / 召回 / 内置语义向量迁移
 
-- 状态：in progress
+- 状态：partial
 - 分类：architecture
 - 优先级：P1
 - 工作量：XL
@@ -50,6 +50,10 @@
 - 全量/增量向量索引构建的可取消性与完整进度事件（当前为后台线程 + 降级提示）。
 - 中英混合检索评测（recall@8 / nDCG@8 对比）、低配机 RSS 门槛。
 - Windows/Linux ONNX native library 与 GUI 实测：**NOT_RUN（无实测条件）**。
+
+## 2026-10-15 审查结论
+
+Agent 工具环/审批/权限/prompt/skills/降级/TTL/reasoning 过滤、内置 embedding 下载校验与三阶段召回均已有实现与 Rust 测试。仍缺：中英混合 recall@8 / nDCG@8 评测、低配 RSS/性能门槛、模型下载代理与断点续传策略、Windows/Linux ONNX 真实包验证。本票不能标 `done`。
 
 ## Out of scope
 

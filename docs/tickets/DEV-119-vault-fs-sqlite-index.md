@@ -1,6 +1,6 @@
 # DEV-119 Vault / FS / SQLite / 索引迁移
 
-- 状态：in progress
+- 状态：partial
 - 分类：architecture
 - 优先级：P0
 - 工作量：XL
@@ -27,6 +27,10 @@ Electron 后端的 Vault、页面树、Markdown/sidecar、文件 watcher、bette
 - [ ] FTS 与 Link Index 结果与既有 fixture 语义一致，大库扫描有进度与取消。
 - [ ] 路径逃逸、符号链接、Windows 盘符/大小写、非 UTF-8 名称有测试或登记平台阻塞。
 - [ ] macOS 实测；Windows/Linux 文件系统与 GUI 保持 **NOT_RUN（当前无实测条件）**。
+
+## 2026-10-15 审查结论
+
+FS / SQLite / watcher / confidence / retrieval 的主要路径已有 Rust 测试和真实 fixture。审查发现 `vault:clonePreflight` 仅做 URL 前缀检查、`vault:clone` 缺 preflight token/进度/取消/错误脱敏、`vault:cancelOperation` 是 no-op；这三项在契约矩阵中已改回 `pending`。本票不能标 `done`。
 
 ## Out of scope
 

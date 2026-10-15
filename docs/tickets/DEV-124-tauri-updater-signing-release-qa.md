@@ -1,6 +1,6 @@
 # DEV-124 Tauri updater、签名、发布与 QA
 
-- 状态：todo
+- 状态：partial
 - 分类：release / architecture
 - 优先级：P1
 - 工作量：XL
@@ -37,6 +37,10 @@
 - [ ] 更新从 N-1 到当前版本真实成功，且下载失败可恢复。
 - [ ] GitHub Release 匿名下载与 checksum 全部验证。
 - [ ] 未完成三平台发布 QA 前，不切换默认下载通道。
+
+## 2026-10-15 审查结论
+
+候选 release `tauri-v0.0.37.1` 已公开发布：16 个资产、7 个 `.sig`、`latest.json` 四平台 feed；匿名下载 `latest.json` 成功，GitHub API digest 与 DMG 字节校验曾通过；CI run 38675478473 四平台构建/启动全绿。未完成项：N-1 → current 真实升级、下载失败恢复、Windows Authenticode/SmartScreen、Windows/Linux 安装/升级/卸载与数据保留。本票不能标 `done`，默认下载通道保持 Electron。
 
 ## Out of scope
 

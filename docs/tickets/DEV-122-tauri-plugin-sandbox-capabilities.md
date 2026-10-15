@@ -1,6 +1,6 @@
 # DEV-122 Tauri 插件沙箱与 capability 迁移
 
-- 状态：in progress
+- 状态：partial
 - 分类：architecture / security
 - 优先级：P1
 - 工作量：XL
@@ -37,6 +37,10 @@
 - [ ] 恶意 fixture 全部 fail closed，并记录审计事件。
 - [ ] 内置 Mermaid/KaTeX 与示例插件可安装、启停、卸载。
 - [ ] macOS 实测；Windows/Linux WebView sandbox 行为保持 **NOT_RUN（当前无实测条件）**。
+
+## 2026-10-15 审查结论
+
+插件 manifest/ZIP/安装/权限/审计 store 已有 Rust 测试，但 shared contract 要求的 session 绑定与一次性 challenge 授权链尚未迁移：`getRuntimeSource` / `reportCrash` 直接按 pluginId 操作，`grantPermission` 未消费 challenge，`plugins:rpc` 明确返回 `PLUGIN_NOT_PORTED`，`pickSource` 未打开系统选择器。相关通道已在矩阵中标 `pending`。本票不能标 `done`。
 
 ## Out of scope
 

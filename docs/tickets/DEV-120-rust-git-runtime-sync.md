@@ -1,6 +1,6 @@
 # DEV-120 Rust Git 运行时与同步体系迁移
 
-- 状态：in progress
+- 状态：partial
 - 分类：architecture
 - 优先级：P1
 - 工作量：XL
@@ -26,6 +26,10 @@
 - [ ] 凭证不进入日志、Renderer、插件或 vault。
 - [ ] GPLv2 Git 分发义务与二进制校验纳入发布门禁。
 - [ ] macOS 实测；Windows Credential Manager、路径大小写、WebView2 GUI 与 Linux GUI/SSH/keyring 保持 **NOT_RUN（当前无实测条件）**。
+
+## 2026-10-15 审查结论
+
+status / commit / timeline / 本地 bare repo 同步 / rebase 冲突 doctor 已有 Rust 测试。未完成项仍是：Tauri 产物未捆绑 Git（`resolve_git_binary()` 返回系统 `git`）、无 Git GPLv2 分发与二进制校验门禁、Git 进程无超时/取消/进程组回收、clone preflight/clone 语义不完整、Windows/Linux 凭据与路径行为未实测。本票不能标 `done`。
 
 ## Out of scope
 

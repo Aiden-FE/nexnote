@@ -30,8 +30,8 @@
 
 ## 验收标准
 
-- [x] 矩阵覆盖 `IPC_CHANNELS`（154）与 `IPC_EVENT_CHANNELS`（16），共 170 条，无重复、无遗漏。
-- [ ] 覆盖校验纳入 `pnpm test` 或独立 CI 门禁（后续随 DEV-116 完成 Rust command 后实现）。
+- [x] 矩阵覆盖 `IPC_CHANNELS`（158）与 `IPC_EVENT_CHANNELS`（16），另登记 1 条已弃用 legacy event，共 175 条，无重复、无遗漏。
+- [x] 覆盖校验纳入 `pnpm test`（`packages/shared/src/ipc/migration-matrix.test.ts` 校验唯一性、合法状态、数量汇总与 `ported` Rust target）。
 - [x] 每个 channel 有数据所有权与迁移批次。
 - [x] Electron 专属语义清单完整，并映射到 Tauri 状态、窗口 label 或 command。
 - [x] ADR-0028 / DEV-ARCH-002 的子票范围与矩阵批次一致。

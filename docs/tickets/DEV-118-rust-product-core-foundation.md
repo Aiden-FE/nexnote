@@ -1,6 +1,6 @@
 # DEV-118 Rust product core 基础与状态生命周期
 
-- 状态：todo
+- 状态：partial
 - 分类：architecture
 - 优先级：P0
 - 工作量：L
@@ -27,6 +27,10 @@ Electron main 目前负责应用配置、窗口状态、设置、语言、权限
 - [ ] Rust 测试覆盖状态、持久化、错误与事件。
 - [ ] 与 shared contract 的类型差异登记到 DEV-115 矩阵。
 - [ ] macOS dev 环境实测；Windows/Linux GUI 保持 **NOT_RUN**。
+
+## 2026-10-15 审查结论
+
+Rust 135 个单元/集成测试通过；全局设置跨启动、损坏回退与原子写已有测试，macOS/Windows/Linux release 包启动由 DEV-117 CI 证明。但 `settings:search` 在 Tauri dispatcher 中恒返空数组，未迁移设置搜索语义，因此本票不能标 `done`。
 
 ## Out of scope
 

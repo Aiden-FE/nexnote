@@ -1,8 +1,8 @@
 # Tauri 迁移契约矩阵（DEV-115）
 
-> 生成日期：2026-10-14 · 覆盖 `IPC_CHANNELS`（154 条）与 `IPC_EVENT_CHANNELS`（16 条）。
+> 生成日期：2026-10-14 · 覆盖当前 `IPC_CHANNELS`（158 条）与 `IPC_EVENT_CHANNELS`（16 条），另登记 1 条已弃用 legacy event，共 175 条。
 >
-> 当前进度：173 条 `ported`，1 条 `pending`（仅剩 macOS GUI 实测），1 条 `explicitly-unsupported`（`ai:streamEvent` 已弃用）。
+> 当前进度：161 条 `ported`，13 条 `pending`，1 条 `explicitly-unsupported`（`ai:streamEvent` 已弃用）。
 
 本矩阵是 DEV-ARCH-002 全面迁移的单一事实源：每个 channel/event 都有唯一条目，记录数据所有权、副作用、Electron handler 位置、Tauri 目标模块、迁移批次和当前状态。后续子票按批次推进，Rust 实现完成后将对应状态从 `pending` 改为 `ported`。
 
@@ -27,6 +27,14 @@
 
 | Channel | 现状 | 剩余工作 |
 | --- | --- | --- |
+| vault:clonePreflight | 仅检查 `https://` / `git@` 前缀，未执行远端探测，也未颁发 sender 绑定 token | 迁移 `ls-remote`、脱敏与 preflight token（DEV-119/120） |
+| vault:clone | 可调用系统 `git clone`，但无 preflight token、进度、取消与错误脱敏 | 迁移操作注册表、进度、取消与安全错误（DEV-119/120） |
+| vault:cancelOperation | 恒返回成功 no-op | 实现操作注册表与未找到操作时的稳定错误（DEV-119） |
+| settings:search | 恒返回空数组 | 迁移设置索引/搜索语义（DEV-118） |
+| plugins:pickSource | 未打开系统选择器，恒返回 `path:null` | 接入 directory/zip 文件选择器（DEV-122） |
+| plugins:beginSession / closeSession / getRuntimeSource / reportCrash | token 生成/存储已有基础，但未按 `sessionId + token + pluginId + nonce/origin` 完整验证会话绑定 | 迁移沙箱 session 安全链（DEV-122） |
+| plugins:beginAuthChallenge / grantPermission | 直接按 pluginId/permission 操作，未消费一次性 challenge 与 session/request 绑定 | 迁移不可伪造授权链（DEV-122） |
+| plugins:rpc | Rust dispatcher 明确返回 `PLUGIN_NOT_PORTED` | 迁移 `command.register` / `transact` / `permission.request` / `capability.call`（DEV-122） |
 | binary:editorCommand | load/theme/language 直投；flush 经一次性 token 往返等待编辑器真实落盘（`binary:host:flushAck`） | macOS 实测后确认收发完整（DEV-123） |
 
 ## App
@@ -49,11 +57,11 @@
 | vault:pickDirectory | host | no | no | no | no | `vault-handlers.ts` | `product::vault_pick_dir` | foundation | ported |
 | vault:create | vault | yes | no | yes | no | `vault-handlers.ts` | `product::vault_create` | vault | ported |
 | vault:open | vault | yes | no | yes | no | `vault-handlers.ts` | `product::vault_open` | vault | ported |
-| vault:clone | vault | yes | yes | yes | yes | `vault-handlers.ts` | `vault::clone` | git | ported |
+| vault:clone | vault | yes | yes | yes | yes | `vault-handlers.ts` | `vault::clone` | git | pending（无 token/进度/取消/脱敏） |
 | vault:initGit | vault | yes | no | yes | yes | `vault-handlers.ts` | `git::init` | git | ported |
 | vault:inspect | vault | no | no | yes | no | `vault-handlers.ts` | `product::vault_inspect` | vault | ported |
-| vault:clonePreflight | remote-provider | no | yes | no | no | `vault-handlers.ts` | `git::clone_preflight` | git | ported |
-| vault:cancelOperation | app-state | no | no | no | no | `vault-handlers.ts` | `vault::cancel_op` | vault | ported |
+| vault:clonePreflight | remote-provider | no | yes | no | no | `vault-handlers.ts` | `git::clone_preflight` | git | pending（仅 URL 前缀检查） |
+| vault:cancelOperation | app-state | no | no | no | no | `vault-handlers.ts` | `vault::cancel_op` | vault | pending（no-op） |
 | vault:close | app-state | yes | no | yes | no | `vault-handlers.ts` | `product::vault_close` | foundation | ported |
 | vault:listRecent | app-state | yes | no | yes | no | `vault-handlers.ts` | `product::vault_list_recent` | foundation | ported |
 | vault:removeRecent | app-state | yes | no | yes | no | `vault-handlers.ts` | `product::vault_remove_recent` | foundation | ported |
@@ -136,7 +144,7 @@
 | settings:setShortcuts | app-state | yes | no | yes | no | `settings-handlers.ts` | `product::settings_set_shortcuts` | foundation | ported |
 | settings:exportShortcuts | host | yes | no | yes | no | `settings-handlers.ts` | `product::settings_export` | foundation | ported |
 | settings:importShortcuts | app-state | yes | no | yes | no | `settings-handlers.ts` | `product::settings_import` | foundation | ported |
-| settings:search | host | no | no | no | no | `settings-handlers.ts` | `product::settings_search` | foundation | ported |
+| settings:search | host | no | no | no | no | `settings-handlers.ts` | `product::settings_search` | foundation | pending（恒返空） |
 | settings:pickImportFile | host | no | no | no | no | `settings-handlers.ts` | `product::settings_pick_file` | foundation | ported |
 | settings:saveExportFile | host | yes | no | yes | no | `settings-handlers.ts` | `product::settings_save_file` | foundation | ported |
 
@@ -194,7 +202,7 @@
 | plugins:list | plugin | yes | no | yes | no | `plugin-handlers.ts` | `plugin::list` | plugin | ported |
 | plugins:listCommands | plugin | yes | no | yes | no | `plugin-handlers.ts` | `plugin::list_commands` | plugin | ported |
 | plugins:listContributions | plugin | yes | no | yes | no | `plugin-handlers.ts` | `plugin::list_contribs` | plugin | ported |
-| plugins:pickSource | host | no | no | no | no | `plugin-handlers.ts` | `plugin::pick_source` | plugin | ported |
+| plugins:pickSource | host | no | no | no | no | `plugin-handlers.ts` | `plugin::pick_source` | plugin | pending（未接系统选择器） |
 | plugins:installPreview | plugin | yes | no | yes | no | `plugin-handlers.ts` | `plugin::install_preview` | plugin | ported |
 | plugins:confirmInstall | plugin | yes | no | yes | no | `plugin-handlers.ts` | `plugin::confirm_install` | plugin | ported |
 | plugins:uninstall | plugin | yes | no | yes | no | `plugin-handlers.ts` | `plugin::uninstall` | plugin | ported |
@@ -202,14 +210,14 @@
 | plugins:listAuditLog | plugin | yes | no | yes | no | `plugin-handlers.ts` | `plugin::audit_log` | plugin | ported |
 | plugins:revokePermission | plugin | yes | no | yes | no | `plugin-handlers.ts` | `plugin::revoke_perm` | plugin | ported |
 | plugins:runCommand | plugin | no | no | no | no | `plugin-handlers.ts` | `plugin::run_command` | plugin | ported |
-| plugins:beginSession | plugin | no | no | no | no | `plugin-handlers.ts` | `plugin::begin_session` | plugin | ported |
-| plugins:closeSession | plugin | no | no | no | no | `plugin-handlers.ts` | `plugin::close_session` | plugin | ported |
-| plugins:getRuntimeSource | plugin | no | no | yes | no | `plugin-handlers.ts` | `plugin::runtime_source` | plugin | ported |
-| plugins:reportCrash | plugin | yes | no | yes | no | `plugin-handlers.ts` | `plugin::report_crash` | plugin | ported |
-| plugins:beginAuthChallenge | plugin | no | no | no | no | `plugin-handlers.ts` | `plugin::auth_challenge` | plugin | ported |
+| plugins:beginSession | plugin | no | no | no | no | `plugin-handlers.ts` | `plugin::begin_session` | plugin | pending（nonce/origin/会话绑定不完整） |
+| plugins:closeSession | plugin | no | no | no | no | `plugin-handlers.ts` | `plugin::close_session` | plugin | pending（未按 sessionId+token 验证） |
+| plugins:getRuntimeSource | plugin | no | no | yes | no | `plugin-handlers.ts` | `plugin::runtime_source` | plugin | pending（未验证 session token） |
+| plugins:reportCrash | plugin | yes | no | yes | no | `plugin-handlers.ts` | `plugin::report_crash` | plugin | pending（未验证 session token） |
+| plugins:beginAuthChallenge | plugin | no | no | no | no | `plugin-handlers.ts` | `plugin::auth_challenge` | plugin | pending（未绑定 session/request） |
 | plugins:rejectAuthChallenge | plugin | no | no | no | no | `plugin-handlers.ts` | `plugin::reject_auth` | plugin | ported |
-| plugins:grantPermission | plugin | yes | no | yes | no | `plugin-handlers.ts` | `plugin::grant_perm` | plugin | ported |
-| plugins:rpc | plugin | no | no | yes | no | `plugin-handlers.ts` | `plugin::rpc` | plugin | ported |
+| plugins:grantPermission | plugin | yes | no | yes | no | `plugin-handlers.ts` | `plugin::grant_perm` | plugin | pending（未消费一次性 challenge） |
+| plugins:rpc | plugin | no | no | yes | no | `plugin-handlers.ts` | `plugin::rpc` | plugin | pending（Rust 未迁移） |
 
 ## Skills
 
@@ -271,6 +279,7 @@
 | app:updateStatus | remote-provider | updater | `webContents.send` | `updater::status_event` | updater | ported |
 | agent:runEvent | remote-provider | agent gateway | `webContents.send` | `agent::run_event` | ai | ported |
 | ai:streamEvent | remote-provider | AI adapter | `webContents.send` | `agent::stream_event` | ai | explicitly-unsupported（共享契约已标 @deprecated 并从渲染层 allowlist 排除） |
+| ai:builtInEmbeddingStatus | app-state | built-in embedding download/runtime | —（Tauri 新增，ADR-0027） | `embedding::status_event` | ai | ported |
 | ai:retrievalStatus | sqlite | retrieval service | `webContents.send` | `retrieval::status_event` | ai | ported |
 | ai:configChanged | app-state | AI store | `webContents.send` | `ai::config_changed` | ai | ported |
 | git:statusChanged | vault | git service | `webContents.send` | `git::status_event` | git | ported |
@@ -280,5 +289,5 @@
 | index:statusChanged | sqlite | index service | `webContents.send` | `index::status_event` | vault | ported |
 | index:confidenceChanged | sqlite | confidence service | `webContents.send` | `index::confidence_event` | vault | ported |
 | settings:changed | app-state | settings service | `webContents.send` | `product::settings_event` | foundation | ported |
-| binary:editorCommand | host | binary editor host | `webContents.send` | `binary_host::editor_command` | binary-print | ported（load/theme/language/flush 已投递；macOS 实测待做） |
+| binary:editorCommand | host | binary editor host | `webContents.send` | `binary_host::editor_command` | binary-print | pending（load/theme/language/flush 已投递；macOS 实测待做） |
 | menu:action | host | native menu | `webContents.send` | `window_menu::action` | foundation | ported |

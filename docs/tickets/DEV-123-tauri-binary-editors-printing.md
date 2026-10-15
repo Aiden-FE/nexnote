@@ -1,6 +1,6 @@
 # DEV-123 Tauri 二进制编辑器宿主与打印迁移
 
-- 状态：in progress
+- 状态：partial
 - 分类：architecture
 - 优先级：P1
 - 工作量：XL
@@ -48,7 +48,11 @@ Tauri 2 没有 `WebContentsView` 等价物，改用每文档一个 borderless �
 
 就绪协议沿用 Electron 的 pull 模型：编辑器页 bootstrap 后调用 `binary:host:ready`，响应里带回排队的命令（首条为从全局设置读取的当前语言），避免初始 load 被推入尚未订阅的页面而永久丢失。
 
-已知缺口（矩阵中已逐条标注）：`flush` 只投递命令、不等待页内 `__nexnoteHostFlush` 写盘往返；`setBounds` 不跟随主窗口 resize 重算；`ready` 以「第一个未 ready 宿主」识别 ack 来源，多宿主并发时需改为 sender id 识别；并发上限（渲染层 ≤3 LRU）未在 Rust 侧强制。macOS 实测（宿主定位、崩溃隔离、内存）与 Windows/Linux 的 WebView 进程隔离仍为 **NOT_RUN（无实测条件）**。
+当前协议层已补齐：`flush` 经一次性 token 等待 `binary:host:flushAck` 确认真实落盘；`ready` / `flushAck` 按调用窗口 label 识别 sender；主窗口 resize/maximize 时按占位矩形重新 clamp；渲染层维持 ≤3 LRU 并发。已知缺口集中在真实运行时证据：macOS 打开真实文档的宿主定位、崩溃隔离、内存与系统打印对话框，以及 Windows/Linux WebView 进程隔离均仍为 **NOT_RUN（无实测条件）**。
+
+## 2026-10-15 审查结论
+
+代码审查确认 flush token 往返、sender label、resize clamp 与 e2e 协议测试已落地，早期“flush 只投递 / sender 误识别 / resize 不跟随”的描述已过时。但 macOS 打开真实 xlsx/xmind、隐藏窗口定位、系统打印对话框、崩溃隔离与内存仍未实测；Windows/Linux WebView 进程隔离也保持 NOT_RUN。本票不能标 `done`。
 
 ## Out of scope
 

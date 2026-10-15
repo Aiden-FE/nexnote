@@ -1,6 +1,6 @@
 # DEV-117 Tauri 三 WebView 编辑器兼容矩阵
 
-- 状态：todo
+- 状态：partial
 - 分类：architecture / risk-spike
 - 优先级：P0
 - 工作量：L
@@ -36,6 +36,10 @@ Tauri 2 在 macOS 使用 WKWebView、Windows 使用 WebView2、Linux 使用 WebK
 - [ ] 差异矩阵进入 `docs/tauri/webview-editor-matrix.md`，并有复现步骤。
 - [ ] 发现 blocker 时更新 ADR-0028 与 DEV-ARCH-002，不隐藏风险。
 - [ ] 在有环境前，本票状态最多 `partial`，不得 `done`。
+
+## 2026-10-15 审查结论
+
+CI 已在 macOS WKWebView（arm64/x64）、Windows WebView2、Linux WebKitGTK/xvfb 完成 release 包启动冒烟；启动矩阵记录于 `docs/tauri/webview-editor-matrix.md`。块编辑、IME、拖拽、CodeMirror、React Flow、Clipboard 与打印预览交互仍未实测，本票保持 `partial`。
 
 ## Out of scope
 

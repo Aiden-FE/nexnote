@@ -158,11 +158,21 @@ function makeServices(): {
 describe('IPC 注册表框架', () => {
   afterEach(() => setCurrentLanguage('zh-CN'));
 
-  it('契约中的全部通道都能被注册（无遗漏/无重复）', () => {
+  it('除 Tauri-only 通道外契约中的全部通道都能被注册（无遗漏/无重复）', () => {
     const ipc = new FakeIpcMain();
     const { services } = makeServices();
     const registrar = registerAllIpcHandlers(ipc, services);
-    expect(registrar.registeredChannels().sort()).toEqual([...IPC_CHANNELS].sort());
+    const tauriOnlyChannels = new Set([
+      'ai:builtInEmbedding:status',
+      'ai:builtInEmbedding:download',
+      'ai:builtInEmbedding:delete',
+      'binary:host:flushAck',
+    ]);
+    const electronChannels = IPC_CHANNELS.filter((channel) => !tauriOnlyChannels.has(channel));
+    expect(registrar.registeredChannels().sort()).toEqual([...electronChannels].sort());
+    expect(tauriOnlyChannels.difference(new Set(registrar.registeredChannels()))).toEqual(
+      tauriOnlyChannels,
+    );
     expect(registrar.registeredChannels()).not.toContain('ai:credential:retrieve');
   });
 
