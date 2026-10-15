@@ -143,9 +143,27 @@ fn map_event(root: &Path, event: &notify::Event) -> Vec<PendingChange> {
     changes
 }
 
+/// Prefix strip that survives path-form mismatches between the canonical
+/// watch root and what the backend reports.
+///
+/// Windows canonicalizes to the `\\?\C:\...` extended-length form while a
+/// backend may emit events without that prefix (or the reverse); a bare
+/// `strip_prefix` then fails and the event would be silently dropped — the
+/// whole watcher would be dead on that platform. Retry once against the
+/// canonicalized event path (existing files only; deletions keep the literal
+/// form, which the app-write tracker also uses for them).
+fn strip_root<'a>(root: &Path, path: &'a Path) -> Option<std::borrow::Cow<'a, Path>> {
+    if let Ok(relative) = path.strip_prefix(root) {
+        return Some(std::borrow::Cow::Borrowed(relative));
+    }
+    let canonical = std::fs::canonicalize(path).ok()?;
+    let relative = canonical.strip_prefix(root).ok()?;
+    Some(std::borrow::Cow::Owned(relative.to_path_buf()))
+}
+
 /// `.nexnote`, `.git`, `.trash` and `node_modules` are never user content.
 fn is_excluded(root: &Path, path: &Path) -> bool {
-    let Ok(relative) = path.strip_prefix(root) else {
+    let Some(relative) = strip_root(root, path) else {
         return true;
     };
     relative.components().any(|component| {
@@ -158,7 +176,7 @@ fn is_excluded(root: &Path, path: &Path) -> bool {
 
 /// Vault-relative path with forward slashes, or `None` when outside the root.
 fn to_relative(root: &Path, path: &Path) -> Option<String> {
-    let relative = path.strip_prefix(root).ok()?;
+    let relative = strip_root(root, path)?;
     let text = relative.to_string_lossy().replace('\\', "/");
     if text.starts_with("..") || text.contains(':') {
         return None;
@@ -495,5 +513,36 @@ mod tests {
             std::thread::sleep(Duration::from_millis(50));
         }
         panic!("watcher never removed {stem} from the index");
+    }
+
+    /// Windows canonicalizes to the `\\?\` extended-length form while a
+    /// backend may report events without it; the retry in `strip_root` must
+    /// re-couple such a path to the root instead of dropping the event. A
+    /// symlinked root reproduces the same "two forms for one directory"
+    /// situation on macOS without needing a Windows machine.
+    #[test]
+    fn strip_root_recovers_when_the_reported_form_differs_from_the_root() {
+        let id = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .expect("clock")
+            .as_nanos();
+        let base =
+            std::env::temp_dir().join(format!("nexnote-strip-root-{}-{id}", std::process::id()));
+        let real = base.join("real-vault");
+        fs::create_dir_all(real.join("notes")).expect("create real root");
+        fs::write(real.join("notes/a.md"), "content").expect("seed file");
+        // Canonical root, symlink-formed event path: the literal strip fails.
+        let canonical_root = fs::canonicalize(&real).expect("canonical root");
+        let link = base.join("link-vault");
+        std::os::unix::fs::symlink(&real, &link).expect("symlink");
+        let event = link.join("notes/a.md");
+        assert!(event.strip_prefix(&canonical_root).is_err());
+        let relative = strip_root(&canonical_root, &event).expect("retry must recover");
+        assert_eq!(relative, std::path::Path::new("notes/a.md"));
+        // A path outside the root stays rejected after the retry.
+        let outsider = base.join("elsewhere.md");
+        fs::write(&outsider, "x").expect("outsider");
+        assert!(strip_root(&canonical_root, &outsider).is_none());
+        fs::remove_dir_all(&base).ok();
     }
 }
