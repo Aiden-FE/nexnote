@@ -315,6 +315,20 @@ fn rerank_with_vectors(
     confidence_weight: f64,
     sources: &mut std::collections::HashMap<i64, ScoredSource>,
 ) -> Result<(), String> {
+    // Vector search is recall, not only reranking: FTS can return zero for a
+    // paraphrase or cross-language question. Add every indexed block so e5 can
+    // surface a semantically relevant page that lexical matching never seeded.
+    for block in index_service::all_blocks(conn) {
+        sources
+            .entry(block.block_rowid)
+            .or_insert_with(|| ScoredSource {
+                block,
+                score: 0.0,
+                vector_sim: None,
+                confidence: None,
+                via: "vector",
+            });
+    }
     let rowids: Vec<i64> = sources.keys().copied().collect();
     let query_vectors = embedder.embed(InputRole::Query, &[query.to_string()])?;
     let Some(query_vector) = query_vectors.into_iter().next() else {
@@ -586,6 +600,158 @@ mod tests {
 
         BUILDING.store(false, Ordering::SeqCst);
         BUILD_CANCELLED.store(false, Ordering::SeqCst);
+    }
+
+    #[test]
+    fn built_in_semantic_retrieval_eval() {
+        if std::env::var("NEXNOTE_EMBEDDING_EVAL").as_deref() != Ok("1") {
+            return;
+        }
+        index_service::with_test_lock(|| {
+            let root = std::env::temp_dir().join(format!(
+                "nexnote-retrieval-eval-{}",
+                std::time::SystemTime::now()
+                    .duration_since(std::time::UNIX_EPOCH)
+                    .map(|value| value.as_nanos())
+                    .unwrap_or_default()
+            ));
+            std::fs::create_dir_all(root.join(".nexnote")).expect("create eval vault");
+            let documents = [
+                (
+                    "air-quality.md",
+                    "# Ventilation and plants\n\nOpen windows twice daily, keep low-toxicity plants, and use a HEPA filter when outdoor pollution is high.",
+                ),
+                (
+                    "async-collaboration.md",
+                    "# Asynchronous collaboration\n\nReplace status meetings with written updates, shared checklists, and automatic document synchronization.",
+                ),
+                (
+                    "produce-storage.md",
+                    "# Storing vegetables\n\nLeafy greens stay crisp in a ventilated crisper; berries should stay dry and cold until serving.",
+                ),
+                (
+                    "latency-diagnosis.md",
+                    "# Performance diagnosis\n\nMeasure response latency, inspect the critical rendering path, profile CPU and network waterfalls, and add caching where safe.",
+                ),
+                ("architecture.md", "# Architecture notes\n\nModule boundaries and dependency direction affect maintainability."),
+                ("calendar.md", "# Calendar strategy\n\nReserve focus blocks and protect deep-work time."),
+                ("budget.md", "# Budget review\n\nOperating expenses, cloud spend, and vendor renewals need quarterly review."),
+                ("onboarding.md", "# Onboarding guide\n\nIntroduce repository layout, local commands, and release checkpoints."),
+                ("travel.md", "# Travel checklist\n\nPassport, adapters, medication, and offline maps belong in the same bag."),
+                ("recipes.md", "# Weeknight recipes\n\nKeep pantry staples and frozen vegetables ready for fast dinners."),
+                ("design.md", "# Design tokens\n\nColor, spacing, typography, and motion should share one source of truth."),
+                ("security.md", "# Account security\n\nUse a hardware key and recovery codes stored in more than one location."),
+            ];
+            for (path, content) in documents {
+                std::fs::write(root.join(path), content).expect("write eval document");
+            }
+            index_service::rebuild(&root);
+
+            let cache = std::env::var_os("NEXNOTE_EMBEDDING_CACHE_DIR")
+                .map(std::path::PathBuf::from)
+                .unwrap_or_else(|| std::path::PathBuf::from("/tmp/nexnote-embedding-eval-cache"));
+            let state = std::sync::Arc::new(EmbeddingState::new(&cache));
+            state
+                .ensure_downloaded(None, |_| {})
+                .expect("download and verify pinned model");
+            let embedder = Embedder::BuiltIn {
+                state,
+                profile_id: "builtin".to_owned(),
+            };
+            build_all_vectors(&root, &embedder, |_, _, _| {}).expect("build eval vectors");
+
+            let cases = [
+                ("怎么让室内空气更健康", "air-quality.md"),
+                ("如何减少团队沟通和会议成本", "async-collaboration.md"),
+                (
+                    "how do I keep vegetables fresh longer",
+                    "produce-storage.md",
+                ),
+                ("页面响应很慢应该怎么排查", "latency-diagnosis.md"),
+            ];
+            let mut baseline_recall = 0.0;
+            let mut semantic_recall = 0.0;
+            let mut baseline_ndcg = 0.0;
+            let mut semantic_ndcg = 0.0;
+            for (query, expected) in cases {
+                let base = retrieve(
+                    &root,
+                    &RetrievalRequest {
+                        query: query.to_owned(),
+                        top_k: 8,
+                        fts_limit: 20,
+                        budget_chars: 4000,
+                        confidence_weight: 0.0,
+                        disable_vector: true,
+                    },
+                    Some(&embedder),
+                );
+                let semantic = retrieve(
+                    &root,
+                    &RetrievalRequest {
+                        query: query.to_owned(),
+                        top_k: 8,
+                        fts_limit: 20,
+                        budget_chars: 4000,
+                        confidence_weight: 0.0,
+                        disable_vector: false,
+                    },
+                    Some(&embedder),
+                );
+                baseline_recall += recall_at(&base, expected);
+                semantic_recall += recall_at(&semantic, expected);
+                baseline_ndcg += ndcg_at(&base, expected);
+                semantic_ndcg += ndcg_at(&semantic, expected);
+            }
+            let count = cases.len() as f64;
+            let (baseline_recall, semantic_recall) =
+                (baseline_recall / count, semantic_recall / count);
+            let (baseline_ndcg, semantic_ndcg) = (baseline_ndcg / count, semantic_ndcg / count);
+            println!(
+                "DEV-121 retrieval eval: FTS+links recall@8={baseline_recall:.3} ndcg@8={baseline_ndcg:.3}; semantic recall@8={semantic_recall:.3} ndcg@8={semantic_ndcg:.3}"
+            );
+            assert!(
+                semantic_recall >= baseline_recall + 0.10,
+                "semantic recall must materially beat the two-stage baseline"
+            );
+            assert!(
+                semantic_ndcg >= baseline_ndcg + 0.10,
+                "semantic ndcg must materially beat the two-stage baseline"
+            );
+            index_service::close();
+            let _ = std::fs::remove_dir_all(&root);
+        });
+    }
+
+    fn recall_at(response: &Value, expected: &str) -> f64 {
+        if response
+            .get("sources")
+            .and_then(Value::as_array)
+            .is_some_and(|sources| {
+                sources
+                    .iter()
+                    .any(|source| source["path"].as_str() == Some(expected))
+            })
+        {
+            1.0
+        } else {
+            0.0
+        }
+    }
+
+    fn ndcg_at(response: &Value, expected: &str) -> f64 {
+        let Some(rank) = response
+            .get("sources")
+            .and_then(Value::as_array)
+            .and_then(|sources| {
+                sources
+                    .iter()
+                    .position(|source| source["path"].as_str() == Some(expected))
+            })
+        else {
+            return 0.0;
+        };
+        1.0 / ((rank + 2) as f64).log2()
     }
 
     #[test]

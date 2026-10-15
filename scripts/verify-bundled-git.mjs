@@ -12,7 +12,16 @@
  */
 import { execFileSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
-import { lstatSync, readdirSync, readFileSync, statSync } from 'node:fs';
+import {
+  lstatSync,
+  mkdtempSync,
+  readdirSync,
+  readFileSync,
+  rmSync,
+  statSync,
+  writeFileSync,
+} from 'node:fs';
+import { tmpdir } from 'node:os';
 import { basename, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -46,6 +55,7 @@ if (payloads.length === 0) {
 
 const tauriChecksumVerified =
   mode !== '--tauri-app' || payloads.some((payload) => tauriManifestMatches(payload));
+let checksumVerifiedPayload = null;
 
 for (const payload of payloads) {
   const binary = join(payload, relativeBinary);
@@ -56,7 +66,43 @@ for (const payload of payloads) {
     fail(`dugite bundled Git is missing from install tree package: ${payload}`);
   }
   verifyExecutable(binary);
-  if (mode === '--tauri-app') verifyTauriPayload(payload, tauriChecksumVerified);
+  if (mode === '--tauri-app') {
+    verifyTauriPayload(payload, tauriChecksumVerified);
+    if (!checksumVerifiedPayload && tauriManifestMatches(payload))
+      checksumVerifiedPayload = payload;
+  }
+}
+if (mode === '--tauri-app') verifyBundledGitRepositoryOperation(checksumVerifiedPayload);
+
+function verifyBundledGitRepositoryOperation(payload) {
+  if (!payload) fail('No checksum-verified Tauri Git payload was available for an operation smoke');
+  const manifest = JSON.parse(readFileSync(join(payload, 'manifest.json'), 'utf8'));
+  const binary = join(payload, manifest.binary);
+  const repository = mkdtempSync(join(tmpdir(), 'nexnote-git-smoke-'));
+  const gitRoot = join(payload, 'git');
+  const env = {
+    ...process.env,
+    GIT_EXEC_PATH: join(gitRoot, 'libexec/git-core'),
+    GIT_CONFIG_SYSTEM: join(gitRoot, 'etc/gitconfig'),
+    GIT_TEMPLATE_DIR: join(gitRoot, 'share/git-core/templates'),
+    GIT_TERMINAL_PROMPT: '0',
+    PATH: [join(gitRoot, 'cmd'), join(gitRoot, 'mingw64/bin'), process.env.PATH]
+      .filter(Boolean)
+      .join(process.platform === 'win32' ? ';' : ':'),
+  };
+  try {
+    execFileSync(binary, ['init', '-b', 'main'], { cwd: repository, env });
+    execFileSync(binary, ['config', 'user.name', 'NexNote CI'], { cwd: repository, env });
+    execFileSync(binary, ['config', 'user.email', 'ci@nexnote.invalid'], { cwd: repository, env });
+    writeFileSync(join(repository, 'README.md'), '# Bundled Git smoke\n');
+    execFileSync(binary, ['add', 'README.md'], { cwd: repository, env });
+    execFileSync(binary, ['commit', '-m', 'bundled git smoke'], { cwd: repository, env });
+    console.log(
+      `Tauri bundled Git repository operation verified: ${manifest.platform}-${manifest.arch}`,
+    );
+  } finally {
+    rmSync(repository, { recursive: true, force: true });
+  }
 }
 
 function tauriManifestMatches(payload) {

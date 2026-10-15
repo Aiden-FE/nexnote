@@ -1,6 +1,11 @@
 import { useEffect, useRef, useState } from 'react';
-import type { AiFeatureKey, AiProfileView, ConnectionTestResult } from '@nexnote/shared';
-import { invoke } from '../../lib/ipc';
+import type {
+  AiFeatureKey,
+  AiProfileView,
+  ConnectionTestResult,
+  RetrievalIndexStatusPayload,
+} from '@nexnote/shared';
+import { invoke, onEvent } from '../../lib/ipc';
 import { useAiConfig, useAiWizard } from './ai-config';
 import {
   fetchModelCandidates,
@@ -27,33 +32,37 @@ import {
   X,
 } from 'lucide-react';
 
-const FEATURE_KEYS: Array<{ key: AiFeatureKey; labelKey: string; hintKey: string; icon: typeof Bot }> =
-  [
-    {
-      key: 'writing',
-      labelKey: 'ai.feature.writing.label',
-      hintKey: 'ai.feature.writing.hint',
-      icon: PenLine,
-    },
-    {
-      key: 'translation',
-      labelKey: 'ai.feature.translation.label',
-      hintKey: 'ai.feature.translation.hint',
-      icon: Bot,
-    },
-    {
-      key: 'chat',
-      labelKey: 'ai.feature.chat.label',
-      hintKey: 'ai.feature.chat.hint',
-      icon: MessageSquareText,
-    },
-    {
-      key: 'embedding',
-      labelKey: 'ai.feature.embedding.label',
-      hintKey: 'ai.feature.embedding.hint',
-      icon: Bot,
-    },
-  ];
+const FEATURE_KEYS: Array<{
+  key: AiFeatureKey;
+  labelKey: string;
+  hintKey: string;
+  icon: typeof Bot;
+}> = [
+  {
+    key: 'writing',
+    labelKey: 'ai.feature.writing.label',
+    hintKey: 'ai.feature.writing.hint',
+    icon: PenLine,
+  },
+  {
+    key: 'translation',
+    labelKey: 'ai.feature.translation.label',
+    hintKey: 'ai.feature.translation.hint',
+    icon: Bot,
+  },
+  {
+    key: 'chat',
+    labelKey: 'ai.feature.chat.label',
+    hintKey: 'ai.feature.chat.hint',
+    icon: MessageSquareText,
+  },
+  {
+    key: 'embedding',
+    labelKey: 'ai.feature.embedding.label',
+    hintKey: 'ai.feature.embedding.hint',
+    icon: Bot,
+  },
+];
 
 const CAPABILITY_LABELS: Record<keyof ConnectionTestResult['capabilities'], string> = {
   chat: 'ai.wizard.capability.chat',
@@ -75,7 +84,10 @@ export function AiSettingsSection() {
   const [busyId, setBusyId] = useState<string | null>(null);
   const [testResults, setTestResults] = useState<Record<string, ConnectionTestResult>>({});
   const [notice, setNotice] = useState<string | null>(null);
+  const [indexStatus, setIndexStatus] = useState<RetrievalIndexStatusPayload | null>(null);
   const importRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => onEvent('ai:retrievalStatus', ({ status }) => setIndexStatus(status)), []);
 
   const profiles = state?.profiles ?? [];
 
@@ -86,7 +98,9 @@ export function AiSettingsSection() {
       const result = await invoke('ai:testConnection', { profileId: p.id });
       setTestResults((prev) => ({ ...prev, [p.id]: result }));
     } catch (e) {
-      setNotice(t('ai.settings.testFailed', { message: e instanceof Error ? e.message : String(e) }));
+      setNotice(
+        t('ai.settings.testFailed', { message: e instanceof Error ? e.message : String(e) }),
+      );
     } finally {
       setBusyId(null);
     }
@@ -123,6 +137,19 @@ export function AiSettingsSection() {
     setNotice(t('ai.settings.exported', { count }));
   };
 
+  const cancelIndexBuild = async () => {
+    try {
+      const result = await invoke('ai:cancelRetrievalBuild');
+      if (!result.cancelled) setNotice(t('ai.retrievalIndex.notBuilding'));
+    } catch (e) {
+      setNotice(
+        t('ai.retrievalIndex.cancelFailed', {
+          message: e instanceof Error ? e.message : String(e),
+        }),
+      );
+    }
+  };
+
   const importProfiles = async (file: File) => {
     try {
       const json = await file.text();
@@ -134,13 +161,15 @@ export function AiSettingsSection() {
           skipped: result.skipped.length
             ? t('ai.settings.importSkipped', {
                 count: result.skipped.length,
-              items: result.skipped.join(t('ai.settings.importSkippedSeparator')),
+                items: result.skipped.join(t('ai.settings.importSkippedSeparator')),
               })
             : '',
         }),
       );
     } catch (e) {
-      setNotice(t('ai.settings.importFailed', { message: e instanceof Error ? e.message : String(e) }));
+      setNotice(
+        t('ai.settings.importFailed', { message: e instanceof Error ? e.message : String(e) }),
+      );
     }
   };
 
@@ -169,6 +198,47 @@ export function AiSettingsSection() {
             <X className="size-3.5" />
           </button>
         </div>
+      )}
+
+      {indexStatus && (
+        <section
+          data-testid="ai-retrieval-index-status"
+          className="space-y-2 rounded-md border p-3 text-xs"
+        >
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="font-medium">{tr('ai.retrievalIndex.title')}</span>
+            <span data-testid="ai-retrieval-index-phase">
+              {tr(`ai.retrievalIndex.phase.${indexStatus.phase}`)}
+            </span>
+            {indexStatus.phase === 'building' && (
+              <Button
+                data-testid="ai-retrieval-index-cancel"
+                variant="outline"
+                size="sm"
+                className="ml-auto h-7 px-2 text-xs"
+                onClick={() => void cancelIndexBuild()}
+              >
+                {tr('ai.retrievalIndex.cancel')}
+              </Button>
+            )}
+          </div>
+          {indexStatus.blocksTotal > 0 && (
+            <progress
+              data-testid="ai-retrieval-index-progress"
+              value={indexStatus.blocksDone}
+              max={indexStatus.blocksTotal}
+              aria-label={tr('ai.retrievalIndex.progress', {
+                done: indexStatus.blocksDone,
+                total: indexStatus.blocksTotal,
+              })}
+            />
+          )}
+          {indexStatus.error && (
+            <div className="rounded border border-destructive/40 bg-destructive/10 p-2 text-destructive">
+              {indexStatus.error}
+            </div>
+          )}
+        </section>
       )}
 
       {/* Profile 列表 */}
@@ -268,7 +338,8 @@ export function AiSettingsSection() {
                 >
                   {test.reachable ? (
                     <span className="flex items-center gap-1 text-green-600">
-                      <Check className="size-3" /> {t('ai.settings.reachable', { latency: test.latencyMs })}
+                      <Check className="size-3" />{' '}
+                      {t('ai.settings.reachable', { latency: test.latencyMs })}
                     </span>
                   ) : (
                     <span className="text-destructive">
@@ -340,9 +411,7 @@ export function AiSettingsSection() {
       {/* 分功能指定 */}
       <section className="space-y-2.5" data-testid="ai-feature-assignments">
         <h4 className="text-[13px] font-medium">{tr('ai.featureAssignments')}</h4>
-        <p className="text-xs text-muted-foreground">
-          {tr('ai.featureAssignments.description')}
-        </p>
+        <p className="text-xs text-muted-foreground">{tr('ai.featureAssignments.description')}</p>
         {FEATURE_KEYS.map(({ key, labelKey, hintKey, icon: Icon }) => {
           const assignment = state?.features[key] ?? null;
           return (

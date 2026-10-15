@@ -25,7 +25,8 @@
 - [ ] 无显式用户意图时零网络请求的 request-spy 测试保持通过。
 - [ ] 模型下载、校验、删除、离线二次启动通过；损坏缓存不会执行。
 - [ ] 本地推理文本不出设备；Renderer 与插件不能读取模型文件或凭据。
-- [ ] 中英混合检索质量显著优于 FTS+双链，低配性能和 RSS 达到 ADR-0027 门槛。
+- [x] 中英混合检索质量显著优于 FTS+双链（见 `docs/tauri/retrieval-quality-eval.md`）。
+- [ ] 低配性能和 RSS 达到 ADR-0027 门槛。
 - [ ] macOS 实测；Windows/Linux ONNX native library 与 GUI 保持 **NOT_RUN（当前无实测条件）**。
 
 ## 实施进度（Rust product core）
@@ -44,15 +45,12 @@
 
 尚未完成（保持未勾选）：
 
-- Agent 工具语义：`agent:run:*` 已是带真实凭据、可取消的 SSE 流，但工具审批、权限模式（conversation/edit/full）与 `agent:approval:respond` 尚未迁移，与 Electron agent gateway 不等价，故契约矩阵中这些行仍为 pending。
-- 插件贡献的 Skill 发现与向量索引构建的可取消性尚未迁移。
-- 检索索引进度/取消的设置页 UI（后端已有 `ai:retrievalStatus` 与 `ai:cancelRetrievalBuild`）。
-- 中英混合检索评测（recall@8 / nDCG@8 对比）、低配机 RSS 门槛。
+- 低配机查询 p95、RSS 曲线与取消恢复。
 - Windows/Linux ONNX native library 与 GUI 实测：**NOT_RUN（无实测条件）**。
 
 ## 2026-10-15 审查结论
 
-Agent 工具环/审批/权限/prompt/skills/降级/TTL/reasoning 过滤、内置 embedding 下载校验、显式 AI 代理、`.part` 断点续传、向导内下载/进度 UI、插件贡献 Skill 发现/覆盖、三阶段召回、后台向量构建进度与取消通道均已有实现与测试。仍缺：中英混合 recall@8 / nDCG@8 评测、低配 RSS/性能门槛、检索索引进度 UI、Windows/Linux ONNX 真实包验证。本票不能标 `done`。
+Agent 工具环/审批/权限/prompt/skills/降级/TTL/reasoning 过滤、内置 embedding 下载校验、显式 AI 代理、`.part` 断点续传、向导内下载/进度 UI、插件贡献 Skill 发现/覆盖、全库向量召回 + 三阶段重排、设置页索引进度/取消 UI 均已有实现与测试。中英混合 recall@8 / nDCG@8 评测结果：FTS+双链 0.000/0.000，内置语义 1.000/0.908（Apple M5 Max）。仍缺：低配 RSS/性能门槛、Windows/Linux ONNX 真实包验证。本票不能标 `done`。
 
 ## Out of scope
 

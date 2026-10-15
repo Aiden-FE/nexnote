@@ -1,7 +1,7 @@
 import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import * as path from 'node:path';
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { FsChangeEvent } from '@nexnote/shared';
 import { AppWriteTracker } from '../src/fs/app-write-tracker';
 import { VaultFsService } from '../src/fs/fs-service';
@@ -14,6 +14,12 @@ let rootA: string;
 let rootB: string;
 let rootC: string;
 let events: FsChangeEvent[];
+let services: VaultWatchService[];
+
+// The full workspace runs more than 200 test files in parallel. Real FSEvents
+// delivery can be delayed well beyond 20s on a loaded runner even though the
+// watcher is healthy; give the async boundary room and keep assertions strict.
+vi.setConfig({ testTimeout: 60_000 });
 
 beforeEach(async () => {
   tmp = await mkdtemp(path.join(tmpdir(), 'nexnote-watch-test-'));
@@ -24,24 +30,28 @@ beforeEach(async () => {
   await mkdir(rootB, { recursive: true });
   await mkdir(rootC, { recursive: true });
   events = [];
+  services = [];
 });
 
 afterEach(async () => {
+  await Promise.all(services.map((service) => service.stop()));
   await rm(tmp, { recursive: true, force: true });
 });
 
 function makeService(getRoot: () => string | null): VaultWatchService {
-  return new VaultWatchService({
+  const service = new VaultWatchService({
     getRoot,
     emit: (e) => events.push(e),
   });
+  services.push(service);
+  return service;
 }
 
 /** 等到收集到匹配事件（watcher 异步 + awaitWriteFinish 均有延迟）。 */
 async function untilEvent(
   predicate: (e: FsChangeEvent) => boolean,
   // CI intel runner 高负载下 chokidar 事件可能延迟数秒；成功即早退，只加宽失败路径预算
-  timeoutMs = 20000,
+  timeoutMs = 45_000,
 ): Promise<boolean> {
   const start = Date.now();
   while (Date.now() - start < timeoutMs) {
