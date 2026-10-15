@@ -2286,6 +2286,25 @@ impl PluginStore {
         }
         contributions
     }
+
+    /// Retrieval-skill strategies declared by active plugins. The host owns
+    /// execution; this only exposes constrained, serializable params.
+    pub fn list_plugin_skills(&self) -> Vec<(PluginSkillContribution, String)> {
+        self.plugins
+            .values()
+            .filter(|record| record.state == PluginRuntimeState::Active)
+            .flat_map(|record| {
+                record
+                    .manifest
+                    .skills
+                    .clone()
+                    .unwrap_or_default()
+                    .into_iter()
+                    .map(|skill| (skill, record.manifest.id.clone()))
+                    .collect::<Vec<_>>()
+            })
+            .collect()
+    }
 }
 
 fn remove_dir_if_exists(path: &Path) -> Result<(), String> {

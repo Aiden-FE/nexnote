@@ -334,8 +334,9 @@ fn skill_retrieve<R: tauri::Runtime>(
                     .collect()
             });
     let skill_store_handle = skill_store(app);
+    let contributed = plugin_skill_contributions(app);
     let active_skills: Vec<skill_service::SkillView> = skill_store_handle
-        .list()
+        .list_with_contributions(&contributed)
         .into_iter()
         .filter(|view| {
             view.enabled
@@ -983,6 +984,27 @@ fn skill_store<R: tauri::Runtime>(
     store
         .lock()
         .unwrap_or_else(std::sync::PoisonError::into_inner)
+}
+
+fn plugin_skill_contributions<R: tauri::Runtime>(
+    app: &tauri::AppHandle<R>,
+) -> Vec<skill_service::DynamicSkill> {
+    let plugin_state = app.state::<PluginState>();
+    let store = plugin_state.store.lock().expect("plugin store lock");
+    store
+        .list_plugin_skills()
+        .into_iter()
+        .map(|(skill, plugin_id)| skill_service::DynamicSkill {
+            id: format!("{plugin_id}:{}", skill.id),
+            name: skill.name.unwrap_or_else(|| skill.id.clone()),
+            description: skill.description,
+            plugin_id,
+            params: skill
+                .params
+                .map(|params| Value::Object(params.into_iter().collect()))
+                .unwrap_or_else(|| json!({})),
+        })
+        .collect()
 }
 
 fn ai_error(message: impl AsRef<str>) -> Value {
@@ -2646,7 +2668,11 @@ fn dispatch<R: tauri::Runtime>(
         "skills:ping" => ping("skills", "DEV-014"),
         "skills:list" => {
             let store = skill_store(app);
-            ok(serde_json::to_value(store.list()).unwrap_or(Value::Null))
+            let contributed = plugin_skill_contributions(app);
+            ok(
+                serde_json::to_value(store.list_with_contributions(&contributed))
+                    .unwrap_or(Value::Null),
+            )
         }
         "skills:retrieve" => {
             let Some(root) = vault_root.get() else {
@@ -2663,10 +2689,13 @@ fn dispatch<R: tauri::Runtime>(
                 string_field(payload, "id"),
                 payload.get("enabled").and_then(Value::as_bool),
             ) {
-                (Some(id), Some(enabled)) => match store.set_enabled(&id, enabled) {
-                    Ok(view) => ok(serde_json::to_value(view).unwrap_or(Value::Null)),
-                    Err(message) => error("SKILL_NOT_FOUND", &message),
-                },
+                (Some(id), Some(enabled)) => {
+                    let contributed = plugin_skill_contributions(app);
+                    match store.set_enabled_with_contributions(&id, enabled, &contributed) {
+                        Ok(view) => ok(serde_json::to_value(view).unwrap_or(Value::Null)),
+                        Err(message) => error("SKILL_NOT_FOUND", &message),
+                    }
+                }
                 _ => error("SKILL_ENABLE_INPUT", "id and enabled are required"),
             }
         }
@@ -2679,7 +2708,8 @@ fn dispatch<R: tauri::Runtime>(
                         .filter_map(Value::as_str)
                         .map(ToOwned::to_owned)
                         .collect();
-                    match store.set_order(&ids) {
+                    let contributed = plugin_skill_contributions(app);
+                    match store.set_order_with_contributions(&ids, &contributed) {
                         Ok(views) => ok(serde_json::to_value(views).unwrap_or(Value::Null)),
                         Err(message) => error("SKILL_ORDER_FAILED", &message),
                     }
@@ -2690,10 +2720,13 @@ fn dispatch<R: tauri::Runtime>(
         "skills:setParams" => {
             let store = skill_store(app);
             match (string_field(payload, "id"), payload.get("params").cloned()) {
-                (Some(id), Some(params)) => match store.set_params(&id, params) {
-                    Ok(view) => ok(serde_json::to_value(view).unwrap_or(Value::Null)),
-                    Err(message) => error("SKILL_NOT_FOUND", &message),
-                },
+                (Some(id), Some(params)) => {
+                    let contributed = plugin_skill_contributions(app);
+                    match store.set_params_with_contributions(&id, params, &contributed) {
+                        Ok(view) => ok(serde_json::to_value(view).unwrap_or(Value::Null)),
+                        Err(message) => error("SKILL_NOT_FOUND", &message),
+                    }
+                }
                 _ => error("SKILL_PARAMS_INPUT", "id and params are required"),
             }
         }

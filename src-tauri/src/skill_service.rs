@@ -20,10 +20,23 @@ pub struct SkillView {
     pub name: String,
     pub description: Option<String>,
     pub source: &'static str,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub plugin_id: Option<String>,
     pub enabled: bool,
     pub order: i64,
     pub params: Value,
     pub available: bool,
+}
+
+/// A retrieval strategy contributed by an active plugin. The host executes
+/// the constrained params; plugin code never receives vault content.
+#[derive(Debug, Clone)]
+pub struct DynamicSkill {
+    pub id: String,
+    pub name: String,
+    pub description: Option<String>,
+    pub plugin_id: String,
+    pub params: Value,
 }
 
 /// User overrides for one skill; absent fields mean "use the builtin default".
@@ -90,7 +103,14 @@ impl SkillStore {
 
     /// All skills sorted by effective order, then id — the same order the
     /// renderer uses for display and multi-skill retrieval.
+    #[cfg(test)]
     pub fn list(&self) -> Vec<SkillView> {
+        self.list_with_contributions(&[])
+    }
+
+    /// Builtin skills plus active plugin contributions, with persisted user
+    /// overrides applied per id (Electron DEV-014 semantics).
+    pub fn list_with_contributions(&self, contributions: &[DynamicSkill]) -> Vec<SkillView> {
         let settings = self.settings.lock().expect("skill settings lock");
         let mut views: Vec<SkillView> = builtin_skills()
             .into_iter()
@@ -101,6 +121,7 @@ impl SkillStore {
                     name: skill.name.to_owned(),
                     description: Some(skill.description.to_owned()),
                     source: "builtin",
+                    plugin_id: None,
                     enabled: user.enabled.unwrap_or(skill.default_enabled),
                     order: user.order.unwrap_or(skill.order),
                     params: merge_objects(&skill.params, user.params.as_ref()),
@@ -108,45 +129,118 @@ impl SkillStore {
                 }
             })
             .collect();
+        for skill in contributions {
+            let user = settings.get(&skill.id).cloned().unwrap_or_default();
+            views.push(SkillView {
+                id: skill.id.clone(),
+                name: skill.name.clone(),
+                description: skill.description.clone(),
+                source: "plugin",
+                plugin_id: Some(skill.plugin_id.clone()),
+                enabled: user.enabled.unwrap_or(true),
+                order: user.order.unwrap_or(100),
+                params: merge_objects(&skill.params, user.params.as_ref()),
+                available: true,
+            });
+        }
         views.sort_by(|a, b| a.order.cmp(&b.order).then_with(|| a.id.cmp(&b.id)));
         views
     }
 
+    #[cfg(test)]
     pub fn set_enabled(&self, id: &str, enabled: bool) -> Result<SkillView, String> {
-        self.mutate(id, |setting| setting.enabled = Some(enabled))?;
-        self.find(id)
+        self.set_enabled_with_contributions(id, enabled, &[])
+    }
+
+    pub fn set_enabled_with_contributions(
+        &self,
+        id: &str,
+        enabled: bool,
+        contributions: &[DynamicSkill],
+    ) -> Result<SkillView, String> {
+        self.mutate_with_contributions(id, contributions, |setting| {
+            setting.enabled = Some(enabled)
+        })?;
+        self.find_with_contributions(id, contributions)
+            .into_iter()
+            .next()
+            .ok_or_else(|| format!("Skill not found: {id}"))
     }
 
     /// Assigns `order = index` for each listed id (unknown ids accepted,
     /// matching the reference) and returns the re-sorted full list.
+    #[cfg(test)]
     pub fn set_order(&self, ordered_ids: &[String]) -> Result<Vec<SkillView>, String> {
+        self.set_order_with_contributions(ordered_ids, &[])
+    }
+
+    pub fn set_order_with_contributions(
+        &self,
+        ordered_ids: &[String],
+        contributions: &[DynamicSkill],
+    ) -> Result<Vec<SkillView>, String> {
         let mut settings = self.settings.lock().expect("skill settings lock");
         for (index, id) in ordered_ids.iter().enumerate() {
             settings.entry(id.clone()).or_default().order = Some(index as i64);
         }
         persist(&self.path, &settings)?;
         drop(settings);
-        Ok(self.list())
+        Ok(self.list_with_contributions(contributions))
     }
 
     /// Replaces the user params layer wholesale (reference semantics); the
     /// view still merges builtin defaults underneath, per key.
+    #[cfg(test)]
     pub fn set_params(&self, id: &str, params: Value) -> Result<SkillView, String> {
-        self.mutate(id, |setting| setting.params = Some(params))?;
-        self.find(id)
+        self.set_params_with_contributions(id, params, &[])
     }
 
+    pub fn set_params_with_contributions(
+        &self,
+        id: &str,
+        params: Value,
+        contributions: &[DynamicSkill],
+    ) -> Result<SkillView, String> {
+        self.mutate_with_contributions(id, contributions, |setting| setting.params = Some(params))?;
+        self.find_with_contributions(id, contributions)
+            .into_iter()
+            .next()
+            .ok_or_else(|| format!("Skill not found: {id}"))
+    }
+
+    #[cfg(test)]
+    #[allow(dead_code)]
     fn find(&self, id: &str) -> Result<SkillView, String> {
-        self.list()
+        self.find_with_contributions(id, &[])
             .into_iter()
             .find(|view| view.id == id)
             .ok_or_else(|| format!("Skill not found: {id}"))
     }
 
+    fn find_with_contributions(&self, id: &str, contributions: &[DynamicSkill]) -> Vec<SkillView> {
+        self.list_with_contributions(contributions)
+            .into_iter()
+            .filter(|view| view.id == id)
+            .collect()
+    }
+
     /// Locks, applies the mutation, persists, and verifies the skill exists —
     /// order matters: an unknown id must not leave a phantom write behind.
+    #[cfg(test)]
+    #[allow(dead_code)]
     fn mutate(&self, id: &str, apply: impl FnOnce(&mut SkillSetting)) -> Result<(), String> {
-        if !builtin_skills().iter().any(|skill| skill.id == id) {
+        self.mutate_with_contributions(id, &[], apply)
+    }
+
+    fn mutate_with_contributions(
+        &self,
+        id: &str,
+        contributions: &[DynamicSkill],
+        apply: impl FnOnce(&mut SkillSetting),
+    ) -> Result<(), String> {
+        let known = builtin_skills().iter().any(|skill| skill.id == id)
+            || contributions.iter().any(|skill| skill.id == id);
+        if !known {
             return Err(format!("Skill not found: {id}"));
         }
         let mut settings = self.settings.lock().expect("skill settings lock");
@@ -234,6 +328,48 @@ mod tests {
         assert!(!views[1].enabled);
         assert_eq!(views[1].order, 1);
         assert_eq!(views[1].params, json!({ "disableVector": true, "topK": 6 }));
+    }
+
+    #[test]
+    fn active_plugin_skills_use_electron_defaults_and_user_overrides() {
+        let store = SkillStore::new(temp_path("plugin"));
+        let contributed = vec![DynamicSkill {
+            id: "com.example.search:quick".to_owned(),
+            name: "Quick".to_owned(),
+            description: Some("Plugin strategy".to_owned()),
+            plugin_id: "com.example.search".to_owned(),
+            params: json!({ "topK": 5 }),
+        }];
+
+        let views = store.list_with_contributions(&contributed);
+        let plugin = views
+            .iter()
+            .find(|view| view.id == "com.example.search:quick")
+            .expect("plugin skill");
+        assert_eq!(plugin.source, "plugin");
+        assert_eq!(plugin.plugin_id.as_deref(), Some("com.example.search"));
+        assert!(plugin.enabled);
+        assert_eq!(plugin.order, 100);
+        assert_eq!(plugin.params["topK"], json!(5));
+
+        store
+            .set_enabled_with_contributions(&plugin.id, false, &contributed)
+            .expect("disable plugin skill");
+        store
+            .set_params_with_contributions(
+                &plugin.id,
+                json!({ "topK": 3, "disableVector": true }),
+                &contributed,
+            )
+            .expect("override plugin params");
+        let updated = store
+            .list_with_contributions(&contributed)
+            .into_iter()
+            .find(|view| view.id == plugin.id)
+            .expect("updated plugin skill");
+        assert!(!updated.enabled);
+        assert_eq!(updated.params["topK"], json!(3));
+        assert_eq!(updated.params["disableVector"], json!(true));
     }
 
     #[test]

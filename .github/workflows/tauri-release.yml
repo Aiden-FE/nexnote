@@ -90,8 +90,36 @@ jobs:
             echo 'Tauri updater signing key unavailable; building unsigned candidates.'
           fi
           pnpm tauri build
+      - name: Extract Windows installers for Git payload verification
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $extractRoot = Join-Path $env:RUNNER_TEMP 'tauri-installer-extract'
+          New-Item -ItemType Directory -Force -Path $extractRoot | Out-Null
+          $setup = Get-ChildItem src-tauri/target/release/bundle/nsis -Filter '*.exe' -ErrorAction SilentlyContinue | Select-Object -First 1
+          if ($setup) {
+            $nsisRoot = Join-Path $extractRoot 'nsis'
+            & 7z x -y $setup.FullName "-o$nsisRoot"
+            if ($LASTEXITCODE -ne 0) { throw "7z failed to extract $($setup.FullName)" }
+          }
+          foreach ($msi in Get-ChildItem src-tauri/target/release/bundle/msi -Filter '*.msi' -ErrorAction SilentlyContinue) {
+            $msiRoot = Join-Path $extractRoot ('msi-' + $msi.BaseName)
+            New-Item -ItemType Directory -Force -Path $msiRoot | Out-Null
+            $arguments = @('/a', $msi.FullName, '/qn', "TARGETDIR=$msiRoot")
+            $process = Start-Process msiexec.exe -ArgumentList $arguments -PassThru -Wait
+            if ($process.ExitCode -ne 0) { throw "msiexec administrative extract failed: $($msi.FullName)" }
+          }
+          if (-not (Get-ChildItem $extractRoot -Recurse -Filter manifest.json -ErrorAction SilentlyContinue | Where-Object { $_.FullName -match 'resources.*git' })) {
+            throw 'Windows installers did not contain resources/git/manifest.json'
+          }
       - name: Verify Tauri bundled Git payload
-        run: node scripts/verify-bundled-git.mjs --tauri-app src-tauri/target/release/bundle
+        shell: bash
+        run: |
+          if [ "$RUNNER_OS" = "Windows" ]; then
+            node scripts/verify-bundled-git.mjs --tauri-app "$RUNNER_TEMP/tauri-installer-extract"
+          else
+            node scripts/verify-bundled-git.mjs --tauri-app src-tauri/target/release/bundle
+          fi
       - name: Re-sign and verify macOS bundle (ad hoc)
         if: runner.os == 'macOS'
         shell: bash
