@@ -729,6 +729,55 @@ fn default_vault_settings() -> Value {
     })
 }
 
+fn proxy_component(value: &str) -> String {
+    let mut encoded = String::new();
+    for byte in value.bytes() {
+        if byte.is_ascii_alphanumeric() || matches!(byte, b'-' | b'_' | b'.' | b'~') {
+            encoded.push(byte as char);
+        } else {
+            encoded.push_str(&format!("%{byte:02X}"));
+        }
+    }
+    encoded
+}
+
+fn ai_download_proxy_url(settings: &Value) -> Option<String> {
+    let network = settings.get("network")?;
+    if network.get("applyToAi") != Some(&Value::Bool(true)) {
+        return None;
+    }
+    let target = network
+        .get("aiProxy")
+        .filter(|value| value.is_object())
+        .unwrap_or(network);
+    let mode = target.get("mode")?.as_str()?;
+    if matches!(mode, "off" | "system") {
+        // System mode follows the process environment through reqwest's default
+        // proxy resolver; explicit modes below are forced into the client.
+        return None;
+    }
+    let host = target.get("host")?.as_str()?;
+    let port = target.get("port")?.as_u64()?;
+    let auth = target
+        .get("username")
+        .and_then(Value::as_str)
+        .map(|username| {
+            let password = target
+                .get("password")
+                .and_then(Value::as_str)
+                .unwrap_or_default();
+            format!(
+                "{}:{}@",
+                proxy_component(username),
+                proxy_component(password)
+            )
+        });
+    Some(format!(
+        "{mode}://{}{host}:{port}",
+        auth.unwrap_or_default()
+    ))
+}
+
 /// Persisted vault settings for the `settings:changed` event payload.
 fn current_vault_settings(state: &State<'_, ProductState>) -> Value {
     state
@@ -2155,8 +2204,12 @@ fn dispatch<R: tauri::Runtime>(
             }
             let app_handle = app.clone();
             let embedding_state = embedding.inner().clone();
+            let proxy_url = {
+                let settings = state.global_settings.lock().expect("settings lock");
+                ai_download_proxy_url(&settings)
+            };
             std::thread::spawn(move || {
-                let result = embedding_state.ensure_downloaded(|progress| {
+                let result = embedding_state.ensure_downloaded(proxy_url.as_deref(), |progress| {
                     let _ = app_handle.emit(
                         "ai:builtInEmbeddingStatus",
                         json!({
@@ -2189,6 +2242,9 @@ fn dispatch<R: tauri::Runtime>(
             Ok(()) => ok(json!({ "deleted": true })),
             Err(message) => error("BUILTIN_EMBEDDING_DELETE_FAILED", &message),
         },
+        "ai:cancelRetrievalBuild" => {
+            ok(json!({ "cancelled": retrieval_service::cancel_vector_build() }))
+        }
         "ai:export" => {
             let store = ai_store(app);
             ok(store.export_profiles())
@@ -4036,6 +4092,33 @@ mod tests {
         assert!(entries
             .iter()
             .any(|entry| entry["id"] == "appearance.theme"));
+    }
+
+    #[test]
+    fn ai_download_proxy_respects_the_explicit_ai_override() {
+        let mut settings = default_global_settings();
+        settings["network"]["mode"] = json!("http");
+        settings["network"]["host"] = json!("global-proxy.example");
+        settings["network"]["port"] = json!(7890);
+        settings["network"]["aiProxy"] = json!({
+            "mode": "https",
+            "host": "ai-proxy.example",
+            "port": 8443,
+            "username": "user @ai",
+            "password": "p@ss/word",
+            "bypass": []
+        });
+        assert_eq!(
+            ai_download_proxy_url(&settings),
+            Some("https://user%20%40ai:p%40ss%2Fword@ai-proxy.example:8443".to_owned())
+        );
+
+        settings["network"]["applyToAi"] = json!(false);
+        assert_eq!(ai_download_proxy_url(&settings), None);
+
+        settings["network"]["applyToAi"] = json!(true);
+        settings["network"]["aiProxy"] = json!({ "mode": "system", "host": null, "port": null });
+        assert_eq!(ai_download_proxy_url(&settings), None);
     }
 
     #[test]

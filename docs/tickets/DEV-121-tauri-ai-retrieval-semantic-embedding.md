@@ -46,14 +46,14 @@
 
 - Agent 工具语义：`agent:run:*` 已是带真实凭据、可取消的 SSE 流，但工具审批、权限模式（conversation/edit/full）与 `agent:approval:respond` 尚未迁移，与 Electron agent gateway 不等价，故契约矩阵中这些行仍为 pending。
 - 插件贡献的 Skill 发现与向量索引构建的可取消性尚未迁移。
-- 下载进度 UI（向导内按钮/进度条）、断点续传、代理与失败清理策略。
-- 全量/增量向量索引构建的可取消性与完整进度事件（当前为后台线程 + 降级提示）。
+- 插件贡献的 Skill 发现尚未接入 `SkillStore`。
+- 检索索引进度/取消的设置页 UI（后端已有 `ai:retrievalStatus` 与 `ai:cancelRetrievalBuild`）。
 - 中英混合检索评测（recall@8 / nDCG@8 对比）、低配机 RSS 门槛。
 - Windows/Linux ONNX native library 与 GUI 实测：**NOT_RUN（无实测条件）**。
 
 ## 2026-10-15 审查结论
 
-Agent 工具环/审批/权限/prompt/skills/降级/TTL/reasoning 过滤、内置 embedding 下载校验与三阶段召回均已有实现与 Rust 测试。仍缺：中英混合 recall@8 / nDCG@8 评测、低配 RSS/性能门槛、模型下载代理与断点续传策略、Windows/Linux ONNX 真实包验证。本票不能标 `done`。
+Agent 工具环/审批/权限/prompt/skills/降级/TTL/reasoning 过滤、内置 embedding 下载校验、显式 AI 代理、`.part` 断点续传、向导内下载/进度 UI、三阶段召回、后台向量构建进度与取消通道均已有实现与测试。仍缺：中英混合 recall@8 / nDCG@8 评测、低配 RSS/性能门槛、插件贡献 Skill 发现、Windows/Linux ONNX 真实包验证。本票不能标 `done`。
 
 ## Out of scope
 

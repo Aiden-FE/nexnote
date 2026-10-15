@@ -1,6 +1,11 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import type { AiProviderKind, ConnectionTestResult } from '@nexnote/shared';
-import { invoke } from '../../lib/ipc';
+import type {
+  AiProviderKind,
+  BuiltInEmbeddingDownloadStatus,
+  BuiltInEmbeddingStatus,
+  ConnectionTestResult,
+} from '@nexnote/shared';
+import { invoke, onEvent } from '../../lib/ipc';
 import { useAiConfig, useAiWizard } from './ai-config';
 import { openSettings } from '../../lib/open-settings';
 import { Button } from '../../components/ui/button';
@@ -126,9 +131,49 @@ function WizardBody({
   const [models, setModels] = useState<string[]>([]);
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
+  const [embeddingStatus, setEmbeddingStatus] = useState<BuiltInEmbeddingStatus | null>(null);
+  const [embeddingProgress, setEmbeddingProgress] = useState<BuiltInEmbeddingDownloadStatus | null>(
+    null,
+  );
+  const [embeddingError, setEmbeddingError] = useState<string | null>(null);
 
   const preset = useMemo(() => PROVIDER_PRESETS.find((p) => p.id === presetId)!, [presetId]);
   const isEdit = !!editing;
+
+  useEffect(() => {
+    if (kind !== 'local-embedding') {
+      return;
+    }
+    let disposed = false;
+    const refresh = async () => {
+      try {
+        const next = await invoke('ai:builtInEmbedding:status');
+        if (!disposed) setEmbeddingStatus(next);
+      } catch {
+        // The explicit download action surfaces backend failures to the user.
+      }
+    };
+    void refresh();
+    const unsubscribe = onEvent('ai:builtInEmbeddingStatus', (status) => {
+      if (status.phase === 'ready') {
+        setEmbeddingProgress(null);
+        setEmbeddingError(null);
+        void refresh();
+        return;
+      }
+      if (status.phase === 'error') {
+        setEmbeddingProgress(null);
+        setEmbeddingError(status.error ?? t('ai.wizard.localEmbedding.error'));
+        void refresh();
+        return;
+      }
+      setEmbeddingProgress(status);
+    });
+    return () => {
+      disposed = true;
+      unsubscribe();
+    };
+  }, [kind]);
 
   /** 任何影响连接的输入变化都使既有测试结果失效（必须重测）。 */
   const invalidateTest = useCallback(() => {
@@ -206,6 +251,16 @@ function WizardBody({
     },
     [baseUrl, editing, kind, model, submitCredential],
   );
+
+  const downloadEmbedding = async () => {
+    setEmbeddingError(null);
+    try {
+      await invoke('ai:builtInEmbedding:download');
+      setEmbeddingStatus(await invoke('ai:builtInEmbedding:status'));
+    } catch (e) {
+      setEmbeddingError(e instanceof Error ? e.message : String(e));
+    }
+  };
 
   const finish = async () => {
     setSaving(true);
@@ -295,7 +350,8 @@ function WizardBody({
     step === 'connection'
       ? name.trim().length > 0 &&
         (/^https?:\/\//i.test(baseUrl.trim()) || kind === 'local-embedding') &&
-        (kind !== 'azure-openai' || model.trim().length > 0)
+        (kind !== 'azure-openai' || model.trim().length > 0) &&
+        (kind !== 'local-embedding' || !!embeddingStatus?.downloaded)
       : step === 'test'
         ? !!testResult?.reachable
         : step === 'model'
@@ -349,9 +405,7 @@ function WizardBody({
         <div className="min-h-0 flex-1 overflow-auto px-5 py-4 text-sm">
           {step === 'provider' && (
             <div data-testid="ai-wizard-provider" className="space-y-2">
-              <p className="mb-3 text-muted-foreground">
-                {tr('ai.wizard.providerDescription')}
-              </p>
+              <p className="mb-3 text-muted-foreground">{tr('ai.wizard.providerDescription')}</p>
               {PROVIDER_PRESETS.map((p) => (
                 <button
                   key={p.id}
@@ -449,18 +503,76 @@ function WizardBody({
                     setCredentialRevision((revision) => revision + 1);
                     invalidateTest();
                   }}
-                  placeholder={editing?.hasApiKey ? tr('ai.wizard.apiKey.savedPlaceholder') : 'sk-…'}
+                  placeholder={
+                    editing?.hasApiKey ? tr('ai.wizard.apiKey.savedPlaceholder') : 'sk-…'
+                  }
                   autoComplete="off"
                 />
               </Field>
+              {kind === 'local-embedding' && (
+                <div
+                  data-testid="ai-wizard-local-embedding"
+                  className="space-y-2 rounded-md border p-3 text-xs"
+                >
+                  <div className="font-medium">{tr('ai.wizard.localEmbedding.title')}</div>
+                  <p className="text-muted-foreground">
+                    {tr('ai.wizard.localEmbedding.description')}
+                  </p>
+                  <div className="flex items-center gap-2">
+                    <span data-testid="ai-wizard-local-embedding-status">
+                      {embeddingStatus?.downloaded
+                        ? tr('ai.wizard.localEmbedding.ready')
+                        : embeddingStatus?.downloading
+                          ? tr('ai.wizard.localEmbedding.downloading')
+                          : tr('ai.wizard.localEmbedding.notDownloaded')}
+                    </span>
+                    {!embeddingStatus?.downloaded && (
+                      <Button
+                        data-testid="ai-wizard-local-embedding-download"
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        disabled={embeddingStatus?.downloading || !!embeddingProgress}
+                        onClick={() => void downloadEmbedding()}
+                      >
+                        {embeddingStatus?.downloading || embeddingProgress ? (
+                          <Loader2 className="size-3.5 animate-spin" />
+                        ) : null}
+                        {tr('ai.wizard.localEmbedding.download')}
+                      </Button>
+                    )}
+                  </div>
+                  {embeddingProgress?.totalBytes && (
+                    <progress
+                      data-testid="ai-wizard-local-embedding-progress"
+                      value={embeddingProgress.downloadedBytes ?? 0}
+                      max={embeddingProgress.totalBytes}
+                      aria-label={tr('ai.wizard.localEmbedding.progress', {
+                        file: embeddingProgress.file ?? '',
+                        percent: Math.round(
+                          ((embeddingProgress.downloadedBytes ?? 0) /
+                            embeddingProgress.totalBytes) *
+                            100,
+                        ),
+                      })}
+                    />
+                  )}
+                  {embeddingError && (
+                    <div
+                      data-testid="ai-wizard-local-embedding-error"
+                      className="rounded border border-destructive/40 bg-destructive/10 p-2 text-destructive"
+                    >
+                      {embeddingError}
+                    </div>
+                  )}
+                </div>
+              )}
             </div>
           )}
 
           {step === 'test' && (
             <div data-testid="ai-wizard-test" className="space-y-3">
-              <p className="text-muted-foreground">
-                {tr('ai.wizard.testDescription')}
-              </p>
+              <p className="text-muted-foreground">{tr('ai.wizard.testDescription')}</p>
               <Button
                 data-testid="ai-wizard-test-btn"
                 variant="outline"

@@ -179,6 +179,7 @@ impl EmbeddingState {
     /// download is never loaded and never left behind for a later run to pick up.
     pub fn ensure_downloaded(
         &self,
+        proxy_url: Option<&str>,
         mut on_progress: impl FnMut(DownloadProgress),
     ) -> Result<(), String> {
         fs::create_dir_all(&self.model_dir).map_err(|error| {
@@ -187,8 +188,14 @@ impl EmbeddingState {
                 self.model_dir.display()
             )
         })?;
-        let client = reqwest::blocking::Client::builder()
-            .connect_timeout(std::time::Duration::from_secs(20))
+        let mut client_builder = reqwest::blocking::Client::builder()
+            .connect_timeout(std::time::Duration::from_secs(20));
+        if let Some(proxy_url) = proxy_url {
+            let proxy = reqwest::Proxy::all(proxy_url)
+                .map_err(|error| format!("Failed to prepare the model download proxy: {error}"))?;
+            client_builder = client_builder.proxy(proxy);
+        }
+        let client = client_builder
             .build()
             .map_err(|error| format!("Failed to prepare the model download client: {error}"))?;
 
@@ -203,7 +210,11 @@ impl EmbeddingState {
                 });
                 continue;
             }
-            download_file(&client, file, &target, &mut on_progress)?;
+            let url = format!(
+                "https://huggingface.co/{}/resolve/{}/{}",
+                file.repo, file.revision, file.remote_path
+            );
+            download_file(&client, file, &target, &url, &mut on_progress)?;
         }
         self.invalidate_runtime();
         Ok(())
@@ -326,30 +337,54 @@ fn download_file(
     client: &reqwest::blocking::Client,
     file: ModelFile,
     target: &Path,
+    url: &str,
     on_progress: &mut impl FnMut(DownloadProgress),
 ) -> Result<(), String> {
     let part = target.with_extension("part");
-    let _ = fs::remove_file(&part);
-    let url = format!(
-        "https://huggingface.co/{}/resolve/{}/{}",
-        file.repo, file.revision, file.remote_path
-    );
+    let mut existing_len = fs::metadata(&part)
+        .map(|metadata| metadata.len())
+        .unwrap_or(0);
+    if existing_len > file.size_bytes {
+        fs::remove_file(&part).map_err(|error| {
+            format!(
+                "Failed to remove the oversized partial {}: {error}",
+                file.local_name
+            )
+        })?;
+        existing_len = 0;
+    }
     let mut response = client
         .get(url)
+        .header("Range", format!("bytes={existing_len}-"))
         .send()
         .map_err(|error| format!("Failed to download {}: {error}", file.local_name))?;
-    if !response.status().is_success() {
+    let status = response.status().as_u16();
+    if !(200..=299).contains(&status) {
         return Err(format!(
             "Failed to download {}: HTTP {}",
             file.local_name,
             response.status()
         ));
     }
-    let mut stream = fs::File::create(&part)
+    let mut stream = fs::OpenOptions::new()
+        .append(true)
+        .create(true)
+        .open(&part)
         .map_err(|error| format!("Failed to create {}: {error}", part.display()))?;
     let mut hasher = Sha256::new();
+    let mut downloaded = existing_len;
+    if status == 200 && existing_len > 0 {
+        stream
+            .set_len(0)
+            .map_err(|error| format!("Failed to restart {}: {error}", part.display()))?;
+        downloaded = 0;
+    } else if existing_len > 0 {
+        let mut existing = fs::File::open(&part)
+            .map_err(|error| format!("Failed to reopen {}: {error}", part.display()))?;
+        std::io::copy(&mut existing, &mut hasher)
+            .map_err(|error| format!("Failed to hash the partial {}: {error}", file.local_name))?;
+    }
     let mut buffer = vec![0u8; 64 * 1024];
-    let mut downloaded: u64 = 0;
     loop {
         let read = response
             .read(&mut buffer)
@@ -619,6 +654,83 @@ mod tests {
         assert!(state.begin_download().is_err());
         state.end_download();
         assert!(!state.is_downloading());
+    }
+
+    #[test]
+    fn download_resumes_a_network_partial_and_verifies_the_whole_file() {
+        use std::io::{Read, Write};
+        use std::net::TcpListener;
+
+        fn start_server(
+            status_line: &'static str,
+            body: &'static [u8],
+            advertised_len: usize,
+        ) -> (String, std::thread::JoinHandle<()>) {
+            let listener = TcpListener::bind("127.0.0.1:0").expect("bind test server");
+            let address = listener.local_addr().expect("test address");
+            let handle = std::thread::spawn(move || {
+                let (mut stream, _) = listener.accept().expect("accept download");
+                let mut request = [0; 4096];
+                let read = stream.read(&mut request).expect("read request");
+                let headers = String::from_utf8_lossy(&request[..read]).into_owned();
+                assert!(
+                    headers.contains("Range: bytes=3-"),
+                    "missing range: {headers}"
+                );
+                let response = format!("{status_line}\r\nContent-Length: {advertised_len}\r\n\r\n");
+                stream
+                    .write_all(response.as_bytes())
+                    .expect("write headers");
+                stream.write_all(body).expect("write body");
+            });
+            (format!("http://{address}/model.bin"), handle)
+        }
+
+        let full = b"abcdef";
+        let digest: &'static str = {
+            let mut hasher = Sha256::new();
+            hasher.update(full);
+            Box::leak(hex::encode(hasher.finalize()).into_boxed_str())
+        };
+        let file = ModelFile {
+            repo: "local",
+            revision: "1",
+            remote_path: "model.bin",
+            local_name: "resume.bin",
+            size_bytes: full.len() as u64,
+            sha256: digest,
+        };
+        let dir = std::env::temp_dir().join(format!(
+            "nexnote-embedding-resume-{}",
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .map(|value| value.as_nanos())
+                .unwrap_or_default()
+        ));
+        fs::create_dir_all(&dir).expect("create temp dir");
+        let target = dir.join("resume.bin");
+        fs::write(target.with_extension("part"), &full[..3]).expect("write partial");
+
+        // A 206 response that closes before its body leaves the valid prefix in
+        // `.part`; the next attempt sends the same Range request again.
+        let (url, broken) = start_server("HTTP/1.1 206 Partial Content", b"", 3);
+        let client = reqwest::blocking::Client::new();
+        let mut progress = |_| {};
+        assert!(download_file(&client, file, &target, &url, &mut progress).is_err());
+        assert_eq!(
+            fs::read(target.with_extension("part")).expect("read retained partial"),
+            b"abc"
+        );
+        broken.join().expect("broken server thread");
+
+        let (url, complete) = start_server("HTTP/1.1 206 Partial Content", b"def", 3);
+        let client = reqwest::blocking::Client::new();
+        let mut progress = |_| {};
+        download_file(&client, file, &target, &url, &mut progress).expect("resume download");
+        complete.join().expect("complete server thread");
+        assert_eq!(fs::read(&target).expect("read completed file"), full);
+        assert!(!target.with_extension("part").exists());
+        let _ = fs::remove_dir_all(&dir);
     }
 
     #[test]

@@ -166,6 +166,7 @@ describe('IPC 注册表框架', () => {
       'ai:builtInEmbedding:status',
       'ai:builtInEmbedding:download',
       'ai:builtInEmbedding:delete',
+      'ai:cancelRetrievalBuild',
       'binary:host:flushAck',
     ]);
     const electronChannels = IPC_CHANNELS.filter((channel) => !tauriOnlyChannels.has(channel));

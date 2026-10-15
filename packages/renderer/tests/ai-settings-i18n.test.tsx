@@ -111,9 +111,7 @@ describe('ADR-0023 AI settings and wizard bilingual UI', () => {
     ).not.toBeNull();
 
     act(() => {
-      document
-        .querySelector<HTMLButtonElement>('[data-testid^="ai-test-profile-"]')
-        ?.click();
+      document.querySelector<HTMLButtonElement>('[data-testid^="ai-test-profile-"]')?.click();
     });
     await wait();
     resolveTest!({ ok: true, data: testResult });
@@ -160,13 +158,11 @@ describe('ADR-0023 AI settings and wizard bilingual UI', () => {
 
     expect(container.textContent).toContain('Configure AI provider');
     expect(container.textContent).toContain('OpenAI official');
-    expect(container.textContent).toContain('Local lexical embedding');
+    expect(container.textContent).toContain('Built-in semantic embedding');
     expect(container.textContent).not.toMatch(/[一-鿿]/);
 
     act(() => {
-      document
-        .querySelector<HTMLButtonElement>('[data-testid="ai-wizard-preset-openai"]')
-        ?.click();
+      document.querySelector<HTMLButtonElement>('[data-testid="ai-wizard-preset-openai"]')?.click();
     });
     await act(async () => Promise.resolve());
 

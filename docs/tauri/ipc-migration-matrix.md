@@ -1,8 +1,8 @@
 # Tauri 迁移契约矩阵（DEV-115）
 
-> 生成日期：2026-10-14 · 覆盖当前 `IPC_CHANNELS`（158 条）与 `IPC_EVENT_CHANNELS`（16 条），另登记 1 条已弃用 legacy event，共 175 条。
+> 生成日期：2026-10-14 · 覆盖当前 `IPC_CHANNELS`（159 条）与 `IPC_EVENT_CHANNELS`（16 条），另登记 1 条已弃用 legacy event，共 176 条。
 >
-> 当前进度：173 条 `ported`，1 条 `pending`，1 条 `explicitly-unsupported`（`ai:streamEvent` 已弃用）。
+> 当前进度：174 条 `ported`，1 条 `pending`，1 条 `explicitly-unsupported`（`ai:streamEvent` 已弃用）。
 
 本矩阵是 DEV-ARCH-002 全面迁移的单一事实源：每个 channel/event 都有唯一条目，记录数据所有权、副作用、Electron handler 位置、Tauri 目标模块、迁移批次和当前状态。后续子票按批次推进，Rust 实现完成后将对应状态从 `pending` 改为 `ported`。
 
@@ -161,6 +161,7 @@
 | ai:builtInEmbedding:status | app-state | no | no | yes | no | —（Tauri 新增） | `embedding::status` | ai | ported |
 | ai:builtInEmbedding:download | app-state | yes | yes | yes | no | —（Tauri 新增，ADR-0027） | `embedding::download` | ai | ported |
 | ai:builtInEmbedding:delete | app-state | yes | no | yes | no | —（Tauri 新增，ADR-0027） | `embedding::delete` | ai | ported |
+| ai:cancelRetrievalBuild | app-state | no | no | yes | no | —（Tauri 新增，DEV-121） | `retrieval::cancel_build` | ai | ported |
 | ai:export | app-state | no | no | no | no | `ai-handlers.ts` | `ai::export_profiles` | ai | ported |
 | ai:import | app-state | yes | no | yes | no | `ai-handlers.ts` | `ai::import_profiles` | ai | ported |
 

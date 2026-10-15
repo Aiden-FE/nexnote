@@ -23,6 +23,7 @@ const NEIGHBOR_BLOCK_CAP: usize = 60;
 const BUILD_BATCH_SIZE: usize = 48;
 
 static BUILDING: AtomicBool = AtomicBool::new(false);
+static BUILD_CANCELLED: AtomicBool = AtomicBool::new(false);
 
 /// Owned vector row staged during a build before it is written as a batch.
 type OwnedVectorItem = (i64, Option<String>, String, Vec<f64>, String);
@@ -351,6 +352,7 @@ fn maybe_start_background_rebuild(root: std::path::PathBuf, embedder: &Embedder)
     {
         return;
     }
+    BUILD_CANCELLED.store(false, Ordering::SeqCst);
     let embedder = match embedder {
         Embedder::BuiltIn { state, profile_id } => Embedder::BuiltIn {
             state: state.clone(),
@@ -379,6 +381,14 @@ fn maybe_start_background_rebuild(root: std::path::PathBuf, embedder: &Embedder)
             }
             BUILDING.store(false, Ordering::SeqCst);
         });
+}
+
+pub fn cancel_vector_build() -> bool {
+    if !BUILDING.load(Ordering::SeqCst) {
+        return false;
+    }
+    BUILD_CANCELLED.store(true, Ordering::SeqCst);
+    true
 }
 
 /// Progress hook installed once by the product layer so build status can be
@@ -413,6 +423,9 @@ pub fn build_all_vectors(
     for (_page_id, page_blocks) in blocks_by_page {
         let mut items: Vec<OwnedVectorItem> = Vec::with_capacity(page_blocks.len());
         for chunk in page_blocks.chunks(BUILD_BATCH_SIZE) {
+            if BUILD_CANCELLED.load(Ordering::SeqCst) {
+                return Err("CANCELLED".to_owned());
+            }
             let texts: Vec<String> = chunk.iter().map(|block| block.content.clone()).collect();
             let vectors = embedder.embed(InputRole::Passage, &texts)?;
             for (block, vector) in chunk.iter().zip(vectors) {
@@ -558,6 +571,21 @@ mod tests {
         }));
         assert_eq!(custom.top_k, 3);
         assert!(custom.disable_vector);
+    }
+
+    #[test]
+    fn vector_build_cancel_reports_an_active_request_only() {
+        BUILDING.store(false, Ordering::SeqCst);
+        BUILD_CANCELLED.store(false, Ordering::SeqCst);
+        assert!(!cancel_vector_build());
+        assert!(!BUILD_CANCELLED.load(Ordering::SeqCst));
+
+        BUILDING.store(true, Ordering::SeqCst);
+        assert!(cancel_vector_build());
+        assert!(BUILD_CANCELLED.load(Ordering::SeqCst));
+
+        BUILDING.store(false, Ordering::SeqCst);
+        BUILD_CANCELLED.store(false, Ordering::SeqCst);
     }
 
     #[test]

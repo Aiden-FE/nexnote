@@ -37,6 +37,7 @@ export const AI_CHANNELS = [
   'ai:builtInEmbedding:status',
   'ai:builtInEmbedding:download',
   'ai:builtInEmbedding:delete',
+  'ai:cancelRetrievalBuild',
   'ai:export',
   'ai:import',
 ] as const;
@@ -121,6 +122,11 @@ export interface AiChannelMap {
   'ai:builtInEmbedding:delete': {
     request: void;
     response: Result<{ deleted: true }>;
+  };
+  /** 请求取消当前后台向量索引构建；若无构建任务则返回 cancelled:false。 */
+  'ai:cancelRetrievalBuild': {
+    request: void;
+    response: Result<{ cancelled: boolean }>;
   };
   'ai:export': {
     request: void;
