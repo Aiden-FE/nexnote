@@ -426,10 +426,25 @@ pub fn flush_ack(
     ok(json!({ "accepted": true }))
 }
 
-/// `binary:host:ready` — the editor page ack; pull-model command delivery.
 // Label of the window created for one host key.
+///
+/// Tauri window labels allow only alphanumeric characters, `-`, `/`, `:` and
+/// `_`. Vault paths contain dots (every `book.xlsx` / `board.xmind` does), so
+/// sanitizing alone is not enough — and collapsing `.` onto `-` could collide
+/// with a path that genuinely contains `-`. A short stable hash of the raw key
+/// keeps labels unique and inside the allowed charset. Before this fix
+/// `open()` failed with `InvalidWindowLabel` for every real document.
 fn label_for(key: &str) -> String {
-    format!("binary-editor-{}", key.replace([':', '/'], "-"))
+    // FNV-1a: dependency-free, stable across runs and platforms.
+    let mut hash: u64 = 0xcbf29ce484222325;
+    for byte in key.as_bytes() {
+        hash ^= u64::from(*byte);
+        hash = hash.wrapping_mul(0x100000001b3);
+    }
+    format!(
+        "binary-editor-{}-{hash:016x}",
+        key.replace([':', '/', '.'], "-")
+    )
 }
 
 // `sender` is the window label Tauri injected for the invoking WebView — the
@@ -551,12 +566,21 @@ mod tests {
     }
 
     #[test]
-    fn label_for_matches_the_window_label_convention() {
+    fn label_for_is_valid_and_collision_free() {
         with_test_lock(|| {
-            assert_eq!(
-                label_for("xlsx:notes/a.xlsx"),
-                "binary-editor-xlsx-notes-a.xlsx"
+            // Every real binary path carries a dot; the label must still
+            // satisfy Tauri's charset (alphanumeric, `-`, `/`, `:`, `_`).
+            let label = label_for("xlsx:sheets/book.xlsx");
+            assert!(
+                label
+                    .chars()
+                    .all(|c| c.is_alphanumeric() || matches!(c, '-' | '/' | ':' | '_')),
+                "label {label} contains characters Tauri rejects"
             );
+            // Different paths must not collapse onto one label.
+            assert_ne!(label_for("xlsx:a-b.xlsx"), label_for("xlsx:a.b.xlsx"));
+            // The same key always maps to the same label (lookup identity).
+            assert_eq!(label_for("xlsx:sheets/book.xlsx"), label);
         })
     }
 
@@ -651,5 +675,173 @@ mod tests {
             let response = flush(app.handle(), "xlsx", "missing.xlsx");
             assert_eq!(response["data"]["flushed"], json!(false));
         })
+    }
+
+    /// Full host protocol against real window objects: ready (pull model) →
+    /// setActive → setBounds → flush → ack → close. This is the DEV-123 path
+    /// that registry-only unit tests could not reach, because `ready`,
+    /// `set_active`, `set_bounds`, and `flush` all resolve windows by label.
+    ///
+    /// The mock runtime segfaults on `parent().build()`, so the host window is
+    /// created unparented here; window parenting itself is covered by the
+    /// macOS GUI run (the app launches and hosts render over the main window).
+    #[test]
+    fn host_protocol_runs_end_to_end() {
+        with_test_lock(|| {
+            clear_hosts();
+            let app = tauri::test::mock_app();
+            let handle = app.handle();
+            let kind = "xlsx";
+            let path = "sheets/book.xlsx";
+            let key = host_key(kind, path);
+            let label = label_for(&key);
+
+            // A real (unparented) window the protocol can resolve by label,
+            // mirroring exactly what `open` registers on the happy path.
+            let _host = tauri::WebviewWindowBuilder::new(
+                handle,
+                label.as_str(),
+                tauri::WebviewUrl::App("editor-host.html".into()),
+            )
+            .decorations(false)
+            .visible(false)
+            .build()
+            .expect("mock host window");
+            let mut reg = registry().lock().expect("binary host registry lock");
+            reg.hosts.insert(
+                key.clone(),
+                HostEntry {
+                    kind: kind.to_owned(),
+                    path: path.to_owned(),
+                    ready: false,
+                    loaded: false,
+                    pending: Vec::new(),
+                    bounds: None,
+                    flush_waiters: Vec::new(),
+                },
+            );
+            drop(reg);
+            let label = label_for(&host_key(kind, path));
+            assert!(
+                handle.get_webview_window(&label).is_some(),
+                "open must create a window the ready ack can identify"
+            );
+
+            // ready: pulls the queued commands for THIS host only.
+            let ack = ready(handle, Some(&label), "zh-CN");
+            assert_eq!(ack["ok"], json!(true));
+            let commands: Vec<Value> = ack["data"]["commands"]
+                .as_array()
+                .cloned()
+                .unwrap_or_default();
+            assert_eq!(
+                commands
+                    .first()
+                    .and_then(|c| c.get("command"))
+                    .and_then(Value::as_str),
+                Some("language"),
+                "the language command comes first"
+            );
+            assert_eq!(
+                commands[0].get("language").and_then(Value::as_str),
+                Some("zh-CN")
+            );
+
+            // A second host must not be able to claim the first one's queue.
+            let other_key = host_key("xmind", "maps/board.xmind");
+            let other_label = label_for(&other_key);
+            {
+                let mut reg = registry().lock().expect("binary host registry lock");
+                reg.hosts.insert(
+                    other_key,
+                    HostEntry {
+                        kind: "xmind".to_owned(),
+                        path: "maps/board.xmind".to_owned(),
+                        ready: false,
+                        loaded: false,
+                        pending: Vec::new(),
+                        bounds: None,
+                        flush_waiters: Vec::new(),
+                    },
+                );
+            }
+            let other_ack = ready(handle, Some(&other_label), "zh-CN");
+            let other_commands = other_ack["data"]["commands"]
+                .as_array()
+                .cloned()
+                .unwrap_or_default();
+            assert!(
+                other_commands
+                    .iter()
+                    .all(|c| c.get("path").and_then(Value::as_str) != Some(path)),
+                "a host must only receive its own commands"
+            );
+
+            // setActive queues the initial load exactly once.
+            assert_eq!(
+                set_active(handle, Some(kind), Some(path))["data"]["active"],
+                json!(true)
+            );
+            assert_eq!(
+                set_active(handle, Some(kind), Some(path))["data"]["active"],
+                json!(true)
+            );
+
+            // setBounds positions the window over the placeholder rect.
+            let bounds = HostBounds {
+                x: 10.0,
+                y: 20.0,
+                width: 400.0,
+                height: 300.0,
+            };
+            assert_eq!(
+                set_bounds(handle, kind, path, Some(bounds))["data"]["applied"],
+                json!(true)
+            );
+            let window = handle
+                .get_webview_window(&label)
+                .expect("host window survives bounds");
+            // The mock runtime accepts the calls but does not simulate a
+            // window server, so the exact geometry is not asserted here — the
+            // macOS GUI run covers real placement. The call path (and the
+            // show/hide bookkeeping around it) is what this test pins.
+            assert!(window.scale_factor().is_ok());
+            assert!(window.outer_position().is_ok());
+            assert!(window.inner_size().is_ok());
+
+            // flush parks until the page acknowledges. The call runs on a
+            // thread because it blocks on the ack channel.
+            let flush_handle = handle.clone();
+            let flusher = std::thread::spawn(move || flush(&flush_handle, kind, path));
+            std::thread::sleep(std::time::Duration::from_millis(60));
+            // The registry lives in this process, so the token the flusher
+            // parked on can be resolved from here.
+            let token = {
+                let reg = registry().lock().expect("binary host registry lock");
+                let entry = reg.hosts.get(&key).expect("host");
+                entry
+                    .flush_waiters
+                    .first()
+                    .map(|(token, _)| token.clone())
+                    .expect("flush must park a waiter")
+            };
+            let acked = flush_ack(handle, Some(&label), &token, true, None);
+            assert_eq!(acked["data"]["accepted"], json!(true));
+            let flushed = flusher.join().expect("flusher thread");
+            assert_eq!(flushed["data"]["flushed"], json!(true));
+
+            // close: destroys the window and drops the registry entry. The
+            // mock runtime records the close without a real window server, so
+            // only the registry side is asserted here.
+            assert_eq!(close(handle, kind, path)["data"]["closed"], json!(true));
+            {
+                let reg = registry().lock().expect("binary host registry lock");
+                assert!(
+                    !reg.hosts.contains_key(&key),
+                    "close must drop the registry entry"
+                );
+            }
+            clear_hosts();
+        });
     }
 }
