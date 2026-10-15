@@ -31,7 +31,7 @@
 | DEV-121 | AI、召回与内置语义向量迁移 | DEV-118 | done（agent 工具环/审批/权限/prompt/skills/降级/TTL/reasoning 过滤已迁移） |
 | DEV-122 | 插件沙箱与 capability 迁移 | DEV-116、DEV-118 | done（插件通道 ported；宿主 capability 修复见 DEV-123） |
 | DEV-123 | 二进制编辑器宿主与打印迁移 | DEV-116、DEV-117 | done（label 字符集修复后 e2e 协议测试覆盖；macOS 打开真实文档的 GUI 收尾项见矩阵） |
-| DEV-124 | Tauri 更新、签名、发布与 QA | DEV-116 | in progress（CI 全平台绿：四平台产物含签名 .sig（macOS/Windows/Linux）、启动冒烟全过——余项：macOS 公证决策、发布 feed URL 与正式发布运行） |
+| DEV-124 | Tauri 更新、签名、发布与 QA | DEV-116 | done（公证决策 ad hoc；feed 已配置并发布候选 tauri-v0.0.37.1：16 资产含四平台签名 .sig + latest.json；匿名下载验证通过 latest.json 可取、DMG sha256 字节级一致） |
 | DEV-125 | Electron 退役与默认通道切换 | 全部子票 | blocked |
 
 ## Epic 完成定义
