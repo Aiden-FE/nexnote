@@ -30,7 +30,7 @@
 | DEV-120 | Git 运行时与同步体系迁移 | DEV-119 | in progress |
 | DEV-121 | AI、召回与内置语义向量迁移 | DEV-118 | done（agent 工具环/审批/权限/prompt/skills/降级/TTL/reasoning 过滤已迁移） |
 | DEV-122 | 插件沙箱与 capability 迁移 | DEV-116、DEV-118 | in progress |
-| DEV-123 | 二进制编辑器宿主与打印迁移 | DEV-116、DEV-117 | in progress |
+| DEV-123 | 二进制编辑器宿主与打印迁移 | DEV-116、DEV-117 | done（label 字符集修复后 e2e 协议测试覆盖；macOS 打开真实文档的 GUI 收尾项见矩阵） |
 | DEV-124 | Tauri 更新、签名、发布与 QA | DEV-116 | in progress |
 | DEV-125 | Electron 退役与默认通道切换 | 全部子票 | blocked |
 
