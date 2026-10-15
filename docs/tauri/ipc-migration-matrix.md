@@ -238,12 +238,12 @@
 | binary:create | vault | yes | no | yes | no | `binary-handlers.ts` | `binary::create` | binary-print | ported |
 | binary:read | vault | no | no | yes | no | `binary-handlers.ts` | `binary::read` | binary-print | ported |
 | binary:save | vault | yes | no | yes | no | `binary-handlers.ts` | `binary::save` | binary-print | ported |
-| binary:host:open | host | no | no | no | no | `binary-handlers.ts` | `binary_host::open` | binary-print | ported（macOS GUI 实测待做） |
+| binary:host:open | host | no | no | no | no | `binary-handlers.ts` | `binary_host::open` | binary-print | ported（label 哈希修复 InvalidWindowLabel；macOS 打开真实文档待测） |
 | binary:host:close | host | no | no | no | no | `binary-handlers.ts` | `binary_host::close` | binary-print | ported（macOS GUI 实测待做） |
 | binary:host:setActive | host | no | no | no | no | `binary-handlers.ts` | `binary_host::set_active` | binary-print | ported（渲染层 ≤3 LRU 并发上限；macOS 实测待做） |
 | binary:host:setBounds | host | no | no | no | no | `binary-handlers.ts` | `binary_host::set_bounds` | binary-print | ported（主窗口 resize 时 clamp 重定位；macOS 实测待做） |
-| binary:host:flush | host | no | no | yes | no | `binary-handlers.ts` | `binary_host::flush` | binary-print | ported（一次性 token 往返等待写盘；macOS 实测待做） |
-| binary:host:ready | host | no | no | no | no | `binary-handlers.ts` | `binary_host::ready` | binary-print | ported（以注入的窗口 label 识别发送者；macOS 实测待做） |
+| binary:host:flush | host | no | no | yes | no | `binary-handlers.ts` | `binary_host::flush` | binary-print | ported（token 往返；e2e 协议测试覆盖） |
+| binary:host:ready | host | no | no | no | no | `binary-handlers.ts` | `binary_host::ready` | binary-print | ported（按 label 识别发送者；e2e 协议测试覆盖） |
 | binary:editorTheme | host | no | no | no | no | `binary-handlers.ts` | `binary_host::editor_theme` | binary-print | ported |
 | binary:mindmapTheme:set | vault | yes | no | yes | no | `binary-handlers.ts` | `binary::mindmap_theme` | binary-print | ported |
 | binary:mindmapStructure:set | vault | yes | no | yes | no | `binary-handlers.ts` | `binary::mindmap_structure` | binary-print | ported |
