@@ -61,7 +61,7 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y \
             libwebkit2gtk-4.1-dev libgtk-3-dev libayatana-appindicator3-dev \
-            librsvg2-dev patchelf libssl-dev
+            librsvg2-dev patchelf libssl-dev xvfb xdotool
       - run: pnpm install --frozen-lockfile
       - name: Verify package.json / tauri.conf.json / Cargo.toml version parity
         shell: bash
@@ -124,6 +124,24 @@ jobs:
           foreach ($artifact in @($msi) + @($nsis)) {
             if ($artifact) { Write-Host "produced: $($artifact.Name)" }
           }
+
+      - name: Smoke-launch on Windows (WebView2)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $exe = 'src-tauri/target/release/nexnote-tauri.exe'
+          if (-not (Test-Path $exe)) { throw "built binary missing: $exe" }
+          $proc = Start-Process -FilePath $exe -PassThru
+          Start-Sleep -Seconds 20
+          if ($proc.HasExited) { throw "app exited during smoke (code $($proc.ExitCode))" }
+          $proc.Refresh()
+          # MainWindowHandle != 0 means the main WebView window was created.
+          if ($proc.MainWindowHandle -eq [IntPtr]::Zero) {
+            Stop-Process -Id $proc.Id -ErrorAction SilentlyContinue
+            throw 'app is running but created no main window (WebView2 load failed?)'
+          }
+          Write-Host "Windows smoke OK: main window handle $($proc.MainWindowHandle)"
+          Stop-Process -Id $proc.Id -ErrorAction SilentlyContinue
       - name: Verify Linux bundle output
         if: runner.os == 'Linux'
         shell: bash
@@ -133,6 +151,32 @@ jobs:
           appimages=(src-tauri/target/release/bundle/appimage/*.AppImage)
           ((${#debs[@]} || ${#appimages[@]})) || { echo '::error::no Linux distributable produced'; exit 1; }
           for artifact in "${debs[@]}" "${appimages[@]}"; do echo "produced: $(basename "$artifact")"; done
+
+      - name: Smoke-launch on Linux (WebKitGTK under xvfb)
+        if: runner.os == 'Linux'
+        shell: bash
+        run: |
+          set -euo pipefail
+          exe=src-tauri/target/release/nexnote-tauri
+          test -x "$exe" || { echo "::error::built binary missing: $exe"; exit 1; }
+          # Software rendering + no compositor: the reliable WebKitGTK mode
+          # on headless runners.
+          export WEBKIT_DISABLE_COMPOSITING_MODE=1
+          export LIBGL_ALWAYS_SOFTWARE=1
+          xvfb-run -a bash -c '
+            "$0" &
+            app=$!
+            sleep 20
+            kill -0 "$app" || { echo "::error::app exited during smoke"; exit 1; }
+            windows=$(xdotool search --onlyvisible --name "NexNote" | wc -l)
+            echo "window count: $windows"
+            if [ "$windows" -eq 0 ]; then
+              echo "::error::app is running but no NexNote window exists (WebKitGTK load failed?)"
+              exit 1
+            fi
+            echo "Linux smoke OK ($windows window(s))"
+            kill "$app" 2>/dev/null
+          ' "$exe"
       - name: Stage bundle artifacts for upload
         shell: bash
         run: |
