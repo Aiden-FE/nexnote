@@ -105,7 +105,7 @@ fn run_git(root: &Path, args: &[&str]) -> Result<GitRun, Value> {
 }
 
 fn run_git_env(root: &Path, args: &[&str], envs: &[(&str, &str)]) -> Result<GitRun, Value> {
-    let mut command = Command::new("git");
+    let mut command = Command::new(crate::git_service::resolve_git_binary());
     command
         .current_dir(root)
         .args(args)
@@ -113,15 +113,29 @@ fn run_git_env(root: &Path, args: &[&str], envs: &[(&str, &str)]) -> Result<GitR
         .stdout(Stdio::piped())
         .stderr(Stdio::piped());
     sanitize_env(&mut command);
+    crate::git_service::configure_git_command(&mut command);
     for (key, value) in envs {
         command.env(key, value);
     }
-    let output = match command.output() {
+    let output = match crate::git_service::run_command_with_timeout(
+        &mut command,
+        Duration::from_secs(120),
+    ) {
         Ok(value) => value,
-        Err(err) if err.kind() == std::io::ErrorKind::NotFound => {
+        Err(crate::git_service::GitProcessError::Spawn(err))
+            if err.kind() == std::io::ErrorKind::NotFound =>
+        {
             return Err(error("GIT_BINARY_MISSING", "git binary not found"))
         }
-        Err(err) => return Err(error("GIT_SPAWN_FAILED", &sanitize_text(&err.to_string()))),
+        Err(crate::git_service::GitProcessError::Spawn(err)) => {
+            return Err(error("GIT_SPAWN_FAILED", &sanitize_text(&err.to_string())))
+        }
+        Err(crate::git_service::GitProcessError::Timeout) => {
+            return Err(error("GIT_TIMEOUT", "git command timed out"))
+        }
+        Err(crate::git_service::GitProcessError::Aborted) => {
+            return Err(error("GIT_ABORTED", "git command was cancelled"))
+        }
     };
     let stdout = String::from_utf8_lossy(&output.stdout).into_owned();
     let stderr = String::from_utf8_lossy(&output.stderr).into_owned();

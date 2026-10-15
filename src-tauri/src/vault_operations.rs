@@ -1,7 +1,6 @@
 //! One-shot clone authorization and cancellable onboarding operations.
 
 use std::collections::HashMap;
-use std::process::{Command, Stdio};
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::Arc;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
@@ -126,61 +125,25 @@ impl VaultOperationRegistry {
     }
 }
 
-pub enum GitProcessError {
-    Spawn(std::io::Error),
-    Timeout,
-    Aborted,
-}
-
 pub fn run_git_with_timeout(
     args: &[&str],
     timeout: Duration,
-) -> Result<std::process::Output, GitProcessError> {
-    run_git_with_cancel(args, timeout, None)
+) -> Result<std::process::Output, crate::git_service::GitProcessError> {
+    let mut command = std::process::Command::new(crate::git_service::resolve_git_binary());
+    command.args(args);
+    crate::git_service::configure_git_command(&mut command);
+    crate::git_service::run_command_with_timeout(&mut command, timeout)
 }
 
 pub fn run_git_with_cancel(
     args: &[&str],
     timeout: Duration,
     cancelled: Option<&AtomicBool>,
-) -> Result<std::process::Output, GitProcessError> {
-    let mut child = Command::new("git")
-        .args(args)
-        .stdout(Stdio::piped())
-        .stderr(Stdio::piped())
-        .spawn()
-        .map_err(GitProcessError::Spawn)?;
-    let deadline = std::time::Instant::now() + timeout;
-    loop {
-        if let Ok(Some(status)) = child.try_wait() {
-            let mut stdout = Vec::new();
-            let mut stderr = Vec::new();
-            if let Some(mut pipe) = child.stdout.take() {
-                std::io::Read::read_to_end(&mut pipe, &mut stdout)
-                    .map_err(GitProcessError::Spawn)?;
-            }
-            if let Some(mut pipe) = child.stderr.take() {
-                std::io::Read::read_to_end(&mut pipe, &mut stderr)
-                    .map_err(GitProcessError::Spawn)?;
-            }
-            return Ok(std::process::Output {
-                status,
-                stdout,
-                stderr,
-            });
-        }
-        if std::time::Instant::now() >= deadline {
-            let _ = child.kill();
-            let _ = child.wait();
-            return Err(GitProcessError::Timeout);
-        }
-        if cancelled.is_some_and(|flag| flag.load(Ordering::SeqCst)) {
-            let _ = child.kill();
-            let _ = child.wait();
-            return Err(GitProcessError::Aborted);
-        }
-        std::thread::sleep(Duration::from_millis(20));
-    }
+) -> Result<std::process::Output, crate::git_service::GitProcessError> {
+    let mut command = std::process::Command::new(crate::git_service::resolve_git_binary());
+    command.args(args);
+    crate::git_service::configure_git_command(&mut command);
+    crate::git_service::run_command_with_cancel(&mut command, timeout, cancelled)
 }
 
 fn now_ms() -> u64 {

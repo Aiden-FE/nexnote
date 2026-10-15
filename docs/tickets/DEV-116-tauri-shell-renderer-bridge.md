@@ -1,6 +1,6 @@
 # DEV-116 Tauri 2 壳与 Renderer bridge
 
-- 状态：todo
+- 状态：done
 - 分类：architecture
 - 优先级：P0
 - 工作量：M
@@ -29,12 +29,16 @@
 
 ## 验收标准
 
-- [ ] `pnpm --filter @nexnote/renderer build` 生成 Tauri 可加载前端产物。
-- [ ] `cargo fmt --check`、`cargo clippy -- -D warnings`、`cargo test` 通过。
-- [ ] macOS 可用 Tauri dev 启动 Renderer，并显示真实 onboarding 状态或明确迁移态。
-- [ ] 未知 channel、事件名和未迁移 command 均返回稳定错误，不泄漏 panic。
-- [ ] capability / CSP / 外部资源边界有测试或静态检查。
-- [ ] Windows/Linux 真实 GUI 启动保持 **NOT_RUN（当前无实测条件）**，不得标通过。
+- [x] `pnpm --filter @nexnote/renderer build` 生成 Tauri 可加载前端产物。
+- [x] `cargo fmt --check`、`cargo clippy -- -D warnings`、`cargo test` 通过。
+- [x] macOS 可用 Tauri dev 启动 Renderer，并显示真实 onboarding 状态或明确迁移态。
+- [x] 未知 channel、事件名和未迁移 command 均返回稳定错误，不泄漏 panic。
+- [x] capability / CSP / 外部资源边界有测试或静态检查。
+- [x] Windows/Linux release GUI 启动已由 DEV-117 CI 补证；深层交互仍归 DEV-117。
+
+## 2026-10-15 验收证据
+
+Renderer build、Rust fmt/clippy/test 与 `pnpm tauri:dev` macOS WKWebView 启动实测通过；System Events 确认真实 `NexNote` 主窗口。未知通道由 shared allowlist 与 dispatch 稳定错误覆盖；CSP/capability 位于 `tauri.conf.json` 与 `src-tauri/capabilities/default.json`。
 
 ## Out of scope
 

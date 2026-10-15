@@ -64,6 +64,9 @@ pub fn run() {
         .manage(product::VaultRoot::default())
         .invoke_handler(tauri::generate_handler![product::nexnote_invoke])
         .setup(|app| {
+            if let Ok(resource_dir) = app.path().resource_dir() {
+                git_service::install_bundled_git(&resource_dir.join("resources/git"));
+            }
             let main = app
                 .get_webview_window("main")
                 .expect("NexNote main webview must be declared");

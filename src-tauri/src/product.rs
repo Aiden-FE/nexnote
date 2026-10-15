@@ -37,12 +37,14 @@ pub struct ProductState {
     /// Without this, every launch started from defaults and a language change
     /// was lost on restart (DEV-118).
     settings_path: Option<PathBuf>,
+    recent_vaults_path: Option<PathBuf>,
     global_settings: Mutex<Value>,
     current_vault: Mutex<Option<VaultInfo>>,
     recent_vaults: Mutex<Vec<RecentVaultEntry>>,
     /// Active binary-editor host theme; hosts read this on creation until
     /// the multi-WebView runtime can push live updates (DEV-123).
     editor_theme: Mutex<&'static str>,
+    settings_persistence_error: Mutex<Option<&'static str>>,
     clone_tokens: Mutex<crate::vault_operations::CloneTokenStore>,
     vault_operations: Mutex<crate::vault_operations::VaultOperationRegistry>,
 }
@@ -78,10 +80,12 @@ impl Default for ProductState {
     fn default() -> Self {
         Self {
             settings_path: None,
+            recent_vaults_path: None,
             global_settings: Mutex::new(default_global_settings()),
             current_vault: Mutex::new(None),
             recent_vaults: Mutex::new(Vec::new()),
             editor_theme: Mutex::new("light"),
+            settings_persistence_error: Mutex::new(None),
             clone_tokens: Mutex::new(crate::vault_operations::CloneTokenStore::default()),
             vault_operations: Mutex::new(crate::vault_operations::VaultOperationRegistry::default()),
         }
@@ -94,6 +98,11 @@ impl ProductState {
     /// the defaults rather than failing startup.
     pub fn with_app_data(app_data: &Path) -> Self {
         let settings_path = app_data.join("nexnote-settings.json");
+        let recent_vaults_path = app_data.join("nexnote-recent-vaults.json");
+        let recent_vaults = std::fs::read_to_string(&recent_vaults_path)
+            .ok()
+            .and_then(|contents| serde_json::from_str::<Vec<RecentVaultEntry>>(&contents).ok())
+            .unwrap_or_default();
         let global_settings = std::fs::read_to_string(&settings_path)
             .ok()
             .and_then(|contents| serde_json::from_str::<Value>(&contents).ok())
@@ -101,47 +110,97 @@ impl ProductState {
             .unwrap_or_else(default_global_settings);
         let state = Self {
             settings_path: Some(settings_path),
+            recent_vaults_path: Some(recent_vaults_path),
             global_settings: Mutex::new(global_settings),
             current_vault: Mutex::new(None),
-            recent_vaults: Mutex::new(Vec::new()),
+            recent_vaults: Mutex::new(recent_vaults),
             editor_theme: Mutex::new("light"),
+            settings_persistence_error: Mutex::new(None),
             clone_tokens: Mutex::new(crate::vault_operations::CloneTokenStore::default()),
             vault_operations: Mutex::new(crate::vault_operations::VaultOperationRegistry::default()),
         };
         // Materialize the file on first launch so the settings location is
         // real and inspectable, matching the Electron reference.
         if let Ok(settings) = state.global_settings.lock().map(|value| value.clone()) {
-            state.persist_global_settings(&settings);
+            if let Err(code) = state.persist_global_settings(&settings) {
+                state.note_persistence_error(code);
+            }
         }
         state
     }
 
     /// Writes the current global settings. Callers must hold no lock.
-    fn persist_global_settings(&self, settings: &Value) {
+    fn persist_global_settings(&self, settings: &Value) -> Result<(), &'static str> {
         let Some(path) = &self.settings_path else {
-            return;
+            return Ok(());
         };
         if let Some(parent) = path.parent() {
-            let _ = std::fs::create_dir_all(parent);
+            std::fs::create_dir_all(parent).map_err(persistence_error_code)?;
         }
-        if let Ok(serialized) = serde_json::to_string_pretty(settings) {
-            // Write-then-rename so a crash cannot leave a truncated file.
-            let temp = path.with_extension("json.tmp");
-            if std::fs::write(&temp, serialized.as_bytes()).is_ok() {
-                let _ = std::fs::rename(&temp, path);
-            }
-        }
+        let serialized =
+            serde_json::to_string_pretty(settings).map_err(|_| "SETTINGS_SERIALIZE_FAILED")?;
+        // Write-then-rename so a crash cannot leave a truncated file.
+        let temp = path.with_extension("json.tmp");
+        std::fs::write(&temp, serialized.as_bytes()).map_err(persistence_error_code)?;
+        std::fs::rename(&temp, path).map_err(persistence_error_code)?;
+        *self
+            .settings_persistence_error
+            .lock()
+            .expect("settings persistence status lock") = None;
+        Ok(())
     }
 
     /// Replaces the global settings and persists them.
-    fn replace_global_settings(&self, settings: Value) {
-        *self.global_settings.lock().expect("settings lock") = settings.clone();
-        self.persist_global_settings(&settings);
+    fn replace_global_settings(&self, settings: Value) -> Result<(), &'static str> {
+        if let Err(code) = self.persist_global_settings(&settings) {
+            self.note_persistence_error(code);
+            return Err(code);
+        }
+        *self.global_settings.lock().expect("settings lock") = settings;
+        Ok(())
+    }
+
+    fn note_persistence_error(&self, code: &'static str) {
+        *self
+            .settings_persistence_error
+            .lock()
+            .expect("settings persistence status lock") = Some(code);
+    }
+}
+
+fn persistence_error_code(error: std::io::Error) -> &'static str {
+    match error.kind() {
+        std::io::ErrorKind::PermissionDenied => "SETTINGS_PERMISSION_DENIED",
+        std::io::ErrorKind::NotFound => "SETTINGS_PATH_UNAVAILABLE",
+        std::io::ErrorKind::ReadOnlyFilesystem => "SETTINGS_READONLY_FILESYSTEM",
+        _ => "SETTINGS_WRITE_FAILED",
     }
 }
 
 impl ProductState {
-    fn set_current_vault(&self, vault: VaultInfo) {
+    fn persist_recent_vaults(&self) -> Result<(), String> {
+        let Some(path) = &self.recent_vaults_path else {
+            return Ok(());
+        };
+        let recent = self
+            .recent_vaults
+            .lock()
+            .expect("recent vault lock")
+            .clone();
+        let serialized = serde_json::to_vec_pretty(&recent)
+            .map_err(|error| format!("cannot encode recent vaults: {error}"))?;
+        if let Some(parent) = path.parent() {
+            std::fs::create_dir_all(parent)
+                .map_err(|error| format!("cannot create {}: {error}", parent.display()))?;
+        }
+        let temporary = path.with_extension("json.tmp");
+        std::fs::write(&temporary, serialized)
+            .map_err(|error| format!("cannot write {}: {error}", temporary.display()))?;
+        std::fs::rename(&temporary, path)
+            .map_err(|error| format!("cannot replace {}: {error}", path.display()))
+    }
+
+    fn set_current_vault(&self, vault: VaultInfo) -> Result<(), String> {
         *self.current_vault.lock().expect("vault state lock") = Some(vault.clone());
         let mut recent = self.recent_vaults.lock().expect("recent vault lock");
         recent.retain(|entry| entry.path != vault.root);
@@ -154,6 +213,8 @@ impl ProductState {
             },
         );
         recent.truncate(10);
+        drop(recent);
+        self.persist_recent_vaults()
     }
 }
 
@@ -1065,34 +1126,34 @@ fn dispatch<R: tauri::Runtime>(
                 Some(value) if ["stable", "beta", "alpha"].contains(&value.as_str()) => value,
                 _ => return error("INVALID_UPDATE_CHANNEL", "Unsupported update channel"),
             };
-            let mut settings = state.global_settings.lock().expect("settings lock");
-            if let Some(updates) = settings.get_mut("updates") {
+            let mut updated = state.global_settings.lock().expect("settings lock").clone();
+            if let Some(updates) = updated.get_mut("updates") {
                 merge_object(updates, &json!({ "channel": requested }));
             }
-            let snapshot = settings.clone();
-            drop(settings);
-            state.persist_global_settings(&snapshot);
-            ok(json!({ "status": "channel-switched", "channel": requested }))
+            match state.replace_global_settings(updated) {
+                Ok(()) => ok(json!({ "status": "channel-switched", "channel": requested })),
+                Err(code) => error(code, "Saving the update channel failed"),
+            }
         }
         "app:setUpdateSettings" => {
-            let mut settings = state.global_settings.lock().expect("settings lock");
-            merge_object(&mut settings, payload);
-            let snapshot = settings.clone();
-            drop(settings);
-            state.persist_global_settings(&snapshot);
-            ok(snapshot
-                .get("updates")
-                .cloned()
-                .unwrap_or_else(default_updates))
+            let mut updated = state.global_settings.lock().expect("settings lock").clone();
+            merge_object(&mut updated, payload);
+            match state.replace_global_settings(updated.clone()) {
+                Ok(()) => ok(updated
+                    .get("updates")
+                    .cloned()
+                    .unwrap_or_else(default_updates)),
+                Err(code) => error(code, "Saving update settings failed"),
+            }
         }
         "settings:getAll" => ok(state.global_settings.lock().expect("settings lock").clone()),
         "settings:setGlobal" => {
-            let mut settings = state.global_settings.lock().expect("settings lock");
-            merge_object(&mut settings, payload);
-            let snapshot = settings.clone();
-            drop(settings);
-            state.replace_global_settings(snapshot.clone());
-            ok(snapshot)
+            let mut updated = state.global_settings.lock().expect("settings lock").clone();
+            merge_object(&mut updated, payload);
+            match state.replace_global_settings(updated.clone()) {
+                Ok(()) => ok(updated),
+                Err(code) => error(code, "Saving global settings failed"),
+            }
         }
         "settings:getVault" => {
             let vault = state
@@ -1146,14 +1207,14 @@ fn dispatch<R: tauri::Runtime>(
             let Some(shortcuts) = payload.get("shortcuts") else {
                 return error("INVALID_SHORTCUTS", "shortcuts is required");
             };
-            let mut settings = state.global_settings.lock().expect("settings lock");
-            if let Some(current) = settings.as_object_mut() {
+            let mut updated = state.global_settings.lock().expect("settings lock").clone();
+            if let Some(current) = updated.as_object_mut() {
                 current.insert("shortcuts".to_string(), shortcuts.clone());
             }
-            let snapshot = settings.clone();
-            drop(settings);
-            state.persist_global_settings(&snapshot);
-            ok(json!(shortcuts))
+            match state.replace_global_settings(updated) {
+                Ok(()) => ok(json!(shortcuts)),
+                Err(code) => error(code, "Saving shortcuts failed"),
+            }
         }
         "settings:exportShortcuts" => {
             let settings = state.global_settings.lock().expect("settings lock");
@@ -1175,14 +1236,14 @@ fn dispatch<R: tauri::Runtime>(
                 }
             };
             let imported = shortcuts.as_array().map(Vec::len).unwrap_or_default();
-            let mut settings = state.global_settings.lock().expect("settings lock");
-            if let Some(current) = settings.as_object_mut() {
+            let mut updated = state.global_settings.lock().expect("settings lock").clone();
+            if let Some(current) = updated.as_object_mut() {
                 current.insert("shortcuts".to_string(), shortcuts.clone());
             }
-            let snapshot = settings.clone();
-            drop(settings);
-            state.persist_global_settings(&snapshot);
-            ok(json!({ "imported": imported, "shortcuts": shortcuts }))
+            match state.replace_global_settings(updated) {
+                Ok(()) => ok(json!({ "imported": imported, "shortcuts": shortcuts })),
+                Err(code) => error(code, "Importing shortcuts failed"),
+            }
         }
         "settings:search" => match string_field(payload, "query") {
             Some(query) => ok(json!(crate::settings_search::search(&query))),
@@ -1272,7 +1333,9 @@ fn dispatch<R: tauri::Runtime>(
             if let Err(e) = sync_vault_root(app, &root, vault_root) {
                 return e;
             }
-            state.set_current_vault(info.clone());
+            if let Err(message) = state.set_current_vault(info.clone()) {
+                return error("RECENT_VAULT_WRITE_FAILED", &message);
+            }
             let _ = app.emit("vault:changed", &info);
             ok(serde_json::to_value(info).unwrap_or(Value::Null))
         }
@@ -1297,7 +1360,9 @@ fn dispatch<R: tauri::Runtime>(
             if let Err(e) = sync_vault_root(app, &root, vault_root) {
                 return e;
             }
-            state.set_current_vault(info.clone());
+            if let Err(message) = state.set_current_vault(info.clone()) {
+                return error("RECENT_VAULT_WRITE_FAILED", &message);
+            }
             let _ = app.emit("vault:changed", &info);
             ok(serde_json::to_value(info).unwrap_or(Value::Null))
         }
@@ -1342,6 +1407,10 @@ fn dispatch<R: tauri::Runtime>(
             };
             let mut recent = state.recent_vaults.lock().expect("recent vault lock");
             recent.retain(|entry| entry.path != path);
+            drop(recent);
+            if let Err(message) = state.persist_recent_vaults() {
+                return error("RECENT_VAULT_WRITE_FAILED", &message);
+            }
             ok(Value::Null)
         }
         "vault:initGit" => {
@@ -1363,7 +1432,9 @@ fn dispatch<R: tauri::Runtime>(
             if let Err(e) = sync_vault_root(app, &root, vault_root) {
                 return e;
             }
-            state.set_current_vault(info.clone());
+            if let Err(message) = state.set_current_vault(info.clone()) {
+                return error("RECENT_VAULT_WRITE_FAILED", &message);
+            }
             let _ = app.emit("vault:changed", &info);
             ok(serde_json::to_value(info).unwrap_or(Value::Null))
         }
@@ -1460,10 +1531,10 @@ fn dispatch<R: tauri::Runtime>(
                         .map_err(|e| {
                             (
                                 match e {
-                                    crate::vault_operations::GitProcessError::Aborted => {
+                                    crate::git_service::GitProcessError::Aborted => {
                                         "OPERATION_CANCELLED"
                                     }
-                                    crate::vault_operations::GitProcessError::Spawn(error) => {
+                                    crate::git_service::GitProcessError::Spawn(error) => {
                                         return ("GIT_NOT_AVAILABLE".to_owned(), error.to_string())
                                     }
                                     _ => "CLONE_FAILED",
@@ -1501,7 +1572,9 @@ fn dispatch<R: tauri::Runtime>(
                     if let Err(e) = sync_vault_root(app, &root, vault_root) {
                         return e;
                     }
-                    state.set_current_vault(info.clone());
+                    if let Err(message) = state.set_current_vault(info.clone()) {
+                        return error("RECENT_VAULT_WRITE_FAILED", &message);
+                    }
                     let status = git_service::status(&root).unwrap_or_else(|failure| {
                         json!({
                             "repository": true,
@@ -3876,7 +3949,9 @@ mod tests {
 
     /// Builds a mock app with every state type `dispatch` needs, so tests can
     /// drive the real match without a window.
-    fn dispatch_harness() -> tauri::App<tauri::test::MockRuntime> {
+    fn dispatch_harness_with_state(
+        product_state: ProductState,
+    ) -> tauri::App<tauri::test::MockRuntime> {
         let app = tauri::test::mock_app();
         let data = std::env::temp_dir().join(format!(
             "nexnote-dispatch-{}-{}",
@@ -3884,13 +3959,17 @@ mod tests {
             TEMP_SEQUENCE.fetch_add(1, Ordering::SeqCst)
         ));
         let _ = fs::create_dir_all(&data);
-        app.manage(ProductState::default());
+        app.manage(product_state);
         app.manage(std::sync::Arc::new(embedding_service::EmbeddingState::new(
             &data,
         )));
         app.manage(PluginState::new(data.join("plugins"), "0.0.37"));
         app.manage(VaultRoot::default());
         app
+    }
+
+    fn dispatch_harness() -> tauri::App<tauri::test::MockRuntime> {
+        dispatch_harness_with_state(ProductState::default())
     }
 
     /// Locks dispatch reachability: these channels must match a real arm, not
@@ -4214,7 +4293,9 @@ See [[Glossary]].
         );
         let mut updated = first.global_settings.lock().expect("settings lock").clone();
         merge_object(&mut updated, &json!({ "appearance": { "language": "en" } }));
-        first.replace_global_settings(updated);
+        first
+            .replace_global_settings(updated)
+            .expect("persist settings update");
 
         // Second launch: the saved language is restored.
         let second = ProductState::with_app_data(&data_dir);
@@ -4257,6 +4338,95 @@ See [[Glossary]].
         fs::remove_dir_all(&data_dir).ok();
     }
 
+    #[cfg(unix)]
+    #[test]
+    fn readonly_settings_directory_yields_a_stable_error_and_keeps_memory_unchanged() {
+        use std::os::unix::fs::PermissionsExt;
+        let id = TEMP_SEQUENCE.fetch_add(1, Ordering::SeqCst);
+        let data_dir = std::env::temp_dir().join(format!(
+            "nexnote-settings-readonly-{}-{id}",
+            std::process::id()
+        ));
+        fs::create_dir_all(&data_dir).expect("create data dir");
+        fs::set_permissions(&data_dir, fs::Permissions::from_mode(0o555)).expect("make readonly");
+
+        let state = ProductState::with_app_data(&data_dir);
+        assert_eq!(
+            *state
+                .settings_persistence_error
+                .lock()
+                .expect("settings persistence status lock"),
+            Some("SETTINGS_PERMISSION_DENIED")
+        );
+        let before = state.global_settings.lock().expect("settings lock").clone();
+        let mut rejected = before.clone();
+        merge_object(
+            &mut rejected,
+            &json!({ "appearance": { "language": "en" } }),
+        );
+        assert_eq!(
+            state.replace_global_settings(rejected),
+            Err("SETTINGS_PERMISSION_DENIED")
+        );
+        assert_eq!(
+            state.global_settings.lock().expect("settings lock").clone(),
+            before,
+            "a rejected write must not update the in-memory settings"
+        );
+
+        fs::set_permissions(&data_dir, fs::Permissions::from_mode(0o755))
+            .expect("restore writable");
+        fs::remove_dir_all(&data_dir).ok();
+    }
+
+    #[test]
+    fn recent_vaults_survive_restart_and_are_pullable_at_startup() {
+        let id = TEMP_SEQUENCE.fetch_add(1, Ordering::SeqCst);
+        let data_dir = std::env::temp_dir().join(format!(
+            "nexnote-recent-restart-{}-{id}",
+            std::process::id()
+        ));
+        fs::create_dir_all(data_dir.join("vault/.nexnote")).expect("create vault");
+        let first = ProductState::with_app_data(&data_dir);
+        first
+            .set_current_vault(vault_info_for_path(&data_dir.join("vault")))
+            .expect("persist recent vault");
+
+        let second = ProductState::with_app_data(&data_dir);
+        assert_eq!(
+            second
+                .recent_vaults
+                .lock()
+                .expect("recent vault lock")
+                .first()
+                .map(|entry| entry.path.as_str()),
+            Some(data_dir.join("vault").display().to_string().as_str())
+        );
+
+        let app = dispatch_harness_with_state(second);
+        let handle = app.handle();
+        let state = app.state::<ProductState>();
+        let embedding = app.state::<std::sync::Arc<embedding_service::EmbeddingState>>();
+        let plugins = app.state::<PluginState>();
+        let vault = app.state::<VaultRoot>();
+        let response = dispatch(
+            handle,
+            None,
+            &state,
+            &embedding,
+            &plugins,
+            &vault,
+            "vault:getState",
+            &json!({}),
+        );
+        assert_eq!(response["data"]["mode"], json!("onboarding"));
+        assert_eq!(
+            response["data"]["recent"][0]["path"],
+            json!(data_dir.join("vault").display().to_string())
+        );
+        fs::remove_dir_all(&data_dir).ok();
+    }
+
     /// Writes are atomic: no leftover temp file, and the saved bytes parse.
     #[test]
     fn persisting_settings_leaves_no_temporary_file() {
@@ -4267,7 +4437,9 @@ See [[Glossary]].
         ));
         let state = ProductState::with_app_data(&data_dir);
         let snapshot = default_global_settings();
-        state.persist_global_settings(&snapshot);
+        state
+            .persist_global_settings(&snapshot)
+            .expect("persist settings snapshot");
 
         let settings_path = data_dir.join("nexnote-settings.json");
         assert!(settings_path.is_file(), "settings must be written");

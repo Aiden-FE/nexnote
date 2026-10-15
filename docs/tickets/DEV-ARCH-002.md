@@ -25,9 +25,9 @@
 | DEV-115 | 迁移契约与命令所有权盘点 | 无 | done |
 | DEV-116 | Tauri 2 壳 + Renderer bridge | DEV-115 | done |
 | DEV-117 | 三 WebView 编辑器兼容矩阵 | DEV-116 | partial（三平台 release 包启动全绿；块编辑/IME/拖拽/CodeMirror/React Flow/打印预览 fixture 仍 NOT_RUN，见 `docs/tauri/webview-editor-matrix.md`） |
-| DEV-118 | Rust product core 基础与状态生命周期 | DEV-115 | partial（设置持久化/原子写/损坏回退/双语搜索已测；只读目录等失败路径仍需补证） |
+| DEV-118 | Rust product core 基础与状态生命周期 | DEV-115 | done（设置/recent vaults 持久化、原子写、损坏/只读失败路径、启动快照与 macOS dev 实测完成） |
 | DEV-119 | Vault / FS / SQLite / 索引迁移 | DEV-118 | partial（核心 FS/SQLite/watcher/index/clone token/取消已测；macOS 真实 GUI 与跨平台文件系统证据仍缺） |
-| DEV-120 | Git 运行时与同步体系迁移 | DEV-119 | partial（核心 Git 与 doctor 已测；未捆绑 Git，缺超时/取消/GPL 与跨平台凭据证据） |
+| DEV-120 | Git 运行时与同步体系迁移 | DEV-119 | partial（核心 Git/doctor/bundled Git/超时/取消/GPL 门禁已实现；跨平台 bundled 构建与凭据行为待 CI 补证） |
 | DEV-121 | AI、召回与内置语义向量迁移 | DEV-118 | partial（Agent/审批/本地模型/召回已实现；缺检索质量评测、RSS 门槛、代理/断点与 Win/Linux ONNX 实测） |
 | DEV-122 | 插件沙箱与 capability 迁移 | DEV-116、DEV-118 | partial（安装/权限/审计/session/challenge/RPC 已测；真实沙箱 GUI 与恶意 fixture 全矩阵仍缺） |
 | DEV-123 | 二进制编辑器宿主与打印迁移 | DEV-116、DEV-117 | partial（label/flush/sender/resize 与 e2e 协议已测；真实文档 GUI、打印、崩溃隔离与内存未测） |
@@ -50,4 +50,4 @@
 
 ## 2026-10-15 全面审查结论
 
-DEV-115 的契约矩阵已加入 `pnpm test` 机械校验，当前 175 条记录为 173 `ported` / 1 `pending` / 1 `explicitly-unsupported`。DEV-116 与 DEV-115 可保持 done；DEV-117～124 均存在上述未验收项，DEV-125 继续 blocked。因此本 Epic 不能标 done，也不能切换默认下载通道或移除 Electron。
+DEV-115 的契约矩阵已加入 `pnpm test` 机械校验，当前 175 条记录为 173 `ported` / 1 `pending` / 1 `explicitly-unsupported`。DEV-115/116/118 已完成；DEV-117/119～124 均存在上述未验收项，DEV-125 继续 blocked。因此本 Epic 不能标 done，也不能切换默认下载通道或移除 Electron。

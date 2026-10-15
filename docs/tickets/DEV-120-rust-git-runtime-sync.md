@@ -29,7 +29,7 @@
 
 ## 2026-10-15 审查结论
 
-status / commit / timeline / 本地 bare repo 同步 / rebase 冲突 doctor / clone preflight-token 集成已有 Rust 测试。未完成项仍是：Tauri 产物未捆绑 Git（`resolve_git_binary()` 返回系统 `git`）、无 Git GPLv2 分发与二进制校验门禁、常规 Git 进程缺统一超时/取消/进程组回收、Windows/Linux 凭据与路径行为未实测。本票不能标 `done`。
+status / commit / timeline / 本地 bare repo 同步 / rebase 冲突 doctor / clone preflight-token 集成已有 Rust 测试。Tauri 资源现已捆绑 dugite Git 与 GPLv2/COPYING/NOTICE/SOURCE_OFFER，workflow 校验 manifest SHA256；Rust Git 进程统一具备 120s 超时、取消与进程组回收。剩余：跨平台 bundled Git 构建实测、Windows/Linux 凭据与路径行为。本票保持 `partial`。
 
 ## Out of scope
 

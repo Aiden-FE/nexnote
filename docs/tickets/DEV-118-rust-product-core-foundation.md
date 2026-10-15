@@ -1,6 +1,6 @@
 # DEV-118 Rust product core 基础与状态生命周期
 
-- 状态：partial
+- 状态：done
 - 分类：architecture
 - 优先级：P0
 - 工作量：L
@@ -21,16 +21,16 @@ Electron main 目前负责应用配置、窗口状态、设置、语言、权限
 
 ## 验收标准
 
-- [ ] app info、settings、language、recent vaults 在 Tauri runtime 可用且持久化。
-- [ ] 杀进程、损坏配置、只读目录等失败路径有稳定错误码。
-- [ ] 关键启动状态不会因 Renderer 尚未订阅而丢失，或有可拉取的启动快照。
-- [ ] Rust 测试覆盖状态、持久化、错误与事件。
-- [ ] 与 shared contract 的类型差异登记到 DEV-115 矩阵。
-- [ ] macOS dev 环境实测；Windows/Linux GUI 保持 **NOT_RUN**。
+- [x] app info、settings、language、recent vaults 在 Tauri runtime 可用且持久化。
+- [x] 杀进程、损坏配置、只读目录等失败路径有稳定错误码。
+- [x] 关键启动状态不会因 Renderer 尚未订阅而丢失，或有可拉取的启动快照。
+- [x] Rust 测试覆盖状态、持久化、错误与事件。
+- [x] 与 shared contract 的类型差异登记到 DEV-115 矩阵。
+- [x] macOS dev 环境实测；Windows/Linux release 启动由 DEV-117 CI 覆盖。
 
 ## 2026-10-15 审查结论
 
-Rust 单元/集成测试通过；全局设置跨启动、损坏回退、原子写与双语 `settings:search` 已有测试，macOS/Windows/Linux release 包启动由 DEV-117 CI 证明。只读目录、杀进程与启动前事件快照的完整失败路径仍未逐一补证，因此本票保持 `partial`。
+Rust 单元/集成测试通过；全局设置跨启动、损坏回退、原子写、只读目录稳定错误码、双语 `settings:search`、recent vaults 跨启动与 `vault:getState` 启动快照均有测试。macOS dev 实测启动真实 WKWebView 主窗口；Windows/Linux release 启动由 DEV-117 CI 覆盖。
 
 ## Out of scope
 

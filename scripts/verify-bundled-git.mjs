@@ -1,32 +1,44 @@
 /* eslint-disable no-console */
 /**
- * Hard gate for the bundled (dugite) Git payload. Two modes:
+ * Hard gate for the bundled (dugite) Git payload. Three modes:
  *  - --install-tree [root]: verify every workspace node_modules/dugite link.
  *    Build outputs are never scanned, so stale release payloads cannot satisfy it.
- *  - --app <output>: verify every app.asar.unpacked below the output. Packaged
+ *  - --app <output>: verify every Electron app.asar.unpacked below the output. Packaged
  *    payload paths must be real files/directories wholly inside that tree.
+ *  - --tauri-app <bundle-output>: verify each Tauri resources/git payload,
+ *    including manifest checksum and GPLv2/license offer files.
  */
 import { execFileSync } from 'node:child_process';
-import { lstatSync, readdirSync, statSync } from 'node:fs';
+import { createHash } from 'node:crypto';
+import { lstatSync, readdirSync, readFileSync, statSync } from 'node:fs';
 import { basename, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const root = resolve(fileURLToPath(new URL('..', import.meta.url)));
 const [mode, input = '.'] = process.argv.slice(2);
 
-if (mode !== '--install-tree' && mode !== '--app') {
-  fail('usage: node scripts/verify-bundled-git.mjs --install-tree [root] | --app <output>');
+if (mode !== '--install-tree' && mode !== '--app' && mode !== '--tauri-app') {
+  fail(
+    'usage: node scripts/verify-bundled-git.mjs --install-tree [root] | --app <output> | --tauri-app <bundle-output>',
+  );
 }
 
 const target = resolve(root, input);
 const relativeBinary = process.platform === 'win32' ? 'git/cmd/git.exe' : 'git/bin/git';
-const payloads = mode === '--install-tree' ? installPayloads(target) : packagedPayloads(target);
+const payloads =
+  mode === '--install-tree'
+    ? installPayloads(target)
+    : mode === '--tauri-app'
+      ? tauriPayloads(target)
+      : packagedPayloads(target);
 
 if (payloads.length === 0) {
   fail(
     mode === '--install-tree'
       ? `dugite package is missing from install tree: ${target}`
-      : `no app.asar.unpacked found under packaged output: ${target}`,
+      : mode === '--app'
+        ? `no app.asar.unpacked found under packaged output: ${target}`
+        : `no Tauri resources/git payload found under: ${target}`,
   );
 }
 
@@ -39,6 +51,29 @@ for (const payload of payloads) {
     fail(`dugite bundled Git is missing from install tree package: ${payload}`);
   }
   verifyExecutable(binary);
+  if (mode === '--tauri-app') verifyTauriPayload(payload);
+}
+
+function verifyTauriPayload(payload) {
+  for (const name of [
+    'manifest.json',
+    'licenses/COPYING',
+    'licenses/NOTICE',
+    'licenses/SOURCE_OFFER.txt',
+  ]) {
+    if (!isFile(join(payload, name), false)) fail(`Tauri Git payload missing ${name}: ${payload}`);
+  }
+  const manifest = JSON.parse(readFileSync(join(payload, 'manifest.json'), 'utf8'));
+  const binary = join(payload, manifest.binary);
+  const actual = createHash('sha256').update(readFileSync(binary)).digest('hex');
+  if (manifest.sha256 !== actual) fail(`Tauri bundled Git checksum mismatch: ${binary}`);
+  console.log(`Tauri bundled Git manifest verified: ${manifest.platform}-${manifest.arch}`);
+}
+
+function tauriPayloads(start) {
+  return findRealDirectories(start, (path) => basename(path) === 'git').filter((path) =>
+    isFile(join(path, 'manifest.json'), false),
+  );
 }
 
 function installPayloads(start) {

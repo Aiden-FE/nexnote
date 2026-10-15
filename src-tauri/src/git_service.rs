@@ -10,8 +10,10 @@ use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use std::{
     fmt,
-    path::Path,
-    process::{Command, Output},
+    path::{Path, PathBuf},
+    process::{Command, Output, Stdio},
+    sync::OnceLock,
+    time::{Duration, Instant},
 };
 
 const AUTO_PREFIX: &str = "nexnote:auto:";
@@ -23,6 +25,14 @@ const USER_EMAIL_ARG: &str = "user.email=nexnote@localhost";
 const TIMELINE_FIELD_SEPARATOR: char = '\u{1f}';
 const TIMELINE_RECORD_SEPARATOR: char = '\u{1e}';
 const MAX_TIMELINE_LIMIT: usize = 500;
+const GIT_PROCESS_TIMEOUT: Duration = Duration::from_secs(120);
+
+#[derive(Debug)]
+pub enum GitProcessError {
+    Spawn(std::io::Error),
+    Timeout,
+    Aborted,
+}
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -103,11 +113,53 @@ impl fmt::Display for GitError {
 
 impl std::error::Error for GitError {}
 
-/// The first runtime slice always uses the Git binary found through `PATH`.
-/// Bundled dugite lookup belongs to the next runtime slice so that this module
-/// can be tested independently of application packaging.
+#[derive(Clone)]
+struct BundledGitRuntime {
+    binary: PathBuf,
+    exec_path: PathBuf,
+    config_system: PathBuf,
+    template_dir: PathBuf,
+}
+
+static BUNDLED_GIT: OnceLock<BundledGitRuntime> = OnceLock::new();
+
+pub fn install_bundled_git(resource_root: &Path) -> bool {
+    let payload = resource_root.join("git");
+    let binary = if cfg!(windows) {
+        payload.join("cmd/git.exe")
+    } else {
+        payload.join("bin/git")
+    };
+    if !binary.is_file() {
+        return false;
+    }
+    let runtime = BundledGitRuntime {
+        binary: binary.clone(),
+        exec_path: payload.join("libexec/git-core"),
+        config_system: payload.join("etc/gitconfig"),
+        template_dir: payload.join("share/git-core/templates"),
+    };
+    BUNDLED_GIT.set(runtime).is_ok()
+        || BUNDLED_GIT
+            .get()
+            .is_some_and(|current| current.binary == binary)
+}
+
+pub fn configure_git_command(command: &mut Command) {
+    let Some(runtime) = BUNDLED_GIT.get() else {
+        return;
+    };
+    command
+        .env("GIT_EXEC_PATH", &runtime.exec_path)
+        .env("GIT_CONFIG_SYSTEM", &runtime.config_system)
+        .env("GIT_TEMPLATE_DIR", &runtime.template_dir);
+}
+
 pub fn resolve_git_binary() -> String {
-    "git".to_owned()
+    BUNDLED_GIT
+        .get()
+        .map(|runtime| runtime.binary.display().to_string())
+        .unwrap_or_else(|| "git".to_owned())
 }
 
 /// Values that would redirect Git outside the selected vault or inject an
@@ -132,7 +184,10 @@ fn prepare_git_command(root: &Path, env_overrides: &[(&str, Option<&str>)]) -> C
     command.current_dir(root);
     command.env_remove("GIT_ASKPASS");
     command.env("GIT_TERMINAL_PROMPT", "0");
-    command.env("GIT_CONFIG_NOSYSTEM", "1");
+    configure_git_command(&mut command);
+    if BUNDLED_GIT.get().is_none() {
+        command.env("GIT_CONFIG_NOSYSTEM", "1");
+    }
 
     for variable in CLEANED_GIT_ENV_VARS {
         command.env_remove(variable);
@@ -148,6 +203,75 @@ fn prepare_git_command(root: &Path, env_overrides: &[(&str, Option<&str>)]) -> C
         }
     }
     command
+}
+
+pub fn run_command_with_timeout(
+    command: &mut Command,
+    timeout: Duration,
+) -> Result<Output, GitProcessError> {
+    run_command_with_cancel(command, timeout, None)
+}
+
+pub fn run_command_with_cancel(
+    command: &mut Command,
+    timeout: Duration,
+    cancelled: Option<&std::sync::atomic::AtomicBool>,
+) -> Result<Output, GitProcessError> {
+    command
+        .stdin(Stdio::null())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped());
+    #[cfg(unix)]
+    {
+        use std::os::unix::process::CommandExt;
+        command.process_group(0);
+    }
+    let mut child = command.spawn().map_err(GitProcessError::Spawn)?;
+    let deadline = Instant::now() + timeout;
+    loop {
+        if let Ok(Some(status)) = child.try_wait() {
+            let mut stdout = Vec::new();
+            let mut stderr = Vec::new();
+            if let Some(mut pipe) = child.stdout.take() {
+                std::io::Read::read_to_end(&mut pipe, &mut stdout)
+                    .map_err(GitProcessError::Spawn)?;
+            }
+            if let Some(mut pipe) = child.stderr.take() {
+                std::io::Read::read_to_end(&mut pipe, &mut stderr)
+                    .map_err(GitProcessError::Spawn)?;
+            }
+            return Ok(Output {
+                status,
+                stdout,
+                stderr,
+            });
+        }
+        let timed_out = Instant::now() >= deadline;
+        let aborted = cancelled.is_some_and(|flag| flag.load(std::sync::atomic::Ordering::SeqCst));
+        if timed_out || aborted {
+            kill_process_tree(child.id());
+            let _ = child.wait();
+            return Err(if aborted {
+                GitProcessError::Aborted
+            } else {
+                GitProcessError::Timeout
+            });
+        }
+        std::thread::sleep(Duration::from_millis(20));
+    }
+}
+
+fn kill_process_tree(process_id: u32) {
+    let result = if cfg!(windows) {
+        Command::new("taskkill")
+            .args(["/PID", &process_id.to_string(), "/T", "/F"])
+            .status()
+    } else {
+        Command::new("kill")
+            .args(["-9", &format!("-{process_id}")])
+            .status()
+    };
+    let _ = result;
 }
 
 /// Core process runner. stdout and stderr are always captured so parsing and
@@ -168,12 +292,21 @@ pub fn run_git_env(
         status,
         stdout,
         stderr,
-    } = command.output().map_err(|error| {
-        GitError::new(
-            "GIT_SPAWN_FAILED",
-            format!("failed to execute git {}: {error}", args.join(" ")),
-        )
-    })?;
+    } = run_command_with_timeout(&mut command, GIT_PROCESS_TIMEOUT).map_err(
+        |error| match error {
+            GitProcessError::Spawn(error) => GitError::new(
+                "GIT_SPAWN_FAILED",
+                format!("failed to execute git {}: {error}", args.join(" ")),
+            ),
+            GitProcessError::Timeout => {
+                GitError::new("GIT_TIMEOUT", format!("git {} timed out", args.join(" ")))
+            }
+            GitProcessError::Aborted => GitError::new(
+                "GIT_ABORTED",
+                format!("git {} was cancelled", args.join(" ")),
+            ),
+        },
+    )?;
 
     let stdout = String::from_utf8_lossy(&stdout).into_owned();
     let stderr = String::from_utf8_lossy(&stderr).into_owned();
@@ -631,6 +764,43 @@ mod tests {
 
     fn read_status(root: &Path) -> GitStatus {
         serde_json::from_value(status(root).unwrap()).unwrap()
+    }
+
+    #[test]
+    fn bundled_git_runtime_resolves_and_executes() {
+        let resource = std::env::current_dir()
+            .ok()
+            .map(|cwd| cwd.join("resources/git"))
+            .filter(|path| path.join("git/bin/git").is_file());
+        let Some(resource) = resource else {
+            return;
+        };
+        assert!(install_bundled_git(&resource), "valid payload must install");
+        let mut command = Command::new(resolve_git_binary());
+        configure_git_command(&mut command);
+        let output = command
+            .arg("--version")
+            .output()
+            .expect("execute bundled git");
+        assert!(output.status.success());
+        assert!(String::from_utf8_lossy(&output.stdout).starts_with("git version"));
+    }
+
+    #[test]
+    fn process_runner_times_out_and_aborts_without_leaking_the_child() {
+        let started = std::time::Instant::now();
+        let mut command = Command::new("/bin/sh");
+        command.args(["-c", "sleep 5"]);
+        let result = run_command_with_timeout(&mut command, Duration::from_millis(20));
+        assert!(matches!(result, Err(GitProcessError::Timeout)));
+        assert!(started.elapsed() < Duration::from_secs(2));
+
+        let cancelled = std::sync::atomic::AtomicBool::new(true);
+        let mut command = Command::new("/bin/sh");
+        command.args(["-c", "sleep 5"]);
+        let result =
+            run_command_with_cancel(&mut command, Duration::from_secs(5), Some(&cancelled));
+        assert!(matches!(result, Err(GitProcessError::Aborted)));
     }
 
     #[test]
