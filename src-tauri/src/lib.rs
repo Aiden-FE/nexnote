@@ -35,9 +35,22 @@ pub fn run() {
     // the release pipeline exists. Register it only when a key is configured;
     // `updater:check` then reports UPDATE_PLUGIN_NOT_READY, which the settings
     // UI already surfaces.
-    // The updater plugin only joins the chain when a key is configured, so the
-    // branch happens before the builder chain rather than after it.
-    let updater_enabled = updater_is_configured();
+    //
+    // The gate reads the compile-time embedded config, not the file on disk:
+    // an installed app's CWD is not src-tauri, so a file probe would silently
+    // disable the updater everywhere except `cargo run`.
+    let context = tauri::generate_context!();
+    let updater_pubkey = context
+        .config()
+        .plugins
+        .0
+        .get("updater")
+        .and_then(|plugin| plugin.get("pubkey"))
+        .and_then(serde_json::Value::as_str)
+        .map(str::trim)
+        .filter(|key| !key.is_empty())
+        .is_some();
+    let updater_enabled = updater_pubkey;
     let base = tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_process::init())
@@ -76,30 +89,16 @@ pub fn run() {
             }
         });
 
-    // `generate_context!` embeds the Info.plist as a symbol, so it must expand
-    // exactly once: the two branches differ only in which builder is returned.
+    // `generate_context!` expands exactly once (it embeds a symbol), so the
+    // context is built first and the branches differ only in the plugin.
     if updater_enabled {
         base.plugin(tauri_plugin_updater::Builder::new().build())
     } else {
         base
     }
-    .run(tauri::generate_context!())
-    .expect("failed to run NexNote Tauri runtime");
-}
-
-/// True when `tauri.conf.json` carries an updater public key, i.e. signed
-/// updates can actually be verified (DEV-124).
-fn updater_is_configured() -> bool {
-    let Ok(config) = std::fs::read_to_string("tauri.conf.json") else {
-        return false;
-    };
-    let Ok(value) = serde_json::from_str::<serde_json::Value>(&config) else {
-        return false;
-    };
-    value
-        .pointer("/plugins/updater/pubkey")
-        .and_then(serde_json::Value::as_str)
-        .is_some_and(|key| !key.trim().is_empty())
+    .build(context)
+    .expect("failed to build NexNote Tauri runtime")
+    .run(|_app_handle, _event| {});
 }
 
 /// Builds the native application menu and wires clicks to `menu:action`.
