@@ -96,6 +96,24 @@ jobs:
           codesign --force --deep --sign - "$app"
           codesign --verify --deep --strict "$app"
           codesign -dv "$app" 2>&1 | grep -E 'Signature=adhoc'
+      - name: Smoke-launch the re-signed macOS bundle
+        if: runner.os == 'macOS'
+        shell: bash
+        run: |
+          set -euo pipefail
+          app=$(find src-tauri/target/release/bundle/macos -maxdepth 1 -name 'NexNote.app' -print -quit)
+          open "$app"
+          sleep 12
+          # The process name is the executable (nexnote-tauri), not the bundle
+          # display name; 'contains' keeps this resilient to renames.
+          windows=$(osascript -e 'tell application "System Events" to tell first process whose name contains "exnote" to return count of windows' 2>&1)
+          echo "window count: $windows"
+          pkill -f 'NexNote.app' || true
+          case "$windows" in
+            ''|*[!0-9]*) echo '::error::packaged app did not report a window count'; exit 1 ;;
+            0) echo '::error::packaged app launched with no windows'; exit 1 ;;
+            *) echo "packaged smoke OK ($windows window(s))" ;;
+          esac
       - name: Verify Windows bundle output
         if: runner.os == 'Windows'
         shell: pwsh
