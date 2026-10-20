@@ -260,7 +260,7 @@ jobs:
           find release -mindepth 1 -maxdepth 1 -type d -exec rm -rf '{}' +
           rm -f release/builder-debug.yml release/builder-effective-config.yaml
           find release -name '.DS_Store' -delete
-      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: nexnote-${{ matrix.artifact }}
           # Preserve each native builder output directory: latest-mac.yml from one
@@ -308,7 +308,7 @@ jobs:
           NEXNOTE_SMOKE_EXPECTED_ABI: '149'
       - name: Upload packaged smoke evidence
         if: always()
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: smoke-evidence-${{ github.run_id }}
           path: ${{ runner.temp }}/nexnote-smoke-results
@@ -372,12 +372,12 @@ jobs:
         run: |
           GITHUB_REF_NAME="$RELEASE_TAG" GITHUB_SHA="$RELEASE_COMMIT" node scripts/release-evidence.mjs create release-qa-evidence.json
           GITHUB_REF_NAME="$RELEASE_TAG" GITHUB_SHA="$RELEASE_COMMIT" node scripts/release-evidence.mjs validate release-qa-evidence.json
-      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: release-qa-evidence-${{ github.run_id }}
           path: release-qa-evidence.json
           if-no-files-found: error
-      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: release-preflight-${{ github.run_id }}
           path: release/**/*
